@@ -39,6 +39,15 @@ class Finding:
     suggestion: str = ""       # expected form / nearest match
     fixable: bool = False      # `ostler fmt`/`scaffold`/relink can apply the remedy
     waived: bool = False       # an accepted-defect waiver downgraded this from error to warn
+    #: The *other* book locations this one finding is also about, `<path>#<node-id>` each.
+    #: Empty for the ordinary finding, which is about the one place `path`/`line` name.
+    #:
+    #: A group finding — several nodes competing over one symbol — has a remedy that is only
+    #: complete when every member is edited, and `path` can name just one of them. Carrying the
+    #: membership as a field rather than only as prose in `message` is what lets a consumer
+    #: address the group: okf-builder's repair item reads this to put every competitor in scope,
+    #: and without it the only membership list was a sentence it would have had to match.
+    related: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -911,7 +920,16 @@ def _check_judgment(graph: Graph, f: list[Finding],
             f"{ids}: {len(nodes)} `{ntype}` nodes ground themselves in '{ref}' with no "
             f"shared `detail:` concept — a reader reaching either one cannot learn which "
             f"to use, or when",
-            path=rel, line=first.line, ref=ref,
+            # The ref is the *group*, not just the symbol: same-type is what makes a
+            # competition, so one symbol cited by two runbooks and by two endpoints is two
+            # separate findings with two separate remedies. Keyed on the citation alone they
+            # shared a ref — which collapsed them into one worklist item and made one waiver
+            # silently accept both.
+            path=rel, line=first.line, ref=f"{ntype}:{ref}",
+            # `path` can only name one member — the group's remedy is not complete until
+            # every competitor points at the concept, so the membership travels as a field
+            # and not only inside the sentence above.
+            related=sorted(group_ids),
             suggestion="write the concept that states the selection rule, then point "
                        "every competitor at it: `- detail: "
                        "[<concept>](../concepts/<slug>.md)`"))
@@ -1094,9 +1112,15 @@ def _bullet_values(value) -> list[str]:
 #: is full of — "the issue", "the register", "the archive" — and a rule that fired on those
 #: would be waived everywhere and would stop meaning anything where it is right. The finding
 #: quotes the verb it matched, so the misfires that remain are visible at a glance.
+#:
+#: `issues`/`issuing` were members and came out on that same criterion: their object is an
+#: *event*, not a subject that exists afterwards. Every one of the seven claims spelling them
+#: in a real book governed an HTTP request or a navigation, none a persisted subject — so the
+#: remedy the finding printed, `created(subject=…)`, could not be written for any of them.
+#: Emission is `emits:`' and `emitted(...)`'s question, and it already has one.
 LIFECYCLE_VERBS = frozenset({
     "creates", "creating", "adds", "adding", "registers", "registering",
-    "issues", "issuing", "inserts", "inserting", "provisions", "provisioning",
+    "inserts", "inserting", "provisions", "provisioning",
     "deletes", "deleting", "removes", "removing", "revokes", "revoking",
     "archives", "archiving", "purges", "purging",
 })
@@ -1105,14 +1129,53 @@ LIFECYCLE_VERBS = frozenset({
 #: rather than the after-read alone. Declaring either is what clears `unstated-precondition`.
 LIFECYCLE_CHECKS = frozenset({"created", "removed"})
 
+#: The bullet keys that state what the node *does*. A lifecycle verb only carries a lifecycle
+#: claim when the bullet it sits in is about this node's own action: `semantics:` explains what
+#: a value *means* ("otherwise inserts the value verbatim"), `required:` states a *caller's*
+#: obligation ("a route that deletes objects must fail closed"), `default:` names a fallback
+#: and `consumes:` names an input. None of them is an action to observe either side of, so a
+#: finding on one names a remedy the author cannot write.
+NON_ACTION_KEYS = frozenset({"semantics", "required", "default", "consumes"})
+
 _WORD = re.compile(r"[a-zA-Z']+")
+
+#: The words that turn the verb *following* them into a claim of non-occurrence, within two
+#: tokens: "without deleting", "never removes", "instead of issuing", "rather than creating".
+_NEGATORS = frozenset({"no", "not", "never", "without", "instead", "rather", "than", "nor",
+                       "neither", "avoids", "avoid", "skips", "skip"})
+
+#: The determiners that negate the verb *before* them: "creates no page id", "writes no draft".
+_NEGATIVE_DETERMINERS = frozenset({"no", "none", "nothing", "neither"})
 
 
 def _states_a_lifecycle_claim(value: str) -> str:
-    """The lifecycle verb this bullet uses, or "" — the word a finding has to quote."""
-    for word in _WORD.findall(_prose(value)):
-        if word.lower() in LIFECYCLE_VERBS:
-            return word.lower()
+    """The lifecycle verb this bullet uses, or "" — the word a finding has to quote.
+
+    A verb whose negation is *local to it* states the opposite of a lifecycle change, and
+    there is no edit that clears the finding: `created(subject=…)` asserts the thing the
+    claim says does not happen, and the `absent(...)`/`unchanged(...)` the author already
+    wrote is the complete observation. So the negated verb is not the claim's verb.
+
+    The scoping is the whole correctness of this. A sentence-wide negation test — "any
+    negator anywhere" — is measurably wrong: `creates a new claims map and copies every
+    existing key … *without* mutating the account's current claims` is a real creation, and
+    `an empty 204 No Content *after deleting* the project` is a real deletion. In a real book
+    23 claims carried a negator somewhere and only 10 carried one governing the verb.
+
+    This is token work over an English sentence, not a parse, and it does not pretend to be
+    one: there is no English parser here and a `warn` does not justify adding one. What it
+    buys over the set-membership test it replaces is that the answer is computed from the
+    verb's own neighbourhood rather than from the sentence containing a word.
+    """
+    words = [word.lower() for word in _WORD.findall(_prose(value))]
+    for n, word in enumerate(words):
+        if word not in LIFECYCLE_VERBS:
+            continue
+        if any(before in _NEGATORS for before in words[max(0, n - 2):n]):
+            continue
+        if words[n + 1:n + 2] and words[n + 1] in _NEGATIVE_DETERMINERS:
+            continue
+        return word
     return ""
 
 
@@ -1717,6 +1780,8 @@ def _check_ui(graph: Graph, f: list[Finding],
         # `qa validate`'s `claimed-but-unasserted` covers the bullet nothing asserts.
         claim_values = registry.normative_claims(node.type, node.bullet_order)
         for (key, index), calls in calls_by_claim.items():
+            if key in NON_ACTION_KEYS:
+                continue
             if not calls or any(c.name in LIFECYCLE_CHECKS for c in calls + contract_calls):
                 continue
             verb = _states_a_lifecycle_claim(claim_values.get((key, index), ""))

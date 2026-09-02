@@ -472,6 +472,85 @@ def test_a_sibling_claim_declaring_the_change_does_not_answer_this_one(repo: Pat
     assert finding.ref == f"{finding.path}#publish#returns"
 
 
+def test_a_verb_its_own_sentence_negates_states_no_lifecycle_change(repo: Path):
+    """`created(subject=…)` asserts the very thing the claim says does not happen.
+
+    The remedy the finding prints cannot be written for a claim of non-occurrence, and the
+    `absent(...)` the author already wrote *is* the complete observation — so the finding had
+    no edit that cleared it, which is the one thing this file's own bar forbids.
+    """
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- does: a cancelled publish creates no revision and writes no manifest row\n"
+          '- verify: absent(subject="a revision after a cancelled publish")\n')
+    assert "unstated-precondition" not in all_codes(_run(repo))
+
+
+def test_a_negator_governing_the_verb_from_the_left_also_clears_it(repo: Path):
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- does: a replay reuses the existing revision instead of creating a duplicate\n"
+          '- verify: unchanged(subject="the revision count after a replay")\n')
+    assert "unstated-precondition" not in all_codes(_run(repo))
+
+
+def test_a_negator_elsewhere_in_the_sentence_does_not_clear_a_real_creation(repo: Path):
+    """The near-miss that makes the scoping load-bearing, not a detail of the implementation.
+
+    "any negator anywhere in the sentence" reads this claim as non-occurrence and drops a
+    genuine creation. In a real book 23 claims carried a negator somewhere and 10 carried one
+    governing the verb — so the sentence-wide test would have been wrong on 13 of them.
+    """
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- does: creates a new manifest and copies every existing row into it, without\n"
+          "  mutating the manifest the caller passed in\n"
+          '- verify: http_status(201, path="/revisions")\n')
+    finding = next(f for f in _run(repo).findings if f.code == "unstated-precondition")
+    assert "creates" in finding.message
+
+
+def test_a_deletion_the_sentence_only_sequences_still_states_a_lifecycle_change(repo: Path):
+    # "after deleting" is when the response is emitted, not a denial that it was deleted.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- returns: an empty `204 No Content` after deleting the revision\n"
+          '- verify: http_status(204, path="/revisions")\n')
+    finding = next(f for f in _run(repo).findings if f.code == "unstated-precondition")
+    assert "deleting" in finding.message
+
+
+def test_emitting_a_request_is_not_a_change_of_existence(repo: Path):
+    """`issues`/`issuing` left `LIFECYCLE_VERBS` on the constant's own stated criterion.
+
+    Their object is an *event*, and an event is not a subject a harness can read either side
+    of — there is no `created(subject=…)` to write. Emission already has its question,
+    `emits:` and `emitted(...)`.
+    """
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- does: issues one `GET /manifest` against the api, never two\n"
+          '- verify: emitted(event="GET /manifest", count=1)\n')
+    assert "unstated-precondition" not in all_codes(_run(repo))
+
+
+def test_a_key_that_describes_rather_than_acts_is_not_asked_for_a_before_read(repo: Path):
+    # `semantics:` says what a *value* means. There is no action here to observe either side
+    # of, so the finding named a remedy the author had nowhere to put.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Fields\n\n### Row Count\n"
+          "- semantics: an empty value is read as zero; any other value the generator\n"
+          "  inserts verbatim into the manifest\n"
+          '- verify: json_path(path="$.rowCount", equals="0")\n')
+    assert "unstated-precondition" not in all_codes(_run(repo))
+
+
 def test_a_node_minting_no_obligation_is_not_asked_to_declare(repo: Path):
     # Nothing to observe: an interaction recorded only by its trigger owes no check, and a rule
     # that asked anyway would be noise on the descriptive half of the book.
@@ -645,6 +724,24 @@ def test_competing_implementations_fires_on_unranked_same_type_co_citation(repo:
     assert "v1" in hits[0].message and "v2" in hits[0].message
     assert "internal/notify.go::Notify" in hits[0].message
     assert "detail:" in (hits[0].suggestion or "")
+
+
+def test_competing_implementations_carries_every_competitor_as_data(repo: Path):
+    """The membership is a field, not a sentence — `path` names one member and the remedy needs
+    all of them, so a consumer that had to recover the group from the message would be matching
+    prose written for a person. `ref` names the group (type *and* symbol), because one symbol
+    competed over by two types is two competitions with two remedies.
+    """
+    write(repo / "docs/features/groom/http/v1.md",
+          _endpoint_file("v1", "internal/notify.go::Notify"))
+    write(repo / "docs/features/groom/http/v2.md",
+          _endpoint_file("v2", "internal/notify.go::Notify"))
+    hit = next(f for f in _run(repo).findings if f.code == "competing-implementations")
+    assert hit.related == ["docs/features/groom/http/v1.md#v1",
+                           "docs/features/groom/http/v2.md#v2"]
+    # `path` is still one arbitrary member; `related` is what makes the other reachable.
+    assert hit.path in {member.split("#")[0] for member in hit.related}
+    assert hit.ref == "endpoint:internal/notify.go::Notify"
 
 
 def test_competing_implementations_ignores_cross_type_co_citation(repo: Path):
@@ -894,6 +991,7 @@ LINKED_REPORT_JSON = """\
       "message": "docs/features/groom/concepts/diff.md: link './diff.md#nope' — file exists but `#nope` heading not found",
       "path": "docs/features/groom/concepts/diff.md",
       "ref": "./diff.md#nope",
+      "related": [],
       "severity": "error",
       "suggestion": "",
       "waived": false
@@ -906,6 +1004,7 @@ LINKED_REPORT_JSON = """\
       "message": "docs/features/groom/gui/screens/changes-view.md: link './gone.md' target file does not exist",
       "path": "docs/features/groom/gui/screens/changes-view.md",
       "ref": "./gone.md",
+      "related": [],
       "severity": "error",
       "suggestion": "",
       "waived": false
@@ -918,6 +1017,7 @@ LINKED_REPORT_JSON = """\
       "message": "no `runbook` node brings a system up: the book describes a surface that has to be served and never says how it starts, so QA has no stack to run against",
       "path": "",
       "ref": "",
+      "related": [],
       "severity": "warn",
       "suggestion": "ostler scaffold runbook qa-stack --service <service>",
       "waived": false
