@@ -338,6 +338,90 @@ def test_disarming_forgets_how_the_last_run_described_itself() -> None:
     assert channel.replies == [{"attached": False}]
 
 
+def test_a_reply_far_larger_than_one_packet_arrives_whole() -> None:
+    # The regression this file did not have: a stream socket splits a big reply across
+    # many recv()s, and the reader has to put it back together. 698 KB is the size a real
+    # `questions` reply reached — it quotes the gate file, and an operator gate re-armed
+    # across a long run gets there — at which point the old 64 KiB reader returned a
+    # truncated prefix that failed to parse, and every caller read that as "no question".
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = Path(tmp)
+        channel = SocketChannel.open(run_dir)
+        question = "x" * 698_000
+        answered: list[dict[str, object]] = []
+
+        def client() -> None:
+            answered.append(control.send(run_dir, Request(action="reload"), timeout=10.0))
+
+        caller = threading.Thread(target=client)
+        caller.start()
+        try:
+            request = wait_until(None, timeout=5.0, clock=FakeClock(), channel=channel, tick=0.05)
+            assert request is not None
+            channel.reply({"ok": True, "questions": [{"question": question}]})
+        finally:
+            caller.join(timeout=10)
+            channel.close()
+
+        assert answered == [{"ok": True, "questions": [{"question": question}]}]
+
+
+def test_a_message_over_its_limit_is_refused_rather_than_truncated() -> None:
+    # The defect itself. The old reader stopped at its bound and returned the bytes it
+    # had, and a prefix of a JSON object is not a shorter message — it is a corrupt one
+    # that parses to nothing. Every caller then read "the peer said nothing", which is
+    # the opposite of what happened. Refusing is what makes the two distinguishable.
+    left, right = socket.socketpair()
+    try:
+        right.sendall(b"y" * 4096)
+        try:
+            control._read_message(left, limit=1024)
+        except control.ControlProtocolError:
+            pass
+        else:
+            raise AssertionError("an over-limit message was accepted")
+    finally:
+        left.close()
+        right.close()
+
+
+def test_a_message_is_reassembled_across_however_many_packets_it_takes() -> None:
+    # A stream socket delivers bytes, not messages: the newline is the frame, and a
+    # payload written in pieces has to come back out as one. Under the limit, so this is
+    # the framing on its own with no bound involved.
+    left, right = socket.socketpair()
+    try:
+        body = json.dumps({"chunk": "a" * 30_000})
+        for i in range(0, len(body), 997):
+            right.sendall(body[i : i + 997].encode("utf-8"))
+        right.sendall(b"\n")
+        assert json.loads(control._read_message(left, limit=control.REPLY_LIMIT)) == json.loads(body)
+    finally:
+        left.close()
+        right.close()
+
+
+def test_a_request_over_its_limit_is_ignored_and_the_run_survives() -> None:
+    # The bound that is still a bound: anything reaching the socket may send a request,
+    # so an unterminated one must not be an unbounded allocation in the run. Ignored, as
+    # every other malformed message is — the worst a client can cause is nothing.
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = Path(tmp)
+        channel = SocketChannel.open(run_dir)
+        try:
+            client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            client.settimeout(5.0)
+            client.connect(str(channel.path))
+            try:
+                client.sendall(b"z" * (control.REQUEST_LIMIT + 4096))
+            except OSError:
+                pass  # the run hung up on it, which is the point
+            assert channel.take() is None
+            client.close()
+        finally:
+            channel.close()
+
+
 if __name__ == "__main__":
     test_a_message_sent_to_a_live_run_arrives_with_its_reply()
     test_a_request_ends_a_wait_that_had_hours_left()
@@ -360,4 +444,8 @@ if __name__ == "__main__":
     test_a_process_with_no_run_attached_says_so_rather_than_going_quiet()
     test_a_describe_that_raises_answers_the_query_instead_of_ending_the_run()
     test_disarming_forgets_how_the_last_run_described_itself()
+    test_a_reply_far_larger_than_one_packet_arrives_whole()
+    test_a_message_over_its_limit_is_refused_rather_than_truncated()
+    test_a_message_is_reassembled_across_however_many_packets_it_takes()
+    test_a_request_over_its_limit_is_ignored_and_the_run_survives()
     print("ok")

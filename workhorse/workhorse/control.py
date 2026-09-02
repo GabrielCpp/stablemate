@@ -70,7 +70,34 @@ POINTER_FILE = "control.sock.path"
 #: sub-flow can genuinely get there — so the limit is checked rather than discovered.
 _SUN_PATH_MAX = 100
 
+#: How much is read from the socket at a time. A reply carrying a gate file is hundreds
+#: of kilobytes, and 4 KiB reads made that 175 syscalls.
+_CHUNK = 64 * 1024
+
+#: What a *request* may be: a verb, a path, and an operator's prose answer. Bounded
+#: because anything that can reach the socket can send one, and a peer that never sends
+#: a newline must not be able to exhaust the run's memory.
+REQUEST_LIMIT = 64 * 1024
+
+#: What a *reply* may be, which is a different question with a different answer. The
+#: peer here is the run this client just connected to on a 0600 socket in its own run
+#: dir — not a stranger — and what it says is as big as what it was asked about: the
+#: `questions` verb quotes the whole gate file, and an operator gate re-armed across a
+#: long run reaches hundreds of kilobytes. Still bounded, because a wedged run must not
+#: take the operator's CLI down with it, but bounded where a real payload is not.
+REPLY_LIMIT = 64 * 1024 * 1024
+
 logger = logging.getLogger(__name__)
+
+
+class ControlProtocolError(Exception):
+    """A message that could not be framed: over its limit with no newline in sight.
+
+    Its own type rather than an `OSError` because it is not one — the socket worked
+    perfectly, the peer said more than the reader agreed to hold. Callers distinguish
+    the two: a run ignores an unframeable *request* and keeps going, while an operator
+    asking a question is told, rather than handed an empty dict that reads as silence.
+    """
 
 
 @dataclass(frozen=True)
@@ -254,8 +281,8 @@ class SocketChannel:
             return None
         conn.settimeout(2.0)
         try:
-            raw = _read_line(conn)
-        except OSError as exc:
+            raw = _read_message(conn, limit=REQUEST_LIMIT)
+        except (OSError, ControlProtocolError) as exc:
             logger.warning("ignoring an unreadable control message: %s", exc)
             conn.close()
             return None
@@ -545,6 +572,14 @@ def send(run_dir: str | Path, request: Request, *, timeout: float = 5.0) -> dict
     Raises `FileNotFoundError` when nothing is listening, which is the honest answer:
     unlike a request file, a channel only exists while the run does, so "the run is not
     running" is reported at the moment of asking rather than by a message nobody reads.
+
+    Raises `ControlProtocolError` when the run answered with more than `REPLY_LIMIT`.
+    Every other failure here — a timeout, a reply that is not JSON — returns `{}`, and
+    that conflation is deliberate: they all mean "no usable answer, the file-derived
+    view decides". An oversized reply must *not* join them, because it is the one case
+    where the run answered correctly and the transport lost it; returning `{}` for it
+    is indistinguishable from a run that said nothing, and a poller that cannot tell
+    those apart reports a parked run as healthy.
     """
     path = _socket_path(Path(run_dir))
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -557,7 +592,7 @@ def send(run_dir: str | Path, request: Request, *, timeout: float = 5.0) -> dict
     try:
         client.sendall((request.to_json() + "\n").encode("utf-8"))
         try:
-            raw = _read_line(client)
+            raw = _read_message(client, limit=REPLY_LIMIT)
         except OSError:
             return {}
         if not raw:
@@ -614,29 +649,52 @@ def _is_live(path: Path) -> bool:
         probe.close()
 
 
-def _read_line(conn: socket.socket) -> str:
-    """One newline-terminated message, bounded so a hostile client cannot exhaust memory."""
+def _read_message(conn: socket.socket, *, limit: int) -> str:
+    """One newline-terminated message, reassembled across however many packets it
+    arrives in.
+
+    A stream socket delivers bytes, not messages, so the newline is the frame and this
+    loop is what turns a stream back into one. `limit` bounds what may be buffered
+    before that frame closes, because a peer that never sends a newline is otherwise an
+    unbounded allocation.
+
+    **Exceeding it raises.** This used to `break` out of the loop and return the bytes
+    read so far, which is the one outcome that cannot be right: a prefix of a JSON
+    object is not a shorter message, it is a corrupt one, and the caller had no way to
+    tell it from a peer that answered nothing. That is how a 698 KB `questions` reply
+    reached groom as `{}`, and left a run parked 20 hours on an operator gate the
+    dashboard showed no question for.
+    """
     chunks: list[bytes] = []
     total = 0
-    while total < 64 * 1024:
-        chunk = conn.recv(4096)
+    while True:
+        chunk = conn.recv(_CHUNK)
         if not chunk:
+            break
+        newline = chunk.find(b"\n")
+        if newline >= 0:
+            chunks.append(chunk[:newline])
             break
         chunks.append(chunk)
         total += len(chunk)
-        if b"\n" in chunk:
-            break
-    return b"".join(chunks).decode("utf-8", errors="replace").split("\n", 1)[0]
+        if total > limit:
+            raise ControlProtocolError(
+                f"control message exceeded {limit} bytes with no newline"
+            )
+    return b"".join(chunks).decode("utf-8", errors="replace")
 
 
 __all__ = [
     "ANSWER",
+    "ControlProtocolError",
     "NULL_CHANNEL",
     "QUESTIONS",
     "STATUS",
     "POINTER_FILE",
     "SOCKET_FILE",
     "ControlChannel",
+    "REPLY_LIMIT",
+    "REQUEST_LIMIT",
     "FakeChannel",
     "NullChannel",
     "Request",
