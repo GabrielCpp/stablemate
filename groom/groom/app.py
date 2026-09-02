@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -47,6 +48,8 @@ from groom import (
 from groom.gates import AWAITING, answer_gate, extract_question, status_of
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 from workhorse import control, inbox
+
+logger = logging.getLogger(__name__)
 
 ASSETS_DIR = Path(__file__).parent / "assets"
 
@@ -1011,6 +1014,14 @@ async def _socket_questions(wf: WorkflowContainer) -> dict | None:
             )
         except FileNotFoundError:
             return None
+        except control.ControlProtocolError as exc:
+            # The run answered and the transport could not carry it. Logged rather than
+            # swallowed with the other misses: every one of those means "the run said
+            # nothing", and this one means the opposite — the question exists and this
+            # arm just lost it. Left to the file-derived arm either way, but an operator
+            # staring at a blocked run with no question now has a line to find.
+            logger.warning("gate poll: %s answered unreadably: %s", wf.container_id, exc)
+            return None
         return dict(reply) or None
     try:
         reply = await sidecar_hub.ask_questions(wf.container_id)
@@ -1058,7 +1069,7 @@ async def _answer_via_socket(
     if wf.native:
         try:
             reply = await asyncio.to_thread(control.send, wf.runs_volume, request)
-        except FileNotFoundError:
+        except (FileNotFoundError, control.ControlProtocolError):
             return None
     else:
         try:
