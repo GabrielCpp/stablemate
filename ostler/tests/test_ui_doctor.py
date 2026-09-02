@@ -272,6 +272,15 @@ def test_a_bare_three_digit_number_is_not_a_status_code(repo: Path):
     assert "compound-normative-bullet" not in all_codes(_run(repo))
 
 
+def test_capitalised_prose_words_are_not_two_failures(repo: Path):
+    # `PaymentDenied` is a component and `ConflictResolution` is a value; neither is written
+    # as code, because neither is a symbol. Over raw prose both matched the failure pattern
+    # and the bullet was told to split into two obligations it does not state.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _interaction("the PaymentDenied banner shows the ConflictResolution the merge chose"))
+    assert "compound-normative-bullet" not in all_codes(_run(repo))
+
+
 def test_a_bare_three_digit_number_under_a_non_normative_key_mints_nothing(repo: Path):
     # The same narrowing, at `unminted-claim`'s reader: a font weight is not a claim hiding
     # under the wrong key.

@@ -993,6 +993,9 @@ _OBSERVATION_KEYS: frozenset[str] = frozenset(
 #: Matched with `fullmatch` against one code span, so it needs no boundary assertions: a span
 #: reading `500ms` or `v1.400` is not the whole of it and simply does not match.
 _STATUS_CODE = re.compile(r"[1-5]\d{2}")
+#: Read out of code spans on `_STATUS_CODE`'s reasoning, and matched with `search` rather than
+#: `fullmatch` because a span naming a failure often qualifies it — `SlugCollisionError (409)`,
+#: `errors.ManifestConflict`. The boundary assertions stay for that reason.
 _ERROR_NAME = re.compile(r"\b[A-Z][A-Za-z0-9]*(?:Error|Exception|Conflict|Failure|Denied)\b")
 #: A semicolon with a real clause after it. `;` inside a code span or ending a bullet is not a
 #: joined requirement, so the tail has to carry at least three words to count.
@@ -1029,13 +1032,26 @@ def _status_codes(value: str) -> list[str]:
     return [span for span in markdown.all_code_spans(value) if _STATUS_CODE.fullmatch(span)]
 
 
+def _error_names(value: str) -> list[str]:
+    """The failures this bullet names, in order — out of its code spans, like `_status_codes`.
+
+    Same notation and the same misfire: a symbol is written as code in this profile, and over
+    raw prose the pattern read any capitalised word ending in one of its suffixes as a
+    failure. `- does: shows the PaymentDenied banner` names a component; `- returns: the
+    ConflictResolution the merge settled on` names a value. Both were counted as failures, and
+    a bullet mentioning two of them was told to split into two obligations it does not have.
+    """
+    return [name for span in markdown.all_code_spans(value)
+            for name in _ERROR_NAME.findall(span)]
+
+
 def _split_signals(value: str) -> list[str]:
     """Why this bullet looks like several observations, one sentence per reason (or none)."""
     reasons: list[str] = []
     statuses = sorted(set(_status_codes(value)))
     if len(statuses) > 1:
         reasons.append(f"it names {len(statuses)} status codes ({', '.join(statuses)})")
-    names = sorted(set(_ERROR_NAME.findall(value)))
+    names = sorted(set(_error_names(value)))
     if len(names) > 1:
         reasons.append(f"it names {len(names)} distinct failures ({', '.join(names)})")
     if _SEMICOLON_CLAUSE.search(value):
@@ -1115,14 +1131,15 @@ def _sounds_normative(value: str) -> str:
     Read off the raw value for the reason `_STATUS_CODE` gives — codes and names live in
     backticks, and `_prose` would delete exactly the evidence this is looking for.
 
-    The status half goes through `_status_codes`, so a design bullet's `font-weight 500` no
-    longer mints a claim nobody can bind an obligation to. This rule fires on a *single*
-    signal, which made it the louder of the two misfires.
+    The status and failure halves go through `_status_codes` / `_error_names`, so a design
+    bullet's `font-weight 500` and a `PaymentDenied` banner no longer mint a claim nobody can
+    bind an obligation to. This rule fires on a *single* signal, which made it the louder of
+    the two misfires.
     """
     statuses = _status_codes(value)
     if statuses:
         return f"names status {statuses[0]}"
-    names = _ERROR_NAME.findall(value)
+    names = _error_names(value)
     if names:
         return f"names `{names[0]}`"
     verb = _states_a_lifecycle_claim(value)
