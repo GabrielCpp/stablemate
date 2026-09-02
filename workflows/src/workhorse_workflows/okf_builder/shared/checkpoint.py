@@ -27,6 +27,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 from ostler import Ostler
 from ostler.autofix import run_autofix
@@ -134,7 +135,7 @@ def _node_of(ref: str, path: str) -> str:
     return f"{path}#{ref[len(path) + 1 :].split('#')[0]}"
 
 
-def _repair_items(findings: list[dict], rnd: int) -> list[dict[str, str]]:
+def _repair_items(findings: list[dict]) -> list[dict[str, Any]]:
     """One item per `(file, node, code)`, chunked, carrying that group's findings only.
 
     **One remedy per item, because the prompt is chosen from the code.** The kind *is* the
@@ -150,9 +151,15 @@ def _repair_items(findings: list[dict], rnd: int) -> list[dict[str, str]]:
     back is that each of the six is a single, checkable question.
 
     Findings stay sorted by line so an agent works top-down, and each chunk is bounded by
-    `MAX_FINDINGS_PER_ITEM` — a node with forty compound bullets is two items. The round is
-    in the target because a finding that survives its repair must be re-queued next round
-    rather than deduped away as already-seen.
+    `MAX_FINDINGS_PER_ITEM` — a node with forty compound bullets is two items.
+
+    **The target names the work, not the round that found it.** A survivor is re-queued by
+    `requeue`, which reopens the row `record` already holds, so the same defect is the same
+    row across every round and its `attempts` accumulate on it. The round used to be in the
+    target instead — `r3:<path>#<node>#<code>` — which did re-queue the survivor, but by
+    minting an identity `record`'s `(kind, target)` dedupe could not recognise: one new row
+    per unrepairable finding per round, forever, and no counter that could ever notice. That
+    is what let the fixup loop run nineteen rounds on sixteen findings it was not fixing.
 
     **The item order is the drain order.** `select_item` hands out the first pending item,
     so the sort here decides where a budget-capped run's allowance is spent: errors before
@@ -171,7 +178,7 @@ def _repair_items(findings: list[dict], rnd: int) -> list[dict[str, str]]:
         node = _node_of(str(finding.get("ref", "") or ""), path)
         groups.setdefault((path, node, str(finding.get("code", ""))), []).append(finding)
 
-    items = []
+    items: list[dict[str, Any]] = []
     ordered = sorted(
         groups.items(),
         key=lambda kv: (
@@ -190,12 +197,15 @@ def _repair_items(findings: list[dict], rnd: int) -> list[dict[str, str]]:
             suffix = f"#{n}" if len(chunks) > 1 else ""
             items.append({
                 "kind": f"fix:{code}",
-                "target": f"r{rnd}:{path}#{node}#{code}{suffix}",
+                "target": f"{path}#{node}#{code}{suffix}",
                 "context": json.dumps(
                     {"code": code, "node": node, "path": path,
                      "grounded": code in GROUNDED_CODES, "findings": chunk},
                     indent=2,
                 ),
+                # A finding still standing after its repair is the *same* work, so it reopens
+                # its own row rather than opening a second one.
+                "requeue": True,
             })
     return items
 
@@ -203,15 +213,21 @@ def _repair_items(findings: list[dict], rnd: int) -> list[dict[str, str]]:
 def _signature(findings: list[dict]) -> str:
     """A stable fingerprint of a finding SET, order-independent.
 
-    Keyed on `(code, path, line, ref)` — the identity of a finding, not its prose (a
-    reworded message must not read as a different finding). Empty findings → `""` so a
-    clean round can never match a prior dirty signature.
+    Keyed on `(code, path, ref)` — the identity of a finding, not its prose (a reworded
+    message must not read as a different finding) and not its *position*. `line` was in the
+    key and had to come out: a repair landing anywhere renumbers every finding below it in
+    the file, so an untouched set fingerprinted differently every round and the stall this
+    signature exists to detect could not be detected. Empty findings → `""` so a clean round
+    can never match a prior dirty signature.
+
+    This stays the coarse whole-book signal it was written as — it moves when *any* finding
+    in the book moves. What bounds a single stubborn repair is the per-target `attempts`
+    counter `record` keeps, not this.
     """
     if not findings:
         return ""
     keys = sorted(
-        (str(f.get("code", "")), str(f.get("path", "")), int(f.get("line", 0) or 0),
-         str(f.get("ref", "")))
+        (str(f.get("code", "")), str(f.get("path", "")), str(f.get("ref", "")))
         for f in findings
     )
     return hashlib.sha1(json.dumps(keys).encode()).hexdigest()[:16]
@@ -360,16 +376,16 @@ def checkpoint_book(
         # Findings changed — something was repaired or discovered. Real progress; reset.
         stall = 0
 
-    fixups: list[dict[str, str]] = []
+    fixups: list[dict[str, Any]] = []
     backfills = 0
     if clean:
         logger.info(
             "round %d: doctor is clean for %s — the gate converges", rnd, features_root or repo_root
         )
     else:
-        fixups = _repair_items(findings, rnd)
+        fixups = _repair_items(findings)
         backfills = sum(1 for i in fixups
-                        if i["kind"].removeprefix("fix:") in GROUNDED_CODES)
+                        if str(i["kind"]).removeprefix("fix:") in GROUNDED_CODES)
         errors = sum(1 for f in findings if f.get("severity") == "error")
         logger.info(
             "round %d: doctor reports %d finding(s): %d error, %d warn across %d item(s) "

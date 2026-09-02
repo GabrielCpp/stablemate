@@ -115,13 +115,17 @@ def test_one_item_per_node_and_code() -> None:
         {**_finding("undeclared-obligation", path=doc), "ref": f"{doc}#refund#returns", "line": 9},
         {**_finding("compound-normative-bullet", path=doc), "ref": f"{doc}#refund#does", "line": 10},
     ]
-    items = _repair_items(findings, 3)
+    items = _repair_items(findings)
 
     assert sorted(i["kind"] for i in items) == [
         "fix:compound-normative-bullet", "fix:compound-normative-bullet",
         "fix:undeclared-obligation", "fix:undeclared-obligation",
     ]
-    assert all(i["target"].startswith("r3:") for i in items), "the round must re-queue a survivor"
+    # The round is NOT in the target. A survivor is re-queued by `requeue`, which reopens the
+    # row `record` already holds; minting `r3:<path>#<node>#<code>` re-queued it as a brand-new
+    # row instead, one per finding per round, which is how the loop ran forever.
+    assert all(i["target"].startswith(doc) for i in items)
+    assert all(i["requeue"] is True for i in items)
     for item in items:
         ctx = json.loads(item["context"])
         assert {f["code"] for f in ctx["findings"]} == {ctx["code"]}
@@ -150,7 +154,7 @@ def test_the_item_order_is_the_drain_order() -> None:
         at("missing-code-symbol", "refund", "error"),  # error: first regardless of family
         at("dangling-link", "refund"),                  # grounding: first among the warns
     ]
-    assert [i["kind"] for i in _repair_items(findings, 1)] == [
+    assert [i["kind"] for i in _repair_items(findings)] == [
         "fix:missing-code-symbol",
         "fix:dangling-link",
         "fix:compound-normative-bullet",
@@ -169,7 +173,7 @@ def test_a_ref_that_is_not_a_node_groups_by_the_file() -> None:
     doc = f"{BOOK}/pay.md"
     symbol = {**_finding("missing-code-symbol", path=doc), "ref": "acme/service.py::refund"}
     refless = {**_finding("missing-code-symbol", path=doc), "ref": ""}
-    (item,) = _repair_items([symbol, refless], 1)
+    (item,) = _repair_items([symbol, refless])
 
     ctx = json.loads(item["context"])
     assert ctx["node"] == doc
@@ -183,8 +187,8 @@ def test_a_grounded_code_is_a_flag_not_a_kind() -> None:
     of source rather than off the finding" moves into the context where the repair prompt
     branches on it.
     """
-    (grounded,) = _repair_items([_finding("missing-placement", path=f"{BOOK}/s.md")], 1)
-    (mechanical,) = _repair_items([_finding("undeclared-obligation", path=f"{BOOK}/s.md")], 1)
+    (grounded,) = _repair_items([_finding("missing-placement", path=f"{BOOK}/s.md")])
+    (mechanical,) = _repair_items([_finding("undeclared-obligation", path=f"{BOOK}/s.md")])
 
     assert grounded["kind"] == "fix:missing-placement"
     assert json.loads(grounded["context"])["grounded"] is True
@@ -200,7 +204,7 @@ def test_a_node_past_the_chunk_cap_splits_into_distinct_items() -> None:
     """
     many = [{**_finding("compound-normative-bullet"), "ref": f"{BOOK}/a.md#charge#does", "line": n}
             for n in range(MAX_FINDINGS_PER_ITEM + 1)]
-    items = _repair_items(many, 1)
+    items = _repair_items(many)
 
     assert len({i["target"] for i in items}) == 2
     assert sum(len(json.loads(i["context"])["findings"]) for i in items) == len(many)

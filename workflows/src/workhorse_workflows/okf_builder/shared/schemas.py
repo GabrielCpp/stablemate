@@ -170,11 +170,18 @@ class Pick(OkfResult):
 
 
 class Recorded(OkfResult):
-    """A worklist write: what it closed and what it opened."""
+    """A worklist write: what it closed, what it opened, and what it gave up re-opening."""
 
     done_count: int = 0
     pending_count: int = 0
     added: int = 0
+    #: Rows that reached `MAX_TARGET_ATTEMPTS` and were blocked instead of re-queued —
+    #: `{target, kind, attempts, reason}` each, for the operator gate to name them.
+    blocked: list[dict[str, Any]] = []
+    #: Every blocked row on the worklist, not only the ones this write blocked. The gate
+    #: reports the standing set, so a resumed run does not hand out a shorter list than the
+    #: round that first blocked them.
+    blocked_count: int = 0
 
 
 # ── convergence ─────────────────────────────────────────────────────────────
@@ -249,6 +256,10 @@ class Investigation(Discovery):
 
     #: `documented` | `skipped` | `partial`; the default matches no branch.
     doc_status: str = ""
+    #: Why, when it is not `documented`. Recorded on the worklist row and printed by the
+    #: operator gate that a repeatedly-unrepairable target eventually blocks on, so the
+    #: person reading it sees the turn's own sentence rather than only a code and a count.
+    note: str = ""
 
 
 class Recheck(Discovery):

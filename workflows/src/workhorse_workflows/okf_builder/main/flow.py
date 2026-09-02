@@ -78,20 +78,31 @@ from workhorse_workflows.okf_builder.shared.schemas import (
     Investigation,
     Prepared,
     Recheck,
+    Recorded,
     SourceRequest,
 )
 from workhorse_workflows.okf_builder.shared.vocabulary import bullet_grammar, check_vocabulary
-from workhorse_workflows.okf_builder.shared.worklist import record, select_item
+from workhorse_workflows.okf_builder.shared.worklist import (
+    MAX_TARGET_ATTEMPTS,
+    record,
+    select_item,
+)
 from workhorse_workflows.okf_builder.walkthrough_web import WalkthroughWeb
 
-#: Coverage re-scans before the build gives up. Bounds the *dry-drain* loop only — the
-#: fixup loop is bounded by `MAX_STALL_ROUNDS` below, and by nothing else, because a big
-#: book's fixup rounds are productive and capping them would cap the work.
+#: Coverage re-scans before the build gives up. Bounds the *dry-drain* loop only. The
+#: fixup loop is not capped by a round count — a big book's fixup rounds are productive
+#: and capping them would cap the work. It is bounded per *target* instead, by
+#: `MAX_TARGET_ATTEMPTS` in `shared/worklist.py`.
 MAX_RESCAN_ROUNDS = 6
 
 #: Consecutive rounds an unchanged doctor finding set is tolerated before the run stops
 #: re-drilling it and hands it to `auto_waive`. A repair that has not landed in three
 #: identical rounds is a repair that cannot land in the book.
+#:
+#: This is the *whole-book* signal, and it was the only one there used to be — which is
+#: why the loop was unbounded in practice. It moves whenever any finding anywhere moves,
+#: so on a four-thousand-item book it essentially never repeats. What actually stops a
+#: stubborn repair is the per-target counter; this stays as the coarse backstop it was.
 MAX_STALL_ROUNDS = 3
 
 
@@ -447,6 +458,13 @@ class OkfBuilder(Workflow):
             self.record_item,
             current_item=current_item,
             discovered=result.discovered,
+            # For *every* kind, not just `change`. A repair turn that answers `partial` or
+            # `skipped` is reporting that this finding cannot be cleared from the book, and
+            # that verdict used to be read at one callsite gated on `change` — so it was
+            # discarded for every `fix:` item ever produced, the item closed `done`
+            # regardless, and doctor raised the same finding again next round.
+            doc_status=result.doc_status,
+            note=result.note,
             rnd=rnd,
             rescan=rescan,
             stall=stall,
@@ -507,15 +525,29 @@ class OkfBuilder(Workflow):
         self,
         current_item: dict,
         discovered: list[dict],
+        doc_status: str = "",
+        note: str = "",
         rnd: int = 0,
         rescan: int = 0,
         stall: int = 0,
         signature: str = "",
         refuels: int = 0,
     ) -> Continue:
-        """`record`: close the item the turn documented, open what it revealed."""
+        """`record`: close the item the turn documented, open what it revealed.
+
+        The turn's own `doc_status` rides along and is stored on the row it closes, so the
+        next round's re-queue of that same target has the last turn's reason to carry into
+        `blocked_reason` when the attempts run out.
+        """
         return Continue(
-            self.call(record, self.ctx.worklist_path, current_item, discovered),
+            self.call(
+                record,
+                self.ctx.worklist_path,
+                current_item,
+                discovered,
+                doc_status=doc_status,
+                note=note,
+            ),
             self.select,
             rnd=rnd,
             rescan=rescan,
@@ -556,6 +588,21 @@ class OkfBuilder(Workflow):
             stall,
         )
         if not result.checkpoint_clean:
+            # Seed before deciding. A repair item's identity is stable now, so this write
+            # is also where a survivor's `attempts` is incremented and where a target that
+            # has spent them stops being handed back out — and the decision below reads
+            # that outcome.
+            recorded = self.call(record, self.ctx.worklist_path, None, result.fixup_items)
+            if recorded.blocked_count and not recorded.pending_count:
+                return Await(
+                    paths.operator_context_path(Path(self.ctx.repo_root), self.service),
+                    self._blocked_gate_question(recorded),
+                    self.retry_blocked,
+                    rnd=result.round,
+                    rescan=rescan,
+                    signature=result.fixup_signature,
+                    refuels=refuels,
+                )
             if result.stall_rounds >= MAX_STALL_ROUNDS:
                 return Continue(
                     result,
@@ -567,7 +614,7 @@ class OkfBuilder(Workflow):
                     refuels=refuels,
                 )
             return Continue(
-                self.call(record, self.ctx.worklist_path, None, result.fixup_items),
+                recorded,
                 self.select,
                 rnd=result.round,
                 rescan=rescan,
@@ -592,6 +639,55 @@ class OkfBuilder(Workflow):
             )
         return Continue(
             result, self.rescan_coverage, rnd=result.round, rescan=rescan, refuels=refuels
+        )
+
+    @staticmethod
+    def _blocked_gate_question(recorded: Recorded) -> str:
+        """Name every target that spent its attempts, so the gate is actionable.
+
+        A gate that says only "the fixup loop is stuck" costs the operator the whole
+        investigation this run already did. Each line is the doctor code, the node it sits
+        on, how many turns were spent on it and what the last of those turns said.
+        """
+        lines = "\n".join(
+            f"  - {b.get('target', '?')} ({b.get('kind', '?')}) — "
+            f"{b.get('attempts', 0)} attempt(s); last turn said: "
+            f"{b.get('reason') or 'nothing'}"
+            for b in recorded.blocked
+        )
+        return (
+            f"okf-builder cannot clear {recorded.blocked_count} doctor finding(s) from the "
+            f"book. Each was handed to a repair turn {MAX_TARGET_ATTEMPTS} times and came "
+            f"back standing, and there is no other work left on the worklist:\n\n"
+            f"{lines}\n\n"
+            f"These are not waived — doctor still reports them. Either repair them by "
+            f"hand, or decide the finding is wrong and fix the detector. Then set this "
+            f"file's `STATUS:` line to `ANSWERED` to return those targets to the drain "
+            f"with a fresh {MAX_TARGET_ATTEMPTS}-attempt allowance."
+        )
+
+    def retry_blocked(
+        self,
+        rnd: int = 0,
+        rescan: int = 0,
+        signature: str = "",
+        refuels: int = 0,
+    ) -> Continue:
+        """The operator answered: return the blocked targets to the drain.
+
+        `stall` is not threaded through and restarts at zero deliberately. The operator's
+        answer is a statement that something changed — a hand repair, a detector fix — and
+        carrying the pre-gate stall count in would spend the next two rounds walking
+        straight into `waive` on a finding set nobody has re-read yet.
+        """
+        return Continue(
+            self.call(record, self.ctx.worklist_path, unblock=True),
+            self.select,
+            rnd=rnd,
+            rescan=rescan,
+            stall=0,
+            signature=signature,
+            refuels=refuels,
         )
 
     def waive(

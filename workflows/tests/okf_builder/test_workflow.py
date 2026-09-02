@@ -62,6 +62,7 @@ from workhorse.records import parse_checkpoint
 from workhorse_workflows import okf_builder
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared.schemas import SourceRequest
+from workhorse_workflows.okf_builder.shared.worklist import MAX_TARGET_ATTEMPTS
 from workhorse_workflows.okf_builder.workflow import MAX_STALL_ROUNDS, OkfBuilder
 
 SERVICE = "acme"
@@ -103,11 +104,18 @@ class _Agent:
         spawn: dict[str, list[dict[str, Any]]] | None = None,
         repair: bool = False,
         explode: set[str] | None = None,
+        doc_status: str = "documented",
+        note: str = "",
     ) -> None:
         self.repo = repo
         self.surfaces = [dict(SURFACE)] if surfaces is None else surfaces
         self.spawn = dict(spawn or {})
         self.repair = repair
+        #: What a *repair* turn reports back. `documented` is the scripted default; a
+        #: `partial`/`skipped` is the turn saying the finding cannot be cleared from the
+        #: book, which is what spends the target's attempt allowance.
+        self.doc_status = doc_status
+        self.note = note
         self.explode = set(explode or ())
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
@@ -144,12 +152,17 @@ class _Agent:
         if target in self.explode:
             raise RuntimeError(f"killed while investigating {target}")
         if self.repair and str(data["item_kind"]).startswith("fix:"):
-            # A repair target is `r<round>:<path>#<node>#<code>`; the repair the doctor
-            # finding calls for is "stop citing a symbol that does not exist", and deleting
-            # the doc is the smallest edit that does it.
-            doc = self.repo / target.split(":", 1)[1].split("#")[0]
+            # A repair target is `<path>#<node>#<code>` — no round prefix, because the round
+            # is not part of a finding's identity. The repair the doctor finding calls for is
+            # "stop citing a symbol that does not exist", and deleting the doc does it.
+            doc = self.repo / target.split("#")[0]
             doc.unlink(missing_ok=True)
-        return {"doc_status": "documented", "discovered": self.spawn.get(target, [])}
+        status = self.doc_status if str(data["item_kind"]).startswith("fix:") else "documented"
+        return {
+            "doc_status": status,
+            "note": self.note if status != "documented" else "",
+            "discovered": self.spawn.get(target, []),
+        }
 
     #: A `fix:` item renders `main/prompts/repair.md` instead, so the dispatch above sees a
     #: different stem for the same node. Same turn, same seam — the prompt is what differs.
@@ -385,9 +398,9 @@ def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
 
     Round 1 finds the ungrounded `code:` citation, queues one `fix:missing-code-symbol` item
     targeting the offending node, and sends it back through the drain. The scripted repair
-    lands, round 2 is clean, and the coverage re-scan closes the run. The `r1:` prefix on the
-    target is what keeps a second round's item distinct from the first's under `record`'s
-    dedupe.
+    lands, round 2 is clean, and the coverage re-scan closes the run. The target carries no
+    round: a finding's identity is where it is and what it is, so a second round's item is
+    the *same* row `record` reopens rather than a new one its dedupe cannot recognise.
     """
     agent = _Agent(dirty, repair=True)
     result = _drive(_env(tmp_path), agent, recheck_only=True)
@@ -395,7 +408,7 @@ def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
     # Discovery was skipped entirely, and the one turn rendered the *repair* prompt —
     # `investigate.md` no longer carries repair instructions, so the stem is the assertion.
     assert agent.counts() == {"repair": 1}, agent.counts()
-    assert agent.targets == [f"r1:{REPAIR}"], agent.targets
+    assert agent.targets == [REPAIR], agent.targets
     args = agent.args_for("repair")[0]
     assert args["item_kind"] == "fix:missing-code-symbol", args
     # The bare code rides separately, because that is what the repair prompt dispatches on.
@@ -407,25 +420,84 @@ def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
     assert result.is_webapp is False, result
 
 
-def test_a_repair_that_never_lands_stops_the_run_rather_than_looping(
+def test_a_repair_that_never_lands_blocks_the_target_and_parks_on_the_gate(
     dirty: Path, tmp_path: Path
 ) -> None:
-    """The stall bound, and the honest end when `auto_waive` cannot take the finding.
+    """The per-target bound: one row, spent, then a human — not a fourth identical turn.
 
-    Three rounds of an unchanged finding set is a repair that cannot land in the book, so
-    the fourth hands it to `auto_waive` — which finds a `missing-code-symbol`, a code
-    outside `AUTO_WAIVABLE`, and the run fails saying so. Papering it over with a waiver
-    would make an unfixed book report as converged.
+    The finding is the same one every round, so it is the same worklist row every round:
+    `_repair_items` mints an identity that does not carry the round, and `record` reopens
+    the row it already holds instead of appending a twin. Three reopens exhaust the
+    allowance, the fourth blocks the row, and with nothing else pending the run `Await`s.
+
+    That is the whole termination argument. The old shape asserted the defect — a fresh
+    `r{n}:` row per round, unrecognisable as a repeat — and the run only ever stopped
+    because the *set-level* stall counter happened to hold on a one-finding book. On a real
+    book any other finding moving anywhere reset it, which is how a run reached round
+    nineteen re-drilling sixteen findings it was not fixing.
+
+    Blocking is not waiving: doctor still reports the finding, and the gate says so.
     """
-    agent = _Agent(dirty)  # repair=False: the turn documents nothing.
-    with pytest.raises(WorkflowFailed, match="neither doc-repairable nor auto-waivable"):
+    agent = _Agent(dirty, doc_status="partial", note="the symbol is gone from source")
+    seen: list[str] = []
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
         _drive(_env(tmp_path), agent, recheck_only=True)
 
-    # One repair turn per tolerated round, then the give-up arm instead of a fourth.
-    assert agent.counts()["repair"] == MAX_STALL_ROUNDS, agent.counts()
-    # Each round's item is distinct, which is what let the loop run at all.
-    assert agent.targets == [f"r{n}:{REPAIR}" for n in (1, 2, 3)], agent.targets
+    # One repair turn per attempt, and every one against the same target — no round prefix,
+    # so `record`'s `(kind, target)` dedupe sees the repeat it is there to see.
+    assert agent.counts()["repair"] == MAX_TARGET_ATTEMPTS, agent.counts()
+    assert agent.targets == [REPAIR] * MAX_TARGET_ATTEMPTS, agent.targets
+
+    # One row, blocked — not three rows, and not a row still being handed out.
+    rows = [i for i in _worklist(dirty) if str(i["kind"]).startswith("fix:")]
+    assert [(i["target"], i["status"], i["attempts"]) for i in rows] == [
+        (REPAIR, "blocked", MAX_TARGET_ATTEMPTS)
+    ], rows
+
+    # The gate names the target and quotes the turn's own sentence, so the operator reads
+    # what could not be repaired rather than only that something could not be.
+    assert REPAIR in seen[0], seen[0]
+    assert "the symbol is gone from source" in seen[0], seen[0]
+    # And it says plainly that nothing was waived away on the way here.
+    assert "not waived" in seen[0], seen[0]
+
+    # Nothing was repaired, which is the honest outcome the book still shows.
     assert (dirty / REFUND).exists()
+
+
+def test_answering_the_blocked_gate_returns_the_target_with_a_fresh_allowance(
+    dirty: Path, tmp_path: Path
+) -> None:
+    """The gate is a block, not an end — answering resumes the drain.
+
+    `workflows/AGENTS.md` puts no cap on how many times a run may bounce off an operator
+    gate, so `retry_blocked` clears `attempts` rather than nudging it: an operator who says
+    "try again" is buying another full allowance, not one more turn. Here the operator's
+    answer is followed by a repair that finally lands, and the run converges.
+    """
+    agent = _Agent(dirty, doc_status="partial", note="cannot reach it from the book")
+    seen: list[str] = []
+
+    def answer_then_repair(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        agent.repair = True  # whatever the operator did, the next turn can land it
+        agent.doc_status = "documented"
+        path.write_text("STATUS: ANSWERED\n\nFixed by hand.\n", encoding="utf-8")
+
+    with patch.object(pyflow_driver, "wait_for_answer", answer_then_repair):
+        result = _drive(_env(tmp_path), agent, recheck_only=True)
+
+    # Three spent attempts, the gate, then one more turn that repaired it.
+    assert agent.counts()["repair"] == MAX_TARGET_ATTEMPTS + 1, agent.counts()
+    assert not (dirty / REFUND).exists()
+    assert result.is_webapp is False, result
+
+    # The row was returned to the drain and closed, with its counter reset on the way.
+    rows = [i for i in _worklist(dirty) if str(i["kind"]).startswith("fix:")]
+    assert [(i["status"], i["attempts"]) for i in rows] == [("done", 0)], rows
 
 
 class _Parked(Exception):

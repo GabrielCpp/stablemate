@@ -27,6 +27,16 @@ from workhorse_workflows.okf_builder.shared.blueprint import blueprint
 from workhorse_workflows.okf_builder.shared.schemas import Pick, Recorded
 
 
+#: How many times one target may be re-queued before the row stops reopening and blocks.
+#: A repair that has not landed in three turns against the same finding is a repair the
+#: agent cannot make from the book, and a fourth turn spends a turn to learn that again.
+#:
+#: It lives here rather than beside `MAX_STALL_ROUNDS` in `main/flow.py` because `record`
+#: is what counts, and `shared/` must not import `main/`. `flow.py` imports it back for the
+#: gate's wording, so the number an operator reads is the number that blocked the row.
+MAX_TARGET_ATTEMPTS = 3
+
+
 def _norm(s: object) -> str:
     return " ".join(str(s or "").split()).strip().lower()
 
@@ -176,27 +186,68 @@ def record(
     worklist_path: str,
     current: dict[str, Any] | None = None,
     discovered: list[dict[str, Any]] | None = None,
+    doc_status: str = "",
+    note: str = "",
+    max_attempts: int = MAX_TARGET_ATTEMPTS,
+    unblock: bool = False,
 ) -> Recorded:
-    """Mark the current item done and merge newly-discovered items.
+    """Mark the current item done, merge newly-discovered items, and count the re-tries.
 
     The universal worklist mutator — used after enumerate (seed surfaces), investigate
     (seed an item's spawned children), checkpoint (seed fixups), and recheck (seed
     coverage/journey items). Dedupes by `(kind, target)` against ALL items, normalized.
-    A coverage recheck may set `requeue: true` to reopen an already-done below-bar item.
+    A coverage recheck — and every repair item the checkpoint queues — may set
+    `requeue: true` to reopen an already-done row.
+
+    **A reopen is a re-try, and a re-try is counted.** `record` is both the only place a
+    row is closed and the only place one is reopened, so the per-target `attempts` counter
+    belongs here and nowhere else. A row that reaches `max_attempts` is not reopened again:
+    it goes `blocked`, carrying whatever the last turn said about why it could not finish.
+    `blocked` is `workhorse.worklist.Scheme`'s own third status — `select_next` already
+    passes over it and `WorkCounts` already buckets it — so nothing downstream learns a new
+    word, and the row stops being handed out instead of being silently marked done.
+
+    Without this, a finding doctor keeps re-raising is re-queued forever: the turn that
+    could not fix it closes it `done`, the checkpoint re-queues it, and nothing anywhere
+    counts. That is the loop that ran nineteen rounds on sixteen findings.
+
+    `doc_status`/`note` are the *closing* turn's own verdict on `current`. They are
+    recorded on the row for every kind of item, not just `change`: a repair turn reporting
+    `partial` or `skipped` is stating that this target is unrepairable from the book, and
+    that sentence is exactly what the operator gate needs to print.
+
+    `unblock` is the answer to that gate: it returns every blocked row to the drain with a
+    fresh attempt allowance, the same shape the coverage gate uses when an operator grants
+    another `MAX_RESCAN_ROUNDS`. Without it the gate would be a dead end — a human who
+    repaired the book by hand could not tell the run to try again.
     """
     path = Path(worklist_path)
     data = json.loads(path.read_text())
     items = data.get("items", [])
     by_key = {(_norm(i.get("kind")), _norm(i.get("target"))): i for i in items}
 
+    if unblock:
+        for i in items:
+            if i.get("status") == "blocked":
+                logger.info("operator granted a fresh allowance for '%s'", i.get("target"))
+                i["status"] = "pending"
+                i["attempts"] = 0
+                i.pop("blocked_reason", None)
+
     if current:
         ck = (_norm(current.get("kind")), _norm(current.get("target")))
         logger.info(
-            "marking item '%s' (%s) done", current.get("target", "?"), current.get("kind", "?")
+            "marking item '%s' (%s) done%s",
+            current.get("target", "?"), current.get("kind", "?"),
+            f" ({doc_status})" if doc_status else "",
         )
         for i in items:
             if (_norm(i.get("kind")), _norm(i.get("target"))) == ck:
                 i["status"] = "done"
+                if doc_status:
+                    i["doc_status"] = doc_status
+                if note:
+                    i["note"] = note
 
     added = 0
     for d in discovered or []:
@@ -208,6 +259,23 @@ def record(
         existing = by_key.get(k)
         if existing:
             if d.get("requeue") is True and existing.get("status") == "done":
+                attempts = int(existing.get("attempts", 0) or 0) + 1
+                existing["attempts"] = attempts
+                if attempts >= max_attempts:
+                    last = str(existing.get("doc_status", ""))
+                    reason = str(existing.get("note", "")) or (
+                        f"the last turn reported `{last}` and the finding still stands"
+                        if last
+                        else "the turn gave no reason"
+                    )
+                    existing["status"] = "blocked"
+                    existing["blocked_reason"] = reason
+                    logger.warning(
+                        "'%s' (%s) survived %d repair attempts — blocking it rather than "
+                        "re-queueing: %s",
+                        existing.get("target"), existing.get("kind"), attempts, reason,
+                    )
+                    continue
                 existing["status"] = "pending"
                 existing["context"] = d.get("context", existing.get("context", ""))
                 added += 1
@@ -215,6 +283,10 @@ def record(
         items.append({
             "kind": d["kind"], "target": d["target"],
             "context": d.get("context", ""), "status": "pending",
+            # Written explicitly, never left to a model default: `select_item` writes the
+            # file back with `exclude_unset=True`, so a field no row ever carried is
+            # dropped on the next pick and the count restarts at zero every round.
+            "attempts": 0,
         })
         by_key[k] = items[-1]
         added += 1
@@ -223,10 +295,30 @@ def record(
     path.write_text(json.dumps(data, indent=2))
     done = sum(1 for i in items if i.get("status") == "done")
     pend = sum(1 for i in items if i.get("status") == "pending")
+    # The *standing* blocked set, not only what this write blocked: the gate reports what
+    # is still stuck, and a resumed run that blocks nothing new must not hand the operator
+    # a shorter list than the round that first blocked them.
+    blocked = [
+        {
+            "kind": str(i.get("kind", "")),
+            "target": str(i.get("target", "")),
+            "attempts": int(i.get("attempts", 0) or 0),
+            "reason": str(i.get("blocked_reason", "")),
+        }
+        for i in items
+        if i.get("status") == "blocked"
+    ]
     logger.info(
-        "worklist %s: added %d new item(s), now %d done / %d pending", path, added, done, pend
+        "worklist %s: added %d new item(s), now %d done / %d pending / %d blocked",
+        path, added, done, pend, len(blocked),
     )
-    return Recorded(done_count=done, pending_count=pend, added=added)
+    return Recorded(
+        done_count=done,
+        pending_count=pend,
+        added=added,
+        blocked=blocked,
+        blocked_count=len(blocked),
+    )
 
 
-__all__ = ["load_worklist", "record", "select_item"]
+__all__ = ["MAX_TARGET_ATTEMPTS", "load_worklist", "record", "select_item"]
