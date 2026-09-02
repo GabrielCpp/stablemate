@@ -422,6 +422,28 @@ def attributed_checks(
     return _attributed(node_type, bullet_order, check_keys(node_type))
 
 
+def normative_claims(
+    node_type: str, bullet_order: Iterable[Sequence[Any]]
+) -> dict[tuple[str, int], str]:
+    """Each claim's raw bullet value, keyed exactly as `attributed_checks` keys its checks.
+
+    The pair is the point: `attributed_checks` says which checks observe a claim, and this
+    says what that claim *said*. A reader that has one and re-derives the other by counting
+    normative bullets itself is one edit away from the two disagreeing, and a disagreement
+    here is silent — the finding quotes a verb from one bullet and judges the checks of
+    another. So the counting is written once, here, beside `_attributed`'s copy of it.
+    """
+    normative = set(normative_keys(node_type))
+    counts: dict[str, int] = {}
+    claims: dict[tuple[str, int], str] = {}
+    for row in bullet_order:
+        key, value = str(row[0]), str(row[1])
+        if key in normative:
+            counts[key] = counts.get(key, 0) + 1
+            claims[(key, counts[key])] = value
+    return claims
+
+
 def _attributed(
     node_type: str, bullet_order: Iterable[Sequence[Any]], keys: Sequence[str]
 ) -> tuple[list[str], dict[tuple[str, int], list[str]]]:

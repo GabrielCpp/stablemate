@@ -982,13 +982,17 @@ MAX_NORMATIVE_PROSE = 700
 #:
 #: Read off the *raw* value, not `_prose`: statuses and error names are normally written in
 #: backticks, and `_prose` deletes code spans, so measuring the prose would blind this to
-#: exactly the signal it exists to find.
+#: exactly the signal it exists to find. `_status_codes` below takes that observation the
+#: rest of the way — the backticks are not a hint about where to look, they are the notation,
+#: so it reads the parser's code spans rather than scanning the whole string for digits.
 #: Every key some type reads as a check (`verify:` today). An observation is not a claim, so
 #: `unminted-claim` never reads one — wherever it sits, `unknown-bullet` is the rule for a
 #: check on a type that declares none.
 _OBSERVATION_KEYS: frozenset[str] = frozenset(
     b.key for t in registry.UI_TYPES for b in t.bullet_keys if b.check)
-_STATUS_CODE = re.compile(r"(?<![\w.])[1-5]\d{2}(?![\w.])")
+#: Matched with `fullmatch` against one code span, so it needs no boundary assertions: a span
+#: reading `500ms` or `v1.400` is not the whole of it and simply does not match.
+_STATUS_CODE = re.compile(r"[1-5]\d{2}")
 _ERROR_NAME = re.compile(r"\b[A-Z][A-Za-z0-9]*(?:Error|Exception|Conflict|Failure|Denied)\b")
 #: A semicolon with a real clause after it. `;` inside a code span or ending a bullet is not a
 #: joined requirement, so the tail has to carry at least three words to count.
@@ -1000,10 +1004,35 @@ _CLAUSE_AND = re.compile(r"[,;]\s+and\b")
 _ANY_AND = re.compile(r"\band\b")
 
 
+def _status_codes(value: str) -> list[str]:
+    """The HTTP statuses this bullet names, in order — read out of its code spans only.
+
+    A three-digit number is a status because it is *written as one*: `` `409` ``, in the
+    notation this profile uses for every status in the book, which is why the constant above
+    reads the raw value rather than the prose. Scanning the whole string for `[1-5]\\d\\d`
+    instead made every three-digit number in a sentence a status, and design bullets are full
+    of them — `- does: the label renders at font-weight 500 (vs body's 400)` was reported as
+    "names 2 status codes (400, 500)", which is not a finding an author can repair by
+    splitting the bullet, because the bullet states one thing.
+
+    An unrepairable finding is worse than a missed one here: the two rules that read this
+    are warns an author is expected to act on, and a rule that fires where no edit clears it
+    is a rule the whole book learns to ignore. A status genuinely written bare in prose is
+    the missed case, and `compound-normative-bullet` needs two before it fires at all — so a
+    bullet enumerating a branch table has to spell every one of them outside the notation to
+    escape, which is not how any of them are written.
+
+    Reading `markdown.all_code_spans` is also what the parse-don't-match rule asks for: the
+    inline tokens are already built, and the span boundaries are the parser's, not a
+    lookbehind's guess at them.
+    """
+    return [span for span in markdown.all_code_spans(value) if _STATUS_CODE.fullmatch(span)]
+
+
 def _split_signals(value: str) -> list[str]:
     """Why this bullet looks like several observations, one sentence per reason (or none)."""
     reasons: list[str] = []
-    statuses = sorted(set(_STATUS_CODE.findall(value)))
+    statuses = sorted(set(_status_codes(value)))
     if len(statuses) > 1:
         reasons.append(f"it names {len(statuses)} status codes ({', '.join(statuses)})")
     names = sorted(set(_ERROR_NAME.findall(value)))
@@ -1085,8 +1114,12 @@ def _sounds_normative(value: str) -> str:
     modal verbs: a status code, an error name, a lifecycle verb, a `must`/`returns`/`rejects`.
     Read off the raw value for the reason `_STATUS_CODE` gives — codes and names live in
     backticks, and `_prose` would delete exactly the evidence this is looking for.
+
+    The status half goes through `_status_codes`, so a design bullet's `font-weight 500` no
+    longer mints a claim nobody can bind an obligation to. This rule fires on a *single*
+    signal, which made it the louder of the two misfires.
     """
-    statuses = _STATUS_CODE.findall(value)
+    statuses = _status_codes(value)
     if statuses:
         return f"names status {statuses[0]}"
     names = _ERROR_NAME.findall(value)
@@ -1524,13 +1557,9 @@ def _check_ui(graph: Graph, f: list[Finding],
                     path=rel, line=node.line, ref=f"{node.id}#{key}"))
 
         normative = 0
-        lifecycle: list[tuple[str, str]] = []
         for key in registry.normative_keys(node.type):
             for value in _bullet_values(node.meta.get(key, "")):
                 normative += 1
-                verb = _states_a_lifecycle_claim(value)
-                if verb:
-                    lifecycle.append((key, verb))
                 length = len(_prose(value))
                 if length > MAX_NORMATIVE_PROSE:
                     f.append(Finding(
@@ -1607,7 +1636,6 @@ def _check_ui(graph: Graph, f: list[Finding],
 
         check_keys = registry.check_keys(node.type)
         declared = 0
-        parsed_calls: list[checks.CheckCall] = []
         for key in check_keys:
             for value in _bullet_values(node.meta.get(key, "")):
                 # Counted before it is parsed: a node that declared and got the call wrong is
@@ -1624,8 +1652,6 @@ def _check_ui(graph: Graph, f: list[Finding],
                         # shown `http_status(code=…)` after mis-calling `absent` learns nothing
                         # about `absent`, and guesses again on the next lap.
                         suggestion=f"- {key}: {checks.expected_form(value)}"))
-                else:
-                    parsed_calls.append(parsed)
 
         # Every check the node declared could go red for the reason the node exists, or the
         # claim it was written under proves nothing. Per claim rather than per node: a node
@@ -1636,12 +1662,21 @@ def _check_ui(graph: Graph, f: list[Finding],
         # the check names the value, the route or the title the claim turns on, or it does not.
         verify_key = check_keys[0] if check_keys else "verify"
         contract_checks, claim_checks = registry.attributed_checks(node.type, node.bullet_order)
-        claims = [(f"{node.id}:contract", contract_checks)]
-        claims += [(f"{node.id}:{key}:{index}", values)
-                   for (key, index), values in claim_checks.items()]
-        for claim, values in claims:
-            calls = [c for c in (checks.parse_check(v) for v in values)
-                     if isinstance(c, checks.CheckCall)]
+
+        def _calls(values: list[str]) -> list[checks.CheckCall]:
+            return [c for c in (checks.parse_check(v) for v in values)
+                    if isinstance(c, checks.CheckCall)]
+
+        contract_calls = _calls(contract_checks)
+        # Parsed once and read by both rules below, which ask different questions of the same
+        # binding: `weak-check` asks whether a claim's checks can go red at all, and
+        # `unstated-precondition` asks whether they read the change or only its aftermath.
+        calls_by_claim = {ck: _calls(values) for ck, values in claim_checks.items()}
+
+        claims = [(f"{node.id}:contract", contract_calls)]
+        claims += [(f"{node.id}:{key}:{index}", calls_by_claim[(key, index)])
+                   for (key, index) in claim_checks]
+        for claim, calls in claims:
             stamps = [_rubber_stamp(call) for call in calls]
             if calls and all(stamps):
                 f.append(Finding(
@@ -1654,17 +1689,33 @@ def _check_ui(graph: Graph, f: list[Finding],
         # A prose-driven heuristic, `warn` for `compound-normative-bullet`'s reason — the
         # remedy is authoring judgment, not a rewrite a tool can compute — and meant to be
         # waived per finding where the book knows better than the rule.
-        if parsed_calls:
-            if lifecycle and not any(c.name in LIFECYCLE_CHECKS for c in parsed_calls):
-                key, verb = lifecycle[0]
-                f.append(Finding(
-                    "warn", "unstated-precondition",
-                    f"{node.id}: `{key}:` states a lifecycle change ('{verb}'), and the checks read "
-                    f"only the state afterwards — which is the same state a no-op leaves when "
-                    f"the subject was already there. Declare the change as a change, so the "
-                    f"before-read is part of the observation rather than an assumption",
-                    path=rel, line=node.line, ref=f"{node.id}#{key}",
-                    suggestion=f'- {check_keys[0]}: created(subject="…")   # or: removed'))
+        # Per claim, and only where that claim is observed. Node-wide, this read every
+        # `creates`/`registers` on the node against every check on the node: one `created(...)`
+        # anywhere silenced a genuine lifecycle claim beside it, and a claim nothing observes at
+        # all — a DI constructor's `- does: creates the process logger` — was reported against
+        # some *other* bullet's checks, quoting a verb from a third. That last shape is the one
+        # no edit could clear, because there is no after-read to turn into a before-and-after and
+        # no subject a harness could read either side of. The unobserved claim is not this rule's
+        # to raise: `undeclared-obligation` below covers the node that declares nothing, and
+        # `qa validate`'s `claimed-but-unasserted` covers the bullet nothing asserts.
+        claim_values = registry.normative_claims(node.type, node.bullet_order)
+        for (key, index), calls in calls_by_claim.items():
+            if not calls or any(c.name in LIFECYCLE_CHECKS for c in calls + contract_calls):
+                continue
+            verb = _states_a_lifecycle_claim(claim_values.get((key, index), ""))
+            if not verb:
+                continue
+            f.append(Finding(
+                "warn", "unstated-precondition",
+                f"{node.id}: `{key}:` states a lifecycle change ('{verb}'), and the checks read "
+                f"only the state afterwards — which is the same state a no-op leaves when "
+                f"the subject was already there. Declare the change as a change, so the "
+                f"before-read is part of the observation rather than an assumption",
+                path=rel, line=node.line, ref=f"{node.id}#{key}",
+                suggestion=f'- {verify_key}: created(subject="…")   # or: removed'))
+            # One per node, as before: a node whose claims all read the aftermath has one
+            # thing wrong with it, and N copies of that sentence is N waivers to write.
+            break
 
         # The gap `unparsed-check` cannot see: a node that declares nothing at all. `verify:` is
         # on no type's required list, so a book stays green while every obligation it mints goes

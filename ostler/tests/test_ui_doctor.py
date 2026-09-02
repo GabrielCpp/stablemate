@@ -262,6 +262,26 @@ def test_one_status_code_is_not_compound(repo: Path):
     assert "compound-normative-bullet" not in all_codes(_run(repo))
 
 
+def test_a_bare_three_digit_number_is_not_a_status_code(repo: Path):
+    # A status is written in backticks in this profile, and the reader now says so: it reads
+    # the bullet's code spans rather than scanning its prose for digits. Unnarrowed, this
+    # bullet was reported as naming two statuses — a finding whose remedy is to split a claim
+    # that was never compound, which is the kind nobody can clear and everybody waives.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _interaction("the label renders at font-weight 500 (vs body's 400)"))
+    assert "compound-normative-bullet" not in all_codes(_run(repo))
+
+
+def test_a_bare_three_digit_number_under_a_non_normative_key_mints_nothing(repo: Path):
+    # The same narrowing, at `unminted-claim`'s reader: a font weight is not a claim hiding
+    # under the wrong key.
+    write(repo / "docs/features/groom/concepts/lease.md",
+          "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
+          "- meaning: a lock over one path\n"
+          "- styling: the deadline renders at font-weight 500 (vs body's 400)\n")
+    assert "unminted-claim" not in all_codes(_run(repo))
+
+
 def test_an_overlong_bullet_is_reported_once(repo: Path):
     # Both rules say "this is several obligations"; saying it twice about one bullet buys the
     # author nothing and costs a second thing to waive.
@@ -404,6 +424,43 @@ def test_a_claim_that_changes_no_existence_is_not_asked_for_a_before_read(repo: 
           "- returns: the issue the caller filed, and the register it was recorded in\n"
           '- verify: http_status(200, path="/revisions", title="OK")\n')
     assert "unstated-precondition" not in all_codes(_run(repo))
+
+
+def test_a_lifecycle_claim_nothing_observes_is_not_this_rule_s_finding(repo: Path):
+    """The shape no edit could clear, and the bulk of the 183 findings this rule used to raise.
+
+    `returns:` states a creation and declares nothing; the node's one check answers a
+    *different* claim. Node-wide, the rule read every verb against every check and reported the
+    unobserved bullet against the observed one's checks — and there is no after-read on it to
+    turn into a before-and-after, so the only way out was a waiver. The unobserved claim is
+    `undeclared-obligation`'s business at the node level and `qa validate`'s per bullet.
+    """
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- returns: the revision it creates under the caller's name\n"
+          "- does: the manifest is rewritten in place\n"
+          '- verify: http_status(200, path="/revisions", title="OK")\n')
+    assert "unstated-precondition" not in all_codes(_run(repo))
+
+
+def test_a_sibling_claim_declaring_the_change_does_not_answer_this_one(repo: Path):
+    """One `created(...)` on the node used to silence every lifecycle claim beside it.
+
+    Attribution is written down (`registry.attributed_checks`), so the before-read credited to
+    `does:` is not also credited to `returns:` — which observes the creation it states with a
+    status code and nothing else.
+    """
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- returns: the revision it creates under the caller's name\n"
+          '- verify: http_status(201, path="/revisions")\n'
+          "- does: the manifest row is archived\n"
+          '- verify: removed(subject="the manifest row")\n')
+    finding = next(f for f in _run(repo).findings if f.code == "unstated-precondition")
+    assert "creates" in finding.message
+    assert finding.ref == f"{finding.path}#publish#returns"
 
 
 def test_a_node_minting_no_obligation_is_not_asked_to_declare(repo: Path):
