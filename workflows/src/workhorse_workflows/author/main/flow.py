@@ -9,7 +9,6 @@ from workhorse_workflows.author.epic_split import EpicSplit
 from workhorse_workflows.author.finalize import Finalize
 from workhorse_workflows.author.main.nodes import (
     adopt_backlog,
-    branch_author,
     load_config,
     plan_author_step,
     prune_bullet,
@@ -38,14 +37,9 @@ class Author(Workflow):
     operator_mode: str = "auto"
 
     def setup(self) -> RunContext:
-        """Resolve paths and create the one branch shared by every handed-off stage."""
+        """Resolve the paths every handed-off stage works against."""
         cfg = self.call(load_config, mode=self.mode)
-        branches = self.call(branch_author, str(self.run_dir), self.mode)
-        return RunContext(
-            **cfg.model_dump(),
-            base_branch=branches.base_branch,
-            author_branch=branches.author_branch,
-        )
+        return RunContext(**cfg.model_dump())
 
     def start(self) -> Continue | Done:
         """Dispatch discovery modes, one backlog story, or the flat roadmap planner."""
@@ -124,12 +118,7 @@ class Author(Workflow):
                     blocked=[*blocked, f"{step.epic}/{step.story}"],
                 )
         else:
-            return Done(self.handoff(
-                Finalize,
-                base_branch=self.ctx.base_branch,
-                author_branch=self.ctx.author_branch,
-                operator_mode=self.operator_mode,
-            ))
+            return Done(self.handoff(Finalize, operator_mode=self.operator_mode))
         return Continue(result, self.next_stage, blocked=list(blocked))
 
 

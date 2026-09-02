@@ -26,9 +26,8 @@ variable.
   all. Used by the parity surveyor and by the two tri-state verifiers
   (`verify_reconcile`, `verify_integrity`).
 * `workhorse_workflows.kit.find_repo_root` — `repo_dir`, else the first ancestor with
-  `agents.yml` or `.git`. Used by the three git/GitHub nodes (`branch_author`,
-  `commit_author`, `open_author_pr`), and imported from the engine where it already
-  lives rather than copied to a fourth spelling here.
+  `agents.yml` or `.git`. Used by the git node (`commit_author`), and imported from the
+  engine where it already lives rather than copied to a fourth spelling here.
 
 Unifying them would be a narrowing, so it is a decision for the deletion loop and not
 something the port does silently.

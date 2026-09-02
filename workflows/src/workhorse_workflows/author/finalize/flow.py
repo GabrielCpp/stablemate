@@ -8,7 +8,6 @@ from workhorse_workflows.author.main.nodes import (
     commit_author,
     load_config,
     mark_roadmap_authored,
-    open_author_pr,
     validate_artifacts,
     validate_roadmap_milestone,
     verify_integrity,
@@ -23,20 +22,14 @@ UNBOUNDED = float("inf")
 
 
 class Finalize(Workflow):
-    """Run the normal epic-mode validation, commit, and PR tail directly."""
+    """Run the normal epic-mode validation and commit the epics it passed."""
 
-    base_branch: str = "main"
-    author_branch: str = ""
     operator_mode: str = "auto"
 
     def setup(self) -> RunContext:
-        """Resolve repository config while preserving the caller-owned branch."""
+        """Resolve repository config for the branch the repo is already on."""
         cfg = self.call(load_config, mode="epic")
-        return RunContext(
-            **cfg.model_dump(),
-            base_branch=self.base_branch,
-            author_branch=self.author_branch,
-        )
+        return RunContext(**cfg.model_dump())
 
     def labels(self) -> dict[str, str]:
         return {
@@ -140,18 +133,7 @@ class Finalize(Workflow):
             self._fail_validation("roadmap milestone did not validate", contract.errors)
 
         self.call(mark_roadmap_authored, self.ctx.roadmap_path)
-        self.call(commit_author, "epic", "", "", self.ctx.roadmap_path)
-        return Done(
-            self.call(
-                open_author_pr,
-                self.ctx.base_branch,
-                self.ctx.author_branch,
-                "epic",
-                "",
-                "",
-                self.ctx.roadmap_path,
-            )
-        )
+        return Done(self.call(commit_author, "epic", "", "", self.ctx.roadmap_path))
 
 
 __all__ = ["Finalize", "MAX_INTEGRITY_RESOLVES", "MAX_RECONCILE_RESOLVES"]

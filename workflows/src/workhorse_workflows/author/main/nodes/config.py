@@ -1,6 +1,6 @@
-"""What the run works on, and the branch it works on it in.
+"""What the run works on.
 
-Ported from `base-library/workflows/author/scripts/{load-config,branch-author}.py`.
+Ported from `base-library/workflows/author/scripts/load-config.py`.
 
 `load_config` drops the script's `try: import yaml / except ImportError: yaml = None`
 guard: PyYAML is a declared dependency of this distribution, so an absent one is a broken
@@ -11,18 +11,15 @@ covered in practice.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
 from workhorse.pyflow import WorkflowFailed
-from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.author.main.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.roadmap import approved_roadmap
-from workhorse_workflows.author.shared.schemas.main import Branches, Config
-from workhorse_workflows.kit import active_branch, checkout, local_branch_exists
+from workhorse_workflows.author.shared.schemas.main import Config
 
 
 def _template(root: Path) -> dict:
@@ -90,72 +87,4 @@ def load_config(
     )
 
 
-def _base_branch(author_branch: str, cwd: Path, configured: str = "") -> str:
-    """The branch the run forked from — what a PR would target.
-
-    The branch the repo is sitting on wins, unless that is already the author branch (a
-    resume). Otherwise the first of `configured`, `develop`, `main`, `master` that
-    exists locally, and failing all of those the configured name or `main`.
-
-    `configured` is the run's `base_branch` input, carried down from the workflow rather
-    than read from the environment — the branch a run targets is an input, so it has to be
-    visible in the checkpoint and overridable by a caller.
-    """
-    current = active_branch(cwd)
-    if current and current != author_branch:
-        return current
-
-    configured = configured.strip()
-    for candidate in [configured, "develop", "main", "master"]:
-        if candidate and candidate != author_branch and local_branch_exists(cwd, candidate):
-            return candidate
-    return configured or "main"
-
-
-def _run_slug(run_dir: str) -> str:
-    """The run directory's own name, which is stable for the life of the run.
-
-    Deriving the branch from the run dir rather than from a fresh timestamp is what makes
-    this idempotent: a resume after a mid-run kill checks out the SAME branch instead of
-    abandoning a partial one.
-    """
-    if run_dir:
-        return Path(run_dir).name
-    return "run-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-
-
-@blueprint.node
-def branch_author(
-    logger: logging.Logger,
-    run_dir: str = "",
-    mode: str = "epic",
-    repo_dir: str = "",
-    base_branch: str = "",
-) -> Branches:
-    """Cut (or re-check-out) the one branch this run works on.
-
-    One branch per run. A blank `author_branch` in the return is the "carry on where we
-    are" answer, not a failure: it is what a repo with no `.git` gets, and what a failed
-    checkout gets. `mode` reaches only a log line — it is here because the script took it.
-    """
-    repo_root = find_repo_root(repo_dir)
-    if not (repo_root / ".git").exists():
-        logger.info("no .git at %s — skipping branch creation", repo_root)
-        return Branches(base_branch="main", author_branch="")
-
-    branch = f"author/{_run_slug(run_dir)}"
-    base_branch = _base_branch(branch, repo_root, base_branch)
-
-    if local_branch_exists(repo_root, branch):
-        checkout(repo_root, branch)
-        logger.info("checked out existing %s", branch)
-    elif not checkout(repo_root, branch, create=True):
-        logger.warning("cannot create branch %s", branch)
-        return Branches(base_branch=base_branch, author_branch="")
-    else:
-        logger.info("created %s (mode=%s)", branch, mode)
-
-    return Branches(base_branch=base_branch, author_branch=branch)
-
-
-__all__ = ["branch_author", "load_config"]
+__all__ = ["load_config"]

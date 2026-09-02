@@ -1,12 +1,11 @@
 """End-to-end drives of the author workflow (`author/workflow.py`).
 
-Nothing is stubbed except the agent turn. `load_config`, `branch_author`, `seed_story`,
+Nothing is stubbed except the agent turn. `load_config`, `seed_story`,
 `select_epic`, `select_story`, `validate_story`, `check_story_grounding`, `record_attempt`,
 `check_story_feedback`, `validate_coverage`, `prune_bullet`,
-`verify_reconcile`, `verify_integrity`, `validate_artifacts`, `commit_author` and
-`open_author_pr` all run for real against the `repo` fixture — so a drive here exercises
-ostler's real graph, the two deterministic story gates, the coverage gate, the whole-graph
-gates and the git tail.
+`verify_reconcile`, `verify_integrity`, `validate_artifacts` and `commit_author` all run
+for real against the `repo` fixture — so a drive here exercises ostler's real graph, the
+two deterministic story gates, the coverage gate, the whole-graph gates and the git tail.
 
 The agent seam is patched where the engine reads it
 (`RunEnv.agent_runner`) and the stub **writes the artifacts its
@@ -153,18 +152,6 @@ CLUSTER = "missing-accessible-name"
 # --------------------------------------------------------------------------- fixtures
 
 
-@pytest.fixture(autouse=True)
-def _no_github(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No token and no configured base branch, so the git tail is deterministic.
-
-    `open_author_pr` resolves a token from the environment; with one present on the
-    developer's machine it would try to reach GitHub for a temp repo, and the test would
-    assert a different thing there than in CI. Absent, it takes its `_skipped` arm.
-    """
-    for var in ("GH_TOKEN", "GITHUB_TOKEN", "WORKHORSE_GIT_TOKEN", "REPO_BRANCH"):
-        monkeypatch.delenv(var, raising=False)
-
-
 @pytest.fixture
 def backlogged(repo: Path, write: Callable[[Path, str], Path]) -> Path:
     """A repo with a two-bullet backlog and nothing else: no epics, no OKF book.
@@ -213,20 +200,16 @@ def _subject(repo: Path) -> str:
     return out.stdout.strip()
 
 
+def _current_branch(repo: Path) -> str:
+    out = subprocess.run(
+        ["git", "branch", "--show-current"], cwd=repo, check=True, capture_output=True, text=True
+    )
+    return out.stdout.strip()
+
+
 def _commit_count(repo: Path) -> int:
     out = subprocess.run(
         ["git", "rev-list", "--count", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
-    )
-    return int(out.stdout.strip())
-
-
-def _branch_commit_count(repo: Path) -> int:
-    out = subprocess.run(
-        ["git", "rev-list", "--count", "main..HEAD"],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-        text=True,
     )
     return int(out.stdout.strip())
 
@@ -841,10 +824,11 @@ def test_epic_mode_authors_one_roadmap_milestone_and_commits_it(
 
     Every count below is a node the YAML ran exactly once per pass too, and the artifacts
     are the YAML's artifacts: the epic and its seeds in `epic.md`, an authored `story.md`
-    per story, an untouched backlog, one commit on the author branch,
-    and no PR because there is no token.
+    per story, an untouched backlog, and one commit on the branch the repo was already on.
     """
     backlog_before = (backlogged / BACKLOG).read_bytes()
+    commits_before = _commit_count(backlogged)
+    branch_before = _current_branch(backlogged)
     agent = _Agent(backlogged)
     result = _drive(_env(tmp_path), agent)
 
@@ -874,11 +858,11 @@ def test_epic_mode_authors_one_roadmap_milestone_and_commits_it(
     assert milestones[0]["sourceItems"] == [ROADMAP]
     assert "status: authored" in (backlogged / ROADMAP).read_text(encoding="utf-8")
 
-    # The git tail: committed on the run's own branch, PR skipped for want of a token.
+    # The git tail: one commit, on the branch the run started on — it cuts none of its own.
     assert _subject(backlogged) == "author: roadmap account-access"
-    assert _branch_commit_count(backlogged) == 1
-    assert result.author_pr == "skipped", result
-    assert result.pr_skip_reason == "no GitHub token is configured", result
+    assert _commit_count(backlogged) == commits_before + 1
+    assert _current_branch(backlogged) == branch_before
+    assert result.committed is True, result
 
     # Every turn ran in the repo, not in the run directory.
     assert set(agent.cwds) == {str(backlogged)}
@@ -1629,7 +1613,7 @@ def test_a_run_killed_mid_story_resumes_on_that_story_alone(
         "audit-story": 1,
     }, second.counts()
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
-    assert result.author_pr == "skipped", result
+    assert result.committed is True, result
 
 
 # -------------------------------------------------------------------------------- labels

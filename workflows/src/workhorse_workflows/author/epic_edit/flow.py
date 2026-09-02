@@ -14,7 +14,6 @@ from workhorse_workflows.author.epic_edit.nodes import (
     validate_epic_document,
 )
 from workhorse_workflows.author.main.nodes import (
-    branch_author,
     check_story_grounding,
     commit_author,
     load_config,
@@ -53,20 +52,10 @@ class EpicEdit(Workflow):
     intent: EditIntent = EditIntent()
     force: bool = False
     operator_mode: str = "auto"
-    branch_run_dir: str = ""
 
     def setup(self) -> RunContext:
         cfg = self.call(load_config, mode="epic-edit")
-        branches = self.call(
-            branch_author,
-            self.branch_run_dir or str(self.run_dir),
-            "epic-edit",
-        )
-        return RunContext(
-            **cfg.model_dump(),
-            base_branch=branches.base_branch,
-            author_branch=branches.author_branch,
-        )
+        return RunContext(**cfg.model_dump())
 
     def labels(self) -> dict[str, str]:
         return {"work_id": self.epic or self.intent.epic, "epic": self.epic or self.intent.epic}

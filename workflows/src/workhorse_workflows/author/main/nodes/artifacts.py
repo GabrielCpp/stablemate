@@ -1,24 +1,16 @@
 """The whole-run gates, and the git tail that ships what they passed.
 
 Ported from `base-library/workflows/author/scripts/{reconcile-artifacts,ostler-doctor,
-validate-artifacts,commit-author,open-author-pr}.py`.
-
-Two divergences from the scripts, both recorded rather than absorbed:
-
-* `open_author_pr` resolves the GitHub token by calling `kit.github.resolve_github_token`
-  directly, where the script spawned `gh-token.py` as a subprocess and read its stdout.
-  `gh-token.py` *is* a one-line wrapper over that function, so the resolution order is
-  identical — the subprocess was the only way a YAML script could share code with another
-  script's process. It joins the deletion list.
-* `open_author_pr` uses `kit.github.find_open_pr` instead of the script's private copy.
-  The kit version swallows a `GithubException` while listing, so an API error there now
-  reads as "no PR is open" and the failure surfaces one step later, from `create_pull`,
-  with its own message. Both paths still fail the node.
+validate-artifacts,commit-author}.py`.
 
 The two YAML nodes `commit_author` and `commit_incomplete` ran the *same* script with a
 different first argument, so they are one node here, called with `mode="incomplete"` on
 the failure edge. They sit on mutually exclusive paths, so `self.output(commit_author)`
 still names exactly one commit.
+
+There is no PR tail. The author workflow commits the epics it wrote onto whatever branch
+the repo is already on and stops there — delivery is the operator's call, and a run that
+cut its own branch to open a PR from was targeting a base it had itself just left.
 """
 from __future__ import annotations
 
@@ -26,15 +18,13 @@ import logging
 from pathlib import Path
 
 from ostler import Ostler, markdown, registry, select
-from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.author.main.nodes._blueprint import blueprint
 from workhorse_workflows.author.main.nodes import _stubs
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import launch_repo_root, survey_repo_root
-from workhorse_workflows.author.shared.schemas.main import Committed, Defects, PullRequest, VerifyReport
-from workhorse_workflows.kit import branch_exists, commit_paths, remote_urls, show_file
-from workhorse_workflows.kit import github as github_kit
+from workhorse_workflows.author.shared.schemas.main import Committed, Defects, VerifyReport
+from workhorse_workflows.kit import commit_paths, show_file
 
 # ── reconciliation: what this run silently dropped ──────────────────────────
 
@@ -357,151 +347,8 @@ def commit_author(
     return Committed(committed=committed)
 
 
-def _pr_title(mode: str, epic: str, bullet: str, roadmap: str = "") -> str:
-    if mode == "story" and epic:
-        trimmed = bullet.strip().splitlines()[0][:72] if bullet.strip() else ""
-        return f"Author: {epic} — {trimmed}" if trimmed else f"Author: {epic}"
-    if roadmap:
-        return f"Author: roadmap {Path(roadmap).stem}"
-    return "Author: epic/story authoring"
-
-
-def _pr_body(mode: str) -> str:
-    label = "story mode" if mode == "story" else "roadmap mode"
-    return "\n".join(
-        [
-            "## Summary",
-            "",
-            f"Automated epic/story docs authored by the `author` workflow ({label}).",
-            "",
-            "---",
-            "*Automated author PR. Left open for review — not auto-merged.*",
-        ]
-    )
-
-
-def _github_slug(url: str) -> str:
-    """`owner/repo` for a supported GitHub remote URL, or `""`."""
-    for prefix in ("git@github.com:", "ssh://git@github.com/", "https://github.com/"):
-        if url.startswith(prefix):
-            return url.removeprefix(prefix).removesuffix(".git")
-    return ""
-
-
-def _resolve_github_slug(repo_path: Path) -> str:
-    """Resolve GitHub even when this checkout was cloned from a local bind mount.
-
-    Container runs clone the host working tree from paths such as `/mnt/repo-src`. In that
-    case the clone's origin is local, but the mounted source repository still carries the
-    real GitHub origin.
-    """
-    origins = remote_urls(repo_path)
-    for url in origins:
-        slug = _github_slug(url)
-        if slug:
-            return slug
-
-    for url in origins:
-        source = Path(url.removeprefix("file://") if url.startswith("file://") else url)
-        if not source.is_absolute():
-            source = (repo_path / source).resolve()
-        if not source.exists():
-            continue
-        for source_origin in remote_urls(source):
-            slug = _github_slug(source_origin)
-            if slug:
-                return slug
-    return ""
-
-
-def _base_branch(repo_path: Path, declared: str, fallback: str = "main") -> str:
-    if declared:
-        return declared
-    for candidate in ("develop", "main", "master"):
-        if branch_exists(repo_path, candidate):
-            return candidate
-    return fallback
-
-
-def _skipped(logger: logging.Logger, reason: str) -> PullRequest:
-    """PR delivery is not configured — a supported state, not a failure."""
-    logger.info("PR delivery not configured (%s) — skipping", reason)
-    return PullRequest(author_pr="skipped", pr_skip_reason=reason)
-
-
-@blueprint.node
-def open_author_pr(
-    logger: logging.Logger,
-    base_branch: str = "main",
-    author_branch: str = "",
-    mode: str = "epic",
-    epic: str = "",
-    bullet: str = "",
-    roadmap: str = "",
-    repo_dir: str = "",
-) -> PullRequest:
-    """Push the run's branch and open one PR in the docs repo.
-
-    Two outcomes are deliberately not conflated. **PR delivery is not configured** — no
-    `.git`, no token, or an `origin` that is not a github.com repository — is a legitimate
-    configuration (a `git init` with no remote, the greenfield case), so it is a `skipped`
-    and the run still passes. **PR delivery was attempted and failed** — a push error, an
-    unreachable repository, a create error — still fails the run: wherever a remote *is*
-    configured, "a PR is required" remains true.
-    """
-    if not author_branch:
-        raise WorkflowFailed("no author branch was provided")
-
-    repo_root = find_repo_root(repo_dir)
-    if not (repo_root / ".git").exists():
-        return _skipped(logger, f"no .git at {repo_root}")
-
-    token = github_kit.resolve_github_token(repo_root)
-    if not token:
-        return _skipped(logger, "no GitHub token is configured")
-
-    if not branch_exists(repo_root, author_branch):
-        raise WorkflowFailed(f"no branch {author_branch} in {repo_root}")
-
-    slug = _resolve_github_slug(repo_root)
-    if not slug:
-        # Not configured, not broken: a local-only repo has no forge to deliver to.
-        origins = ", ".join(remote_urls(repo_root)) or "<no remote>"
-        return _skipped(logger, f"origin does not resolve to a github.com repository: {origins}")
-
-    # push_branch targets the resolved slug explicitly (the origin may be a local
-    # bind-mount path in container runs, so we can't let it re-derive from origin).
-    if not github_kit.push_branch(repo_root, token, author_branch, slug=slug, verify=False):
-        raise WorkflowFailed(f"push failed for {author_branch}")
-
-    try:
-        gh_repo = github_kit.github_client(token).get_repo(slug)
-    except Exception as exc:
-        raise WorkflowFailed(f"cannot access github.com repository {slug}: {exc}") from exc
-
-    existing = github_kit.find_open_pr(gh_repo, author_branch)
-    if existing is not None:
-        logger.info("PR already open for %s", author_branch)
-        return PullRequest(author_pr="exists", pr_url=existing.html_url)
-
-    base = _base_branch(repo_root, base_branch)
-    try:
-        pr = gh_repo.create_pull(
-            base=base,
-            head=author_branch,
-            title=_pr_title(mode, epic, bullet, roadmap),
-            body=_pr_body(mode),
-        )
-    except Exception as exc:
-        raise WorkflowFailed(f"PR create failed for {author_branch}: {exc}") from exc
-
-    logger.info("opened PR for %s -> %s", author_branch, base)
-    return PullRequest(author_pr="opened", pr_url=pr.html_url)
-
-
 __all__ = [
     "commit_author",
-    "open_author_pr",
     "validate_artifacts",
     "verify_integrity",
     "verify_reconcile",

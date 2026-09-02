@@ -34,26 +34,12 @@ class Config(AuthorResult):
     layers: list[str] = []
 
 
-class Branches(AuthorResult):
-    """`branch_author` — the branch the run works on, and the one it forked from.
-
-    A blank `author_branch` means "no branch was created" (no `.git`, or the checkout
-    failed): the run still authors, it just commits on whatever branch it is on.
-    """
-
-    base_branch: str = "main"
-    author_branch: str = ""
-
-
 class RunContext(Config):
-    """The author's `self.ctx` — `load_config`'s paths plus the branch decision.
+    """The author's `self.ctx` — the paths `load_config` resolved.
 
     Written once by `setup()`, restored verbatim on resume. Anything that changes as
     the run progresses is a state parameter instead, not a field here.
     """
-
-    base_branch: str = "main"
-    author_branch: str = ""
 
 
 class AuthorStep(AuthorResult):
@@ -189,18 +175,6 @@ class Committed(AuthorResult):
     committed: bool = False
 
 
-class PullRequest(AuthorResult):
-    """`open_author_pr` — the PR, or why there is none.
-
-    `author_pr` is `opened`, `exists`, `skipped` or blank; a skip is an ordinary
-    outcome (no remote, no token, no branch), not a failure.
-    """
-
-    author_pr: str = ""
-    pr_url: str = ""
-    pr_skip_reason: str = ""
-
-
 # ── agent replies ───────────────────────────────────────────────────────────
 
 
@@ -297,7 +271,6 @@ __all__ = [
     "AuditFinding",
     "AuditResult",
     "AuthorStep",
-    "Branches",
     "Committed",
     "Config",
     "CoverageReview",
@@ -308,7 +281,6 @@ __all__ = [
     "MockupGate",
     "MockupResult",
     "Pruned",
-    "PullRequest",
     "RoadmapStatus",
     "RunContext",
     "SeededStory",

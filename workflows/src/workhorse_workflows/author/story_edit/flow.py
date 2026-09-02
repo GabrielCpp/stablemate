@@ -42,7 +42,6 @@ class StoryEdit(Workflow):
             EpicEdit,
             intent=intent,
             operator_mode=self.operator_mode,
-            branch_run_dir=str(self.run_dir),
         )
         return Done(result)
 

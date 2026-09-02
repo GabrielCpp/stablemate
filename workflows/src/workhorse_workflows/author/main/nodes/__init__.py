@@ -4,7 +4,7 @@ Importing this package registers every node on the shared `blueprint`, which is 
 name [`../../workflow.py`](../../workflow.py) needs from here. The submodules are the
 subjects:
 
-* `config` — what the run works on, and the branch it works on it in
+* `config` — what the run works on
 * `intake` — validate roadmap provenance and retain story-mode bullet adoption
 * `epics` — which epic is next
 * `stories` — one story at a time: seed it, pick it, validate it, ground it
@@ -39,12 +39,11 @@ from __future__ import annotations
 from workhorse_workflows.author.main.nodes._blueprint import blueprint
 from workhorse_workflows.author.main.nodes.artifacts import (
     commit_author,
-    open_author_pr,
     validate_artifacts,
     verify_integrity,
     verify_reconcile,
 )
-from workhorse_workflows.author.main.nodes.config import branch_author, load_config
+from workhorse_workflows.author.main.nodes.config import load_config
 from workhorse_workflows.author.main.nodes.coverage import validate_coverage
 from workhorse_workflows.author.main.nodes.epics import select_epic, select_epic_document
 from workhorse_workflows.author.main.nodes.intake import (
@@ -68,14 +67,12 @@ from workhorse_workflows.author.main.nodes.stories import (
 __all__ = [
     "blueprint",
     "adopt_backlog",
-    "branch_author",
     "check_mockup_needed",
     "check_story_feedback",
     "check_story_grounding",
     "commit_author",
     "load_config",
     "mark_roadmap_authored",
-    "open_author_pr",
     "plan_author_step",
     "prune_bullet",
     "record_attempt",
