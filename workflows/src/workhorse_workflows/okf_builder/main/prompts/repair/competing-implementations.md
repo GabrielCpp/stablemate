@@ -13,7 +13,12 @@ competitors. Repair from what the **source** already says about the preference:
   the selection rule as prose, `prefers:` links the winning node, `deprecates:` links the
   superseded one, and the body carries the rationale and the legitimate remaining callers.
 - Then point **every** competitor at it — `- detail: [<concept>](../concepts/<slug>.md)` —
-  so the rule is reachable from either side rather than discoverable only by browsing.
+  so the rule is reachable from either side rather than discoverable only by browsing. The
+  competitors are `related` in the context, one `<path>#<node>` each, and `paths` is the set
+  of files they live in. They are all in scope for this turn — that is what makes this item
+  repairable, and a repair that edits one file and leaves the rest leaves the finding
+  standing. If a competitor is in a document you would rather not touch, say so in
+  `doc_status`; do not clear the finding on the members you did reach.
 - If the source does **not** settle it — both paths current, both reached by live call
   sites, no recorded preference — write the concept anyway, stating each side's context
   as fact, and say plainly that no ranking exists. A competition the source does not

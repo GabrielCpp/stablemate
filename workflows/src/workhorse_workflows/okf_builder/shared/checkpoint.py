@@ -135,6 +135,18 @@ def _node_of(ref: str, path: str) -> str:
     return f"{path}#{ref[len(path) + 1 :].split('#')[0]}"
 
 
+def _related_of(finding: dict) -> list[str]:
+    """The book locations a *group* finding is about beyond its own `path` — or `[]`.
+
+    Doctor stamps `related` on a finding whose remedy is only complete when every member is
+    edited (`competing-implementations` today). Reading the field rather than the id list in
+    the message is the point: the membership is data, and a consumer that had to recover it
+    from a sentence would be matching prose that exists to be read by a person.
+    """
+    related = finding.get("related") or []
+    return [str(member) for member in related] if isinstance(related, list) else []
+
+
 def _repair_items(findings: list[dict]) -> list[dict[str, Any]]:
     """One item per `(file, node, code)`, chunked, carrying that group's findings only.
 
@@ -175,6 +187,25 @@ def _repair_items(findings: list[dict]) -> list[dict[str, Any]]:
     groups: dict[tuple[str, str, str], list[dict]] = {}
     for finding in findings:
         path = str(finding.get("path", ""))
+        if _related_of(finding):
+            # A group finding is about N book locations and `path` names one of them
+            # arbitrarily (doctor's `competing-implementations` picks the lowest-sorting
+            # member). Keying it on `path` addressed a member instead of the defect: the
+            # item moved when that member did, two unrelated competitions that happened to
+            # share a first document were batched into one, and — the reason it could never
+            # be repaired — the other members were out of the item's declared scope, which
+            # the repair prompt's own guardrail then correctly refused to leave.
+            #
+            # The citation is what the competition is *about*, so it is the identity: stable
+            # while the book is edited, and one item per competition.
+            #
+            # The path slot is left empty for the same reason: it would put the arbitrary
+            # member back into the item's identity. The paths the turn must open come out of
+            # `related`, which names all of them.
+            code = str(finding.get("code", ""))
+            groups.setdefault(("", str(finding.get("ref", "") or ""), code),
+                              []).append(finding)
+            continue
         node = _node_of(str(finding.get("ref", "") or ""), path)
         groups.setdefault((path, node, str(finding.get("code", ""))), []).append(finding)
 
@@ -195,14 +226,28 @@ def _repair_items(findings: list[dict]) -> list[dict[str, Any]]:
             # The suffix only appears when a group actually split, so the common target
             # stays readable — and two chunks remain distinct worklist entries.
             suffix = f"#{n}" if len(chunks) > 1 else ""
+            related = sorted({member for finding in chunk
+                              for member in _related_of(finding)})
+            context: dict[str, Any] = {"code": code}
+            if related:
+                # `related` is the item's scope, and `paths` is that scope as files — the
+                # repair prompt's "one node" guardrail admits exactly this enumerated set,
+                # so a remedy spanning several documents is in scope without the turn
+                # touring the book. There is no `path`/`node` here on purpose: either one
+                # would name an arbitrary member as *the* place to open, which is the read
+                # that made this class unrepairable.
+                context["citation"] = node
+                context["related"] = related
+                context["paths"] = sorted({member.split("#")[0] for member in related})
+            else:
+                context["node"] = node
+                context["path"] = path
+            context["grounded"] = code in GROUNDED_CODES
+            context["findings"] = chunk
             items.append({
                 "kind": f"fix:{code}",
-                "target": f"{path}#{node}#{code}{suffix}",
-                "context": json.dumps(
-                    {"code": code, "node": node, "path": path,
-                     "grounded": code in GROUNDED_CODES, "findings": chunk},
-                    indent=2,
-                ),
+                "target": f"{path}#{node}#{code}{suffix}" if path else f"{node}#{code}{suffix}",
+                "context": json.dumps(context, indent=2),
                 # A finding still standing after its repair is the *same* work, so it reopens
                 # its own row rather than opening a second one.
                 "requeue": True,

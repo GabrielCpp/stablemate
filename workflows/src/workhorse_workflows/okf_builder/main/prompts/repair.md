@@ -18,7 +18,9 @@ against: `{{ skill_path_ref("ostler-okf", "references/falsifiable-verification.m
 
 - code: `{{ workhorse_var('item_code') }}`
 - target: `{{ workhorse_var('item_target') }}`
-- context (JSON — `code`, `node`, `path`, `grounded`, `findings`):
+- context (JSON — `code`, `grounded`, `findings`, plus either `node`/`path` (the one node this
+  item is about) **or**, on a group finding, `citation` (the `path::symbol` the group is about),
+  `related` (every node this item covers) and `paths` (their files)):
 
 ```json
 {{ workhorse_var('item_context') }}
@@ -72,7 +74,11 @@ hiding it.
 - **Docs only.** You write **only** under `docs/features/**`. Never modify source code, never run
   `git`, never run builds or tests. You are documenting the code, not changing it.
 - **One node.** Open the `path` in the context and repair the node the findings name. Do not tour
-  the book; other nodes' findings are other items.
+  the book; other nodes' findings are other items. **Unless the context carries `related`** —
+  then those locations *are* this item: open every one of them (`paths` lists the files) and
+  repair the group as a whole. That finding is one defect spread over several nodes and it does
+  not clear until each of them is edited. `related` is the whole of the exception — a node not
+  in that list is still another item's work.
 - **Read the source before you write a value.** The node's `code:` bullet points at the symbol this
   claim is about. When the context says `"grounded": true` the finding does **not** carry the value —
   it must come out of the source, cited in prose.
