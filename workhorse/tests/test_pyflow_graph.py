@@ -41,6 +41,7 @@ from workhorse.pyflow.dot import to_dot  # noqa: E402
 from workhorse.pyflow.graph import (  # noqa: E402
     Edge,
     StateNode,
+    Step,
     preflight,
     registry_graphs,
     state_graph,
@@ -76,6 +77,10 @@ bp = Blueprint("kit")
 
 @bp.node
 def measure(logger: Any, target: str) -> Report:
+    """The verdict of measuring a target.
+
+    A second paragraph, which a diagram never shows.
+    """
     return Report(verdict=target)
 
 
@@ -358,10 +363,42 @@ def test_registry_graphs_render_each_class_once_with_all_its_flow_names():
 def test_dot_renders_one_cluster_per_flow_with_live_names_only():
     dot = to_dot(registry_graphs(_sample_registry()), name="acme")
     assert dot.startswith("digraph acme {")
-    assert dot.count("subgraph cluster_") == 3  # two flows and the legend
+    assert dot.count("\n  subgraph cluster_") == 3  # two flows and the legend
     assert "START" in dot
     assert '"qa' not in dot  # the alias is not a node
     assert "review" in dot
+
+
+def test_dot_draws_a_state_as_the_chain_of_steps_it_runs():
+    """A state's box holds one bubble per seam, in source order, captioned with what
+    the author wrote about it; transitions leave the last bubble and enter the first."""
+    dot = to_dot([_graph(Factored)])
+    assert "subgraph cluster_f0__start {" in dot
+    assert 'f0__start__0 [label="measure' in dot
+    assert 'f0__start__1 [label="record.md", shape=note' in dot
+    assert "f0__start__0 -> f0__start__1" in dot
+    assert "f0__start__1 -> f0__finish__0 [ltail=cluster_f0__start, lhead=cluster_f0__finish]" in dot
+    assert "f0____start -> f0__start__0 [lhead=cluster_f0__start]" in dot
+    # A state that runs nothing stays a plain box, addressed by its own id.
+    plain = to_dot([_graph(Reasoned)])
+    assert "cluster_f0__hold" not in plain
+    assert 'f0__hold [label="hold"]' in plain
+
+
+def test_a_step_carries_the_docstring_line_or_the_prompt_title(tmp_path: Path):
+    (tmp_path / "prompts").mkdir()
+    (tmp_path / "prompts" / "review.md").write_text("---\nagent: x\n---\n\n# Review the thing\n")
+    graph = state_graph(Sample, workflow_dir=tmp_path)
+    review = graph.state("review")
+    assert review is not None
+    assert [(s.kind, s.file, s.summary) for s in review.steps] == [
+        ("agent", "review.md", "Review the thing")
+    ]
+    start = graph.state("start")
+    assert start is not None and start.steps[0].summary == "The verdict of measuring a target."
+    # Without a directory the prompt step is still read, untitled.
+    review = _state(Sample, "review")
+    assert review.steps == (Step("agent", "prompts/review.md"),)
 
 
 def test_dot_marks_an_await_edge_and_labels_bound_parameters():

@@ -25,12 +25,14 @@ from __future__ import annotations
 
 import ast
 import inspect
+import sys
 import textwrap
 from collections import deque
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from workhorse.pyflow.errors import WorkflowDefinitionError
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.workflow import StateSpec, Workflow
 
@@ -64,16 +66,37 @@ class Edge:
 
 
 @dataclass(frozen=True)
+class Step:
+    """One thing a state's body runs: a blueprint node call or an agent turn.
+
+    Kept in source order so a diagram can draw the state as the chain it is. The
+    summary is what the author already wrote about it — the first line of the node's
+    docstring, or the title of the prompt — and is empty when there is none to read.
+    """
+
+    #: "call" or "agent".
+    kind: str
+    #: The node's name for a call; the literal prompt path for an agent turn. Only
+    #: constants: an f-string prompt is unknowable here, and guessing one would fail a
+    #: dry run over nothing.
+    name: str
+    summary: str = ""
+
+    @property
+    def file(self) -> str:
+        """The prompt's file name, or the node name — what a label shows."""
+        return self.name.rsplit("/", 1)[-1]
+
+
+@dataclass(frozen=True)
 class StateNode:
     """One state, and what its body was seen to do."""
 
     name: str
     edges: tuple[Edge, ...] = ()
-    #: Blueprint nodes reached through `self.call(...)`, in source order.
-    calls: tuple[str, ...] = ()
-    #: Literal prompt paths passed to `self.agent(...)`. Only constants: an f-string
-    #: prompt is unknowable here, and guessing one would fail a dry run over nothing.
-    prompts: tuple[str, ...] = ()
+    #: Every `self.call(...)` and literal `self.agent(...)` the body reaches, in source
+    #: order, each once.
+    steps: tuple[Step, ...] = ()
     #: Sub-workflows reached through `self.handoff(...)`.
     handoffs: tuple[str, ...] = ()
     #: `inspect.getsource` could not read this state — nothing below it is known.
@@ -86,6 +109,16 @@ class StateNode:
         Derived from the edges rather than stored, so it cannot disagree with them.
         """
         return any(edge.kind == "done" for edge in self.edges)
+
+    @property
+    def calls(self) -> tuple[str, ...]:
+        """Blueprint nodes reached through `self.call(...)`, in source order."""
+        return tuple(step.name for step in self.steps if step.kind == "call")
+
+    @property
+    def prompts(self) -> tuple[str, ...]:
+        """Literal prompt paths passed to `self.agent(...)`, in source order."""
+        return tuple(step.name for step in self.steps if step.kind == "agent")
 
 
 @dataclass(frozen=True)
@@ -148,12 +181,18 @@ class FlowGraph:
 # ── Reading a class ─────────────────────────────────────────────────────────────
 
 
-def state_graph(cls: type[Workflow], names: Iterable[str] = ()) -> FlowGraph:
-    """Read `cls` into a `FlowGraph`. Live state names only, sorted for stable output."""
+def state_graph(
+    cls: type[Workflow], names: Iterable[str] = (), workflow_dir: Path | None = None
+) -> FlowGraph:
+    """Read `cls` into a `FlowGraph`. Live state names only, sorted for stable output.
+
+    `workflow_dir` is where relative prompt paths resolve, so each agent step can carry
+    its prompt's title; without it the step is still read, with no summary.
+    """
     # Looked up once and filtered on the spec itself: reading `cls.states` twice — once
     # to test, once to pass — is what let a `None` through to `_read_state`.
     specs = (cls.states.get(name) for name in sorted(cls.state_names()))
-    states = tuple(_read_state(cls, spec) for spec in specs if spec is not None)
+    states = tuple(_read_state(cls, spec, workflow_dir) for spec in specs if spec is not None)
     return FlowGraph(
         workflow=cls.__name__,
         names=tuple(names),
@@ -174,7 +213,13 @@ def registry_graphs(registry: Registry) -> list[FlowGraph]:
         by_class[registry.entry] = []
     for flow_name, cls in registry.flows.items():
         by_class.setdefault(cls, []).append(flow_name)
-    return [state_graph(cls, names) for cls, names in by_class.items()]
+    try:
+        directory: Path | None = registry.directory()
+    except WorkflowDefinitionError:
+        # A class declared at top level — a test file, a REPL — has no package
+        # directory, and the graph is still readable; its agent steps go untitled.
+        directory = None
+    return [state_graph(cls, names, directory) for cls, names in by_class.items()]
 
 
 @dataclass
@@ -182,31 +227,35 @@ class _Found:
     """What a scan has seen so far. Mutable, because the scan recurses."""
 
     edges: list[Edge] = field(default_factory=list)
-    calls: list[str] = field(default_factory=list)
-    prompts: list[str] = field(default_factory=list)
+    steps: list[Step] = field(default_factory=list)
     handoffs: list[str] = field(default_factory=list)
     #: Transition calls already read as the inner half of a `.because(...)`, so the
     #: walk does not emit them a second time when it reaches them on their own.
     consumed: set[int] = field(default_factory=set)
 
 
-def _read_state(cls: type[Workflow], spec: StateSpec) -> StateNode:
+def _read_state(cls: type[Workflow], spec: StateSpec, workflow_dir: Path | None) -> StateNode:
     tree = _source_tree(spec.fn)
     if tree is None:
         return StateNode(name=spec.name, opaque=True)
 
     found = _Found()
-    _scan(cls, tree, found, {spec.name})
+    _scan(cls, tree, found, {spec.name}, workflow_dir)
     return StateNode(
         name=spec.name,
         edges=tuple(dict.fromkeys(found.edges)),
-        calls=tuple(dict.fromkeys(found.calls)),
-        prompts=tuple(dict.fromkeys(found.prompts)),
+        steps=tuple(dict.fromkeys(found.steps)),
         handoffs=tuple(dict.fromkeys(found.handoffs)),
     )
 
 
-def _scan(cls: type[Workflow], tree: ast.AST, found: _Found, seen: set[str]) -> None:
+def _scan(
+    cls: type[Workflow],
+    tree: ast.AST,
+    found: _Found,
+    seen: set[str],
+    workflow_dir: Path | None = None,
+) -> None:
     """Record every seam this body reaches, following its own private helpers.
 
     A state that factors its turn into a `_record()` or its node call into a
@@ -239,16 +288,20 @@ def _scan(cls: type[Workflow], tree: ast.AST, found: _Found, seen: set[str]) -> 
         elif tail in _TARGET_ARG:
             found.edges.append(_read_edge(cls, tail, node, reason))
         elif dotted == "self.call":
-            _append(found.calls, _first_ident(node))
+            ident = _first_ident(node)
+            if ident:
+                found.steps.append(Step("call", ident, _doc_summary(cls, node.args[0])))
         elif dotted == "self.agent":
-            _append(found.prompts, _first_literal(node))
+            prompt = _first_literal(node)
+            if prompt:
+                found.steps.append(Step("agent", prompt, _prompt_title(prompt, workflow_dir)))
         elif dotted == "self.handoff":
             _append(found.handoffs, _first_ident(node))
         elif dotted == f"self.{tail}" and tail.startswith("_") and tail not in seen:
             seen.add(tail)
             helper = _source_tree(getattr(cls, tail, None))
             if helper is not None:
-                _scan(cls, helper, found, seen)
+                _scan(cls, helper, found, seen, workflow_dir)
 
 
 def _unwrap_because(call: ast.Call) -> tuple[ast.Call | None, str]:
@@ -373,6 +426,46 @@ def _append(items: list[str], value: str | None) -> None:
         items.append(value)
 
 
+def _doc_summary(cls: type[Workflow], ref: ast.expr) -> str:
+    """The first line of the docstring of the node `ref` names, else empty.
+
+    The reference is resolved the way the state's own code resolves it: a name in the
+    class's module, then attributes off it (`nodes.checkpoint_book`). Anything that
+    does not resolve — a local, an import the module aliases oddly — is a blank
+    summary, not an error: the step is still on the diagram, just unexplained.
+    """
+    dotted = _dotted(ref)
+    if not dotted:
+        return ""
+    head, *rest = dotted.split(".")
+    module = sys.modules.get(cls.__module__)
+    target: object = getattr(module, head, None) if module is not None else None
+    for attr in rest:
+        target = getattr(target, attr, None)
+    if target is None:
+        return ""
+    doc = inspect.getdoc(target) or ""
+    return doc.strip().splitlines()[0].strip() if doc.strip() else ""
+
+
+def _prompt_title(prompt: str, workflow_dir: Path | None) -> str:
+    """The first Markdown heading of the prompt at `prompt`, else empty."""
+    path = Path(prompt)
+    if not path.is_absolute():
+        if workflow_dir is None:
+            return ""
+        path = workflow_dir / path
+    if not path.is_file():
+        return ""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("#"):
+            title = line.lstrip("#").strip()
+            # A prompt titled "<workflow> — <what it does>" repeats the diagram's own
+            # name; the caption keeps the half that says something.
+            return title.split(" — ", 1)[-1] if " — " in title else title
+    return ""
+
+
 # ── Preflight ───────────────────────────────────────────────────────────────────
 
 
@@ -436,6 +529,7 @@ __all__ = [
     "Edge",
     "FlowGraph",
     "StateNode",
+    "Step",
     "preflight",
     "registry_graphs",
     "state_graph",
