@@ -196,6 +196,7 @@ def record(
     note: str = "",
     max_attempts: int = MAX_TARGET_ATTEMPTS,
     unblock: bool = False,
+    only: tuple[str, ...] = (),
 ) -> Recorded:
     """Mark the current item done, merge newly-discovered items, and count the re-tries.
 
@@ -225,7 +226,10 @@ def record(
     `unblock` is the answer to that gate: it returns every blocked row to the drain with a
     fresh attempt allowance, the same shape the coverage gate uses when an operator grants
     another `MAX_RESCAN_ROUNDS`. Without it the gate would be a dead end — a human who
-    repaired the book by hand could not tell the run to try again.
+    repaired the book by hand could not tell the run to try again. `only` narrows it to
+    the targets named; the operator's answer reaches every blocked row, and it also drops
+    the verdict an adjudication wrote, because the answer is a statement that something
+    changed and the next block is judged afresh.
     """
     path = Path(worklist_path)
     data = json.loads(path.read_text())
@@ -234,11 +238,15 @@ def record(
 
     if unblock:
         for i in items:
-            if i.get("status") == "blocked":
-                logger.info("operator granted a fresh allowance for '%s'", i.get("target"))
-                i["status"] = "pending"
-                i["attempts"] = 0
-                i.pop("blocked_reason", None)
+            if i.get("status") != "blocked":
+                continue
+            if only and str(i.get("target", "")) not in only:
+                continue
+            logger.info("operator granted a fresh allowance for '%s'", i.get("target"))
+            i["status"] = "pending"
+            i["attempts"] = 0
+            for key in ("blocked_reason", "verdict", "chain"):
+                i.pop(key, None)
 
     if current:
         ck = (_norm(current.get("kind")), _norm(current.get("target")))
@@ -310,6 +318,9 @@ def record(
             "target": str(i.get("target", "")),
             "attempts": int(i.get("attempts", 0) or 0),
             "reason": str(i.get("blocked_reason", "")),
+            "verdict": str(i.get("verdict", "")),
+            "chain": str(i.get("chain", "")),
+            "seed": str(i.get("seed", "")),
         }
         for i in items
         if i.get("status") == "blocked"

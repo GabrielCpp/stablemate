@@ -6,6 +6,8 @@ package's contents legible as "the build's own work":
 
 * `prepare` — where the book, the source and the drain's memory are
 * `coverage` — the source inventory and the join that decides whether the book covers it
+* `adjudicate` — the other side of a blocked finding: the story it answers to, and the
+  routing of the verdict (`book` re-queues, `code` seeds and records, `story` conflicts)
 
 The drain's own primitives (`worklist`), the convergence gate (`checkpoint`), the
 `blueprint` every node registers on and the stand-ins are in `shared/`, because the
@@ -24,6 +26,11 @@ out for the same answer.
 """
 from __future__ import annotations
 
+from workhorse_workflows.okf_builder.main.nodes.adjudicate import (
+    apply_verdict,
+    blocked_rows,
+    gather_evidence,
+)
 from workhorse_workflows.okf_builder.main.nodes.coverage import (
     advance_watermark,
     compute_coverage,
@@ -33,7 +40,10 @@ from workhorse_workflows.okf_builder.main.nodes.prepare import prepare
 
 __all__ = [
     "advance_watermark",
+    "apply_verdict",
+    "blocked_rows",
     "compute_coverage",
+    "gather_evidence",
     "inventory_source",
     "prepare",
 ]

@@ -61,19 +61,24 @@ bounds the worklist's lifetime. See `walkthrough_web/flow.py`.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
 from workhorse_workflows.okf_builder.main.nodes import (
     advance_watermark,
+    apply_verdict,
+    blocked_rows,
     compute_coverage,
+    gather_evidence,
     inventory_source,
     prepare,
 )
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book
 from workhorse_workflows.okf_builder.shared.schemas import (
+    Adjudication,
     Discovery,
     Investigation,
     Prepared,
@@ -527,10 +532,11 @@ class OkfBuilder(Workflow):
             # that outcome.
             recorded = self.call(record, self.ctx.worklist_path, None, result.fixup_items)
             if recorded.blocked_count and not recorded.pending_count:
-                return Await(
-                    paths.operator_context_path(Path(self.ctx.repo_root), self.service),
-                    self._blocked_gate_question(recorded),
-                    self.retry_blocked,
+                # Nothing left to hand out and something the book could not clear: the
+                # other side gets read before anyone is asked.
+                return Continue(
+                    recorded,
+                    self.adjudicate,
                     rnd=result.round,
                     rescan=rescan,
                     signature=result.fixup_signature,
@@ -574,6 +580,106 @@ class OkfBuilder(Workflow):
             result, self.rescan_coverage, rnd=result.round, rescan=rescan, refuels=refuels
         )
 
+    def adjudicate(
+        self,
+        rnd: int = 0,
+        rescan: int = 0,
+        signature: str = "",
+        refuels: int = 0,
+    ) -> Continue | Await:
+        """Give each blocked finding a side, one agent turn per row, then route.
+
+        A row at the attempt limit is a finding the book alone could not clear, and a
+        checker reading one representation cannot say which of two is wrong. This turn
+        reads the other one: the story the node's code was last committed to (the
+        `Story:` trailer, via `story-for-node`) and the source at its `code:` targets.
+        The verdict names the side — `book` returns the row to the drain with a fresh
+        allowance and the chain as context, `code` files a seed and the `known-defect:`
+        record on the node, `story` marks the conflict and leaves the row for the
+        operator, because rewriting intent is not this turn's to do.
+
+        One row per state so the checkpoint holds each verdict as it lands, and a row
+        already adjudicated is not judged again until the operator's answer clears it —
+        otherwise a `story` row would be re-read every round.
+        """
+        pending = self.call(blocked_rows, self.ctx.worklist_path)
+        if pending.rows:
+            row = pending.rows[0]
+            evidence = self.call(
+                gather_evidence, self.ctx.repo_root, self.ctx.source_root, json.dumps(row)
+            )
+            story = evidence.story or {}
+            result = self.agent(
+                "main/prompts/adjudicate.md",
+                returns=Adjudication,
+                power="medium",
+                cwd=self.ctx.repo_root,
+                add_dirs=[self.ctx.repo_root, self.ctx.source_root],
+                args={
+                    "item_target": evidence.target,
+                    "item_kind": evidence.kind,
+                    "item_code": evidence.code,
+                    "item_findings": json.dumps(evidence.findings, indent=2),
+                    "nodes": json.dumps(evidence.nodes),
+                    "code_refs": json.dumps(evidence.code_refs),
+                    "story": json.dumps(story) if story else "",
+                    "story_text": evidence.story_text,
+                    "story_resolved": "true" if evidence.story_resolved else "false",
+                    "warnings": json.dumps(evidence.warnings),
+                    "blocked_reason": evidence.blocked_reason,
+                    "service": self.service,
+                    "features_root": self.ctx.features_root,
+                    "repo_root": self.ctx.repo_root,
+                    "source_root": self.ctx.source_root,
+                },
+            )
+            self.call(
+                apply_verdict,
+                self.ctx.repo_root,
+                self.ctx.worklist_path,
+                json.dumps(row),
+                result.verdict,
+                result.chain,
+                result.seed_summary,
+                str(story.get("slug") or ""),
+                str(story.get("epic") or ""),
+            )
+            return Continue(
+                result,
+                self.adjudicate,
+                rnd=rnd,
+                rescan=rescan,
+                signature=signature,
+                refuels=refuels,
+            )
+        recorded = self.call(record, self.ctx.worklist_path)
+        if recorded.pending_count:
+            # A `book` verdict put its row back; a `code` one may have closed its row, and
+            # the checkpoint re-reads doctor before anything else is handed out.
+            return Continue(
+                recorded,
+                self.select,
+                rnd=rnd,
+                rescan=rescan,
+                stall=0,
+                signature=signature,
+                refuels=refuels,
+            )
+        if recorded.blocked_count:
+            return Await(
+                paths.operator_context_path(Path(self.ctx.repo_root), self.service),
+                self._blocked_gate_question(recorded),
+                self.retry_blocked,
+                rnd=rnd,
+                rescan=rescan,
+                signature=signature,
+                refuels=refuels,
+            )
+        return Continue(
+            recorded, self.checkpoint, rnd=rnd, rescan=rescan, signature=signature,
+            refuels=refuels,
+        )
+
     @staticmethod
     def _blocked_gate_question(recorded: Recorded) -> str:
         """Name every target that spent its attempts, so the gate is actionable.
@@ -586,18 +692,28 @@ class OkfBuilder(Workflow):
             f"  - {b.get('target', '?')} ({b.get('kind', '?')}) — "
             f"{b.get('attempts', 0)} attempt(s); last turn said: "
             f"{b.get('reason') or 'nothing'}"
+            + (
+                f"\n    adjudicated `{b['verdict']}`"
+                + (f", seed {b['seed']}" if b.get("seed") else "")
+                + f" — {' '.join(str(b.get('chain') or '').split()) or 'no chain given'}"
+                if b.get("verdict")
+                else ""
+            )
             for b in recorded.blocked
         )
         return (
             f"okf-builder cannot clear {recorded.blocked_count} doctor finding(s) from the "
             f"book. Each was handed to a repair turn {MAX_TARGET_ATTEMPTS} times and came "
-            f"back standing, and there is no other work left on the worklist:\n\n"
+            f"back standing, an adjudication turn read the story and the source to name "
+            f"the side at fault, and there is no other work left on the worklist:\n\n"
             f"{lines}\n\n"
-            f"These are not excused — doctor still reports them. Either repair them by "
-            f"hand, decide the finding is wrong and fix the detector, or, when the code is "
-            f"the side at fault, file a seed and a `known-defect:` bullet naming it on the "
-            f"node. Then set this file's `STATUS:` line to `ANSWERED` to return those "
-            f"targets to the drain with a fresh {MAX_TARGET_ATTEMPTS}-attempt allowance."
+            f"These are not excused — doctor still reports them. A `story` verdict means "
+            f"the intent itself is in conflict, which is yours to rewrite: edit the story "
+            f"(or the book, or the detector, when the adjudication is wrong). A `code` "
+            f"verdict on a node that carries no `known-defect:` bullet stands until its "
+            f"seed lands. Then set this file's `STATUS:` line to `ANSWERED` to return "
+            f"those targets to the drain with a fresh {MAX_TARGET_ATTEMPTS}-attempt "
+            f"allowance and a fresh adjudication."
         )
 
     @staticmethod

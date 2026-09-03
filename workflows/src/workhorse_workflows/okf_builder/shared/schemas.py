@@ -178,6 +178,74 @@ class Recorded(OkfResult):
     blocked_count: int = 0
 
 
+# ── adjudication ────────────────────────────────────────────────────────────
+
+
+class BlockedRows(OkfResult):
+    """The blocked worklist rows no adjudication has yet given a side."""
+
+    rows: list[dict[str, Any]] = []
+    count: int = 0
+
+
+class Evidence(OkfResult):
+    """What an adjudication turn reads: the finding, the covering story, the source refs.
+
+    Built mechanically before the turn so the agent judges the *correspondence* — book
+    against source, both against the story — rather than the finding text alone. A finding
+    of the collision class is born with fault undetermined; this is the other side.
+    """
+
+    target: str = ""
+    kind: str = ""
+    code: str = ""
+    #: Every node the finding names — one on a per-node finding, all members on a group.
+    nodes: list[str] = []
+    #: Doctor's findings for this row, verbatim.
+    findings: list[dict[str, Any]] = []
+    #: The `code:` targets of those nodes, as written in the book.
+    code_refs: list[str] = []
+    #: The `story-for-node` row for the latest story with a trailer — `None` when no
+    #: reachable commit over the node's code carries one, which reads as "the code is
+    #: the intent".
+    story: dict[str, Any] | None = None
+    #: That story's story.md, verbatim, so the acceptance criteria are in the turn.
+    story_text: str = ""
+    #: Whether the trailer found names a story the book resolves.
+    story_resolved: bool = False
+    #: What the join could not do — a malformed ref, a checkout it was not given.
+    warnings: list[str] = []
+    #: What the last repair turn said when it gave the row back.
+    blocked_reason: str = ""
+
+
+class Adjudication(OkfResult):
+    """The turn's verdict: which side of the correspondence is wrong, and the why-chain."""
+
+    #: `book` | `code` | `story`; the default matches no branch.
+    verdict: str = ""
+    #: The numbered why-chain, ending at the property that named the side.
+    chain: str = ""
+    #: One line for the seed a `code` verdict files.
+    seed_summary: str = ""
+
+
+class Applied(OkfResult):
+    """What routing a verdict wrote: a re-queued row, a seed and its bullets, or a conflict."""
+
+    verdict: str = ""
+    target: str = ""
+    #: The seed id a `code` verdict filed, and the epic it landed in.
+    seed: str = ""
+    epic: str = ""
+    #: Nodes that received a `known-defect:` bullet.
+    marked: list[str] = []
+    #: The story a `story` verdict wrote its conflict on.
+    story: str = ""
+    #: Whether the row went back to the drain with a fresh allowance.
+    requeued: bool = False
+
+
 # ── convergence ─────────────────────────────────────────────────────────────
 
 
@@ -334,11 +402,15 @@ class WalkSeed(OkfResult):
 
 
 __all__ = [
+    "Adjudication",
     "AppBoot",
+    "Applied",
+    "BlockedRows",
     "BrowserBoot",
     "Checkpoint",
     "Coverage",
     "Discovery",
+    "Evidence",
     "Investigation",
     "OkfResult",
     "Pick",

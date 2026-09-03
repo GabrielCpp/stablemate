@@ -126,6 +126,8 @@ class _Agent:
         doc_status: str = "documented",
         note: str = "",
         writes: dict[str, dict[str, str]] | None = None,
+        verdict: str = "story",
+        lands_on: str = "",
     ) -> None:
         self.repo = repo
         self.surfaces = [dict(SURFACE)] if surfaces is None else surfaces
@@ -139,6 +141,14 @@ class _Agent:
         #: book, which is what spends the target's attempt allowance.
         self.doc_status = doc_status
         self.note = note
+        #: What the *adjudication* turn says about a row at the attempt limit — which side
+        #: of the book/code correspondence is wrong. `story` is the default because it is
+        #: the one verdict that routes straight to the operator gate, which is the
+        #: behaviour the gate tests were written against.
+        self.verdict = verdict
+        #: A substring of a repair item's context that makes the turn land — how a test
+        #: says "the repair turn can fix it once it is told this".
+        self.lands_on = lands_on
         self.explode = set(explode or ())
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
@@ -178,6 +188,8 @@ class _Agent:
             doc = self.repo / rel
             doc.parent.mkdir(parents=True, exist_ok=True)
             doc.write_text(text, encoding="utf-8")
+        if self.lands_on and self.lands_on in str(data.get("item_context", "")):
+            self.repair, self.doc_status = True, "documented"
         if self.repair and str(data["item_kind"]).startswith("fix:"):
             # A repair target is `<path>#<node>#<code>` — no round prefix, because the round
             # is not part of a finding's identity. The repair the doctor finding calls for is
@@ -194,6 +206,14 @@ class _Agent:
     #: A `fix:` item renders `main/prompts/repair.md` instead, so the dispatch above sees a
     #: different stem for the same node. Same turn, same seam — the prompt is what differs.
     _repair = _investigate
+
+    def _adjudicate(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        return {
+            "verdict": self.verdict,
+            "chain": f"1. why: {data['item_code']} stands on {data['nodes']}; "
+            f"2. cause: scripted; 3. side: {self.verdict}",
+            "seed_summary": "the source leaves it unnamed" if self.verdict == "code" else "",
+        }
 
     def _recheck_coverage(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"needs_journeys": False, "discovered": []}
@@ -673,3 +693,136 @@ def test_the_labels_name_the_service_and_the_item(unbooked: Path, tmp_path: Path
     assert any(labels.get("progress") for labels in stamped), stamped
     # Unprefixed, unlike the YAML engine's `wf.work_id`.
     assert not any(k.startswith("wf.") for labels in seen for k in labels), seen
+
+
+# ------------------------------------------------------------------- adjudication
+
+#: A screen whose two buttons share a role and an accessible name — the collision class
+#: of finding. Doctor raises `ambiguous-locator` on each node, and the book alone cannot
+#: say whether the book or the source is the side that is wrong.
+COLLIDING_SCREEN = """\
+---
+type: screen
+slug: dashboard
+title: Dashboard
+---
+# Dashboard
+
+- route: `/dashboard`
+- entry: app root
+- requires: none
+- params: none
+
+## Components
+
+### save-button
+- selector: `.btn-save`
+- role: button
+- name: Save
+- verify: created(subject="draft")
+
+### footer-save-button
+- selector: `.footer .btn-save`
+- role: button
+- name: Save
+- verify: created(subject="draft")
+"""
+DASHBOARD = f"{BOOK}/screens/dashboard.md"
+
+
+def _blocked_rows(repo: Path) -> list[dict[str, Any]]:
+    return [i for i in _worklist(repo) if str(i["kind"]).startswith("fix:")]
+
+
+def test_a_book_verdict_returns_the_row_to_the_drain_with_the_chain(
+    dirty: Path, tmp_path: Path
+) -> None:
+    """`book`: the source is right and the book misdescribes it, so the row is not a
+    gate — it is one more repair, with the adjudicator's chain as the fact the repair
+    turn was missing. No operator is asked."""
+    # The chain reaches the next repair turn as context, and that turn lands it.
+    agent = _Agent(
+        dirty, doc_status="partial", note="cannot tell from the book", verdict="book",
+        lands_on="adjudication",
+    )
+    seen: list[str] = []
+    with patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+        result = _drive(_env(tmp_path), agent)
+
+    assert seen == [], seen  # never parked
+    assert agent.counts()["adjudicate"] == 1, agent.counts()
+    assert agent.counts()["repair"] == MAX_TARGET_ATTEMPTS + 1, agent.counts()
+    assert not (dirty / REFUND).exists()
+    assert result.is_webapp is False, result
+    rows = _blocked_rows(dirty)
+    assert [(i["status"], i["attempts"], i["verdict"]) for i in rows] == [("done", 0, "book")]
+    assert "side: book" in json.loads(rows[0]["context"])["adjudication"]
+
+
+def test_a_code_verdict_files_a_seed_and_records_the_defect_on_the_nodes(
+    booked: Path, tmp_path: Path, write: Callable[[Path, str], Path]
+) -> None:
+    """`code` on a UI node: the source is the side at fault, so the book keeps saying
+    what it says and carries the record — a seed in the invariant epic (no story covers
+    the nodes) and a `known-defect:` bullet naming it on each node. Doctor takes the
+    finding back while the seed is open, and the run converges without a gate."""
+    from ostler import Ostler
+
+    from workhorse_workflows.okf_builder.main.nodes.adjudicate import INVARIANT_EPIC
+
+    write(booked / DASHBOARD, COLLIDING_SCREEN)
+    subprocess.run(["git", "add", "-A"], cwd=booked, check=True)
+    subprocess.run(["git", "commit", "-qm", "a colliding screen"], cwd=booked, check=True)
+
+    agent = _Agent(booked, doc_status="partial", note="both buttons are in the source", verdict="code")
+    seen: list[str] = []
+    with patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+        _drive(_env(tmp_path), agent)
+
+    assert seen == [], seen
+    # One finding per node, so one adjudication per node — each with its own seed.
+    assert agent.counts()["adjudicate"] == 2, agent.counts()
+    rows = _blocked_rows(booked)
+    assert {(i["status"], i["doc_status"], i["verdict"]) for i in rows} == {
+        ("done", "code-defect", "code")
+    }, rows
+    seeds = sorted(str(i["seed"]) for i in rows)
+    assert len(set(seeds)) == 2, seeds
+
+    text = (booked / DASHBOARD).read_text(encoding="utf-8")
+    for seed in seeds:
+        assert f"- known-defect: {seed} ambiguous-locator — " in text, text
+    graph = Ostler(booked).graph
+    epic = next(e for e in graph.epics if e.name.endswith(INVARIANT_EPIC))
+    assert sorted(s.id for s in epic.seeds) == seeds, epic.seeds
+    assert all(s.status == "backlog" for s in epic.seeds)
+    # One bullet under each heading, not two under one: the finding is raised per node and
+    # the record sits on the node it excuses.
+    head, _, tail = text.partition("### footer-save-button")
+    assert head.count("- known-defect:") == 1 and tail.count("- known-defect:") == 1, text
+
+
+def test_a_story_verdict_with_no_story_parks_with_the_chain_on_the_gate(
+    dirty: Path, tmp_path: Path
+) -> None:
+    """`story`: the intent itself is in conflict, which is the operator's to rewrite. The
+    row stays blocked exactly as the repair turn left it, and the gate prints the verdict
+    and the chain beside the turn's own sentence — nothing is excused, and the operator
+    reads what was decided rather than only that something could not be repaired."""
+    agent = _Agent(dirty, doc_status="partial", note="the symbol is gone", verdict="story")
+    seen: list[str] = []
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        _drive(_env(tmp_path), agent)
+
+    assert agent.counts()["adjudicate"] == 1, agent.counts()
+    rows = _blocked_rows(dirty)
+    assert [(i["status"], i["verdict"], i["blocked_reason"]) for i in rows] == [
+        ("blocked", "story", "the symbol is gone")
+    ], rows
+    assert "adjudicated `story`" in seen[0], seen[0]
+    assert "side: story" in seen[0], seen[0]
+    assert "the symbol is gone" in seen[0], seen[0]
+    assert "not excused" in seen[0], seen[0]
