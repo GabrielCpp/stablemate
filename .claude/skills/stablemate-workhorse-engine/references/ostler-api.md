@@ -8,7 +8,7 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-workhor
 
 # The OKF graph from a node — the in-process `ostler` API
 
-The doc-graph branch of [`workhorse-scripting`](../SKILL.md): why a node commands ostler as a
+The doc-graph branch of [`workhorse-engine`](../SKILL.md): why a node commands ostler as a
 library rather than a subprocess, the facade calls a node actually makes, the snapshot and
 cache semantics that decide what a read sees after a mutation, and the lazy-imported QA /
 artifact / edit subsystems. Reached when a node reads or mutates anything under `docs/`. The

@@ -3,7 +3,7 @@ description: >
 # The `stablemate/` segment is the library namespace and is stripped from the
 # installed name; the skill names themselves no longer repeat it. Each one says
 # which tool it is about — `ostler`, `groom`, `farrier-setup`,
-# `workhorse-scripting` — or says nothing when the rule is generic to any repo
+# `workhorse-engine` — or says nothing when the rule is generic to any repo
 # (`code-review`). The installed name already
 # carries the consuming repo's prefix, so `stablemate-ostler` named this repo
 # twice, and every other repo got `<repo>-stablemate-ostler` — a name that reads
@@ -24,7 +24,8 @@ skills:
 # copy of what is already on screen. It is the `commit-and-push` policy now
 # (`localInstructions: policies:`), templated for the repo's scope vocabulary and
 # gate. Reloading a live run that holds the code you just fixed is not a command
-# either: it is a branch of *writing workflow code*, so it lives in the
-# `workhorse-scripting` skill, which loads exactly when that code is being edited.
+# either: the ask arrives with no file open ("reload the run I see in groom"), so
+# it is the request-triggered `workhorse-operate` skill, and the file-scoped
+# `workhorse-engine` skill points at it from the moment a fix is pushed.
 prompts:
   - stablemate/babysit-run

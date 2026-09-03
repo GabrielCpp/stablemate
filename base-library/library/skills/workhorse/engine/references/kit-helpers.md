@@ -1,6 +1,6 @@
 # `workhorse_workflows.kit` — the shared helpers
 
-The helper branch of [`workhorse-scripting`](../SKILL.md): every seam a node uses instead of
+The helper branch of [`workhorse-engine`](../SKILL.md): every seam a node uses instead of
 a subprocess — git, GitHub, workspace resolution, `find_repo_root`, `find_docs_root`,
 `load_json`, `load_jsonc`, `run_tool` — with the patch target each one needs under test.
 Reached when a node touches a repo, a branch, a PR or a workspace file. For the doc graph,

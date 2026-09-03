@@ -8,7 +8,7 @@ from a shell, [command-interface.md](command-interface.md).
 `ostler` ships a library face of the CLI — the analog of GitPython's `Repo` or
 PyGithub's `Github`. **Inside a `workhorse` workflow script, command the graph through
 this, not by shelling out** to the CLI and scraping its JSON (see the
-`workhorse-scripting` skill). It is the same functional core the CLI
+`workhorse-engine` skill). It is the same functional core the CLI
 dispatches to; methods return plain Python objects (`dict`/`list`/`str`, a `Result`
 with `.ok`/`.entity_id`/`.message`, an `EditPlan`, a `QaOutcome`), never JSON text.
 

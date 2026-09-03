@@ -64,7 +64,7 @@ fails without it:
 
 ```yaml
 ---
-name: workhorse-scripting
+name: engine
 description: "…the pointer. Written to the bar in SKILL.md; ends on a 'Load when…' clause."
 applyTo: "**/workhorse_workflows/**/*.py, **/nodes/**/*.py, **/workflow.py"
 tags: [backend, standards, tests]

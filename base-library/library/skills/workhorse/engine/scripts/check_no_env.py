@@ -18,7 +18,7 @@ must never become a `--param` — params are checkpointed to disk and echoed in 
 telemetry, which is precisely what a token must not be. Keeping that in one auditable
 module is the point; a second module doing it quietly is what this check exists to catch.
 
-This script installs beside the `workhorse-scripting` skill, so it runs in any repo that
+This script installs beside the `workhorse-engine` skill, so it runs in any repo that
 authors workflows. Which package holds them, and which module may read the environment,
 are that repo's to state — see `[check-no-env]` in `.agent-checks.toml`.
 

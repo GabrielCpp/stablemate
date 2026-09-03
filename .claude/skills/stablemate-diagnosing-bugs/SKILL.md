@@ -43,7 +43,7 @@ and sharper than one further away.
 
 **Substitute, don't patch.** A node index and an agent backend are fields of the run, so a
 test supplies its own rather than assigning over module attributes it then must restore — see
-[[workhorse-scripting]]. A loop built on a patch that leaks is a loop that lies.
+[[workhorse-engine]]. A loop built on a patch that leaks is a loop that lies.
 
 ### Tighten the loop
 
@@ -191,7 +191,7 @@ story.
 ## When to reach for the neighbours
 
 - **The bug is in a workflow node** — the node contract, substitution-based testing, failure
-  routing → [[workhorse-scripting]].
+  routing → [[workhorse-engine]].
 - **The bug is in the doc graph** — a dangling reference, an orphan seed, a `doctor` error code
   and its remedy → [[ostler-cli]] for the tool, [[ostler-okf]] for the format under
   `docs/features/`.
