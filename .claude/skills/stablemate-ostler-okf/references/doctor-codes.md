@@ -8,7 +8,7 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-ostler-
 
 # Doctor codes
 
-Every finding `ostler doctor` can raise: **70 codes, 55 error and 15 warn**. An error is a
+Every finding `ostler doctor` can raise: **72 codes, 57 error and 15 warn**. An error is a
 mechanical defect with a mechanical remedy — the exit code counts errors, so a story can be gated
 on it. A warn is a finding whose remedy is authoring judgment, which is why `doctor` cannot
 converge on it the way it converges on `fmt`. Companion to [`../SKILL.md`](../SKILL.md); the
@@ -41,6 +41,15 @@ Three scoping rules explain findings that otherwise read as false positives or a
   key with an empty or stub value clears it — which is exactly why `ostler scaffold`'s stubs leave
   a node doctor-green while still being far below the spec-complete bar. Completeness is a review
   standard, not a doctor gate.
+- **A surface can declare itself not exercised.** `exercised: false` in the frontmatter of
+  `docs/features/<surface>/index.md` (a reserved file no loader reads as a node) drops the
+  obligation-class findings under that surface — `undeclared-obligation`, `unminted-claim`,
+  `compound-normative-bullet`, `weak-check`, `unstated-precondition`,
+  `relation-without-subject`. A legacy app kept documented while nothing drives it is not owed a
+  check per claim, because no QA plan will ever be asked to prove one. Everything mechanical
+  still fires — a dangling link, a missing bullet, a locator collision are about the book. The
+  declaration has two exits: `malformed-declaration` when the value is not a boolean, and
+  `stale-declaration` when the surface has no node left to cover.
 - **`code:` and `tests:` are code refs, not links.** They hold `path::symbol`, and they are
   grounded at a **later QA gate** rather than at author time, so doctor deliberately does not flag
   them as dangling links. `missing-code-symbol` is where that grounding surfaces.
@@ -166,4 +175,6 @@ files.
 | `undeclared-obligation` | warn | A node mints obligations and declares **no** check at all, so a QA plan claiming them can assert anything and still pass. Declare a check per observation; `ostler checks` lists the vocabulary. |
 | `competing-implementations` | warn | Two or more nodes of the same type — unrelated by containment or `extends:` — ground themselves in one `path::symbol` and share no `detail:` concept, so a reader reaching either cannot learn which to use. Write the concept that states the selection rule ([node-types/concept.md](node-types/concept.md)) and point every competitor at it with `detail:`. A competition the source does not settle is recorded as a competition, not resolved by invention. |
 | `deprecation-without-successor` | warn | A concept's `deprecates:` resolves but it carries no `prefers:` and no `rule:` — a deprecation with no successor reads as "delete this", which is usually wrong. Link the winning node with `prefers:`, or state the conditional answer as `rule:` prose. |
+| `malformed-declaration` | error | A surface index carries `exercised:` with a value that is not a boolean. The declaration is either made or absent; a malformed one excuses nothing. |
+| `stale-declaration` | error | `exercised: false` on a surface with no node under it — nothing is left to declare out of scope, and the next book written under that name would inherit the declaration unseen. Delete the key, or the index with it. |
 | `ungrounded-unspecified` | error | An `unspecified:` bullet claims a behaviour is resolved by design, but no markdown link in it resolves to an existing record — nothing distinguishes it from a gap someone decorated. An error because the remedy is mechanical: cite the record that settled it (a decision doc, an acceptance criterion, a stated convention — see [bullet-grammar.md](bullet-grammar.md)), or delete the bullet. |

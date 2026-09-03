@@ -138,6 +138,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
     # dropped would read as "no longer fires", and the trim keeps findings by epic, which a UI
     # finding does not carry.
     _apply_known_defects(graph, f)
+    _apply_surface_declarations(graph, f)
 
     if graph.profile != "full":
         _check_frozen(graph, report.findings)
@@ -234,6 +235,68 @@ def parse_known_defect(value: str) -> tuple[str, str] | None:
     """
     m = _KNOWN_DEFECT.match(value.strip())
     return (m.group("seed"), m.group("code")) if m else None
+
+
+#: The findings that say "this claim is not provable yet": a bullet with no check, a check that
+#: cannot fail, a claim under the wrong key. Each is an obligation on QA, which is why a surface
+#: nothing exercises can declare them out of scope — no plan will ever be asked to prove them.
+OBLIGATION_CODES = frozenset({
+    "undeclared-obligation", "unminted-claim", "compound-normative-bullet", "weak-check",
+    "unstated-precondition", "relation-without-subject",
+})
+
+
+def _apply_surface_declarations(graph: Graph, findings: list[Finding]) -> None:
+    """Apply ``exercised: false`` from each surface's ``index.md`` frontmatter.
+
+    A surface nobody exercises — a legacy app kept documented while a successor replaces it — still
+    has every normative bullet it ever had, and doctor would keep asking for a check on each. The
+    declaration names the whole surface as documented-but-not-driven, and doctor drops the
+    obligation-class findings under it (``OBLIGATION_CODES``): the claims stay in the book, and
+    nothing is owed a proof of them. Everything mechanical — a dangling link, a missing bullet, a
+    locator collision — still fires, because it is about the book, not about a QA plan.
+
+    It is a declaration, not a register: one key on one file, in the surface it describes, with
+    two mechanical exits. ``malformed-declaration`` when the value is not a boolean, and
+    ``stale-declaration`` when the surface it sits on has no node to downgrade — the index has
+    outlived the surface, and the next surface written under that name would inherit the
+    declaration unseen.
+    """
+    froot = graph.doc_roots["features"]
+    try:
+        features_rel = froot.relative_to(graph.root).as_posix()
+    except ValueError:
+        return
+    dropped: list[str] = []
+    for surface, meta in sorted(graph.surfaces.items()):
+        if "exercised" not in meta:
+            continue
+        rel = f"{features_rel}/{surface}/index.md"
+        value = meta["exercised"]
+        if not isinstance(value, bool):
+            findings.append(Finding(
+                "error", "malformed-declaration",
+                f"{rel}: `exercised:` is `{value!r}`, not a boolean — the declaration is either "
+                f"made or absent",
+                ref=f"{surface}#exercised", path=rel, line=1,
+                suggestion="exercised: false"))
+            continue
+        if value:
+            continue
+        prefix = f"{features_rel}/{surface}/"
+        if not any(_rel_path(graph, n).startswith(prefix) for n in graph.ui_nodes):
+            findings.append(Finding(
+                "error", "stale-declaration",
+                f"{rel}: `exercised: false` on a surface with no node — nothing is left to "
+                f"declare out of scope, and the next book written here would inherit it",
+                ref=f"{surface}#exercised", path=rel, line=1,
+                suggestion="delete the `exercised:` key, or the index with it"))
+            continue
+        dropped.append(prefix)
+    if dropped:
+        findings[:] = [fd for fd in findings
+                       if fd.code not in OBLIGATION_CODES
+                       or not fd.path.startswith(tuple(dropped))]
 
 
 def _apply_known_defects(graph: Graph, findings: list[Finding]) -> None:

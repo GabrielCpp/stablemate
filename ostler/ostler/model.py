@@ -197,6 +197,10 @@ class Graph:
     milestones: list[Milestone] = field(default_factory=list)
     features: list[FeatureRecord] = field(default_factory=list)
     ui_nodes: list[UINode] = field(default_factory=list)
+    #: Frontmatter of each ``features/<surface>/index.md``, keyed by surface. The index is a
+    #: reserved file no loader reads as a node, which makes it the one place a declaration about
+    #: the whole surface can live — ``exercised: false`` today.
+    surfaces: dict[str, dict] = field(default_factory=dict)
     ids: dict | None = None
     template_kinds: tuple = ()
 
@@ -687,6 +691,7 @@ def load(
                   template_kinds=template_kinds)
 
     _load_features(graph)
+    _load_surfaces(graph)
     _load_ui_nodes(graph)
     if profile == "full":
         _load_milestones(graph)
@@ -925,6 +930,19 @@ def _load_features(graph: Graph) -> None:
         area = str(data.get("area") or (rel.parent.as_posix() if rel.parent.as_posix() != "." else ""))
         title = str(data.get("title") or slug)
         graph.features.append(FeatureRecord(slug=slug, area=area, title=title, path=path, data=data))
+
+
+def _load_surfaces(graph: Graph) -> None:
+    froot = graph.doc_roots["features"]
+    if not froot.is_dir():
+        return
+    for index_md in sorted(froot.glob("*/index.md")):
+        try:
+            doc = _read_frontmatter(index_md)
+        except OSError:
+            continue
+        fm = doc.frontmatter
+        graph.surfaces[index_md.parent.name] = dict(fm) if isinstance(fm, dict) else {}
 
 
 def _as_list(value) -> list[str]:
