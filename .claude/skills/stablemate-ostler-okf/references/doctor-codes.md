@@ -8,7 +8,7 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-ostler-
 
 # Doctor codes
 
-Every finding `ostler doctor` can raise: **69 codes, 54 error and 15 warn**. An error is a
+Every finding `ostler doctor` can raise: **70 codes, 55 error and 15 warn**. An error is a
 mechanical defect with a mechanical remedy — the exit code counts errors, so a story can be gated
 on it. A warn is a finding whose remedy is authoring judgment, which is why `doctor` cannot
 converge on it the way it converges on `fmt`. Companion to [`../SKILL.md`](../SKILL.md); the
@@ -68,6 +68,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `source-catalog-invalid` | error | The generated external source catalog is malformed or unreadable. Rebuild multi-repository context; do not hand-repair derived hashes or symbol tables. |
 | `unwritten-story` | error | A story is still a bare `ostler create story` scaffold. |
 | `story-section-order` | error | A story carries its required sections out of contract order. |
+| `story-conflict` | error | The story's frontmatter `conflict:` records two acceptance criteria that cannot both hold — the adjudicator's `story` verdict, with its chain. Rewriting intent is the operator's: edit the criteria so one intent holds, then `ostler conflict <slug> --clear`. |
 | `story-covers-no-seed` | warn | A story lists no `seedItems`. |
 | `orphan-seed` | error | An active seed no story covers. |
 | `unclassified-seed` | warn | A seed has no `layers:`, so every covering story keeps the mockup turn by default. |

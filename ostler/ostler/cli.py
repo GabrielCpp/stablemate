@@ -409,6 +409,14 @@ def _build_parser() -> argparse.ArgumentParser:
     ss.add_argument("slug")
     ss.add_argument("status")
 
+    cf = sub.add_parser("conflict",
+                        help="record a story's acceptance-criteria conflict, or clear it")
+    cf.add_argument("slug")
+    cf.add_argument("text", nargs="?", default="",
+                    help="the conflict and the chain that found it; omit with --clear")
+    cf.add_argument("--clear", action="store_true", help="remove the recorded conflict")
+    cf.add_argument("--json", action="store_true")
+
     ub = sub.add_parser("unblock", help="clear give-up stamps off stories")
     ub.add_argument("slug", nargs="?", default="",
                     help="one story; omit it and pass --epic or --all for the wider scope")
@@ -1817,6 +1825,12 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 �
         return _result(crud.remove_seed(graph, args.epic, ids_mod.resolve(graph, args.id)))
     if c == "set-status":
         return _result(crud.set_status(graph, args.slug, args.status))
+    if c == "conflict":
+        if bool(args.text) == bool(args.clear):
+            return _result(crud.Result(
+                False, "pass the conflict text, or --clear — one of the two"), args.json)
+        return _result(crud.set_conflict(graph, args.slug, "" if args.clear else args.text),
+                       args.json)
     if c == "unblock":
         # A bare `ostler unblock` rewrites every stamped story in the repo, which is a
         # reasonable thing to want and a terrible thing to do by accident — so the widest

@@ -404,6 +404,18 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
                     f"story '{story.slug}' frontmatter status '{story.status}' differs from "
                     f"its `## Implementation Status` value '{story.body_status}'",
                     epic.name, story.slug, path=rel, line=1))
+            # An adjudicator that found two acceptance criteria in conflict may not rewrite
+            # intent, and rule 2 forbids leaving the finding open: the story carries it until
+            # an operator edits the story and clears the key.
+            if story.conflict:
+                rel = story.story_md.relative_to(graph.root).as_posix()
+                f.append(Finding(
+                    "error", "story-conflict",
+                    f"story '{story.slug}' has acceptance criteria in conflict — "
+                    f"{story.conflict}",
+                    epic.name, story.slug, path=rel, line=1,
+                    suggestion="rewrite the criteria so one intent holds, then "
+                               f"`ostler conflict {story.slug} --clear`"))
             # story.md says something — a file that is still the scaffold `ostler create story`
             # wrote is not an authored story, and must not pass as one just by existing.
             if story.unwritten_sections:

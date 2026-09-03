@@ -501,3 +501,15 @@ def test_an_untagged_seed_carries_no_layers(repo: Path):
     assert crud.add_seed(load(repo), "epic-a", "plain", status="researched").ok
     seed = next(s for s in load(repo).epics[0].seeds if s.id == "plain")
     assert seed.layers == () and seed.services == ()
+
+
+def test_set_conflict_records_and_clears_the_frontmatter_key(repo: Path):
+    res = crud.set_conflict(load(repo), "01-foo", "AC2 wants a modal,\n  AC4 forbids one")
+    assert res.ok
+    _, story = present(load(repo).find_story("01-foo"))
+    assert story.conflict == "AC2 wants a modal, AC4 forbids one"
+    assert crud.set_conflict(load(repo), "01-foo", "").ok
+    _, story = present(load(repo).find_story("01-foo"))
+    assert story.conflict == ""
+    assert "conflict" not in (repo / "docs/epics/epic-a/stories/01-foo/story.md").read_text()
+    assert not crud.set_conflict(load(repo), "no-such", "x").ok

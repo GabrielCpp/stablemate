@@ -74,6 +74,7 @@ ostler seed add    <epic> <id> [--status S] [--summary …] [--surface …] \
                                [--legacy-surface …] [--backing …] [--prerequisites …] [--source-bullet …]
 ostler seed remove <epic> <id>
 ostler set-status  <story> <status>
+ostler conflict    <story> <text> | ostler conflict <story> --clear
 
 ostler backlog add <id> <text> [--section S] | ostler backlog prune <id> | ostler backlog list [--json]
 ostler todo add <epic> [--front] | ostler todo prune <epic> | ostler todo reorder <e…> | ostler todo list [--json]

@@ -527,6 +527,30 @@ def set_status(graph: Graph, slug: str, status: str) -> Result:
     return Result(True, f"status of '{slug}' → {status}", [path])
 
 
+def set_conflict(graph: Graph, slug: str, conflict: str) -> Result:
+    """Record, or clear, a story's acceptance-criteria conflict (frontmatter ``conflict:``).
+
+    Written by the adjudicator's ``story`` verdict, cleared by the operator who rewrote the
+    criteria. An empty *conflict* removes the key; doctor's ``story-conflict`` follows it.
+    """
+    found = graph.find_story(slug)
+    if found is None or found[1].story_md is None:
+        return Result(False, f"no story '{slug}' with a story.md")
+    path = found[1].story_md
+    doc = markdown.split(path.read_text(encoding="utf-8"))
+    fm = doc.frontmatter or {"type": "story", "slug": slug}
+    text = " ".join(conflict.split())
+    if text:
+        fm["conflict"] = text
+    else:
+        fm.pop("conflict", None)
+    doc.frontmatter = fm
+    doc.raw_frontmatter = dump_frontmatter(fm)
+    path.write_text(doc.render(), encoding="utf-8")
+    verb = "conflict recorded on" if text else "conflict cleared off"
+    return Result(True, f"{verb} '{slug}'", [path])
+
+
 def unblock(graph: Graph, *, story: str = "", epic: str = "",
             status: str = registry.DEFAULT_STORY_STATUS) -> Result:
     """Clear the give-up stamp off a story, an epic's stories, or the whole graph.

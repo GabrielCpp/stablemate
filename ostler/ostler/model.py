@@ -67,6 +67,11 @@ class Story:
     story_md: Path | None = None
     status: str = ""
     body_status: str = ""
+    # The adjudicator's `story` verdict: two acceptance criteria that cannot both hold, with
+    # the chain that found them. Frontmatter `conflict:`. Non-empty means the story is the
+    # side at fault and an operator has to rewrite intent — doctor reports `story-conflict`
+    # until the key is cleared (`ostler conflict <slug> --clear`).
+    conflict: str = ""
     # Every in-repo document this story links to, verbatim as written (relative to story.md
     # or repo-relative). This is how a story cites the OKF book: a UI node's identity is a
     # repo-relative path (optionally `path#anchor`), so a citation is an ordinary link.
@@ -1114,6 +1119,7 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
                 story.file_eid = str(doc.frontmatter.get("id") or "")
                 story.external_key = str(doc.frontmatter.get("externalKey") or "")
                 story.raw["externalKey"] = story.external_key
+                story.conflict = str(doc.frontmatter.get("conflict") or "").strip()
             if not story.eid and story.file_eid:
                 # crud writes the minted id in both places; a story whose epic block
                 # predates that still carries it in its own frontmatter.

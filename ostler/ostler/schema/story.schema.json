@@ -3,14 +3,38 @@
   "$id": "ostler/story.schema.json",
   "title": "Story Concept frontmatter (docs/epics/<epic>/stories/<slug>/story.md)",
   "type": "object",
-  "required": ["type", "slug", "status"],
+  "required": [
+    "type",
+    "slug",
+    "status"
+  ],
   "additionalProperties": true,
   "properties": {
-    "type": { "const": "story" },
-    "id": { "type": "string", "minLength": 1 },
-    "externalKey": { "type": "string", "minLength": 1 },
-    "slug": { "type": "string", "minLength": 1 },
-    "status": { "type": "string", "minLength": 1 },
-    "surface": { "type": "string" }
+    "type": {
+      "const": "story"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "externalKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "slug": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "minLength": 1
+    },
+    "surface": {
+      "type": "string"
+    },
+    "conflict": {
+      "type": "string",
+      "minLength": 1
+    }
   }
 }

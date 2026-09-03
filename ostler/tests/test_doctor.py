@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ostler import doctor
+from ostler import crud, doctor
 from ostler.model import load
 
 from conftest import epic_md, story_md, write
@@ -247,8 +247,6 @@ def _unwritten(root: Path) -> list:
 
 def _scaffolded(root: Path, slugs: list[str]) -> str:
     """Scaffold the stories under a fresh epic; return its numbered directory name."""
-    from ostler import crud
-
     epic_dir = crud.create_epic(load(root), "billing", "Billing", prefix="acme").entity_name
     for slug in slugs:
         crud.create_story(load(root), "billing", slug, slug.title())
@@ -434,3 +432,26 @@ epics: []
     report = doctor.run(load(repo))
 
     assert "backlog-item-in-multiple-milestones" in codes(report)
+
+
+# --------------------------------------------------------------------------- #
+# story-conflict                                                              #
+# --------------------------------------------------------------------------- #
+#
+# The adjudicator's `story` verdict: two criteria that cannot both hold. It may not rewrite
+# intent, and no undetermined fault may stay open, so the story carries the finding until an
+# operator edits the criteria and clears the key.
+
+def test_a_recorded_conflict_is_an_error_on_the_story_until_cleared(repo: Path):
+    def conflicts() -> list:
+        return [f for f in doctor.run(load(repo)).findings if f.code == "story-conflict"]
+
+    assert conflicts() == []
+    crud.set_conflict(load(repo), "01-foo", "AC2 wants a modal, AC4 forbids one")
+    found = conflicts()
+    assert len(found) == 1 and found[0].severity == "error"
+    assert found[0].epic == "epic-a" and found[0].ref == "01-foo"
+    assert "AC2 wants a modal" in found[0].message
+    assert "ostler conflict 01-foo --clear" in found[0].suggestion
+    crud.set_conflict(load(repo), "01-foo", "")
+    assert conflicts() == []

@@ -694,6 +694,10 @@ class Ostler:
         """Set a story's status (``ostler set-status``)."""
         return self._apply(crud.set_status(self._fresh(), slug, status))
 
+    def set_conflict(self, slug: str, conflict: str) -> Result:
+        """Record or clear a story's acceptance-criteria conflict (``ostler conflict``)."""
+        return self._apply(crud.set_conflict(self._fresh(), slug, conflict))
+
     def unblock(self, *, story: str = "", epic: str = "",
                 status: str = registry.DEFAULT_STORY_STATUS) -> Result:
         """Clear give-up stamps off stories (``ostler unblock``).
