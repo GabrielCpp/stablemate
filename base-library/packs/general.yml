@@ -6,6 +6,7 @@ skills:
   - diagnosing-bugs
   - root-cause
   - code-review
+  - root-cause
 prompts:
   - grill
   - brainstorm
