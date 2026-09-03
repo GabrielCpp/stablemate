@@ -5,18 +5,20 @@ from __future__ import annotations
 import argparse
 import json
 import shlex
+import subprocess
 import sys
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 import yaml
 
-from ostler import autofix as autofix_mod, backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import autofix as autofix_mod, backfill as backfill_mod, backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import checks as checks_mod
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
 from ostler import index as index_mod
+from ostler import source_snapshots
 from ostler.model import find_root, load
 
 _TYPES = (
@@ -231,6 +233,40 @@ def _build_parser() -> argparse.ArgumentParser:
         help="adjudicated non-units, keyed by `code:` target; a waived unit counts as covered",
     )
     cv.add_argument("--json", action="store_true", help="{covered, total, waived, missing}")
+
+    bf = sub.add_parser(
+        "backfill",
+        help="what the book owes the code: new symbols, changed citations, moved ones",
+    )
+    bfs = bf.add_subparsers(dest="op", required=True)
+    bfp = bfs.add_parser(
+        "plan",
+        help="the stale set — uncovered, drifted, moved and dangling `code:` targets",
+    )
+    bfp.add_argument("--surface", help="scope to one book (docs/features/<surface>)")
+    bfp.add_argument(
+        "--inventory", required=True, metavar="PATH",
+        help="the source inventory to diff against — the same artifact `ostler coverage` reads",
+    )
+    bfp.add_argument("--waivers", metavar="PATH", help="adjudicated non-units, as `coverage`")
+    bfp.add_argument(
+        "--since", metavar="REV",
+        help="narrow to files changed since REV (its merge base with HEAD). Omit to reconcile "
+             "against the book's own catalog, which is the ordinary case",
+    )
+    bfp.add_argument(
+        "--scope", action="append", default=[], metavar="PATH",
+        help="narrow to a subtree; repeatable",
+    )
+    bfp.add_argument("--json", action="store_true", help="{counts, units, errors}")
+    bfp.add_argument(
+        "--check", action="store_true",
+        help="exit non-zero on a non-empty stale set — the CI gate",
+    )
+    bfs.add_parser(
+        "snapshot",
+        help="write docs/features/sources.json: the watermark the next plan compares against",
+    ).add_argument("--surface", help="unused today; the catalog covers the whole book")
 
     ne = sub.add_parser("next-epic", help="the next epic with unfinished work")
     ne.add_argument("--json", action="store_true")
@@ -1017,6 +1053,71 @@ def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
     return 1 if report.errors else 0
 
 
+def _changed_since(root: Path, revision: str) -> set[str] | None:
+    """Repo-relative paths that differ from *revision*'s merge base with HEAD.
+
+    `None` when git cannot answer — an unreadable diff must widen the plan to the whole
+    book rather than silently narrow it to nothing, which is what an empty set would mean.
+    """
+    def git(*args: str) -> str | None:
+        try:
+            done = subprocess.run(["git", *args], cwd=root, capture_output=True,
+                                  text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return done.stdout if done.returncode == 0 else None
+
+    base = git("merge-base", revision, "HEAD")
+    if base is None:
+        base = git("rev-parse", "--verify", f"{revision}^{{commit}}")
+    if base is None:
+        return None
+    listed = git("diff", "--name-only", base.strip(), "--")
+    untracked = git("ls-files", "--others", "--exclude-standard")
+    if listed is None:
+        return None
+    return {line for line in (listed + (untracked or "")).splitlines() if line}
+
+
+def _cmd_backfill(graph, args) -> int:
+    """`ostler backfill plan` / `ostler backfill snapshot`.
+
+    The impure half — the git diff, the doctor run, reading the inventory and the catalog —
+    lives here so `backfill.plan` itself stays a function of its arguments.
+    """
+    if args.op == "snapshot":
+        written = source_snapshots.write_catalog(graph, ())
+        _out(f"wrote {written}")
+        return 0
+
+    try:
+        data = coverage.load_inventory(args.inventory)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"ostler backfill: {exc}", file=sys.stderr)
+        return 2
+    try:
+        catalog = source_snapshots.load_catalog(graph.root)
+    except (OSError, ValueError) as exc:
+        print(f"ostler backfill: unreadable source catalog: {exc}", file=sys.stderr)
+        return 2
+
+    changed = _changed_since(graph.root, args.since) if args.since else None
+    report = doctor.run(graph, check_schema=False)
+    result = backfill_mod.plan(
+        graph, data, catalog,
+        surface=args.surface,
+        waivers=coverage.load_waivers(args.waivers),
+        findings=report.findings,
+        scope=tuple(args.scope),
+        changed=changed,
+    )
+    _out(json.dumps(result.as_dict(), indent=2) if args.json
+         else backfill_mod.render(result))
+    # `--check` is the gate; without it the plan is a report and a stale book is not a
+    # failure — the same split `coverage` draws between reading a number and gating on it.
+    return 1 if (args.check and not result.is_clean) else 0
+
+
 def _cmd_verify_index(cwd: Path | None, args) -> int:
     """Run doctor both ways and diff the two reports — the correctness half of the gate.
 
@@ -1629,6 +1730,8 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 �
         _out(json.dumps(result.data, indent=2) if args.json else result.message)
         # Exit non-zero on an incomplete book so a `make` target / CI check can gate on it.
         return 0 if result.ok else 1
+    if c == "backfill":
+        return _cmd_backfill(graph, args)
     if c in ("list", "search"):
         valid_types = _TYPES + tuple(k.name for k in graph.template_kinds)
         if args.etype is not None and args.etype not in valid_types:
