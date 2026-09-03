@@ -1,0 +1,74 @@
+digraph okf_builder {
+  rankdir=TB;
+  bgcolor=white;
+  node [shape=box, style="rounded,filled", fillcolor=lightblue];
+  edge [color=darkblue, fontsize=10];
+
+  subgraph cluster_default_f0__ {
+    label="default";
+    style=dashed; color=gray50; fontsize=11;
+
+    f0____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    f0__adjudicate [label="adjudicate\ncall blocked_rows, record, gather_evidence, apply_verdict\nagent adjudicate.md"];
+    f0__checkpoint [label="checkpoint\ncall checkpoint_book, record"];
+    f0__enumerate_surfaces [label="enumerate_surfaces\nagent enumerate-surfaces.md"];
+    f0__investigate [label="investigate"];
+    f0__recheck [label="recheck\nagent recheck-coverage.md"];
+    f0__record_item [label="record_item\ncall advance_watermark, record"];
+    f0__refuel [label="refuel"];
+    f0__rescan_coverage [label="rescan_coverage\ncall inventory_source, compute_coverage, record"];
+    f0__retry_blocked [label="retry_blocked\ncall record"];
+    f0__seed_recheck [label="seed_recheck\ncall record"];
+    f0__seed_surfaces [label="seed_surfaces\ncall record"];
+    f0__select [label="select\ncall select_item, checkpoint_book"];
+    f0__start [label="start"];
+    f0__walkthrough [label="walkthrough\nhandoff WalkthroughWeb", shape=box3d, fillcolor=lightgreen];
+
+    f0____start -> f0__start;
+    f0__adjudicate -> f0__checkpoint [label="rnd, rescan, signature, refuels"];
+    f0__adjudicate -> f0__adjudicate [label="rnd, rescan, signature, refuels"];
+    f0__adjudicate -> f0__select [label="rnd, rescan, stall, signature, refuels"];
+    f0__adjudicate -> f0__retry_blocked [label="rnd, rescan, signature, refuels", style=dashed, color=darkorange];
+    f0__checkpoint -> f0__rescan_coverage [label="rnd, rescan, refuels"];
+    f0__checkpoint -> f0__select [label="rnd, rescan, stall, signature, refuels"];
+    f0__checkpoint -> f0__rescan_coverage [label="rnd, rescan, refuels", style=dashed, color=darkorange];
+    f0__checkpoint -> f0__adjudicate [label="rnd, rescan, signature, refuels"];
+    f0__checkpoint -> f0__retry_blocked [label="rnd, rescan, signature, refuels", style=dashed, color=darkorange];
+    f0__enumerate_surfaces -> f0__seed_surfaces [label="discovered"];
+    f0__investigate -> f0__record_item [label="current_item, discovered, item_kind, item_context, doc_status, note, rnd, rescan, stall, signature, refuels"];
+    f0__recheck -> f0__seed_recheck [label="discovered, rnd, rescan, refuels"];
+    f0__record_item -> f0__select [label="rnd, rescan, stall, signature, refuels"];
+    f0__refuel -> f0__select [label="rnd, rescan, stall, signature, refuels"];
+    f0__rescan_coverage -> f0__recheck [label="rnd, rescan, refuels"];
+    f0__rescan_coverage -> f0__walkthrough;
+    f0__rescan_coverage -> f0__select [label="rnd, rescan, refuels"];
+    f0__retry_blocked -> f0__select [label="rnd, rescan, stall, signature, refuels"];
+    f0__seed_recheck -> f0__select [label="rnd, rescan, refuels"];
+    f0__seed_surfaces -> f0__select;
+    f0__select -> f0__investigate [label="current_item, item_kind, item_code, item_target, item_context, progress, rnd, rescan, stall, signature, refuels"];
+    f0__select -> f0__refuel [label="rnd, rescan, stall, signature, refuels", style=dashed, color=darkorange];
+    f0__select -> f0__checkpoint [label="rnd, rescan, stall, signature, refuels"];
+    f0__start -> f0__enumerate_surfaces;
+    f0__start -> f0__checkpoint;
+  }
+
+  subgraph cluster_walkthrough_web_f1__ {
+    label="walkthrough-web";
+    style=dashed; color=gray50; fontsize=11;
+
+    f1____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    f1__checkpoint [label="checkpoint\ncall checkpoint_book, record, teardown_app, teardown_browser", shape=box3d, fillcolor=lightgreen];
+    f1__mark [label="mark\ncall record"];
+    f1__pick [label="pick\ncall select_item, teardown_app, teardown_browser", shape=box3d, fillcolor=lightgreen];
+    f1__start [label="start\ncall boot_app, boot_browser, seed_walkthrough, teardown_app, …", shape=box3d, fillcolor=lightgreen];
+    f1__walk [label="walk\nagent walkthrough-web.md"];
+
+    f1____start -> f1__start;
+    f1__checkpoint -> f1__pick [label="app_pgid, browser_pgid, entry_url, cdp_url, rnd"];
+    f1__mark -> f1__pick [label="app_pgid, browser_pgid, entry_url, cdp_url, rnd"];
+    f1__pick -> f1__walk [label="current_item, item_kind, item_target, item_context, progress, app_pgid, browser_pgid, entry_url, cdp_url, rnd"];
+    f1__pick -> f1__checkpoint [label="app_pgid, browser_pgid, entry_url, cdp_url, rnd"];
+    f1__start -> f1__pick [label="app_pgid, browser_pgid, entry_url, cdp_url"];
+    f1__walk -> f1__mark [label="current_item, discovered, app_pgid, browser_pgid, entry_url, cdp_url, rnd"];
+  }
+}
