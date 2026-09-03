@@ -294,10 +294,10 @@ flight keeps executing the code you just replaced, for as long as it has left. R
 each one in place instead of restarting it: a restart costs the in-flight turn and opens
 a second run generation groom reads as a failure.
 
-**[references/reloading-a-live-run.md](references/reloading-a-live-run.md)** is the
-procedure — finding the live runs, checking the run resolves your source tree rather
-than a wheel (the way a reload silently succeeds over code it did not load), the
-`--at-boundary` and `--core` choices, and how to confirm the reload actually landed.
+The procedure — finding the live runs through groom, checking the run resolves your
+source tree rather than a wheel, the `--at-boundary` and `--core` choices, and how to
+confirm the reload landed — is [[workhorse-operate]]. It is the operator's skill, so it
+loads on the ask and not on this file.
 
 ## Testing — substitute, don't patch
 

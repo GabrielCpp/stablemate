@@ -1,6 +1,6 @@
 ---
 name: stablemate-groom-telemetry
-description: "Investigating a workhorse run from groom's store — the SQLite telemetry (spans/metrics/logs/turns) and the turn-record archive that sits beside it. Which command answers which question (`status`, `logs`, `cost`, `loops`, `profile`, `transcript`), why an unfinished node has no span, the archive's visit-key layout and how to get records out of a container or backfill them from the agent CLI, and the raw `sqlite3` recipes — including the dotted-attribute-key footgun that silently returns NULL. Load when asked why a run is stuck, why a loop repeats, what a run cost, or what a node actually said."
+description: "Investigating a workhorse run from groom's store — the SQLite telemetry (spans/metrics/logs/turns) and the turn-record archive that sits beside it. Which command answers which question (`status`, `logs`, `cost`, `loops`, `profile`, `transcript`), why an unfinished node has no span, the archive's visit-key layout and how to get records out of a container or backfill them from the agent CLI, and the raw `sqlite3` recipes — including the dotted-attribute-key footgun that silently returns NULL. Load when asked why a run is stuck, why a loop repeats, what a run cost, or what a node actually said — not for acting on a run (reload, switch, answer), which is workhorse-operate."
 metadata:
   generated_by: farrier
   source: library/skills/groom/telemetry/SKILL.md
@@ -87,6 +87,10 @@ The diagnosis is in the pair *(turn age, agent idle)*, not in either alone:
 | active turn, agent `idle` **large** | **wedged** agent/tool/API inside the node |
 | no turn, no wait, node age large | **wedged deterministic work** inside the node |
 | no heartbeat (`DEAD?`) | the process is gone — SIGKILL, OOM, crashed host |
+
+To *act* on what `status` shows — reload the run onto pushed code, switch its CLI or
+profile, answer the gate it is parked on — load [[workhorse-operate]]; its `workflow` and
+`run_dir` columns are the arguments the control command takes.
 
 A ten-minute turn with a fresh heartbeat is not an incident. Workhorse heartbeats for as
 long as its process lives, which is what makes silence and slowness different

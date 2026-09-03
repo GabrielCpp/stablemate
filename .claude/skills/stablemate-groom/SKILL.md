@@ -18,8 +18,9 @@ how blocked workflow containers become visible to a human operator. Full as-buil
 
 **Reading a run rather than building one** — where is it stuck, why does that loop repeat,
 what did it cost, what did the node actually say — is [[groom-telemetry]], which covers the
-SQLite store and the turn-record archive beside it. This skill is groom's architecture; that
-one is its evidence.
+SQLite store and the turn-record archive beside it. **Acting on a run** — reloading it onto
+pushed code, switching its CLI, answering its gate from the terminal — is [[workhorse-operate]].
+This skill is groom's architecture; those two are its evidence and its levers.
 
 ## What it is
 

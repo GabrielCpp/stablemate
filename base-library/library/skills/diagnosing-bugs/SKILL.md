@@ -31,7 +31,7 @@ and sharper than one further away.
 | **Doc shape** | `ostler fmt --check PATH` | a canonicalisation defect, with no writes |
 | **Repo gates** | `make lint`, `make check-parsers`, `make check-no-env`, `make check-skills` | a standard the tree violates; exit status settles it |
 | **A live run's history** | `groom logs --run <id>`, `groom transcript --run <id>`, `groom loops`, `groom profile` | what a node visit was actually told and said, which loop failed to converge, where the wall time went |
-| **A live run, right now** | `groom status`, `workhorse-<name> control status --run <id>` | an unfinished node, which has no span — the trace cannot answer this |
+| **A live run, right now** | `groom status`, then `workhorse-<workflow> control --run <run_dir> status` ([[workhorse-operate]]) | an unfinished node, which has no span — the trace cannot answer this |
 | **CLI** | the command with a fixture input, diffed against a known-good output | an output regression |
 | **Replay** | save the real payload, trace or event log to disk and drive the code path with it | a bug that only the production input triggers |
 | **Throwaway harness** | a script under the scratchpad that calls the failing path directly | everything above being too far from the bug |

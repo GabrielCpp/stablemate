@@ -22,14 +22,16 @@ $ARGUMENTS
 ## 1. Resolve the run
 
 ```bash
-workhorse-<name> inbox read --run <run-id> --all
-groom status                                    # if groom is up: which runs are live
+groom status --json                                  # if groom is up: run_id, workflow, run_dir
+workhorse-<workflow> inbox read --run <run_dir> --all
 ```
 
-`<name>` is whichever workflow distribution owns this run (`coder`, `author`, …) — the
-same console script a reload uses. If groom is down, read the
-run dir directly: `<run-dir>/inbox.jsonl` and whichever gate file its checkpoint's
-`waiting_on` names.
+`workflow` is whichever distribution owns this run (`coder`, `author`, …) — the same
+console script a reload uses — and `run_dir` is passed as the absolute path groom
+printed, since a bare id only resolves under the current directory's `.agents/runs`.
+The field mapping and the control verbs are the `workhorse-operate` skill. If groom is
+down, read the run dir directly: `<run-dir>/inbox.jsonl` and whichever gate file its
+checkpoint's `waiting_on` names.
 
 ## 2. Start the poll loop
 
@@ -88,11 +90,10 @@ failure the loop exists to prevent.
 
 ## 5. Reload and resume
 
-Once the fix is committed and pushed, reload the run in place (`workhorse-<name> control
-reload --run <run-id> --at-boundary`) — the full procedure, including how to check the
-run resolves your source tree rather than a wheel, is in the `workhorse-scripting`
-skill's `references/reloading-a-live-run.md`. This resumes the run from its checkpoint under the fixed code; no
-restart, no lost progress.
+Once the fix is committed and pushed, reload the run in place with `control reload`
+as the `workhorse-operate` skill lays out — `control status` first, the source-tree
+check, then `--at-boundary` when the streaming turn is legitimate work. This resumes
+the run from its checkpoint under the fixed code; no restart, no lost progress.
 
 ## 6. When you cannot diagnose or fix it, ask — don't decide alone
 
