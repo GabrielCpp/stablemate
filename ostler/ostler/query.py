@@ -144,6 +144,8 @@ def query(
         return provenance.commit_story(graph, arg, source_checkouts)
     if name == "node-provenance":
         return provenance.node_provenance(graph, arg, source_checkouts)
+    if name == "story-for-node":
+        return provenance.story_for_node(graph, arg, source_checkouts)
     if name == "stories-covering-seed":
         return [_story_row(graph, e, s) for e in graph.epics for s in e.stories
                 if arg in s.seed_items]

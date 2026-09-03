@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from ostler import Ostler, crud
+from ostler import Ostler, crud, query as query_mod
 from ostler.cli import main
 from ostler.model import load
 from ostler.provenance import commit_story, node_provenance, story_provenance
@@ -220,3 +220,55 @@ def test_cli_emits_story_provenance_with_checkout_mapping(
     payload = json.loads(capsys.readouterr().out)
     assert payload[0]["story"]["id"] == story_id
     assert len(payload[0]["commits"]) == 2
+
+
+def test_story_for_node_reads_the_latest_trailer_over_the_node_s_code_targets(
+    tmp_path: Path,
+) -> None:
+    """The code-to-story join is the `Story:` trailer on the newest commit touching the
+    node's `code:` files. A trailer no story resolves is reported, not read as "no story"."""
+    docs, source, story_id, node_id = _fixture(tmp_path)
+
+    stale = Ostler(docs).query("story-for-node", node_id, checkouts={"api-service": source})[0]
+    assert stale["commit"]["trailer"] == f"{story_id}-extra"
+    assert stale["resolved"] is False and stale["story"] is None
+
+    (source / "src/service.py").write_text("def create_invoice():\n    return 4\n",
+                                           encoding="utf-8")
+    sha = _commit(source, f"feat: newest intent\n\nStory: {story_id}")
+
+    result = Ostler(docs).query("story-for-node", node_id, checkouts={"api-service": source})[0]
+    assert result["commit"] == {"repository": "api-service", "sha": sha, "trailer": story_id}
+    assert result["resolved"] is True
+    assert result["story"]["id"] == story_id
+    assert result["story"]["slug"] == "create-invoice"
+    assert result["node"]["codeRefs"] == ["repo://api-service/src/service.py::create_invoice"]
+
+
+def test_story_for_node_with_no_trailer_means_the_code_is_the_intent(tmp_path: Path) -> None:
+    docs, source, _story_id, node_id = _fixture(tmp_path)
+    other = tmp_path / "web-app"
+    other.mkdir()
+    _git(other, "init", "-q", "-b", "main")
+    _git(other, "config", "user.email", "test@example.com")
+    _git(other, "config", "user.name", "Test")
+    (other / "src").mkdir()
+    (other / "src/service.py").write_text("x = 1\n", encoding="utf-8")
+    _commit(other, "feat: no story behind this")
+
+    # The node's ref names `api-service`; only `web-app` is supplied, so the ref is unjoinable
+    # and the answer is "no story" with the reason on record.
+    result = Ostler(docs).query("story-for-node", node_id, checkouts={"web-app": other})[0]
+    assert result["story"] is None and result["commit"] is None
+    assert result["warnings"] == ["no checkout supplied for repository 'api-service'"]
+
+    # A history with no trailer at all over those files: nothing to judge the code against.
+    (docs / "docs/features/billing/create.md").write_text(
+        "---\ntype: concept\nslug: create\ntitle: Create invoice\n---\n"
+        "# Create invoice\n\n- code: `src/service.py::x`\n", encoding="utf-8")
+    result = Ostler(docs).query("story-for-node", node_id, checkouts={"web-app": other})[0]
+    assert result == {"node": result["node"], "commit": None, "story": None,
+                      "resolved": False, "warnings": []}
+    assert Ostler(docs).query("story-for-node", "docs/features/nope.md",
+                              checkouts={"web-app": other}) == []
+    assert "story-for-node" in query_mod.QUERIES

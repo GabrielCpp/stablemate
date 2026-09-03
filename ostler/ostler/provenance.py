@@ -281,4 +281,92 @@ def node_provenance(
     return [{"node": _node_row(graph, node) if node else {"id": node_id}, "stories": stories}]
 
 
-PROVENANCE_QUERIES = ("story-provenance", "commit-story", "node-provenance")
+def _checkout_for(repository: str, checkouts: dict[str, Path]) -> Path | None:
+    """The checkout a ``code:`` target lives in.
+
+    A qualified ref (``repo://api-service/...``) names its repository. A bare one predates
+    qualification and can only mean "the" checkout — honoured when exactly one was supplied,
+    because guessing among several would join a node to another repository's history.
+    """
+    if repository:
+        return checkouts.get(repository)
+    if len(checkouts) == 1:
+        return next(iter(checkouts.values()))
+    return None
+
+
+def story_for_node(
+    graph: Graph, node_ref: str, checkouts: dict[str, Path]
+) -> list[dict[str, Any]]:
+    """The story whose intent the code under a node answers to: the ``Story:`` trailer on
+    the most recent commit touching any of the node's ``code:`` targets.
+
+    The link between code and story is the trailer and nothing else — not a packet, not a
+    citation in the story's prose. Several stories over one symbol: the latest commit wins,
+    because it is the intent the code was last written to. ``story`` is ``None`` when no
+    reachable commit over those files carries a trailer, which a caller reads as "the code
+    is the intent" — there is no story to judge it against. A trailer no story in the book
+    resolves is reported as such (``resolved: false``) rather than dropped, so a stale
+    footer stays visible instead of reading as "no story".
+    """
+    node = graph.find_ui_node(node_ref)
+    if node is None:
+        return []
+    row = _node_row(graph, node)
+    warnings: list[str] = []
+    by_checkout: dict[Path, dict[str, list[str]]] = {}
+    for ref in row["codeRefs"]:
+        try:
+            parsed = refs.parse_code_ref(ref)
+        except ValueError:
+            warnings.append(f"malformed code ref {ref!r}")
+            continue
+        checkout = _checkout_for(parsed.repository, checkouts)
+        if checkout is None:
+            warnings.append(
+                f"no checkout supplied for repository {parsed.repository or '(unqualified)'!r}"
+            )
+            continue
+        slot = by_checkout.setdefault(checkout, {"repository": [parsed.repository], "paths": []})
+        if parsed.path not in slot["paths"]:
+            slot["paths"].append(parsed.path)
+
+    latest: tuple[int, str, str, str] | None = None  # (time, repository, sha, trailer)
+    for checkout, slot in by_checkout.items():
+        listing = _git(checkout, "log", "--format=%H %ct", "--", *slot["paths"])
+        if listing is None:
+            warnings.append(f"git log failed in {checkout}")
+            continue
+        for line in listing.splitlines():
+            sha, _, stamp = line.partition(" ")
+            if not sha:
+                continue
+            message = _git(checkout, "show", "-s", "--format=%B", sha)
+            trailers = _trailers(message or "")
+            if not trailers:
+                continue
+            when = int(stamp) if stamp.isdigit() else 0
+            repository = slot["repository"][0] or next(
+                (name for name, path in checkouts.items() if path == checkout), "")
+            # The last trailer on a commit is the one an amend appended; one commit
+            # answering two stories is the operator's ambiguity to keep, so report the last.
+            candidate = (when, repository, sha, trailers[-1])
+            if latest is None or candidate[0] > latest[0]:
+                latest = candidate
+            break  # newest-first: the first commit with a trailer is this checkout's answer
+
+    if latest is None:
+        return [{"node": row, "commit": None, "story": None, "resolved": False,
+                 "warnings": warnings}]
+    _when, repository, sha, trailer = latest
+    found = graph.find_story(trailer)
+    return [{
+        "node": row,
+        "commit": {"repository": repository, "sha": sha, "trailer": trailer},
+        "story": _story_row(found[0].name, found[1]) if found else None,
+        "resolved": bool(found),
+        "warnings": warnings,
+    }]
+
+
+PROVENANCE_QUERIES = ("story-provenance", "commit-story", "node-provenance", "story-for-node")
