@@ -1063,6 +1063,38 @@ def _error_names(value: str) -> list[str]:
             for name in _ERROR_NAME.findall(span)]
 
 
+def _outside_parentheses(value: str) -> str:
+    """*value* with every parenthesised span removed, nesting included.
+
+    Read by the semicolon signal only, and the scoping is the point. The question that rule
+    asks is whether a semicolon joins two independent clauses *of the obligation* — and a
+    semicolon inside an aside joins two clauses of the aside, which the planner never has to
+    prove separately because the aside is not what is being proved: `- start: the browser
+    lacks navigator.share (this journey exercises the fallback menu; the native hand-off is
+    out of scope)` states one precondition, and there is no split of it that clears the
+    finding short of deleting the sentence that explains the scope.
+
+    `_prose` keeps parentheticals for the *length* measure and is right to — an aside is
+    where a second requirement hides, and a long one costs a reader the same either way. A
+    requirement hidden there still shows up as a status code, a failure name or a clause-`and`,
+    all of which keep reading the whole value. It is the punctuation *inside* the brackets
+    that says nothing about how many obligations the bullet carries: in a real book 80 of
+    813 `compound-normative-bullet` findings were a semicolon in an aside and nothing else,
+    every one of them a citation or a caveat.
+    """
+    out: list[str] = []
+    depth = 0
+    for char in value:
+        if char == "(":
+            depth += 1
+        elif char == ")" and depth:
+            depth -= 1
+            continue
+        if not depth:
+            out.append(char)
+    return "".join(out)
+
+
 def _split_signals(value: str) -> list[str]:
     """Why this bullet looks like several observations, one sentence per reason (or none)."""
     reasons: list[str] = []
@@ -1072,7 +1104,7 @@ def _split_signals(value: str) -> list[str]:
     names = sorted(set(_error_names(value)))
     if len(names) > 1:
         reasons.append(f"it names {len(names)} distinct failures ({', '.join(names)})")
-    if _SEMICOLON_CLAUSE.search(value):
+    if _SEMICOLON_CLAUSE.search(_outside_parentheses(value)):
         reasons.append("a semicolon joins two independent clauses")
     if _CLAUSE_AND.search(value) and len(_ANY_AND.findall(value)) > 1:
         reasons.append("`and` joins clauses more than once")

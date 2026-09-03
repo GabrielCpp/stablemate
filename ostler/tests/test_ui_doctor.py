@@ -248,6 +248,24 @@ def test_a_semicolon_joining_clauses_is_compound(repo: Path):
     assert "compound-normative-bullet" in all_codes(_run(repo))
 
 
+def test_a_semicolon_inside_an_aside_is_not_compound(repo: Path):
+    # The aside is not what is being proved, so a semicolon joining two of *its* clauses joins
+    # nothing the planner owes a scenario for — and there is no split of this bullet that clears
+    # the finding short of deleting the sentence that explains the scope.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _interaction("the fallback menu opens (this journey exercises the fallback; "
+                       "the native hand-off is out of scope)"))
+    assert "compound-normative-bullet" not in all_codes(_run(repo))
+
+
+def test_a_semicolon_outside_an_aside_is_still_compound(repo: Path):
+    # The near-miss: a bullet may carry an aside and still join two obligations around it.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _interaction("the row saves (the audit trail is written first); "
+                       "the previous value is shown beside it"))
+    assert "compound-normative-bullet" in all_codes(_run(repo))
+
+
 def test_listing_two_nouns_is_not_compound(repo: Path):
     # A rule that fires on every `and` is a rule people learn to ignore, and an ignored rule
     # leaves the fat bullets exactly where they were.
