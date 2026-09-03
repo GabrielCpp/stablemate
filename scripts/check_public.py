@@ -78,6 +78,7 @@ BASE_SKILL_FAMILIES = {
     "ui",
     "code-review",
     "diagnosing-bugs",
+    "root-cause",
     "vertical-slicing",
 }
 RESOLVER = REPO / "scripts" / "private_names.py"
