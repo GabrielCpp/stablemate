@@ -195,7 +195,7 @@ Never hand-write the file.
    section or bullet, you fix a broken link. Never silence a finding by deleting the bullet that
    carried the meaning. Every code, its severity, its trigger and its remedy is in
    [doctor-codes.md](references/doctor-codes.md), which also carries the `--json` shape, the
-   waiver semantics, and what the linter does and does not scope. Keep stderr out of the pipe
+   `known-defect:` semantics, and what the linter does and does not scope. Keep stderr out of the pipe
    (`--json 2>/dev/null`, never `2>&1`): one warning line on stdout makes the document
    unparseable, and the parse error that follows looks exactly like having picked the wrong key.
 

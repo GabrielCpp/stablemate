@@ -67,7 +67,6 @@ from ostler import index as index_mod
 from ostler import path as path_mod
 from ostler import query as query_mod
 from ostler import registry, select, todo as todo_mod
-from ostler import waivers as waivers_mod
 from ostler.crud import Result
 from ostler.qa import (
     QaOutcome,
@@ -135,7 +134,7 @@ class Snapshot:
     (:attr:`files`), the candidate paths it probed and did not find (:attr:`absent` — a story
     file appearing where one was missing changes the graph), and the set of documents there
     were to read at all (:attr:`listing`). Everything global — ostler's version, the schemas,
-    the kind registry, the config, the waivers, the freeze table — is already in the index
+    the kind registry, the config, the freeze table — is already in the index
     epoch that the key is built from.
     """
 
@@ -724,17 +723,6 @@ class Ostler:
         """Mint and persist the next repo-prefixed ostler id (``ACME-15``) — the same id space
         stories/epics/seeds draw from, so a backlog IOU is a first-class, numbered work item."""
         return ids_mod.allocate(self.graph)
-
-    def add_doctor_waiver(self, code: str, ref: str, reason: str, backlog: str = "") -> Result:
-        """Record an accepted-defect doctor waiver so the finding downgrades error→warn.
-
-        The finding stays visible in ``doctor``; it just stops gating. Pairs with ``backlog_add``:
-        the caller files the IOU that tracks the real fix and passes its id here as ``backlog``.
-        """
-        # Uses only ``graph.root`` (writes a JSON file beside docs/), so the cached graph is fine —
-        # no ``_fresh()`` reload, which on a large book would cost seconds per waiver.
-        changed = waivers_mod.add(self.graph, code, ref, reason, backlog)
-        return Result(changed, "" if changed else "empty code or ref")
 
     def todo_add(self, name: str, *, front: bool = False) -> Result:
         """Enqueue an epic (``ostler todo add``)."""

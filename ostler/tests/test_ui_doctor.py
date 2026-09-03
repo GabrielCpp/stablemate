@@ -1069,8 +1069,7 @@ LINKED_REPORT_JSON = """\
       "ref": "./diff.md#nope",
       "related": [],
       "severity": "error",
-      "suggestion": "",
-      "waived": false
+      "suggestion": ""
     },
     {
       "code": "dangling-link",
@@ -1082,8 +1081,7 @@ LINKED_REPORT_JSON = """\
       "ref": "./gone.md",
       "related": [],
       "severity": "error",
-      "suggestion": "",
-      "waived": false
+      "suggestion": ""
     },
     {
       "code": "runbook-missing",
@@ -1095,8 +1093,7 @@ LINKED_REPORT_JSON = """\
       "ref": "",
       "related": [],
       "severity": "warn",
-      "suggestion": "ostler scaffold runbook qa-stack --service <service>",
-      "waived": false
+      "suggestion": "ostler scaffold runbook qa-stack --service <service>"
     }
   ],
   "profile": "exploration",

@@ -9,7 +9,6 @@ The five gap classes, one test each:
 * a **deleted** file — its entry is still on disk, and the links into it must still dangle;
 * a **renamed** file — the content is unchanged, so a content-only key would serve the old answer
   under the new path (and keep the old path alive);
-* an edited **waiver** file — a global input: every entry in the index is now suspect;
 * an edited **config** file — the same, by a different door;
 * a **tool version** bump — the global input with no on-disk home, moved at
   `index.epoch_inputs`, which is the seam the store documents for exactly this.
@@ -37,13 +36,8 @@ import pytest
 from ostler import index, markdown, model
 from ostler.cli import main
 
-from conftest import (UI_DASH_UNLINKED, entry_files, ostler_process, report_of, screen_md,
+from conftest import (entry_files, ostler_process, report_of, screen_md,
                       warm_index, write)
-
-WAIVED = {"code": "unreachable-screen", "ref": "docs/features/ui/detail.md",
-          "reason": "known: the detail screen is entered from an emailed link",
-          "backlog": "fix-detail-entry"}
-
 
 def doctor_report(book: Path, *argv: str) -> dict:
     """One `doctor --json`, in a process of its own."""
@@ -53,9 +47,9 @@ def doctor_report(book: Path, *argv: str) -> dict:
 
 
 def findings_of(report: dict) -> list[tuple]:
-    """The report's findings, comparable — severity, code, ref, path and waived state."""
-    return sorted((f["severity"], f["code"], f.get("ref", ""), f.get("path", ""),
-                   bool(f.get("waived"))) for f in report["findings"])
+    """The report's findings, comparable — severity, code, ref and path."""
+    return sorted((f["severity"], f["code"], f.get("ref", ""), f.get("path", ""))
+                  for f in report["findings"])
 
 
 def assert_agree(cached: dict, uncached: dict) -> None:
@@ -103,26 +97,6 @@ def test_a_renamed_file_is_not_served_under_its_old_path(ui_book: Path, warm: Pa
         "../area/rec.md", "../area/rec.md#rec"}
     assert_agree(cached, uncached)
     assert cached["index"]["hits"] > 0
-
-
-def test_an_edited_waiver_file_abandons_every_entry(ui_book: Path, tmp_path: Path,
-                                                    index_home: Path):
-    """A waiver changes the severity of a finding about a file whose bytes never moved."""
-    directory = tmp_path / "index"
-    write(ui_book / "docs" / "features" / "ui" / "dash.md",
-          screen_md("dash", "Dash", entry=True, body=UI_DASH_UNLINKED))
-    warm_index(ui_book, directory)
-
-    write(ui_book / "docs" / "doctor-waivers.json",
-          json.dumps({"waivers": [WAIVED]}, indent=2) + "\n")
-
-    cached = doctor_report(ui_book, "--index-dir", str(directory))
-    uncached = doctor_report(ui_book, "--no-index")
-
-    waived = [f for f in cached["findings"] if f["code"] == "unreachable-screen"]
-    assert waived and all(f["severity"] == "warn" and f["waived"] for f in waived)
-    assert_agree(cached, uncached)
-    assert cached["index"]["hits"] == 0 and cached["index"]["misses"] > 0
 
 
 def test_an_edited_config_file_abandons_every_entry(ui_book: Path, tmp_path: Path,

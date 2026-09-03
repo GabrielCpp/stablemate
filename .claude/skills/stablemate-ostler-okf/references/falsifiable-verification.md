@@ -114,8 +114,9 @@ removing the thing under test.
 
 ## What `doctor` can see, and what it cannot
 
-Three findings exist for the three ways a node ends up unprovable, and all three are waivable per
-finding through the waivers file when the book knows better than the rule. Two are `warn`, because
+Three findings exist for the three ways a node ends up unprovable, and none of them is waivable:
+when the code is the side at fault, a `known-defect:` bullet names the seed that fixes it and the
+finding stands until then. Two are `warn`, because
 the remedy is authoring judgment. `weak-check` is an `error`: a claim whose every check passes on
 the defect it names is not a judgment call, and it is raised per claim — a discriminating check
 written under one bullet no longer answers for its siblings.

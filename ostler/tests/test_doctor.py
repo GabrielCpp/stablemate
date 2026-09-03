@@ -239,7 +239,7 @@ research:
 # were all `ostler create story` scaffolds reported itself perfectly healthy — 0 errors on a
 # book that said nothing — because every check the graph ran was satisfied by the file merely
 # existing. These pin the finding down: one per unwritten story, naming which sections are
-# empty, gone the moment they are written, and waivable when a stub is deliberate.
+# empty, gone the moment they are written.
 
 def _unwritten(root: Path) -> list:
     return [f for f in doctor.run(load(root)).findings if f.code == "unwritten-story"]
@@ -338,27 +338,6 @@ def test_a_section_the_story_predates_is_reported_missing_not_empty(tmp_path: Pa
 
     assert len(found) == 1
     assert "Dependencies (missing)" in found[0].message
-
-
-def test_a_waiver_downgrades_an_unwritten_story_without_hiding_it(tmp_path: Path):
-    """A deliberately-stubbed story is waivable — explicitly, with a reason, and still visible.
-
-    That is the difference from the old behaviour: the stub was accepted *silently*, by
-    accident, with nothing recorded anywhere that a human could review.
-    """
-    from ostler import waivers
-
-    _scaffolded(tmp_path, ["01-a", "02-b"])
-    waivers.add(load(tmp_path), "unwritten-story", "01-a",
-                "placeholder for scope agreed with the operator; body lands next run",
-                "fill-01-a")
-
-    found = _unwritten(tmp_path)
-    waived = {f.ref: f for f in found}
-    assert set(waived) == {"01-a", "02-b"}, "a waived finding stays in the report"
-    assert waived["01-a"].severity == "warn" and waived["01-a"].waived
-    assert "fill-01-a" in waived["01-a"].message
-    assert waived["02-b"].severity == "error", "the waiver is scoped to the ref it names"
 
 
 def test_story_status_mismatch_is_flagged(repo: Path):

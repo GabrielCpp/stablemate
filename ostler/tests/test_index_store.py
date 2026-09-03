@@ -14,7 +14,7 @@ The seam under test:
 
 * ``index.epoch_inputs(root)`` — the material of every global input, one entry per label in
   ``index.EPOCH_LABELS``: the tool version, the schemas, the dynamic kind registry, the
-  config files ostler reads, the waiver file and the freeze manifest.
+  config files ostler reads and the freeze manifest.
 * ``index.epoch(root)`` — one combined hash over exactly that mapping, and a pure function
   of it. No per-input granularity: a partial invalidation that is subtly wrong costs more
   than a recompute, so any change to any input busts every entry.
@@ -70,7 +70,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 #: Every global input the epoch is required to cover, in the spelling the store declares.
 EXPECTED_EPOCH_LABELS = frozenset(
-    {"version", "schemas", "kinds", "config", "waivers", "freeze"}
+    {"version", "schemas", "kinds", "config", "freeze"}
 )
 
 PAYLOAD = {"frontmatter": {"type": "feature"}, "nodes": ["screen/save"]}
@@ -80,7 +80,6 @@ def make_repo(root: Path, *, doc: str = "one\n") -> Path:
     """A repo root carrying one document plus every file the epoch reads."""
     write(root / "docs/features/area/rec.md", doc)
     write(root / "ostler.yml", "organization: {}\n")
-    write(root / "docs/doctor-waivers.json", '{"waivers": []}\n')
     write(root / ".agents/templates.yml", "{}\n")
     write(root / ".agents/ids.json", '{"frozen": {}}\n')
     return root
@@ -165,13 +164,12 @@ def test_changing_any_single_epoch_input_invalidates_every_entry(tmp_path, monke
     ("label", "relpath", "text"),
     [
         ("config", "ostler.yml", "organization: {docRoots: {features: docs/f}}\n"),
-        ("waivers", "docs/doctor-waivers.json", '{"waivers": [{"code": "x"}]}\n'),
         ("kinds", ".agents/templates.yml", "spike:\n  doc_root: docs/spikes\n"),
         ("freeze", ".agents/ids.json", '{"frozen": {"01-foo": {"hash": "abc"}}}\n'),
     ],
 )
 def test_editing_a_global_input_on_disk_invalidates_every_entry(tmp_path, label, relpath, text):
-    """The four inputs that live in the repo, moved the way a run actually moves them."""
+    """The three inputs that live in the repo, moved the way a run actually moves them."""
     root = make_repo(tmp_path / "acme")
     doc = root / "docs/features/area/rec.md"
     directory = tmp_path / "index"

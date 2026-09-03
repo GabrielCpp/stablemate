@@ -12,10 +12,10 @@ Source of truth: `ostler/ostler/doctor.py`. `ostler doctor --json` emits
 `path`, `line`, `code`, `severity`, `ref` and `suggestion`; `errors` and `warnings` are **counts**,
 not lists. Keep stderr out of the pipe (`--json 2>/dev/null`, never `2>&1`).
 
-**Waivers downgrade, they do not delete** (`doctor.py:164-176`). A registered waiver flips a
-finding to `warn` and sets `waived`, at either severity. Waiving a warn is not cosmetic: the
-okf-builder convergence gate drains every finding that is not `waived`, so the register is the
-only recorded, diffable way to accept one.
+**There is no waiver register.** A finding leaves the report inside the book: repaired, excused
+by a `known-defect:` bullet naming the seed that fixes the code (honoured while the seed is open,
+`stale-defect` afterwards), or scoped out by a surface's `exercised: false` declaration. Each of
+those has a mechanical exit; a register entry had none, which is why it is gone.
 
 `fixable` findings are the ones `ostler fmt` / `ostler scaffold` / `ostler edit relink` can apply
 the remedy for. Reach for the tool before hand-editing.

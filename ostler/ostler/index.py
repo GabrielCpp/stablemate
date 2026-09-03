@@ -23,7 +23,7 @@ Three rules carry the whole design.
 
 *One epoch hash.* :func:`epoch` is a single combined hash over every global input —
 the tool version, the bundled schemas, the dynamic kind registry, the config files ostler
-reads, the waiver file and the freeze manifest. Any change to any one of them invalidates
+reads and the freeze manifest. Any change to any one of them invalidates
 every entry. There is deliberately no per-input granularity: recomputing a book is cheap
 next to the cost of getting a partial invalidation subtly wrong, and a wrong partial
 invalidation is silent.
@@ -115,9 +115,6 @@ PRUNE_STAMP_NAME = ".last-prune"
 #: under-invalidate.
 CONFIG_FILENAMES = ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml")
 
-#: ``docs/doctor-waivers.json``, relative to the repo root (``waivers.WAIVERS_FILE``).
-WAIVERS_RELPATH = ("docs", "doctor-waivers.json")
-
 #: ``.agents/ids.json``, relative to the repo root (``freeze._ids_path``).
 IDS_RELPATH = (".agents", "ids.json")
 
@@ -127,7 +124,6 @@ EPOCH_LABELS: tuple[str, ...] = (
     "schemas",
     "kinds",
     "config",
-    "waivers",
     "freeze",
 )
 
@@ -160,7 +156,7 @@ def content_sha(data: bytes) -> str:
 def _file_sha(path: Path) -> str | None:
     """The sha of *path*'s bytes, or ``None`` when it cannot be read.
 
-    Absence is a legitimate answer here — the waiver file and the freeze manifest are
+    Absence is a legitimate answer here — a config file and the freeze manifest are
     both optional — so this never raises.
     """
     try:
@@ -172,7 +168,7 @@ def _file_sha(path: Path) -> str | None:
 def _absent() -> str:
     """The material of an input that is not on disk.
 
-    A named constant rather than ``""`` so that "no waiver file" and "an empty waiver
+    A named constant rather than ``""`` so that "no config file" and "an empty config
     file" hash differently — creating an empty file is a real edit.
     """
     return "absent"
@@ -223,10 +219,6 @@ def _config_material(root: Path) -> str:
     return _sha(*chunks)
 
 
-def _waivers_material(root: Path) -> str:
-    return _file_sha(root.joinpath(*WAIVERS_RELPATH)) or _absent()
-
-
 def _freeze_material(root: Path) -> str:
     """The ``frozen`` table of ``.agents/ids.json``, not the whole registry.
 
@@ -254,7 +246,6 @@ def epoch_inputs(root: Path) -> dict[str, str]:
         "schemas": _schemas_material(),
         "kinds": _kinds_material(root),
         "config": _config_material(root),
-        "waivers": _waivers_material(root),
         "freeze": _freeze_material(root),
     }
 

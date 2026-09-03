@@ -15,10 +15,9 @@ from urllib.parse import urlparse
 
 from ostler import (checks, dynamic_registry, freeze, inventory, links as links_mod, markdown,
                     registry, schemas, select)
-from ostler import graph as graph_mod, locators as loc_mod, reach, waivers as waivers_mod
+from ostler import graph as graph_mod, locators as loc_mod, reach
 from ostler.vet import placement as placement_mod
 from ostler import refs as refs_mod
-from ostler.refs import normalize_ref
 from ostler.model import Graph, Epic, Story, read_doc, required_section_problems
 from ostler.path import specs_root_in
 from ostler.qa import fixtures as fixtures_mod, runbook as runbook_mod
@@ -38,7 +37,6 @@ class Finding:
     line: int = 0              # 1-based, file-absolute
     suggestion: str = ""       # expected form / nearest match
     fixable: bool = False      # `ostler fmt`/`scaffold`/relink can apply the remedy
-    waived: bool = False       # an accepted-defect waiver downgraded this from error to warn
     #: The *other* book locations this one finding is also about, `<path>#<node-id>` each.
     #: Empty for the ordinary finding, which is about the one place `path`/`line` name.
     #:
@@ -142,7 +140,6 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
 
     if graph.profile != "full":
         _check_frozen(graph, report.findings)
-        _apply_waivers(graph, report.findings)
         return report
 
     all_story_slugs = graph.all_story_slugs()
@@ -164,8 +161,6 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
     # Frozen-entity checks are graph-global (an approved entity is pinned regardless of which
     # epic is being filtered), so run them after any epic trim, appending to the live list.
     _check_frozen(graph, report.findings)
-
-    _apply_waivers(graph, report.findings)
     return report
 
 
@@ -192,36 +187,6 @@ def _check_story_identity(graph: Graph, findings: list[Finding]) -> None:
         findings.append(Finding(
             "error", "story-key-collision",
             f"story key '{alias}' identifies multiple stories: {paths}", ref=alias))
-
-
-def _apply_waivers(graph: Graph, findings: list[Finding]) -> None:
-    """Mark every finding that carries an accepted-defect waiver: warn, waived, not fixable.
-
-    A waiver never removes the finding — it stays in the report at ``warn`` with its reason and the
-    backlog id tracking the real fix, so ``doctor --json`` still shows it while the gate stops
-    treating it as a blocker. See ostler/waivers.py. Imported locally to keep the module import graph
-    acyclic, matching ``_check_locators``' local ``locators`` import.
-
-    **A warn is waivable too, and that is not cosmetic.** The exit code counts errors, so waiving a
-    warning changes nothing there — but okf-builder's convergence gate now drains every finding that
-    is not ``waived``, at either severity, and the register is the only way out of it. Restricting
-    this to errors would leave a whole class of finding (an obligation on prose nobody will ever run)
-    with no recorded, diffable way to be accepted: the drain would re-queue it every round until the
-    stall bound failed the run. The downgrade is then a no-op and the ``waived`` flag is the point.
-    """
-    table = waivers_mod.load(graph)
-    if not table:
-        return
-    for fd in findings:
-        entry = table.get((fd.code, normalize_ref(fd.ref)))
-        if entry is None:
-            continue
-        fd.severity = "warn"
-        fd.waived = True
-        fd.fixable = False
-        tag = f" [waived — see backlog {entry['backlog']}]" if entry.get("backlog") else " [waived]"
-        reason = f": {entry['reason']}" if entry.get("reason") else ""
-        fd.message = f"{fd.message}{tag}{reason}"
 
 
 _KNOWN_DEFECT = re.compile(r"^`?(?P<seed>[A-Za-z0-9][\w.-]*)`?\s+`?(?P<code>[a-z][a-z0-9-]*)`?(?:\s|$)")

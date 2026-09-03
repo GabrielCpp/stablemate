@@ -838,7 +838,7 @@ def test_the_toolchains_own_footprint_is_not_a_production_unit(tmp_path: Path):
     for path in (
         "agents.yml", "qa-stack.yml", ".agents/agents.mk", ".agents/local.compose.yaml",
         ".opencode/opencode-loop/ses_123.json", "firebase-debug.log", "firestore-debug.log",
-        "api/.mockery.yaml", "docs/doctor-waivers.json",
+        "api/.mockery.yaml",
         ".claude/skills/demo-portability/scripts/check_portability.py",
         ".claude/settings.json", ".githooks/pre-commit", ".githooks/commit-msg",
     ):
