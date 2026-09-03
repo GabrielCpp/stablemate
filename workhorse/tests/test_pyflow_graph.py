@@ -176,10 +176,17 @@ def test_both_arms_of_a_branch_become_edges():
     assert _edges(Sample, "start") == {("review", "continue"), ("retry", "continue")}
 
 
-def test_a_state_that_can_end_is_terminal_and_still_has_its_other_edge():
+def test_a_done_is_an_edge_out_of_the_state_beside_its_other_edge():
     node = _state(Sample, "retry")
+    assert _edges(Sample, "retry") == {("", "done"), ("start", "continue")}
+    # `terminal` is read off the edges, not stored beside them, so the two cannot disagree.
     assert node.terminal
-    assert {edge.target for edge in node.edges} == {"start"}
+    assert not _state(Sample, "start").terminal
+
+
+class Parent(Workflow):
+    def start(self) -> Transition:
+        return Done(self.handoff(Orphan))
 
 
 def test_an_await_edge_is_read_from_the_third_argument():
@@ -320,6 +327,28 @@ def test_dot_marks_an_await_edge_and_labels_bound_parameters():
     dot = to_dot([_graph(Sample)])
     assert "style=dashed" in dot
     assert 'label="verdict"' in dot
+
+
+def test_dot_draws_done_as_an_edge_to_one_end_sink_per_flow():
+    dot = to_dot([_graph(Sample)])
+    assert "box3d" not in dot
+    assert dot.count('label="END"') == 1
+    assert "f0__retry -> f0____end" in dot
+    assert "f0__finish -> f0____end" in dot
+    # A flow that never ends has no sink to draw.
+    assert "__end" not in to_dot([_graph(Endless)])
+
+
+def test_dot_links_a_handoff_to_the_child_flow_and_back():
+    dot = to_dot([_graph(Parent), _graph(Orphan)])
+    assert 'f0__start -> f1____start [label="handoff"' in dot
+    assert 'label="END → back to start"' in dot
+    assert "f1____end -> f0__start" in dot
+    assert "handoff Orphan" not in dot  # drawn, not named
+    # Alone in the document, the handoff is named on the state and nothing crosses.
+    alone = to_dot([_graph(Parent)])
+    assert "handoff Orphan" in alone
+    assert "f1____start" not in alone
 
 
 def test_dot_ids_are_flow_prefixed_so_two_flows_may_share_a_state_name():

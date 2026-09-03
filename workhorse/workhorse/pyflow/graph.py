@@ -44,8 +44,11 @@ _TARGET_ARG = {"Continue": 1, "Await": 2}
 class Edge:
     """One transition a state can return."""
 
+    #: The state this goes to. Empty on a `done` edge: there is nothing to go to.
     target: str
-    #: "continue" or "await" — an await edge suspends for an operator first.
+    #: "continue", "await" or "done" — an await edge suspends for an operator first;
+    #: a done edge leaves the machine. `Done` is a transition, not a property of the
+    #: state that returns it: a state may end on one branch and continue on another.
     kind: str = "continue"
     #: The parameters this transition binds on the target, for the edge label.
     params: tuple[str, ...] = ()
@@ -63,8 +66,6 @@ class StateNode:
 
     name: str
     edges: tuple[Edge, ...] = ()
-    #: The body constructs `Done(...)` somewhere — the machine can end here.
-    terminal: bool = False
     #: Blueprint nodes reached through `self.call(...)`, in source order.
     calls: tuple[str, ...] = ()
     #: Literal prompt paths passed to `self.agent(...)`. Only constants: an f-string
@@ -74,6 +75,14 @@ class StateNode:
     handoffs: tuple[str, ...] = ()
     #: `inspect.getsource` could not read this state — nothing below it is known.
     opaque: bool = False
+
+    @property
+    def terminal(self) -> bool:
+        """The body constructs `Done(...)` somewhere — the machine *can* end here.
+
+        Derived from the edges rather than stored, so it cannot disagree with them.
+        """
+        return any(edge.kind == "done" for edge in self.edges)
 
 
 @dataclass(frozen=True)
@@ -118,7 +127,7 @@ class FlowGraph:
             queue.extend(
                 edge.target
                 for edge in node.edges
-                if not edge.dynamic and not edge.dangling
+                if edge.kind != "done" and not edge.dynamic and not edge.dangling
             )
         return seen
 
@@ -173,7 +182,6 @@ class _Found:
     calls: list[str] = field(default_factory=list)
     prompts: list[str] = field(default_factory=list)
     handoffs: list[str] = field(default_factory=list)
-    terminal: bool = False
 
 
 def _read_state(cls: type[Workflow], spec: StateSpec) -> StateNode:
@@ -186,7 +194,6 @@ def _read_state(cls: type[Workflow], spec: StateSpec) -> StateNode:
     return StateNode(
         name=spec.name,
         edges=tuple(dict.fromkeys(found.edges)),
-        terminal=found.terminal,
         calls=tuple(dict.fromkeys(found.calls)),
         prompts=tuple(dict.fromkeys(found.prompts)),
         handoffs=tuple(dict.fromkeys(found.handoffs)),
@@ -216,7 +223,7 @@ def _scan(cls: type[Workflow], tree: ast.AST, found: _Found, seen: set[str]) -> 
             continue
         tail = dotted.rsplit(".", 1)[-1]
         if tail == "Done":
-            found.terminal = True
+            found.edges.append(Edge(target="", kind="done"))
         elif tail in _TARGET_ARG:
             found.edges.append(_read_edge(cls, tail, node))
         elif dotted == "self.call":
