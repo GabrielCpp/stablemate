@@ -62,7 +62,7 @@ GRAPH_COMMANDS: dict[str, list[str]] = {
     "list": ["list", "--type", "story"],
     "search": ["search", "Foo"],
     "graph": ["graph"],
-    "reach": ["reach", "--from", "screen/dash"],
+    "reach": ["reach", "--from", "docs/features/ui/dash.md"],
     "locators": ["locators"],
     "next-epic": ["next-epic"],
     "next-story": ["next-story", "epic-a"],

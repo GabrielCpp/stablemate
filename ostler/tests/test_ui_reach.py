@@ -261,7 +261,7 @@ def test_same_screen_is_a_zero_hop_route(repo: Path):
     assert reach.route(_edges(repo), LAND, LAND) == []
 
 
-def _entry(text: str, how: str = "app root") -> str:
+def _entry(text: str, how: str) -> str:
     """Add an `entry:` bullet after the screen's `route:` — the one bullet every fixture has."""
     lines = text.splitlines()
     at = next(i for i, ln in enumerate(lines) if ln.startswith("- route:"))
@@ -278,23 +278,90 @@ def _codes(report, severity: str = "error"):
     return [f.code for f in report.findings if f.severity == severity]
 
 
-def test_doctor_warns_rather_than_errors_when_no_entry_is_declared(repo: Path):
+SERVER = "docs/features/web/http/web.md"
+
+
+def _server(entry_url: str, marked: bool = True) -> str:
+    return f"""\
+---
+type: server
+slug: web
+title: Web
+---
+# Web
+
+- launch: `npm start`
+- entry-url: `{entry_url}` — the local stand-in
+{"- walkthrough: true" if marked else ""}
+"""
+
+
+def test_doctor_warns_rather_than_errors_when_no_screen_is_at_the_root(repo: Path):
     """No root means the question is unanswerable — which is not the same as a pass."""
     _repo(repo)
+    write(repo / SCREENS / "landing.md", LANDING.replace("- route: `/`", "- route: `/home`"))
     report = _doctor(repo)
 
     assert "unreachable-screen" not in _codes(report)
-    assert "no-entry-point" in _codes(report, "warn")
+    warn = next(f for f in report.findings if f.code == "no-root-screen")
+    assert "`/`" in warn.message and "no server contract" in warn.message
+
+
+def test_the_root_is_the_screen_at_the_route_of_the_server_entry_url(repo: Path):
+    """A walk opens the server's `entry-url:`; the screen serving that path is where it starts."""
+    _repo(repo)
+    write(repo / SERVER, _server("http://localhost:3000/app/"))
+    write(repo / SCREENS / "app.md", """\
+---
+type: screen
+slug: app
+title: App
+---
+# App
+
+- route: `/app`
+- requires: none
+- params: none
+""")
+    report = _doctor(repo)
+
+    flagged = {f.path for f in report.findings if f.code == "unreachable-screen"}
+    app = f"{SCREENS}/app.md"
+    assert app not in flagged
+    assert LAND in flagged  # `/` is no longer the root: nothing links to it from `/app`
+    assert all(f"from {app}" in f.message for f in report.findings
+               if f.code == "unreachable-screen")
+
+
+def test_a_server_entry_url_with_no_matching_screen_names_the_server(repo: Path):
+    _repo(repo)
+    write(repo / SERVER, _server("http://localhost:3000/admin"))
+    report = _doctor(repo)
+
+    warn = next(f for f in report.findings if f.code == "no-root-screen")
+    assert "`/admin`" in warn.message and SERVER in warn.message
+
+
+def test_several_unmarked_servers_fall_back_to_the_app_root(repo: Path):
+    """Two contracts and no `walkthrough: true`: a root read off an arbitrary pick is not a root."""
+    _repo(repo)
+    write(repo / SERVER, _server("http://localhost:3000/app", marked=False))
+    write(repo / "docs/features/web/http/static.md",
+          _server("http://localhost:8080/static", marked=False).replace("slug: web", "slug: static"))
+    data = graph.build(load(repo), surface="web")
+
+    assert reach.root_path(data) == ("/", None)
+    assert reach.root_screen(data) == LAND
 
 
 def test_doctor_flags_a_screen_no_path_reaches(repo: Path):
     _repo(repo)
-    write(repo / SCREENS / "landing.md", _entry(LANDING))
     report = _doctor(repo)
 
     unreachable = [f for f in report.findings if f.code == "unreachable-screen"]
     assert [f.path for f in unreachable] == [ARCHIVE]
     assert unreachable[0].severity == "error"
+    assert f"from {LAND}" in unreachable[0].message
 
 
 def test_doctor_flags_an_island_that_has_an_inbound_edge(repo: Path):
@@ -304,7 +371,6 @@ def test_doctor_flags_an_island_that_has_an_inbound_edge(repo: Path):
     counting inbound edges scores every member of it as fine.
     """
     _repo(repo)
-    write(repo / SCREENS / "landing.md", _entry(LANDING))
     write(repo / SCREENS / "archive.md", ORPHAN + """
 ## Components
 
@@ -331,19 +397,40 @@ title: Archive detail
     assert ARCHIVE in flagged
 
 
-def test_entry_bullet_exempts_a_screen_and_makes_it_a_root(repo: Path):
-    """A deep-linked screen is entered from outside; declaring how is a claim, not a silencer."""
+def test_a_route_valued_entry_makes_a_screen_a_seed(repo: Path):
+    """A deep link is an address the walk can open, so the screen behind it is a root too."""
     _repo(repo)
-    write(repo / SCREENS / "landing.md", _entry(LANDING))
-    write(repo / SCREENS / "archive.md", _entry(ORPHAN, "emailed deep link"))
+    write(repo / SCREENS / "archive.md", _entry(ORPHAN, "/archive?token=…"))
     report = _doctor(repo)
 
     assert "unreachable-screen" not in _codes(report)
 
 
+def test_a_prose_entry_does_not_exempt_a_screen(repo: Path):
+    """"Reached by typing the URL" is a claim about the outside world the edge check cannot
+    verify; a book where every screen makes it has no navigation in it and used to pass."""
+    _repo(repo)
+    write(repo / SCREENS / "archive.md", _entry(ORPHAN, "emailed deep link"))
+    report = _doctor(repo)
+
+    unreachable = [f for f in report.findings if f.code == "unreachable-screen"]
+    assert [f.path for f in unreachable] == [ARCHIVE]
+    assert "`entry: emailed deep link` is not a route" in unreachable[0].message
+
+
+def test_reachability_defaults_to_the_root_and_rejects_an_unknown_start(repo: Path):
+    """A typo in `--from` used to route from nowhere and report every screen as a hole."""
+    import pytest
+
+    report = reach.reachability(_repo(repo), surface="web")
+    assert report["start"] == LAND
+
+    with pytest.raises(reach.UnknownStart, match="did you mean .*landing.md"):
+        reach.reachability(load(repo), surface="web", start="landing")
+
+
 def test_reachable_screens_are_not_flagged(repo: Path):
     _repo(repo)
-    write(repo / SCREENS / "landing.md", _entry(LANDING))
     report = _doctor(repo)
 
     flagged = {f.path for f in report.findings if f.code == "unreachable-screen"}

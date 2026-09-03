@@ -20,8 +20,7 @@ title: Dashboard
 ---
 # Dashboard
 
-- route: `/dashboard`
-- entry: app root
+- route: `/`
 - requires: none
 - params: none
 

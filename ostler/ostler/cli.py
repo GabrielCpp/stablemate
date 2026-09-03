@@ -165,9 +165,9 @@ def _build_parser() -> argparse.ArgumentParser:
     rc.add_argument(
         "--from",
         dest="start",
-        required=True,
         metavar="ID",
-        help="screen the walk starts on, e.g. the post-login landing screen",
+        help="screen node id the walk starts on (default: the surface's root screen — the one "
+             "whose `route:` is the path of its server's `entry-url:`, or `/`)",
     )
     rc.add_argument("--surface", help="scope to one service (docs/features/<surface>)")
     rc.add_argument("--json", action="store_true")
@@ -1000,19 +1000,26 @@ def _cmd_reach(graph, args) -> int:
     Exits non-zero when a route is missing — an unreachable screen is a defect in the book, and a
     caller that shells out to this should stop rather than navigate by URL and paper over it.
     """
+    data = graph_mod.build(graph, surface=args.surface)
+    try:
+        start = reach.resolve_start(data, args.start)
+    except reach.UnknownStart as exc:
+        # A start that names nothing must not route from nowhere: that reads as "0 reachable",
+        # every screen a hole in the book, for a typo in the flag.
+        _out(json.dumps({"error": str(exc)}) if args.json else f"error: {exc}")
+        return 2
     if args.target:
-        data = graph_mod.build(graph, surface=args.surface)
         by_id = {n["id"]: n for n in data["nodes"]}
-        path = reach.route(reach.navigation_edges(data), args.start, args.target, by_id)
+        path = reach.route(reach.navigation_edges(data), start, args.target, by_id)
         if args.json:
-            _out(json.dumps({"start": args.start, "target": args.target, "route": path}))
+            _out(json.dumps({"start": start, "target": args.target, "route": path}))
         elif path is None:
-            _out(f"no documented route from {args.start} to {args.target}")
+            _out(f"no documented route from {start} to {args.target}")
         else:
-            _out(reach.render_route(path, args.start, args.target))
+            _out(reach.render_route(path, start, args.target))
         return 1 if path is None else 0
 
-    report = reach.reachability(graph, surface=args.surface, start=args.start)
+    report = reach.reachability(graph, surface=args.surface, start=start)
     _out(json.dumps(report) if args.json else reach.render_reachability(report))
     return 1 if report["unreachable"] else 0
 

@@ -990,10 +990,9 @@ title: Changes view
 ---
 # Changes view
 
-- route: /changes
+- route: /
 - requires: none
 - params: none
-- entry: the app root
 
 Presents the [diff](../../concepts/diff.md) concept and a [gone](./gone.md) one.
 

@@ -22,9 +22,11 @@ from __future__ import annotations
 import re
 
 from collections import deque
+from urllib.parse import urlparse
 
 from ostler import graph as graph_mod, markdown
 from ostler.model import Graph
+from ostler.qa.runbook import bullet_value
 
 # The one bullet that means "activating this moves the user to that screen". `extends:`/`parent:`
 # are structure and `on:` is attachment; none of them are things a user can do.
@@ -32,10 +34,19 @@ NAV_BULLET = "leads-to"
 STEP_BULLET = "steps"
 GUARD_BULLET = "requires"
 PARAM_BULLET = "params"
-# A screen entered from outside in-app navigation — the app root, an emailed deep link, an OAuth
-# callback. Its value says *how*. Declaring it makes the screen a traversal root; without the
-# bullet a screen must be reachable by clicking, which is the whole point of the graph.
+# A screen entered from outside in-app navigation — an emailed deep link, an OAuth callback. Its
+# value says *how*, and only a value that *is* a route (a path or an absolute URL) seeds the
+# traversal: a walk can open `/reset/:token`, and cannot open "reached by typing the URL". Prose
+# is a description, not a door; the screen it sits on still has to be reachable by clicking.
 ENTRY_BULLET = "entry"
+ROUTE_BULLET = "route"
+# The surface's root is the screen whose `route:` is the path of its server's `entry-url:` —
+# the address the walk actually opens — or `/` when no server contract states one. Every other
+# screen is reached from it, or from a route-valued `entry:`.
+ROOT_PATH = "/"
+SERVER_TYPE = "server"
+ENTRY_URL_BULLET = "entry-url"
+WALKTHROUGH_BULLET = "walkthrough"
 # The literal that means "declared, and empty". Anything else is a real precondition.
 NONE = "none"
 # The spellings authors actually use for it. Recognizing only the canonical one is not the strict
@@ -194,15 +205,61 @@ def screens_of(data: dict) -> list[str]:
     return [n["id"] for n in data["nodes"] if n["type"] == "screen" and n["kind"] == "file"]
 
 
-def entry_points(data: dict) -> list[str]:
-    """Screens declaring they are entered from outside in-app navigation — the traversal roots."""
+def is_route(value: str) -> bool:
+    """Whether an ``entry:`` value is an address a walk can open, rather than a description."""
+    return value.startswith("/") or bool(re.match(r"https?://", value))
+
+
+def _norm_path(path: str) -> str:
+    """A route or URL path, comparable: no backticks, no trailing slash except on the root."""
+    path = path.strip().strip("`").strip()
+    return path if path == ROOT_PATH else path.rstrip("/") or ROOT_PATH
+
+
+def root_path(data: dict) -> tuple[str, str | None]:
+    """``(path, server)`` — where the surface is entered, and the server contract that says so.
+
+    The server marked ``walkthrough: true`` wins; a sole server stands in for it; several
+    unmarked ones resolve to no contract, because a root read off an arbitrary pick is a root
+    the walk will not open. With no contract the root is ``/``, which is what the doctor's
+    ``runbook-missing`` already asks the book to state.
+    """
+    servers = [n for n in data["nodes"] if n["type"] == SERVER_TYPE and n["kind"] == "file"]
+    marked = [n for n in servers
+              if bullet_value(n["bullets"], WALKTHROUGH_BULLET).lower() in ("true", "yes")]
+    chosen = marked[0] if len(marked) == 1 else (servers[0] if len(servers) == 1 else None)
+    if chosen is None:
+        return ROOT_PATH, None
+    url = bullet_value(chosen["bullets"], ENTRY_URL_BULLET)
+    return _norm_path(urlparse(url).path if url else ROOT_PATH), chosen["id"]
+
+
+def root_screen(data: dict) -> str | None:
+    """The screen whose ``route:`` is the surface's root path — the one node a walk starts on."""
+    path, _ = root_path(data)
+    for node in data["nodes"]:
+        if node["type"] != "screen" or node["kind"] != "file":
+            continue
+        if _norm_path(bullet_value(node["bullets"], ROUTE_BULLET)) == path:
+            return node["id"]
+    return None
+
+
+def route_entries(data: dict) -> list[str]:
+    """Screens whose ``entry:`` states a route — the deep links that seed the traversal too."""
     return [n["id"] for n in data["nodes"]
             if n["type"] == "screen" and n["kind"] == "file"
-            and ENTRY_BULLET in n.get("bullets", {})]
+            and is_route(bullet_value(n["bullets"], ENTRY_BULLET))]
+
+
+def prose_entry(node: dict) -> str:
+    """The ``entry:`` value when it describes rather than addresses; empty otherwise."""
+    value = bullet_value(node["bullets"], ENTRY_BULLET)
+    return "" if not value or is_route(value) else value
 
 
 def reachable_from(edges: list[dict], starts: list[str]) -> set[str]:
-    """Every screen reachable by clicking from any declared entry point."""
+    """Every screen reachable by clicking from any of *starts*."""
     by_from = _index(edges)
     seen = set(starts)
     queue = deque(starts)
@@ -214,30 +271,58 @@ def reachable_from(edges: list[dict], starts: list[str]) -> set[str]:
     return seen
 
 
-def unreachable_screens(data: dict) -> tuple[list[str], list[str]]:
-    """(unreachable, entries). An empty *entries* means the check could not run, not that it passed.
+def unreachable_screens(data: dict) -> tuple[list[str], str | None, list[str]]:
+    """``(unreachable, root, seeds)``. A ``None`` root means the check could not run, not a pass.
 
     Reachability is transitive, so this is deliberately not "has an inbound edge": a cluster of
     screens that link to each other but hangs off nothing is exactly the shape a broken navigation
-    graph takes, and an inbound-degree test scores every member of it as fine.
+    graph takes, and an inbound-degree test scores every member of it as fine. And it starts from
+    the root rather than from every ``entry:``, because an exemption is a claim about the outside
+    world an edge check cannot verify — eight screens each saying "entered from outside" is a
+    book with no navigation in it, passing.
     """
-    entries = entry_points(data)
-    if not entries:
-        return [], []
-    reached = reachable_from(navigation_edges(data), entries)
-    return sorted(set(screens_of(data)) - reached), entries
+    root = root_screen(data)
+    if root is None:
+        return [], None, []
+    seeds = sorted({root, *route_entries(data)})
+    reached = reachable_from(navigation_edges(data), seeds)
+    return sorted(set(screens_of(data)) - reached), root, seeds
 
 
-def reachability(graph: Graph, *, surface: str | None = None, start: str) -> dict:
+class UnknownStart(ValueError):
+    """The requested start names no screen on the surface."""
+
+
+def resolve_start(data: dict, start: str | None) -> str:
+    """*start* as a screen id, or the surface's root when none was given."""
+    screens = screens_of(data)
+    if start is None:
+        root = root_screen(data)
+        if root is None:
+            path, _ = root_path(data)
+            raise UnknownStart(f"no screen's `route:` is the root path {path}; pass --from")
+        return root
+    if start in screens:
+        return start
+    hint = next((sid for sid in screens if sid.endswith(f"/{start}.md")), None)
+    raise UnknownStart(f"{start} is not a screen on this surface"
+                       + (f" — did you mean {hint}?" if hint else ""))
+
+
+def reachability(graph: Graph, *, surface: str | None = None, start: str | None = None) -> dict:
     """Route every documented screen on *surface* from *start*; report the ones with no path.
 
+    *start* defaults to the surface's root screen, and a start that names no screen raises rather
+    than routing from nowhere: a typo in ``--from`` used to yield "0 reachable" — every screen
+    reported as a hole in the book, with the book untouched.
     The unreachable list is the actionable half: each entry is a screen the book documents but
     never says how to arrive at, which is exactly the missing coverage a walk cannot close on its own.
     """
     data = graph_mod.build(graph, surface=surface)
     by_id = {n["id"]: n for n in data["nodes"]}
     edges = navigation_edges(data)
-    screens = [n["id"] for n in data["nodes"] if n["type"] == "screen" and n["kind"] == "file"]
+    screens = screens_of(data)
+    start = resolve_start(data, start)
 
     routed: dict[str, list[dict]] = {}
     unreachable: list[str] = []

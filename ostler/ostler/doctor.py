@@ -1460,14 +1460,21 @@ def _ui_graph(graph: Graph, resolver: links_mod.LinkResolver) -> dict | None:
 
 
 def _check_reachability(data: dict, f: list[Finding]) -> None:
-    """Every screen must be reachable by clicking from a declared entry point.
+    """Every screen must be reachable by clicking from the surface's root.
 
     An unreachable screen is a hole in the book, not a quirk of the app: if no documented path
     leads there, a reader cannot get there and neither can a walk. The remedy is a ``leads-to:``
-    on whatever component navigates there — or an ``entry:`` bullet, when the screen really is
-    entered from outside (an emailed deep link, an OAuth callback, the app root).
+    on whatever component navigates there — or an ``entry:`` stating the route, when the screen
+    really is entered from outside (an emailed deep link, an OAuth callback).
 
-    Run per surface, because entry points are surface-scoped: a screen in ``web`` is not made
+    The root is the screen whose ``route:`` is the path the surface's server serves at
+    (``entry-url:`` on the ``walkthrough: true`` server, else ``/``). It is the one seed the
+    check trusts unconditionally, because it is the one address the walk opens by construction.
+    An ``entry:`` seeds too, but only when its value is a route: prose there is a claim about the
+    outside world an edge check cannot verify, and a book where every screen makes that claim has
+    no navigation in it and passes. That is exactly the book this check exists to reject.
+
+    Run per surface, because the root is surface-scoped: a screen in ``web`` is not made
     reachable by a root declared in ``legacy``.
     """
     surfaces = {n["surface"] for n in data["nodes"] if n["type"] == "screen"}
@@ -1476,23 +1483,30 @@ def _check_reachability(data: dict, f: list[Finding]) -> None:
         screens = reach.screens_of(scoped)
         if not screens:
             continue
-        unreachable, entries = reach.unreachable_screens(scoped)
-        if not entries:
+        unreachable, root, _seeds = reach.unreachable_screens(scoped)
+        if root is None:
             # No root means the question is unanswerable, which is not the same as a pass. Warn
-            # rather than error: a book with no `entry:` anywhere predates the convention, and
-            # flooding it with one error per screen would bury the one fact that matters.
-            f.append(Finding("warn", "no-entry-point",
-                             f"{surface}: no screen declares `entry:` — reachability cannot be "
-                             f"checked for this surface",
-                             ref=surface, suggestion="- entry: <how this screen is entered>"))
+            # rather than error: flooding the surface with one error per screen would bury the
+            # one fact that matters, which is the root the book has not stated.
+            path, server = reach.root_path(scoped)
+            source = (f"the path of {server}'s `entry-url:`" if server
+                      else "the app root, no server contract states another")
+            f.append(Finding("warn", "no-root-screen",
+                             f"{surface}: no screen's `route:` is `{path}` ({source}) — "
+                             f"reachability cannot be checked for this surface",
+                             ref=surface, suggestion=f"- route: `{path}`"))
             continue
         for screen in unreachable:
             node = next((n for n in scoped["nodes"] if n["id"] == screen), None)
+            prose = reach.prose_entry(node) if node else ""
+            if prose:
+                why = (f"`entry: {prose}` is not a route a walk can open — state the path "
+                       f"(`entry: /…`) or add a `leads-to:` on the component that navigates here")
+            else:
+                why = ("add a `leads-to:` on the component that navigates here, or `entry: /…` "
+                       "with the route if it is entered from outside the app")
             f.append(Finding("error", "unreachable-screen",
-                             f"{screen}: no documented path reaches this screen from "
-                             f"{'/'.join(sorted(entries)[:1])} — add a `leads-to:` on the "
-                             f"component that navigates here, or `entry:` if it is entered "
-                             f"from outside the app",
+                             f"{screen}: no documented path reaches this screen from {root} — {why}",
                              path=screen, line=node["line"] if node else 0, ref=screen,
                              suggestion="- leads-to: [<this screen>](<path>)"))
 

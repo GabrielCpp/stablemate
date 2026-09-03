@@ -98,11 +98,9 @@ def screen_md(slug: str, title: str, *, entry: bool = False, body: str = "") -> 
     """
     out = ["---", "type: screen", f"slug: {slug}", f"title: {title}", "---",
            f"# {title}", ""]
-    if entry:
-        # Stated only on a real root: `entry:` at all is what makes a screen an entry point, so a
-        # screen that carries `entry: false` is still a root and nothing is ever unreachable.
-        out.append("- entry: app root")
-    out += [f"- route: `/{slug}`",
+    # The root is the screen serving `/` — with no server contract in the book, that is the one
+    # address the doctor seeds reachability from. A prose `entry:` would not do it.
+    out += [f"- route: `{'/' if entry else '/' + slug}`",
            "- requires: none",
            "- params: none",
            ""]
