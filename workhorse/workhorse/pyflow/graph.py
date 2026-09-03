@@ -52,6 +52,9 @@ class Edge:
     kind: str = "continue"
     #: The parameters this transition binds on the target, for the edge label.
     params: tuple[str, ...] = ()
+    #: The literal string chained on as `.because("…")`, else empty. An f-string or a
+    #: variable there is unknowable statically and leaves the edge unlabelled.
+    reason: str = ""
     #: The target expression was not a plain `self.<state>` (a variable, a lookup).
     #: The edge is real; where it goes is only known at runtime.
     dynamic: bool = False
@@ -182,6 +185,9 @@ class _Found:
     calls: list[str] = field(default_factory=list)
     prompts: list[str] = field(default_factory=list)
     handoffs: list[str] = field(default_factory=list)
+    #: Transition calls already read as the inner half of a `.because(...)`, so the
+    #: walk does not emit them a second time when it reaches them on their own.
+    consumed: set[int] = field(default_factory=set)
 
 
 def _read_state(cls: type[Workflow], spec: StateSpec) -> StateNode:
@@ -216,16 +222,22 @@ def _scan(cls: type[Workflow], tree: ast.AST, found: _Found, seen: set[str]) -> 
     # `ast.walk` rather than a visitor: a transition inside a nested function or a
     # comprehension still counts, and over-reporting is the contract here anyway.
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if not isinstance(node, ast.Call) or id(node) in found.consumed:
             continue
+        # `Continue(...).because("…")`: the outer call is the reason, the inner call
+        # is the transition. `ast.walk` is breadth-first, so the outer one comes first.
+        inner, reason = _unwrap_because(node)
+        if inner is not None:
+            found.consumed.add(id(inner))
+            node = inner
         dotted = _dotted(node.func)
         if dotted is None:
             continue
         tail = dotted.rsplit(".", 1)[-1]
         if tail == "Done":
-            found.edges.append(Edge(target="", kind="done"))
+            found.edges.append(Edge(target="", kind="done", reason=reason))
         elif tail in _TARGET_ARG:
-            found.edges.append(_read_edge(cls, tail, node))
+            found.edges.append(_read_edge(cls, tail, node, reason))
         elif dotted == "self.call":
             _append(found.calls, _first_ident(node))
         elif dotted == "self.agent":
@@ -239,7 +251,26 @@ def _scan(cls: type[Workflow], tree: ast.AST, found: _Found, seen: set[str]) -> 
                 _scan(cls, helper, found, seen)
 
 
-def _read_edge(cls: type[Workflow], ctor: str, call: ast.Call) -> Edge:
+def _unwrap_because(call: ast.Call) -> tuple[ast.Call | None, str]:
+    """`(inner transition call, reason)` when `call` is `<transition>.because(...)`.
+
+    The reason is the literal string argument, or empty when it is anything else — an
+    f-string built from the state's values is a fine reason at runtime and no label
+    here. `(None, "")` when `call` is not a `.because(...)` on a transition call.
+    """
+    func = call.func
+    if not (isinstance(func, ast.Attribute) and func.attr == "because"):
+        return None, ""
+    inner = func.value
+    if not isinstance(inner, ast.Call):
+        return None, ""
+    dotted = _dotted(inner.func)
+    if dotted is None or dotted.rsplit(".", 1)[-1] not in ("Continue", "Await", "Done"):
+        return None, ""
+    return inner, _first_literal(call) or ""
+
+
+def _read_edge(cls: type[Workflow], ctor: str, call: ast.Call, reason: str = "") -> Edge:
     index = _TARGET_ARG[ctor]
     kind = "await" if ctor == "Await" else "continue"
     expr = call.args[index] if len(call.args) > index else None
@@ -250,9 +281,10 @@ def _read_edge(cls: type[Workflow], ctor: str, call: ast.Call) -> Edge:
             target=target,
             kind=kind,
             params=_param_names(cls, target, call, index),
+            reason=reason,
             dangling=target not in cls.state_names(),
         )
-    return Edge(target=_unparse(expr), kind=kind, dynamic=True)
+    return Edge(target=_unparse(expr), kind=kind, reason=reason, dynamic=True)
 
 
 def _param_names(

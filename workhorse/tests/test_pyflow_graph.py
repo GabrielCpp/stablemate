@@ -38,7 +38,13 @@ from workhorse.pyflow import (  # noqa: E402
 )
 from workhorse.manifest import ManifestContext  # noqa: E402
 from workhorse.pyflow.dot import to_dot  # noqa: E402
-from workhorse.pyflow.graph import StateNode, preflight, registry_graphs, state_graph  # noqa: E402
+from workhorse.pyflow.graph import (  # noqa: E402
+    Edge,
+    StateNode,
+    preflight,
+    registry_graphs,
+    state_graph,
+)
 
 
 class RegistryAt(Registry):
@@ -187,6 +193,41 @@ def test_a_done_is_an_edge_out_of_the_state_beside_its_other_edge():
 class Parent(Workflow):
     def start(self) -> Transition:
         return Done(self.handoff(Orphan))
+
+
+class Reasoned(Workflow):
+    """Every transition says why, one of them in a form the reader cannot print."""
+
+    def start(self) -> Transition:
+        if self.run_id:
+            return Continue(None, self.hold, 1).because("a run id was given")
+        why = "computed"
+        return Continue(None, self.finish).because(f"no run id: {why}")
+
+    def hold(self, attempt: int) -> Transition:
+        return Await("q.md", "?", self.finish).because("someone must answer")
+
+    def finish(self) -> Transition:
+        return Done(None).because("nothing left to do")
+
+
+def test_a_chained_because_is_read_as_the_edge_reason():
+    start = {(e.target, e.kind, e.reason) for e in _state(Reasoned, "start").edges}
+    # A non-literal reason leaves the edge unlabelled — and it is still one edge.
+    assert start == {("hold", "continue", "a run id was given"), ("finish", "continue", "")}
+    assert _state(Reasoned, "hold").edges == (
+        Edge(target="finish", kind="await", reason="someone must answer"),
+    )
+    assert [(e.kind, e.reason) for e in _state(Reasoned, "finish").edges] == [
+        ("done", "nothing left to do")
+    ]
+
+
+def test_dot_prefers_the_reason_over_parameter_names():
+    dot = to_dot([_graph(Reasoned)])
+    assert 'f0__start -> f0__hold [label="a run id was given"]' in dot
+    assert 'label="attempt"' not in dot
+    assert 'f0__finish -> f0____end [label="nothing left to do", color=darkgreen]' in dot
 
 
 def test_an_await_edge_is_read_from_the_third_argument():

@@ -8,15 +8,42 @@ is not a fourth arm: it is `raise WorkflowFailed(reason)`, which needs a traceba
 `Await` differs from `Continue` in exactly one line of the driver, which is the point:
 the transition is recorded identically and the wait is something the driver does
 between recording it and stepping.
+
+Each carries an optional **reason**, set by chaining `.because("…")`: one sentence on why
+this transition was taken, from the guard or the comment above the `return`. The driver
+logs it at the step and the diagram prints it on the edge; nothing reads it for control.
+Chained rather than a keyword, because the trailing `**kwargs` *are* the next state's
+parameters and a keyword would shadow a state that takes one by that name.
 """
 from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Generic, ParamSpec, TypeAlias
+from typing import Any, Generic, ParamSpec, Self, TypeAlias
 
 P = ParamSpec("P")
+
+
+class _Because:
+    """The reason a transition was taken, chained on after the constructor."""
+
+    __slots__ = ("reason",)
+
+    def __init__(self) -> None:
+        self.reason = ""
+
+    def because(self, reason: str) -> Self:
+        """Say in one sentence why this transition was taken.
+
+        Logged by the driver at the step and printed on the diagram's edge; never read
+        for control. Returns `self` so it chains: `Continue(x, self.qa).because("…")`.
+        """
+        self.reason = reason
+        return self
+
+    def _why(self) -> str:
+        return f", because={self.reason!r}" if self.reason else ""
 
 
 def state_name(target: Callable[..., Any]) -> str:
@@ -70,7 +97,7 @@ def bind_params(
     return dict(bound.arguments)
 
 
-class Continue(Generic[P]):
+class Continue(_Because, Generic[P]):
     """Hand `result` back and step to `next` with these parameters."""
 
     __slots__ = ("result", "target", "state", "params")
@@ -83,28 +110,30 @@ class Continue(Generic[P]):
         *args: P.args,
         **kwargs: P.kwargs,
     ) -> None:
+        super().__init__()
         self.result = result
         self.target = next
         self.state = state_name(next)
         self.params = bind_params(next, args, kwargs)
 
     def __repr__(self) -> str:
-        return f"Continue(→{self.state}, {self.params!r})"
+        return f"Continue(→{self.state}, {self.params!r}{self._why()})"
 
 
-class Done:
+class Done(_Because):
     """The run is over; `result` is what it produced."""
 
     __slots__ = ("result",)
 
     def __init__(self, result: object = None) -> None:
+        super().__init__()
         self.result = result
 
     def __repr__(self) -> str:
-        return f"Done({self.result!r})"
+        return f"Done({self.result!r}{self._why()})"
 
 
-class Await(Generic[P]):
+class Await(_Because, Generic[P]):
     """Checkpoint here; resume at `next` with these parameters when `path` changes.
 
     `questions` is the ask written to `path` for whoever is being waited on (empty
@@ -141,6 +170,7 @@ class Await(Generic[P]):
         *args: P.args,
         **kwargs: P.kwargs,
     ) -> None:
+        super().__init__()
         self.path = Path(path)
         self.questions = questions
         self.target = next
@@ -170,7 +200,7 @@ class Await(Generic[P]):
         return await_
 
     def __repr__(self) -> str:
-        return f"Await({self.path}, {self.kind}, →{self.state}, {self.params!r})"
+        return f"Await({self.path}, {self.kind}, →{self.state}, {self.params!r}{self._why()})"
 
 
 # `[...]` and not `[Any]`: both classes are generic over a *ParamSpec*, and the gradual

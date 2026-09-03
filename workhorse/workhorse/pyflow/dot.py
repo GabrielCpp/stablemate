@@ -154,8 +154,12 @@ def _edge(prefix: str, node: StateNode, edge: Edge) -> str:
         target = _id(prefix, edge.target)
         head = ""
 
+    # The reason says why the edge is taken; the parameter list says only what it
+    # carries. When the author wrote the former, the latter is plumbing and is dropped.
     attrs = []
-    if edge.params:
+    if edge.reason:
+        attrs.append(f'label="{_esc(edge.reason)}"')
+    elif edge.params:
         attrs.append(f'label="{_esc(", ".join(edge.params))}"')
     if edge.kind == "await":
         attrs.append("style=dashed")

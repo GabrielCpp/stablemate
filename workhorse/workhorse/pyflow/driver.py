@@ -460,6 +460,9 @@ def drive(
         state, params = wf.start_state, {}
 
     resuming = resume is not None
+    #: Why the transition that led here was taken — `.because(...)` on the outcome of
+    #: the previous state, printed beside the state it leads to.
+    why = ""
     inputs = wf.model_dump(mode="json")
     ctx_payload = _ctx_payload(wf)
     flow_name = type(wf).__name__
@@ -541,7 +544,7 @@ def drive(
                 core=boundary.core,
                 cli=boundary.cli,
             )
-        env.log.info("[workhorse] state  → %s", spec.name)
+        env.log.info("[workhorse] state  → %s%s", spec.name, _because(why))
         # Armed for the resumed state only — see `RunEnv.resume_pending`. A state
         # further along the run is being entered for the first time, and a handoff it
         # makes is a fresh invocation whatever a stale child checkpoint says.
@@ -584,6 +587,7 @@ def drive(
         otel.state_end(spec.name, state_seq, next_state)
 
         if isinstance(outcome, Done):
+            env.log.info("[workhorse] done   ← %s%s", spec.name, _because(outcome.reason))
             env.writer.write_final_context({"result": _result_payload(outcome.result)})
             env.writer.finish("terminal")
             return outcome.result
@@ -601,10 +605,12 @@ def drive(
             # "blocked" is a claim about who is stalled, and it is only true of an
             # operator gate. A machine wait has a job running for it right now.
             verb = "blocked on" if outcome.kind == "operator" else "waiting on"
-            env.log.info("[workhorse] await  → %s %s", verb, outcome.path)
+            env.log.info(
+                "[workhorse] await  → %s %s%s", verb, outcome.path, _because(outcome.reason)
+            )
             with otel.wait(outcome.kind, spec.name):
                 _park(outcome.path, env, kind=outcome.kind)
-        state, params = outcome.state, outcome.params
+        state, params, why = outcome.state, outcome.params, outcome.reason
 
     spent = (
         f"{budget} transitions without forward progress "
@@ -659,6 +665,11 @@ def _ctx_payload(wf: Workflow) -> Any:
         return None
     dump = getattr(ctx, "model_dump", None)
     return dump(mode="json") if callable(dump) else ctx
+
+
+def _because(reason: str) -> str:
+    """The ` — <reason>` tail a log line carries when the transition said why."""
+    return f" — {reason}" if reason else ""
 
 
 def _result_payload(result: Any) -> Any:

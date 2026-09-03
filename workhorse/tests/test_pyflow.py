@@ -1441,6 +1441,40 @@ def test_a_run_with_no_manifest_renders_exactly_its_arguments():
         assert seen[0] == {"unit": "CASE-1"}
 
 
+# ------------------------------------------------------------------------------ because
+
+
+def test_a_transitions_reason_is_logged_beside_the_step_it_leads_to():
+    with tempfile.TemporaryDirectory() as tmp:
+        log = logging.getLogger("tests.pyflow.because")
+        log.setLevel(logging.INFO)
+        seen: list[str] = []
+
+        class Keep(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                seen.append(record.getMessage())
+
+        handler = Keep()
+        log.addHandler(handler)
+        try:
+
+            class Explains(Workflow):
+                def start(self) -> Transition:
+                    return Continue(None, self.finish).because("nothing to review")
+
+                def finish(self) -> Transition:
+                    return Done("ok").because("the book is complete")
+
+            assert drive(Explains(), _env(tmp, log=log)) == "ok"
+        finally:
+            log.removeHandler(handler)
+
+        assert "[workhorse] state  → finish — nothing to review" in seen
+        assert "[workhorse] done   ← finish — the book is complete" in seen
+        # The entry state was led to by nothing, so it says nothing.
+        assert "[workhorse] state  → start" in seen
+
+
 # ---------------------------------------------------------------------------- activity
 
 
