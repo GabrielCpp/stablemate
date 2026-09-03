@@ -1,6 +1,6 @@
 ---
 name: root-cause
-description: "Judging whether a fix reaches the origin of a defect or handles its symptom, with no knowledge of the domain: the causal chain written before the edit (symptom, mechanism, origin stated as a decision, prediction), the shape tests that reject a story on its form (fix downstream of where the value first went wrong, a branch added for the case, a classifier reading fewer inputs than its distinction needs, two components disagreeing in writing, an explanation covering exactly one failure, a loop converging only with an exception list), the unfixable-versus-unclassifiable question, and what an escape hatch carries when taken. Load when about to add or extend a waiver, retry, sleep, default, fallback, skip, broader except, null check or IOU, when a loop converges only with an exception list, when reviewing a diff that clears a failure, or when reporting a phase complete with a workaround inside it. For finding the defect itself, load diagnosing-bugs."
+description: "Judging whether a fix reaches the origin of a defect or handles its symptom, with no knowledge of the domain: the why-chain written per proposed fix before the edit (why is the fix needed, what caused that, how could it have been prevented, and again on the prevention until the answer is a core property of the problem), the stop test for a core property, the shape tests that reject a story on its form (fix downstream of the producer, a branch added for the case, a classifier reading fewer inputs than its distinction, two components disagreeing in writing, a loop converging only by exception list), the unfixable-versus-unclassifiable question, and what a hatch carries when taken. Load when about to add or extend a waiver, retry, sleep, default, fallback, skip, broader except, null check or IOU, when a loop converges only with an exception list, when reviewing a diff that clears a failure, or when reporting a phase complete with a workaround inside it. For finding the defect itself, load diagnosing-bugs."
 tags: [standards, review]
 ---
 
@@ -20,27 +20,66 @@ your own reasoning against it with nothing but the reasoning in hand.
 
 ## The chain
 
-Write these four lines **before the edit**, in the report or the plan, in this order. The
-shape of each line is the test; content comes after.
+For **each fix you propose**, write the chain **before the edit**, in the plan or the report.
+It is an induction: three questions, asked again on their own answer, until the answer stops
+being about this code.
 
-1. **Symptom** — what was observed. Error text is allowed here and nowhere else.
-2. **Mechanism** — how the wrong value or state was produced. One sentence, containing no
-   error text. A mechanism restated in the error's own words is the symptom again.
-3. **Origin** — the *decision* the mechanism came from: a line that chose, a check that
-   classifies, a design that assumed. An origin is a verb with a subject. "The names collide"
-   is a noun and stops short; "the doctor decides the layer from the code alone" is a decision
-   and arrives.
-4. **Prediction** — one other thing this origin causes today, or one thing the fix makes pass
-   without touching it. A cause explains more than the failure it was found through; a story
-   that explains exactly the one symptom and nothing else is a description wearing a cause's
-   clothes.
+1. **Why is this fix needed?** What was observed, and what the fix answers. Error text is
+   allowed here and nowhere else.
+2. **What caused the issue the fix answers?** The *decision* it came from: a line that
+   chose, a check that classifies, a design that assumed. A cause is a verb with a subject.
+   "The names collide" is a noun and stops short; "the loop decides the layer from the
+   finding code and a stall count" is a decision and arrives.
+3. **How could that issue have been prevented?** Name the prevention. It is a fix too — so
+   return to step 1 and ask why *it* would be needed.
 
-A chain that ends at a noun, contains error text past line 1, or has no prediction is sent
-back on its form. Nobody needs to know the domain to send it back.
+Continue until step 2 yields a **core property of the problem**: a statement that would still
+be true if the code were rewritten from scratch, because it is about what the problem *is*,
+not how this repo handles it. The prevention at that level is the fix. Everything the chain
+passed on the way down is handling.
+
+The **stop test** for a core property: rewrite the component in your head from nothing.
+If the statement still holds, you have reached bottom. If a different design would make it
+false, it is a property of the design, and the chain has one more turn in it.
+
+Number the steps, and keep the questions visible in the text. The reader checks the *form* of
+each link — decision or noun, prevention or apology — and needs no domain to do it. A chain
+that ends at a noun, contains error text past its first line, or stops at a property of this
+code is sent back on its form.
+
+Two rules follow from the chain and are worth stating:
+
+- **Chains that meet are one fix.** When several proposed fixes bottom out on the same
+  property, that property is the finding, and the fixes above it are either the same change
+  seen from different files or handling of what that change removes. Say which.
+- **A cause predicts.** A core property explains more than the failure it was found through.
+  Name one other thing it causes today, or one thing the fix makes pass without touching it,
+  and run that. A story that explains exactly the one symptom is a description wearing a
+  cause's clothes.
+
+A compact example, so the shape is unmistakable. The fix under judgment: *make the repair
+agent's verdict an input to the waiver decision.*
+
+1. Why needed? The waiver node decides "source defect" from a finding code and a stall
+   count, and neither says which layer is wrong.
+2. What caused that? Those were the only signals that crossed rounds when it was written;
+   the repair verdict was added later, for the operator to read, and was never wired in.
+3. Prevent? Wire it in. — Why would that be needed? Because the loop needed *some* signal
+   for "impossible from here", and used stall as the proxy.
+2. What caused the need for a proxy? The checker emits the identical finding whether the
+   book is wrong or the source is, so the loop cannot tell "not applied yet" from
+   "impossible here".
+3. Prevent? Emit findings that say which layer. — Why is that not already so?
+2. Because the checker reads one representation, and the finding is a claim about the
+   *correspondence* of two. **Core property:** fault cannot be assigned from one side of a
+   correspondence. Rewrite the checker from scratch and it still holds.
+3. Prevent? A finding of this class is born with fault *undetermined*, and only an
+   observation of the other side may set it. The stall counter, the waiver, the seed and the
+   routing are the apparatus built around a guess, and this is the line they sit above.
 
 ## Shape tests
 
-Flat reference. Ask each of your own story; a *yes* means it is not yet a cause. They are
+Flat reference. Ask each of your own chain; a *yes* means it has not reached bottom. They are
 answerable with zero knowledge of what the code does.
 
 - **Downstream.** Does the fix sit where the wrong value was *consumed* rather than where it
@@ -55,10 +94,11 @@ answerable with zero knowledge of what the code does.
   cannot be right, and everything downstream that papers over its output is evidence of
   that, not a feature.
 - **Disagreement in writing.** Do two components describe the same signal differently — a
-  docstring calls it a doc defect, a consumer treats it as a code defect? That is a
-  classification gap, and neither side knows it exists. The gap is the origin.
+  docstring calls it a doc defect, a consumer treats it as a code defect? Each author saw one
+  case of an under-determined thing, and the under-determination has no representation. The
+  missing representation is the origin, not either docstring.
 - **Exactly one failure.** Does your explanation cover the one failure you saw and predict
-  nothing else? See line 4 of the chain.
+  nothing else? A cause predicts; see the chain.
 - **Convergence by exception.** Does the loop terminate only because a list of cases is
   excluded from it? Then the list is the finding, and it grows on every run.
 - **Handling, routing, reporting.** Is the work improving where the case's paperwork goes —
@@ -68,6 +108,10 @@ answerable with zero knowledge of what the code does.
 - **"Cannot be fixed here."** Does the claim come without naming *where* it can be fixed, and
   whether the evidence to fix it already exists somewhere in the repo? Unreachable is a
   location, not a feeling.
+- **A stored fact with no observation.** Does the fix record a claim about a changing world
+  — a waiver, a cached verdict, a "known flaky" — without the observation that grounds it and
+  the check that would find it stale? A cache with no invalidation is false at an unknown
+  time.
 
 ## Unfixable or unclassifiable
 
@@ -87,12 +131,12 @@ layer.
 ## Taking the hatch anyway
 
 Sometimes the origin is real, out of reach, and the work must converge now. A hatch taken
-that way is a **debt**, and it carries its chain with it: the four lines above, plus the
-origin it is *not* fixing and why that origin is out of reach from here. Write that beside
-the hatch — in the waiver entry, the skip reason, the IOU text, the report — so the next
-reader finds the cause where they find the workaround.
+that way is a **debt**, and it carries its chain with it: the chain above, down to the core
+property it is *not* fixing, and why that property is out of reach from here. Write that
+beside the hatch — in the waiver entry, the skip reason, the IOU text, the report — so the
+next reader finds the cause where they find the workaround.
 
-Having to write the origin down is what most often turns the hatch back into a fix. That is
+Having to write the chain down is what most often turns the hatch back into a fix. That is
 the point, and it is why the writing comes before the edit rather than after.
 
 A hatch also needs its **exit**: what removes it, and what checks that it was removed. A
@@ -105,7 +149,10 @@ gate that will notice when it has.
 The work is done when every line below is true, and each is checkable from the diff and the
 report alone:
 
-- The chain is in the report, all four lines, in shape.
+- Every proposed fix has its chain in the report, numbered, ending at a core property that
+  passes the stop test, with the prevention at that level named.
+- Fixes whose chains meet are reported as one, and the report says which of the rest are
+  handling.
 - Every hatch the diff adds or extends carries its chain and its exit beside it.
 - The prediction was run — the other consequence was observed, or the untouched thing now
   passes — and the result is in the report.
@@ -117,8 +164,9 @@ routing of an apology.
 
 ## Reviewing someone else's fix
 
-The same tests, applied to a diff you did not write. Read the failure it clears, then ask of
-the diff: producer or consumer; branch or removal; one failure explained or more. A diff that
-touches a waiver file, a skip marker, a retry count or a broader `except` with no chain in the
-description is the review finding, whatever the tests say afterwards. [[code-review]] carries
-the rest of the review; this is the part that decides whether the fix is one.
+The same tests, applied to a diff you did not write. Read the failure it clears, then write
+the chain the author did not: why the diff is needed, what caused that, what would have
+prevented it. Where your chain goes deeper than the diff, the gap is the review finding. A
+diff that touches a waiver file, a skip marker, a retry count or a broader `except` with no
+chain in the description is the finding before any test is run. [[code-review]] carries the
+rest of the review; this is the part that decides whether the fix is one.
