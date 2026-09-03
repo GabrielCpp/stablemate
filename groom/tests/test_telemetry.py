@@ -33,6 +33,7 @@ from opentelemetry.proto.trace.v1.trace_pb2 import Status
 
 from groom import alerts, cli, discovery, notify, otlp, projection, state, store
 from groom import app as groom_app
+from groom.cli import _format_status
 
 _SPAN_IDS = iter(f"{i:016x}" for i in range(1, 10_000))
 
@@ -2263,6 +2264,40 @@ def test_cli_status_asks_the_running_server_over_http(capsys):
         rows = json.loads(capsys.readouterr().out)
         assert rows[0]["run_id"] == "run-1"
         assert rows[0]["node"] == "impl"
+
+
+def test_cli_status_prints_the_control_command_for_each_run():
+    """The human-readable status names the next step: ``workhorse-<workflow>
+    control --run <run_dir> status``. ``workflow`` picks the console script and
+    ``run_dir`` is passed as the absolute path, so the printed line works from any
+    cwd — a bare id only resolves under the current directory's ``.agents/runs``.
+    A row missing either field cannot name a command, so it prints none."""
+    now = 1_000.0
+    base = {
+        "run_id": "okf-1",
+        "node": "impl",
+        "node_elapsed_s": 5.0,
+        "turn_active": False,
+        "turn_idle_s": 0.0,
+        "gas": None,
+        "last_beat_ts": now - 1,
+        "alive": True,
+    }
+    full = _format_status(
+        [{**base, "workflow": "research", "run_dir": "/home/me/repo/.agents/runs/okf-1"}],
+        now,
+    )
+    assert (
+        "  control : workhorse-research control --run /home/me/repo/.agents/runs/okf-1 status"
+        in full
+    )
+    assert "run_dir : /home/me/repo/.agents/runs/okf-1" in full
+    no_dir = _format_status([{**base, "workflow": "research", "run_dir": ""}], now)
+    assert "control :" not in no_dir
+    no_workflow = _format_status(
+        [{**base, "workflow": "", "run_dir": "/home/me/repo/.agents/runs/okf-1"}], now
+    )
+    assert "control :" not in no_workflow
 
 
 def test_cli_status_without_a_server_exits_with_guidance(capsys, monkeypatch):

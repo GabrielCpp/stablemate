@@ -108,6 +108,14 @@ def _format_status(rows: list[dict], now: float) -> str:
             )
             + (f"   gas: {int(row['gas'])}" if row["gas"] is not None else "")
             + (f"\n  run_dir : {row['run_dir']}" if row["run_dir"] else "")
+            + (
+                # The next command, ready to paste: `workflow` names the console
+                # script and `run_dir` is the absolute path `--run` takes, so it
+                # works from any cwd, not only the target repo's.
+                f"\n  control : workhorse-{row['workflow']} control --run {row['run_dir']} status"
+                if row["workflow"] and row["run_dir"]
+                else ""
+            )
         )
     return "\n".join(lines)
 
