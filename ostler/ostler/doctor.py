@@ -1689,6 +1689,19 @@ def _check_ui(graph: Graph, f: list[Finding],
 
         if node.type == "component":
             _check_placement(node, rel, f)
+            # One role, one accessible name: a second bullet under either key does not give
+            # the control two identities, it leaves the book unable to say which one it has.
+            # Reported here as the book's own defect. `collisions` skips the node meanwhile,
+            # because grouping on the first of two names would raise `ambiguous-locator` — a
+            # claim about the code — off a malformation the book alone explains.
+            for key in loc_mod.malformed_identity({"bullets": node.meta}):
+                f.append(Finding(
+                    "error", "duplicate-bullet",
+                    f"{node.id}: `{key}:` is stated {len(node.meta[key])} times — a component "
+                    f"has one {key}, so the node cannot say which it is; keep the bullet the "
+                    f"source supports and drop the rest",
+                    path=rel, line=node.line, ref=f"{node.id}#{key}",
+                    suggestion=f"- {key}: <the one value the source renders>"))
 
         # A profile key on a type that does not declare it is inert: a `verify:` on a concept is
         # read by nobody, a `does:` on a component mints nothing, a `code:` on a field is never

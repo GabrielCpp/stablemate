@@ -323,6 +323,25 @@ def _exclusive_pairs(data: dict) -> set[frozenset[str]]:
             for e in data["edges"] if e.get("via") == "exclusive-with"}
 
 
+#: The bullets that *are* a component's locator identity. Each is a single fact — one computed
+#: role, one accessible name — so a second bullet under either key is not "two names" but a
+#: malformed node: nothing says which of the two the control announces.
+IDENTITY_KEYS = ("role", "name")
+
+
+def malformed_identity(node: dict) -> list[str]:
+    """The identity keys this node states more than once, in registry order.
+
+    A node with a repeated ``role:`` or ``name:`` is reported by doctor as ``duplicate-bullet``
+    and left out of the collision check until it is well-formed. Reading the first bullet and
+    grouping on it, as ``_bullet`` does for every other caller, would turn a book defect into an
+    ``ambiguous-locator`` — a claim about the *code* that the book alone cannot support, and the
+    one the copy-button pair in a client book was wrongly waived for.
+    """
+    bullets = node.get("bullets", {})
+    return [key for key in IDENTITY_KEYS if isinstance(bullets.get(key), list)]
+
+
 def collisions(data: dict) -> list[dict]:
     """Nodes sharing a screen, a role, and an accessible name — where one-to-one fails.
 
@@ -333,6 +352,8 @@ def collisions(data: dict) -> list[dict]:
     control it fires ``on:``, so matching that control is the point, not a collision — and two
     interactions on one component (a click and a keyboard shortcut) legitimately share a locator.
     Where an interaction really is ambiguous, its component already says so, once.
+
+    A node stating ``role:`` or ``name:`` twice is skipped — see :func:`malformed_identity`.
 
     A pair declared ``exclusive-with:`` is skipped: two controls that share a locator but can never
     render at the same time are not ambiguous at runtime. The static check cannot know that, so the
@@ -347,7 +368,7 @@ def collisions(data: dict) -> list[dict]:
     groups: dict[tuple[str, str, str], list[dict]] = {}
     templated: dict[tuple[str, str], list[tuple[dict, dict]]] = {}
     for screen, node in _locatables(data):
-        if node["type"] != "component":
+        if node["type"] != "component" or malformed_identity(node):
             continue
         loc = locator_for(node, scope=scopes.get(node["id"], ()))
         if loc["strategy"] == "template":

@@ -580,3 +580,36 @@ def test_an_unbalanced_brace_outside_a_repeat_stays_literal(repo: Path):
     assert locators.templates_outside_repeat(data) == []
     assert "template-outside-repeat" not in _codes(repo, "warn")
     assert "malformed-template" not in _codes(repo)
+
+
+# `name:` twice: not two names, a node that cannot say which one it has.
+TWO_NAMES = """\
+### copy-button
+- selector: `.btn-copy`
+- role: button
+- name: Copy
+- name: Copy datasheet
+"""
+
+
+def test_a_repeated_identity_bullet_is_the_book_s_defect_not_a_collision(repo: Path):
+    """A second `name:` (or `role:`) is `duplicate-bullet`, and the node is left out of the
+    collision check until it is well-formed. Grouping on the first of the two names would
+    raise `ambiguous-locator` against `SAVE`-style siblings — a claim about the code, made off
+    a malformation the book alone explains."""
+    data = _build(repo, _screen(TWO_NAMES, "### other-copy\n- role: button\n- name: Copy\n"))
+    assert locators.malformed_identity(data["nodes"][1]) == ["name"]
+    assert locators.collisions(data) == []
+
+    findings = doctor.run(load(repo), check_schema=False).findings
+    dup = [f for f in findings if f.code == "duplicate-bullet"]
+    assert [f.ref for f in dup] == [f"{DASH}#copy-button#name"]
+    assert dup[0].severity == "error" and "2 times" in dup[0].message
+    assert "ambiguous-locator" not in [f.code for f in findings]
+
+
+def test_a_repeated_role_is_reported_under_its_own_key(repo: Path):
+    _build(repo, _screen("### x\n- role: button\n- role: link\n- name: X\n"))
+    dup = [f for f in doctor.run(load(repo), check_schema=False).findings
+           if f.code == "duplicate-bullet"]
+    assert [f.ref for f in dup] == [f"{DASH}#x#role"]
