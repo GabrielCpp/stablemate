@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from workhorse import inbox
-from workhorse.rundir import find_latest_resumable, resolve_run_dir
+from workhorse.cli.target import resolve_target
 
 NAME = "inbox"
 HELP = "Read or answer the messages left for a run (read, reply)"
@@ -75,7 +75,7 @@ def run(args: argparse.Namespace) -> None:
         if args.runs_dir
         else (Path.cwd() / ".agents" / "runs").resolve()
     )
-    run_dir = _target(args.run, runs_dir, args.registry.name)
+    run_dir = resolve_target(args.run, runs_dir, args.registry.name)
     path = run_dir / INBOX_FILE
 
     if args.action == READ:
@@ -102,26 +102,6 @@ def run(args: argparse.Namespace) -> None:
         sys.exit(1)
     print(f"replied to [{message.id}] in {run_dir}")
 
-
-def _target(spec: str | None, runs_dir: Path, workflow_name: str) -> Path:
-    if spec is not None:
-        resolved = resolve_run_dir(spec, runs_dir, workflow_name)
-        if resolved is None:
-            print(
-                f"error: no run dir for {spec!r} (looked under {runs_dir})",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        return resolved
-
-    latest = find_latest_resumable(runs_dir)
-    if latest is None:
-        print(
-            f"error: no unfinished run found under {runs_dir} — name one with --run",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    return latest
 
 
 def _now() -> str:

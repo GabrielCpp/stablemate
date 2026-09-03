@@ -38,8 +38,8 @@ from pydantic import ValidationError
 
 from workhorse import control, reload
 from workhorse.artifacts import ArtifactWriter
+from workhorse.cli.target import resolve_target
 from workhorse.records import PyflowCheckpoint, parse_checkpoint, parse_run_record
-from workhorse.rundir import find_latest_resumable, resolve_run_dir
 
 NAME = "control"
 HELP = "Signal a run in flight (reload, status, questions, answer, switch-cli, switch-profile)"
@@ -115,7 +115,7 @@ def run(args: argparse.Namespace) -> None:
         if args.runs_dir
         else (Path.cwd() / ".agents" / "runs").resolve()
     )
-    run_dir = _target(args.run, runs_dir, args.registry.name)
+    run_dir = resolve_target(args.run, runs_dir, args.registry.name)
     cli, profile = _switch_target(args.action, args.target)
     gate, text = _answer_payload(args)
     request = control.Request(
@@ -302,34 +302,6 @@ def _report(run_dir: Path, reply: dict[str, object]) -> None:
     print(f"  run:     {_liveness(run_dir)}")
     print(f"  at:      {_position(run_dir)}")
 
-
-def _target(spec: str | None, runs_dir: Path, workflow_name: str) -> Path:
-    """The run dir to write into — named, or the one unfinished run there is.
-
-    Defaulting is worth having and worth bounding: an operator reloading the run they
-    are watching should not have to retype an id they never chose, but a *wrong* guess
-    would send the request to a run nobody asked about. So the default is the same
-    "newest run that never reached a terminal" that `--resume-latest` means, and it is
-    printed back, since a reload is only cheap when it lands on the intended run.
-    """
-    if spec is not None:
-        resolved = resolve_run_dir(spec, runs_dir, workflow_name)
-        if resolved is None:
-            print(
-                f"error: no run dir for {spec!r} (looked under {runs_dir})",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        return resolved
-
-    latest = find_latest_resumable(runs_dir)
-    if latest is None:
-        print(
-            f"error: no unfinished run found under {runs_dir} — name one with --run",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    return latest
 
 
 def _liveness(run_dir: Path) -> str:
