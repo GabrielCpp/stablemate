@@ -4,6 +4,7 @@ skills:
   - ui/*
   - vertical-slicing
   - diagnosing-bugs
+  - root-cause
   - code-review
 prompts:
   - grill
