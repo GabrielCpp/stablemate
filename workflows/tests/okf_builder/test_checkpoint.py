@@ -277,3 +277,39 @@ def test_a_book_with_warnings_and_no_errors_is_dirty(
     assert not result.checkpoint_clean, result.doctor_output
     assert "undeclared-obligation" in result.doctor_output
     assert result.fixup_items
+
+
+def test_a_clean_round_leaves_a_watermark_the_next_run_can_read(
+    booked: Path, logger: logging.Logger
+) -> None:
+    """The half of the backfill loop the builder owns: recording what it documented against.
+
+    `ostler backfill plan` can only call a citation drifted by comparing today's symbol
+    digest against a stored one, and nothing but a converged run is entitled to say "this
+    node was written against these bytes". So the catalog is the checkpoint's output, and
+    a book that never converges never claims a watermark it did not earn.
+    """
+    result = checkpoint_book(logger, str(booked), BOOK)
+    assert result.checkpoint_clean, result.doctor_output
+
+    catalog = json.loads((booked / "docs/features/sources.json").read_text())
+    (repo,) = catalog["repositories"]
+    (file,) = repo["files"]
+    assert file["path"] == "acme/service.py"
+    assert [s["name"] for s in file["declarations"]] == ["charge"]
+    assert file["declarations"][0]["content_sha256"]
+
+
+def test_a_dirty_round_claims_no_watermark(
+    dirty: Path, logger: logging.Logger
+) -> None:
+    """Stamping a book that still has findings would erase the drift it exists to detect.
+
+    `dirty` cites `refund`, which nothing declares. Writing the catalog anyway would mark
+    every *other* symbol current on the strength of a round that documented none of them,
+    and the next run would see a clean stale set over a book nobody finished.
+    """
+    result = checkpoint_book(logger, str(dirty), BOOK)
+
+    assert not result.checkpoint_clean
+    assert not (dirty / "docs/features/sources.json").exists()
