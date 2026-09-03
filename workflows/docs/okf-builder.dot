@@ -1,6 +1,8 @@
 digraph okf_builder {
   rankdir=TB;
   bgcolor=white;
+  compound=true;
+  newrank=true;
   node [shape=box, style="rounded,filled", fillcolor=lightblue];
   edge [color=darkblue, fontsize=10];
 
@@ -9,48 +11,116 @@ digraph okf_builder {
     style=dashed; color=gray50; fontsize=11;
 
     f0____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
-    f0__adjudicate [label="adjudicate\ncall blocked_rows, record, gather_evidence, apply_verdict\nagent adjudicate.md"];
-    f0__checkpoint [label="checkpoint\ncall checkpoint_book, record"];
-    f0__enumerate_surfaces [label="enumerate_surfaces\nagent enumerate-surfaces.md"];
+    subgraph cluster_f0__adjudicate {
+      label="adjudicate"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__adjudicate__0 [label="blocked_rows\nThe blocked rows still waiting for a side — a row already adjudicated keeps its", shape=box, fillcolor=white];
+      f0__adjudicate__1 [label="record\nMark the current item done, merge newly-discovered items, and count the re-tries.", shape=box, fillcolor=white];
+      f0__adjudicate__2 [label="gather_evidence\nRead the other side: the story the node's code was last written to, and its text.", shape=box, fillcolor=white];
+      f0__adjudicate__3 [label="adjudicate.md\nadjudicate one blocked finding: which side is wrong?", shape=note, fillcolor=lightyellow];
+      f0__adjudicate__4 [label="apply_verdict\nRoute one verdict. Every branch writes the verdict and the chain on the row.", shape=box, fillcolor=white];
+      f0__adjudicate__0 -> f0__adjudicate__1 [color=gray40, arrowsize=0.6];
+      f0__adjudicate__1 -> f0__adjudicate__2 [color=gray40, arrowsize=0.6];
+      f0__adjudicate__2 -> f0__adjudicate__3 [color=gray40, arrowsize=0.6];
+      f0__adjudicate__3 -> f0__adjudicate__4 [color=gray40, arrowsize=0.6];
+    }
+    subgraph cluster_f0__checkpoint {
+      label="checkpoint"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__checkpoint__0 [label="checkpoint_book\nCanonicalize the book, then read doctor, then queue the repairs it names.", shape=box, fillcolor=white];
+      f0__checkpoint__1 [label="record\nMark the current item done, merge newly-discovered items, and count the re-tries.", shape=box, fillcolor=white];
+      f0__checkpoint__0 -> f0__checkpoint__1 [color=gray40, arrowsize=0.6];
+    }
+    subgraph cluster_f0__enumerate_surfaces {
+      label="enumerate_surfaces"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__enumerate_surfaces__0 [label="enumerate-surfaces.md\nenumerate the entry-point surfaces", shape=note, fillcolor=lightyellow];
+    }
     f0__investigate [label="investigate"];
-    f0__recheck [label="recheck\nagent recheck-coverage.md"];
-    f0__record_item [label="record_item\ncall advance_watermark, record"];
+    subgraph cluster_f0__recheck {
+      label="recheck"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__recheck__0 [label="recheck-coverage.md\ncoverage re-scan (the exhaustiveness backstop)", shape=note, fillcolor=lightyellow];
+    }
+    subgraph cluster_f0__record_item {
+      label="record_item"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__record_item__0 [label="advance_watermark\nRetire one regrounding row by re-reading the file the turn just documented against.", shape=box, fillcolor=white];
+      f0__record_item__1 [label="record\nMark the current item done, merge newly-discovered items, and count the re-tries.", shape=box, fillcolor=white];
+      f0__record_item__0 -> f0__record_item__1 [color=gray40, arrowsize=0.6];
+    }
     f0__refuel [label="refuel"];
-    f0__rescan_coverage [label="rescan_coverage\ncall inventory_source, compute_coverage, record"];
-    f0__retry_blocked [label="retry_blocked\ncall record"];
-    f0__seed_recheck [label="seed_recheck\ncall record"];
-    f0__seed_surfaces [label="seed_surfaces\ncall record"];
-    f0__select [label="select\ncall select_item, checkpoint_book"];
+    subgraph cluster_f0__rescan_coverage {
+      label="rescan_coverage"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__rescan_coverage__0 [label="inventory_source\nMaterialize a deterministic multi-language source inventory for OKF coverage.", shape=box, fillcolor=white];
+      f0__rescan_coverage__1 [label="compute_coverage\nCompute the book's coverage — the verdict the agent used to emit.", shape=box, fillcolor=white];
+      f0__rescan_coverage__2 [label="record\nMark the current item done, merge newly-discovered items, and count the re-tries.", shape=box, fillcolor=white];
+      f0__rescan_coverage__0 -> f0__rescan_coverage__1 [color=gray40, arrowsize=0.6];
+      f0__rescan_coverage__1 -> f0__rescan_coverage__2 [color=gray40, arrowsize=0.6];
+    }
+    subgraph cluster_f0__retry_blocked {
+      label="retry_blocked"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__retry_blocked__0 [label="record\nMark the current item done, merge newly-discovered items, and count the re-tries.", shape=box, fillcolor=white];
+    }
+    subgraph cluster_f0__seed_recheck {
+      label="seed_recheck"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__seed_recheck__0 [label="record\nMark the current item done, merge newly-discovered items, and count the re-tries.", shape=box, fillcolor=white];
+    }
+    subgraph cluster_f0__seed_surfaces {
+      label="seed_surfaces"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__seed_surfaces__0 [label="record\nMark the current item done, merge newly-discovered items, and count the re-tries.", shape=box, fillcolor=white];
+    }
+    subgraph cluster_f0__select {
+      label="select"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__select__0 [label="select_item\nPop the next pending item and mark it active.", shape=box, fillcolor=white];
+      f0__select__1 [label="checkpoint_book\nCanonicalize the book, then read doctor, then queue the repairs it names.", shape=box, fillcolor=white];
+      f0__select__0 -> f0__select__1 [color=gray40, arrowsize=0.6];
+    }
     f0__start [label="start"];
     f0__walkthrough [label="walkthrough"];
     f0____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f0____start -> f0__start;
-    f0__adjudicate -> f0__checkpoint [label="every row closed: re-read doctor"];
-    f0__adjudicate -> f0__adjudicate [label="verdict applied: next blocked row"];
-    f0__adjudicate -> f0__select [label="a book verdict re-queued rows"];
-    f0__adjudicate -> f0__retry_blocked [label="rows still blocked after verdicts: operator gate", style=dashed, color=darkorange];
-    f0__checkpoint -> f0__rescan_coverage [label="doctor clean: check the inventory"];
-    f0__checkpoint -> f0__select [label="doctor dirty: repairs queued"];
-    f0__checkpoint -> f0__rescan_coverage [label="re-scan cap hit, inventory still short: operator gate", style=dashed, color=darkorange];
-    f0__checkpoint -> f0__adjudicate [label="blocked rows and nothing pending: read the other side"];
-    f0__checkpoint -> f0__retry_blocked [label="findings unchanged for the stall cap: operator gate", style=dashed, color=darkorange];
-    f0__enumerate_surfaces -> f0__seed_surfaces [label="entry surfaces discovered"];
-    f0__investigate -> f0__record_item [label="turn finished: record what it wrote"];
-    f0__recheck -> f0__seed_recheck [label="recheck verdicts in"];
-    f0__record_item -> f0__select [label="item closed, discoveries opened"];
-    f0__refuel -> f0__select [label="operator granted another allowance"];
-    f0__rescan_coverage -> f0__recheck [label="uncovered units: ask whether they are units"];
-    f0__rescan_coverage -> f0__walkthrough [label="inventory covered"];
-    f0__rescan_coverage -> f0__select [label="cited source moved: re-ground those nodes"];
-    f0__retry_blocked -> f0__select [label="operator answered: blocked targets unblocked"];
-    f0__seed_recheck -> f0__select [label="real gaps queued"];
-    f0__seed_surfaces -> f0__select [label="surfaces opened on the worklist"];
-    f0__select -> f0__investigate [label="next item picked"];
-    f0__select -> f0__refuel [label="item ceiling hit with work pending: ask for more", style=dashed, color=darkorange];
-    f0__select -> f0__checkpoint [label="the drain is dry: run doctor"];
-    f0__start -> f0__enumerate_surfaces [label="no book yet: fill it from the entry surfaces"];
-    f0__start -> f0__checkpoint [label="the book exists: reconcile it to HEAD"];
+    f0__adjudicate__4 -> f0__checkpoint__0 [label="every row closed: re-read doctor", ltail=cluster_f0__adjudicate, lhead=cluster_f0__checkpoint];
+    f0__adjudicate__4 -> f0__adjudicate__0 [label="verdict applied: next blocked row"];
+    f0__adjudicate__4 -> f0__select__0 [label="a book verdict re-queued rows", ltail=cluster_f0__adjudicate, lhead=cluster_f0__select];
+    f0__adjudicate__4 -> f0__retry_blocked__0 [label="rows still blocked after verdicts: operator gate", style=dashed, color=darkorange, ltail=cluster_f0__adjudicate, lhead=cluster_f0__retry_blocked];
+    f0__checkpoint__1 -> f0__rescan_coverage__0 [label="doctor clean: check the inventory", ltail=cluster_f0__checkpoint, lhead=cluster_f0__rescan_coverage];
+    f0__checkpoint__1 -> f0__select__0 [label="doctor dirty: repairs queued", ltail=cluster_f0__checkpoint, lhead=cluster_f0__select];
+    f0__checkpoint__1 -> f0__rescan_coverage__0 [label="re-scan cap hit, inventory still short: operator gate", style=dashed, color=darkorange, ltail=cluster_f0__checkpoint, lhead=cluster_f0__rescan_coverage];
+    f0__checkpoint__1 -> f0__adjudicate__0 [label="blocked rows and nothing pending: read the other side", ltail=cluster_f0__checkpoint, lhead=cluster_f0__adjudicate];
+    f0__checkpoint__1 -> f0__retry_blocked__0 [label="findings unchanged for the stall cap: operator gate", style=dashed, color=darkorange, ltail=cluster_f0__checkpoint, lhead=cluster_f0__retry_blocked];
+    f0__enumerate_surfaces__0 -> f0__seed_surfaces__0 [label="entry surfaces discovered", ltail=cluster_f0__enumerate_surfaces, lhead=cluster_f0__seed_surfaces];
+    f0__investigate -> f0__record_item__0 [label="turn finished: record what it wrote", lhead=cluster_f0__record_item];
+    f0__recheck__0 -> f0__seed_recheck__0 [label="recheck verdicts in", ltail=cluster_f0__recheck, lhead=cluster_f0__seed_recheck];
+    f0__record_item__1 -> f0__select__0 [label="item closed, discoveries opened", ltail=cluster_f0__record_item, lhead=cluster_f0__select];
+    f0__refuel -> f0__select__0 [label="operator granted another allowance", lhead=cluster_f0__select];
+    f0__rescan_coverage__2 -> f0__recheck__0 [label="uncovered units: ask whether they are units", ltail=cluster_f0__rescan_coverage, lhead=cluster_f0__recheck];
+    f0__rescan_coverage__2 -> f0__walkthrough [label="inventory covered", ltail=cluster_f0__rescan_coverage];
+    f0__rescan_coverage__2 -> f0__select__0 [label="cited source moved: re-ground those nodes", ltail=cluster_f0__rescan_coverage, lhead=cluster_f0__select];
+    f0__retry_blocked__0 -> f0__select__0 [label="operator answered: blocked targets unblocked", ltail=cluster_f0__retry_blocked, lhead=cluster_f0__select];
+    f0__seed_recheck__0 -> f0__select__0 [label="real gaps queued", ltail=cluster_f0__seed_recheck, lhead=cluster_f0__select];
+    f0__seed_surfaces__0 -> f0__select__0 [label="surfaces opened on the worklist", ltail=cluster_f0__seed_surfaces, lhead=cluster_f0__select];
+    f0__select__1 -> f0__investigate [label="next item picked", ltail=cluster_f0__select];
+    f0__select__1 -> f0__refuel [label="item ceiling hit with work pending: ask for more", style=dashed, color=darkorange, ltail=cluster_f0__select];
+    f0__select__1 -> f0__checkpoint__0 [label="the drain is dry: run doctor", ltail=cluster_f0__select, lhead=cluster_f0__checkpoint];
+    f0__start -> f0__enumerate_surfaces__0 [label="no book yet: fill it from the entry surfaces", lhead=cluster_f0__enumerate_surfaces];
+    f0__start -> f0__checkpoint__0 [label="the book exists: reconcile it to HEAD", lhead=cluster_f0__checkpoint];
     f0__walkthrough -> f0____end [label="book complete: walked when there is an app", color=darkgoldenrod];
   }
 
@@ -59,25 +129,68 @@ digraph okf_builder {
     style=dashed; color=gray50; fontsize=11;
 
     f1____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
-    f1__checkpoint [label="checkpoint\ncall checkpoint_book, record, teardown_app, teardown_browser"];
-    f1__mark [label="mark\ncall record"];
-    f1__pick [label="pick\ncall select_item, teardown_app, teardown_browser"];
-    f1__start [label="start\ncall boot_app, boot_browser, seed_walkthrough, teardown_app, …"];
-    f1__walk [label="walk\nagent walkthrough-web.md"];
+    subgraph cluster_f1__checkpoint {
+      label="checkpoint"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f1__checkpoint__0 [label="checkpoint_book\nCanonicalize the book, then read doctor, then queue the repairs it names.", shape=box, fillcolor=white];
+      f1__checkpoint__1 [label="record\nMark the current item done, merge newly-discovered items, and count the re-tries.", shape=box, fillcolor=white];
+      f1__checkpoint__2 [label="teardown_app\nReap the app this run started (or run its documented `stop:` recipe).", shape=box, fillcolor=white];
+      f1__checkpoint__3 [label="teardown_browser\nReap the shared browser, if this run is the one that started it.", shape=box, fillcolor=white];
+      f1__checkpoint__0 -> f1__checkpoint__1 [color=gray40, arrowsize=0.6];
+      f1__checkpoint__1 -> f1__checkpoint__2 [color=gray40, arrowsize=0.6];
+      f1__checkpoint__2 -> f1__checkpoint__3 [color=gray40, arrowsize=0.6];
+    }
+    subgraph cluster_f1__mark {
+      label="mark"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f1__mark__0 [label="record\nMark the current item done, merge newly-discovered items, and count the re-tries.", shape=box, fillcolor=white];
+    }
+    subgraph cluster_f1__pick {
+      label="pick"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f1__pick__0 [label="select_item\nPop the next pending item and mark it active.", shape=box, fillcolor=white];
+      f1__pick__1 [label="teardown_app\nReap the app this run started (or run its documented `stop:` recipe).", shape=box, fillcolor=white];
+      f1__pick__2 [label="teardown_browser\nReap the shared browser, if this run is the one that started it.", shape=box, fillcolor=white];
+      f1__pick__0 -> f1__pick__1 [color=gray40, arrowsize=0.6];
+      f1__pick__1 -> f1__pick__2 [color=gray40, arrowsize=0.6];
+    }
+    subgraph cluster_f1__start {
+      label="start"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f1__start__0 [label="boot_app\nStart the app under walk and wait for it to answer its health path.", shape=box, fillcolor=white];
+      f1__start__1 [label="boot_browser\nOwn the shared CDP browser's lifecycle.", shape=box, fillcolor=white];
+      f1__start__2 [label="seed_walkthrough\nSeed the walk worklist with the *unconfirmed* delta.", shape=box, fillcolor=white];
+      f1__start__3 [label="teardown_app\nReap the app this run started (or run its documented `stop:` recipe).", shape=box, fillcolor=white];
+      f1__start__4 [label="teardown_browser\nReap the shared browser, if this run is the one that started it.", shape=box, fillcolor=white];
+      f1__start__0 -> f1__start__1 [color=gray40, arrowsize=0.6];
+      f1__start__1 -> f1__start__2 [color=gray40, arrowsize=0.6];
+      f1__start__2 -> f1__start__3 [color=gray40, arrowsize=0.6];
+      f1__start__3 -> f1__start__4 [color=gray40, arrowsize=0.6];
+    }
+    subgraph cluster_f1__walk {
+      label="walk"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f1__walk__0 [label="walkthrough-web.md\nwalk one WEB journey against the LIVE app", shape=note, fillcolor=lightyellow];
+    }
     f1____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4, xlabel="→ back to walkthrough"];
 
-    f1____start -> f1__start;
-    f1__checkpoint -> f1__pick [label="doctor dirty: fixups queued"];
-    f1__checkpoint -> f1____end [label="app and browser reaped", color=darkgoldenrod];
-    f1__mark -> f1__pick [label="item closed, discoveries opened"];
-    f1__pick -> f1__walk [label="next journey or screen"];
-    f1__pick -> f1__checkpoint [label="drain dry: run doctor"];
-    f1__pick -> f1____end [label="app and browser reaped", color=darkgoldenrod];
-    f1__start -> f1__pick [label="app and browser up: walk seeded"];
-    f1__start -> f1____end [label="no screen surfaces: nothing to walk", color=darkgoldenrod];
-    f1__start -> f1____end [label="the app would not come up", color=darkgoldenrod];
-    f1__start -> f1____end [label="app and browser reaped", color=darkgoldenrod];
-    f1__walk -> f1__mark [label="walked: record it"];
+    f1____start -> f1__start__0 [lhead=cluster_f1__start];
+    f1__checkpoint__3 -> f1__pick__0 [label="doctor dirty: fixups queued", ltail=cluster_f1__checkpoint, lhead=cluster_f1__pick];
+    f1__checkpoint__3 -> f1____end [label="app and browser reaped", color=darkgoldenrod, ltail=cluster_f1__checkpoint];
+    f1__mark__0 -> f1__pick__0 [label="item closed, discoveries opened", ltail=cluster_f1__mark, lhead=cluster_f1__pick];
+    f1__pick__2 -> f1__walk__0 [label="next journey or screen", ltail=cluster_f1__pick, lhead=cluster_f1__walk];
+    f1__pick__2 -> f1__checkpoint__0 [label="drain dry: run doctor", ltail=cluster_f1__pick, lhead=cluster_f1__checkpoint];
+    f1__pick__2 -> f1____end [label="app and browser reaped", color=darkgoldenrod, ltail=cluster_f1__pick];
+    f1__start__4 -> f1__pick__0 [label="app and browser up: walk seeded", ltail=cluster_f1__start, lhead=cluster_f1__pick];
+    f1__start__4 -> f1____end [label="no screen surfaces: nothing to walk", color=darkgoldenrod, ltail=cluster_f1__start];
+    f1__start__4 -> f1____end [label="the app would not come up", color=darkgoldenrod, ltail=cluster_f1__start];
+    f1__start__4 -> f1____end [label="app and browser reaped", color=darkgoldenrod, ltail=cluster_f1__start];
+    f1__walk__0 -> f1__mark__0 [label="walked: record it", ltail=cluster_f1__walk, lhead=cluster_f1__mark];
   }
 
   f0__walkthrough -> f1____start [label="handoff", style=dashed, color=gray40];
@@ -95,5 +208,13 @@ digraph okf_builder {
     legend_c -> legend_d [label="await: parked on an operator gate", style=dashed, color=darkorange];
     legend_e -> legend_f [label="done: the flow ends", color=darkgoldenrod];
     legend_g -> legend_h [label="handoff to a sub-flow, and back", style=dashed, color=gray40];
+    subgraph cluster_legend_state {
+      label="a state: what it runs, top to bottom";
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled"];
+      legend_call [label="a node call\nits docstring", shape=box, fillcolor=white];
+      legend_agent [label="an agent turn: prompt.md\nits title", shape=note, fillcolor=lightyellow];
+      legend_call -> legend_agent [color=gray40, arrowsize=0.6];
+    }
   }
 }
