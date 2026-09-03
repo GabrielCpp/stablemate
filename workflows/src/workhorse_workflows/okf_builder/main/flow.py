@@ -631,9 +631,10 @@ class OkfBuilder(Workflow):
     ) -> Continue:
         """`auto_waive` + `decide_auto_waive`: accept what a doc edit cannot fix, or stop.
 
-        Each code-fix-only a11y defect gets a warn-level doctor waiver plus a backlog IOU
-        naming the real fix, the un-waive step and the re-run that confirms it, so the next
-        checkpoint sees a warning and the book converges. A finding that is *not*
+        Each code-fix-only a11y defect gets a warn-level doctor waiver plus a seed in the
+        `accessibility-code-fixes` epic naming the real fix, the un-waive step and the
+        re-run that confirms it, so the next checkpoint sees a warning and the book
+        converges while the defect itself reaches the lane that can repair it. A finding that is *not*
         auto-waivable ends the run honestly rather than being papered over.
 
         `stall` and `signature` go back to `checkpoint` unchanged, matching the YAML, where

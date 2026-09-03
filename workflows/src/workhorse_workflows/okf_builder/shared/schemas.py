@@ -204,6 +204,9 @@ class Waived(OkfResult):
 
     has_unwaivable: bool = False
     waived_count: int = 0
+    #: The epic the code fixes were seeded into — empty when nothing was waived, since the
+    #: epic is only created once there is a defect to file in it.
+    seed_epic: str = ""
     note: str = ""
 
 

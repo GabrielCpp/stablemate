@@ -295,7 +295,7 @@ def scoped_findings(report: dict, repo_root: str, features: str, *,
     waivers file as the one and only way a finding leaves this gate — with its reason
     recorded in the book.
 
-    `errors_only=True` is for `nodes/waivers.py` alone, which mints one backlog IOU per
+    `errors_only=True` is for `nodes/waivers.py` alone, which mints one seed IOU per
     standing finding: widening *that* would file thousands of IOUs for prose warns.
 
     Shared with `nodes/waivers.py`, which needs the identical set — in the YAML it was
