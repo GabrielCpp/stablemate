@@ -126,14 +126,36 @@ workhorse-coder dot -o wf.dot               # ...to a file
 dot -Tsvg wf.dot -o wf.svg                  # render (needs graphviz)
 ```
 
-A workflow is rendered from its states: one cluster per flow, a `box3d` green node for every state that can return
-`Done`, dashed orange edges for an `Await`, coral for a state nothing reaches, and
-edge labels naming the parameters each transition binds. The graph is read off the
-states' source, so both arms of an `if` appear (it over-approximates) and it cannot
+A workflow is rendered from its states, one dashed cluster per flow, each with its own
+`START` (green circle) and `END` (gold double circle). A state is a rounded blue box
+holding one bubble per step its body runs, top to bottom in source order:
+
+| Bubble | What it is | Caption |
+|---|---|---|
+| white box | a node call (`self.call(node, …)`) | the node's file, then the first line of its docstring |
+| yellow note | an agent turn (`self.agent("prompts/x.md", …)`) | the prompt file, then its `#` title (a leading `<workflow> — ` is trimmed) |
+| plum box | a handoff (`self.handoff(Child, …)`) | `handoff → <child flow>` |
+
+A handoff is a bubble, never an arrow across the page: the child flow stands as its own
+cluster with its own `START` and `END`, and the colour is the link. A state that runs
+nothing is the plain box it always was.
+
+Edges are the transitions. `Done` is one transition among the others — an edge into the
+flow's `END`, coloured gold — never a colour on the state, because a state that can end on
+one branch still continues on another. An `Await` is dashed orange. The edge label is the
+transition's `.because("…")` reason when the author wrote one; otherwise it lists the
+parameters the transition binds. A state nothing reaches, an opaque state, or a dangling
+target is coral, since the same walk already found it as a defect. The graph is read off
+the states' source, so both arms of an `if` appear (it over-approximates) and it cannot
 drift from the code. A state that factors a repeated turn into a private helper keeps
 its annotations: `self._helper(...)` is followed into the class's own underscore
 methods, and what it finds is attributed to the state that called it — the helper is
 not a node. Aliases are never drawn as a second state.
+
+What the diagram reads is what the author already wrote, so a legible diagram is a
+matter of three habits, spelled out in
+[AUTHORING.md](AUTHORING.md#what-the-diagram-reads-off-a-state): a one-line docstring on
+every node, a `#` title on every prompt, a `.because()` on every transition.
 
 | Flag | Purpose |
 |---|---|

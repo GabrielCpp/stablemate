@@ -381,6 +381,35 @@ inotify watch, so it behaves the same in a container, over NFS, and on a laptop 
 sleeps. The checkpoint is written **before** the wait begins, so a machine rebooted
 during a two-day wait resumes into the waiting state rather than re-asking.
 
+### What the diagram reads off a state
+
+`dot` (see [CHECKING.md](CHECKING.md#dot-diagramming-a-workflow-workhorse-name-dot)) draws a
+state as the chain of steps its body runs and labels each transition with why it is
+taken. It invents none of that text; it reads three things the author writes anyway, and
+a state missing one of them draws as a bare file name or a parameter list:
+
+| You write | The diagram shows |
+|---|---|
+| a docstring on the node, first line a sentence | that line under the node's bubble |
+| a `# <workflow> — <what this turn does>` title on the prompt | the part after the dash under the prompt's bubble |
+| `Continue(...).because("…")`, likewise on `Await` and `Done` | the sentence on the edge, in place of the parameter names |
+
+`.because()` is also logged by the driver on the transition line, so a run log reads the
+same way the diagram does. Keep a reason under about sixty characters, and take it from
+the guard right above the `return` — `"drain empty: re-run doctor"`, not `"go to
+checkpoint"`. A workflow can hold the line with one test:
+
+```python
+def test_every_transition_says_why():
+    unlabelled = [
+        f"{node.name} -> {edge.target or 'END'}"
+        for node in state_graph(MyFlow).states
+        for edge in node.edges
+        if not edge.reason
+    ]
+    assert not unlabelled, f"transitions with no reason: {unlabelled}"
+```
+
 ## Checkpoints and renaming
 
 The checkpoint is `(state, params)` plus the frozen inputs and `ctx`, tagged

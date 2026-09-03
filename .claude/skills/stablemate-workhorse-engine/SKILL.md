@@ -209,6 +209,27 @@ logger.info("gate %s: implementing", gate_id, extra={"activity": True})
 message **is** the activity, so it is never written twice. Workflow-level dimensions
 (`work_id`, epic, service…) go in the `Workflow.labels()` override instead, not in log text.
 
+## The diagram reads what you wrote — so write it
+
+`workhorse-<name> dot` draws each state as the chain of steps it runs and labels each
+transition with why it is taken. It invents no text: a node bubble is captioned with the
+first line of the node's docstring, a prompt bubble with the prompt's `#` title, an edge
+with the transition's reason. Leave one out and the diagram shows a bare file name or a
+parameter list instead. Three habits, then, on every state you touch:
+
+- **A one-line docstring on every node**, a sentence saying what it produces —
+  `"""Rank the pending items by the checker's last verdict."""`.
+- **A `# <workflow> — <what this turn does>` title on every prompt**; the part after the
+  dash is the caption.
+- **A `.because("…")` on every `Continue`, `Await` and `Done`**, under sixty characters,
+  taken from the guard above the `return` — `"drain empty: re-run doctor"`, not `"next"`.
+  The driver logs it on the transition line, so the run log reads the way the diagram does.
+
+Hold the line with a test in the workflow's own suite: walk `state_graph(Flow).states` and
+assert no edge has an empty `reason` (okf-builder's `test_workflow.py` is the model). The
+mechanics — what a step is, how a handoff is drawn — are in workhorse's `docs/CHECKING.md`
+and `docs/AUTHORING.md`.
+
 ## Failure routing — commit the evidence, fail red, never publish
 
 A gate that fails must leave the broken work somewhere obvious and stop the run. It must

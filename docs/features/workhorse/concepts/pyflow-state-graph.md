@@ -49,16 +49,16 @@ explored.
 
 | Field | Meaning |
 |---|---|
-| `edges` | one `Edge` per transition constructed in the body |
-| `terminal` | the body constructs `Done(...)` — the machine can end here |
-| `calls` | blueprint nodes reached via `self.call(...)`, in source order |
-| `prompts` | **literal** paths passed to `self.agent(...)`; an f-string prompt is unknowable statically and is skipped rather than guessed |
-| `handoffs` | sub-workflows reached via `self.handoff(...)` |
+| `edges` | one `Edge` per transition constructed in the body, `Done` included |
+| `steps` | what the body runs, in source order: one `Step(kind, name, summary)` per `self.call` (`kind="call"`, summary = the node docstring's first line), `self.agent` (`"agent"`, summary = the prompt's `#` title with a leading `<workflow> — ` trimmed) or `self.handoff` (`"handoff"`, the sub-workflow's class name) |
+| `terminal` | derived: some edge is a `done` edge — the machine can end here |
+| `calls` / `prompts` / `handoffs` | derived from `steps` by kind; a prompt is a **literal** path, an f-string prompt is unknowable statically and is skipped rather than guessed |
 | `opaque` | the source could not be read; nothing below it is known |
 
 ### `Edge`
 
-`target`, `kind` (`continue` | `await`), the `params` the transition binds (for the edge label),
+`target`, `kind` (`continue` | `await` | `done`), the `params` the transition binds, the `reason` a
+chained `.because("…")` gave (the edge label when set; a non-literal reason reads as `""`),
 and two error flags: `dynamic` (the target was not a plain `self.<state>` — the edge is real, but
 where it goes is only known at runtime) and `dangling` (a `self.<name>` that is not a state).
 
@@ -102,17 +102,23 @@ starts. What is left is the filesystem and the graph, which is what this is.
 `pyflow/dot.py::to_dot` emits one `subgraph cluster_*` per flow, so a distribution shipping
 several flows renders as one document; node ids are flow-prefixed (`f0__start`) so two flows
 sharing a state name never collide in DOT's single namespace, while the visible label stays the
-bare name. The styling vocabulary is deliberately the one the retired renderer used, so a
-diagram of a ported workflow reads the same as the diagram of its predecessor — carried over by
-eye, not by shared code:
+bare name. A state is a rounded box holding one bubble per `Step`, transitions clipped to the box's
+border (`compound=true`, `newrank=true`), so the reader follows the machine between boxes
+and the work inside them on one page:
 
 | Shape | Meaning |
 |---|---|
-| lightgreen circle | `START` |
-| `box3d`, lightgreen | terminal — a state that can return `Done` |
+| lightgreen circle | `START`, one per flow |
+| gold double circle | `END`, one per flow; every `done` edge points at it |
+| rounded lightblue box | a state; empty when it runs nothing |
+| white box in a state | a node call, captioned with its docstring's first line |
+| lightyellow note in a state | an agent turn, captioned with the prompt's title |
+| plum box in a state | a handoff, captioned `handoff → <flow label>`; never a cross-flow edge |
 | lightcoral | unreachable, opaque, or a dangling target (`<name>?`) |
 | `shape=note`, lightgray | a dynamic target, drawn as its own sink rather than as a state |
 | dashed darkorange edge | an `Await` — the transition waits for a human first |
+| darkgoldenrod edge | a `Done` |
 
-Edge labels list the parameter names the transition binds; a state's label lists what it runs
-(`call …`, `agent …`, `handoff …`), elided after four.
+An edge is labelled with its `reason` when the author wrote one, else with the parameter
+names it binds. A state is never drawn terminal: `Done` on one branch does not stop the
+other, so the ending is the edge into `END`. A legend cluster draws the vocabulary once.
