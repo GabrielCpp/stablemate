@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Literal
 
@@ -269,12 +270,54 @@ def write_catalog(graph: Graph, repositories: tuple[SourceRepository, ...]) -> P
     return path
 
 
+def advance_catalog(graph: Graph, paths: Iterable[str]) -> Path:
+    """Re-watermark just *paths* in the graph's own repository, leaving every other row alone.
+
+    A whole-catalog write is only honest at convergence, when every citation has been read
+    against the current bytes. Mid-run there is a second, smaller honesty: one node's stale
+    citation was just re-read and rewritten, so *that file* is current and nothing else
+    changed. Advancing only it is what makes an interrupted run resumable — the next plan's
+    stale set is the remainder rather than the original set, and a run that closes an item
+    and dies does not have to close it again.
+
+    It is also what stops the drain looping. A `fix:stale-citation` item that closes without
+    advancing its own row is reported drifted again by the very next join, forever, because
+    the comparison it fails is against a watermark nobody moved.
+    """
+    catalog = load_catalog(graph.root) or SourceCatalog()
+    fresh: dict[str, SourceFile] = {}
+    for path in sorted(set(paths)):
+        target = graph.root / path
+        if not target.is_file():
+            continue
+        try:
+            text = target.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if text:
+            fresh[path] = _snapshot_file(path, text)
+    own = catalog.repository(SELF_REPOSITORY) or RepositorySnapshot(
+        id=SELF_REPOSITORY, base="", head="WORKTREE"
+    )
+    merged = {file.path: file for file in own.files} | fresh
+    others = tuple(item for item in catalog.repositories if item.id != SELF_REPOSITORY)
+    updated = SourceCatalog(repositories=(
+        own.model_copy(update={"files": tuple(merged[key] for key in sorted(merged))}),
+        *others,
+    ))
+    path = catalog_path(graph.root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(updated.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 __all__ = [
     "SELF_REPOSITORY",
     "RepositorySnapshot",
     "SourceCatalog",
     "SourceFile",
     "SourceSymbol",
+    "advance_catalog",
     "build_catalog",
     "catalog_path",
     "load_catalog",
