@@ -803,6 +803,64 @@ def test_competing_implementations_silent_for_parts_of_one_declared_whole(repo: 
     assert "competing-implementations" not in all_codes(_run(repo))
 
 
+def _bar_component(slug: str, name: str, parent: str) -> str:
+    return (f"### {slug}\n- selector: `div.{slug}`\n- role: group\n- name: {name}\n"
+            f"- verify: visible(locator=\"group:{name}\")\n"
+            f"- parent: [{parent}](#{parent})\n- code: `app/page.py::render`\n\n")
+
+
+def test_competing_implementations_silent_for_a_whole_and_its_own_parts(repo: Path):
+    """The other half of the shared-`parent:` reading: the whole is *in* the group. An app bar
+    and its brand link and its action slot all cite the component that renders the bar, and the
+    bar's own parent is the screen — outside the group — so the members' parents intersect to
+    nothing and a whole plus its parts read as rivals. There is no selection rule to write
+    between a thing and a region of it, so this fired where no edit clears it.
+    """
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n## Components\n\n"
+          + _bar_component("bar", "App bar", "s")
+          + _bar_component("bar-brand", "Brand", "bar")
+          + _bar_component("bar-actions", "Actions", "bar"))
+    assert "competing-implementations" not in all_codes(_run(repo))
+
+
+def test_competing_implementations_silent_down_a_two_level_part_chain(repo: Path):
+    """A menu inside the bar and the channels inside the menu are still one decomposition —
+    the escape walks up to the root rather than looking one hop."""
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n## Components\n\n"
+          + _bar_component("bar", "App bar", "s")
+          + _bar_component("bar-menu", "Share", "bar")
+          + _bar_component("bar-menu-mail", "Email", "bar-menu")
+          + _bar_component("bar-menu-sms", "SMS", "bar-menu"))
+    assert "competing-implementations" not in all_codes(_run(repo))
+
+
+def test_competing_implementations_fires_for_two_parts_of_no_declared_whole(repo: Path):
+    """The near-miss that keeps the escape honest: same type, same symbol, and neither member
+    is the other's parent. Two nodes hanging off the screen alone are the shared-`parent:`
+    test's business (which silences them); two nodes hanging off nothing are a competition."""
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n## Components\n\n"
+          "### grid\n- selector: `div.grid`\n- role: grid\n- name: Grid\n"
+          "- verify: visible(locator=\"grid:Grid\")\n- code: `app/page.py::render`\n\n"
+          "### summary\n- selector: `p.summary`\n- role: status\n- name: Summary\n"
+          "- verify: visible(locator=\"status\")\n- code: `app/page.py::render`\n")
+    assert "competing-implementations" in all_codes(_run(repo))
+
+
+def test_competing_implementations_fires_for_two_wholes_each_with_parts(repo: Path):
+    """Two roots is a competition between two wholes, however each is decomposed — the escape
+    asks for one tree, not for any parent edge to exist."""
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n## Components\n\n"
+          + _bar_component("bar", "App bar", "s")
+          + _bar_component("bar-brand", "Brand", "bar")
+          + _bar_component("rail", "App rail", "s")
+          + _bar_component("rail-brand", "Rail brand", "rail"))
+    assert "competing-implementations" in all_codes(_run(repo))
+
+
 def test_competing_implementations_ignores_whole_file_citations(repo: Path):
     """A form's submit and its refusal both live in the form's component file, so both
     interactions cite it whole — cohabiting a file is not competing over a symbol. Only

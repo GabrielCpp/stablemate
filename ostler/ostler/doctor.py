@@ -860,6 +860,37 @@ def _resolved_targets(node, key: str, resolver: links_mod.LinkResolver) -> set[s
     return out
 
 
+def _one_parent_tree(nodes: list, group_ids: set[str],
+                     resolver: links_mod.LinkResolver) -> bool:
+    """Do *nodes* hang off a single one of their own under `parent:`?
+
+    Only edges landing inside the group count — a parent elsewhere in the book says nothing
+    about how these members relate to each other — and the answer is yes only when exactly
+    one member has no such edge and every other member walks up to it. Two siblings whose
+    common parent is outside the group are not this shape (they are the shared-parent test's,
+    which runs first); two unrelated nodes are not either, and neither is a group that splits
+    into two chains, which is a competition between two wholes however each is decomposed.
+    """
+    parents: dict[str, str] = {}
+    for node in nodes:
+        inside = _resolved_targets(node, "parent", resolver) & group_ids
+        if inside:
+            parents[node.id] = sorted(inside)[0]
+    roots = [node.id for node in nodes if node.id not in parents]
+    if len(roots) != 1:
+        return False
+    for node in nodes:
+        current, seen = node.id, {node.id}
+        while current in parents:
+            current = parents[current]
+            if current in seen:  # a cycle is `unresolved-relation`'s finding, not a tree
+                return False
+            seen.add(current)
+        if current != roots[0]:
+            return False
+    return True
+
+
 def _check_judgment(graph: Graph, f: list[Finding],
                     resolver: links_mod.LinkResolver) -> None:
     """The judgment gap: competition the book records without adjudicating.
@@ -905,6 +936,20 @@ def _check_judgment(graph: Graph, f: list[Finding],
             targets = _resolved_targets(node, "parent", resolver)
             shared_parent = targets if shared_parent is None else shared_parent & targets
         if shared_parent:
+            continue
+        # The other half of that reading: a member that *is* the parent. `parent:` inside the
+        # group connecting every member into one tree — a bar and its brand link and its action
+        # slot, a form and its save button, a menu and the three channels it reveals — is a
+        # decomposition of one widget, not two rival implementations, and every part cites the
+        # one component that renders the whole because that is where each part lives.
+        #
+        # The shared-parent test above cannot see it: it intersects the members' parents, and
+        # the root of a chain has none inside the group (or none at all), so the intersection
+        # is empty and a whole plus its own parts read as competitors. The remedy printed there
+        # — "write the concept that states the selection rule" — cannot be written for a part
+        # and the thing containing it; the question "which do I use?" does not arise between
+        # them, so this fired where no edit clears it. In a real book it was 11 of 201.
+        if _one_parent_tree(nodes, group_ids, resolver):
             continue
         shared: set[str] | None = None
         for node in nodes:
