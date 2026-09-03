@@ -77,7 +77,7 @@ timeout 30 ostler scaffold interaction save-link --in docs/features/acme/gui/scr
 
 `missing-required-bullet` (five keys), `undeclared-obligation`, `weak-check`,
 `unstated-precondition`, `compound-normative-bullet`, `unresolved-relation` on `on:`,
-`ambiguous-locator`; with the repeat keys also `static-template`, `unproven-unique-name`,
+`ambiguous-locator`, `stale-defect`, `malformed-defect`; with the repeat keys also `static-template`, `unproven-unique-name`,
 `malformed-template`, `malformed-variants`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

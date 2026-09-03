@@ -134,6 +134,10 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
         _check_locators(ui_data, f)
     if check_schema:
         _check_conformance(graph, f)
+    # Before the epic trim below: a suppression decided against a finding the trim had already
+    # dropped would read as "no longer fires", and the trim keeps findings by epic, which a UI
+    # finding does not carry.
+    _apply_known_defects(graph, f)
 
     if graph.profile != "full":
         _check_frozen(graph, report.findings)
@@ -217,6 +221,88 @@ def _apply_waivers(graph: Graph, findings: list[Finding]) -> None:
         tag = f" [waived — see backlog {entry['backlog']}]" if entry.get("backlog") else " [waived]"
         reason = f": {entry['reason']}" if entry.get("reason") else ""
         fd.message = f"{fd.message}{tag}{reason}"
+
+
+_KNOWN_DEFECT = re.compile(r"^`?(?P<seed>[A-Za-z0-9][\w.-]*)`?\s+`?(?P<code>[a-z][a-z0-9-]*)`?(?:\s|$)")
+
+
+def parse_known_defect(value: str) -> tuple[str, str] | None:
+    """``(seed_id, finding_code)`` from a ``known-defect:`` value, or None when it states neither.
+
+    The form is ``<seed-id> <finding-code>``, prose allowed after the pair. Both halves are
+    required: a code with no seed is a waiver, and a seed with no code excuses everything.
+    """
+    m = _KNOWN_DEFECT.match(value.strip())
+    return (m.group("seed"), m.group("code")) if m else None
+
+
+def _apply_known_defects(graph: Graph, findings: list[Finding]) -> None:
+    """Apply every ``known-defect:`` bullet, and report the ones that have gone stale.
+
+    A ``known-defect:`` says: this finding is real, the code is the side at fault, and the
+    seed named is the work that fixes it. Doctor drops exactly that code on exactly that node
+    while the seed is active. The record has two exits and both are mechanical, which is what
+    makes it a record rather than a waiver:
+
+    - ``stale-defect`` when the seed is resolved, dropped, deferred or unknown — the pointer
+      outlived the work, and the finding it excused is back in the report;
+    - ``stale-defect`` when the excused finding no longer fires — the code was fixed, and the
+      bullet now excuses the next genuine occurrence at the same spot.
+
+    On the exploration profile no epic is loaded, so no seed can be checked; the suppression
+    and the second exit still apply, and the first waits for the full profile. A value that
+    names neither a seed nor a code is ``malformed-defect``: the one way to write the bullet
+    so that it excuses nothing.
+    """
+    seeds: dict[str, str] | None = None
+    if graph.profile == "full":
+        seeds = {seed.id: seed.status for epic in graph.epics for seed in epic.seeds}
+
+    suppressed: set[int] = set()
+    stale: list[Finding] = []
+    for node in graph.ui_nodes:
+        rel = node.path.relative_to(graph.root).as_posix()
+        for value in _bullet_values(node.meta.get("known-defect", "")):
+            parsed = parse_known_defect(value)
+            if parsed is None:
+                stale.append(Finding(
+                    "error", "malformed-defect",
+                    f"{node.id}: `known-defect: {value}` names no seed and finding code — "
+                    f"the form is `<seed-id> <finding-code>`, and a bullet with neither "
+                    f"excuses nothing",
+                    path=rel, line=node.line, ref=f"{node.id}#known-defect",
+                    suggestion="- known-defect: <seed-id> <finding-code>"))
+                continue
+            seed_id, code = parsed
+            matched = [
+                i for i, fd in enumerate(findings)
+                if fd.code == code and (fd.ref == node.id or fd.ref.startswith(node.id + "#"))
+            ]
+            status = None if seeds is None else seeds.get(seed_id)
+            if seeds is not None and (status is None or status in registry.INACTIVE_SEED_STATUS):
+                why = (f"seed {seed_id} is {status}" if status
+                       else f"no epic carries a seed {seed_id}")
+                stale.append(Finding(
+                    "error", "stale-defect",
+                    f"{node.id}: `known-defect: {seed_id} {code}` points at work that is not "
+                    f"open — {why}; the finding it excused is back in this report. Fix the "
+                    f"code under an active seed, or drop the bullet",
+                    path=rel, line=node.line, ref=f"{node.id}#known-defect",
+                    suggestion="- known-defect: <an active seed-id> " + code))
+                continue
+            if not matched:
+                stale.append(Finding(
+                    "error", "stale-defect",
+                    f"{node.id}: `known-defect: {seed_id} {code}` excuses a finding that no "
+                    f"longer fires — the code was fixed, or the record was wrong; left in "
+                    f"place it pre-excuses the next `{code}` on this node. Drop the bullet",
+                    path=rel, line=node.line, ref=f"{node.id}#known-defect",
+                    suggestion="delete the `known-defect:` bullet"))
+                continue
+            suppressed.update(matched)
+    if suppressed:
+        findings[:] = [fd for i, fd in enumerate(findings) if i not in suppressed]
+    findings.extend(stale)
 
 
 def _check_frozen(graph: Graph, f: list[Finding]) -> None:

@@ -89,8 +89,8 @@ timeout 30 ostler scaffold component save-button --in docs/features/acme/gui/scr
 ## Doctor codes it can trip
 
 `missing-required-bullet`, `invalid-role`, `unnamed-interactive`, `missing-placement`,
-`malformed-placement`, `ambiguous-locator`, `undeclared-obligation`, `weak-check`; with the
-repeat keys also `static-template`, `unproven-unique-name`, `malformed-template`,
+`malformed-placement`, `ambiguous-locator`, `duplicate-bullet`, `undeclared-obligation`,
+`weak-check`, `stale-defect`, `malformed-defect`; with the repeat keys also `static-template`, `unproven-unique-name`, `malformed-template`,
 `malformed-variants`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

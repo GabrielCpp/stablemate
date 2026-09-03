@@ -315,7 +315,12 @@ SHARED_NORMATIVE_KEYS = ("consistency", "consistency rule", "consistency group",
 # promised has no observation to prove), and its grounding is `doctor`'s
 # `ungrounded-unspecified`, not the relation resolver: the link names the settling record, not a
 # node.
-SHARED_ADVISORY_KEYS = ("unspecified",)
+# `known-defect:` is the other advisory key: `<seed-id> <finding-code>`, a record that the code
+# side of a correspondence finding is the wrong one, adjudicated against source and filed as the
+# seed. It is a pointer, not an obligation — the seed carries the work — and `doctor` reads it
+# with two mechanical exits (`stale-defect`): the seed is no longer active, or the excused
+# finding no longer fires. That is what separates it from a waiver, which had neither.
+SHARED_ADVISORY_KEYS = ("unspecified", "known-defect")
 
 
 def normative_keys(node_type: str) -> tuple[str, ...]:

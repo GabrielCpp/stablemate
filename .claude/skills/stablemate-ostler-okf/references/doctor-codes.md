@@ -8,7 +8,7 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-ostler-
 
 # Doctor codes
 
-Every finding `ostler doctor` can raise: **67 codes, 52 error and 15 warn**. An error is a
+Every finding `ostler doctor` can raise: **69 codes, 54 error and 15 warn**. An error is a
 mechanical defect with a mechanical remedy — the exit code counts errors, so a story can be gated
 on it. A warn is a finding whose remedy is authoring judgment, which is why `doctor` cannot
 converge on it the way it converges on `fmt`. Companion to [`../SKILL.md`](../SKILL.md); the
@@ -123,6 +123,8 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `unreachable-screen` | error | No documented path reaches a screen. Add a `leads-to:` on the component that navigates there, or `entry:` if it is entered from outside the app. |
 | `ambiguous-locator` | error | Two controls on one screen share role+name, so `getByRole` cannot tell them apart. Give each a distinct accessible name — or, if they genuinely never co-render, declare `exclusive-with:`. Also raised when a repeated node's `name:` template — opaque holes wildcarded — pattern-matches a static sibling's literal name. |
 | `duplicate-bullet` | error | A component states `role:` or `name:` more than once. A control has one of each, so the node cannot say which it is and `collisions` skips it until it is well-formed — this is a book defect, never a locator collision. Keep the bullet the source renders and drop the rest. |
+| `stale-defect` | error | A `known-defect:` record has outlived its work: the seed it names is resolved, dropped, deferred or unknown, or the finding it excused no longer fires. The excused finding is back in the report. Fix the code under an active seed, or drop the bullet. |
+| `malformed-defect` | error | A `known-defect:` value does not state `<seed-id> <finding-code>`. A code with no seed is a waiver; a seed with no code excuses everything. |
 | `static-template` | error | A node declares `one-per:` but its `name:` template has no bindable hole, so no consumer can discriminate instances. Write the per-instance datum the render interpolates as a dot-path hole; if the render has none, that is an app a11y defect to record, not a datum to invent. |
 | `unproven-unique-name` | warn | The template's bindable holes are display values (`.name`/`.label`/`.title`) and no `unique-by:` claims a distinct key. State `unique-by:` only with evidence from the source; otherwise the warning is the truth. |
 | `malformed-template` | error | The `name:` template has an unbalanced brace — the one way a template fails to parse (a hole the dot-path grammar rejects is simply opaque). |

@@ -190,7 +190,7 @@ Supersession lives there and **only** there. Four other keys look like it withou
 
 ## `unspecified` — deliberately out of contract
 
-The one **advisory** key writable on every type (`registry.SHARED_ADVISORY_KEYS`). An
+One of the two **advisory** keys writable on every type (`registry.SHARED_ADVISORY_KEYS`). An
 `unspecified:` bullet records a behaviour the book looked at and *decided* to leave out of
 contract — an encoding order, a duplicate policy, a tie-break nobody promised. It mints
 nothing: a statement of what is not promised has no observation to prove, and QA reads it as
@@ -209,3 +209,24 @@ A bullet with no live citation is `ungrounded-unspecified`, an **error**: uncite
 distinguishes it from a gap someone decorated, and the remedy is mechanical — cite what
 settled it, or delete the bullet. The link names a record, not a node, so it is grounded by
 that check rather than by the relation resolver.
+
+## `known-defect` — the code is the side at fault
+
+The other advisory key. A correspondence finding — `ambiguous-locator`, `unnamed-interactive`
+— says book and code disagree, and doctor, reading the book alone, cannot say which is wrong.
+When the source has been read against the story's intent and the code is the side at fault,
+the finding is real and stays real until an engineer fixes the code. `known-defect:` records
+that verdict on the node the finding is raised on:
+
+```markdown
+- known-defect: PRED-0412 unnamed-interactive — the menu renders with no aria-label
+```
+
+The value is `<seed-id> <finding-code>`, prose after it. The seed carries the obligation; the
+bullet carries the pointer, mints nothing, and is not a locator. Doctor drops exactly that
+code on exactly that node while the seed is open (`backlog`, `researched`, `covered`), and
+raises `stale-defect` the moment either exit fires: the seed is resolved, dropped, deferred or
+unknown, or the excused finding no longer fires. Both exits are mechanical, which is what makes
+this a record and not a waiver. On a collision pair, one bullet per node the finding names. A
+value stating no seed or no code is `malformed-defect`: excusing a code with no work behind it
+is a waiver, and naming a seed with no code excuses everything.
