@@ -41,7 +41,13 @@ def _norm(s: object) -> str:
     return " ".join(str(s or "").split()).strip().lower()
 
 
-def _book_has_docs(features: Path) -> bool:
+def book_has_docs(features: Path) -> bool:
+    """Whether this book has ever been written — one markdown file anywhere under it.
+
+    Public because two callers ask it and the answer has to be the same one: this module
+    decides whether a worklist claiming completed work can be believed, and `prepare`
+    decides whether the run reconciles an existing book or fills an empty one top-down.
+    """
     return features.is_dir() and any(features.rglob("*.md"))
 
 
@@ -74,7 +80,7 @@ def load_worklist(
     if data.get("scope_id", "bulk") != scope_id or data.get("mode", "bulk") != mode:
         return fresh, True
     done = sum(1 for item in data["items"] if item.get("status") == "done")
-    if done and not _book_has_docs(features):
+    if done and not book_has_docs(features):
         return fresh, True
     data.setdefault("service", service)
     data["scope_id"] = scope_id
@@ -321,4 +327,4 @@ def record(
     )
 
 
-__all__ = ["MAX_TARGET_ATTEMPTS", "load_worklist", "record", "select_item"]
+__all__ = ["MAX_TARGET_ATTEMPTS", "book_has_docs", "load_worklist", "record", "select_item"]

@@ -10,6 +10,10 @@ units, both covered, doctor green.
 cheapest way to make doctor emit an **error** that is neither auto-repairable by
 `ostler fmt` nor in `AUTO_WAIVABLE` — the two arms the convergence loop branches on.
 
+`unbooked` is the same source with no book, which is the other side of the run's one
+entry decision: an empty book is filled top-down from the code, a populated one is
+reconciled to HEAD.
+
 Everything else follows the author suite: nodes run for real against the repo the test
 stands in, and only the agent turn is ever scripted.
 """
@@ -23,9 +27,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from ostler import Ostler
-
-from workhorse_workflows.okf_builder.shared.schemas import SourceRequest
 
 #: The book, the source subtree and the package all share this name — `prepare` defaults
 #: `source_path` to `service`, so a one-input run resolves `<repo>/acme`.
@@ -126,6 +127,21 @@ def booked(repo: Path, write: Callable[[Path, str], Path]) -> Path:
 
 
 @pytest.fixture
+def unbooked(repo: Path, write: Callable[[Path, str], Path]) -> Path:
+    """The same source with no book at all — the first-fill entry the run reads off disk.
+
+    `docs/features/` exists and is empty, which is the state a repo is in before anything
+    has ever documented it: ostler loads a graph, the graph has no nodes, and
+    `book_has_docs` is what says the run must enumerate the code's surfaces top-down
+    instead of reconciling a book to HEAD.
+    """
+    write(repo / "acme/service.py", SOURCE)
+    (repo / "docs/features").mkdir(parents=True, exist_ok=True)
+    _commit(repo, "source, no book")
+    return repo
+
+
+@pytest.fixture
 def dirty(booked: Path, write: Callable[[Path, str], Path]) -> Path:
     """`booked` plus a doc citing `acme/service.py::refund`, which nothing declares.
 
@@ -147,106 +163,3 @@ def _commit(repo: Path, message: str) -> None:
     subprocess.run(
         ["git", "commit", "-qm", message], cwd=repo, check=True, stdout=subprocess.DEVNULL
     )
-
-
-@pytest.fixture
-def incremental_repos(
-    tmp_path: Path, write: Callable[[Path, str], Path]
-) -> Callable[[str, bool], tuple[Path, Path, Path, SourceRequest, str]]:
-    """Create independently-versioned docs/source repos for one story diff."""
-
-    def make(
-        name: str = "case", changed: bool = True
-    ) -> tuple[Path, Path, Path, SourceRequest, str]:
-        docs = tmp_path / name / "product-docs"
-        source = tmp_path / name / "api-service"
-        docs.mkdir(parents=True)
-        source.mkdir(parents=True)
-        for root in (docs, source):
-            for args in (
-                ("init", "-q", "-b", "main"),
-                ("config", "user.email", "test@example.com"),
-                ("config", "user.name", "Test"),
-            ):
-                subprocess.run(
-                    ["git", *args], cwd=root, check=True, stdout=subprocess.DEVNULL
-                )
-
-        references = docs / ".claude/skills/ostler-okf/references"
-        write(references / "node-types/concept.md", "# concept\n")
-        write(references / "bullet-grammar.md", "# bullets\n")
-        write(references / "check-vocabulary.md", "# checks\n")
-
-        okf = Ostler(docs)
-        created_epic = okf.create_epic("billing", "Billing", prefix="BILL")
-        assert created_epic.ok
-        created_story = okf.create_story("billing", "create-invoice", "Create invoice")
-        assert created_story.ok
-        found = okf.graph.find_story("create-invoice")
-        assert found is not None
-        story = found[1]
-        assert story.story_md is not None
-        story.story_md.write_text(
-            story.story_md.read_text(encoding="utf-8")
-            .replace("slug: create-invoice", "externalKey: TEAM-123\nslug: create-invoice")
-            .replace(
-                "## Context\n",
-                "## Context\n\nAn operator creates an invoice from the billing surface.\n",
-            )
-            .replace(
-                "## Acceptance Criteria\n",
-                "## Acceptance Criteria\n\n- AC-1: Creating an invoice returns its identifier.\n",
-            ),
-            encoding="utf-8",
-        )
-        write(
-            docs / "docs/features/billing/concepts/create-invoice.md",
-            """---
-type: concept
-title: Create invoice
----
-# Create invoice
-
-- code: `repo://api-service/src/service.py::create_invoice`
-""",
-        )
-        _commit(docs, "seed docs")
-
-        implementation = write(
-            source / "src/service.py",
-            "def create_invoice():\n    return 'old'\n",
-        )
-        _commit(source, "seed source")
-        base = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=source,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        if changed:
-            implementation.write_text(
-                "def create_invoice():\n    return 'new'\n", encoding="utf-8"
-            )
-
-        workspace = tmp_path / name / "product.code-workspace"
-        workspace.write_text(
-            json.dumps(
-                {
-                    "folders": [
-                        {"name": "product-docs", "path": "product-docs"},
-                        {"name": "api-service", "path": "api-service"},
-                    ]
-                }
-            ),
-            encoding="utf-8",
-        )
-        return (
-            docs,
-            source,
-            workspace,
-            SourceRequest(repo="api-service", surface="billing", root="src", base=base),
-            story.eid,
-        )
-
-    return make

@@ -16,6 +16,10 @@ test from one that does — and both are below.
 
 What the port could get wrong, and what is therefore under test here:
 
+* the run's one entry decision, read off the book rather than passed in: an empty book is
+  filled top-down from the code's surfaces (`unbooked`), a populated one is reconciled to
+  HEAD from the checkpoint (`booked`) — which is what the retired `recheck_only` used to
+  ask for by hand.
 * the drain: seed, pick, investigate, record, re-pick, and the dry exit into the
   convergence gate — with `rnd`/`rescan`/`stall`/`signature` riding through five states
   as parameters where the YAML kept them in one run-global `vars` namespace. The bug that
@@ -24,8 +28,8 @@ What the port could get wrong, and what is therefore under test here:
   asserted directly.
 * the two arms of `checkpoint`: a dirty book queues one repair item per offending node and
   doctor code and re-enters the drain; a repaired book converges to the coverage re-scan.
-* `MAX_STALL_ROUNDS` and the `waive` hand-off, including its honest failure on a finding
-  that is not auto-waivable — the YAML could only name a `type: fail` node here.
+* `MAX_TARGET_ATTEMPTS`: a repair that never lands blocks its own row and parks the run on
+  an operator gate naming it, rather than being re-drilled forever or quietly waived.
 * the `max_items` valve, which is an **operator gate** and not a quiet success: a partial
   book must not read as a finished one, and a budget stop is not a defect, so the run
   blocks on an `Await` and a refuel answer grants another allowance.
@@ -61,9 +65,8 @@ from workhorse.records import parse_checkpoint
 
 from workhorse_workflows import okf_builder
 from workhorse_workflows.okf_builder.shared import paths
-from workhorse_workflows.okf_builder.shared.schemas import SourceRequest
 from workhorse_workflows.okf_builder.shared.worklist import MAX_TARGET_ATTEMPTS
-from workhorse_workflows.okf_builder.workflow import MAX_STALL_ROUNDS, OkfBuilder
+from workhorse_workflows.okf_builder.workflow import OkfBuilder
 
 SERVICE = "acme"
 BOOK = f"docs/features/{SERVICE}"
@@ -78,6 +81,22 @@ REPAIR = f"{REFUND}#{REFUND}#missing-code-symbol"
 #: this book does not actually need — the fixture is already complete, which is what makes
 #: the coverage verdict below a statement about the join rather than about the stub.
 SURFACE = {"kind": "surface", "target": "acme/service.py", "context": "the billing entry"}
+
+#: What an investigation of that surface writes into an empty book. A first fill converges
+#: only if the turn actually documents something, so the drives against `unbooked` hand the
+#: scripted turn the one doc the `booked` fixture ships with.
+CHARGE_DOC = """---
+type: concept
+slug: charge
+title: Charge
+---
+# Charge
+
+- code: `acme/service.py::charge`
+
+Charging.
+"""
+FILLS = {"acme/service.py": {f"{BOOK}/concepts/charge.md": CHARGE_DOC}}
 
 
 # ------------------------------------------------------------------ the scripted agent
@@ -106,10 +125,14 @@ class _Agent:
         explode: set[str] | None = None,
         doc_status: str = "documented",
         note: str = "",
+        writes: dict[str, dict[str, str]] | None = None,
     ) -> None:
         self.repo = repo
         self.surfaces = [dict(SURFACE)] if surfaces is None else surfaces
         self.spawn = dict(spawn or {})
+        #: Per-target `{repo-relative path: text}` the investigation writes — how a first
+        #: fill of an empty book gets a book to measure.
+        self.writes = dict(writes or {})
         self.repair = repair
         #: What a *repair* turn reports back. `documented` is the scripted default; a
         #: `partial`/`skipped` is the turn saying the finding cannot be cleared from the
@@ -151,6 +174,10 @@ class _Agent:
         self.targets.append(target)
         if target in self.explode:
             raise RuntimeError(f"killed while investigating {target}")
+        for rel, text in self.writes.get(target, {}).items():
+            doc = self.repo / rel
+            doc.parent.mkdir(parents=True, exist_ok=True)
+            doc.write_text(text, encoding="utf-8")
         if self.repair and str(data["item_kind"]).startswith("fix:"):
             # A repair target is `<path>#<node>#<code>` — no round prefix, because the round
             # is not part of a finding's identity. The repair the doctor finding calls for is
@@ -167,7 +194,6 @@ class _Agent:
     #: A `fix:` item renders `main/prompts/repair.md` instead, so the dispatch above sees a
     #: different stem for the same node. Same turn, same seam — the prompt is what differs.
     _repair = _investigate
-    _document_change = _investigate
 
     def _recheck_coverage(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"needs_journeys": False, "discovered": []}
@@ -206,32 +232,33 @@ def _worklist(repo: Path) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------- the drain
 
 
-def test_a_complete_book_drains_converges_and_skips_the_walk(
-    booked: Path, tmp_path: Path, read_json: Callable[[Path], Any]
+def test_an_empty_book_is_filled_top_down_from_the_code_s_surfaces(
+    unbooked: Path, tmp_path: Path, read_json: Callable[[Path], Any]
 ) -> None:
-    """The straight-through run: seed one surface, investigate it, converge, hand off.
+    """The first fill: seed one surface, document it, converge, hand off.
 
-    Every artifact below is the YAML's artifact: the worklist with its item closed, the
-    source inventory walked from `acme/`, and the coverage join written into the book. The
-    verdict is arithmetic — one module and one symbol, both cited by `charge.md` — so the
-    fact that the scripted turn wrote nothing is exactly the point.
+    There is no book to reconcile against, so the entry is the enumeration — and every
+    artifact below is the YAML's artifact: the worklist with its item closed, the source
+    inventory walked from `acme/`, and the coverage join written into the book the turn
+    just wrote. The verdict is arithmetic — one module and one symbol, both cited by the
+    doc the investigation produced.
     """
-    agent = _Agent(booked)
+    agent = _Agent(unbooked, writes=FILLS)
     result = _drive(_env(tmp_path), agent)
 
     assert agent.counts() == {"enumerate-surfaces": 1, "investigate": 1}, agent.counts()
 
     # The drain closed what it opened.
-    items = _worklist(booked)
+    items = _worklist(unbooked)
     assert [(i["kind"], i["target"], i["status"]) for i in items] == [
         ("surface", "acme/service.py", "done")
     ], items
 
     # The coverage join ran for real and is complete: 2 units, 2 covered.
-    coverage = read_json(booked / BOOK / "coverage.json")
+    coverage = read_json(unbooked / BOOK / "coverage.json")
     assert coverage["total"] == 2, coverage
     assert coverage["covered"] == 2, coverage
-    inventory = read_json(paths.source_inventory_path(paths.worklist_path(booked, SERVICE)))
+    inventory = read_json(paths.source_inventory_path(paths.worklist_path(unbooked, SERVICE)))
     assert {u["code"] for u in inventory["units"]} == {
         "acme/service.py",
         "acme/service.py::charge",
@@ -246,60 +273,25 @@ def test_a_complete_book_drains_converges_and_skips_the_walk(
     assert result.entry_url == "", result
 
 
-def test_incremental_story_skips_enumeration_and_documents_one_changed_function(
-    incremental_repos: Callable[
-        [str, bool], tuple[Path, Path, Path, SourceRequest, str]
-    ],
-    tmp_path: Path,
+def test_a_book_that_exists_is_reconciled_to_head_rather_than_re_enumerated(
+    booked: Path, tmp_path: Path, read_json: Callable[[Path], Any]
 ) -> None:
-    docs, source, workspace, request, story_id = incremental_repos("case", True)
-    agent = _Agent(docs)
+    """The other entry, and the reason `recheck_only` is retired.
 
-    result = _drive(
-        _env(tmp_path),
-        agent,
-        service="billing",
-        docs_path=str(docs),
-        repo_dir=str(docs),
-        workspace_file=str(workspace),
-        story="TEAM-123",
-        sources=(request,),
-    )
+    A populated book has a checkpoint and a coverage join that between them name every
+    unit it owes work on, so re-enumerating its surfaces buys nothing and costs a turn per
+    run. This book owes nothing: doctor is green, the join is 2/2, and the run converges
+    without spending a single agent turn — which is exactly what an operator who forgot to
+    pass `recheck_only` did *not* get before.
+    """
+    agent = _Agent(booked)
+    result = _drive(_env(tmp_path), agent)
 
-    assert agent.counts() == {"document-change": 1}, agent.counts()
-    args = agent.args_for("document-change")[0]
-    assert args["story_id"] == story_id
-    assert "Creating an invoice returns its identifier" in args["story_content"]
-    assert "repo://api-service/src/service.py::create_invoice" in args["item_context"]
-    assert agent.cwds == [str(docs)]
-    assert agent.add_dirs == [[str(docs), str(source)]]
-    assert result.story_id == story_id
-    assert result.changed_units == 1
-
-
-def test_incremental_empty_diff_is_a_clean_no_op(
-    incremental_repos: Callable[
-        [str, bool], tuple[Path, Path, Path, SourceRequest, str]
-    ],
-    tmp_path: Path,
-) -> None:
-    docs, _source, workspace, request, story_id = incremental_repos("case", False)
-    agent = _Agent(docs)
-
-    result = _drive(
-        _env(tmp_path),
-        agent,
-        service="billing",
-        docs_path=str(docs),
-        repo_dir=str(docs),
-        workspace_file=str(workspace),
-        story="TEAM-123",
-        sources=(request,),
-    )
-
-    assert agent.counts() == {}
-    assert result.story_id == story_id
-    assert result.changed_units == 0
+    assert agent.counts() == {}, agent.counts()
+    assert _worklist(booked) == [], _worklist(booked)
+    coverage = read_json(booked / BOOK / "coverage.json")
+    assert (coverage["covered"], coverage["total"]) == (2, 2), coverage
+    assert result.is_webapp is False, result
 
 
 def test_the_build_scratch_ignores_itself_so_a_commit_all_cannot_eat_it(
@@ -351,14 +343,15 @@ def test_the_browser_profile_is_not_in_the_repo_at_all(
     assert paths.walkthrough_scratch(twin) != scratch
 
 
-def test_an_investigation_opens_the_items_it_reveals(booked: Path, tmp_path: Path) -> None:
+def test_an_investigation_opens_the_items_it_reveals(unbooked: Path, tmp_path: Path) -> None:
     """The drain is a crawl, not a list: `record_item` writes back what the turn found.
 
     That write is its own state precisely so a crash mid-turn re-investigates rather than
     closing an item nothing documented — which is what the resume test below drives.
     """
     agent = _Agent(
-        booked,
+        unbooked,
+        writes=FILLS,
         spawn={
             "acme/service.py": [
                 {"kind": "layer", "target": "acme/service.py::charge", "context": "the handler"}
@@ -369,7 +362,7 @@ def test_an_investigation_opens_the_items_it_reveals(booked: Path, tmp_path: Pat
 
     assert agent.counts()["investigate"] == 2, agent.counts()
     assert agent.targets == ["acme/service.py", "acme/service.py::charge"], agent.targets
-    assert all(i["status"] == "done" for i in _worklist(booked)), _worklist(booked)
+    assert all(i["status"] == "done" for i in _worklist(unbooked)), _worklist(unbooked)
 
 
 def test_a_source_root_that_is_not_a_directory_fails_the_run(
@@ -394,7 +387,7 @@ def test_a_source_root_that_is_not_a_directory_fails_the_run(
 def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
     dirty: Path, tmp_path: Path
 ) -> None:
-    """`recheck_only` re-enters at the checkpoint, which is the repair mode's whole shape.
+    """A book that exists re-enters at the checkpoint, which is the repair mode's shape.
 
     Round 1 finds the ungrounded `code:` citation, queues one `fix:missing-code-symbol` item
     targeting the offending node, and sends it back through the drain. The scripted repair
@@ -403,7 +396,7 @@ def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
     the *same* row `record` reopens rather than a new one its dedupe cannot recognise.
     """
     agent = _Agent(dirty, repair=True)
-    result = _drive(_env(tmp_path), agent, recheck_only=True)
+    result = _drive(_env(tmp_path), agent)
 
     # Discovery was skipped entirely, and the one turn rendered the *repair* prompt —
     # `investigate.md` no longer carries repair instructions, so the stem is the assertion.
@@ -444,7 +437,7 @@ def test_a_repair_that_never_lands_blocks_the_target_and_parks_on_the_gate(
         patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
         pytest.raises(_Parked),
     ):
-        _drive(_env(tmp_path), agent, recheck_only=True)
+        _drive(_env(tmp_path), agent)
 
     # One repair turn per attempt, and every one against the same target — no round prefix,
     # so `record`'s `(kind, target)` dedupe sees the repeat it is there to see.
@@ -488,7 +481,7 @@ def test_answering_the_blocked_gate_returns_the_target_with_a_fresh_allowance(
         path.write_text("STATUS: ANSWERED\n\nFixed by hand.\n", encoding="utf-8")
 
     with patch.object(pyflow_driver, "wait_for_answer", answer_then_repair):
-        result = _drive(_env(tmp_path), agent, recheck_only=True)
+        result = _drive(_env(tmp_path), agent)
 
     # Three spent attempts, the gate, then one more turn that repaired it.
     assert agent.counts()["repair"] == MAX_TARGET_ATTEMPTS + 1, agent.counts()
@@ -530,50 +523,8 @@ def _answers(seen: list[str]) -> Callable[..., None]:
     return answered
 
 
-class _BreakIncremental(_Agent):
-    """Introduce a scoped doctor error after documenting the changed unit."""
-
-    def _document_change(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        concept = self.repo / "docs/features/billing/concepts/create-invoice.md"
-        concept.write_text(
-            concept.read_text(encoding="utf-8")
-            + "\n- code: `repo://api-service/src/service.py::missing`\n",
-            encoding="utf-8",
-        )
-        return super()._investigate(data, nth)
-
-
-def test_incremental_stall_blocks_after_identical_scoped_doctor_findings(
-    incremental_repos: Callable[
-        [str, bool], tuple[Path, Path, Path, SourceRequest, str]
-    ],
-    tmp_path: Path,
-) -> None:
-    docs, _source, workspace, request, _story_id = incremental_repos("case", True)
-    agent = _BreakIncremental(docs)
-    seen: list[str] = []
-
-    with (
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
-        pytest.raises(_Parked),
-    ):
-        _drive(
-            _env(tmp_path),
-            agent,
-            service="billing",
-            docs_path=str(docs),
-            repo_dir=str(docs),
-            workspace_file=str(workspace),
-            story="TEAM-123",
-            sources=(request,),
-        )
-
-    assert agent.counts()["repair"] == MAX_STALL_ROUNDS
-    assert "same unresolved findings" in seen[0]
-
-
 def test_the_item_ceiling_blocks_on_an_operator_gate_not_a_finished_book(
-    booked: Path, tmp_path: Path
+    unbooked: Path, tmp_path: Path
 ) -> None:
     """`max_items` is a safety valve for a quota-limited run, and reaching it *blocks*.
 
@@ -584,7 +535,8 @@ def test_the_item_ceiling_blocks_on_an_operator_gate_not_a_finished_book(
     survives in the worklist the gate's eventual answer resumes into.
     """
     agent = _Agent(
-        booked,
+        unbooked,
+        writes=FILLS,
         surfaces=[
             {"kind": "surface", "target": "acme/service.py", "context": "one"},
             {"kind": "surface", "target": "acme/other.py", "context": "two"},
@@ -602,14 +554,14 @@ def test_the_item_ceiling_blocks_on_an_operator_gate_not_a_finished_book(
     assert "1-item ceiling with 1 item(s) still pending" in seen[0], seen[0]
     assert "fresh allowance" in seen[0], seen[0]
     assert agent.counts()["investigate"] == 1, agent.counts()
-    assert {i["target"]: i["status"] for i in _worklist(booked)} == {
+    assert {i["target"]: i["status"] for i in _worklist(unbooked)} == {
         "acme/service.py": "done",
         "acme/other.py": "pending",
-    }, _worklist(booked)
+    }, _worklist(unbooked)
 
 
 def test_a_refuel_answer_grants_another_allowance_and_the_drain_finishes(
-    booked: Path, tmp_path: Path
+    unbooked: Path, tmp_path: Path
 ) -> None:
     """The far side of the gate: `refuel` multiplies the ceiling instead of resetting it.
 
@@ -619,7 +571,8 @@ def test_a_refuel_answer_grants_another_allowance_and_the_drain_finishes(
     exactly as an unbounded one would.
     """
     agent = _Agent(
-        booked,
+        unbooked,
+        writes=FILLS,
         surfaces=[
             {"kind": "surface", "target": "acme/service.py", "context": "one"},
             {"kind": "surface", "target": "acme/other.py", "context": "two"},
@@ -633,7 +586,7 @@ def test_a_refuel_answer_grants_another_allowance_and_the_drain_finishes(
     # second, and the drain went dry before a third was needed.
     assert len(seen) == 1, seen
     assert agent.counts()["investigate"] == 2, agent.counts()
-    assert all(i["status"] == "done" for i in _worklist(booked)), _worklist(booked)
+    assert all(i["status"] == "done" for i in _worklist(unbooked)), _worklist(unbooked)
     assert result.is_webapp is False, result
 
 
@@ -641,7 +594,7 @@ def test_a_refuel_answer_grants_another_allowance_and_the_drain_finishes(
 
 
 def test_a_run_killed_mid_investigation_resumes_on_that_item_alone(
-    booked: Path, tmp_path: Path
+    unbooked: Path, tmp_path: Path
 ) -> None:
     """The drain's state is the worklist, not the machine.
 
@@ -652,7 +605,8 @@ def test_a_run_killed_mid_investigation_resumes_on_that_item_alone(
     reproduced without a gas tank.
     """
     first = _Agent(
-        booked,
+        unbooked,
+        writes=FILLS,
         surfaces=[
             {"kind": "surface", "target": "acme/service.py", "context": "one"},
             {"kind": "surface", "target": "acme/other.py", "context": "two"},
@@ -665,10 +619,10 @@ def test_a_run_killed_mid_investigation_resumes_on_that_item_alone(
         _drive(env, first)
 
     assert first.targets == ["acme/service.py", "acme/other.py"], first.targets
-    assert {i["target"]: i["status"] for i in _worklist(booked)} == {
+    assert {i["target"]: i["status"] for i in _worklist(unbooked)} == {
         "acme/service.py": "done",
         "acme/other.py": "active",
-    }, _worklist(booked)
+    }, _worklist(unbooked)
 
     checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
@@ -676,7 +630,7 @@ def test_a_run_killed_mid_investigation_resumes_on_that_item_alone(
     assert resume.params["item_target"] == "acme/other.py", resume.params
     assert resume.flow == "OkfBuilder", resume
 
-    second = _Agent(booked)
+    second = _Agent(unbooked, writes=FILLS)
     result = drive(
         OkfBuilder(**resume.inputs),
         replace(_env(tmp_path, run_dir=run_dir), agent_runner=StubRunner(second)),
@@ -686,14 +640,14 @@ def test_a_run_killed_mid_investigation_resumes_on_that_item_alone(
     # Nothing upstream re-ran: not the enumeration, not the first item.
     assert second.counts() == {"investigate": 1}, second.counts()
     assert second.targets == ["acme/other.py"], second.targets
-    assert all(i["status"] == "done" for i in _worklist(booked)), _worklist(booked)
+    assert all(i["status"] == "done" for i in _worklist(unbooked)), _worklist(unbooked)
     assert result.is_webapp is False, result
 
 
 # -------------------------------------------------------------------------------- labels
 
 
-def test_the_labels_name_the_service_and_the_item(booked: Path, tmp_path: Path) -> None:
+def test_the_labels_name_the_service_and_the_item(unbooked: Path, tmp_path: Path) -> None:
     """The YAML's three `labels:` templates, as one method reading `self.output(...)`.
 
     Before the first pick there is no output to read, and that is the normal state of a
@@ -708,7 +662,7 @@ def test_the_labels_name_the_service_and_the_item(booked: Path, tmp_path: Path) 
         return real_rebase(self, labels)
 
     with patch.object(pyflow_activity.ActivityLog, "rebase", capture):
-        _drive(_env(tmp_path), _Agent(booked))
+        _drive(_env(tmp_path), _Agent(unbooked, writes=FILLS))
 
     assert seen[0] == {"service": SERVICE}, seen[0]
     stamped = [labels for labels in seen if labels.get("work_id")]

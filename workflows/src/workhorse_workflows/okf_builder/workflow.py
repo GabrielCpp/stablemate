@@ -31,7 +31,6 @@ workflow = (
             # past its gate; see `shared/stubs.py` for why the blank default does not.
             "enumerate-surfaces": {"discovered": []},
             "investigate": {"doc_status": "documented"},
-            "document-change": {"doc_status": "documented"},
             "recheck-coverage": {"needs_journeys": False},
             "walkthrough-web": {"walk_status": "confirmed"},
         }

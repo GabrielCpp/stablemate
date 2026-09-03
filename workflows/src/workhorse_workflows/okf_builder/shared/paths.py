@@ -91,14 +91,14 @@ def ensure_build_dir(root: Path) -> Path:
 
 
 def worklist_path(root: Path, service: str, scope_id: str = "") -> Path:
-    """The drain memory, optionally isolated to one deterministic incremental scope."""
+    """The drain memory, optionally isolated to one deterministic build scope."""
     name = service or "all"
     suffix = f".{scope_id}" if scope_id else ""
     return build_dir(root) / f"{name}{suffix}.worklist.json"
 
 
 def diff_scope_path(root: Path, service: str) -> Path:
-    """The changed-paths list a diff-scoped build filters its inventory through.
+    """The changed-paths list a `since`-narrowed build filters its inventory through.
 
     Run state like the worklist beside it: re-derived from git at every `prepare`, so a
     resume recomputes the scope against the branch as it stands rather than trusting a

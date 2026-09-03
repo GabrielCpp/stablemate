@@ -96,52 +96,39 @@ class Prepared(OkfResult):
     done_baseline: int = 0
     #: Whether a stale worklist was discarded rather than resumed.
     worklist_reset: bool = False
-    #: The changed-paths file a diff-scoped build filters its inventory through.
-    #: Empty on a full scan — including a `diff_base` run sitting on the base itself,
-    #: where the squash of every commit *is* the whole tree.
+    #: Whether the book already holds markdown. It is the run's one entry decision: a
+    #: populated book is *reconciled* to HEAD (straight to the checkpoint, which is what
+    #: `recheck_only` used to ask for by hand), an empty one is filled top-down from the
+    #: code's entry surfaces.
+    book_exists: bool = False
+    #: The changed-paths file a `since`-narrowed build filters its inventory through.
+    #: Empty on a whole-book reconcile. Zero paths in it is a real answer — sitting on the
+    #: base itself, the merge base is HEAD and a clean tree has moved no file — and it is
+    #: not the same thing as no narrowing at all.
     diff_scope_path: str = ""
     #: How many paths that scope holds. Zero is a real answer (an empty diff), not
     #: an unset one — `diff_scope_path` is what says whether a scope exists.
     diff_scope_count: int = 0
     #: Why the run cannot proceed, when it cannot.
     prepare_error: str = ""
-    #: `bulk` for the exhaustive crawler, `incremental` for a story's source diff.
-    mode: str = "bulk"
-    #: Stable identity of this exact story/source/change scope.
+    #: Stable identity of this build's scope, and the worklist's compatibility stamp.
     scope_id: str = "bulk"
-    #: Canonical story identity and source file, empty in bulk mode.
+
+    #: Retired and unread, kept declared for one release: story-mode's parallel prepare is
+    #: gone and a run reconciles the book to HEAD instead. Deleting a field on `self.ctx`
+    #: kills every in-flight run on reload with a bare pydantic `extra_forbidden`.
+    mode: str = "bulk"
     story_id: str = ""
     story_path: str = ""
     story_content: str = ""
     acceptance_criteria: tuple[dict[str, str], ...] = ()
-    #: The QA packet's spec directory and packet, empty in bulk mode.
     spec_path: str = ""
     packet: dict[str, Any] = {}
-    #: Typed source inputs plus their resolved checkout roots.
     source_requests: tuple[SourceRequest, ...] = ()
     source_checkouts: dict[str, str] = {}
     source_roots: tuple[str, ...] = ()
     baseline_doctor_errors: tuple[str, ...] = ()
-    #: Initial incremental work, ready for the ordinary worklist drain.
     initial_items: tuple[dict[str, Any], ...] = ()
-
-
-class BuildResult(OkfResult):
-    """A clean incremental completion, including the no-change case."""
-
-    mode: str = "incremental"
-    story_id: str = ""
-    changed_units: int = 0
-
-
-class IncrementalCheck(OkfResult):
-    """The refreshed story packet and any health work it still requires."""
-
-    clean: bool = False
-    packet: dict[str, Any] = {}
-    items: list[dict[str, Any]] = []
-    error: str = ""
-    signature: str = ""
 
 
 # ── the drain loop ──────────────────────────────────────────────────────────
@@ -357,12 +344,10 @@ class WalkSeed(OkfResult):
 __all__ = [
     "AppBoot",
     "BrowserBoot",
-    "BuildResult",
     "Checkpoint",
     "Coverage",
     "Discovery",
     "Investigation",
-    "IncrementalCheck",
     "OkfResult",
     "Pick",
     "Prepared",
