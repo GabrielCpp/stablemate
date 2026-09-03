@@ -32,7 +32,6 @@ from typing import Any
 from ostler import Ostler
 from ostler.autofix import run_autofix
 from ostler.fmt import run_fmt
-from ostler.source_snapshots import write_catalog
 from workhorse_workflows.okf_builder.shared import stubs
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
 from workhorse_workflows.okf_builder.shared.schemas import Checkpoint
@@ -329,26 +328,6 @@ def scoped_error_findings(report: dict, repo_root: str, features: str) -> list[d
     return scoped_findings(report, repo_root, features, errors_only=True)
 
 
-def _watermark(logger: logging.Logger, okf: Ostler) -> None:
-    """Record what every cited symbol currently *is*, so the next run can tell what moved.
-
-    Written on a clean round and only on a clean round. The watermark's whole meaning is
-    "a node was written against these bytes"; taking it while doctor still has findings
-    would stamp symbols nobody re-read as current, and the drift it exists to detect would
-    be erased by the run that failed to document it.
-
-    A failure here is logged and dropped. The catalog is an accelerator — its absence
-    makes the next `ostler backfill plan` do more work, never wrong work — and a book that
-    converged must not be reported as a failed round because a cache could not be written.
-    """
-    try:
-        path = write_catalog(okf.graph, ())
-    except (OSError, ValueError, RuntimeError) as exc:
-        logger.warning("could not write the source watermark: %s", exc)
-        return
-    logger.info("watermarked the cited source at %s", path)
-
-
 @blueprint.node(stub=stubs.clean)
 def checkpoint_book(
     logger: logging.Logger,
@@ -448,7 +427,6 @@ def checkpoint_book(
         logger.info(
             "round %d: doctor is clean for %s — the gate converges", rnd, features_root or repo_root
         )
-        _watermark(logger, okf)
     else:
         fixups = _repair_items(findings)
         backfills = sum(1 for i in fixups

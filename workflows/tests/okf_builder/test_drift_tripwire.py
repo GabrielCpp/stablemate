@@ -146,6 +146,14 @@ def _emitted_codes() -> set[str]:
     return codes
 
 
+#: Codes the *builder* mints, not `doctor` — so they carry a repair fragment while never
+#: appearing in doctor's source. `stale-citation` is the coverage join's regrounding row: a
+#: node whose grammar is green and whose cited symbol has been rewritten under it, which no
+#: static check of the book alone could ever see. Excluded from the retirement half of the
+#: tripwire, and only from that half — an unclassified doctor code still fails.
+BUILDER_CODES = frozenset({"stale-citation"})
+
+
 def _fragment_codes() -> set[str]:
     return {p.stem for p in REPAIR_DIR.glob("*.md")} - {"_default"}
 
@@ -162,7 +170,7 @@ def test_every_doctor_code_is_classified_on_purpose() -> None:
         f"ORG_GRAPH_CODES in this file — on purpose, with a reviewer."
     )
 
-    retired = classified - emitted
+    retired = classified - emitted - BUILDER_CODES
     assert not retired, (
         f"classified codes doctor no longer emits: {sorted(retired)} — a rename upstream, "
         f"and whatever fragment or set entry carries the old name is now dead."

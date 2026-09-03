@@ -64,6 +64,7 @@ from typing import ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
 from workhorse_workflows.okf_builder.main.nodes import (
+    advance_watermark,
     auto_waive,
     check_incremental_context,
     compute_coverage,
@@ -458,6 +459,8 @@ class OkfBuilder(Workflow):
             self.record_item,
             current_item=current_item,
             discovered=result.discovered,
+            item_kind=item_kind,
+            item_context=item_context,
             # For *every* kind, not just `change`. A repair turn that answers `partial` or
             # `skipped` is reporting that this finding cannot be cleared from the book, and
             # that verdict used to be read at one callsite gated on `change` — so it was
@@ -525,6 +528,8 @@ class OkfBuilder(Workflow):
         self,
         current_item: dict,
         discovered: list[dict],
+        item_kind: str = "",
+        item_context: str = "",
         doc_status: str = "",
         note: str = "",
         rnd: int = 0,
@@ -538,7 +543,19 @@ class OkfBuilder(Workflow):
         The turn's own `doc_status` rides along and is stored on the row it closes, so the
         next round's re-queue of that same target has the last turn's reason to carry into
         `blocked_reason` when the attempts run out.
+
+        A regrounding item also moves its own watermark here, before the row closes. The two
+        writes belong in one state because they are one fact — this node now describes these
+        bytes — and a run that recorded the close without the watermark would be handed the
+        same node again by the next join, forever.
         """
+        self.call(
+            advance_watermark,
+            self.ctx.repo_root,
+            item_kind,
+            item_context,
+            doc_status,
+        )
         return Continue(
             self.call(
                 record,
@@ -768,6 +785,23 @@ class OkfBuilder(Workflow):
         # would be a second, weaker reader of a question already answered upstream.
         if coverage.coverage_complete:
             return Continue(coverage, self.walkthrough)
+        if coverage.regrounding:
+            # A drifted citation is not an adjudication: the symbol under the node was
+            # rewritten, and the bullet has to be re-read against it. So these go straight onto
+            # the worklist and back into the drain, and the `recheck` agent is asked only about
+            # the rows that are genuinely a judgement — is this uncovered unit a unit at all.
+            self.logger.info(
+                "%d node(s) cite source that moved or changed under them; requeueing",
+                len(coverage.regrounding),
+                extra={"activity": True},
+            )
+            return Continue(
+                self.call(record, self.ctx.worklist_path, None, coverage.regrounding),
+                self.select,
+                rnd=rnd,
+                rescan=coverage.rescan_round,
+                refuels=refuels,
+            )
         return Continue(
             coverage, self.recheck, rnd=rnd, rescan=coverage.rescan_round, refuels=refuels
         )

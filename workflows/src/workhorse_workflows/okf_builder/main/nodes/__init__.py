@@ -25,12 +25,17 @@ out for the same answer.
 """
 from __future__ import annotations
 
-from workhorse_workflows.okf_builder.main.nodes.coverage import compute_coverage, inventory_source
+from workhorse_workflows.okf_builder.main.nodes.coverage import (
+    advance_watermark,
+    compute_coverage,
+    inventory_source,
+)
 from workhorse_workflows.okf_builder.main.nodes.incremental import check_incremental_context
 from workhorse_workflows.okf_builder.main.nodes.prepare import prepare
 from workhorse_workflows.okf_builder.main.nodes.waivers import auto_waive
 
 __all__ = [
+    "advance_watermark",
     "auto_waive",
     "compute_coverage",
     "check_incremental_context",

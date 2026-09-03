@@ -169,6 +169,13 @@ class Pick(OkfResult):
     kinds: str = ""
 
 
+class Watermarked(OkfResult):
+    """What a closed regrounding item retired: the files whose watermark moved to now."""
+
+    advanced: list[str] = Field(default_factory=list)
+    watermark_error: str = ""
+
+
 class Recorded(OkfResult):
     """A worklist write: what it closed, what it opened, and what it gave up re-opening."""
 
@@ -234,6 +241,11 @@ class Coverage(OkfResult):
     coverage_path: str = ""
     coverage_summary: str = ""
     coverage_error: str = ""
+    #: `fix:stale-citation` items — one per node whose cited symbol drifted or moved under it.
+    #: Seeded straight into the worklist rather than adjudicated: an uncovered unit is a
+    #: judgement call (is this a unit at all?), a drifted one is not — the code moved and the
+    #: bullet has to follow it.
+    regrounding: list[dict[str, Any]] = Field(default_factory=list)
     #: The re-scan counter, incremented on *every* exit path — see `nodes/coverage.py`.
     rescan_round: int = 0
 

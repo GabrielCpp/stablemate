@@ -25,6 +25,7 @@ import tomllib
 from collections import Counter
 from fnmatch import fnmatch
 from pathlib import Path
+from typing import Any
 
 from ostler import Ostler, graph as graph_mod
 # The symbol grammar lives in `ostler.inventory`, not here. Two callers need to know what a
@@ -33,10 +34,18 @@ from ostler import Ostler, graph as graph_mod
 # word-presence test, so a facade module re-exporting a name kept a moved symbol's citation
 # green. Importing it means the join and the grounding check cannot disagree again.
 from ostler.inventory import SOURCE_SUFFIXES, symbols
+from ostler import backfill as backfill_mod
+from ostler import coverage as coverage_mod
+from ostler import refs
+from ostler import source_snapshots
 from workhorse_workflows.kit import short_sha
 from workhorse_workflows.okf_builder.shared import stubs
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
-from workhorse_workflows.okf_builder.shared.schemas import Coverage, SourceInventory
+from workhorse_workflows.okf_builder.shared.schemas import (
+    Coverage,
+    SourceInventory,
+    Watermarked,
+)
 
 #: Directories whose contents are never source: build output, vendored trees, caches.
 SKIP_DIRS = {
@@ -316,6 +325,58 @@ def _screen_count(okf: Ostler, service: str) -> int:
     return len(data["nodes"])
 
 
+#: The stale reasons this join owns. `uncovered` is the join's own arithmetic and is already
+#: reported as `missing`; `dangling` is the checkpoint's channel — a doctor code, queued as a
+#: `fix:` item rounds earlier — and queuing it twice hands two turns the same edit.
+REGROUNDING_REASONS = ("drifted", "moved")
+
+
+def _regrounding(okf: Ostler, inventory_path: str, service: str,
+                 waivers: dict[str, str]) -> tuple[list[dict[str, Any]], str]:
+    """The nodes whose citations no longer describe the code they point at.
+
+    This is the half of staleness the join cannot see. `ostler coverage` asks only whether every
+    unit is *cited*, so a book stays at covered == total while the symbols under it are rewritten
+    — measured downstream, four books reported complete with their anchors 187 commits behind.
+    The watermark in `sources.json` is what makes that an answerable question, and this is the
+    caller that asks it.
+
+    A book with no watermark yet yields nothing, which is correct rather than lucky: an absent
+    catalog means "nothing has been recorded", and reading drift out of its absence would requeue
+    every node in the book on the first run after this shipped.
+    """
+    try:
+        stale = backfill_mod.plan(
+            okf.graph,
+            coverage_mod.load_inventory(inventory_path),
+            source_snapshots.load_catalog(okf.root),
+            surface=service or None,
+            waivers=waivers,
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        return [], f"could not compute the regrounding set: {exc}"
+    items: list[dict[str, Any]] = []
+    for row in stale.units:
+        if row.reason not in REGROUNDING_REASONS:
+            continue
+        for node in row.nodes:
+            items.append({
+                "kind": "fix:stale-citation",
+                "target": node,
+                "context": json.dumps({
+                    "code": "stale-citation",
+                    "grounded": True,
+                    "node": node,
+                    "reason": row.reason,
+                    "citation": row.unit,
+                    "moved_to": row.target,
+                    "evidence": row.evidence,
+                }, sort_keys=True),
+                "requeue": True,
+            })
+    return items, ""
+
+
 @blueprint.node(stub=stubs.covered)
 def compute_coverage(
     logger: logging.Logger,
@@ -410,20 +471,92 @@ def compute_coverage(
             }, indent=2) + "\n", encoding="utf-8")
             coverage_path = str(out)
 
-    complete = outcome.ok
-    logger.info("coverage for %s: %d/%d units covered, %d waived, %d screens, %d missing "
-                "→ complete=%s", service or "(whole book)", result["covered"],
+    regrounding, regrounding_error = _regrounding(
+        okf, inventory_path, service, coverage_mod.load_waivers(waivers_path or None)
+    )
+    # A cited symbol that was rewritten under its node is a gap the join cannot see, so the
+    # verdict is not the join's alone. Without this, the loop ends on `covered == total` over a
+    # book describing code that no longer exists in that shape — which is the state every
+    # measured book was actually in.
+    complete = outcome.ok and not regrounding
+    logger.info("coverage for %s: %d/%d units covered, %d waived, %d screens, %d missing, "
+                "%d to reground → complete=%s", service or "(whole book)", result["covered"],
                 result["total"], result["waived"], screens, len(result["missing"]),
-                "yes" if complete else "no")
+                len(regrounding), "yes" if complete else "no")
+    if complete and not scoped:
+        _watermark(logger, okf)
     return Coverage(
         coverage_complete=complete,
         missing_count=len(result["missing"]),
         missing_path=missing_path,
         coverage_path=coverage_path,
         coverage_summary=outcome.message,
-        coverage_error="; ".join(result["errors"]),
+        coverage_error="; ".join([*result["errors"], *([regrounding_error]
+                                                       if regrounding_error else [])]),
+        regrounding=regrounding,
         rescan_round=rescan,
     )
 
 
-__all__ = ["compute_coverage", "inventory_source", "operational_units", "skipped"]
+@blueprint.node
+def advance_watermark(
+    logger: logging.Logger,
+    repo_root: str = "",
+    item_kind: str = "",
+    item_context: str = "",
+    doc_status: str = "",
+) -> Watermarked:
+    """Retire one regrounding row by re-reading the file the turn just documented against.
+
+    Only for a `fix:stale-citation` item, and only when the turn says it finished. A row that
+    closed without its watermark moving is reported drifted again by the very next join — the
+    drain would hand the same node to turn after turn until the attempts cap blocked it, which
+    is a loop that costs money to spin. And a partial turn must *not* advance: the citation
+    still describes bytes nobody reconciled, and stamping it current would hide the gap under
+    a clean verdict.
+    """
+    if item_kind != "fix:stale-citation" or doc_status not in ("", "complete"):
+        return Watermarked()
+    try:
+        context = json.loads(item_context or "{}")
+        citation = str(context.get("moved_to") or context.get("citation") or "")
+        path = refs.parse_code_ref(citation).path if citation else ""
+    except (ValueError, TypeError) as exc:
+        return Watermarked(watermark_error=f"unreadable regrounding context: {exc}")
+    if not path:
+        return Watermarked()
+    try:
+        source_snapshots.advance_catalog(Ostler(repo_root).graph, [path])
+    except (OSError, ValueError, RuntimeError) as exc:
+        # Not fatal: the row comes back on the next join, which is the same behaviour as
+        # before the watermark existed. Losing the run over a cache write would be worse.
+        logger.warning("could not advance the watermark for %s: %s", path, exc)
+        return Watermarked(watermark_error=str(exc))
+    logger.info("watermark advanced for %s", path)
+    return Watermarked(advanced=[path])
+
+
+def _watermark(logger: logging.Logger, okf: Ostler) -> None:
+    """Record what every cited symbol currently *is*, so the next run can tell what moved.
+
+    Taken here and only here: on the one verdict that says the book covers its source and no
+    citation has drifted under it. Anywhere earlier — the clean checkpoint, say, which runs
+    *before* this join — would stamp symbols nobody re-read as current and erase the drift
+    this node exists to detect, in the same pass that was supposed to report it. Scoped runs
+    are excluded for the reason `coverage.json` is: a subset measurement must not be written
+    under a name that claims the whole book.
+
+    A failure is logged and dropped. The catalog only ever makes the next run's plan cheaper,
+    never more correct, and a book that converged must not be reported as failed because a
+    cache could not be written.
+    """
+    try:
+        path = source_snapshots.write_catalog(okf.graph, ())
+    except (OSError, ValueError, RuntimeError) as exc:
+        logger.warning("could not write the source watermark: %s", exc)
+        return
+    logger.info("watermarked the cited source at %s", path)
+
+
+__all__ = ["advance_watermark", "compute_coverage", "inventory_source",
+           "operational_units", "skipped"]
