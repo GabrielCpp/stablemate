@@ -58,6 +58,7 @@ from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import activity as pyflow_activity
+from workhorse.pyflow.graph import state_graph
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
@@ -66,6 +67,7 @@ from workhorse.records import parse_checkpoint
 from workhorse_workflows import okf_builder
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared.worklist import MAX_TARGET_ATTEMPTS
+from workhorse_workflows.okf_builder.walkthrough_web.flow import WalkthroughWeb
 from workhorse_workflows.okf_builder.workflow import OkfBuilder
 
 SERVICE = "acme"
@@ -826,3 +828,16 @@ def test_a_story_verdict_with_no_story_parks_with_the_chain_on_the_gate(
     assert "side: story" in seen[0], seen[0]
     assert "the symbol is gone" in seen[0], seen[0]
     assert "not excused" in seen[0], seen[0]
+
+
+def test_every_okf_builder_transition_says_why_it_is_taken() -> None:
+    """The diagram's edge labels and the run log's `— why` come from `.because(...)` on
+    each transition; a transition landed without one reads as bare plumbing on both."""
+    for flow in (OkfBuilder, WalkthroughWeb):
+        unlabelled = [
+            f"{flow.__name__}.{node.name} -> {edge.target or 'END'}"
+            for node in state_graph(flow).states
+            for edge in node.edges
+            if not edge.reason
+        ]
+        assert not unlabelled, f"transitions with no reason: {unlabelled}"

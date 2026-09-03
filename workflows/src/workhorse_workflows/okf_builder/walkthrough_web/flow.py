@@ -131,7 +131,7 @@ class WalkthroughWeb(Workflow):
                 "%s documents no screen surfaces — nothing to walk, skipping cleanly",
                 self.service or "(no service)",
             )
-            return Done(self.ctx)
+            return Done(self.ctx).because("no screen surfaces: nothing to walk")
 
         boot = self.call(
             boot_app,
@@ -148,7 +148,7 @@ class WalkthroughWeb(Workflow):
                 "the app would not come up — walking nothing. `boot_app` reaped what it "
                 "spawned, so there is nothing to tear down"
             )
-            return Done(boot)
+            return Done(boot).because("the app would not come up")
 
         browser = self.call(boot_browser, self.ctx.cdp_url, self.ctx.repo_root)
         if not browser.browser_ok:
@@ -156,7 +156,7 @@ class WalkthroughWeb(Workflow):
                 "no CDP browser — there is nothing to walk with, but the app is up and "
                 "must still be reaped"
             )
-            return self._finish(boot.app_pgid, browser.browser_pgid)
+            return self._finish(boot.app_pgid, browser.browser_pgid).because("no CDP browser: reap the app")
 
         seeded = self.call(
             seed_walkthrough, self.ctx.wt_worklist_path, self.service, self.ctx.repo_root
@@ -168,7 +168,7 @@ class WalkthroughWeb(Workflow):
             browser_pgid=browser.browser_pgid,
             entry_url=boot.entry_url,
             cdp_url=browser.cdp_url,
-        )
+        ).because("app and browser up: walk seeded")
 
     # --- the drain ----------------------------------------------------------
 
@@ -195,7 +195,7 @@ class WalkthroughWeb(Workflow):
                 self.max_items,
                 pick.pending_count,
             )
-            return self._finish(app_pgid, browser_pgid)
+            return self._finish(app_pgid, browser_pgid).because("walk ceiling hit: reap and leave the rest")
         if not pick.has_item:
             return Continue(
                 pick,
@@ -205,7 +205,7 @@ class WalkthroughWeb(Workflow):
                 entry_url=entry_url,
                 cdp_url=cdp_url,
                 rnd=rnd,
-            )
+            ).because("drain dry: run doctor")
         return Continue(
             pick,
             self.walk,
@@ -219,7 +219,7 @@ class WalkthroughWeb(Workflow):
             entry_url=entry_url,
             cdp_url=cdp_url,
             rnd=rnd,
-        )
+        ).because("next journey or screen")
 
     def walk(
         self,
@@ -273,7 +273,7 @@ class WalkthroughWeb(Workflow):
             entry_url=entry_url,
             cdp_url=cdp_url,
             rnd=rnd,
-        )
+        ).because("walked: record it")
 
     def mark(
         self,
@@ -297,7 +297,7 @@ class WalkthroughWeb(Workflow):
             entry_url=entry_url,
             cdp_url=cdp_url,
             rnd=rnd,
-        )
+        ).because("item closed, discoveries opened")
 
     # --- convergence + the mandatory tail -----------------------------------
 
@@ -322,7 +322,7 @@ class WalkthroughWeb(Workflow):
         )
         if result.checkpoint_clean:
             self.logger.info("the walked book is clean and the drain is dry — walk done")
-            return self._finish(app_pgid, browser_pgid)
+            return self._finish(app_pgid, browser_pgid).because("walked book clean")
         if result.round >= MAX_WALK_ROUNDS:
             # Give up fast: the app is up and costing something, and a walk that cannot
             # get doctor clean in three drains is not going to on the fourth.
@@ -332,7 +332,7 @@ class WalkthroughWeb(Workflow):
                 result.round,
                 MAX_WALK_ROUNDS,
             )
-            return self._finish(app_pgid, browser_pgid)
+            return self._finish(app_pgid, browser_pgid).because("walk round cap with doctor dirty")
         self.call(record, self.ctx.wt_worklist_path, None, result.fixup_items)
         return Continue(
             result,
@@ -342,7 +342,7 @@ class WalkthroughWeb(Workflow):
             entry_url=entry_url,
             cdp_url=cdp_url,
             rnd=result.round,
-        )
+        ).because("doctor dirty: fixups queued")
 
     def _finish(self, app_pgid: str, browser_pgid: str) -> Done:
         """Reap what this walk started, whichever way it ended. `teardown_app` +
@@ -358,7 +358,7 @@ class WalkthroughWeb(Workflow):
         """
         self.call(teardown_app, app_pgid, self.ctx.stop_cmd, self.ctx.app_cwd)
         self.call(teardown_browser, browser_pgid)
-        return Done(self.ctx)
+        return Done(self.ctx).because("app and browser reaped")
 
 
 __all__ = ["MAX_WALK_ROUNDS", "WalkthroughWeb"]

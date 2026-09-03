@@ -223,9 +223,9 @@ class OkfBuilder(Workflow):
             )
         if self.ctx.book_exists:
             self.logger.info("the book exists: reconciling it to HEAD from the checkpoint")
-            return Continue(None, self.checkpoint)
+            return Continue(None, self.checkpoint).because("the book exists: reconcile it to HEAD")
         self.logger.info("no book yet: filling it top-down from the code's entry surfaces")
-        return Continue(None, self.enumerate_surfaces)
+        return Continue(None, self.enumerate_surfaces).because("no book yet: fill it from the entry surfaces")
 
     def enumerate_surfaces(self) -> Continue:
         """Identify every entry-point surface from the code.
@@ -250,13 +250,13 @@ class OkfBuilder(Workflow):
                 "diff_scope_count": self.ctx.diff_scope_count,
             },
         )
-        return Continue(result, self.seed_surfaces, discovered=result.discovered)
+        return Continue(result, self.seed_surfaces, discovered=result.discovered).because("entry surfaces discovered")
 
     def seed_surfaces(self, discovered: list[dict]) -> Continue:
         """`seed_surfaces`: open the surfaces, close nothing."""
         return Continue(
             self.call(record, self.ctx.worklist_path, None, discovered), self.select
-        )
+        ).because("surfaces opened on the worklist")
 
     # --- the drain ----------------------------------------------------------
 
@@ -305,7 +305,7 @@ class OkfBuilder(Workflow):
                 stall=stall,
                 signature=signature,
                 refuels=refuels,
-            )
+            ).because("item ceiling hit with work pending: ask for more")
         if not pick.has_item:
             return Continue(
                 pick,
@@ -315,7 +315,7 @@ class OkfBuilder(Workflow):
                 stall=stall,
                 signature=signature,
                 refuels=refuels,
-            )
+            ).because("the drain is dry: run doctor")
         return Continue(
             pick,
             self.investigate,
@@ -330,7 +330,7 @@ class OkfBuilder(Workflow):
             stall=stall,
             signature=signature,
             refuels=refuels,
-        )
+        ).because("next item picked")
 
     def refuel(
         self,
@@ -358,7 +358,7 @@ class OkfBuilder(Workflow):
             stall=stall,
             signature=signature,
             refuels=refuels + 1,
-        )
+        ).because("operator granted another allowance")
 
     def investigate(
         self,
@@ -443,7 +443,7 @@ class OkfBuilder(Workflow):
             stall=stall,
             signature=signature,
             refuels=refuels,
-        )
+        ).because("turn finished: record what it wrote")
 
     def record_item(
         self,
@@ -492,7 +492,7 @@ class OkfBuilder(Workflow):
             stall=stall,
             signature=signature,
             refuels=refuels,
-        )
+        ).because("item closed, discoveries opened")
 
     # --- convergence: the mechanical gate ------------------------------------
 
@@ -541,7 +541,7 @@ class OkfBuilder(Workflow):
                     rescan=rescan,
                     signature=result.fixup_signature,
                     refuels=refuels,
-                )
+                ).because("blocked rows and nothing pending: read the other side")
             if result.stall_rounds >= MAX_STALL_ROUNDS:
                 return Await(
                     paths.operator_context_path(Path(self.ctx.repo_root), self.service),
@@ -551,7 +551,7 @@ class OkfBuilder(Workflow):
                     rescan=rescan,
                     signature=result.fixup_signature,
                     refuels=refuels,
-                )
+                ).because("findings unchanged for the stall cap: operator gate")
             return Continue(
                 recorded,
                 self.select,
@@ -560,7 +560,7 @@ class OkfBuilder(Workflow):
                 stall=result.stall_rounds,
                 signature=result.fixup_signature,
                 refuels=refuels,
-            )
+            ).because("doctor dirty: repairs queued")
         if rescan >= MAX_RESCAN_ROUNDS:
             return Await(
                 paths.operator_context_path(Path(self.ctx.repo_root), self.service),
@@ -575,10 +575,10 @@ class OkfBuilder(Workflow):
                 rnd=result.round,
                 rescan=0,
                 refuels=refuels,
-            )
+            ).because("re-scan cap hit, inventory still short: operator gate")
         return Continue(
             result, self.rescan_coverage, rnd=result.round, rescan=rescan, refuels=refuels
-        )
+        ).because("doctor clean: check the inventory")
 
     def adjudicate(
         self,
@@ -651,7 +651,7 @@ class OkfBuilder(Workflow):
                 rescan=rescan,
                 signature=signature,
                 refuels=refuels,
-            )
+            ).because("verdict applied: next blocked row")
         recorded = self.call(record, self.ctx.worklist_path)
         if recorded.pending_count:
             # A `book` verdict put its row back; a `code` one may have closed its row, and
@@ -664,7 +664,7 @@ class OkfBuilder(Workflow):
                 stall=0,
                 signature=signature,
                 refuels=refuels,
-            )
+            ).because("a book verdict re-queued rows")
         if recorded.blocked_count:
             return Await(
                 paths.operator_context_path(Path(self.ctx.repo_root), self.service),
@@ -674,11 +674,11 @@ class OkfBuilder(Workflow):
                 rescan=rescan,
                 signature=signature,
                 refuels=refuels,
-            )
+            ).because("rows still blocked after verdicts: operator gate")
         return Continue(
             recorded, self.checkpoint, rnd=rnd, rescan=rescan, signature=signature,
             refuels=refuels,
-        )
+        ).because("every row closed: re-read doctor")
 
     @staticmethod
     def _blocked_gate_question(recorded: Recorded) -> str:
@@ -760,7 +760,7 @@ class OkfBuilder(Workflow):
             stall=0,
             signature=signature,
             refuels=refuels,
-        )
+        ).because("operator answered: blocked targets unblocked")
 
     # --- convergence: the exhaustiveness re-scan ------------------------------
 
@@ -799,7 +799,7 @@ class OkfBuilder(Workflow):
         # blind now, and this state is reachable only through a *clean* one, so asking again
         # would be a second, weaker reader of a question already answered upstream.
         if coverage.coverage_complete:
-            return Continue(coverage, self.walkthrough)
+            return Continue(coverage, self.walkthrough).because("inventory covered")
         if coverage.regrounding:
             # A drifted citation is not an adjudication: the symbol under the node was
             # rewritten, and the bullet has to be re-read against it. So these go straight onto
@@ -816,10 +816,10 @@ class OkfBuilder(Workflow):
                 rnd=rnd,
                 rescan=coverage.rescan_round,
                 refuels=refuels,
-            )
+            ).because("cited source moved: re-ground those nodes")
         return Continue(
             coverage, self.recheck, rnd=rnd, rescan=coverage.rescan_round, refuels=refuels
-        )
+        ).because("uncovered units: ask whether they are units")
 
     def recheck(self, rnd: int = 0, rescan: int = 0, refuels: int = 0) -> Continue:
         """Adjudicate the computed missing list — the only coverage judgement left to an agent.
@@ -868,7 +868,7 @@ class OkfBuilder(Workflow):
             rnd=rnd,
             rescan=rescan,
             refuels=refuels,
-        )
+        ).because("recheck verdicts in")
 
     def seed_recheck(
         self, discovered: list[dict], rnd: int = 0, rescan: int = 0, refuels: int = 0
@@ -885,7 +885,7 @@ class OkfBuilder(Workflow):
             rnd=rnd,
             rescan=rescan,
             refuels=refuels,
-        )
+        ).because("real gaps queued")
 
     # --- the live-app walk ---------------------------------------------------
 
@@ -904,7 +904,7 @@ class OkfBuilder(Workflow):
                 source_path=self.source_path,
                 max_items=self.max_items,
             )
-        )
+        ).because("book complete: walked when there is an app")
 
 
 
