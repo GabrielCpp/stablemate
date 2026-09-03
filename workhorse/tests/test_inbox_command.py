@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest  # noqa: E402
 
+from _fakes import fake_groom  # noqa: E402
 from workhorse import inbox  # noqa: E402
 from workhorse.artifacts import ArtifactWriter  # noqa: E402
 from workhorse.cli import main as cli_main  # noqa: E402
@@ -46,6 +47,28 @@ def _run_dir(runs: Path, name: str = "demo-t", *, terminal: str | None = None) -
 
 def _inbox(*argv: str) -> None:
     cli_main(["inbox", *argv], workflow="demo", registry=Registry("demo"))
+
+
+def test_an_id_groom_knows_is_read_from_the_run_dir_groom_names(capsys, monkeypatch) -> None:
+    """`inbox` resolves a run the way `control` does — including through groom when
+    the id is not under the cwd's runs dir — or the two commands drift on which run
+    an operator's id means."""
+    with tempfile.TemporaryDirectory() as tmp:
+        elsewhere = Path(tmp) / "target-repo" / ".agents" / "runs"
+        run_dir = _run_dir(elsewhere, "demo-ghost")
+        inbox.append(run_dir / INBOX_FILE, id="m1", body="hold off", at="t0")
+        empty = Path(tmp) / "runs"
+        empty.mkdir()
+        rows = [{"run_id": "ghost", "workflow": "demo", "run_dir": str(run_dir)}]
+
+        with fake_groom(rows) as (url, asked):
+            monkeypatch.setenv("GROOM_URL", url)
+            _inbox("read", "--run", "ghost", "--runs-dir", str(empty))
+
+        captured = capsys.readouterr()
+        assert asked == ["/api/live?run=ghost"]
+        assert "m1" in captured.out and "hold off" in captured.out
+        assert f"resolved 'ghost' via groom: {run_dir}" in captured.err
 
 
 def test_read_prints_outstanding_messages_by_default(capsys) -> None:

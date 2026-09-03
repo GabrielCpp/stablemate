@@ -12,7 +12,12 @@ when a file is run standalone (``uv run python tests/test_x.py``) and under pyte
 
 from __future__ import annotations
 
+import json
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -201,3 +206,38 @@ class RecordingTelemetry(otel._NullTelemetry):
 
     def wait_end(self, token: int, outcome: str = "completed") -> None:
         self.waits.append(("end", token, outcome, ""))
+
+
+@contextmanager
+def fake_groom(rows: list[dict[str, str]]) -> Iterator[tuple[str, list[str]]]:
+    """A stand-in for ``groom serve`` answering ``/api/live`` with the given rows.
+
+    Real HTTP on a loopback port rather than a substituted function, because the thing
+    under test is the lookup itself — the URL it builds, the timeout it bounds itself
+    with, the JSON it expects — and a fake that skips the wire would pass with any of
+    those wrong. The paths it was asked for are collected for the assertions.
+    """
+    asked: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 - http.server's spelling
+            asked.append(self.path)
+            body = json.dumps(rows).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}", asked
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=10)

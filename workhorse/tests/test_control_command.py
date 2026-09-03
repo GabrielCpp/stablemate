@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest  # noqa: E402
 
+from _fakes import fake_groom  # noqa: E402
 from workhorse import control  # noqa: E402
 from workhorse.artifacts import ArtifactWriter  # noqa: E402
 from workhorse.cli import control as control_cmd  # noqa: E402
@@ -162,6 +163,47 @@ def test_a_run_is_found_by_its_id_its_dir_name_or_its_path() -> None:
         assert len(listener.taken) == 3, listener.taken
 
 
+def test_an_id_groom_knows_resolves_to_the_run_dir_groom_names(capsys, monkeypatch) -> None:
+    """The id an operator holds comes from `groom status`, and the run dir behind it
+    lives in the target repo — not under the cwd's `./.agents/runs`. Asking groom is
+    what turns "no run dir" from any other directory into the reload that was meant."""
+    with tempfile.TemporaryDirectory() as tmp:
+        elsewhere = Path(tmp) / "target-repo" / ".agents" / "runs"
+        run_dir = _run_dir(elsewhere, "demo-ghost")
+        empty = Path(tmp) / "runs"
+        empty.mkdir()
+        rows = [{"run_id": "ghost", "workflow": "demo", "run_dir": str(run_dir)}]
+
+        with fake_groom(rows) as (url, asked), _listening(run_dir) as listener:
+            monkeypatch.setenv("GROOM_URL", url)
+            _control(empty, "reload", "--run", "ghost", "--runs-dir", str(empty))
+
+        assert len(listener.taken) == 1
+        assert asked == ["/api/live?run=ghost"]
+        assert f"resolved 'ghost' via groom: {run_dir}" in capsys.readouterr().err
+
+
+def test_a_groom_row_for_another_workflow_is_not_this_run(capsys, monkeypatch) -> None:
+    """Ids are minted per workflow, and `workhorse-demo control` can only speak to a
+    demo run — a same-named run of another workflow is a different socket."""
+    with tempfile.TemporaryDirectory() as tmp:
+        elsewhere = Path(tmp) / "target-repo" / ".agents" / "runs"
+        run_dir = _run_dir(elsewhere, "demo-ghost")
+        empty = Path(tmp) / "runs"
+        empty.mkdir()
+        rows = [{"run_id": "ghost", "workflow": "other", "run_dir": str(run_dir)}]
+
+        with fake_groom(rows) as (url, _asked):
+            monkeypatch.setenv("GROOM_URL", url)
+            with pytest.raises(SystemExit) as excinfo:
+                _control(empty, "reload", "--run", "ghost", "--runs-dir", str(empty))
+
+        assert excinfo.value.code == 1
+        err = capsys.readouterr().err
+        assert "no run dir for 'ghost'" in err
+        assert "knows no live run 'ghost' for workflow 'demo'" in err
+
+
 def test_with_no_run_named_the_newest_unfinished_run_is_taken(capsys) -> None:
     """Worth having and worth bounding: the operator watching one run should not have to
     retype an id they never chose, but a finished run must not absorb the request."""
@@ -178,9 +220,12 @@ def test_with_no_run_named_the_newest_unfinished_run_is_taken(capsys) -> None:
         assert str(live) in capsys.readouterr().out
 
 
-def test_a_run_that_does_not_exist_is_an_error_not_a_new_directory(capsys) -> None:
+def test_a_run_that_does_not_exist_is_an_error_not_a_new_directory(capsys, monkeypatch) -> None:
     """A mistyped path used to be created on the way to writing a request into it, and
-    the operator would be left watching a run that never sees it."""
+    the operator would be left watching a run that never sees it. With no groom to ask
+    (port 1 on loopback refuses at once) the error still lands, and says groom was
+    tried — the difference between "there is no such run" and "nobody could check"."""
+    monkeypatch.setenv("GROOM_URL", "http://127.0.0.1:1")
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         _run_dir(runs)
@@ -189,7 +234,9 @@ def test_a_run_that_does_not_exist_is_an_error_not_a_new_directory(capsys) -> No
             _control(runs, "reload", "--run", "typo", "--runs-dir", str(runs))
 
         assert excinfo.value.code == 1
-        assert "no run dir for 'typo'" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "no run dir for 'typo'" in err
+        assert "groom at http://127.0.0.1:1 not reachable" in err
         assert not (runs / "demo-typo").exists()
 
 
