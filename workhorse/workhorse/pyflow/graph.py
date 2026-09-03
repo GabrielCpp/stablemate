@@ -67,18 +67,18 @@ class Edge:
 
 @dataclass(frozen=True)
 class Step:
-    """One thing a state's body runs: a blueprint node call or an agent turn.
+    """One thing a state's body runs: a node call, an agent turn, or a handoff.
 
     Kept in source order so a diagram can draw the state as the chain it is. The
     summary is what the author already wrote about it — the first line of the node's
     docstring, or the title of the prompt — and is empty when there is none to read.
     """
 
-    #: "call" or "agent".
+    #: "call", "agent" or "handoff".
     kind: str
-    #: The node's name for a call; the literal prompt path for an agent turn. Only
-    #: constants: an f-string prompt is unknowable here, and guessing one would fail a
-    #: dry run over nothing.
+    #: The node's name for a call; the literal prompt path for an agent turn; the
+    #: sub-workflow's class name for a handoff. Only constants: an f-string prompt is
+    #: unknowable here, and guessing one would fail a dry run over nothing.
     name: str
     summary: str = ""
 
@@ -94,11 +94,9 @@ class StateNode:
 
     name: str
     edges: tuple[Edge, ...] = ()
-    #: Every `self.call(...)` and literal `self.agent(...)` the body reaches, in source
-    #: order, each once.
+    #: Every `self.call(...)`, literal `self.agent(...)` and `self.handoff(...)` the
+    #: body reaches, in source order, each once.
     steps: tuple[Step, ...] = ()
-    #: Sub-workflows reached through `self.handoff(...)`.
-    handoffs: tuple[str, ...] = ()
     #: `inspect.getsource` could not read this state — nothing below it is known.
     opaque: bool = False
 
@@ -109,6 +107,11 @@ class StateNode:
         Derived from the edges rather than stored, so it cannot disagree with them.
         """
         return any(edge.kind == "done" for edge in self.edges)
+
+    @property
+    def handoffs(self) -> tuple[str, ...]:
+        """Sub-workflows reached through `self.handoff(...)`."""
+        return tuple(s.name for s in self.steps if s.kind == "handoff")
 
     @property
     def calls(self) -> tuple[str, ...]:
@@ -228,7 +231,6 @@ class _Found:
 
     edges: list[Edge] = field(default_factory=list)
     steps: list[Step] = field(default_factory=list)
-    handoffs: list[str] = field(default_factory=list)
     #: Transition calls already read as the inner half of a `.because(...)`, so the
     #: walk does not emit them a second time when it reaches them on their own.
     consumed: set[int] = field(default_factory=set)
@@ -245,7 +247,6 @@ def _read_state(cls: type[Workflow], spec: StateSpec, workflow_dir: Path | None)
         name=spec.name,
         edges=tuple(dict.fromkeys(found.edges)),
         steps=tuple(dict.fromkeys(found.steps)),
-        handoffs=tuple(dict.fromkeys(found.handoffs)),
     )
 
 
@@ -296,7 +297,9 @@ def _scan(
             if prompt:
                 found.steps.append(Step("agent", prompt, _prompt_title(prompt, workflow_dir)))
         elif dotted == "self.handoff":
-            _append(found.handoffs, _first_ident(node))
+            child = _first_ident(node)
+            if child:
+                found.steps.append(Step("handoff", child))
         elif dotted == f"self.{tail}" and tail.startswith("_") and tail not in seen:
             seen.add(tail)
             helper = _source_tree(getattr(cls, tail, None))
@@ -419,11 +422,6 @@ def _unparse(expr: ast.expr | None) -> str:
         return ast.unparse(expr)
     except Exception:  # noqa: BLE001 — a label is never worth failing a render over
         return "?"
-
-
-def _append(items: list[str], value: str | None) -> None:
-    if value:
-        items.append(value)
 
 
 def _doc_summary(cls: type[Workflow], ref: ast.expr) -> str:

@@ -417,23 +417,20 @@ def test_dot_draws_done_as_an_edge_to_one_end_sink_per_flow():
     assert "__end" not in to_dot([_graph(Endless)])
 
 
-def test_dot_links_a_handoff_to_the_child_flow_and_back():
+def test_dot_draws_a_handoff_as_a_coloured_bubble_and_never_an_edge():
     dot = to_dot([_graph(Parent), _graph(Orphan)])
-    assert 'f0__start -> f1____start [label="handoff"' in dot
-    assert 'xlabel="→ back to start"' in dot
-    assert "f1____end -> f0__start" in dot
-    assert "handoff Orphan" not in dot  # drawn, not named
-    # Both cross edges sit after the last cluster: Graphviz files a node under the
-    # first subgraph that mentions it, and the child's START belongs to the child.
-    legend = dot.index("  subgraph cluster_legend")
-    last_flow = dot.rindex("  }", 0, legend)
-    assert last_flow < dot.index("-> f1____start") < legend
-    assert last_flow < dot.index("f1____end ->") < legend
-    # Start and end are never the same colour.
+    # The handoff is a step in the parent's chain, captioned with the child's label.
+    assert 'f0__start__0 [label="handoff → Orphan", shape=box, fillcolor=plum]' in dot
+    # Nothing crosses between the flows: no arrow into the child's START, none back.
+    assert "-> f1____start" not in dot
+    assert "f1____end ->" not in dot
+    assert "back to" not in dot
+    # The child stands on its own, with its own START and END, never the same colour.
+    assert "f1____start [" in dot and "f1____end [" in dot
     assert "fillcolor=lightgreen" in dot and "fillcolor=gold" in dot
-    # Alone in the document, the handoff is named on the state and nothing crosses.
+    # Alone in the document, the bubble reads the same; there is just no child cluster.
     alone = to_dot([_graph(Parent)])
-    assert "handoff Orphan" in alone
+    assert 'label="handoff → Orphan"' in alone
     assert "f1____start" not in alone
 
 
