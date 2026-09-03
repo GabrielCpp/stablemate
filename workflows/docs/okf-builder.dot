@@ -92,7 +92,12 @@ digraph okf_builder {
       f0__select__0 -> f0__select__1 [color=gray40, arrowsize=0.6];
     }
     f0__start [label="start"];
-    f0__walkthrough [label="walkthrough"];
+    subgraph cluster_f0__walkthrough {
+      label="walkthrough"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__walkthrough__0 [label="handoff → walkthrough-web", shape=box, fillcolor=plum];
+    }
     f0____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f0____start -> f0__start;
@@ -111,7 +116,7 @@ digraph okf_builder {
     f0__record_item__1 -> f0__select__0 [label="item closed, discoveries opened", ltail=cluster_f0__record_item, lhead=cluster_f0__select];
     f0__refuel -> f0__select__0 [label="operator granted another allowance", lhead=cluster_f0__select];
     f0__rescan_coverage__2 -> f0__recheck__0 [label="uncovered units: ask whether they are units", ltail=cluster_f0__rescan_coverage, lhead=cluster_f0__recheck];
-    f0__rescan_coverage__2 -> f0__walkthrough [label="inventory covered", ltail=cluster_f0__rescan_coverage];
+    f0__rescan_coverage__2 -> f0__walkthrough__0 [label="inventory covered", ltail=cluster_f0__rescan_coverage, lhead=cluster_f0__walkthrough];
     f0__rescan_coverage__2 -> f0__select__0 [label="cited source moved: re-ground those nodes", ltail=cluster_f0__rescan_coverage, lhead=cluster_f0__select];
     f0__retry_blocked__0 -> f0__select__0 [label="operator answered: blocked targets unblocked", ltail=cluster_f0__retry_blocked, lhead=cluster_f0__select];
     f0__seed_recheck__0 -> f0__select__0 [label="real gaps queued", ltail=cluster_f0__seed_recheck, lhead=cluster_f0__select];
@@ -121,7 +126,7 @@ digraph okf_builder {
     f0__select__1 -> f0__checkpoint__0 [label="the drain is dry: run doctor", ltail=cluster_f0__select, lhead=cluster_f0__checkpoint];
     f0__start -> f0__enumerate_surfaces__0 [label="no book yet: fill it from the entry surfaces", lhead=cluster_f0__enumerate_surfaces];
     f0__start -> f0__checkpoint__0 [label="the book exists: reconcile it to HEAD", lhead=cluster_f0__checkpoint];
-    f0__walkthrough -> f0____end [label="book complete: walked when there is an app", color=darkgoldenrod];
+    f0__walkthrough__0 -> f0____end [label="book complete: walked when there is an app", color=darkgoldenrod, ltail=cluster_f0__walkthrough];
   }
 
   subgraph cluster_walkthrough_web_f1__ {
@@ -177,7 +182,7 @@ digraph okf_builder {
       node [style="filled", fontsize=10];
       f1__walk__0 [label="walkthrough-web.md\nwalk one WEB journey against the LIVE app", shape=note, fillcolor=lightyellow];
     }
-    f1____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4, xlabel="→ back to walkthrough"];
+    f1____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f1____start -> f1__start__0 [lhead=cluster_f1__start];
     f1__checkpoint__3 -> f1__pick__0 [label="doctor dirty: fixups queued", ltail=cluster_f1__checkpoint, lhead=cluster_f1__pick];
@@ -193,9 +198,6 @@ digraph okf_builder {
     f1__walk__0 -> f1__mark__0 [label="walked: record it", ltail=cluster_f1__walk, lhead=cluster_f1__mark];
   }
 
-  f0__walkthrough -> f1____start [label="handoff", style=dashed, color=gray40];
-  f1____end -> f0__walkthrough [style=dashed, color=gray40];
-
   subgraph cluster_legend {
     label="legend";
     style=dashed; color=gray50; fontsize=11;
@@ -203,18 +205,17 @@ digraph okf_builder {
     legend_a [label=""]; legend_b [label=""];
     legend_c [label=""]; legend_d [label=""];
     legend_e [label=""]; legend_f [label=""];
-    legend_g [label=""]; legend_h [label=""];
     legend_a -> legend_b [label="continue"];
     legend_c -> legend_d [label="await: parked on an operator gate", style=dashed, color=darkorange];
     legend_e -> legend_f [label="done: the flow ends", color=darkgoldenrod];
-    legend_g -> legend_h [label="handoff to a sub-flow, and back", style=dashed, color=gray40];
     subgraph cluster_legend_state {
       label="a state: what it runs, top to bottom";
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled"];
       legend_call [label="a node call\nits docstring", shape=box, fillcolor=white];
       legend_agent [label="an agent turn: prompt.md\nits title", shape=note, fillcolor=lightyellow];
-      legend_call -> legend_agent [color=gray40, arrowsize=0.6];
+      legend_handoff [label="handoff → a sub-flow\nrun to its END, then back here", shape=box, fillcolor=plum];
+      legend_call -> legend_agent -> legend_handoff [color=gray40, arrowsize=0.6];
     }
   }
 }
