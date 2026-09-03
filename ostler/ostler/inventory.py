@@ -38,6 +38,7 @@ so is its visibility, and only the first question cares.
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -535,14 +536,19 @@ def _grounds(names: set[str] | frozenset[str], symbol: str) -> bool:
 
 @dataclass(frozen=True)
 class _SymbolTable:
-    """An index entry's payload: one file's declaration set, and nothing else.
+    """An index entry's payload: one file's declaration set and its per-symbol digests.
 
     A class rather than a bare `frozenset` for the reason `model._DocProducts` is one — the shape
     check on the way back in is a single `isinstance`, and a payload from a build that named the
     class differently fails to unpickle, which the store already reads as the miss it is.
+
+    Both products ride one entry because both are answers about the same parse of the same
+    bytes: grounding asks what the file declares, the backfill watermark asks what each of
+    those declarations *is*. Splitting them would parse every cited file twice.
     """
 
     names: frozenset[str]
+    digests: dict[str, str]
 
 
 #: The namespace label separating this product's keys from every other one's. Bump the suffix
@@ -551,14 +557,17 @@ class _SymbolTable:
 #: epoch cover the other ways the answer can move, but the epoch's ostler version only moves on
 #: a release, which an editable install never sees: a logic change left at `symbols/1` kept
 #: serving pre-change tables to every long-lived checkout. (2: Go struct fields and interface
-#: methods joined `declared_names`.)
-_SYMBOLS_NAMESPACE = "symbols/2"
+#: methods joined `declared_names`.) (3: the per-symbol content digests joined the payload.)
+_SYMBOLS_NAMESPACE = "symbols/3"
 
 #: One extraction, and the store it was made under. Keyed on the path as well as the content and
 #: the grammar, because the path is what a repeated citation repeats — two paths holding the same
 #: bytes are one *entry* in the store below and two entries here, and the second of them costs a
 #: store read rather than an extraction.
-_SYMBOL_MEMO: dict[tuple[Path, str, str], tuple[frozenset[str], index.IndexStore | None]] = {}
+_SYMBOL_MEMO: dict[tuple[Path, str, str], tuple[_SymbolTable, index.IndexStore | None]] = {}
+
+#: What a file in a language the front end cannot read has to say for itself.
+_EMPTY_TABLE = _SymbolTable(names=frozenset(), digests={})
 
 
 def _symbol_key(store: index.IndexStore, digest: str) -> str:
@@ -587,9 +596,18 @@ def declared_names_at(path: str | Path) -> frozenset[str]:
     Raises ``OSError`` or ``UnicodeDecodeError`` when the file cannot be read, as the ``read_text``
     it replaced did — an unreadable file is the caller's finding to make, not this function's.
     """
+    return _table_at(path).names
+
+
+def _table_at(path: str | Path) -> _SymbolTable:
+    """The symbol table for the file at *path* — one extraction per (content sha, grammar).
+
+    The shared body of :func:`declared_names_at` and :func:`symbol_digests_at`; a file both
+    ask about is parsed once and stored once.
+    """
     target = Path(path)
     if target.suffix not in SOURCE_SUFFIXES:
-        return frozenset()
+        return _EMPTY_TABLE
     data = target.read_bytes()
     digest = index.content_sha(data)
     store = index.active()
@@ -597,14 +615,14 @@ def declared_names_at(path: str | Path) -> frozenset[str]:
     memoed = _SYMBOL_MEMO.get(memo_key)
     if memoed is not None and memoed[1] is store:
         return memoed[0]
-    names = _extracted(target, data, digest, store)
-    _SYMBOL_MEMO[memo_key] = (names, store)
-    return names
+    table = _extracted(target, data, digest, store)
+    _SYMBOL_MEMO[memo_key] = (table, store)
+    return table
 
 
 def _extracted(target: Path, data: bytes, digest: str,
-               store: index.IndexStore | None) -> frozenset[str]:
-    """*target*'s declaration set, from the store when it has it and from the parser otherwise.
+               store: index.IndexStore | None) -> _SymbolTable:
+    """*target*'s symbol table, from the store when it has it and from the parser otherwise.
 
     Outside a session *store* is ``None`` and this is the cold path every time, which is the
     right reading: a caller that opened no index has no index, and that is never an error.
@@ -612,11 +630,15 @@ def _extracted(target: Path, data: bytes, digest: str,
     if store is not None:
         payload = store.get_key(_symbol_key(store, digest))
         if isinstance(payload, _SymbolTable):
-            return payload.names
-    names = frozenset(declared_names(target, data.decode("utf-8")))
+            return payload
+    text = data.decode("utf-8")
+    table = _SymbolTable(
+        names=frozenset(declared_names(target, text)),
+        digests=symbol_digests(target, text),
+    )
     if store is not None:
-        store.put_key(_symbol_key(store, digest), _SymbolTable(names))
-    return names
+        store.put_key(_symbol_key(store, digest), table)
+    return table
 
 
 def declares_at(path: str | Path, symbol: str) -> bool:
@@ -680,9 +702,14 @@ def _py_extents(text: str) -> list[tuple[int, int, str]]:
     return found
 
 
-def _py_recovered_extents(text: str) -> list[tuple[int, int, str]]:
-    """Python's extents from the recovered tree. See `_py_extents`."""
-    found: list[tuple[int, int, str]] = []
+def _py_recovered_declarations(text: str) -> list[tuple[Node, str]]:
+    """Python's declarations from the recovered tree, as `(node, qualified name)`.
+
+    The node is the *decorated* declaration where there is one — `_py_definition` unwraps a
+    `decorated_definition` only to read the name off it, because a decorator is part of what
+    a change to the declaration is.
+    """
+    found: list[tuple[Node, str]] = []
 
     def visit(node: Node, prefix: str) -> None:
         for child in node.named_children:
@@ -691,13 +718,18 @@ def _py_recovered_extents(text: str) -> list[tuple[int, int, str]]:
                 own = syntax.field_text(definition, "name")
                 name = f"{prefix}.{own}" if prefix else own
                 if own:
-                    found.append((*syntax.lines_of(child), name))
+                    found.append((child, name))
                 visit(definition, name if own else prefix)
             else:
                 visit(child, prefix)
 
     visit(syntax.parse("python", text), "")
     return found
+
+
+def _py_recovered_extents(text: str) -> list[tuple[int, int, str]]:
+    """Python's extents from the recovered tree. See `_py_extents`."""
+    return [(*syntax.lines_of(node), name) for node, name in _py_recovered_declarations(text)]
 
 
 def _tree_declarations(grammar: str, text: str) -> list[tuple[Node, str]]:
@@ -786,3 +818,134 @@ def _php_declarations(node: Node, owner: str) -> list[tuple[Node, str]]:
         else:
             found.extend(_php_declarations(child, owner))
     return [(item, name) for item, name in found if name]
+
+
+# ── the watermark: what a declaration's *content* is, independent of how it is written ──
+
+
+def _token_digest(node: Node) -> str:
+    """A declaration's content digest: its tokens, with comments and layout removed.
+
+    Hashing the source slice would make the watermark react to a reformat, a re-indent or a
+    rewritten comment — and the largest single source of false backfill work is exactly that
+    kind of churn. A token stream is what survives it: every leaf the grammar produced, in
+    source order, with any subtree the grammar calls a comment dropped whole.
+
+    Anonymous leaves are kept deliberately. `syntax.walk` yields only *named* nodes, and
+    operators and punctuation are anonymous in most grammars — walking those would hash
+    `a + b` and `a - b` to the same value, which is the one thing a content digest may not do.
+    """
+    digest = hashlib.sha256()
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type.endswith("comment"):
+            continue
+        children = current.children
+        if children:
+            stack.extend(reversed(children))
+            continue
+        digest.update(current.text or b"")
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def symbol_digests(path: str | Path, text: str,
+                   *, language: str | None = None) -> dict[str, str]:
+    """Each declaration's content digest, keyed by the name the book would cite it by.
+
+    The per-symbol watermark a backfill run reconciles against. A file-level digest is too
+    coarse to be worth having: one edited function in a forty-symbol file marks every node
+    citing that file stale, which is the difference between a five-item run and a
+    three-hundred-item one.
+
+    Keys are the same qualified names :func:`extents` reports, because they are the same
+    declarations — a citation that grounds against a name grounds against its digest.
+
+    Python is hashed from `ast.dump`, which is *already* the normalization the other languages
+    need `_token_digest` for: attributes are excluded, so line numbers and column offsets are
+    absent, and comments never entered the tree at all. A nested declaration's digest rolls up
+    into its owner's, which is the right reading of a citation naming the owner.
+    """
+    grammar = language or syntax.language_for(path)
+    if grammar is None or not text:
+        return {}
+    if grammar == "python":
+        module = parse_python(text)
+        if module is not None:
+            return _py_digests(module)
+        return {
+            name: _token_digest(node) for node, name in _py_recovered_declarations(text)
+        }
+    if grammar == "twig":
+        return _twig_digests(text)
+    return {name: _token_digest(node) for node, name in _tree_declarations(grammar, text)}
+
+
+def _twig_digests(text: str) -> dict[str, str]:
+    """Twig's digests, one per `{% block name %}` region. See :func:`symbol_digests`.
+
+    Twig is the one grammar here with no node spanning a declaration: the tree is flat, and a
+    block is an opening `statement_directive`, a run of siblings, and a closing one. So the
+    region has to be reassembled — which is also why twig has no entry in `_tree_declarations`
+    and no extents: a `tag_statement` covers the `{% block x %}` marker alone, and hashing that
+    would make every block's digest a function of its *name* and nothing else.
+
+    Open blocks all collect each node, so a nested block rolls up into its owner exactly as a
+    nested function does elsewhere. An unclosed block is dropped rather than guessed at.
+    """
+    found: dict[str, str] = {}
+    open_blocks: list[tuple[str, list[Node]]] = []
+    for node in syntax.parse("twig", text).named_children:
+        tag, name = _twig_tag(node)
+        if tag == "block" and name:
+            open_blocks.append((name, []))
+        for _, collected in open_blocks:
+            collected.append(node)
+        if tag == "endblock" and open_blocks:
+            closed, collected = open_blocks.pop()
+            digest = hashlib.sha256()
+            for member in collected:
+                digest.update(_token_digest(member).encode("ascii"))
+            found[closed] = digest.hexdigest()
+    return found
+
+
+def _twig_tag(node: Node) -> tuple[str, str]:
+    """A `statement_directive`'s tag and its argument — `("block", "content")`, or `("", "")`."""
+    if node.type != "statement_directive":
+        return ("", "")
+    inner = node.named_children
+    if not inner or inner[0].type != "tag_statement":
+        return ("", "")
+    parts = inner[0].named_children
+    if not parts or parts[0].type != "tag":
+        return ("", "")
+    return (syntax.text_of(parts[0]), syntax.text_of(parts[1]) if len(parts) >= 2 else "")
+
+
+def _py_digests(module: ast.Module) -> dict[str, str]:
+    """Python's digests, from the parsed module. See :func:`symbol_digests`."""
+    found: dict[str, str] = {}
+
+    def visit(node: ast.AST, prefix: str = "") -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, _DEF_NODES):
+                name = f"{prefix}.{child.name}" if prefix else child.name
+                found[name] = hashlib.sha256(ast.dump(child).encode("utf-8")).hexdigest()
+                visit(child, name)
+            else:
+                visit(child, prefix)
+
+    visit(module)
+    return found
+
+
+def symbol_digests_at(path: str | Path) -> dict[str, str]:
+    """:func:`symbol_digests` for the file at *path*, served from the index.
+
+    The indexed accessor, sharing one extraction and one store entry with
+    :func:`declared_names_at` — both answer questions about the same parse of the same bytes,
+    and computing them apart paid for that parse twice.
+    """
+    return dict(_table_at(path).digests)

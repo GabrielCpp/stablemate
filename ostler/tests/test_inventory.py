@@ -512,3 +512,144 @@ def test_the_front_end_states_the_grammar_version_its_answers_came_from():
     version = stated()
     assert isinstance(version, str) and version.strip()
     assert version == stated()
+
+
+# ── digests: the backfill watermark's question ────────────────────────────────────────
+
+DIGEST_SOURCES: dict[str, tuple[str, str, str]] = {
+    #: suffix → (source, the symbol whose body an edit will change, the edited source)
+    ".py": (
+        "def alpha() -> int:\n    return 1\n\n\ndef beta() -> int:\n    return 2\n",
+        "alpha",
+        "def alpha() -> int:\n    return 99\n\n\ndef beta() -> int:\n    return 2\n",
+    ),
+    ".go": (
+        "package p\n\nfunc Alpha() int {\n\treturn 1\n}\n\nfunc Beta() int {\n\treturn 2\n}\n",
+        "Alpha",
+        "package p\n\nfunc Alpha() int {\n\treturn 99\n}\n\nfunc Beta() int {\n\treturn 2\n}\n",
+    ),
+    ".ts": (
+        "export function alpha() {\n  return 1\n}\n\nexport function beta() {\n  return 2\n}\n",
+        "alpha",
+        "export function alpha() {\n  return 99\n}\n\nexport function beta() {\n  return 2\n}\n",
+    ),
+    ".tsx": (
+        "export function Alpha() {\n  return <b>1</b>\n}\n\nexport function Beta() {\n"
+        "  return <b>2</b>\n}\n",
+        "Alpha",
+        "export function Alpha() {\n  return <b>99</b>\n}\n\nexport function Beta() {\n"
+        "  return <b>2</b>\n}\n",
+    ),
+    ".php": (
+        "<?php\nfunction alpha() { return 1; }\nfunction beta() { return 2; }\n",
+        "alpha",
+        "<?php\nfunction alpha() { return 99; }\nfunction beta() { return 2; }\n",
+    ),
+    ".twig": (
+        "{% block alpha %}one{% endblock %}\n{% block beta %}two{% endblock %}\n",
+        "alpha",
+        "{% block alpha %}ninety-nine{% endblock %}\n{% block beta %}two{% endblock %}\n",
+    ),
+}
+
+
+def test_every_documented_language_answers_with_a_digest_per_declaration():
+    """The watermark's key space is `extents`'s: a citation grounds by name and by digest alike."""
+    for suffix, (source, _, _) in DIGEST_SOURCES.items():
+        digests = inventory.symbol_digests(f"x{suffix}", source)
+        assert set(digests) >= {"alpha", "beta"} or set(digests) >= {"Alpha", "Beta"}, suffix
+
+
+def test_editing_one_body_moves_exactly_one_digest():
+    """The whole reason the watermark is per symbol.
+
+    A file-level sha requeues every node citing a forty-symbol file when one function moved;
+    this is the assertion that says it does not.
+    """
+    for suffix, (source, edited_name, edited) in DIGEST_SOURCES.items():
+        before = inventory.symbol_digests(f"x{suffix}", source)
+        after = inventory.symbol_digests(f"x{suffix}", edited)
+        moved = {name for name, digest in after.items() if before.get(name) != digest}
+        assert moved == {edited_name}, suffix
+
+
+REFORMATTED = {
+    ".py": (
+        "# a header comment\ndef alpha() -> int:\n\n    return 1\n\n\n"
+        "def beta() -> int:  # trailing\n    return 2\n"
+    ),
+    ".go": (
+        "package p\n\n// Alpha does a thing.\nfunc Alpha() int {\n\n\treturn 1\n\n}\n\n"
+        "func Beta() int { return 2 }\n"
+    ),
+    ".ts": (
+        "// a header comment\nexport function alpha() {\n\n  return 1\n}\n\n"
+        "/* beta */\nexport function beta() { return 2 }\n"
+    ),
+    ".php": (
+        "<?php\n// a header comment\nfunction alpha() {\n    return 1;\n}\n"
+        "function beta() { return 2; }\n"
+    ),
+}
+
+
+def test_comments_and_layout_do_not_move_a_digest():
+    """Cosmetic churn is the largest single source of false backfill work.
+
+    A reformat, a re-indent or a rewritten doc comment must cost nothing: the digest is a
+    token stream, not a source slice. `.tsx` and `.twig` are absent only because their
+    fixtures above have no comment form worth a second spelling, not because they differ.
+
+    Punctuation a formatter may add or drop — a JS semicolon, a trailing comma — is *not*
+    normalized away: it is an anonymous leaf like any other, and telling a decorative one
+    from a load-bearing one (`for (;;)`) needs per-grammar knowledge this does not have.
+    A repo formats itself consistently, so that churn arrives once per style change rather
+    than continuously, and one over-wide backfill round is the whole cost of being wrong.
+    """
+    for suffix, reformatted in REFORMATTED.items():
+        source = DIGEST_SOURCES[suffix][0]
+        assert inventory.symbol_digests(f"x{suffix}", source) == inventory.symbol_digests(
+            f"x{suffix}", reformatted
+        ), suffix
+
+
+def test_an_operator_is_part_of_what_a_declaration_is():
+    """`walk` yields only *named* nodes, and an operator is anonymous in most grammars.
+
+    Hashing the walk would make `a + b` and `a - b` the same declaration — the one thing a
+    content digest may never do — so the digest walks every child, named or not.
+    """
+    plus = inventory.symbol_digests("x.go", "package p\n\nfunc F(a, b int) int { return a + b }\n")
+    minus = inventory.symbol_digests("x.go", "package p\n\nfunc F(a, b int) int { return a - b }\n")
+    assert plus["F"] != minus["F"]
+
+
+def test_a_language_no_front_end_reads_has_no_digests():
+    assert inventory.symbol_digests("x.rb", "class Renderer; end\n") == {}
+
+
+def test_a_nested_declaration_rolls_up_into_its_owner():
+    """A citation naming the owner must move when anything inside the owner moves."""
+    source = "class View:\n    def render(self) -> int:\n        return 1\n"
+    edited = "class View:\n    def render(self) -> int:\n        return 2\n"
+    before = inventory.symbol_digests("x.py", source)
+    after = inventory.symbol_digests("x.py", edited)
+    assert set(before) == {"View", "View.render"}
+    assert before["View"] != after["View"]
+    assert before["View.render"] != after["View.render"]
+
+
+def test_the_indexed_accessor_answers_the_same_as_the_direct_one(tmp_path):
+    """`symbol_digests_at` shares one extraction with `declared_names_at`; same answer, once."""
+    target = tmp_path / "x.py"
+    target.write_text(DIGEST_SOURCES[".py"][0], encoding="utf-8")
+    assert inventory.symbol_digests_at(target) == inventory.symbol_digests(
+        target, DIGEST_SOURCES[".py"][0]
+    )
+    assert inventory.declared_names_at(target) == frozenset({"alpha", "beta"})
+
+
+def test_the_indexed_accessor_is_empty_for_an_unread_language(tmp_path):
+    target = tmp_path / "x.rb"
+    target.write_text("class Renderer; end\n", encoding="utf-8")
+    assert inventory.symbol_digests_at(target) == {}
