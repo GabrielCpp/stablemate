@@ -129,8 +129,8 @@ Three scoping rules explain findings that otherwise read as false positives or a
 
 | Code | Sev | Trigger and remedy |
 | --- | --- | --- |
-| `no-entry-point` | warn | No screen on this surface declares `entry:`, so reachability cannot be checked. |
-| `unreachable-screen` | error | No documented path reaches a screen. Add a `leads-to:` on the component that navigates there, or `entry:` if it is entered from outside the app. |
+| `no-root-screen` | warn | No screen on this surface has the root `route:` — the path of its `walkthrough: true` server's `entry-url:`, or `/` — so reachability cannot be checked. Document the screen the app opens on. |
+| `unreachable-screen` | error | No documented path reaches a screen from the surface's root. Add a `leads-to:` on the component that navigates there, or `entry: /<route>` if it is entered from outside the app. A prose `entry:` does not exempt: a walk can open an address, not a description. |
 | `ambiguous-locator` | error | Two controls on one screen share role+name, so `getByRole` cannot tell them apart. Give each a distinct accessible name — or, if they genuinely never co-render, declare `exclusive-with:`. Also raised when a repeated node's `name:` template — opaque holes wildcarded — pattern-matches a static sibling's literal name. |
 | `duplicate-bullet` | error | A component states `role:` or `name:` more than once. A control has one of each, so the node cannot say which it is and `collisions` skips it until it is well-formed — this is a book defect, never a locator collision. Keep the bullet the source renders and drop the rest. |
 | `stale-defect` | error | A `known-defect:` record has outlived its work: the seed it names is resolved, dropped, deferred or unknown, or the finding it excused no longer fires. The excused finding is back in the report. Fix the code under an active seed, or drop the bullet. |

@@ -38,9 +38,16 @@ All three required keys are required **even when empty**. A screen that omits `r
 indistinguishable from one that is genuinely unconditional, and reachability cannot tell
 "nothing to satisfy" from "nobody wrote it down" — so state `none`.
 
-`entry:` is a claim, not a silencer: it says the screen is reached from outside the app (app
-root, emailed deep link, OAuth callback) and the value says how. It exempts the screen from the
-reachability check, so it earns that exemption by stating the route in.
+Reachability starts at the **root**: the screen whose `route:` is the path of the surface's
+server `entry-url:` (the [`server`](runbook.md) marked `walkthrough: true`), or `/` when no
+contract states one. Every other screen has to be reached from it by `leads-to:` hops.
+
+`entry:` is a claim, not a silencer. It says the screen is reached from outside in-app
+navigation — an emailed deep link, an OAuth callback — and its value is the **route** that
+does it: `entry: /reset/:token`, or an absolute URL. Only a route-valued `entry:` seeds
+reachability, because a walk can open an address and cannot open a description. Prose there
+("reached by typing the URL", "the app root") documents nothing the check can use, and the
+screen stays `unreachable-screen` until a component links to it or the value becomes a route.
 
 Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type),
 which mint an obligation on every type.
@@ -75,8 +82,8 @@ type: screen
 
 ## Doctor codes it can trip
 
-`missing-required-bullet`, `unreachable-screen`, `no-entry-point` (warn, raised against the
-surface when no screen on it declares `entry:`), `unresolved-relation`, plus the structural
+`missing-required-bullet`, `unreachable-screen`, `no-root-screen` (warn, raised against the
+surface when no screen's `route:` is its root path), `unresolved-relation`, plus the structural
 codes every file type can trip. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
