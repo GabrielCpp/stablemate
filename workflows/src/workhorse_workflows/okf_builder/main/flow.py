@@ -25,9 +25,11 @@ that confirms them on a workflow that shares none of author's shape:
   its *first* coverage re-scan on a cap about a check that had not run once. Parameters
   cannot be confused for each other — a state either takes `rescan` or it does not;
 * the YAML's four `type: fail` terminals are decided **at the site that decides**, with
-  the reason spelled out — the YAML could only name a node. Two of them are still
-  `raise WorkflowFailed(...)`: a run that cannot measure (`cannot_build`) and a finding
-  that is neither repairable nor waivable (`doctor_stuck`). The other two —
+  the reason spelled out — the YAML could only name a node. One of them is still
+  `raise WorkflowFailed(...)`: a run that cannot measure (`cannot_build`). `doctor_stuck`
+  — a finding neither repairable nor waivable — is gone with the waiver register it
+  fed: a finding leaves the book by a repair, or by a `known-defect:` naming the seed
+  that fixes the code, and a stalled finding set is an operator gate. The other two —
   `budget_exhausted` and `rounds_exhausted` — are budget stops, not defects, and a
   workflow never gives up on a budget: they are operator gates (`Await`) now, resumable
   with a fresh allowance;
@@ -65,7 +67,6 @@ from typing import ClassVar
 from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
 from workhorse_workflows.okf_builder.main.nodes import (
     advance_watermark,
-    auto_waive,
     compute_coverage,
     inventory_source,
     prepare,
@@ -95,8 +96,9 @@ from workhorse_workflows.okf_builder.walkthrough_web import WalkthroughWeb
 MAX_RESCAN_ROUNDS = 6
 
 #: Consecutive rounds an unchanged doctor finding set is tolerated before the run stops
-#: re-drilling it and hands it to `auto_waive`. A repair that has not landed in three
-#: identical rounds is a repair that cannot land in the book.
+#: re-drilling it and parks on the operator gate. A repair that has not landed in three
+#: identical rounds is a repair that cannot land in the book — and which side is at fault
+#: is not a thing a stall count knows, so the stall never excuses anything.
 #:
 #: This is the *whole-book* signal, and it was the only one there used to be — which is
 #: why the loop was unbounded in practice. It moves whenever any finding anywhere moves,
@@ -504,7 +506,7 @@ class OkfBuilder(Workflow):
         kept apart:
 
         * dirty doctor whose finding set has not changed in `MAX_STALL_ROUNDS` rounds → a
-          repair that cannot land in the book, so hand it to `waive`;
+          repair that cannot land in the book, so park it on the operator gate;
         * clean doctor after `MAX_RESCAN_ROUNDS` coverage re-scans → the coverage check is
           not converging. Reaching the cap is **not** convergence — but it is a budget,
           not a defect, so it blocks on the operator gate; answering the gate file
@@ -535,12 +537,12 @@ class OkfBuilder(Workflow):
                     refuels=refuels,
                 )
             if result.stall_rounds >= MAX_STALL_ROUNDS:
-                return Continue(
-                    result,
-                    self.waive,
+                return Await(
+                    paths.operator_context_path(Path(self.ctx.repo_root), self.service),
+                    self._stalled_gate_question(result.stall_rounds, recorded),
+                    self.retry_blocked,
                     rnd=result.round,
                     rescan=rescan,
-                    stall=result.stall_rounds,
                     signature=result.fixup_signature,
                     refuels=refuels,
                 )
@@ -591,10 +593,33 @@ class OkfBuilder(Workflow):
             f"book. Each was handed to a repair turn {MAX_TARGET_ATTEMPTS} times and came "
             f"back standing, and there is no other work left on the worklist:\n\n"
             f"{lines}\n\n"
-            f"These are not waived — doctor still reports them. Either repair them by "
-            f"hand, or decide the finding is wrong and fix the detector. Then set this "
-            f"file's `STATUS:` line to `ANSWERED` to return those targets to the drain "
-            f"with a fresh {MAX_TARGET_ATTEMPTS}-attempt allowance."
+            f"These are not excused — doctor still reports them. Either repair them by "
+            f"hand, decide the finding is wrong and fix the detector, or, when the code is "
+            f"the side at fault, file a seed and a `known-defect:` bullet naming it on the "
+            f"node. Then set this file's `STATUS:` line to `ANSWERED` to return those "
+            f"targets to the drain with a fresh {MAX_TARGET_ATTEMPTS}-attempt allowance."
+        )
+
+    @staticmethod
+    def _stalled_gate_question(stall_rounds: int, recorded: Recorded) -> str:
+        """The whole-book backstop: the finding set stopped moving while rows are pending.
+
+        Coarser than the per-target gate — it fires when nothing anywhere moved for
+        `MAX_STALL_ROUNDS` rounds — and it says so, because the operator's first question is
+        which of the two stopped the run. It used to hand the book to a waiver node that
+        decided "code defect" from the stall count; a count knows nothing about which side
+        is wrong, so the decision is the operator's, with the same three exits.
+        """
+        return (
+            f"okf-builder's doctor finding set has not changed in {stall_rounds} rounds — "
+            f"the repair turns are running and nothing they write moves doctor, with "
+            f"{recorded.pending_count} row(s) still pending on the worklist. This is not "
+            f"convergence. Read the worklist beside this file under .agents/okf-build/ to "
+            f"see what keeps coming back, then either repair it by hand, decide the "
+            f"finding is wrong and fix the detector, or, when the code is the side at "
+            f"fault, file a seed and a `known-defect:` bullet naming it on the node. Then "
+            f"set this file's `STATUS:` line to `ANSWERED` to resume the drain with the "
+            f"stall count reset."
         )
 
     def retry_blocked(
@@ -609,7 +634,7 @@ class OkfBuilder(Workflow):
         `stall` is not threaded through and restarts at zero deliberately. The operator's
         answer is a statement that something changed — a hand repair, a detector fix — and
         carrying the pre-gate stall count in would spend the next two rounds walking
-        straight into `waive` on a finding set nobody has re-read yet.
+        straight back into the stall gate on a finding set nobody has re-read yet.
         """
         return Continue(
             self.call(record, self.ctx.worklist_path, unblock=True),
@@ -617,47 +642,6 @@ class OkfBuilder(Workflow):
             rnd=rnd,
             rescan=rescan,
             stall=0,
-            signature=signature,
-            refuels=refuels,
-        )
-
-    def waive(
-        self,
-        rnd: int = 0,
-        rescan: int = 0,
-        stall: int = 0,
-        signature: str = "",
-        refuels: int = 0,
-    ) -> Continue:
-        """`auto_waive` + `decide_auto_waive`: accept what a doc edit cannot fix, or stop.
-
-        Each code-fix-only a11y defect gets a warn-level doctor waiver plus a seed in the
-        `accessibility-code-fixes` epic naming the real fix, the un-waive step and the
-        re-run that confirms it, so the next checkpoint sees a warning and the book
-        converges while the defect itself reaches the lane that can repair it. A finding that is *not*
-        auto-waivable ends the run honestly rather than being papered over.
-
-        `stall` and `signature` go back to `checkpoint` unchanged, matching the YAML, where
-        the vars simply persisted across the round trip: if the waivers did not in fact
-        change what doctor reports, the very next round counts as another stalled one and
-        the second pass through here lands on the same unwaivable finding.
-        """
-        result = self.call(
-            auto_waive, self.ctx.repo_root, self.ctx.features_root, self.service
-        )
-        if result.has_unwaivable:
-            raise WorkflowFailed(
-                "the fixup loop stalled on a finding that is neither doc-repairable nor "
-                f"auto-waivable, so doctor cannot be made clean: {result.note}",
-                failure_class="okf-builder-unwaivable-finding",
-                artifacts={"features_root": str(self.ctx.features_root)},
-            )
-        return Continue(
-            result,
-            self.checkpoint,
-            rnd=rnd,
-            rescan=rescan,
-            stall=stall,
             signature=signature,
             refuels=refuels,
         )

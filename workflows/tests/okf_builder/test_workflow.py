@@ -1,7 +1,7 @@
 """End-to-end drives of the okf-builder workflow (`okf_builder/workflow.py`).
 
 Nothing is stubbed except the agent turn. `prepare`, `select_item`, `record`,
-`checkpoint_book`, `auto_waive`, `inventory_source`, `compute_coverage` and
+`checkpoint_book`, `inventory_source`, `compute_coverage` and
 `detect_webapp` all run for real against the `booked` / `dirty` fixtures — so a drive
 here exercises ostler's real `fmt` and `doctor`, the real source walk, and the real
 coverage join. The verdicts under test are arithmetic and ostler's, not a script's.
@@ -454,8 +454,8 @@ def test_a_repair_that_never_lands_blocks_the_target_and_parks_on_the_gate(
     # what could not be repaired rather than only that something could not be.
     assert REPAIR in seen[0], seen[0]
     assert "the symbol is gone from source" in seen[0], seen[0]
-    # And it says plainly that nothing was waived away on the way here.
-    assert "not waived" in seen[0], seen[0]
+    # And it says plainly that nothing was excused on the way here.
+    assert "not excused" in seen[0], seen[0]
 
     # Nothing was repaired, which is the honest outcome the book still shows.
     assert (dirty / REFUND).exists()

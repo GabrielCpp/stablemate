@@ -7,12 +7,9 @@ both deliberate:
   `ostler fmt <features>` and `ostler doctor --json` and parsed the stdout back; here it
   is `run_fmt(okf.graph, [features])` and `okf.doctor()`, which is what the CLI itself
   does one layer down — `ostler/ostler/api.py` is "the *library* face of the `ostler` CLI
-  … the CLI merely `json.dumps` what these return". This is a *convergence*, not a
-  narrowing: `auto-waive.py` already computed the identical scoped finding set through
-  `okf.doctor()`, and said in its own docstring that it "mirrors
-  checkpoint._doctor_for_features" — so the two nodes disagreed on mechanism while
-  claiming to agree on result. What the subprocess bought was crash isolation, and what
-  replaces it is the same `except` arm the script had for a failed `subprocess.run`.
+  … the CLI merely `json.dumps` what these return". What the subprocess bought was crash
+  isolation, and what replaces it is the same `except` arm the script had for a failed
+  `subprocess.run`.
 * **The graph is reloaded between fmt and doctor.** `run_fmt` writes files, and
   `Ostler.graph` is a cached snapshot whose contract says a mutation invalidates it. The
   subprocess version got this for free by starting a second process; in-process it has to
@@ -86,7 +83,7 @@ GROUNDED_CODES = frozenset({
 #: each assertion is observed), then the UI contract. A code in no family sorts after all
 #: of them; errors sort before warns regardless of family, because an error blocks the
 #: graph itself. The point is where a *bounded* run's allowance goes — the gate ("no
-#: standing non-waived finding") is unchanged.
+#: standing finding") is unchanged.
 _CODE_FAMILIES: tuple[frozenset[str], ...] = (
     frozenset({"missing-code-symbol", "dangling-code-ref", "dangling-link",
                "missing-anchor", "unresolved-relation"}),
@@ -278,33 +275,24 @@ def _signature(findings: list[dict]) -> str:
     return hashlib.sha1(json.dumps(keys).encode()).hexdigest()[:16]
 
 
-def scoped_findings(report: dict, repo_root: str, features: str, *,
-                    errors_only: bool = False) -> list[dict]:
+def scoped_findings(report: dict, repo_root: str, features: str) -> list[dict]:
     """Doctor's standing findings located in the service book being built.
 
     A monorepo's unrelated epic/spec history may already contain doctor findings. Those
     cannot be repaired by a docs/features-only workflow and must not prevent one service
     book converging.
 
-    **Standing means not waived, not "error".** Severity is the wrong discriminator for a
-    gate whose job is a *complete* book: `undeclared-obligation` and
+    **Standing means every finding doctor reports, not "error".** Severity is the wrong
+    discriminator for a gate whose job is a *complete* book: `undeclared-obligation` and
     `compound-normative-bullet` are warns, and they are the bulk of what makes an existing
     book unprovable — draining errors alone converges on a book whose every claim is still
-    unfalsifiable. Waiving demotes a finding to `warn` *and* stamps `waived: true`
-    (`doctor._apply_waivers`), so reading the stamp rather than the severity leaves the
-    waivers file as the one and only way a finding leaves this gate — with its reason
-    recorded in the book.
+    unfalsifiable. A finding leaves this gate in the book, not around it: repaired, or
+    excused by a `known-defect:` bullet doctor itself honours while the seed it names is
+    open — so what doctor reports is exactly what stands.
 
-    `errors_only=True` is for `nodes/waivers.py` alone, which mints one seed IOU per
-    standing finding: widening *that* would file thousands of IOUs for prose warns.
-
-    Shared with `nodes/waivers.py`, which needs the identical set — in the YAML it was
-    *copied* into `auto-waive.py` under a comment saying it mirrored this one, and the two
-    copies had already drifted: on an empty `features` the checkpoint's version scoped to
-    whatever `Path("").resolve()` came out as (the process's cwd) and kept almost nothing,
-    while auto-waive's `if not prefix` kept everything. Unified on auto-waive's reading,
-    which is the one the checkpoint's own "doctor findings are unscoped" warning describes.
-    Reachable only with no book to scope to, which the graph reaches only by failing first.
+    On an empty `features` the filter keeps everything: reachable only with no book to
+    scope to, which the graph reaches only by failing first, and the one reading the
+    checkpoint's own "doctor findings are unscoped" warning describes.
     """
     try:
         prefix = Path(features).resolve().relative_to(
@@ -315,17 +303,10 @@ def scoped_findings(report: dict, repo_root: str, features: str, *,
     return [
         finding for finding in report.get("findings", [])
         if isinstance(finding, dict)
-        and (finding.get("severity") == "error" if errors_only
-             else not finding.get("waived"))
         and (not prefix
              or str(finding.get("path", "")) == prefix
              or str(finding.get("path", "")).startswith(prefix + "/"))
     ]
-
-
-def scoped_error_findings(report: dict, repo_root: str, features: str) -> list[dict]:
-    """The error-only view of `scoped_findings`, kept for the one caller that needs it."""
-    return scoped_findings(report, repo_root, features, errors_only=True)
 
 
 @blueprint.node(stub=stubs.clean)
@@ -344,12 +325,13 @@ def checkpoint_book(
     detection is left to the recheck agent (it needs to read code and walk `ostler trace`);
     this node owns only the deterministic part.
 
-    **The gate is: no standing finding that is not explicitly waived.** Not "no errors" —
-    the codes that decide whether a book's claims can ever be *observed*
-    (`undeclared-obligation`, `compound-normative-bullet`, `weak-check`,
-    `unstated-precondition`) are all warns, so an error-only gate converges happily on a
-    book nobody can falsify. A finding leaves this gate one way, through the waivers file,
-    which is the spelling that leaves the reason behind.
+    **The gate is: no standing finding.** Not "no errors" — the codes that decide whether
+    a book's claims can ever be *observed* (`undeclared-obligation`,
+    `compound-normative-bullet`, `weak-check`, `unstated-precondition`) are all warns, so
+    an error-only gate converges happily on a book nobody can falsify. A finding leaves
+    this gate inside the book: repaired, or excused by a `known-defect:` bullet naming the
+    seed that fixes the code, which doctor honours while that seed is open and reports as
+    `stale-defect` afterwards.
 
     **One item per node and code.** An earlier version packed every finding into a single
     item whose context was the last 4000 characters of the findings JSON — so on a book with
@@ -451,4 +433,4 @@ def checkpoint_book(
 
 
 __all__ = ["GROUNDED_CODES", "MAX_FINDINGS_PER_ITEM", "checkpoint_book",
-           "scoped_error_findings", "scoped_findings"]
+           "scoped_findings"]

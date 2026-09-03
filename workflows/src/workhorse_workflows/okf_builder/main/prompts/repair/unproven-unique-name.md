@@ -11,6 +11,7 @@ Read the source of the collection the `one-per:` variable iterates over:
   the claim: `` unique-by: `stage.id` `` (one dot-path rooted at the iteration variable), and
   cite in prose the code that enforces it.
 - If duplicates are genuinely possible, the warning is the truth: leave it standing and record
-  what you read. Whether the app adds a distinguishing datum or the book waives it is a human's
-  call — a `unique-by:` written without evidence converts an honest warning into a false
+  what you read. Whether the app adds a distinguishing datum is adjudication's call, taken with
+  the source in hand and filed as a seed plus a `known-defect:` when the code is the side at
+  fault — a `unique-by:` written without evidence converts an honest warning into a false
   promise, which is worse than the finding.

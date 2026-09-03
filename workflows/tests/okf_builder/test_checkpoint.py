@@ -8,7 +8,7 @@ ever be observed — `undeclared-obligation`, `compound-normative-bullet`, `weak
 which nothing is falsifiable.
 
 `scoped_findings` is exercised against literal report dicts rather than through `doctor`.
-The filter is about severity, the waiver stamp and the path prefix, and doctor is not the
+The filter is about severity and the path prefix, and doctor is not the
 thing under test — a fixture book able to produce every combination on demand would be a
 larger fiction than the three-key dicts it would be standing in for.
 """
@@ -23,7 +23,6 @@ from workhorse_workflows.okf_builder.shared.checkpoint import (
     MAX_FINDINGS_PER_ITEM,
     _repair_items,
     checkpoint_book,
-    scoped_error_findings,
     scoped_findings,
 )
 
@@ -34,9 +33,8 @@ def _report(*findings: dict) -> dict:
     return {"findings": list(findings)}
 
 
-def _finding(code: str, severity: str = "warn", *, path: str = f"{BOOK}/a.md",
-             waived: bool = False) -> dict:
-    return {"severity": severity, "code": code, "path": path, "waived": waived,
+def _finding(code: str, severity: str = "warn", *, path: str = f"{BOOK}/a.md") -> dict:
+    return {"severity": severity, "code": code, "path": path,
             "ref": f"{path}#node", "line": 1}
 
 
@@ -50,33 +48,6 @@ def test_a_warning_is_a_standing_finding() -> None:
     report = _report(_finding("undeclared-obligation"))
     assert [f["code"] for f in scoped_findings(report, "/repo", "")] == [
         "undeclared-obligation"]
-    assert scoped_error_findings(report, "/repo", "") == []
-
-
-def test_a_waived_finding_leaves_the_gate() -> None:
-    """Waiving is the one exit, and it is the one that records a reason in the book.
-
-    `doctor._apply_waivers` demotes to `warn` *and* stamps `waived: true`. Reading the stamp
-    rather than the severity is what keeps a warn that nobody waived inside the gate while
-    letting an adjudicated one out.
-    """
-    report = _report(
-        _finding("ambiguous-locator", "warn", waived=True),
-        _finding("compound-normative-bullet"),
-    )
-    assert [f["code"] for f in scoped_findings(report, "/repo", "")] == [
-        "compound-normative-bullet"]
-
-
-def test_a_waived_error_leaves_the_gate_too() -> None:
-    """A waiver a doctor profile left at error severity still exits.
-
-    The stamp is the decision; the severity it happens to carry afterwards is not a second
-    vote. A gate that re-admitted a waived error would make the waivers file unable to
-    unstick the loop it exists to unstick.
-    """
-    report = _report(_finding("missing-code-symbol", "error", waived=True))
-    assert scoped_findings(report, "/repo", "") == []
 
 
 def test_findings_outside_the_book_are_not_this_run_s_problem(tmp_path: Path) -> None:

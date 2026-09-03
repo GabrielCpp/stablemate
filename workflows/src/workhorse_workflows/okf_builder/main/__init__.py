@@ -1,7 +1,7 @@
 """`main` — the build machine a bare `workhorse-okf-builder run` starts.
 
 Laid out like the walk beside it: `flow.py` is the machine, `nodes/` is the non-agent
-work only it sequences (`prepare`, `inventory_source`, `compute_coverage`, `auto_waive`),
+work only it sequences (`prepare`, `inventory_source`, `compute_coverage`),
 and `prompts/` holds the four envelopes it renders — including the whole `repair/`
 fragment directory `repair.md` dispatches into. What the walk *also* calls is in
 [`shared/`](../shared).

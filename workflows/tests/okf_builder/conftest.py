@@ -146,9 +146,9 @@ def dirty(booked: Path, write: Callable[[Path, str], Path]) -> Path:
     """`booked` plus a doc citing `acme/service.py::refund`, which nothing declares.
 
     `ostler doctor` reports it as a `missing-code-symbol` **error** — grounded (the
-    repair's value must come out of the source, not off the finding) and not in
-    `waivers.AUTO_WAIVABLE`, so a stalled loop ends the run rather than papering over
-    it. One fixture, both arms.
+    repair's value must come out of the source, not off the finding), so a repair that
+    never lands blocks its row and parks the run on the operator gate rather than
+    papering over it. One fixture, both arms.
     """
     write(
         booked / f"docs/features/{SERVICE}/concepts/refund.md",

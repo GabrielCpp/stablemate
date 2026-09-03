@@ -29,5 +29,5 @@ warn and why the value has to come from what the code does rather than from the 
 
 If the check really is the strongest observation available for this claim (a genuinely
 presence-only contract), leave it standing and say so in `doc_status`, naming the node and the
-reason. A human decides whether that becomes a waiver; you do not write the waivers file, and
+reason. Standing is the outcome — adjudication reads your note with the source in hand — and
 dressing the check up with an argument the code does not support is worse than the finding.

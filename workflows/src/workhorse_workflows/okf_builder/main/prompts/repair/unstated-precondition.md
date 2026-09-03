@@ -34,4 +34,5 @@ them can be spelled as a single after-read.
 
 If the bullet's verb is lifecycle-shaped but the claim is not (an idempotent upsert that legitimately
 tolerates the subject already existing), that is the heuristic misfiring. Leave the checks as they
-are and say so in `doc_status`, naming the node — a human decides whether it becomes a waiver.
+are and say so in `doc_status`, naming the node — adjudication reads that note with the source
+in hand and decides which side, if either, is at fault.

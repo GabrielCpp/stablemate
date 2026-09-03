@@ -27,20 +27,21 @@ miss is. Where the source genuinely does not settle what an obligation asserts, 
 unbound and say so — a node that stays red is a correct outcome, a node stamped green is not.
 
 **When the claim is real but the closed vocabulary has no observation for it**, that is a
-different outcome from "unsure", and it has a sanctioned exit: a doctor waiver. Append an
-entry to `docs/doctor-waivers.json` (shape: `{"waivers": [...]}`), quoting the claim
-itself as the reason:
+different outcome from "unsure", and it is decided per bullet, one of two ways. Say which
+in `doc_status`, naming the bullet:
 
-```json
-{"code": "undeclared-obligation", "ref": "<the node id the finding names>",
- "reason": "no check in the closed vocabulary observes: '<the bullet's claim, quoted>'",
- "backlog": "revisit when the check vocabulary can observe it"}
-```
+- **The bullet is not an obligation.** It describes what the node is rather than claiming
+  what an observer would see — a sentence that no wrong implementation could make false.
+  Demote it: move the text into the node's prose, under the same heading, and delete the
+  bullet. Nothing is lost; a claim nothing could falsify was never a claim.
+- **The vocabulary is short a check.** The bullet is a real claim and no call in
+  `ostler checks` observes it. Leave the bullet unbound, and write in `doc_status` what the
+  missing check would observe and the signature it would need
+  (`vocabulary: settles(subject=…, within=…) — the payout lands before the ledger closes`).
+  The finding stays standing on purpose: it is the ask for that check, and the vocabulary
+  grows by exactly such asks. Nothing else in the book records it.
 
-That is a reviewable ledger entry a human can audit and revoke — strictly better than
-either of the alternatives: an eternally-red warn every future round re-pays an agent turn
-to stare at, or a fabricated near-miss check that stamps the node green while observing
-something else. The bar for taking this exit is that you walked the vocabulary above and
-can say *why* each candidate check fails to observe the claim; say that in `doc_status`
-too. Never waive a bullet a check in the list *can* observe — that is the deletion rule
-wearing JSON.
+There is no third exit. A red node whose `doc_status` says which of the two it is, is a
+correct outcome; a node stamped green by a check that observes something else is not, and
+so is a bullet demoted to prose because a check *could* observe it and you did not look —
+that is the deletion rule wearing a paragraph.

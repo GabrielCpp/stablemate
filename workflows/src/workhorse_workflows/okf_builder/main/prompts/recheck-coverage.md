@@ -4,7 +4,7 @@ agent: agent
 
 # okf-builder — coverage re-scan (the exhaustiveness backstop)
 
-The worklist drained, `ostler doctor` is clean — **every** non-waived finding, warns included — and
+The worklist drained, `ostler doctor` is clean — **every** finding, warns included — and
 the machine has already computed that this book is still incomplete: there is a source unit nothing
 cites. That is why you are running. Your job is to turn the computed gap into drainable work, plus
 find the gaps arithmetic cannot see (orphans, stubs, journeys, the runbook).
@@ -81,7 +81,7 @@ book is not an empty gap.
 
    You are not asked about undeclared observations here. A node whose bullets mint obligations and
    declares no `verify:` is `undeclared-obligation`, and the convergence checkpoint you passed to
-   reach this turn drains **every** non-waived doctor finding, warns included — so by construction
+   reach this turn drains **every** doctor finding, warns included — so by construction
    there are none standing. Queue nothing for it; if you see one, the checkpoint is the bug.
 
 2. **Missing from surfaces** — re-enumerate each surface's elements (every command / endpoint /
@@ -142,7 +142,7 @@ book is not an empty gap.
 
 There is no `coverage_complete` to emit — the build ends when the next round *computes* the gap
 closed: every unit covered, by a citation or by a waiver you justified, with the round cap bounded
-and `doctor` clean of every non-waived finding. Your items and your waivers are what move those
+and `doctor` clean of every finding. Your items and your waivers are what move those
 numbers; nothing you can say about your own work does.
 
 Batch uncovered source units by their nearest coherent module/package and emit one `layer` item per

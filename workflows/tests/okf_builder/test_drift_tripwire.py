@@ -33,7 +33,9 @@ REPAIR_DIR = Path(okf_builder_pkg.__file__).parent / "main" / "prompts" / "repai
 #: mechanical rewrites (`unknown-bullet`, `bad-heading-type`), structural repairs whose
 #: target is in the message (`dangling-link`, `missing-anchor`), and the grounded codes
 #: whose fragment-worthy sibling already carries the pattern (`ambiguous-locator` rides
-#: the `grounded` flag the same way `missing-placement`'s fragment describes).
+#: the `grounded` flag the same way `missing-placement`'s fragment describes). The two
+#: declaration codes and the two `known-defect:` codes name their own remedy in the
+#: suggestion: a malformed value is rewritten, a stale one is deleted.
 DEFAULT_PROMPT_CODES = frozenset({
     "ambiguous-locator",
     "bad-heading-type",
@@ -42,6 +44,8 @@ DEFAULT_PROMPT_CODES = frozenset({
     "duplicate-container-heading",
     "empty-required-section",
     "invalid-role",
+    "malformed-declaration",
+    "malformed-defect",
     "malformed-placement",
     "missing-anchor",
     "missing-required-bullet",
@@ -51,6 +55,8 @@ DEFAULT_PROMPT_CODES = frozenset({
     "overlong-normative-bullet",
     "qa-fixture-bullet",
     "schema",
+    "stale-declaration",
+    "stale-defect",
     "unknown-book-fixture",
     "unknown-bullet",
     "unknown-type",
@@ -81,6 +87,7 @@ ORG_GRAPH_CODES = frozenset({
     "missing-story-file",
     "story-id-mismatch",
     "story-key-collision",
+    "story-conflict",
     "orphan-seed",
     "qa-fixture-declaration",
     "runbook-bad-kind",

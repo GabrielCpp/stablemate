@@ -14,5 +14,6 @@ Repair from the rendered name in the source, not from the bullet:
   wildcard — never evaluated — so it contributes no discrimination.
 - If the render genuinely carries no per-instance datum, that is an accessibility defect in the
   app — N identical controls announced identically. Record what you saw in prose and leave the
-  finding standing; a human decides between an app fix (interpolate a datum, or an `aria-label`)
-  and a waiver. **Do not invent a datum the render does not contain.**
+  finding standing; adjudication reads the source and, when the code is the side at fault,
+  files the app fix (interpolate a datum, or an `aria-label`) as a seed with a `known-defect:`
+  on the node. **Do not invent a datum the render does not contain.**

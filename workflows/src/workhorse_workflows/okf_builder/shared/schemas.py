@@ -199,17 +199,6 @@ class Checkpoint(OkfResult):
     stall_rounds: int = 0
 
 
-class Waived(OkfResult):
-    """What `auto_waive` accepted, and whether anything was left that it could not."""
-
-    has_unwaivable: bool = False
-    waived_count: int = 0
-    #: The epic the code fixes were seeded into — empty when nothing was waived, since the
-    #: epic is only created once there is a defect to file in it.
-    seed_epic: str = ""
-    note: str = ""
-
-
 # ── coverage ────────────────────────────────────────────────────────────────
 
 
@@ -361,6 +350,5 @@ __all__ = [
     "TornDown",
     "WalkSeed",
     "WalkTurn",
-    "Waived",
     "WebApp",
 ]

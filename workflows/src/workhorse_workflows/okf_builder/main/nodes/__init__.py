@@ -5,7 +5,6 @@ sub-flow also calls lives in [`shared/`](../shared) instead, which is what makes
 package's contents legible as "the build's own work":
 
 * `prepare` — where the book, the source and the drain's memory are
-* `waivers` — accepting the code-fix-only defects that stall the fixup loop, with an IOU
 * `coverage` — the source inventory and the join that decides whether the book covers it
 
 The drain's own primitives (`worklist`), the convergence gate (`checkpoint`), the
@@ -31,11 +30,9 @@ from workhorse_workflows.okf_builder.main.nodes.coverage import (
     inventory_source,
 )
 from workhorse_workflows.okf_builder.main.nodes.prepare import prepare
-from workhorse_workflows.okf_builder.main.nodes.waivers import auto_waive
 
 __all__ = [
     "advance_watermark",
-    "auto_waive",
     "compute_coverage",
     "inventory_source",
     "prepare",
