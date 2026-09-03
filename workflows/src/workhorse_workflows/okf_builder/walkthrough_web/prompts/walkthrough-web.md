@@ -159,12 +159,16 @@ Real users do not type URLs or deep-link into screens — they start at the fron
 This is the sweep that reaches screens no journey covers. `target` is a node id
 (`docs/features/<service>/gui/screens/<slug>.md`); `context` is its title.
 
-1. **Derive the path from the book — do not invent one.** Identify the landing screen (the one
-   whose `route:` matches the entry URL's path), then:
+1. **Derive the path from the book — do not invent one.** The walk starts on the surface's
+   root screen — the one whose `route:` is the entry URL's path — and `ostler reach` starts
+   there by default:
 
    ```
-   ostler reach <target> --from <landing-node-id> --surface {{ workhorse_var('service') }} --json
+   ostler reach <target> --surface {{ workhorse_var('service') }} --json
    ```
+
+   Pass `--from <screen-node-id>` only to route from somewhere else; an id that names no
+   screen is an error, never an empty route.
 
    It returns the hops — each with the component to `activate` or the interaction to `interact`
    with — plus, per hop, the destination's `preconditions` (`guards` to satisfy, `params` naming

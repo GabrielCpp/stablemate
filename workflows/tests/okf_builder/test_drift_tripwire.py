@@ -50,7 +50,7 @@ DEFAULT_PROMPT_CODES = frozenset({
     "missing-anchor",
     "missing-required-bullet",
     "missing-required-section",
-    "no-entry-point",
+    "no-root-screen",
     "okf-missing-type",
     "overlong-normative-bullet",
     "qa-fixture-bullet",

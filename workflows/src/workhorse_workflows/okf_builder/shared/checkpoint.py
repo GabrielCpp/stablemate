@@ -92,7 +92,7 @@ _CODE_FAMILIES: tuple[frozenset[str], ...] = (
     frozenset({"unparsed-check", "weak-check", "undeclared-obligation",
                "unstated-precondition"}),
     frozenset({"missing-placement", "malformed-placement", "ambiguous-locator",
-               "unnamed-interactive", "unreachable-screen", "no-entry-point"}),
+               "unnamed-interactive", "unreachable-screen", "no-root-screen"}),
 )
 
 
