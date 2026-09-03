@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import shlex
-import subprocess
 import sys
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
@@ -1053,32 +1052,6 @@ def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
     return 1 if report.errors else 0
 
 
-def _changed_since(root: Path, revision: str) -> set[str] | None:
-    """Repo-relative paths that differ from *revision*'s merge base with HEAD.
-
-    `None` when git cannot answer — an unreadable diff must widen the plan to the whole
-    book rather than silently narrow it to nothing, which is what an empty set would mean.
-    """
-    def git(*args: str) -> str | None:
-        try:
-            done = subprocess.run(["git", *args], cwd=root, capture_output=True,
-                                  text=True, timeout=60)
-        except (OSError, subprocess.SubprocessError):
-            return None
-        return done.stdout if done.returncode == 0 else None
-
-    base = git("merge-base", revision, "HEAD")
-    if base is None:
-        base = git("rev-parse", "--verify", f"{revision}^{{commit}}")
-    if base is None:
-        return None
-    listed = git("diff", "--name-only", base.strip(), "--")
-    untracked = git("ls-files", "--others", "--exclude-standard")
-    if listed is None:
-        return None
-    return {line for line in (listed + (untracked or "")).splitlines() if line}
-
-
 def _cmd_backfill(graph, args) -> int:
     """`ostler backfill plan` / `ostler backfill snapshot`.
 
@@ -1101,7 +1074,7 @@ def _cmd_backfill(graph, args) -> int:
         print(f"ostler backfill: unreadable source catalog: {exc}", file=sys.stderr)
         return 2
 
-    changed = _changed_since(graph.root, args.since) if args.since else None
+    changed = source_snapshots.changed_since(graph.root, args.since) if args.since else None
     report = doctor.run(graph, check_schema=False)
     result = backfill_mod.plan(
         graph, data, catalog,

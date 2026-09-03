@@ -125,6 +125,38 @@ def _git(repository: SourceRepository, *args: str) -> bytes | None:
     return result.stdout if result.returncode == 0 else None
 
 
+def changed_since(root: Path, revision: str) -> set[str] | None:
+    """Repo-relative paths that differ from *revision*'s merge base with HEAD.
+
+    `None` when git cannot answer — an unreadable diff must widen the caller to the whole
+    book rather than silently narrow it to nothing, which is what an empty set would mean.
+    An empty set is therefore a real answer and only ever means *nothing changed*: sitting
+    on the base itself, the merge base is HEAD and a clean tree has moved no file.
+
+    It lives here rather than in either caller because there are two — `ostler backfill
+    plan --since` and okf-builder's `prepare` — and a second implementation of "what did
+    this branch touch" is the drift the one stale set exists to stop.
+    """
+    def git(*args: str) -> str | None:
+        try:
+            done = subprocess.run(["git", *args], cwd=root, capture_output=True,
+                                  text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return done.stdout if done.returncode == 0 else None
+
+    base = git("merge-base", revision, "HEAD")
+    if base is None:
+        base = git("rev-parse", "--verify", f"{revision}^{{commit}}")
+    if base is None:
+        return None
+    listed = git("diff", "--name-only", base.strip(), "--")
+    untracked = git("ls-files", "--others", "--exclude-standard")
+    if listed is None:
+        return None
+    return {line for line in (listed + (untracked or "")).splitlines() if line}
+
+
 def resolved_sha(repository: SourceRepository, revision: str) -> str:
     value = _git(repository, "rev-parse", "--verify", f"{revision}^{{commit}}")
     return value.decode().strip() if value else ""
@@ -320,6 +352,7 @@ __all__ = [
     "advance_catalog",
     "build_catalog",
     "catalog_path",
+    "changed_since",
     "load_catalog",
     "resolved_sha",
     "source_fingerprint",
