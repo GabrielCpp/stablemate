@@ -227,7 +227,7 @@ def test_dot_prefers_the_reason_over_parameter_names():
     dot = to_dot([_graph(Reasoned)])
     assert 'f0__start -> f0__hold [label="a run id was given"]' in dot
     assert 'label="attempt"' not in dot
-    assert 'f0__finish -> f0____end [label="nothing left to do", color=darkgreen]' in dot
+    assert 'f0__finish -> f0____end [label="nothing left to do", color=darkgoldenrod]' in dot
 
 
 def test_an_await_edge_is_read_from_the_third_argument():
@@ -358,7 +358,7 @@ def test_registry_graphs_render_each_class_once_with_all_its_flow_names():
 def test_dot_renders_one_cluster_per_flow_with_live_names_only():
     dot = to_dot(registry_graphs(_sample_registry()), name="acme")
     assert dot.startswith("digraph acme {")
-    assert dot.count("subgraph cluster_") == 2
+    assert dot.count("subgraph cluster_") == 3  # two flows and the legend
     assert "START" in dot
     assert '"qa' not in dot  # the alias is not a node
     assert "review" in dot
@@ -383,9 +383,17 @@ def test_dot_draws_done_as_an_edge_to_one_end_sink_per_flow():
 def test_dot_links_a_handoff_to_the_child_flow_and_back():
     dot = to_dot([_graph(Parent), _graph(Orphan)])
     assert 'f0__start -> f1____start [label="handoff"' in dot
-    assert 'label="END → back to start"' in dot
+    assert 'xlabel="→ back to start"' in dot
     assert "f1____end -> f0__start" in dot
     assert "handoff Orphan" not in dot  # drawn, not named
+    # Both cross edges sit after the last cluster: Graphviz files a node under the
+    # first subgraph that mentions it, and the child's START belongs to the child.
+    legend = dot.index("  subgraph cluster_legend")
+    last_flow = dot.rindex("  }", 0, legend)
+    assert last_flow < dot.index("-> f1____start") < legend
+    assert last_flow < dot.index("f1____end ->") < legend
+    # Start and end are never the same colour.
+    assert "fillcolor=lightgreen" in dot and "fillcolor=gold" in dot
     # Alone in the document, the handoff is named on the state and nothing crosses.
     alone = to_dot([_graph(Parent)])
     assert "handoff Orphan" in alone

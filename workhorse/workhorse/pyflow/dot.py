@@ -4,8 +4,8 @@ The sibling of `graph/dot.py`, and deliberately not an extension of it: that one
 a validated `Graph` of declared nodes, this one walks a `FlowGraph` derived from source
 (see `pyflow/graph.py`). Sharing a renderer would have meant one function branching on
 which engine it was serving, so the styling vocabulary is shared by eye — same header,
-same escaping rules, same "START and END are the only green things" reading — and the
-code is not.
+same escaping rules, same "START is green, END is gold, red is a defect" reading — and
+the code is not.
 
 A state is never drawn as terminal. `Done` is one transition out of a state, so it is
 drawn as one: an edge into the flow's single END sink. A green box with an arrow leaving
@@ -16,7 +16,11 @@ Each flow becomes a `subgraph cluster_*`, so a distribution with several flows r
 as one document; node ids are flow-prefixed so two flows sharing a state name never
 collide in the single DOT namespace, while the visible label stays the bare name. A
 handoff to a flow in the same document is drawn as a dashed edge into that flow's START,
-and that flow's END points back at the state that handed off.
+and that flow's END points back at the state that handed off. Those two edges are
+written after every cluster, at the top level: Graphviz files a node under the first
+subgraph that mentions it, so a cross edge written inside the parent's cluster would
+drag the child's START into the parent's box, and the parent would read as a flow with
+two starts.
 """
 from __future__ import annotations
 
@@ -35,16 +39,45 @@ _HEADER = (
 #: How many `self.call` / `self.agent` names a state's label lists before eliding.
 _MAX_DETAIL = 4
 
+#: What each arrow style means, drawn once on the page so the reader does not have to
+#: know the engine's vocabulary: a plain step, a step behind an operator gate, the end
+#: of the flow, and a handoff into a sub-flow and back.
+_LEGEND = [
+    "  subgraph cluster_legend {",
+    '    label="legend";',
+    "    style=dashed; color=gray50; fontsize=11;",
+    '    node [shape=plaintext, style="", fillcolor=white, fontsize=10];',
+    '    legend_a [label=""]; legend_b [label=""];',
+    '    legend_c [label=""]; legend_d [label=""];',
+    '    legend_e [label=""]; legend_f [label=""];',
+    '    legend_g [label=""]; legend_h [label=""];',
+    '    legend_a -> legend_b [label="continue"];',
+    '    legend_c -> legend_d [label="await: parked on an operator gate", '
+    "style=dashed, color=darkorange];",
+    '    legend_e -> legend_f [label="done: the flow ends", color=darkgoldenrod];',
+    '    legend_g -> legend_h [label="handoff to a sub-flow, and back", '
+    "style=dashed, color=gray40];",
+    "  }",
+]
+
 
 def to_dot(graphs: Sequence[FlowGraph], name: str | None = None) -> str:
     """Render `graphs` to a Graphviz DOT document."""
     lines: list[str] = [f"digraph {_sanitize(name or 'workflow')} {{", _HEADER.rstrip("\n"), ""]
     prefixes = {graph.workflow: f"f{index}__" for index, graph in enumerate(graphs)}
     callers = _callers(graphs, prefixes)
+    crossing: list[str] = []
     for index, graph in enumerate(graphs):
         if index:
             lines.append("")
-        _emit_flow(graph, lines, prefix=f"f{index}__", prefixes=prefixes, callers=callers)
+        _emit_flow(
+            graph, lines, crossing, prefix=f"f{index}__", prefixes=prefixes, callers=callers
+        )
+    if crossing:
+        lines.append("")
+        lines.extend(f"  {edge};" for edge in crossing)
+    lines.append("")
+    lines.extend(_LEGEND)
     lines.append("}")
     return "\n".join(lines) + "\n"
 
@@ -64,6 +97,7 @@ def _callers(graphs: Sequence[FlowGraph], prefixes: dict[str, str]) -> dict[str,
 def _emit_flow(
     graph: FlowGraph,
     lines: list[str],
+    crossing: list[str],
     *,
     prefix: str,
     prefixes: dict[str, str],
@@ -79,18 +113,23 @@ def _emit_flow(
     end_id = f"{prefix}__end"
     unreachable = set(graph.unreachable())
     lines.append(f'    {start_id} [label="START", shape=circle, fillcolor=lightgreen, width=0.4];')
+    # One START and one END per flow, and never the same colour: where a run comes in
+    # and where it leaves are the two things a reader looks for first.
+
     for node in graph.states:
         lines.append(f"    {_id(prefix, node.name)} {_decl(node, unreachable, prefixes)};")
     # A sub-flow's `Done` is not the end of the run: the driver returns to the
     # parent's `handoff`, and the sink says so rather than looking like a stop.
     back = callers.get(graph.workflow, [])
     if any(node.terminal for node in graph.states):
-        label = "END"
+        # The return is written beside the circle (`xlabel`), not inside it, so the
+        # sink stays the same small ring as START instead of growing to fit a sentence.
+        note = ""
         if back:
-            label += " → back to " + ", ".join(b.split("__", 1)[-1] for b in back)
+            names = ", ".join(b.split("__", 1)[-1] for b in back)
+            note = f', xlabel="→ back to {_esc(names)}"'
         lines.append(
-            f'    {end_id} [label="{_esc(label)}", shape=doublecircle, '
-            "fillcolor=lightgreen, width=0.4];"
+            f'    {end_id} [label="END", shape=doublecircle, fillcolor=gold, width=0.4{note}];'
         )
     lines.append("")
 
@@ -100,12 +139,11 @@ def _emit_flow(
             lines.append(f"    {_edge(prefix, node, edge)};")
         for child in node.handoffs:
             if child in prefixes:
-                lines.append(
-                    f"    {_id(prefix, node.name)} -> {prefixes[child]}__start "
-                    '[label="handoff", style=dashed, color=gray40];'
+                crossing.append(
+                    f"{_id(prefix, node.name)} -> {prefixes[child]}__start "
+                    '[label="handoff", style=dashed, color=gray40]'
                 )
-    for caller in back:
-        lines.append(f"    {end_id} -> {caller} [style=dashed, color=gray40];")
+    crossing.extend(f"{end_id} -> {caller} [style=dashed, color=gray40]" for caller in back)
     lines.append("  }")
 
 
@@ -165,7 +203,7 @@ def _edge(prefix: str, node: StateNode, edge: Edge) -> str:
         attrs.append("style=dashed")
         attrs.append("color=darkorange")
     elif edge.kind == "done":
-        attrs.append("color=darkgreen")
+        attrs.append("color=darkgoldenrod")
     suffix = f" [{', '.join(attrs)}]" if attrs else ""
     return f"{head}{_id(prefix, node.name)} -> {target}{suffix}"
 
