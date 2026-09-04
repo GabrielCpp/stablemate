@@ -1,4 +1,4 @@
-"""End-to-end tests for the `docs` flow — the OKF pre-gate, the diff gate, the reviewer.
+"""Composition and direct-state tests for the `docs` flow.
 
 Twenty-two YAML nodes became six states around one loop: an author turn, a fail-closed
 grounding gate the author cannot see past, and an independent reviewer downstream of it.
@@ -6,11 +6,10 @@ What is worth testing is which of the three OKF arms a repo lands on, which of t
 context modes its source roots pick, and that neither the author's claim nor the reviewer's
 approval can skip the gate between them.
 
-**Only the two agent turns are scripted.** `detect_okf_docs` loads a real ostler graph off a
-real repo, `classify_documentation_context` really compares resolved source roots against a
-real git worktree, and `verify_story_documentation` really runs `ostler doctor` and really
-reads the obligation packet. The gate is the reason this flow exists, so a seam through it
-would have left nothing under test.
+The composition tests script only the two agent turns: `detect_okf_docs` loads a real ostler
+graph, the context classifier compares real worktrees, and the gate runs `ostler doctor`.
+Routing-only budget matrices call the deciding state directly instead of rebuilding that
+integration fixture for every counter and progress verdict.
 
 One test calls the gate directly rather than driving the flow: what a *half-grounded* file
 does to the rework brief cannot be staged through `ostler qa context`, and it is the case
@@ -26,12 +25,13 @@ import subprocess
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
 import pytest
 from workhorse.artifacts import ArtifactWriter
-from workhorse.pyflow import WorkflowFailed
+from workhorse.pyflow import Continue, WorkflowFailed
 from workhorse.runner.failure import BackendInvocationError
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
@@ -49,7 +49,15 @@ from workhorse_workflows.coder.shared.docs import (
     verify_story_documentation,
 )
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.schemas.docs import DocumentationGate
+from workhorse_workflows.coder.shared.schemas.docs import (
+    ContextClassification,
+    DocsLoop,
+    DocsProgress,
+    DocumentationFinding,
+    DocumentationGate,
+    DocumentationResult,
+    DocumentationReview,
+)
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 
@@ -1566,62 +1574,181 @@ def test_a_finding_id_is_an_opaque_handle(
     assert "F1 [overclaim] docs/features/widget.md#f1" in second["review_notes"]
 
 
-def test_the_loop_is_bounded_at_four_passes(
-    docs: Path,
-    elsewhere: Path,
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """A reviewer that never approves stops the flow rather than the run.
+class _RoutingSpy:
+    """The gate or review result a directly-called state reads."""
 
-    Four author passes, not three: `MAX_REWORKS` counts reworks, and the first pass is not
-    one. That is the literal `"3"` the YAML's `guard_documentation` compared against.
-
-    The exhausted budget is a `blocked` verdict, not an exception, and that distinction is
-    the whole point: it used to raise, and the run that forced this change spent it on the
-    `finalize` pass — so a story already implemented, reviewed, documented and QA-passed
-    was thrown away uncommitted, along with every epic queued behind it, over one prose
-    finding a fifth pass might have closed.
-    """
-    agent = _Agent(approve_after=99)
-
-    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
-
-    assert result.status == "blocked", result
-    assert "review did not converge in 4 passes" in result.notes
-    assert agent.counts() == {
-        "document-story": 1,
-        "repair-documentation": 3,
-        "review-story-documentation": 4,
-        "resolve-operator": 1,
-    }, agent.counts()
+    def __init__(
+        self,
+        *,
+        gate: DocumentationGate | None = None,
+        review: DocumentationReview | None = None,
+    ) -> None:
+        self.gate = gate
+        self.review = review
+        self.calls: list[str] = []
 
 
-def test_a_gate_that_never_passes_is_bounded_on_its_own_budget(
-    docs: Path,
-    elsewhere: Path,
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
+def _routing_docs(monkeypatch: pytest.MonkeyPatch, spy: _RoutingSpy) -> Docs:
+    """A docs flow with only the engine seams needed by `verify` and `review`."""
+    flow = Docs(story=STORY, epic=EPIC)
+    flow._ctx = SimpleNamespace(
+        story_slug=STORY,
+        story_id="",
+        story_path=f"{STORY_REL}/story.md",
+        story_epic=EPIC,
+        spec_dir=SPEC_REL,
+        qa_dir="",
+    )
+
+    def fake_call(self: Docs, node: Any, *args: Any, **kwargs: Any) -> Any:
+        spy.calls.append(node.__name__)
+        assert node is docs_flow.verify_story_documentation
+        assert spy.gate is not None
+        return spy.gate
+
+    def fake_agent(self: Docs, prompt: str, **kwargs: Any) -> DocumentationReview:
+        spy.calls.append(Path(prompt).stem)
+        assert spy.review is not None
+        return spy.review
+
+    def fake_output(self: Docs, node: Any) -> Any:
+        if node is classify_documentation_context:
+            return ContextClassification(mode="semantic")
+        if node is docs_flow.documentation_obligations:
+            return SimpleNamespace(refs=[])
+        raise AssertionError(f"unexpected output read: {node.__name__}")
+
+    monkeypatch.setattr(Docs, "call", fake_call)
+    monkeypatch.setattr(Docs, "agent", fake_agent)
+    monkeypatch.setattr(Docs, "output", fake_output)
+    monkeypatch.setattr(Docs, "reset_session", lambda *args: None)
+    monkeypatch.setattr(Docs, "logger", property(lambda _: logging.getLogger("test")))
+    monkeypatch.setattr(Docs, "_epic_path", property(lambda _: f"docs/epics/{EPIC}/epic.md"))
+    monkeypatch.setattr(docs_flow, "workspace_dirs", lambda _: [])
+    monkeypatch.setattr(docs_flow, "features_root", lambda _: "docs/features")
+    return flow
+
+
+def _finding(fid: str) -> dict[str, Any]:
+    """One well-formed reviewer finding, distinguished from the next only by its id."""
+    return {
+        "id": fid,
+        "kind": "overclaim",
+        "target": f"docs/features/widget.md#{fid.lower()}",
+        "issue": f"{fid} is not described",
+        "repair": f"Document {fid}",
+    }
+
+
+@pytest.mark.parametrize(
+    ("rework", "previous", "failures", "expected_state", "expected_progress"),
+    [
+        pytest.param(0, [], ["G:a"], "repair", "first_pass", id="first-failure-reworks"),
+        pytest.param(
+            Docs.MAX_REWORKS,
+            ["G:a"],
+            ["G:a"],
+            "resolve_author",
+            "stalled",
+            id="stalled-budget-blocks",
+        ),
+        pytest.param(
+            Docs.MAX_REWORKS,
+            ["E:a", "E:b"],
+            ["E:a"],
+            "resolve_author",
+            "reduced",
+            id="shrinking-budget-still-blocks",
+        ),
+    ],
+)
+def test_grounding_gate_budget_routes_directly(
     monkeypatch: pytest.MonkeyPatch,
+    rework: int,
+    previous: list[str],
+    failures: list[str],
+    expected_state: str,
+    expected_progress: str,
 ) -> None:
-    """A book the gate never passes never reaches the reviewer — and still blocks, not fails.
+    """Grounding progress diagnoses the final pass but never waives its budget."""
+    spy = _RoutingSpy(
+        gate=DocumentationGate(status="invalid", notes="synthetic findings", failures=failures)
+    )
+    flow = _routing_docs(monkeypatch, spy)
+    loop = DocsLoop(
+        rework=rework,
+        progress=DocsProgress(gate_ids=previous),
+    )
 
-    The exhausted grounding budget is a `blocked` verdict, not an exception, the same
-    distinction `test_the_loop_is_bounded_at_four_passes` draws for the reviewer's own budget:
-    the resolver is consulted in the author's stead before the story ends blocked.
-    """
-    _stage_gate(monkeypatch, passes_on=None)
-    agent = _Agent()
+    result = flow.verify(DocumentationResult(status="documented"), loop)
 
-    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+    assert spy.calls == ["verify_story_documentation"]
+    assert isinstance(result, Continue) and result.state == expected_state
+    routed = result.params["loop"]
+    assert isinstance(routed, DocsLoop)
+    if expected_state == "repair":
+        assert routed.rework == rework + 1
+    else:
+        assert routed.blocks == 1
+        assert "4 grounding passes" in result.params["notes"]
+    assert routed.progress.gate_progress_verdict == expected_progress
 
-    assert result.status == "blocked", result
-    assert "did not converge in 4 grounding passes" in result.notes, result.notes
-    assert agent.counts() == {
-        "document-story": 1,
-        "repair-documentation": 3,
-        "resolve-operator": 1,
-    }, agent.counts()
+
+@pytest.mark.parametrize(
+    ("review_rework", "previous", "findings", "expected_state", "expected_progress"),
+    [
+        pytest.param(0, [], ["D1"], "repair", "first_pass", id="first-revision-reworks"),
+        pytest.param(
+            Docs.MAX_REVIEW_REWORKS,
+            ["D1", "D2"],
+            ["D1", "D2"],
+            "resolve_author",
+            "stalled",
+            id="stalled-budget-blocks",
+        ),
+        pytest.param(
+            Docs.MAX_REVIEW_REWORKS,
+            ["D1", "D2"],
+            ["D3", "D4"],
+            "resolve_author",
+            "churned",
+            id="churned-budget-blocks",
+        ),
+    ],
+)
+def test_reviewer_budget_routes_directly(
+    monkeypatch: pytest.MonkeyPatch,
+    review_rework: int,
+    previous: list[str],
+    findings: list[str],
+    expected_state: str,
+    expected_progress: str,
+) -> None:
+    """Reviewer progress distinguishes stalled work from productive churn at the same cap."""
+    review = DocumentationReview(
+        status="revise",
+        findings=[DocumentationFinding.model_validate(_finding(fid)) for fid in findings],
+        notes="synthetic findings",
+    )
+    spy = _RoutingSpy(review=review)
+    flow = _routing_docs(monkeypatch, spy)
+    loop = DocsLoop(
+        review_rework=review_rework,
+        progress=DocsProgress(review_ids=previous),
+    )
+
+    result = flow.review(DocumentationResult(status="documented"), loop)
+
+    assert spy.calls == ["review-story-documentation"]
+    assert isinstance(result, Continue) and result.state == expected_state
+    routed = result.params["loop"]
+    assert isinstance(routed, DocsLoop)
+    if expected_state == "repair":
+        assert routed.review_rework == review_rework + 1
+    else:
+        assert routed.blocks == 1
+        assert "did not converge in 4 passes" in result.params["notes"]
+    assert routed.progress.review_progress_verdict == expected_progress
 
 
 
@@ -1653,131 +1780,6 @@ def test_the_gates_failure_does_not_spend_the_reviewers_budget(
         "repair-documentation": 4,
         "review-story-documentation": 4,
     }, agent.counts()
-
-
-# --------------------------------------------------------------------- was it productive?
-
-
-def _finding(fid: str) -> dict[str, Any]:
-    """One well-formed reviewer finding, distinguished from the next only by its id."""
-    return {
-        "id": fid,
-        "kind": "overclaim",
-        "target": f"docs/features/widget.md#{fid.lower()}",
-        "issue": f"{fid} is not described",
-        "repair": f"Document {fid}",
-    }
-
-
-def test_a_reviewer_handing_back_the_same_worklist_exhausts_as_stalled(
-    docs: Path,
-    elsewhere: Path,
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """Four passes, one worklist, nothing closed — the budget was not the problem.
-
-    This is the shape `docs.rework=3` alone cannot distinguish from its opposite below, and
-    the two want opposite interventions: this one wants the author's prompt fixed, not a
-    bigger budget. The verdict rides the reworked author turns as a span label; the run's
-    last pass causes no work, so it is carried in the blocking notes instead.
-    """
-    agent = _Agent(approve_after=99, findings_per_pass=[[_finding("D1"), _finding("D2")]])
-
-    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
-
-    assert result.status == "blocked", result
-    assert "did not converge in 4 passes (stalled)" in result.notes, result.notes
-
-
-def test_a_reviewer_closing_each_worklist_and_opening_another_exhausts_as_churned(
-    docs: Path,
-    elsewhere: Path,
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """The same four passes and the same two findings a pass — and a different diagnosis.
-
-    Every pass closed the brief it was given and the reviewer found new, distinct defects,
-    so the loop was productive and merely unfinished. `_rework`'s own docstring records the
-    run this happened on. A count of reworks scores it identically to the stall above.
-    """
-    agent = _Agent(
-        approve_after=99,
-        findings_per_pass=[
-            [_finding("D1"), _finding("D2")],
-            [_finding("D3"), _finding("D4")],
-            [_finding("D5"), _finding("D6")],
-            [_finding("D7"), _finding("D8")],
-        ],
-    )
-
-    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
-
-    assert result.status == "blocked", result
-    assert "did not converge in 4 passes (churned)" in result.notes, result.notes
-
-
-def test_the_grounding_lane_carries_its_own_verdict_into_the_block(
-    docs: Path,
-    elsewhere: Path,
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A gate handing back the identical failure every pass says so in the block's notes."""
-    _stage_gate(monkeypatch, passes_on=None)
-    agent = _Agent()
-
-    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
-
-    assert result.status == "blocked", result
-    assert "4 grounding passes (stalled)" in result.notes, result.notes
-
-
-def test_a_shrinking_failure_set_no_longer_waives_the_grounding_budget(
-    docs: Path,
-    elsewhere: Path,
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Closing one error a lap is the loop, not a licence to keep laping.
-
-    `verify` used to waive `MAX_REWORKS` for as long as the pass had *reduced* the failure
-    set. That is exactly the shape a batched worklist produces — the gate handed over twelve
-    of 124 findings and the sentence "rerun the gate for the next batch", so every lap
-    reduced, the budget never applied, and one story of one error shape cost ten fresh
-    sessions. The gate now hands over all of them and the repair prompt iterates `ostler
-    doctor` to zero inside the turn, so a lap that still comes back red has spent a real
-    pass and the budget is what bounds it.
-    """
-    outstanding = [
-        ["E:a", "E:b", "E:c", "E:d"],
-        ["E:a", "E:b", "E:c"],
-        ["E:a", "E:b"],
-        ["E:a"],
-        [],
-    ]
-
-    @blueprint.node
-    def _gate(*args: Any, **kwargs: Any) -> DocumentationGate:
-        failures = outstanding.pop(0)
-        return DocumentationGate(
-            status="invalid" if failures else "passed",
-            notes="synthetic doctor findings",
-            failures=failures,
-        )
-
-    monkeypatch.setattr(docs_flow, "verify_story_documentation", _gate)
-
-    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), _Agent())
-
-    assert result.status == "blocked", result
-    assert "did not converge in 4 grounding passes" in result.notes, result.notes
-    # The fifth, passing verdict is never reached: the budget stopped the story on the
-    # fourth author pass even though every lap had closed a finding.
-    assert outstanding == [[]]
 
 
 # --------------------------------------------------------------------------- resume

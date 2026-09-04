@@ -1,4 +1,4 @@
-"""The repair loops that run their laps as one conversation.
+"""Direct-state tests for repair-loop conversations and routing policy.
 
 Everything here is about the part of that decision the engine cannot make for a state:
 which key a lap runs under, and *when the conversation has to be thrown away* — because
@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from workhorse.pyflow import NodeNotRunError
+from workhorse.pyflow import Continue, NodeNotRunError
 
 from workhorse_workflows.coder.dev import flow as dev_flow, nodes
 from workhorse_workflows.coder.shared.conversation import backbone
@@ -81,6 +81,16 @@ class _Spy:
             return key
         return key if key in self.open_chains else ""
 
+    def call(
+        self,
+        node: Any,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        span_kind: str = "",
+    ) -> Any:
+        """Run a deterministic node directly when a state needs its rendered value."""
+        return node(logging.getLogger("test"), *args, **kwargs)
+
 
 @pytest.fixture
 def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
@@ -102,7 +112,12 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
     def fake_require_engine(self: Any) -> Any:
         # Asking whether a chain is open goes through the engine; no turn in these tests
         # reaches a real one, so the resolved id is the chain name itself.
-        return SimpleNamespace(session_id=seen.session_id, output=seen.output)
+        return SimpleNamespace(
+            session_id=seen.session_id,
+            output=seen.output,
+            call=seen.call,
+            run_dir=Path("/tmp/stablemate-test-run"),
+        )
 
     for flow in (Docs, Qa, Dev, Review):
         monkeypatch.setattr(flow, "agent", fake_agent)
@@ -320,6 +335,122 @@ def test_ending_the_qa_flow_ends_every_chain_it_opened(spy: _Spy) -> None:
         f"qa-regression-fix:{STORY}",
     ]
     assert f"story:{STORY}" not in spy.resets
+
+
+# ── QA routing budgets ────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("guard", "loop", "counter", "spent"),
+    [
+        (
+            "context",
+            QaLoop(context_rework=qa_flow.MAX_CONTEXT_REWORKS),
+            "context_rework",
+            f"{qa_flow.MAX_CONTEXT_REWORKS} context repair",
+        ),
+        (
+            "schema",
+            QaLoop(plan_validation_rework=qa_flow.MAX_PLAN_VALIDATION_REWORKS),
+            "plan_validation_rework",
+            "0 plan repair",
+        ),
+        (
+            "plan",
+            QaLoop(plan_rework=qa_flow.MAX_PLAN_REWORKS),
+            "plan_rework",
+            f"{qa_flow.MAX_PLAN_REWORKS} plan repair",
+        ),
+        (
+            "code",
+            QaLoop(qa_rework=qa_flow.MAX_QA_REWORKS, failure_class="code"),
+            "qa_rework",
+            f"{qa_flow.MAX_QA_REWORKS} code rework",
+        ),
+        (
+            "setup",
+            QaLoop(setup_rework=qa_flow.MAX_SETUP_REWORKS),
+            "setup_rework",
+            f"{qa_flow.MAX_SETUP_REWORKS} setup repair",
+        ),
+    ],
+    ids=("context", "schema", "plan", "code", "setup"),
+)
+def test_each_spent_qa_budget_routes_to_the_operator_with_its_own_counter(
+    spy: _Spy,
+    guard: str,
+    loop: QaLoop,
+    counter: str,
+    spent: str,
+) -> None:
+    """Budget guards preserve the exhausted counter when they enter the operator gate."""
+    flow = _qa()
+
+    if guard == "context":
+        transition = flow._exhausted(loop, "context repair")
+    elif guard == "schema":
+        transition = flow._guard_plan_validation(object(), loop)
+    elif guard == "plan":
+        transition = flow._guard_plan(object(), loop)
+    elif guard == "code":
+        transition = flow._guard_qa(object(), loop)
+    else:
+        transition = flow._guard_setup(object(), loop)
+
+    assert isinstance(transition, Continue) and transition.state == "resolve_operator"
+    routed = transition.params["loop"]
+    assert isinstance(routed, QaLoop)
+    assert getattr(routed, counter) == getattr(loop, counter)
+    assert spent in qa_flow._escalation(flow, routed).body
+
+
+def test_the_total_plan_lap_ceiling_bounds_individually_legal_budgets(spy: _Spy) -> None:
+    """Schema and judgement laps cannot alternate past their shared total ceiling."""
+    loop = QaLoop(
+        plan_rework=qa_flow.MAX_PLAN_REWORKS - 1,
+        plan_validation_rework=qa_flow.MAX_PLAN_VALIDATION_REWORKS,
+    )
+
+    transition = _qa()._guard_plan(object(), loop)
+
+    assert isinstance(transition, Continue) and transition.state == "resolve_operator"
+    routed = transition.params["loop"]
+    assert isinstance(routed, QaLoop)
+    assert routed.plan_rework_total == qa_flow.MAX_TOTAL_PLAN_LAPS + 1
+
+
+@pytest.mark.parametrize(
+    ("qa_rework", "failure_class", "bonus_used", "state", "routed_bonus"),
+    [
+        (qa_flow.MAX_QA_REWORKS - 1, "code", False, "apply_fixes", False),
+        (qa_flow.MAX_QA_REWORKS, "evidence", False, "apply_fixes", True),
+        (qa_flow.MAX_QA_REWORKS, "evidence", True, "resolve_operator", True),
+        (qa_flow.MAX_QA_REWORKS, "code", False, "resolve_operator", False),
+    ],
+    ids=("ordinary-lap", "evidence-bonus", "spent-bonus", "code-no-bonus"),
+)
+def test_only_an_unspent_evidence_bonus_can_cross_the_code_rework_ceiling(
+    spy: _Spy,
+    qa_rework: int,
+    failure_class: Any,
+    bonus_used: bool,
+    state: str,
+    routed_bonus: bool,
+) -> None:
+    """The extra fix lap belongs only to a first evidence failure at the ceiling."""
+    transition = _qa()._guard_qa(
+        object(),
+        QaLoop(
+            qa_rework=qa_rework,
+            failure_class=failure_class,
+            bonus_used=bonus_used,
+        ),
+    )
+
+    assert isinstance(transition, Continue) and transition.state == state
+    routed = transition.params["loop"]
+    assert isinstance(routed, QaLoop)
+    assert routed.bonus_used is routed_bonus
 
 
 # ── the QA fix lane ──────────────────────────────────────────────────────────────────

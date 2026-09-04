@@ -39,12 +39,19 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """
     root = tmp_path / "acme"
     root.mkdir()
-    for args in (
-        ("init", "-q", "-b", "main"),
-        ("config", "user.email", "test@example.com"),
-        ("config", "user.name", "Test"),
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main"],
+        cwd=root,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    for key, value in (
+        ("GIT_AUTHOR_NAME", "Test"),
+        ("GIT_AUTHOR_EMAIL", "test@example.com"),
+        ("GIT_COMMITTER_NAME", "Test"),
+        ("GIT_COMMITTER_EMAIL", "test@example.com"),
     ):
-        subprocess.run(["git", *args], cwd=root, check=True, stdout=subprocess.DEVNULL)
+        monkeypatch.setenv(key, value)
     monkeypatch.chdir(root)
     command = root / ".claude" / "commands" / "stablemate-grill.md"
     command.parent.mkdir(parents=True, exist_ok=True)

@@ -71,12 +71,19 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """
     root = tmp_path / "acme"
     root.mkdir()
-    for args in (
-        ("init", "-q", "-b", "main"),
-        ("config", "user.email", "test@example.com"),
-        ("config", "user.name", "Test"),
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main"],
+        cwd=root,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    for key, value in (
+        ("GIT_AUTHOR_NAME", "Test"),
+        ("GIT_AUTHOR_EMAIL", "test@example.com"),
+        ("GIT_COMMITTER_NAME", "Test"),
+        ("GIT_COMMITTER_EMAIL", "test@example.com"),
     ):
-        subprocess.run(["git", *args], cwd=root, check=True, stdout=subprocess.DEVNULL)
+        monkeypatch.setenv(key, value)
     # The smallest installed skill `prepare._references_ok` accepts: the references corpus
     # is a run precondition (a build whose prompts point at pages that do not exist is
     # blocked, not degraded), so a repo without it never gets past `start`.

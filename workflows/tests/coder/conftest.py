@@ -69,8 +69,6 @@ def repo(
     root = tmp_path / "acme"
     root.mkdir()
     git(root, "init", "-q", "-b", "main")
-    git(root, "config", "user.email", "test@example.com")
-    git(root, "config", "user.name", "Test")
     (root / "README.md").write_text("# acme\n", encoding="utf-8")
     git(root, "add", "-A")
     git(root, "commit", "-qm", "Initial commit")
@@ -204,5 +202,4 @@ def _git_identity(monkeypatch: pytest.MonkeyPatch) -> None:
         ("GIT_COMMITTER_EMAIL", "test@example.com"),
     ):
         monkeypatch.setenv(key, value)
-
 

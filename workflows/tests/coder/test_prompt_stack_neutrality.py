@@ -136,7 +136,8 @@ def _foreign_words(stack: str) -> tuple[str, ...]:
 
 @pytest.mark.parametrize("prompt", PROMPTS, ids=_id)
 @pytest.mark.parametrize("stack", sorted(STACKS))
-def test_a_prompt_names_no_stack_the_manifest_does_not_have(stack: str, prompt: Path) -> None:
+def test_each_prompt_is_neutral_for_the_stack_that_renders_it(stack: str, prompt: Path) -> None:
+    """Render once, then enforce all three stack-neutrality contracts."""
     rendered = render(prompt, _context(stack), CODER)
     # Strip the schema vocabulary first so a documented enum value can't be mistaken for
     # a claim about the repo — see SCHEMA_VOCABULARY.
@@ -146,25 +147,6 @@ def test_a_prompt_names_no_stack_the_manifest_does_not_have(stack: str, prompt: 
             f"{prompt.name} rendered for a {stack}-only repo still says {word!r}; "
             f"gate that prose on the matching `find_by_tags(...)` variable"
         )
-
-
-@pytest.mark.parametrize("prompt", PROMPTS, ids=_id)
-@pytest.mark.parametrize("stack", sorted(STACKS))
-def test_no_prompt_demands_another_stacks_skill(stack: str, prompt: Path) -> None:
-    """The same defect in its other spelling: a *required* ref to a stack-specific skill.
-
-    `instruction_ref("go-testing")` is a promise that every repo has that skill. On one
-    that does not, it renders as `generated go-testing instruction file when installed`
-    and is also reported by `workhorse.references`' preflight — so the prompt both tells
-    the agent to hunt for a Go skill and adds a finding to every non-Go run. A skill only
-    some repos install is asked for by tag (`find_by_tags`), or with the plural
-    name helper, or behind `isUsingInstruction`.
-
-    Checked against the placeholder rather than the source because that is the string the
-    agent would actually read, and it appears no matter which alias of the helper
-    (`instruction_ref`/`instruction_file`/`skill_file`) produced it.
-    """
-    rendered = render(prompt, _context(stack), CODER)
     for other, spec in STACKS.items():
         if other == stack:
             continue
@@ -173,33 +155,6 @@ def test_no_prompt_demands_another_stacks_skill(stack: str, prompt: Path) -> Non
                 f"{prompt.name} requires the {skill!r} skill of a {stack}-only repo; "
                 f"ask for it by tag with `find_by_tags(...)` or guard it"
             )
-
-
-#: The prose `instruction_ref` renders when a name does not resolve, with the name itself
-#: left as a wildcard — `templates.instruction_ref` builds it as
-#: `f"generated {name} instruction file when installed"`.
-PLACEHOLDER = re.compile(r"generated (\S+) instruction file when installed")
-
-
-@pytest.mark.parametrize("prompt", PROMPTS, ids=_id)
-@pytest.mark.parametrize("stack", sorted(STACKS))
-def test_no_prompt_requires_a_skill_this_package_cannot_promise(stack: str, prompt: Path) -> None:
-    """The generalization of the test above: *no* singular ref may go unresolved.
-
-    That test names the stacks it knows, so it only catches a required skill belonging to
-    one of them. The defect it missed was `instruction_ref("developer")`, in four prompts:
-    `developer` is not a stack skill at all but a per-project one, so no entry in `STACKS`
-    covered it and the preflight scan was the only thing that ever said a word. Every
-    run of a repo without that project's overlay put `generated developer instruction file
-    when installed` into four live agent prompts — a filename to go hunt for that exists
-    nowhere.
-
-    The bar this asserts is the one the package can actually meet: what a repo installs is
-    the repo's business, so a prompt shipping here may not *require* any skill by name. A
-    skill some repos have is asked for by tag with `find_by_tags(...)` — which renders
-    nothing when nothing matches — or guarded with `isUsingInstruction`.
-    """
-    rendered = render(prompt, _context(stack), CODER)
     missing = sorted(set(PLACEHOLDER.findall(rendered)))
     assert not missing, (
         f"{prompt.name} requires {', '.join(missing)} — a skill no repo is obliged to "
@@ -207,3 +162,9 @@ def test_no_prompt_requires_a_skill_this_package_cannot_promise(stack: str, prom
         f"`find_by_tags(...)` and a `| default(...)`, or guard it with "
         f"`isUsingInstruction`"
     )
+
+
+#: The prose `instruction_ref` renders when a name does not resolve, with the name itself
+#: left as a wildcard — `templates.instruction_ref` builds it as
+#: `f"generated {name} instruction file when installed"`.
+PLACEHOLDER = re.compile(r"generated (\S+) instruction file when installed")

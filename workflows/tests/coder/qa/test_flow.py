@@ -1386,41 +1386,6 @@ def test_a_repair_whose_dry_run_is_still_red_is_not_a_finished_repair(
     assert "still fails" in brief["plan_validation_notes"], brief["plan_validation_notes"]
 
 
-def test_the_stacked_plan_budgets_cannot_multiply(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """Alternating between the two budgets does not buy their product in laps.
-
-    Each guard bounds its own stage and nothing bounded the sum, so a plan that failed
-    validation, then was sent back by the assessment, then failed validation again spent a lap
-    that neither ceiling had yet reached — twelve legal laps between them. A live story took
-    thirteen turns of `plan-qa` exactly that way. Here the laps are spread across both stages —
-    schema failures interleaved with a runner the assessment never accepts — so no stage budget
-    is exhausted and only the total ends the run.
-    """
-    ostler(plan_invalid_passes=(2, 4, 6), fail_runs=99)
-    agent = _Agent(docs, repair_plans=99, escalate=True)
-    seen: list[str] = []
-
-    # `plan_rework_total` is not one of the counters threaded into the escalation body, so
-    # there is no live equivalent for the old "8 total QA-plan lap" phrase — what still
-    # proves the total-lap ceiling (rather than either stage ceiling) is what stopped this
-    # run is the lap count itself, below.
-    with (
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
-        pytest.raises(_Parked),
-    ):
-        drive_flow(Qa(story=STORY), env(), agent)
-
-    # One author turn per charged lap, plus the draft that opened the lane — the draft is
-    # deliberately free, because charging it would price the lane at one lap less than the
-    # ceiling names.
-    assert agent.planned() == qa_flow.MAX_TOTAL_PLAN_LAPS + 1, agent.counts()
-
-
 def test_a_plan_turn_cut_at_its_budget_is_repaired_rather_than_failing_the_run(
     docs: Path,
     ostler: Callable[..., _Ostler],
@@ -2420,47 +2385,6 @@ def test_a_product_class_triage_past_its_budget_stops_bouncing_to_dev(
     assert len(seen) == 1, seen
 
 
-def test_the_fix_loop_grants_one_bonus_pass_only_for_an_evidence_failure(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """`guard_qa_bonus`: past the lap ceiling, a missing-proof finding earns one more attempt.
-
-    `code` and `environment` earn nothing, which is what the companion assertion below
-    covers — the bonus is for the case where the code may well be right and the proof is
-    what is missing, so one verification-only pass is cheap and often decisive.
-    """
-    ostler(fail_runs=99)
-    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "evidence"), escalate=True)
-    seen: list[str] = []
-
-    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
-        drive_flow(Qa(story=STORY), env(), agent)
-
-    assert agent.counts()["apply-qa-fixes"] == qa_flow.MAX_QA_REWORKS + 1, agent.counts()
-    assert len(seen) == 1, seen
-
-
-def test_a_code_failure_earns_no_bonus_pass(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """The same run, triaged `code`: the fix loop runs out its laps and stops."""
-    ostler(fail_runs=99)
-    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
-    seen: list[str] = []
-
-    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
-        drive_flow(Qa(story=STORY), env(), agent)
-
-    assert agent.counts()["apply-qa-fixes"] == qa_flow.MAX_QA_REWORKS, agent.counts()
-    assert len(seen) == 1, seen
-
-
 # ------------------------------------------------------------------ the give-up is a handoff
 
 
@@ -2582,76 +2506,6 @@ def test_a_human_operator_mode_still_waits_on_a_spent_budget(
     assert result.status == "passed", result
     assert agent.counts()["resolve-operator"] == 0, agent.counts()
     assert len(seen) >= 1, seen
-
-
-def test_each_exhaustion_names_the_budget_it_spent(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """The escalation body names the budget that ran out, and the budgets must not blur.
-
-    There is no terminal `exhausted` status anymore — every arm below now parks on the
-    operator gate instead. What survives from the old give-up marker is the `where` clause
-    `_escalation` composes: a story that burned its QA-plan repairs and so never reached a
-    code fix must not read as `0 code rework`, which looks like a loop that never tried.
-    Each budget keeps its own counter in that clause.
-    """
-    ostler(context_invalid=9)
-    seen: list[str] = []
-    with (
-        pytest.raises(_Parked),
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
-    ):
-        drive_flow(Qa(story=STORY), env(), _Agent(docs, repair="repaired", escalate=True))
-    assert "3 context repair" in seen[0], seen
-
-    # The mechanical plan gate spends its own budget (`plan_validation_rework`), not the
-    # coverage one threaded into the escalation body — `_escalation`'s `where` only reports
-    # `qa_rework`/`plan_rework`/`context_rework`/`setup_rework`, so a schema give-up and a
-    # coverage give-up both read as `0 plan repair` there. What still tells them apart is
-    # that this one never got as far as a run.
-    okf = ostler(plan_invalid=9)
-    seen = []
-    with (
-        pytest.raises(_Parked),
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
-    ):
-        drive_flow(Qa(story=STORY), env(), _Agent(docs, escalate=True))
-    assert "0 plan repair" in seen[0], seen
-    assert okf.runs == 0
-
-    # The post-run budget, reached only through a plan that validated and the runner
-    # executed — the first run plus one per judgement repair, each an assessment that did not
-    # reach the objective.
-    okf = ostler(fail_runs=99)
-    seen = []
-    with (
-        pytest.raises(_Parked),
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
-    ):
-        drive_flow(Qa(story=STORY), env(), _Agent(docs, escalate=True))
-    assert f"{qa_flow.MAX_PLAN_REWORKS} plan repair" in seen[0], seen
-    assert okf.runs == qa_flow.MAX_PLAN_REWORKS + 1
-
-    ostler(fail_runs=99)
-    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
-    seen = []
-    with (
-        pytest.raises(_Parked),
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
-    ):
-        drive_flow(Qa(story=STORY), env(), agent)
-    assert f"{qa_flow.MAX_QA_REWORKS} code rework" in seen[0], seen
-
-    # A dev target reworks nothing and has no code to rework, so there is no operator-
-    # answerable question to gate on — it is still the one legitimate terminal exit in this
-    # flow, reported via `inconclusive` rather than an escalation.
-    ostler(fail_runs=99)
-    agent = _Agent(docs, assessment_class="product", escalate=True)
-    result = drive_flow(Qa(story=STORY, target_env="dev"), env(), agent)
-    assert result.status == "inconclusive", result
 
 
 def test_triage_can_hand_the_scope_back_to_the_author(
