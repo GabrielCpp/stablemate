@@ -21,7 +21,9 @@ install: ## Create/sync the local venv from uv.lock
 
 .PHONY: test
 test: ## Run the standalone test suite (no network, no real sleeps)
-	@for t in tests/test_*.py; do echo ">> $$t"; uv run python $$t || exit 1; done
+	# Keep each file directly runnable for focused debugging, but use one pytest process
+	# for the gate: several files require pytest fixtures and process tests shard cleanly.
+	uv run pytest tests -q -n auto --dist worksteal
 
 .PHONY: build
 build: clean ## Build sdist + wheel into this package's dist/

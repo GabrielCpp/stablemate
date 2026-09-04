@@ -17,7 +17,10 @@ test: ## Run the test suite (no network, no real sleeps)
 	# top-level only, so it ran 5 of the 26 test files and the author/coder/okf_builder/
 	# research suites — the bulk of the coverage — never reached the gate at all.
 	# `testpaths = ["tests"]` in pyproject.toml is what points pytest at them.
-	uv run pytest -q
+	# The workflow drives are isolated by tmp_path and spend most of their time in
+	# subprocess and graph setup. Work stealing keeps the long QA drives from leaving
+	# one worker as the serial tail.
+	uv run pytest -q -n auto --dist worksteal
 
 .PHONY: build
 build: clean ## Build sdist + wheel into this package's dist/

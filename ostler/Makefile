@@ -23,7 +23,9 @@ test: ## Run the test suite
 	# pytest, not the sibling packages' `python tests/test_*.py` loop: these tests are
 	# pytest-style (fixtures, tmp_path) with no __main__ runner, so that loop imported each
 	# module, ran nothing, and exited 0 — a green bar over an unexecuted suite.
-	uv run --extra dev pytest tests -q
+	# Work stealing matters here: daemon and browser integration cases are much longer
+	# than the graph unit tests, so collection-order distribution leaves a long tail.
+	uv run --extra dev pytest tests -q -n auto --dist worksteal
 
 .PHONY: build
 build: clean ## Build sdist + wheel into this package's dist/
