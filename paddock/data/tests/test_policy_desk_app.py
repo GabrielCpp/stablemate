@@ -402,8 +402,16 @@ def _variant_ids(suffix: str) -> list[str]:
     return [row["id"] for row in _variants(suffix)]
 
 
+@pytest.fixture(scope="module")
+def gocache(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Share Go's content-addressed build cache across this module's variants."""
+    return tmp_path_factory.mktemp("policy-gocache")
+
+
 @pytest.mark.parametrize("row", _variants(".go"), ids=_variant_ids(".go"))
-def test_every_go_variant_compiles(row: dict[str, str], tmp_path: Path) -> None:
+def test_every_go_variant_compiles(
+    row: dict[str, str], tmp_path: Path, gocache: Path
+) -> None:
     """A variant that does not build is caught by every check there is and measures nothing.
 
     Skipped without a Go toolchain rather than assumed: the enforcing gate is the image the
@@ -419,7 +427,7 @@ def test_every_go_variant_compiles(row: dict[str, str], tmp_path: Path) -> None:
     built = subprocess.run(
         ["go", "build", "./..."],
         cwd=api, capture_output=True, text=True,
-        env={**os.environ, "GOFLAGS": "-mod=mod", "GOCACHE": str(tmp_path / "gocache")},
+        env={**os.environ, "GOFLAGS": "-mod=mod", "GOCACHE": str(gocache)},
         check=False,
     )
     assert built.returncode == 0, built.stderr

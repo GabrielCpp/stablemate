@@ -433,6 +433,12 @@ def _variant_ids(suffix: str) -> list[str]:
     return [row["id"] for row in _variants(suffix)]
 
 
+@pytest.fixture(scope="module")
+def gocache(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Share Go's content-addressed build cache across this module's variants."""
+    return tmp_path_factory.mktemp("claims-gocache")
+
+
 def test_every_variant_is_a_go_file() -> None:
     """There is no client here, so `.go` is the whole answer key — and the build gate below
     covers all of it. A `.tsx` or `.py` variant would slip past every check in this file."""
@@ -440,7 +446,9 @@ def test_every_variant_is_a_go_file() -> None:
 
 
 @pytest.mark.parametrize("row", _variants(".go"), ids=_variant_ids(".go"))
-def test_every_go_variant_compiles(row: dict[str, str], tmp_path: Path) -> None:
+def test_every_go_variant_compiles(
+    row: dict[str, str], tmp_path: Path, gocache: Path
+) -> None:
     """A variant that does not build is caught by every check there is and measures nothing.
 
     Vetted as well as built: this app's variants are behavioral rather than syntactic, and a
@@ -454,7 +462,7 @@ def test_every_go_variant_compiles(row: dict[str, str], tmp_path: Path) -> None:
     shutil.copytree(APP / "app" / "api", api)
     shutil.copyfile(APP / "defects" / row["id"] / row["path"], api / Path(row["path"]).name)
 
-    env = {**os.environ, "GOFLAGS": "-mod=mod", "GOCACHE": str(tmp_path / "gocache")}
+    env = {**os.environ, "GOFLAGS": "-mod=mod", "GOCACHE": str(gocache)}
     built = subprocess.run(
         ["go", "build", "./..."],
         cwd=api, capture_output=True, text=True, env=env, check=False,
