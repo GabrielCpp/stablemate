@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/stablemate-logo.svg" width="640" alt="stablemate: a horse in an open stable doorway">
+  <img src="docs/assets/stablemate-logo.png" width="180" alt="stablemate: a horse framed by a stable doorway">
 </p>
 
 # stablemate
