@@ -870,9 +870,22 @@ async def otlp_traces(request: Request) -> Response:
     syscall — and on the event loop it is one every live run pays for every other run:
     a single collector serving a fleet serializes every export, every alert evaluation
     and every dashboard request behind whichever write is in flight."""
+    body = b""
     try:
-        spans = _real_runs(otlp.parse_traces(await request.body()))
-    except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
+        body = await request.body()
+        spans = _real_runs(otlp.parse_traces(body))
+    except Exception as exc:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
+        logger.warning(
+            "OTLP traces rejected from %s content-type=%r content-encoding=%r "
+            "content-length=%r body-bytes=%d: %s: %s",
+            request.client,
+            request.headers.get("content-type"),
+            request.headers.get("content-encoding"),
+            request.headers.get("content-length"),
+            len(body),
+            type(exc).__name__,
+            exc,
+        )
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
     try:
         await asyncio.to_thread(store.insert_spans, spans)

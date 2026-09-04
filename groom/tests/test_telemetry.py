@@ -1803,10 +1803,17 @@ def test_v1_traces_rejects_garbage_with_400():
     with _TelemetryEnv():
         client = _hermetic_client()
         try:
-            resp = client.post("/v1/traces", content=b"\xff\xfenot protobuf")
+            body = b"\xff\xfenot protobuf"
+            with patch.object(groom_app.logger, "warning") as warning:
+                resp = client.post("/v1/traces", content=body)
         finally:
             client.__exit__(None, None, None)
         assert resp.status_code == 400
+        warning.assert_called_once()
+        args = warning.call_args.args
+        assert args[0].startswith("OTLP traces rejected from")
+        assert args[-3] == len(body)
+        assert args[-2] == "DecodeError"
 
 
 def test_traces_search_endpoint_returns_json_rows():
