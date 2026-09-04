@@ -13,6 +13,7 @@ title: Policy desk API
 - code: app/web/index.html
 - code: app/web/src/styles.css
 - openapi: none; the service is seven hand-routed paths over `net/http` and publishes no schema.
+- entry-url: http://localhost:18084/policies
 
 The policy desk API is the whole of the product's machine surface: the register, the four writes a
 [policy](../concepts/policy.md) can take, and a reset. It answers JSON on `/api/…`, answers
