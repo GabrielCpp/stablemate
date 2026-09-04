@@ -627,6 +627,9 @@ class OkfBuilder(Workflow):
                     "story_resolved": "true" if evidence.story_resolved else "false",
                     "warnings": json.dumps(evidence.warnings),
                     "blocked_reason": evidence.blocked_reason,
+                    "result_schema": json.dumps(
+                        Adjudication.model_json_schema(), indent=2, ensure_ascii=False
+                    ),
                     "service": self.service,
                     "features_root": self.ctx.features_root,
                     "repo_root": self.ctx.repo_root,

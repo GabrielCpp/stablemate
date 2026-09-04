@@ -222,12 +222,17 @@ class Evidence(OkfResult):
 class Adjudication(OkfResult):
     """The turn's verdict: which side of the correspondence is wrong, and the why-chain."""
 
-    #: `book` | `code` | `story`; the default matches no branch.
-    verdict: str = ""
-    #: The numbered why-chain, ending at the property that named the side.
-    chain: str = ""
-    #: One line for the seed a `code` verdict files.
-    seed_summary: str = ""
+    verdict: str = Field(
+        default="", description="One of book, code, or story; empty matches no branch."
+    )
+    chain: str = Field(
+        default="",
+        description="The numbered why-chain ending at the property that names the side.",
+    )
+    seed_summary: str = Field(
+        default="",
+        description="For code only, one line naming the source defect; empty otherwise.",
+    )
 
 
 class Applied(OkfResult):

@@ -35,6 +35,7 @@ import pytest
 from jinja2 import Environment, nodes
 from jinja2.meta import find_undeclared_variables
 
+from workhorse.templates import _farrier_globals
 import workhorse_workflows
 
 PACKAGE = Path(workhorse_workflows.__file__).parent
@@ -43,27 +44,10 @@ PACKAGE = Path(workhorse_workflows.__file__).parent
 WORKFLOWS = ("author", "coder", "okf_builder", "research")
 
 #: Names present in every prompt context, so a reference to one is never a missing argument:
-#: the helpers `workhorse.templates._globals` installs, the manifest namespaces
+#: the helpers `workhorse.templates._farrier_globals` installs, the manifest namespaces
 #: `workhorse.manifest.context_from` builds (`{{ repo.name }}`), and the two timeout values
 #: `runner.ladder` stamps on before rendering.
-AMBIENT = {
-    "workhorse_var",
-    "agent_cli",
-    "skill_load_ref",
-    "get_node_output",
-    "skill_dir",
-    "instruction_ref",
-    "instruction_file",
-    "skill_file",
-    "prompt_file",
-    "prompt_ref",
-    "instruction_refs",
-    "find_by_tags",
-    "instruction_files",
-    "skill_files",
-    "prompt_refs",
-    "prompt_files",
-    "isUsingInstruction",
+AMBIENT = set(_farrier_globals({}, PACKAGE, quiet=True)) | {
     "template",
     "repo",
     "vars",

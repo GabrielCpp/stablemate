@@ -114,7 +114,8 @@ the bullet; your output is the verdict and the chain.
 
 ## Output
 
-- `verdict`: one of `book`, `code`, `story`.
-- `chain`: the numbered why-chain, with the source evidence quoted in it.
-- `seed_summary`: on `code` only — one line stating the defect in the source as an
-  engineer will read it on the seed (element, file, what is wrong). Empty otherwise.
+Produce a JSON document that complies with this schema:
+
+```json
+{{ result_schema }}
+```
