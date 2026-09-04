@@ -33,11 +33,6 @@ in
 and the `power=` tiers a turn asks for are mapped to models in
 [docs/BACKENDS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/BACKENDS.md).
 
-> Holding a `workflow.yaml` from the retired YAML engine? `docs/WORKFLOW.md` maps every
-> construct in that schema to what replaces it here, and
-> [Why a workflow is Python and not a config file](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/README.md#why-a-workflow-is-python-and-not-a-config-file)
-> is why that schema is gone.
-
 A workflow is a Python package with this layout:
 
 ```
@@ -102,12 +97,12 @@ Two details are load-bearing rather than taste:
   takes only `.py` unless told otherwise (setuptools without `package_data`) will drop
   them. Do not set `zip-safe`-style options either way.
 
-Then install it **into workhorse's own interpreter**, because a workflow's code and its
-tools are imported in-process:
+Install the workflow as a tool. Its distribution brings workhorse and every tool its
+nodes import into one environment:
 
 ```bash
-uv pip install ./acme-workflows       # or: pipx inject workhorse-agent ./acme-workflows
-uv run workhorse-greeter run --dry-run
+uv tool install ./acme-workflows      # or: pipx install ./acme-workflows
+workhorse-greeter run --dry-run
 ```
 
 Copying `hello_world/` and changing the `Registry("hello-world")` name and its
@@ -434,10 +429,6 @@ never shows up as a second state in a diagram. `@blueprint.node` takes `aliases=
 the same reason — `self.output(node)` resolves against a run directory named after the
 node.
 
-A checkpoint left behind by the retired YAML engine is refused by name rather than
-misread: it shares the runs directory and `--resume-latest` with live runs, and a node
-id that happens to match a state name would otherwise resume the wrong thing.
-
 **A sub-flow resumes too.** A `handoff` writes the child's own checkpoint under
 `<run>/<flow-node>/_flow/`, and a resume that re-enters the handoff state continues the
 child from it — a run killed six states into the QA flow does not replay them. The child
@@ -488,18 +479,9 @@ env = RunEnv(..., nodes=workflow.override(measure=lambda logger, subject: Readin
 `override` is non-mutating: it returns a copy, so a substitution belongs to the run that
 asked for it and cannot leak into the next one.
 
-**That is what a test uses instead of patching.** The research workflow's tests used to
-reach into two module namespaces and put them back afterwards:
+**That is what a test uses instead of patching.** Dependencies are handed to the run:
 
 ```python
-# before — monkeypatching, with a finally-restore to remember
-pyflow_engine.agent_ladder.run_agent = agent
-with patch("workhorse_workflows.research.nodes.setup.allow_all_directories"):
-    ...
-```
-
-```python
-# after — the same two dependencies, handed to the run
 RunEnv(
     ...,
     agent_runner=agent,
@@ -592,10 +574,8 @@ It is declared, never inferred. Workhorse is a generic driver and must not learn
 node *means* from its name or module — the workflow already knows which of its own nodes
 do infra work, the same way it already knows its own `labels()`.
 
-These keys are **not** `wf.`-prefixed. The retired YAML engine prefixed them so a
-workflow could not shadow an OTel convention; here the collector reads the unprefixed
-spelling, and nothing is translated on the way out. Both spellings are still promoted
-onto the live gauges, so spans already in a store keep reaching a dashboard untouched.
+The collector reads these keys with their unprefixed spelling, and nothing is
+translated on the way out.
 
 **Activity — what the run is working on right now — is a flagged log record**, not a
 field:

@@ -14,86 +14,21 @@ root README's [Releasing](https://github.com/GabrielCpp/stablemate#releasing).
 ## Project layout
 
 ```
-workhorse/                     # this directory, inside the stablemate workspace
-├── workhorse/                 # The workhorse Python package (entrypoint: workhorse:main)
-│   ├── cli/                   # The `workhorse` command line — parse argv, dispatch, hand off
-│   │   ├── __init__.py        # main(): argv normalization, the per-workflow console script
-│   │   ├── parser.py          # The Command table and the one parser built from it
-│   │   ├── run.py             # `run`: its arguments, and the RunInvocation it builds
-│   │   ├── test.py            # `test`: run a workflow's own pytest suite
-│   │   ├── dot.py             # `dot`: render a workflow's state graph as Graphviz DOT
-│   │   ├── config.py          # `config`: show / set / list / get the shared config file
-│   │   ├── version.py         # `version`: print the installed workhorse-agent version
-│   │   ├── resolve.py         # A workflow name → its installed Registry (`run` and `dot`)
-│   │   └── params.py          # --params / --params-file → the starting params dict
-│   ├── packaged.py            # A registry's own package dir — where its prompts are read from
-│   ├── rundir.py              # Run identity: the (workflow, run-id) dir and the resume contract
-│   ├── manifest.py            # The per-repo context manifest (ContextManifest → ManifestContext)
-│   ├── context.py             # WorkflowContext: the key→value bag prompts render against
-│   ├── templates.py           # Jinja2 rendering (resilient: missing vars render empty, not raise)
-│   ├── references.py          # Static skill/prompt reference checking (the --dry-run warning)
-│   ├── artifacts.py           # ArtifactWriter: run dir, checkpoints, per-step artifacts
-│   ├── records.py             # The models for what a run writes and reads back (checkpoint, event)
-│   ├── otel.py                # OpenTelemetry facade (auto-on if a collector answers; else no-op)
-│   ├── config_run.py          # The shared config file: power tiers, defaults, harness env
-│   ├── logsetup.py            # Logging configuration for the driver and node functions
-│   ├── stack.py               # ensure_stack / teardown_stack: a long-lived stack across nodes
-│   ├── worklist.py            # A resumable work queue (WorkItem / WorkCounts / WorkSnapshot)
-│   ├── sessions.py            # Where a run keeps its session ids, and what a chain is
-│   ├── testing.py             # make_git_repo + the artifact assertions a workflow test uses
-│   ├── pyflow/                # The Python state-machine driver
-│   │   ├── workflow.py        # The `Workflow` base class: state discovery, freezing, self.ctx
-│   │   ├── transitions.py     # Continue / Done / Await + transition-time signature binding
-│   │   ├── blueprint.py       # `Blueprint`: node libraries a workflow composes
-│   │   ├── registry.py        # What an entry point / console script points at
-│   │   ├── engine.py          # self.call / self.agent / self.handoff / self.output
-│   │   ├── driver.py          # drive(): the state loop, the (state, params) checkpoint, Await
-│   │   ├── run.py             # RunInvocation + run_pyflow(): run dir, dry run, exit code
-│   │   ├── graph.py / dot.py  # Read the states' source; render Graphviz DOT (the `dot` command)
-│   │   ├── activity.py        # The flagged-log-record activity tracker (a logging.Filter)
-│   │   ├── errors.py          # WorkflowFailed, NodeNotRunError and the rest of the exceptions
-│   │   └── names.py           # NameIndex: live names + aliases, collisions raise at import
-│   └── runner/
-│       ├── ladder.py          # AgentRunner: render the prompt, drive the retry → cap-wait →
-│       │                      #   compact → reframe ladder, return or stop resumably
-│       ├── clock.py           # The Clock port and the system one — what the ladder waits on
-│       ├── failure.py         # The turn's error types, its markers and its classifier
-│       ├── process.py         # Spawn an agent CLI: process group, watchdog, stream loop
-│       ├── caps.py            # How long to wait out a scheduled-reset cap, and how to sleep it
-│       ├── reframe.py         # The ladder's retry, timeout, and fresh-session prompts
-│       ├── extract.py         # Recover the node's declared outputs from a free-form answer
-│       ├── backends/          # The agent-CLI port and its adapters
-│       │   ├── __init__.py    # AgentBackend: the port, and nothing else
-│       │   ├── registry.py    # name → backend class; the only module importing every adapter
-│       │   ├── claude.py      # One adapter per CLI: its argv, its event stream, its /compact
-│       │   ├── codex.py       # …
-│       │   ├── copilot.py
-│       │   ├── opencode.py
-│       │   ├── cline.py
-│       │   ├── turn.py        # TurnState + finalize_turn: what a non-Claude turn accumulates
-│       │   └── jsonl.py       # stream_jsonl: the shared JSONL stream loop
-│       ├── usage.py           # Normalize each harness's token/cost reporting onto one shape
-│       └── spec.py            # OutputSpec / AgentNode: what one agent turn declares
-├── tests/                     # Standalone test files (see below)
-├── compose.yaml               # Service, env, mounts, named volumes
-├── Dockerfile                 # Ubuntu + uv + Claude CLI + the controller package
-├── supervisor.py              # Container preflight + two-child supervision (not shipped)
-├── Makefile                   # install / test / build / publish tasks (`make help`)
-├── pyproject.toml             # Python deps (jinja2, pydantic); the lock is the workspace's
-├── README.md                  # What workhorse is, install, and the CLI (the PyPI page)
-├── CLAUDE.md                  # Agent entry point; imports docs/GUARDRAILS.md
-└── docs/
-    ├── GUARDRAILS.md          # The resilience/error-recovery design and env-var reference
-    ├── RUNS.md                # The run dir: identity, resume, and every file a run writes
-    ├── CHECKING.md            # Reading a workflow without running it: `--dry-run`, `dot`
-    ├── TELEMETRY.md           # Spans, metrics and logs: enabling it, and reading it
-    ├── RELOAD.md              # The control channel into a run that is already going
-    ├── BACKENDS.md            # Agent CLI backends, power→model mapping, the config file
-    ├── AUTHORING.md           # Writing a workflow: states, nodes, transitions, checkpoints
-    ├── DEVELOPMENT.md         # This file — working on the controller itself
-    ├── DOCKER.md              # The Docker harness (image + compose) for unattended runs
-    └── WORKFLOW.md            # Migrating a retired `workflow.yaml` to a Python workflow
+workhorse/
+├── workhorse/
+│   ├── cli/          # run, dot, control, inbox, and version for workflow-owned commands
+│   ├── pyflow/       # state discovery, transitions, checkpoints, driving, and diagrams
+│   ├── runner/       # agent process, backends, recovery ladder, usage, and transcripts
+│   └── *.py          # run artifacts, config, gates, jobs, reload, templates, and testing
+├── tests/            # engine tests and reusable fakes
+├── docs/             # focused operator, authoring, and development references
+├── Dockerfile
+├── compose.yaml
+└── supervisor.py     # container preflight and child-process supervision
 ```
+
+The package intentionally has no standalone console entry point. Workflow
+distributions call `workhorse.console_script(...)` to expose their own command.
 
 ## How the controller works (the loop)
 
@@ -142,26 +77,18 @@ on it, preserving the turn's progress (bounded by `AGENT_MAX_COMPACT_ATTEMPTS`;
 falls back to a fresh-session reframe if `/compact` can't help). Verified against
 Claude Code 2.1.x. See the recovery ladder in [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
 
-> Not yet implemented: a configurable *per-turn* limit (`--max-turns`) that
-> proactively compacts before the window is exhausted. Today compaction is
-> reactive — triggered when an overflow is detected.
-
 ## Running tests
 
-Tests live in `tests/` and are **dependency-free**: each file runs standalone
-(`uv run python tests/test_x.py` prints PASS/FAIL and exits non-zero on failure) and is
-also pytest-compatible. There is no pytest in the venv by default; run them with
-the project's Python:
+Tests live in `tests/` and run against the shared workspace environment. Set the
+workspace up from the repository root so every member dependency is installed:
 
 ```bash
-# All of them (via the Makefile)
-make test
+make install
+make -C workhorse test
 
 # One file
-uv run python tests/test_agent_recovery.py
+uv run pytest workhorse/tests/test_agent_recovery.py -q
 ```
-
-If a `.venv` isn't present, create one with `uv sync` (or `make install`).
 
 **Where to put tests.** There are two styles. Controller-internal tests add a
 `tests/test_<area>.py` that injects the CLI boundary (a fake `AgentBackend` from

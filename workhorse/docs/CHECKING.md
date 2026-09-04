@@ -78,7 +78,7 @@ clean, `1` on the first problem, so CI can read it. The failure it exists to cat
 is a typo found at hour 30 of an unattended run.
 
 ```bash
-workhorse-coder run --dry-run
+workhorse-research run --dry-run
 ```
 
 It turns the reference warning above into an exit code, and then does two complementary

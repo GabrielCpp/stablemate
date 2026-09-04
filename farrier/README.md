@@ -135,7 +135,7 @@ distribution that brings its own command: install it with pip/uv and run it dire
 
 ```bash
 uv tool install workhorse-workflows
-workhorse-coder run --dry-run    # static preflight, drives nothing
+workhorse-research run --dry-run # static preflight, drives nothing
 workhorse-coder run
 ```
 
@@ -155,7 +155,7 @@ neither an overlay nor a base does it refuse to start.
 
 - [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) — the fail-soft runner
   that executes the workflows, against the adapters farrier renders.
-- [`ostler`](https://pypi.org/project/ostler/) — the doc-graph CLI those workflows
-  shell out to.
+- [`ostler`](https://pypi.org/project/ostler/) — the documentation-graph toolkit
+  workflows call through its in-process Python API.
 
 All three live in the [stablemate](https://github.com/GabrielCpp/stablemate) workspace.

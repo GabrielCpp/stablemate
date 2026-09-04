@@ -158,7 +158,7 @@ test, as an overlay on the workflow package, so a state-machine edit is as testa
 reworded prompt), and a *grader* (the workflow's own deterministic gate, never a rubric).
 
 The design — what makes the number trustworthy, the limits worth knowing before trusting a
-result, and when a node qualifies — is in [docs/EVALS.md](docs/EVALS.md).
+result, and when a node qualifies — is in [EVALS.md](../docs/EVALS.md).
 
 ## The layout
 
@@ -178,7 +178,7 @@ apps/                 every benchmark fixture, one directory each
     grill/            greenfield: the frozen operator turn — answered gate + checkpoint
     defects.yml       frozen app: the answer key, beside the code and the book
 rubric.md             the judge's prompt — the file to tune when scores feel wrong
-docs/EVALS.md         the node-eval design                                    (PLANNED)
+../docs/EVALS.md      the node-eval design                                    (PLANNED)
 tests/                the properties the score rests on
 results/              pointer TOMLs for sealed rounds                    (gitignored)
 ```

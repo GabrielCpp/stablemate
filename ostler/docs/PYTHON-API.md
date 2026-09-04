@@ -7,11 +7,12 @@ is at all, [README.md](../README.md).
 
 ## The `Ostler` facade
 
-Everything the CLI does is available in-process through the `Ostler` facade — the
-library face of the tool (the analog of GitPython's `Repo` or PyGithub's `Github`).
-Prefer it over spawning the CLI and parsing its JSON when you're calling ostler from
-Python: you load the graph once and get back plain objects (`dict`/`list`/`str`, a
-`Result`, an `EditPlan`, a `QaOutcome`) instead of a subprocess and a stdout scrape.
+The `Ostler` facade exposes the major graph mutations, queries, and workflow-facing
+checks in-process. Prefer it over spawning the CLI and parsing JSON when the operation
+is present here: you load the graph once and get back plain objects
+(`dict`/`list`/`str`, a `Result`, an `EditPlan`, or a `QaOutcome`) instead of a
+subprocess and a stdout scrape. CLI-only reporting and maintenance commands remain on
+the command line.
 
 ```python
 from ostler import Ostler
@@ -38,7 +39,7 @@ milestone = okf.create_milestone("checkout-mvp", "Checkout MVP", [item.entity_id
 okf.set_milestone_source_items("checkout-mvp", [item.entity_id])
 okf.backlog_adopt("docs/backlog.md")  # name direct unnamed work bullets in place
 okf.delete_story("02-pay")             # same mutation surface as `ostler delete story`
-okf.delete_epic("checkout-flow")        # also removes milestone and legacy queue references
+okf.delete_epic("checkout-flow")        # also removes milestone and queue references
 okf.set_status("01-cart", "QA passed")
 ```
 

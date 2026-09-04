@@ -34,10 +34,10 @@ spans, per-node timings and error status, filterable without leaving the browser
   workhorse control socket: list what a run is blocked asking, and deliver the
   operator's answer straight into the waiting process.
   The connection is best-effort and re-syncs on reconnect —
-  a container with no `groom` listening behaves exactly as it does today. See
-  `docs/features/groom/sidecar-live-sessions.md` for the message schema and the
-  local `reload` dev loop.
-- `groom` itself holds all state in memory (no database, no broker) and pushes
+  a container with no `groom` listening behaves the same. See the repository's
+  [`sidecar-live-sessions.md`](https://github.com/GabrielCpp/stablemate/blob/main/docs/features/groom/sidecar-live-sessions.md)
+  for the message schema and the local `reload` development loop.
+- `groom` holds live fleet and browser state in memory and pushes
   JSON state to open browser tabs over a websocket; the browser renders it with
   Preact + htm (the vendored `htm/preact` standalone build — no build step, no
   `node_modules`). Every shape the socket pushes is also fetchable over HTTP, so a
@@ -75,7 +75,7 @@ spans, per-node timings and error status, filterable without leaving the browser
   answer goes socket-first — `groom` asks the run what it is waiting on and
   delivers the answer on the run's own path spelling; the run persists it into
   the gate file before acknowledging — and falls back to writing the gate file
-  from outside only when nothing answers (a crashed run, an old workhorse).
+  from outside only when nothing answers on the control socket.
   Discovery is a periodic *questions poll* of every live run's socket, so the
   push arms (the sidecar `blocked` frame, `/push/blocked`, the hello snapshot)
   are just hints that trigger an immediate poll: a push that never lands is
@@ -273,11 +273,9 @@ uv run groom logs --level WARNING            # a FLOOR: WARNING + ERROR + FATAL
 uv run groom logs --contains "over budget"
 ```
 
-Deterministic (non-agent) nodes appear here only because workhorse **runs them
-in-process** and hands each one a per-node `logger`. Under the retired YAML engine they
-were child processes: stdout was consumed whole as the node's JSON and stderr surfaced
-only on failure, so a node's account of what it decided was unrecoverable after the fact
-— the gap that made a script-heavy workflow (okf-builder) hard to debug live.
+Deterministic (non-agent) nodes appear here because workhorse **runs them in-process**
+and hands each one a per-node `logger`, preserving the node's decisions alongside its
+spans and artifacts.
 
 Records carry the same `run_id`/`run_dir` resource as the spans, so a log line
 joins to its node span and its on-disk artifacts with no correlation step. They

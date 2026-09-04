@@ -85,7 +85,7 @@ approval by decomposing their generated backlog.
 The author command exposes two standalone edit flows. `epic-edit` is the reconciliation
 machine; `story-edit` validates a story-level request and hands a typed binding intent to it.
 Adding or removing a story therefore cannot leave the parent epic's user journeys, seeds or
-coverage describing the old product.
+coverage describing the product before the requested change.
 
 ```bash
 workhorse-author run epic-edit --params '{
@@ -121,7 +121,7 @@ Design turns may write `mockup.html` only inside the current story directory. Th
 read-only: author never creates an inventory or registers a mockup outside its story.
 
 Removing the last story does not silently strand scope. Its plan must also remove the last
-seeds; once both resulting sets are empty, the epic and its milestone/legacy queue references
+seeds; once both resulting sets are empty, the epic and its milestone/queue references
 are deleted. The complete behavior is recorded in the [epic edit](https://github.com/GabrielCpp/stablemate/blob/main/docs/features/workflows/flows/author-epic-edit.md)
 and [story edit](https://github.com/GabrielCpp/stablemate/blob/main/docs/features/workflows/flows/author-story-edit.md)
 flows.
@@ -133,7 +133,7 @@ commits without repeating that agent flow. Any QA state that may edit code, setu
 grounding sets a checkpointed `docs_recheck_required` taint; the nested backlog-fix drain
 sets the same taint. Tainted stories must pass Docs again before commit.
 
-The taint is monotonic and defaults to required for old checkpoints and old QA results, so
+The taint is monotonic and defaults to required when checkpoint or QA state lacks it, so
 missing state never authorizes publishing stale documentation. If the required recheck is
 blocked, epic mode records a docs-blocked marker and moves on without the normal story
 commit; story mode fails because there is no queue in which to contain the block.
@@ -189,8 +189,7 @@ this package: `workhorse/cli/run.py` and `workhorse/supervisor.py` translate `$F
 of them reading `AGENT_REPO_DIR`.
 
 Ambient *paths* — `repo_dir`, `docs_path`, `workspace_file` — are wanted by roughly every
-second node and chosen by no state, which is exactly the shape that used to be an
-environment read. They are fields, and `Workflow.injects` (see `coder/shared/paths.AMBIENT`)
+second node and chosen by no state. They are fields, and `Workflow.injects` (see `coder/shared/paths.AMBIENT`)
 fills them into any node or sub-flow that declares a parameter of the same name and was
 not passed one. A callsite value always wins, and an empty field injects nothing, so the
 target's own default stands.
@@ -333,18 +332,14 @@ and nothing in `shared/` imports a flow.
 
 How small each of those files has to be is **normative, not per-workflow taste** — one
 subject per module, `nodes/` is a package even when it holds three functions, and
-`~400 lines` is the trigger to apply the rule. This README is where that rule is stated;
-the argument behind it is "One workflow, several files" in the retired internal design
-brief. `coder`'s nodes alone run to ~6,600 lines across 18
+`~400 lines` is the trigger to apply the rule. `coder`'s nodes alone run to ~6,600 lines across 18
 modules, and a single `nodes.py` at that size is unreviewable.
 
 ## Status
 
-Every workflow is ported and reached through its own console script — there is no
+Every workflow is reached through its own console script — there is no
 entry-point group and no resolution by name (see
-[How a workflow gets a command](#how-a-workflow-gets-a-command)). The YAML engine they
-came from is retired, so this package is the only place a stablemate workflow lives,
-and the distribution is on PyPI (install line at the top). Farrier installs skills and
-prompts only; it neither selects nor validates workflows — a leftover `workflows:` list
-in a library layer is ignored (see the end of
-[farrier/docs/LAYOUT.md](../farrier/docs/LAYOUT.md)).
+[How a workflow gets a command](#how-a-workflow-gets-a-command)). This package is the
+only place a stablemate workflow lives, and the distribution is on PyPI (install line at
+the top). Farrier installs skills and prompts only; it neither selects nor validates
+workflows.

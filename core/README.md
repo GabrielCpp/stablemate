@@ -2,8 +2,9 @@
 
 Shared plumbing for the [stablemate](https://github.com/GabrielCpp/stablemate) tools.
 
-`workhorse`, `farrier` and `ostler` are independent CLIs — none imports another — but
-they share runtime state, and they must agree about it:
+`workhorse`, `farrier` and `ostler` are independently installed tools. Workhorse is a
+library used through workflow-owned commands; none of the three depends on another as
+its public entry point. They share runtime state and must agree about it:
 
 - **the home config** (`~/.config/stablemate/config.toml`) — `library_dir`,
   `stablemate_dir` and `base_dir` only mean anything if every tool reads the same value;

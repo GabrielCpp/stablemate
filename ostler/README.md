@@ -12,8 +12,6 @@ Everything is markdown. An epic's seeds and its story dependency-DAG live inside
 is **no** `seed.json`, `dependencies.json`, `inventory.json` or `epics-todo.json`. Ostler owns id
 allocation and is the one tool that reads and writes the graph — so structure stays consistent while
 humans (or agents) author the prose.
-The one-shot migration can consume and delete a legacy `features/inventory.json`; no Ostler command
-or Python API creates one.
 
 It is a standalone, repo-agnostic CLI that operates relative to the **current working directory**:
 roots default to `<cwd>/docs/{epics,features,specs}` and the organization name to the repo
@@ -131,7 +129,7 @@ canonical sections back out of the markdown by exact heading:
 ---
 type: epic
 id: ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC
-title: Account Credits "Aperçu" Billing Body at Legacy Parity
+title: Account Credits Billing Body
 status: in-progress        # optional: planned | in-progress | done
 ---
 
@@ -139,20 +137,19 @@ Free narrative prose (any headings: ## Goal, ## Method, ## Acceptance, …).
 
 ## Seeds
 
-### apercu-landing-body
+### billing-landing-body
 - status: researched       # backlog | researched | covered | resolved | dropped | deferred
-- surface: account-billing/apercu-billing-body
-- legacySurface: /{_locale}/employe/profile/edit (BuyCreditsAction)
+- surface: account-billing/billing-body
 - backing: GET /billing/customer → CustomerDetails
 
 The first paragraph after the metadata bullets is the seed summary; further prose is free markdown.
 
 ## Stories
 
-### 01-apercu-billing-body
-- title: Account Credits "Aperçu" Billing Body at Legacy Parity
+### 01-billing-body
+- title: Account Credits Billing Body
 - id: ACME-01JBXR7M4E0S9YCG5NAKQ2TZVJ
-- covers: apercu-landing-body, apercu-subscription-change-plan-link
+- covers: billing-landing-body, subscription-change-plan-link
 - phase: 1
 - effort: 8-10 hours
 ```
@@ -222,8 +219,8 @@ produces (a plan, a review resolution, a QA outcome) against a registered contra
 ```bash
 ostler qa context --base <rev> --head WORKTREE --spec docs/specs/<story> \
   --source-root web=web --source-root api=api --story-file docs/epics/.../story.md
-ostler qa validate docs/specs/<story>/qa-plan.yml --json
-ostler qa run      docs/specs/<story>/qa-plan.yml --json
+ostler qa validate docs/specs/<story>/qa_plan.py --json
+ostler qa run      docs/specs/<story>/qa_plan.py --json
 ostler qa report       --spec docs/specs/<story>
 ostler qa frames       --spec docs/specs/<story> --step <step-id>
 ostler qa evidence-map --spec docs/specs/<story>
@@ -381,10 +378,10 @@ not comparable to anything.
 
 ## Python API
 
-Everything the CLI does is available in-process through the `Ostler` facade — the library
-face of the tool (the analog of GitPython's `Repo` or PyGithub's `Github`). Prefer it over
-spawning the CLI and parsing its JSON: you load the graph once and get back plain objects
-instead of a subprocess and a stdout scrape.
+The major graph and workflow-facing operations are available in-process through the
+`Ostler` facade. Prefer it over spawning the CLI and parsing JSON when the operation is
+available there: you load the graph once and get back plain objects instead of a
+subprocess and a stdout scrape.
 
 ```python
 from ostler import Ostler
@@ -438,8 +435,7 @@ scaffolds the canonical markdown, and (for stories) inserts the `### <slug>` blo
 An id is `<PREFIX>-<ULID>` — the repo prefix (first four letters of the repo name, pinned on first
 use) plus a monotonic ULID: 26 Crockford-Base32 chars encoding a millisecond timestamp and 80 bits
 of randomness. It sorts by mint time and needs **no coordination**, so two worktrees, two processes
-or two clones never collide and there is no counter to lock or merge. (The former `<prefix>-<n>`
-counter could not be distributed; ids minted under it keep resolving — an id is an opaque string.)
+or two clones never collide and there is no counter to lock or merge. An id is an opaque string.
 
 ### Short handles
 

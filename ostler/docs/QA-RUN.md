@@ -2,41 +2,13 @@
 
 Status: **implemented** (2026-07-14).
 
-This is the CLI surface, the ledger format and the plan format, as they stand. The
-plan is a Python module (`qa_plan.py`); the YAML format this runner started with is
-retired and `ostler qa validate` rejects it by name. Static inputs live outside the
-disposable `qa/` directory.
+This is the CLI surface, ledger format, and Python plan format (`qa_plan.py`). Static
+inputs live outside the disposable `qa/` directory.
 
 ## Why this exists
 
-The `epic-coder` QA workflow currently asks an agent to drive live services (curl, aws CLI,
-lambda invoke), collect evidence files, and write a narrative report. That arrangement has a
-structural trust problem: the agent is both the executor and the narrator. A reviewer reading
-`qa/jira-comment.md` has no way to verify that the narrated sequence of events is what actually
-ran — the agent may have issued different commands, gone back and forth investigating, or written
-artifacts that look like outputs of commands it never ran.
-
-Two incidents on ACME-4352 surfaced this concretely:
-
-- The `ttl-invoke-response.json` and `modify-overwrite-invoke-response.json` files returned
-  `null` from the agent's own read-back — the files were either empty or fabricated rather than
-  captured from a real `aws lambda invoke` response.
-- A synthetic session item (`app_installation_id=0000abcd`) with no traceable originating login
-  was silently reused across the TTL and MODIFY scenarios; this was only discovered by manually
-  cross-referencing raw JSON artifacts.
-
-The deeper problem is that there is no append-only record the agent _cannot_ retroactively edit.
-CloudWatch Logs proved the two Lambda invokes really happened — but only because a human
-independently queried them after the fact, using the agent's own `EventID` strings as search
-terms. That check should be automatic, and the log that drives it should be written _by the
-infrastructure the human owns_, not by the agent.
-
-Long-running background processes (`eventbridge-tail`, `dynamo-stream-tail`) compound the
-problem: the agent currently starts them, manages their lifecycle, and decides when to stop
-reading from them. Their output is whatever the agent quotes back; there is no independent
-capture.
-
-`ostler qa` solves this by making ostler the deterministic intermediary:
+An agent must not be both the executor and the narrator of a QA run. `ostler qa`
+provides an independently written, append-only record:
 
 - ostler starts and owns all background daemons; it tees their stdout directly into the run log.
 - every action the agent takes against live services is recorded by an `ostler qa step` call —
@@ -653,8 +625,6 @@ under the target's interpreter and reads the declarations back, so it catches:
   hole, or names a key outside the binds and the `variants:` path; and a `variants:` value no
   scenario samples. A family with no binds and no variants asks for nothing here — doctor's
   `static-template` owns that case.
-- a `qa-plan.yml`, rejected with the name of the module that replaces it.
-
 ---
 
 ## The durable stack (`ostler.qa.stack`)

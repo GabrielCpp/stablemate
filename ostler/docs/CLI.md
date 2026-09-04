@@ -251,8 +251,8 @@ interface — which is in the same diff as a real unit.
 scenario to acceptance-criterion and OKF obligation ids:
 
 ```bash
-ostler qa validate <plan.yml> [--spec SPEC] [--json]
-ostler qa run      <plan.yml> [--spec SPEC] [--stop-on-fail] [--scenario ID] [--out-dir LABEL] [--json]
+ostler qa validate <qa_plan.py> [--spec SPEC] [--json]
+ostler qa run      <qa_plan.py> [--spec SPEC] [--stop-on-fail] [--scenario ID] [--out-dir LABEL] [--json]
 ostler qa clean    --spec DIR [--yes] [--json]
 ```
 
@@ -265,8 +265,8 @@ by default.
 `--scenario` with `--out-dir` is the dry run an author uses while writing a plan. `--out-dir`
 is a **label**, not a path: it always resolves to `<spec>/qa/<LABEL>/`, so a rehearsal lands
 inside the one directory a repo ignores and cannot invent a tracked sibling. `qa clean`
-removes the sibling roots the old layout already left behind — recursively, and never
-`qa-inputs/`, which holds a plan's tracked fixtures.
+removes generated QA output recursively and never `qa-inputs/`, which holds a plan's
+tracked fixtures.
 
 **Sessions.** The step-by-step form, for a run driven interactively rather than from a plan:
 

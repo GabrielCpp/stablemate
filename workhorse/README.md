@@ -10,8 +10,8 @@ its nodes are plain functions. `workhorse` drives the machine, renders Jinja2
 prompts, invokes the agent CLI, validates JSON replies into typed models,
 checkpoints after every transition, and writes run artifacts.
 
-> The PyPI distribution is **`workhorse-agent`**; the import package and CLI
-> command are both `workhorse`.
+> The PyPI distribution is **`workhorse-agent`** and the import package is
+> `workhorse`. Workflow distributions provide the commands users run.
 
 ## Why
 
@@ -29,50 +29,22 @@ it. That goal drives the two defining properties of the tool:
   the driver checkpoints after each transition, so a run resumes from exactly where
   it left off after a crash or reboot.
 
-It is repository-agnostic: the same workflow runs against any repo a workflow's
-`setup.sh` chooses to clone. A containerized harness for fully isolated,
-unattended runs lives in the source repo — see [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md)
+It is repository-agnostic: repository setup belongs to the workflow or to the
+container supervisor, while the engine only drives the state machine. A containerized
+harness for isolated, unattended runs lives in the source repo; see
+[docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md)
 (not shipped in the PyPI package).
 
-### Why a workflow is Python and not a config file
+### Python workflows
 
-Workhorse used to read workflows from a declarative `workflow.yaml` — a graph of
-typed nodes with `next:` edges. That front-end is deleted, and since every other
-page here states the consequence rather than the reason, the reason lives here.
+A workflow is an ordinary Python distribution. Constants, loops, and branches use
+native Python; values crossing state boundaries are typed; and dependencies live in
+the workflow's `[project.dependencies]`. Workhorse remains one dependency of that
+distribution rather than owning its application-specific tools.
 
-**The schema was not failing at expressing graphs. It was failing at the two
-things a graph does not model: values and loops.** A constant had to be declared
-as a string and then kept in sync with its use sites by comment, because a branch
-condition could not be a template expression. A bounded retry — `for _ in
-range(3)` — needed four extra nodes and three scripts to emulate a counter. And
-every value crossing a node boundary was a Jinja string, so an `int` arrived
-stringified and nothing between two nodes was checkable. Those workarounds do not
-shrink with practice; they grow with the workflow. The four workflows in this
-repo reached ~8,000 lines of YAML, of which one was 4,366.
-
-In Python all three stop being problems, because they were never workflow
-problems: a constant is a constant, a loop is a `for`, and a value crossing a
-transition is a typed model that fails at the boundary that produced it.
-
-**The second reason is dependency isolation, and it may be the bigger one.** A
-`script:` node imported its libraries from *workhorse's own interpreter*, so
-using a workflow meant injecting that workflow's dependencies into the runner's
-environment. A workflow is now an ordinary distribution: its dependencies are
-`[project.dependencies]`, resolved by `pip`/`uv` at install time, and workhorse
-is merely one of them.
-
-What this deliberately gives up is a complete static graph. Native control flow,
-a fully declarative graph, and a single source of truth are a pick-two — a
-declarative graph can only stay honest if it is the only description of the flow,
-and then it cannot use the host language. Splitting at the **state** boundary buys
-most of the third back: transitions between states are still recoverable as a
-diagram (`workhorse-<name> dot` draws it), while the interior of a state is
-opaque — and the interior of a state is the part nobody wanted to read as a
-diagram anyway.
-
-> **Holding a `workflow.yaml`?** [docs/WORKFLOW.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/WORKFLOW.md)
-> maps every construct in the retired schema to what replaces it, names the three
-> that have no counterpart, and lists what did not change at all.
+State transitions remain statically inspectable, so `workhorse-<name> dot` can draw
+the machine. Code inside a state stays ordinary Python and is tested through the
+workflow's node and agent substitution seams.
 
 ## Install
 
@@ -123,10 +95,10 @@ Every workflow brings its own command. `run` is the default subcommand, so it ca
 left out:
 
 ```bash
-workhorse-research run                              # the workflow's entry flow
-workhorse-research run qa                           # one flow standalone
-workhorse-research run qa --params '{"k":"v"}'      # with param overrides
-workhorse-research qa                               # same as `run qa`
+workhorse-research run                              # the research workflow's entry flow
+workhorse-coder run qa                              # coder's QA flow standalone
+workhorse-coder run qa --params '{"story":"CASE-1234"}'
+workhorse-coder qa                                  # same as `run qa`
 ```
 
 There is **no `workhorse` executable and no resolution by name.** The command is bound
@@ -157,9 +129,9 @@ The five subcommands each command carries are `run`, [`dot`](#checking-and-diagr
 needs: run it, draw it, steer the live process, read or answer the messages a run left at
 its operator gates, and say which engine version did it.
 
-A workflow's node functions run under workhorse's own interpreter, so a tool they import
-must live in *that* environment (`pipx inject workhorse-agent ostler`), not merely on
-`PATH`.
+A workflow's node functions run in the workflow distribution's environment, so every
+imported tool must be declared in that distribution's `[project.dependencies]`, not
+merely installed somewhere else on `PATH`.
 
 The skill and prompt *content* those prompts reference is separate, and separately
 configured — see [Initial setup](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/BACKENDS.md#initial-setup).
@@ -186,7 +158,7 @@ hour 30 of an unattended run. `dot` renders the same workflow to
 so it cannot go stale.
 
 ```bash
-workhorse-coder run --dry-run
+workhorse-research run --dry-run
 workhorse-coder dot -o wf.dot && dot -Tsvg wf.dot -o wf.svg   # render (needs graphviz)
 ```
 
@@ -211,7 +183,7 @@ workhorse-<name> run --cli codex          # or copilot, cline, opencode
 
 The unnamed case is configurable, so a machine set up for one CLI does not have to
 name it on every run — put `default_cli` in the shared config (see
-[BACKENDS.md](docs/BACKENDS.md#choosing-the-agent-cli-backend)):
+[BACKENDS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/BACKENDS.md#choosing-the-agent-cli-backend)):
 
 ```toml
 default_cli = "opencode"
@@ -356,10 +328,9 @@ stores them in SQLite and pages you (ntfy/webhook + browser) on stall/stuck/chur
 groom serve                                                # now every run is observed
 ```
 
-The OTel SDK is a **required** dependency, so any install of workhorse can export. It used
-to be an `otel` extra, and an install that skipped it produced not "a run without
-telemetry" but an *invisible* run: telemetry fails soft, so the exporter was absent
-silently and the dashboard showed nothing, which reads exactly like a dead run.
+The OTel SDK is a **required** dependency, so any install of workhorse can export.
+Telemetry still fails soft when no collector is available, allowing the workflow to
+continue without monitoring becoming a runtime dependency.
 
 Live gauges distinguish an open agent turn, an explicit operator/cap/retry wait, and
 ordinary deterministic node work. Turn idle and elapsed values are cleared when the turn
@@ -383,14 +354,12 @@ There is also a wall-clock ceiling, `WORKHORSE_MAX_RUNTIME_S` — see
 
 ## Repository isolation
 
-`workhorse` is repository-agnostic — it never assumes a particular repo or working
-tree. If a workflow needs to operate on source code (read, edit, build, test),
-include a `setup.sh` script in the workflow directory. It runs from the first state
-and clones the required repositories to a known path. This keeps the workflow
-reproducible and lets the agent work from a clean, versioned checkout rather than
-a host working tree. See any workflow's `scripts/setup.sh` for an example. (The
-Docker harness builds on this to give each run a fully isolated, throwaway clone —
-see [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).)
+`workhorse` never assumes a repository layout. A workflow receives repository paths
+as declared parameters and performs repository-specific preparation in its Python
+nodes. The source checkout's Docker harness prepares a dedicated Git worktree before
+launch and passes its location to the workflow, allowing concurrent runs to share the
+host repository's object store without sharing a working tree. See
+[docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
 
 ## Writing a workflow
 

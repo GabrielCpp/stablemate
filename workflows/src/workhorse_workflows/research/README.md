@@ -6,10 +6,11 @@ the next gate, designs an experiment for it, builds it, **measures it outside an
 turn**, judges the artifact, records the verdict, and moves on. It stops when the North
 star is reached, ruled out, or banked.
 
-Scaffold a program first; the workflow consumes what it stamps:
+From a Stablemate checkout, scaffold a program first; the workflow consumes what it
+stamps:
 
 ```bash
-python -m workhorse_workflows.research.scaffold.new_program \
+uv run python -m workhorse_workflows.research.scaffold.new_program \
     --repo <repo> --dir specs/my-program --code-root src/mypkg \
     --ram-gb 64 --cpus 16
 workhorse-research run --params '{"program": "specs/my-program"}'
@@ -19,8 +20,7 @@ workhorse-research run --params '{"program": "specs/my-program"}'
 
 ## The measurement is not in the turn (load-bearing)
 
-This is the one thing to understand about this workflow, because the previous version did
-the opposite and died of it.
+This is the one thing to understand about this workflow.
 
 An agent turn's budget is a budget for *thinking*. An experiment's budget is however long
 the experiment takes. When the two are the same number, the loop silently trades the
@@ -91,9 +91,9 @@ prior run already concluded the program and nobody has re-authorized it
 
 ## Routing by fault locus
 
-`needs_rework` used to mean both "measured and missed" and "produced no measurement". They
-are different failures with different owners, and conflating them spends the scientific
-budget on engineering bugs until the gate is declared scientifically exhausted.
+"Measured and missed" and "produced no measurement" are different failures with
+different owners. Conflating them spends the scientific budget on engineering bugs
+until the gate is declared scientifically exhausted.
 
 | what happened | goes to | costs |
 | --- | --- | --- |

@@ -159,35 +159,6 @@ reports it and names the exact keys, rather than guessing a value and producing 
 wrong stack. Once that sanctioned path exists, a permission layer can deny agent reads of
 `.env*` outright.
 
-## Ostler integration
-
-Ostler seed metadata carries the *spec*; saddlebag satisfies it at runtime. Again no code
-coupling — a workflow reads ostler's JSON output and passes the fields as flags:
-
-```bash
-SEED=$(ostler show seed checkout-flow address-step --json)
-ROLES=$(echo "$SEED" | jq -r '.required_roles | join(" ")')
-SURFACE=$(echo "$SEED" | jq -r '.surface')
-
-saddlebag scan \
-  --env "$ENV" --roles $ROLES --surface "$SURFACE" \
-  --select-via claude --run-id "$RUN_ID" --json
-```
-
-Ostler seed frontmatter can carry two optional fields saddlebag understands:
-
-```markdown
-### address-step
-- status: researched
-- surface: checkout/address
-- required_roles: admin billing        # saddlebag --roles
-- required_features: eu_region         # saddlebag --features (optional filter)
-- summary: Collect & validate the shipping address
-```
-
-Because `surface` is the same string in both tools, a seed is the natural query key: what
-the book says the step needs is literally what the scan asks the pool for.
-
 ## The `.workhorse/` contract
 
 `saddlebag.workhorse` is the one Python module a workflow may import:

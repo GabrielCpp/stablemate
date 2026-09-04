@@ -12,8 +12,7 @@ can be in flight at once: each gets its own container, its own volume set, its o
 run id, and its own `git worktree` of one repo.
 
 **The agent works in a worktree of a repo on your disk**, not in a clone inside a
-volume. That is a deliberate inversion of how this harness used to work, and it is
-what makes concurrency cheap — N runs share one object store and one ref namespace
+volume. This makes concurrency cheap: N runs share one object store and one ref namespace
 instead of paying for N clones. It also means a run's commits are *in your repo* when
 it finishes, on a branch, rather than stranded in a volume you have to `docker cp`
 out of. Each worktree is created detached; the branch is cut later, by a workflow
@@ -67,7 +66,7 @@ runs inside the container.
 ## Authentication
 
 By default the worker uses your **Claude subscription**. At startup
-`entrypoint.sh` seeds `~/.claude/.credentials.json` from the host (mounted
+`supervisor.py` seeds `~/.claude/.credentials.json` from the host (mounted
 read-only) into the persistent `claude-state` volume **once**; the CLI then
 refreshes/rotates the token in-volume across runs and reboots. A minimal
 `~/.claude.json` onboarding stub is written so headless runs don't prompt.
@@ -142,7 +141,7 @@ needs no agent CLI at all — see the [README](../README.md#quick-start).
 | `AGENT_WORKTREE_ROOT` | _(= workspace root)_ | Where this run's worktree is created. Must be the same path on the host — see the repo-bind note above |
 | `AGENT_REPO_HOST_DIR` | _(unset)_ | Host path of the repo to bind, mounted at this same path. Unset, nothing is bound and `clone` is the only usable mode |
 | `AGENT_REPO_DIR` | _(cwd)_ | `repo_dir`, the run's one universal input — in worktree mode, **this run's tree**, not the shared source |
-| `AGENT_PARAM_<NAME>` | _(unset)_ | Becomes run parameter `<name>` (`AGENT_PARAM_DOCS_PATH=/docs` → `{"docs_path": "/docs"}`). The generic replacement for the old per-workflow spellings — see the note below |
+| `AGENT_PARAM_<NAME>` | _(unset)_ | Becomes run parameter `<name>` (`AGENT_PARAM_DOCS_PATH=/docs` → `{"docs_path": "/docs"}`) |
 | `AGENT_PROFILE` | _(unset)_ | Name of a `[profiles.<name>]` table in the config below; passed on as `--profile`. Unset, the run resolves models from the top-level tables as it always has |
 | `AGENT_CONFIG` | _(unset)_ | Config file the profile is looked up in, as a **container** path; passed on as `--config`. Set together with `AGENT_CONFIG_FILE`, which is the same path on the host |
 | `AGENT_CONFIG_FILE` | _(unset)_ | Host path of the config to bind, mounted at this same path. The launcher points it at a per-run **copy**: the config is re-read every turn, so binding the operator's own file live would let an edit move the models of every run already going |
@@ -154,20 +153,13 @@ needs no agent CLI at all — see the [README](../README.md#quick-start).
 | `AGENT_RUNS_DIR` | `/runs` | Where to write run artifacts (set to the persistent `runs` volume by `compose.yaml`) |
 | `AGENT_CLI` | `claude` | Which agent CLI drives the run: `claude`, `codex`, `copilot`, `cline`, or `opencode` |
 | `AGENT_MODEL` | _(unset)_ | Fallback model override when the node's `power` mapping does not provide one |
-| `STABLEMATE_CONFIG` | `~/.config/stablemate/config.toml` | Unified user-wide config mapping `power` tiers to backend model/effort settings. `WORKHORSE_CONFIG` is still honored as the pre-unification spelling |
+| `STABLEMATE_CONFIG` | `~/.config/stablemate/config.toml` | Unified user-wide config mapping `power` tiers to backend model/effort settings |
 | `OPENROUTER_API_KEY` | _(unset)_ | Upstream key for OpenRouter models on the `cline` / `opencode` backends (no proxy). Pass it into the container |
 | `CODEX_PROFILE` | _(unset)_ | Run-level default codex config profile (e.g. `openrouter`, `local`). Codex only |
 | `AWS_PROFILE` | `default` | AWS profile — only when using the Bedrock alternative |
 
 (The engine's resilience/timeout knobs are also env vars — see
 [GUARDRAILS.md](GUARDRAILS.md).)
-
-> **Breaking change: `CODER_WORKSPACE` and `CODER_DOCS_PATH` are gone.** Use
-> `AGENT_PARAM_WORKSPACE_FILE` and `AGENT_PARAM_DOCS_PATH`. The old names were one
-> workflow's vocabulary living in the shared harness, which workhorse must never
-> learn; the prefix expresses any workflow's parameters without the harness knowing
-> that workflow exists. A leftover `CODER_*` variable is now simply ignored, so
-> check for one if a run starts with a parameter you thought you had set.
 
 ## Mounts and volumes
 

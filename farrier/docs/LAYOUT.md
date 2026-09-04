@@ -6,14 +6,14 @@ expected, and how names flow from source files to generated adapters. It is the
 companion to [`agents.example.yml`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/agents.example.yml),
 which documents the consumer-side `agents.yml` that *selects* from this library.
 
-The library is a separate, self-contained directory (the reference one lives in a
-private repo; you point farrier at it with `farrier config set-library <dir>`).
-farrier never bundles content — it only renders whatever library it is aimed at.
+The library is a self-contained directory. Stablemate's public base library is
+discovered automatically; `farrier config set-library <dir>` selects an optional
+overlay whose content takes precedence. Farrier never bundles content in its wheel.
 
 ## Top-level layout
 
 ```
-<library>/                     # the directory passed to `farrier config set-library`
+<library>/                     # a base library or optional overlay
   library/
     skills/<group>/<name>/SKILL.md   # skills — frontmatter + markdown
     prompts/<group>/<name>.md        # prompts — optional frontmatter + markdown
@@ -43,9 +43,8 @@ library/skills/go/go-testing/SKILL.md
 - **Name** comes from the *directory* holding `SKILL.md` (`go-testing`), not the
   filename. The parent `group` (`go`) is a namespace used by packs to glob-select
   (`go/*`) but is **stripped** from the generated name.
-- A flat `library/skills/<group>/<name>.md` file is also accepted for backwards
-  compatibility, but the `<name>/SKILL.md` directory form is the current format
-  (it lets a skill keep sibling resource files alongside it).
+- Each skill uses the `<name>/SKILL.md` directory form, allowing references and
+  scripts to live beside the instruction file.
 
 ### Skill file format
 
@@ -191,12 +190,6 @@ rule. Text that only ever belongs to one repo's root file wants to be a **policy
 see above for why a skill in that position is charged twice. That is a selection-side feature, documented in
 [`agents.example.yml`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/agents.example.yml).
 
-A separate, legacy `roots:` pack key also exists: it reads **flat** files at
-`library/roots/<name>.md` (note: flat `.md`, not `<name>/SKILL.md`) and renders
-them **only for the copilot agent**, into `.github/copilot-instructions.md`. The
-reference library ships no `library/roots/` directory, so this key is effectively
-unused — prefer `localInstructions` for repo-root context.
-
 ## `packs/<pack>.yml` — bundles
 
 A repo never selects individual skills/prompts — it selects **packs**. A pack is
@@ -213,10 +206,6 @@ scaffolds:
 includes:
   - shared-lifecycle     # compose other packs (merged, cycle-checked)
 ```
-
-A pack may also carry a `roots:` list, but it is the legacy copilot-only key
-described above (flat `library/roots/<name>.md`); repo-root context normally comes
-from the consumer's `localInstructions`, not a pack.
 
 - Every key is a list of patterns matched (case-insensitively, via `fnmatch`)
   against source ids, public ids, and relative paths — so `go/*`, `go-testing`,
@@ -253,17 +242,15 @@ invisible to `--check`.
 
 ## Workflows are not part of the library
 
-A library ships no workflows, and farrier installs none. A workflow used to be a
-directory of YAML (`workflow.yaml` plus `prompts/`, `scripts/`, `docs/`) that farrier
-copied into `.agents/workflows/<name>/`; the YAML front-end has been retired, and a
-workflow is now a Python distribution built on
+A library ships no workflows, and farrier installs none. A workflow is a Python
+distribution built on
 [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) that declares its own
 command — a distribution's business, installed with `pip`/`uv`, not rendered out of a
 library:
 
 ```bash
 uv tool install workhorse-workflows
-workhorse-coder run --dry-run    # static preflight, drives nothing
+workhorse-research run --dry-run # static preflight, drives nothing
 workhorse-coder run
 ```
 

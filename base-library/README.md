@@ -18,22 +18,17 @@ farrier install                                   # renders it into a repo
 | `packs/stablemate.yml` | the bundle a repo opts into with `packs: [stablemate]` |
 | `agents.example.yml` | a minimal starting `agents.yml` (farrier ships the annotated one) |
 
-That's the whole payload — markdown and YAML, and **not a line of Python**. No
-`__init__.py`, no `pyproject.toml`, no dependencies, nothing executable.
-
-It used to hold `workflows/` too: four directories of workflow YAML plus the
-`scripts/*.py` its nodes ran. A workflow is a Python package now
-([why](../workhorse/README.md#why-a-workflow-is-python-and-not-a-config-file)), shipped
-in a wheel with a command of its own — so the code
-left, and what stayed is documents. The `scaffolds/` directory went the same way; farrier still
-reads one from any library layer that has it, so an overlay can ship scaffolds even
-though the base does not.
+That's the whole payload: markdown and YAML, with no `__init__.py`,
+`pyproject.toml`, dependencies, or executable code. Workflows are distributed
+separately as [`workhorse-workflows`](../workflows/), and an optional overlay may
+also provide `scaffolds/` for farrier to apply.
 
 ## How the tools find it
 
 They look, in order, for `$STABLEMATE_BASE_DIR` → the `base_dir` config key → a
 configured `stablemate_dir` checkout (`<checkout>/base-library`, i.e. this directory) →
-a shared cache. Nothing found means overlay-only, exactly as before a base existed.
+a shared cache. If no base is found, an explicitly configured overlay can still operate
+alone.
 
 The cache is the interesting one: it is **fetched from GitHub into `~/.cache/stablemate`**
 and used from there — a sparse checkout of this directory alone, with `.git` dropped once
@@ -93,22 +88,10 @@ is `workhorse_workflows.coder.shared.roles`, and that module is the list of role
 
 ## No dependencies, in either direction
 
-This directory used to be a wheel that pinned `workhorse-agent`, `farrier` and `ostler`.
-That was wrong, and the pin was load-bearing wrongness: it closed a dependency cycle,
-broke `--no-deps` installs, and made "fetch the content when it's missing"
-unimplementable.
-
-The tools those workflows need are real, but they were declared at the wrong level.
-Needing `ostler` is a property of **running** a workflow, not of **having** the library.
-While workflows were YAML in here, each `workflow.yaml` declared its own in a `requires:`
-block that workhorse checked before the first node ran — a hand-rolled dependency
-manifest, because data cannot have dependencies.
-
-Workflows are a Python package now
-([`workhorse-workflows`](../workflows/)), so that need is an ordinary
-`dependencies = [...]` entry that `pip` and `uv` resolve. Nothing in this directory
-declares anything. With no dependency running in either direction, content versions on
-its own clock: a reworded prompt never drags a tool release behind it.
+This directory declares no dependencies because it is data. Workflow tools belong in
+the workflow distribution's `dependencies = [...]`, where `pip` and `uv` resolve them.
+No dependency runs from the library to the tools or back, so content can version on its
+own clock without forcing a package release.
 
 ## Versioning
 

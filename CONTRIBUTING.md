@@ -136,13 +136,10 @@ to ship from the paths a commit touched.
 
 ## Docs
 
-Every subproject has a README; read it before changing that component. A workflow is
-**Python**, not YAML — the YAML engine is retired, and there is no `workflow.yml`. If you
-find prose describing one, it is stale and fixing it is welcome.
+Every subproject has a README; read it before changing that component. Workflows are
+Python distributions whose states and nodes live under `workflows/src/`.
 
 - [`workhorse/docs/AUTHORING.md`](workhorse/docs/AUTHORING.md) — writing a workflow
-- [`workhorse/docs/WORKFLOW.md`](workhorse/docs/WORKFLOW.md) — the retired YAML schema
-  mapped construct-by-construct to what replaces it
 - [`docs/features/`](docs/features/) — this repo's own OKF book: the tools' feature docs
   as an ostler-tended knowledge graph. There is no index page by design — browse it with
   `uv run ostler search <term>` / `uv run ostler trace <id>` rather than by directory

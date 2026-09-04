@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/stablemate-logo.svg" width="640" alt="stablemate: a horse in an open stable doorway">
+</p>
+
 # stablemate
 
 [![CI](https://github.com/GabrielCpp/stablemate/actions/workflows/ci.yml/badge.svg)](https://github.com/GabrielCpp/stablemate/actions/workflows/ci.yml)
@@ -113,14 +117,14 @@ packages that work alongside an agent prompt library:
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph through its CLI and the in-process facade workflows use. |
 | [`groom/`](groom/) | — (unpublished) | Local dashboard + OTLP collector for running workflows: answers operator gates from the browser and pages you when a run stalls. Optional. |
 | [`saddlebag/`](saddlebag/) | `saddlebag` (unpublished) | Credentials and environment manifests a workflow needs at run time, kept out of the repo. Optional. |
+| [`paddock/`](paddock/) | `paddock` (unpublished) | Benchmark harness for reproducible workflow trials and task-owned scoring. |
 | [`core/`](core/) | — (vendored, never published) | Shared plumbing the tools must agree on: the home config, base-library discovery, the base-library cache. `make vendor` copies it into `workhorse`, `farrier` and `ostler`, which ship it inside their own wheels; there is nothing to install. |
 
-And two directories that are **not** packages:
+The shared content lives outside the Python packages:
 
 | Directory | Role |
 | --- | --- |
 | [`base-library/`](base-library/) | The **base library**: the skills farrier renders, and the packs that select them. Plain data — `library/`, `packs/` — markdown and YAML, with nothing to import and no dependencies. Tools find it on disk, by path. |
-| [`paddock/`](paddock/) | The one benchmark harness, and in [`paddock/data/`](paddock/data/README.md) the tasks it runs: a workflow chain's output scored against a backlog of user-observable bullets — one number, comparable across runs. Run with `uv run paddock run <task>`. |
 
 Library content resolves across two layers: the **base** (`base-library/`, above) and an
 optional private **overlay** that shadows it name-for-name. Point a repo at an overlay
@@ -272,12 +276,8 @@ is the whole `pyproject.toml` and the one install command it takes, and it does 
 require a checkout of this repository.
 
 **Then:** [workhorse/docs/AUTHORING.md](workhorse/docs/AUTHORING.md) is the reference
-for everything the quick start leaves out — the three tiers of state, checkpoints and
-resume, sub-flows, operator gates, telemetry labels. Holding a `workflow.yaml` from the
-retired YAML engine instead? [workhorse/docs/WORKFLOW.md](workhorse/docs/WORKFLOW.md)
-maps every construct in that schema to what replaces it, and [Why a workflow is Python and
-not a config file](workhorse/README.md#why-a-workflow-is-python-and-not-a-config-file) is
-why that schema is gone.
+for everything the quick start leaves out: the three tiers of state, checkpoints and
+resume, sub-flows, operator gates, and telemetry labels.
 
 ## Development
 
