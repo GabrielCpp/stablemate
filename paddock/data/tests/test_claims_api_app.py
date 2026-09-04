@@ -446,6 +446,7 @@ def test_every_variant_is_a_go_file() -> None:
 
 
 @pytest.mark.parametrize("row", _variants(".go"), ids=_variant_ids(".go"))
+@pytest.mark.toolchain
 def test_every_go_variant_compiles(
     row: dict[str, str], tmp_path: Path, gocache: Path
 ) -> None:

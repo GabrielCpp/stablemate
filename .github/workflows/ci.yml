@@ -71,8 +71,28 @@ jobs:
       - name: Install Chromium
         run: uv run playwright install --with-deps chromium
 
-      - name: make test
-        run: make test
+      - name: Fast test gate
+        run: make test-fast
+
+  paddock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [toolchain, mutation, stress]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Sync the workspace
+        run: uv sync --all-packages --locked
+      - name: Run Paddock ${{ matrix.suite }} tests
+        run: make -C paddock test-${{ matrix.suite }}
 
   # Separate job because it answers a different question and its failure means something
   # different: the suite failing means the code is wrong, this failing means the *commit

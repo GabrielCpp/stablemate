@@ -28,6 +28,8 @@ import pytest
 import yaml
 from paddock.registry import REGISTRY
 
+pytestmark = pytest.mark.mutation
+
 DATA = Path(__file__).parents[1]
 APP = DATA / "apps" / "tally-cli"
 

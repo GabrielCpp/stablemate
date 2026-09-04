@@ -300,6 +300,7 @@ def sneak(run):
     assert pointer.note.startswith(DIAGNOSTIC_MARKER)
 
 
+@pytest.mark.stress
 def test_a_json_file_is_never_readable_half_written(
     repo: Path, data_dir: Path, store: Path, tmp_path: Path
 ) -> None:

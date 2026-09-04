@@ -409,6 +409,7 @@ def gocache(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.mark.parametrize("row", _variants(".go"), ids=_variant_ids(".go"))
+@pytest.mark.toolchain
 def test_every_go_variant_compiles(
     row: dict[str, str], tmp_path: Path, gocache: Path
 ) -> None:
@@ -456,6 +457,7 @@ def typecheckable_web(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.mark.parametrize("row", _variants(".tsx"), ids=_variant_ids(".tsx"))
+@pytest.mark.toolchain
 def test_every_client_variant_typechecks(row: dict[str, str], typecheckable_web: Path) -> None:
     """Same bar as the Go variants, through the check the client's own `build` script runs."""
     target = typecheckable_web / "src" / Path(row["path"]).name

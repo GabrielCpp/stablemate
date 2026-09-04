@@ -50,3 +50,8 @@ include = ["paddock", "README.md", "LICENSE"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 tmp_path_retention_policy = "failed"
+markers = [
+    "toolchain: validates fixture variants with external compilers or planners",
+    "mutation: runs the differential mutant corpus",
+    "stress: exercises timing-sensitive filesystem behavior repeatedly",
+]

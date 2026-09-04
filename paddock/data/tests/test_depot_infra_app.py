@@ -525,6 +525,7 @@ def test_every_variant_is_go_or_stack_config() -> None:
 
 
 @pytest.mark.parametrize("row", _variants(".go"), ids=_variant_ids(".go"))
+@pytest.mark.toolchain
 def test_every_go_variant_compiles(row: dict[str, str], tmp_path: Path, gocache: Path) -> None:
     """A variant that does not build is caught by every check there is and measures nothing.
 
@@ -611,6 +612,7 @@ def _preview(program: Path, gocache: Path) -> subprocess.CompletedProcess[str]:
 @pytest.mark.parametrize(
     "row", [None, *defects()], ids=["clean", *defect_ids()],
 )
+@pytest.mark.toolchain
 def test_the_preview_completes_on_the_clean_tree_and_on_every_variant(
     row: dict[str, str] | None, tmp_path: Path, gocache: Path
 ) -> None:

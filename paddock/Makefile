@@ -38,6 +38,24 @@ test: ## Run the test suite — the harness's tests and the data's, in one pass
 	# each worker a cold cache and recompile the same SDK tree once per worker.
 	uv run --extra test pytest tests data/tests -q -n auto --dist loadscope
 
+.PHONY: test-fast
+test-fast: ## Run tests that need no external toolchain, mutation battery, or stress loop
+	uv run --extra test pytest tests data/tests -q -n auto --dist loadscope \
+		-m "not toolchain and not mutation and not stress"
+
+.PHONY: test-toolchain
+test-toolchain: ## Compile, type-check, and preview every fixture variant
+	# Compiler processes parallelize internally; two pytest workers avoid oversubscribing CI.
+	uv run --extra test pytest tests data/tests -q -n 2 --dist loadscope -m toolchain
+
+.PHONY: test-mutation
+test-mutation: ## Run the differential mutant corpus
+	uv run --extra test pytest tests data/tests -q -m mutation
+
+.PHONY: test-stress
+test-stress: ## Run timing-sensitive filesystem stress checks
+	uv run --extra test pytest tests data/tests -q -m stress
+
 .PHONY: build
 build: clean ## Build sdist + wheel into this package's dist/
 	uv build --package $(NAME) --out-dir dist
