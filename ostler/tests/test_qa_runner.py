@@ -12,7 +12,6 @@ from __future__ import annotations
 import pytest
 import hashlib
 import json
-import os
 import signal
 import socket
 import subprocess
@@ -26,9 +25,25 @@ from ostler.artifact.kinds import _qa_evidence_vet
 from ostler.qa.plan import RETIRED_YAML, _validate_background, load_plan, validate_v2
 from ostler.qa.evidence_map import build_evidence_map
 from ostler.qa.run import cmd_run, cmd_validate
+from ostler.qa import session
 from ostler.qa.session import _kill_pid
 
 OBLIGATION = "okf:docs/features/demo/item.md:contract"
+
+
+@pytest.fixture(autouse=True)
+def _fast_daemon_timing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep lifecycle wiring real without spending production grace periods per case."""
+    monkeypatch.setattr(
+        session,
+        "_DAEMON_TIMING",
+        session._DaemonTiming(  # noqa: SLF001 - this is the injected test clock
+            poll_s=0.01,
+            settle_s=0.05,
+            interrupt_grace_s=0.05,
+            terminate_grace_s=0.05,
+        ),
+    )
 
 PLAN = '''\
 from ostler_qa import Qa, plan, scenario, target
@@ -791,7 +806,7 @@ def test_a_dead_daemon_whose_check_still_passes_fails_the_run(tmp_path: Path) ->
 
 
 def test_a_daemon_that_dies_just_after_a_passing_check_still_fails_the_run(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The rule above was a race, and this is the half of it that was losing.
 
@@ -805,6 +820,16 @@ def test_a_daemon_that_dies_just_after_a_passing_check_still_fails_the_run(
     script looks like. Nothing about the verdict may depend on which of the two won.
     """
     spec = _spec(tmp_path)
+    monkeypatch.setattr(
+        session,
+        "_DAEMON_TIMING",
+        session._DaemonTiming(  # noqa: SLF001 - this case owns the scheduler race
+            poll_s=0.01,
+            settle_s=0.75,
+            interrupt_grace_s=0.05,
+            terminate_grace_s=0.05,
+        ),
+    )
     port = _free_port()
     orphan = _orphan(port)
     try:
@@ -858,7 +883,9 @@ def test_a_launcher_that_forks_and_exits_zero_still_counts_as_ready(tmp_path: Pa
 # ---------------------------------------------------------------------------
 
 
-def test_stopping_a_daemon_that_already_exited_is_not_an_error() -> None:
+def test_stopping_a_daemon_that_already_exited_is_not_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Teardown must survive a daemon that stopped on its own.
 
     `killpg` does not answer the same way everywhere for a group with nothing left in it: on
@@ -867,31 +894,16 @@ def test_stopping_a_daemon_that_already_exited_is_not_an_error() -> None:
     so every `ostler qa run` on macOS ended by raising `PermissionError` out of
     `stop_all_daemons` — the run failed on cleanup after its scenarios had already passed.
 
-    The **outcome** of that difference is not portable either, and asserting one platform's
-    number is how this test then failed on the other Unix. A zombie is still a process on
-    Linux, so `killpg` *succeeds*: the escalation runs its full SIGINT → SIGTERM window and
-    reports SIGKILL, where macOS stops at the first EPERM and reports that nothing landed.
-    Both are the contract being kept. What this test owns is that teardown **survives** — it
-    returns rather than raising — so it accepts either answer and pins the invariant instead
-    of the platform.
+    Reproducing that kernel state with an unreaped process costs the full grace period on
+    Linux and still does not exercise the macOS branch. Injecting EPERM at the process port
+    states the portable policy directly: teardown treats an unsignalable zombie as gone.
     """
-    proc = subprocess.Popen("exit 0", shell=True, start_new_session=True)
-    pid = proc.pid
-    # Deliberately NOT reaped: the zombie window is exactly the case that broke.
-    deadline = time.monotonic() + 5.0
-    while time.monotonic() < deadline:
-        try:
-            os.killpg(pid, 0)
-        except ProcessLookupError:
-            break
-        except PermissionError:
-            break  # macOS: the group is now all-zombie, which is what we want
-        time.sleep(0.02)
+    def zombie_group(_pid: int, _sig: int) -> None:
+        raise PermissionError
 
-    # 0 on macOS (EPERM read as "gone"); -SIGKILL on Linux, where the zombie group is real
-    # enough to signal. Neither is a failure; raising would be.
-    assert _kill_pid(pid) in (0, -signal.SIGKILL)
-    proc.wait()
+    monkeypatch.setattr(session.os, "killpg", zombie_group)
+
+    assert _kill_pid(8123) == 0
 
 
 def test_a_live_daemon_is_still_stopped_and_reports_its_signal() -> None:

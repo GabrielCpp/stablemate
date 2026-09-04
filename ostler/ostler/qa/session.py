@@ -18,6 +18,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,17 @@ _LABEL_RE = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 
 #: See `qa/plan.py::MECHANISMS` for why `synthetic` is not here.
 _MECHS = {"live", "fixture"}
+
+
+@dataclass(frozen=True)
+class _DaemonTiming:
+    poll_s: float = 1.0
+    settle_s: float = 2.0
+    interrupt_grace_s: float = 2.0
+    terminate_grace_s: float = 1.0
+
+
+_DAEMON_TIMING = _DaemonTiming()
 
 
 class ScratchLabelError(ValueError):
@@ -948,7 +960,7 @@ def _signal_group(pid: int, sig: int) -> bool:
     return True
 
 
-def _kill_pid(pid: int) -> int:
+def _kill_pid(pid: int, *, timing: _DaemonTiming | None = None) -> int:
     """Escalate SIGINT -> SIGTERM -> SIGKILL; return the effective signal (negated,
     like subprocess) that actually stopped the process.
 
@@ -958,7 +970,11 @@ def _kill_pid(pid: int) -> int:
     "die immediately" the way a fast SIGKILL would. SIGTERM and SIGKILL remain as
     escalating fallbacks for a daemon that doesn't respond to SIGINT.
     """
-    for sig, grace_seconds in ((signal.SIGINT, 2.0), (signal.SIGTERM, 1.0)):
+    clock = timing or _DAEMON_TIMING
+    for sig, grace_seconds in (
+        (signal.SIGINT, clock.interrupt_grace_s),
+        (signal.SIGTERM, clock.terminate_grace_s),
+    ):
         if not _signal_group(pid, sig):
             return 0
         deadline = time.monotonic() + grace_seconds
@@ -1014,6 +1030,7 @@ def _poll_ready(
     *,
     proc: subprocess.Popen | None = None,
     log_file: Path | None = None,
+    timing: _DaemonTiming | None = None,
 ) -> None:
     """Poll a daemon's readiness check until it succeeds or *timeout* seconds elapse.
 
@@ -1066,6 +1083,7 @@ def _poll_ready(
         status = int(check.get("status", 200))
     described = url if method == "GET" and status == 200 else f"{method} {url} -> {status}"
     probe_timeout = 2.0 if isinstance(check, str) else float(check.get("timeout", 2))
+    clock = timing or _DAEMON_TIMING
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         ready = _ready_via_url(url, method=method, status=status, timeout=probe_timeout)
@@ -1075,11 +1093,11 @@ def _poll_ready(
         if code not in (None, 0):
             raise _daemon_died(code, described, log_file, ready=ready)
         if ready:
-            settled = _settled(proc)
+            settled = _settled(proc, timeout=clock.settle_s)
             if settled not in (None, 0):
                 raise _daemon_died(settled, described, log_file, ready=True)
             return
-        time.sleep(1)
+        time.sleep(clock.poll_s)
     tail = _log_tail(log_file)
     raise TimeoutError(
         f"daemon ready_check timed out after {timeout}s: {described}"
@@ -1087,19 +1105,7 @@ def _poll_ready(
     )
 
 
-#: How long a passing ready_check has to survive the daemon it claims to describe.
-#:
-#: The crash-outranks-ready rule above is a *race*, not a check, and it loses more often
-#: than it wins. Both facts are sampled in the same instant on the first iteration: the
-#: squatter answers 200 immediately, while our own daemon — which will die on `address
-#: already in use` — has not been scheduled long enough to have exited, so `poll()` reads
-#: `None` and the passing check is believed. The whole suite then runs against the
-#: previous run's server. Two seconds is longer than the gap between `Popen` returning and
-#: a bind failure surfacing, and it is spent once per daemon on a run that takes minutes.
-_SETTLE_SECONDS = 2.0
-
-
-def _settled(proc: subprocess.Popen | None) -> int | None:
+def _settled(proc: subprocess.Popen | None, *, timeout: float) -> int | None:
     """The daemon's exit code if it dies within the settle window, else `None`.
 
     `None` means still running, which is the only state in which a ready verdict is worth
@@ -1108,7 +1114,7 @@ def _settled(proc: subprocess.Popen | None) -> int | None:
     if proc is None:
         return None
     try:
-        return proc.wait(timeout=_SETTLE_SECONDS)
+        return proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         return None
 
