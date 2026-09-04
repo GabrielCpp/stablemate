@@ -81,10 +81,8 @@ lint: ## Lint every subproject in one pass: ruff (style, imports) + ty + basedpy
 	# at its own default mode over a tree this config deliberately narrows.
 	uv run --all-packages basedpyright -p pyproject.toml
 
-.PHONY: test test-fast
-test: PADDOCK_TEST = test
-test-fast: PADDOCK_TEST = test-fast
-test test-fast: ## Run package suites and guards; test-fast splits Paddock's expensive lanes
+.PHONY: test
+test: ## Run every package suite and repo guard exactly as CI does
 	$(MAKE) lint
 	$(MAKE) -C core test
 	$(MAKE) -C workhorse test
@@ -93,7 +91,7 @@ test test-fast: ## Run package suites and guards; test-fast splits Paddock's exp
 	$(MAKE) -C farrier test
 	$(MAKE) -C groom test
 	$(MAKE) -C saddlebag test
-	$(MAKE) -C paddock $(PADDOCK_TEST)
+	$(MAKE) -C paddock test
 	$(MAKE) test-scripts
 	$(MAKE) check-public
 	$(MAKE) check-no-env
