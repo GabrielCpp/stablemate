@@ -514,6 +514,21 @@ def test_a_negator_governing_the_verb_from_the_left_also_clears_it(repo: Path):
     assert "unstated-precondition" not in all_codes(_run(repo))
 
 
+def test_a_state_dependent_alternative_is_not_an_unstated_precondition(repo: Path):
+    """A toggle or upsert has no single lifecycle direction to observe."""
+    claims = (
+        "adds the mark to the selection, or strips it if every character already carries it",
+        "creates the record when absent, or updates the existing record otherwise",
+    )
+    for claim in claims:
+        write(repo / "docs/features/groom/concepts/publisher.md",
+              "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+              "## Methods\n\n### Publish\n"
+              f"- does: {claim}\n"
+              '- verify: emitted(event="selection changed", count=1)\n')
+        assert "unstated-precondition" not in all_codes(_run(repo)), claim
+
+
 def test_a_negator_elsewhere_in_the_sentence_does_not_clear_a_real_creation(repo: Path):
     """The near-miss that makes the scoping load-bearing, not a detail of the implementation.
 

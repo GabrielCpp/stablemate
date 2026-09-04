@@ -1350,6 +1350,30 @@ _NEGATORS = frozenset({"no", "not", "never", "without", "instead", "rather", "th
 #: The determiners that negate the verb *before* them: "creates no page id", "writes no draft".
 _NEGATIVE_DETERMINERS = frozenset({"no", "none", "nothing", "neither"})
 
+#: A lifecycle-shaped verb can also be one arm of a state-dependent operation. These
+#: deliberately require an alternative, another mutation, and a prior-state cue together;
+#: any one alone is common in an unconditional creation claim.
+_ALTERNATIVE_MARKERS = frozenset({"or", "otherwise"})
+_ALTERNATIVE_MUTATIONS = frozenset({
+    "strip", "strips", "stripping", "update", "updates", "updating",
+    "replace", "replaces", "replacing", "reuse", "reuses", "reusing",
+}) | LIFECYCLE_VERBS
+_PRIOR_STATE_CUES = frozenset({
+    "already", "existing", "exists", "present", "absent", "missing",
+})
+
+
+def _has_state_dependent_alternative(words: list[str], lifecycle_index: int) -> bool:
+    """Whether a lifecycle verb is one branch of a toggle or idempotent upsert."""
+    rest = words[lifecycle_index + 1:]
+    if not any(word in _PRIOR_STATE_CUES for word in rest):
+        return False
+    return any(
+        any(word in _ALTERNATIVE_MUTATIONS for word in rest[index + 1:])
+        for index, marker in enumerate(rest)
+        if marker in _ALTERNATIVE_MARKERS
+    )
+
 
 def _states_a_lifecycle_claim(value: str) -> str:
     """The lifecycle verb this bullet uses, or "" — the word a finding has to quote.
@@ -1377,6 +1401,8 @@ def _states_a_lifecycle_claim(value: str) -> str:
         if any(before in _NEGATORS for before in words[max(0, n - 2):n]):
             continue
         if words[n + 1:n + 2] and words[n + 1] in _NEGATIVE_DETERMINERS:
+            continue
+        if _has_state_dependent_alternative(words, n):
             continue
         return word
     return ""
