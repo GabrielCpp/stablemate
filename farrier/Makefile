@@ -20,7 +20,9 @@ install: ## Create/sync the workspace venv from the root uv.lock
 
 .PHONY: test
 test: ## Run the standalone test suite
-	@for t in tests/test_*.py; do echo ">> $$t"; uv run python $$t || exit 1; done
+	# Files stay directly runnable; the gate uses one pytest session so startup and
+	# collection are paid once and independent repository fixtures run concurrently.
+	uv run pytest tests -q -n auto --dist worksteal
 
 .PHONY: build
 build: clean ## Build sdist + wheel into this package's dist/

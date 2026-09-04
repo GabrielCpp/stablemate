@@ -39,7 +39,9 @@ lint: ## Lint: ruff
 
 .PHONY: test
 test: ## Run the standalone test suite
-	@for t in tests/test_*.py; do echo ">> $$t"; timeout $(TEST_TIMEOUT) uv run python $$t || exit 1; done
+	# Files stay directly runnable, while the gate pays interpreter startup once and
+	# distributes the browser, SQLite, and pure unit modules by observed completion.
+	timeout $(TEST_TIMEOUT) uv run pytest tests -q -n auto --dist worksteal
 
 .PHONY: build
 build: clean ## Build sdist + wheel into this package's dist/
