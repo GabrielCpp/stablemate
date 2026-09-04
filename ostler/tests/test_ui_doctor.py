@@ -1074,7 +1074,7 @@ LINKED_REPORT_JSON = """\
       "code": "dangling-link",
       "epic": "",
       "fixable": true,
-      "line": 13,
+      "line": 12,
       "message": "docs/features/groom/gui/screens/changes-view.md: link './gone.md' target file does not exist",
       "path": "docs/features/groom/gui/screens/changes-view.md",
       "ref": "./gone.md",
