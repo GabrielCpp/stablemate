@@ -143,11 +143,13 @@ def test_a_killed_job_still_reports_what_it_cost(tmp_path: Path):
                job_dir=directory, logger=LOG)
     _await_running(directory)
 
+    started = time.monotonic()
     result = job.kill(directory, reason="operator")
 
     assert result.kill_reason == "operator"
     assert result.wall_s > 0
     assert job.poll(directory).state == "finished"
+    assert time.monotonic() - started < 5, "the reaper waited on its own zombie leader"
 
 
 HOG = (

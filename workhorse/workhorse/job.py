@@ -331,11 +331,21 @@ def _signal_group(pgid: int, sig: int) -> None:
         pass
 
 
-def _reap_group(pgid: int, grace: float = TERM_GRACE_S) -> None:
-    """TERM the group, then KILL what is left. Used for the command, never for ourselves."""
+def _reap_group(
+    pgid: int,
+    grace: float = TERM_GRACE_S,
+    *,
+    leader: subprocess.Popen[bytes] | None = None,
+) -> None:
+    """TERM the group, reap its owned leader, then KILL surviving descendants."""
     _signal_group(pgid, signal.SIGTERM)
     deadline = time.time() + grace
     while time.time() < deadline:
+        # killpg(0) still sees an exited direct child until its parent reaps it. When
+        # this supervisor owns the leader, polling distinguishes that zombie from live
+        # descendants instead of spending the whole grace waiting on a dead process.
+        if leader is not None:
+            leader.poll()
         if not _pgid_alive(pgid):
             return
         time.sleep(0.5)
@@ -639,7 +649,7 @@ def supervise(job_dir: Path | str) -> int:
                 # and a sampler racing it would attribute the cgroup's kill to itself.
                 kill_reason = "memory"
             if kill_reason:
-                _reap_group(proc.pid)
+                _reap_group(proc.pid, leader=proc)
                 break
 
             crossed = overrun_multiple(time.time() - started_at, estimate_s, first)
