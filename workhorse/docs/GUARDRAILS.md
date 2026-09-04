@@ -36,10 +36,12 @@ through three layers before it can ever crash the run (see
    window `shutil.which()` is exactly as blind as `exec`, so the file looks missing
    to both. So the ambiguity is resolved **in time, not by a probe**: `ENOENT` is
    retried like `ETXTBSY`, and only *after* the bounded retries is the verdict made —
-   if the CLI now resolves but still won't exec, the update outlasted the budget and
-   it escalates as a normal transient (the ladder below gives it more time); if it
-   *still* does not resolve, it is genuinely absent and fails with an actionable
-   non-transient `BackendInvocationError`. (A single-probe check here is what let
+   if the CLI now resolves **or this supervisor successfully launched it earlier**, the
+   update outlasted the budget and it escalates as a normal transient (the ladder below
+   gives it more time). Prior success matters because a package-manager download can keep
+   both `exec` and `which` blind longer than the short retry window. Only a CLI that has
+   never launched and still does not resolve is genuinely absent; it fails with an
+   actionable non-transient `BackendInvocationError`. (A single-probe check here is what let
    an okf-builder run misread a self-update as an absent CLI and fail its
    last item.)
 1. **Transient retries** — rate limits, overloads, network blips, timeouts, and
@@ -165,7 +167,7 @@ same CLI configuration as the conversation it is compacting.
 | `AGENT_CAP_PROBE_S` | 7200 | Longest single cap sleep before re-attempting the turn, however far out the reported reset is. A weekly window reopens ~6 days out, and sleeping that in one shot means the run cannot notice the cap clearing EARLY — a manual reset, a plan change, topped-up credits. A re-attempt costs one CLI invocation that fails immediately while the cap still holds. 0 restores the pre-probe behaviour (one sleep to the reported reset) |
 | `AGENT_MAX_CAP_WAITS` | 128 | Maximum consecutive cap waits before giving up. Sized so probing every `AGENT_CAP_PROBE_S` can span the whole `AGENT_CAP_WAIT_BUDGET_S` (8d / 2h = 96) with room to spare: the cumulative budget, not the wait count, is meant to be what ends a legitimately long cap |
 | `AGENT_CAP_WAIT_BUDGET_S` | 691320 (8 days + 120s) | Cumulative cap sleep for one agent-node visit; a reset beyond the remaining allowance stops immediately rather than sleeping partway |
-| `AGENT_EXEC_RETRY_MAX` | 5 | Short spawn retries when the agent-CLI binary is momentarily un-exec'able (self-update in flight: `ETXTBSY`/`ENOENT` with the shim still resolving) before escalating to the transient ladder. A permanently-absent CLI (`which` → `None`) is not retried. |
+| `AGENT_EXEC_RETRY_MAX` | 5 | Short spawn retries when the agent-CLI binary is momentarily un-exec'able during a self-update (`ETXTBSY`/`ENOENT`/`ENOEXEC`/`ESTALE`) before escalating to the transient ladder. If the CLI launched earlier in this process, a later absence remains transient even when `which` is temporarily blind; a CLI absent from the first launch fails after these bounded retries. |
 | `AGENT_EXEC_RETRY_BASE_S` | 1 | Base seconds for the exec-retry exponential backoff |
 | `AGENT_EXEC_RETRY_CAP_S` | 8 | Upper bound on a single exec-retry delay |
 | `AGENT_EXEC_RETRY_WAIT_BUDGET_S` | 23 | Cumulative spawn-time self-update backoff for one agent-node visit |

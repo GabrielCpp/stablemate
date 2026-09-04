@@ -1,9 +1,10 @@
 """Tests for the self-update exec-retry in ``ProcessSupervisor.spawn``.
 
 A turn must not be interrupted because the agent CLI is rewriting its own binary
-(Claude Code ships a native binary and auto-updates by default) — a brief
-ETXTBSY/ENOENT exec window is retried. A genuinely-absent CLI (a non-interactive
-PATH with no nvm shim) fails fast instead of burning the retry budget.
+(Claude Code ships a native binary and auto-updates by default) — an
+ETXTBSY/ENOENT exec window is retried, and a longer replacement of a previously
+working CLI remains transient. A genuinely-absent CLI (a non-interactive PATH with
+no nvm shim) fails fast instead of burning the retry budget.
 
 The backoff between retries is a ``FakeClock`` the supervisor is built with, so the
 whole file runs in microseconds with nothing patched on the clock — the sleeps are a
@@ -171,6 +172,23 @@ def test_exhausted_retries_escalate_as_transient():
         except BackendInvocationError as exc:
             assert exc.transient is True   # transient → outer ladder gives it more time
     assert fake.calls["n"] == RESILIENCE.exec_retry_max + 1
+
+
+def test_cli_that_launched_before_stays_transient_during_long_rename_gap():
+    """A package-manager replacement can hide a proven CLI beyond the short retries."""
+    proc = MagicMock()
+    failures = [OSError(errno.ENOENT, os.strerror(errno.ENOENT))] * (
+        RESILIENCE.exec_retry_max + 1
+    )
+    with patch.object(process.subprocess, "Popen", side_effect=[proc, *failures]), \
+         patch.object(process.shutil, "which", return_value=None):
+        supervisor, _ = _supervisor()
+        assert supervisor.spawn(["opencode", "run"], "n", resilience=RESILIENCE) is proc
+        try:
+            supervisor.spawn(["opencode", "run"], "n", resilience=RESILIENCE)
+            raise AssertionError("expected BackendInvocationError during the rename gap")
+        except BackendInvocationError as exc:
+            assert exc.transient is True
 
 
 def test_the_default_supervisor_waits_on_the_real_clock():

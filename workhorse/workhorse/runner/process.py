@@ -150,7 +150,7 @@ def _arm_watchdog(
 
 
 # The agent CLI can be replaced ON DISK mid-run — see ``AgentResilience.exec_retry_max``
-# for why exec of the very same path fails for a sub-second window and why that is NOT a
+# for why exec of the very same path can fail during replacement and why that is NOT a
 # missing tool. It is deliberately distinguished from a genuinely absent CLI (a
 # non-interactive PATH with no nvm shim, the classic launch-context bug): there ENOENT
 # persists and shutil.which() returns None, so we fail FAST rather than burn the retry
@@ -168,13 +168,15 @@ _EXEC_BUSY_ERRNOS = frozenset({errno.ETXTBSY, errno.ENOEXEC, errno.ESTALE})
 class ProcessSupervisor:
     """The agent subprocess a run is currently streaming, and the clock timing it.
 
-    Two fields, and each is a reason this is an object rather than the module-level
-    state and free functions it replaces. ``active`` is state with an invariant: the
+    Its fields are reasons this is an object rather than module-level state and free
+    functions. ``active`` is state with an invariant: the
     live handle and the lock guarding it are written by the stream loop and read by
     the interrupt handler on a *different thread*, so they are one object or they
     are a race. ``clock`` is the seam: the streaming path waits in exactly two
     places — a turn's deadline and the exec-retry backoff — and a test that wants to
-    watch a timeout fire should not have to wait out a real one.
+    watch a timeout fire should not have to wait out a real one. Successful executable
+    names preserve the evidence needed to distinguish a later replacement window from a
+    CLI that was never configured in this process.
 
     ``resilience`` is not a field, deliberately. It is a parameter of the
     ``AgentBackend`` port, so it arrives with each turn from the ladder that owns it;
@@ -184,6 +186,7 @@ class ProcessSupervisor:
 
     clock: Clock = SYSTEM_CLOCK
     active: ActiveProcess = field(default_factory=ActiveProcess)
+    successful_executables: set[str] = field(default_factory=set, repr=False)
 
     def terminate_active(self) -> None:
         """Terminate the currently-streaming agent subprocess (and its group), if any.
@@ -218,7 +221,9 @@ class ProcessSupervisor:
         attempt = 0
         while True:
             try:
-                return subprocess.Popen(cmd, **popen_kwargs)
+                proc = subprocess.Popen(cmd, **popen_kwargs)
+                self.successful_executables.add(cmd[0])
+                return proc
             except OSError as exc:
                 # ETXTBSY/ENOEXEC/ESTALE mean the binary is momentarily busy / half-written /
                 # stale — present but not runnable this instant. ENOENT is
@@ -253,10 +258,12 @@ class ProcessSupervisor:
                 # Terminal — decide permanent-vs-transient only NOW, after a rewrite window
                 # has had time to close. A CLI that resolves but still won't exec means the
                 # update outlasted our budget → hand to the outer transient ladder (more
-                # time). One that STILL does not resolve is genuinely absent (the classic
-                # non-interactive-PATH / missing-nvm launch bug) → fail fast, non-transient.
+                # time). A CLI successfully launched earlier in this process is also proven
+                # to be configured, even while an updater's long rename makes which() blind.
+                # Only a CLI that neither resolves nor ever launched here is genuinely absent
+                # (the classic non-interactive-PATH / missing-nvm launch bug).
                 resolves = shutil.which(cmd[0]) is not None
-                if retryable and resolves:
+                if retryable and (resolves or cmd[0] in self.successful_executables):
                     raise BackendInvocationError(
                         f"agent CLI '{cmd[0]}' still not exec'able after "
                         f"{resilience.exec_retry_max} retries ({exc}); likely a slow self-update",

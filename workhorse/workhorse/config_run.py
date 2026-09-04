@@ -160,10 +160,10 @@ class AgentResilience:
     reframe_wait_budget_s: float = 60.0
     #: The agent CLI can be replaced ON DISK mid-run — Claude Code ships a native
     #: binary and self-updates by default, and a manual ``npm i -g`` does the same.
-    #: While that in-place rewrite is in flight, exec of the very same path fails for
-    #: a sub-second window (ETXTBSY / ENOENT during the rename / ENOEXEC on a
-    #: half-written header). That is NOT a missing tool, so a few short retries ride
-    #: the update out instead of crashing an otherwise-healthy turn.
+    #: While that replacement is in flight, exec of the same path can fail (ETXTBSY /
+    #: ENOENT during the rename / ENOEXEC on a half-written header). Short retries cover
+    #: the usual window; prior successful launches let a longer update escalate into the
+    #: outer transient ladder instead of looking like a CLI that was never configured.
     exec_retry_max: int = 5
     exec_retry_base_s: float = 1.0
     exec_retry_cap_s: float = 8.0
