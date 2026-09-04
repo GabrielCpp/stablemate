@@ -766,7 +766,9 @@ def test_a_daemon_that_dies_on_startup_is_reported_dead_with_what_it_printed(
     assert elapsed < 15, f"polled a dead daemon for {elapsed:.1f}s"
 
 
-def test_a_dead_daemon_whose_check_still_passes_fails_the_run(tmp_path: Path) -> None:
+def test_a_dead_daemon_whose_check_still_passes_fails_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A readiness probe asks "is anything answering", never "is it mine".
 
     This is the observed false pass, reproduced. A previous run's server was still bound to
@@ -781,6 +783,16 @@ def test_a_dead_daemon_whose_check_still_passes_fails_the_run(tmp_path: Path) ->
     that exit 0 does not.
     """
     spec = _spec(tmp_path)
+    monkeypatch.setattr(
+        session,
+        "_DAEMON_TIMING",
+        session._DaemonTiming(  # noqa: SLF001 - this case owns the scheduler race
+            poll_s=0.01,
+            settle_s=0.75,
+            interrupt_grace_s=0.05,
+            terminate_grace_s=0.05,
+        ),
+    )
     port = _free_port()
     orphan = _orphan(port)
     try:
