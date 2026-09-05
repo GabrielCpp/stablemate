@@ -62,6 +62,27 @@ watchdog-kill), **log records** from the driver and the node functions it calls
 dies mid-run can never slow or wedge a run; `events.jsonl` on disk remains the durable
 record. Any standard OTLP/HTTP backend (Jaeger, Grafana Tempo) works unchanged.
 
+Every span also records the filesystem and git identity it applies to. The primary
+directory is the run workspace unless a node declares its own `cwd`; an agent turn uses
+its rendered `cwd` plus every `add_dirs` entry. Paths that resolve to the same git root
+are deduplicated, while a raw unversioned directory remains an explicit observation:
+
+| Span attribute | Meaning |
+|---|---|
+| `workspace.path.start` / `.end` | resolved primary directory |
+| `workspace.vcs.start` / `.end` | `git` or `unversioned` |
+| `git.origin.start` / `.end` | exact `git remote get-url origin`, SSH or HTTPS unchanged |
+| `git.branch.start` / `.end` | current branch; absent at detached HEAD |
+| `git.head.start` / `.end` | full `git rev-parse HEAD` commit hash |
+| `workhorse.repositories.start` / `.end` | JSON array for the primary directory and every distinct additional directory/repository |
+
+The start and end snapshots intentionally may differ: a node or agent that commits,
+switches branch, or changes a remote has changed the tree during that span. A missing
+origin, branch, or commit is omitted rather than rendered as an empty claim. The complete
+JSON array still carries the directory, its `cwd`/`add_dir` role, and whether it was a git
+checkout, so an unversioned documentation folder remains attributable even when it has no
+git fields of its own.
+
 There is also a wall-clock ceiling, `WORKHORSE_MAX_RUNTIME_S` — see
 [GUARDRAILS.md](GUARDRAILS.md).
 
@@ -85,6 +106,12 @@ Two details worth knowing when reading them:
 - The logs SDK still lives under private module paths (`opentelemetry.sdk._logs`);
   if an upgrade moves them, logs degrade to console-only and traces/metrics are
   unaffected.
+- **Repository fields are pinned to the containing span's start snapshot.** Every record
+  carries `workspace.path`, `workspace.vcs`, `git.origin`, `git.branch`, `git.head`, and
+  `workhorse.repositories` when those values were observed. The logging path only copies
+  that immutable snapshot; it never invokes git. A nested agent-turn span therefore gives
+  its logs the agent's own `cwd`/`add_dirs` identity, while logs outside a node inherit the
+  root span's run-workspace snapshot.
 
 The engine's own **narrative** — the per-transition dispatch lines (`state →`, `call →`,
 `agent →`, `flow →`, `await →`, `resume →`) and per-node error/resume messages — goes through the

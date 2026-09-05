@@ -667,7 +667,15 @@ class AgentRunner:
                 print(f"[{node_id}] 🚀 Invoking {backend.name} (model: {model or 'default'})", flush=True)
                 # One agent-turn span per CLI invocation; the result event's
                 # duration/usage attach via otel.turn_result, from inside the adapter.
-                otel.turn_start(node_id, model, effort, timeout, backend=backend.name)
+                otel.turn_start(
+                    node_id,
+                    model,
+                    effort,
+                    timeout,
+                    backend=backend.name,
+                    cwd=cwd,
+                    add_dirs=tuple(add_dirs or ()),
+                )
                 with recovery_wait_scope(budget):
                     result = backend.run_turn(
                         attempt_prompt,

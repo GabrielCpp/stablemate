@@ -16,6 +16,7 @@ Run: ./.venv/bin/python tests/test_gitstate.py   (or via pytest)
 from __future__ import annotations
 
 import importlib
+import json
 import logging
 import shutil
 import subprocess
@@ -60,6 +61,81 @@ def test_observe_reports_head_branch_and_clean():
         assert state.branch == "main"
         assert state.dirty is False
         assert state.observed is True
+
+
+def test_observe_preserves_the_exact_origin_url():
+    if not HAVE_GIT:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        _repo(repo)
+        origin = "git@github.com:example-org/api-service.git"
+        subprocess.run(
+            ["git", "-C", str(repo), "remote", "add", "origin", origin],
+            check=True,
+            capture_output=True,
+        )
+
+        state = gitstate.observe(repo)
+
+        assert state.origin == origin
+        assert state.root == str(repo.resolve())
+        assert len(state.head) == 40
+
+
+def test_scope_keeps_multiple_git_roots_and_an_unversioned_primary():
+    if not HAVE_GIT:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        docs = root / "docs"
+        api = root / "api-service"
+        web = root / "web-app"
+        docs.mkdir()
+        api.mkdir()
+        web.mkdir()
+        _repo(api)
+        _repo(web)
+        (api / "src").mkdir()
+        subprocess.run(
+            ["git", "-C", str(api), "remote", "add", "origin", "https://example.com/api.git"],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(web), "remote", "add", "origin", "git@example.com:web.git"],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(web), "switch", "-q", "-c", "ostler-stories"],
+            check=True,
+            capture_output=True,
+        )
+
+        snapshot = gitstate.observe_scope(docs, [api / "src", api, web])
+
+        assert [(item.role, item.vcs) for item in snapshot.directories] == [
+            ("cwd", "unversioned"),
+            ("add_dir", "git"),
+            ("add_dir", "git"),
+        ]
+        api_state, web_state = snapshot.directories[1:]
+        assert api_state.root == str(api.resolve())
+        assert api_state.origin == "https://example.com/api.git"
+        assert api_state.branch == "main"
+        assert len(api_state.head) == 40
+        assert web_state.origin == "git@example.com:web.git"
+        assert web_state.branch == "ostler-stories"
+        attrs = snapshot.attributes()
+        assert attrs["workspace.path"] == str(docs.resolve())
+        assert attrs["workspace.vcs"] == "unversioned"
+        assert "git.head" not in attrs
+        repositories = json.loads(attrs["workhorse.repositories"])
+        assert [entry["root"] for entry in repositories[1:]] == [
+            str(api.resolve()),
+            str(web.resolve()),
+        ]
 
 
 def test_observe_reports_a_dirty_tree_and_can_snapshot_it():
@@ -253,11 +329,71 @@ def test_a_turn_records_the_tree_it_ran_against():
         span = tracer.by_name("agent_turn")
         assert span.attrs["git.head.start"] == "aaa"
         assert span.attrs["git.head.end"] == "bbb"
-        # A turn opens with a refreshed read as well as closing with one: the agent is
-        # the thing most likely to have moved HEAD since the last boundary.
-        assert probe.refreshes == 2
+        # The containing agent-node span already captured this scope. Its turn reuses
+        # that immutable start snapshot; only the end re-observes what the agent moved.
+        assert probe.refreshes == 1
     finally:
         otel.set_head_probe(None)
+
+
+def test_agent_node_and_turn_spans_use_their_own_multi_repo_scope():
+    calls: list[tuple[str | None, tuple[str, ...]]] = []
+
+    def observe(cwd: str | None, add_dirs: tuple[str, ...], _refresh: bool) -> dict[str, str]:
+        calls.append((cwd, add_dirs))
+        primary = cwd or "/workspace/docs"
+        return {
+            "workspace.path": primary,
+            "workspace.vcs": "unversioned" if primary.endswith("docs") else "git",
+            "git.origin": "git@example.com:web-app.git" if primary.endswith("web-app") else "",
+            "git.branch": "ostler-stories" if primary.endswith("web-app") else "",
+            "git.head": "c" * 40 if primary.endswith("web-app") else "",
+            "workhorse.repositories": json.dumps([primary, *add_dirs]),
+        }
+
+    otel.set_repository_probe(observe)
+    try:
+        telemetry, tracer = _spans()
+        telemetry.start_root("wf")
+        records = importlib.import_module("workhorse.records")
+        event = records.NodeEvent(
+            ts="2026-01-01T00:00:00+00:00",
+            seq=1,
+            node="repair",
+            phase="enter",
+            repository_cwd="/workspace/web-app",
+            repository_add_dirs=["/workspace/docs", "/workspace/api-service"],
+        )
+        telemetry.record_event(event)
+        telemetry.turn_start(
+            "repair",
+            "model",
+            "high",
+            60.0,
+            cwd="/workspace/web-app",
+            add_dirs=("/workspace/docs", "/workspace/api-service"),
+        )
+
+        node = tracer.by_name("repair")
+        turn = tracer.by_name("agent_turn")
+        for span in (node, turn):
+            assert span.attrs["workspace.path.start"] == "/workspace/web-app"
+            assert span.attrs["workspace.vcs.start"] == "git"
+            assert span.attrs["git.origin.start"] == "git@example.com:web-app.git"
+            assert span.attrs["git.branch.start"] == "ostler-stories"
+            assert span.attrs["git.head.start"] == "c" * 40
+            assert json.loads(span.attrs["workhorse.repositories.start"]) == [
+                "/workspace/web-app",
+                "/workspace/docs",
+                "/workspace/api-service",
+            ]
+        assert telemetry.current_repository()["git.head"] == "c" * 40
+        assert calls[-1] == (
+            "/workspace/web-app",
+            ("/workspace/docs", "/workspace/api-service"),
+        )
+    finally:
+        otel.set_repository_probe(None)
 
 
 def test_the_root_span_brackets_the_whole_run():
@@ -360,31 +496,53 @@ def _record() -> logging.LogRecord:
     return logging.LogRecord("t", logging.INFO, __file__, 1, "hello", None, None)
 
 
-def test_log_records_carry_the_head_current_when_they_were_emitted():
-    if not HAVE_GIT:
-        return
-    with tempfile.TemporaryDirectory() as tmp:
-        _repo(Path(tmp))
-        gitstate.bind(tmp, ttl_s=0.0)  # every read re-reads; the cache is tested above
-        try:
-            filt = logsetup._HeadFilter()
-            before, after = _record(), _record()
-            filt.filter(before)
-            moved = _commit(Path(tmp), "two")
-            filt.filter(after)
-            # `getattr`, because "no head at all" is a state this attribute has and a
-            # `LogRecord` does not declare it.
-            assert getattr(before, "head", "") != getattr(after, "head", "")
-            assert getattr(after, "head", "") == moved
-        finally:
-            gitstate.unbind()
+def test_log_records_are_pinned_to_the_active_span_start_snapshot():
+    current = {
+        "workspace.path": "/workspace/api-service",
+        "workspace.vcs": "git",
+        "git.origin": "https://example.com/api.git",
+        "git.branch": "main",
+        "git.head": "a" * 40,
+        "workhorse.repositories": "[]",
+    }
+    otel.set_repository_probe(lambda cwd, add_dirs, refresh: current)
+    telemetry, _ = _spans()
+    previous = otel.install(otel.TelemetryHost(active=telemetry))
+    try:
+        telemetry.start_root("wf")
+        before, after = _record(), _record()
+        filt = logsetup._HeadFilter()
+        filt.filter(before)
+        current["git.head"] = "b" * 40
+        filt.filter(after)
+
+        assert before.__dict__["git.head"] == "a" * 40
+        assert after.__dict__["git.head"] == "a" * 40
+        assert after.__dict__["git.origin"] == "https://example.com/api.git"
+        assert after.__dict__["git.branch"] == "main"
+        assert after.__dict__["head"] == "a" * 40
+    finally:
+        telemetry.end_run("terminal")
+        otel.install(previous)
+        otel.set_repository_probe(None)
 
 
-def test_a_log_record_from_a_non_repo_carries_no_head_at_all():
-    gitstate.unbind()
-    record = _record()
-    assert logsetup._HeadFilter().filter(record) is True
-    assert not hasattr(record, "head")
+def test_a_log_record_from_an_unversioned_span_keeps_the_directory():
+    snapshot = {"workspace.path": "/workspace/docs", "workspace.vcs": "unversioned"}
+    otel.set_repository_probe(lambda cwd, add_dirs, refresh: snapshot)
+    telemetry, _ = _spans()
+    previous = otel.install(otel.TelemetryHost(active=telemetry))
+    try:
+        telemetry.start_root("wf")
+        record = _record()
+        assert logsetup._HeadFilter().filter(record) is True
+        assert record.__dict__["workspace.path"] == "/workspace/docs"
+        assert record.__dict__["workspace.vcs"] == "unversioned"
+        assert not hasattr(record, "head")
+    finally:
+        telemetry.end_run("terminal")
+        otel.install(previous)
+        otel.set_repository_probe(None)
 
 
 if __name__ == "__main__":

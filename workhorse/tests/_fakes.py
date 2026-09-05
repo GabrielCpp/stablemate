@@ -172,6 +172,8 @@ class RecordingTelemetry(otel._NullTelemetry):
         effort: str | None,
         timeout: float,
         backend: str | None = None,
+        cwd: str | None = None,
+        add_dirs: tuple[str, ...] = (),
     ) -> None:
         self.turns_opened.append(node_id)
 

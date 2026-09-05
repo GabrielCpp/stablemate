@@ -34,7 +34,12 @@ def _observe_repo() -> RepoObservation | None:
     if not state.observed:
         return None
     return RepoObservation(
-        path=state.path, head=state.head, branch=state.branch, dirty=state.dirty
+        path=state.path,
+        root=state.root,
+        origin=state.origin,
+        head=state.head,
+        branch=state.branch,
+        dirty=state.dirty,
     )
 
 

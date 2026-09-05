@@ -155,7 +155,11 @@ def run_pyflow(invocation: RunInvocation) -> int:
     # arbitrary trees, so nothing here claims it is a repository — `gitstate` looks, and
     # reports nothing when there is nothing to report.
     gitstate.bind(config.workspace or os.getcwd())
-    otel.set_head_probe(lambda refresh: gitstate.current_head(refresh=refresh))
+    otel.set_repository_probe(
+        lambda cwd, add_dirs, refresh: gitstate.current_scope(
+            cwd, add_dirs, refresh=refresh
+        ).attributes()
+    )
 
     writer, resume = _open_run(
         name, runs_dir, resume_run_dir, run_id=run_id, params=params, no_cache=no_cache

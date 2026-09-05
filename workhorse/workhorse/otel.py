@@ -255,6 +255,7 @@ _NO_WAIT_TOKEN = int()
 # safe reading of "how deep are we" is "no scope of mine is open", which makes the
 # matching `unwind_to` a no-op instead of a sweep of somebody else's frames.
 _NO_OPEN_DEPTH = int()
+_NO_REPOSITORY: dict[str, str] = {}
 
 #: An exception class sets this `True` to say its raise moves the run rather than breaks
 #: it, so `unwind_to` closes the frames it left open without calling them a failure.
@@ -273,44 +274,60 @@ def _is_control_unwind(error: BaseException) -> bool:
     return getattr(error, CONTROL_UNWIND_MARKER, False) is True
 
 
-#: How a span learns the working tree's HEAD. A hook rather than an import, for the
-#: reason above: this module is the leaf every layer instruments through, and
-#: observing git is `workhorse.gitstate`'s job. The entry point points this at it
-#: once the run's tree is known; a process that never binds one — a library caller,
-#: a test — keeps the no-op and no attribute is stamped.
-#:
-#: The argument is *refresh*: False accepts the cached answer (span opens, which
-#: happen in bursts), True re-reads (span closes, where the whole point is to catch
-#: a HEAD that moved inside the span).
+#: How a span observes the directories it applies to. Values are unsuffixed telemetry
+#: attributes (``git.head``, ``workspace.path``, ``workhorse.repositories``); this
+#: module freezes them onto the span as ``.start`` and re-observes the same scope as
+#: ``.end``. The hook keeps git outside this leaf instrumentation module.
+RepositoryProbe = Callable[[str | None, tuple[str, ...], bool], Mapping[str, str]]
 HeadProbe = Callable[[bool], str]
 
 
-def _no_head(refresh: bool) -> str:  # noqa: ARG001 — the null probe ignores it
-    return ""
+def _no_repository(
+    cwd: str | None, add_dirs: tuple[str, ...], refresh: bool
+) -> Mapping[str, str]:  # noqa: ARG001 — the null probe ignores its scope
+    return {}
 
 
-_head_probe: HeadProbe = _no_head
+_repository_probe: RepositoryProbe = _no_repository
+
+
+def set_repository_probe(probe: RepositoryProbe | None) -> None:
+    """Point span stamping at a scoped directory observer, or restore the no-op."""
+    global _repository_probe
+    _repository_probe = probe or _no_repository
 
 
 def set_head_probe(probe: HeadProbe | None) -> None:
-    """Point span stamping at a repo observer, or back at the no-op with ``None``."""
-    global _head_probe
-    _head_probe = probe or _no_head
+    """Compatibility adapter for callers that only observe one HEAD."""
+    if probe is None:
+        set_repository_probe(None)
+        return
+
+    def repository(
+        cwd: str | None, add_dirs: tuple[str, ...], refresh: bool
+    ) -> Mapping[str, str]:  # noqa: ARG001 — a head-only probe has no directory scope
+        head = probe(refresh)
+        return {"git.head": head} if head else {}
+
+    set_repository_probe(repository)
 
 
-def _head_attrs(key: str, *, refresh: bool = False) -> dict[str, str]:
-    """``{key: <head>}``, or empty for anything that is not an observed hash.
-
-    Empty rather than blank: an absent attribute is honest about a cwd that is not a
-    repository, whereas ``git.head.start = ""`` is a claim nobody made. Swallowing is
-    deliberate and matches the rest of this module — a probe that raises must cost an
-    attribute, never the span.
-    """
+def _repository_attrs(
+    cwd: str | None = None,
+    add_dirs: tuple[str, ...] = (),
+    *,
+    refresh: bool = False,
+) -> dict[str, str]:
+    """One fail-soft immutable observation of an execution's directory scope."""
     try:
-        head = _head_probe(refresh)
+        return dict(_repository_probe(cwd, add_dirs, refresh))
     except Exception:
         return {}
-    return {key: head} if head else {}
+
+
+def _span_repository_attrs(snapshot: Mapping[str, str], phase: str) -> dict[str, str]:
+    """Suffix one snapshot's fields for a span boundary."""
+    return {f"{key}.{phase}": value for key, value in snapshot.items()}
 
 
 class Telemetry(Protocol):
@@ -343,6 +360,8 @@ class Telemetry(Protocol):
         effort: str | None,
         timeout: float,
         backend: str | None = None,
+        cwd: str | None = None,
+        add_dirs: tuple[str, ...] = (),
     ) -> None: ...
     def turn_end(
         self, error: str | None = None, error_class: str = "", error_kind: str = ""
@@ -354,6 +373,7 @@ class Telemetry(Protocol):
     def heartbeat(self, node_id: str, remaining_s: float) -> None: ...
     def turn_heartbeat(self, node_id: str, idle_s: float, elapsed_s: float) -> None: ...
     def current_node(self) -> str: ...
+    def current_repository(self) -> dict[str, str]: ...
     def open_depth(self) -> int: ...
     def unwind_to(self, depth: int, error: BaseException) -> None: ...
     def end_run(
@@ -394,6 +414,8 @@ class _NullTelemetry:
         effort: str | None,
         timeout: float,
         backend: str | None = None,
+        cwd: str | None = None,
+        add_dirs: tuple[str, ...] = (),
     ) -> None: ...
     def turn_end(
         self, error: str | None = None, error_class: str = "", error_kind: str = ""
@@ -407,6 +429,9 @@ class _NullTelemetry:
 
     def current_node(self) -> str:
         return ""
+
+    def current_repository(self) -> dict[str, str]:
+        return {}
 
     def open_depth(self) -> int:
         return 0
@@ -823,8 +848,10 @@ def turn_start(
     effort: str | None,
     timeout: float,
     backend: str | None = None,
+    cwd: str | None = None,
+    add_dirs: tuple[str, ...] = (),
 ) -> None:
-    _host.active.turn_start(node_id, model, effort, timeout, backend)
+    _host.active.turn_start(node_id, model, effort, timeout, backend, cwd, add_dirs)
 
 
 def turn_end(error: str | None = None, error_class: str = "", error_kind: str = "") -> None:
@@ -898,6 +925,11 @@ def current_node() -> str:
     return _host.active.current_node()
 
 
+def current_repository() -> dict[str, str]:
+    """The immutable repository snapshot captured by the innermost active span."""
+    return _host.active.current_repository()
+
+
 class _Telemetry:
     """The per-run span/metric state behind the module-level facade.
 
@@ -920,6 +952,9 @@ class _Telemetry:
         self._heartbeat_every_s = heartbeat_every_s
         self._lock = threading.RLock()
         self._root: Any = None
+        self._root_repository: tuple[
+            str | None, tuple[str, ...], dict[str, str]
+        ] | None = None
         # `end_run` is called more than once by design — every finalizing branch in
         # the driver stamps its own status, and a `finally` stamps `aborted` behind
         # them all as the crash backstop. Only the first may take effect, and that
@@ -937,10 +972,16 @@ class _Telemetry:
         # monotonic start stamp feeds the node.elapsed_s gauge, which — unlike the
         # span's own duration — is readable *while* the node is still running.
         self._stack: list[tuple[tuple[str, str, int], Any, float]] = []
+        self._span_repositories: dict[
+            int, tuple[str | None, tuple[str, ...], dict[str, str]]
+        ] = {}
         self._wait_seq = 0
         self._wait_keys: dict[int, tuple[str, str, int]] = {}
         self._wait_live: dict[int, tuple[str, str, float]] = {}
         self._turn: Any = None
+        self._turn_repository: tuple[
+            str | None, tuple[str, ...], dict[str, str]
+        ] | None = None
         # Wall-clock bounds of the open turn, so a harness that reports no duration
         # still gets one (see turn_end); the flag stops that fallback from clobbering
         # a duration the backend did report.
@@ -1026,9 +1067,12 @@ class _Telemetry:
     # ---- spans ---------------------------------------------------------- #
     def start_root(self, workflow: str) -> None:
         with self._lock:
+            snapshot = _repository_attrs(refresh=True)
             self._root = self._tracer.start_span(
-                f"run:{workflow}", attributes=_head_attrs("git.head.start", refresh=True)
+                f"run:{workflow}",
+                attributes=_span_repository_attrs(snapshot, "start"),
             )
+            self._root_repository = (None, (), snapshot)
 
     @_failsoft(None)
     def run_attribute(self, name: str, value: str) -> None:
@@ -1130,6 +1174,13 @@ class _Telemetry:
             return
         with self._lock:
             if phase == "enter":
+                cwd = str(extra.get("repository_cwd") or "") or None
+                raw_add_dirs = extra.get("repository_add_dirs") or []
+                add_dirs = (
+                    tuple(str(path) for path in raw_add_dirs)
+                    if isinstance(raw_add_dirs, list)
+                    else ()
+                )
                 self._start_execution(
                     ("node", node_id, seq),
                     node_id,
@@ -1141,6 +1192,8 @@ class _Telemetry:
                             else {}
                         )
                     },
+                    cwd=cwd,
+                    add_dirs=add_dirs,
                 )
             elif phase == "done":
                 self._end_execution(("node", node_id, seq), next_name=extra.get("next"))
@@ -1237,7 +1290,10 @@ class _Telemetry:
         attributes: dict[str, Any],
         *,
         mark_active: bool = True,
+        cwd: str | None = None,
+        add_dirs: tuple[str, ...] = (),
     ) -> None:
+        snapshot = _repository_attrs(cwd, add_dirs)
         span = self._tracer.start_span(
             span_name,
             context=self._parent_ctx(),
@@ -1245,15 +1301,13 @@ class _Telemetry:
                 "workhorse.node": node_id,
                 "workhorse.seq": key[2],
                 "workhorse.depth": len(self._stack),
-                # Cached: a node opens inside the burst of work the previous one's
-                # close already refreshed, so re-reading here would buy a subprocess
-                # per transition and the same hash.
-                **_head_attrs("git.head.start"),
+                **_span_repository_attrs(snapshot, "start"),
                 **attributes,
                 **self._labels,
             },
         )
         self._stack.append((key, span, time.monotonic()))
+        self._span_repositories[id(span)] = (cwd, add_dirs, snapshot)
         # Metrics export independently of span completion, so this is what makes
         # the currently executing state or node visible while it is still open.
         if mark_active:
@@ -1276,14 +1330,11 @@ class _Telemetry:
         """
         if all(k != key for k, _, _ in self._stack):
             return
-        # One refreshed read for the whole sweep: every span closing here closes *now*,
-        # so they share an end state, and re-reading per span would spawn a git per
-        # frame. Unequal to the span's `git.head.start` means something moved HEAD
-        # inside it — which this records and does not interpret.
-        end_head = _head_attrs("git.head.end", refresh=True)
         while self._stack:
             stack_key, span, _ = self._stack.pop()
-            for name, value in end_head.items():
+            cwd, add_dirs, _ = self._span_repositories.pop(id(span), (None, (), {}))
+            end_snapshot = _repository_attrs(cwd, add_dirs, refresh=True)
+            for name, value in _span_repository_attrs(end_snapshot, "end").items():
                 span.set_attribute(name, value)
             if cut:
                 span.set_attribute("workhorse.cut", cut)
@@ -1301,6 +1352,20 @@ class _Telemetry:
         """The innermost open node visit, or "" — what stamps a log record."""
         with self._lock:
             return self._stack[-1][0][1] if self._stack else ""
+
+    @_failsoft(_NO_REPOSITORY)
+    def current_repository(self) -> dict[str, str]:
+        """The innermost span's immutable start snapshot for log attribution."""
+        with self._lock:
+            if self._turn_repository is not None:
+                return dict(self._turn_repository[2])
+            if self._stack:
+                snapshot = self._span_repositories.get(id(self._stack[-1][1]))
+                if snapshot is not None:
+                    return dict(snapshot[2])
+            if self._root_repository is not None:
+                return dict(self._root_repository[2])
+            return {}
 
     @_failsoft(_NO_OPEN_DEPTH)
     def open_depth(self) -> int:
@@ -1340,6 +1405,10 @@ class _Telemetry:
             innermost = True
             while len(self._stack) > depth:
                 _, span, _ = self._stack.pop()
+                cwd, add_dirs, _ = self._span_repositories.pop(id(span), (None, (), {}))
+                end_snapshot = _repository_attrs(cwd, add_dirs, refresh=True)
+                for name, value in _span_repository_attrs(end_snapshot, "end").items():
+                    span.set_attribute(name, value)
                 span.set_attribute(
                     "workhorse.outcome", "control" if control else "error"
                 )
@@ -1381,16 +1450,19 @@ class _Telemetry:
             # no `finally` around it, or a kill between two of them. Closing it is the
             # backstop; stamping it is not. An abandoned frame says so with an attribute,
             # so a reader can still tell it apart from one that ran to its own end.
-            end_head = _head_attrs("git.head.end", refresh=True)
             while self._stack:
                 _, span, _ = self._stack.pop()
                 span.set_attribute("workhorse.outcome", "abandoned")
-                for name, value in end_head.items():
+                cwd, add_dirs, _ = self._span_repositories.pop(id(span), (None, (), {}))
+                end_snapshot = _repository_attrs(cwd, add_dirs, refresh=True)
+                for name, value in _span_repository_attrs(end_snapshot, "end").items():
                     span.set_attribute(name, value)
                 span.end()
             if self._root is not None:
                 self._root.set_attribute("workhorse.terminal", status)
-                for name, value in end_head.items():
+                cwd, add_dirs, _ = self._root_repository or (None, (), {})
+                end_snapshot = _repository_attrs(cwd, add_dirs, refresh=True)
+                for name, value in _span_repository_attrs(end_snapshot, "end").items():
                     self._root.set_attribute(name, value)
                 if error_class:
                     self._root.set_attribute("error.class", error_class)
@@ -1406,6 +1478,7 @@ class _Telemetry:
                     )
                 self._root.end()
                 self._root = None
+                self._root_repository = None
         self._shutdown()  # flushes the batch processor + metric reader
 
     # ---- agent turns ----------------------------------------------------- #
@@ -1417,6 +1490,8 @@ class _Telemetry:
         effort: str | None,
         timeout: float,
         backend: str | None = None,
+        cwd: str | None = None,
+        add_dirs: tuple[str, ...] = (),
     ) -> None:
         with self._lock:
             if self._turn is not None:  # defensive: never leak an open turn
@@ -1424,6 +1499,7 @@ class _Telemetry:
             self._turn_started = time.monotonic()
             self._turn_node = node_id
             self._turn_has_duration = False
+            snapshot = _repository_attrs(cwd, add_dirs)
             self._turn = self._tracer.start_span(
                 "agent_turn",
                 context=self._parent_ctx(),
@@ -1436,12 +1512,11 @@ class _Telemetry:
                     "model": model or "",
                     "effort": effort or "",
                     "timeout_s": -1 if timeout == float("inf") else int(timeout),
-                    # Refreshed, unlike a node open: the agent is what most often moves
-                    # HEAD, so the tree a turn *started* against is worth a subprocess.
-                    **_head_attrs("git.head.start", refresh=True),
+                    **_span_repository_attrs(snapshot, "start"),
                     **self._labels,
                 },
             )
+            self._turn_repository = (cwd, add_dirs, snapshot)
             attrs = self._live_attrs(node_id)
             if self._turn_active is not None:
                 self._turn_active.set(1, attrs)
@@ -1457,6 +1532,7 @@ class _Telemetry:
         with self._lock:
             turn, self._turn = self._turn, None
             node_id, self._turn_node = self._turn_node, ""
+            repository, self._turn_repository = self._turn_repository, None
             if turn is None:
                 return
             # Every turn gets a duration, even from a harness that reports none —
@@ -1467,7 +1543,9 @@ class _Telemetry:
                     "duration_ms", int((time.monotonic() - self._turn_started) * 1000)
                 )
             self._turn_started = None
-            for name, value in _head_attrs("git.head.end", refresh=True).items():
+            cwd, add_dirs, _ = repository or (None, (), {})
+            end_snapshot = _repository_attrs(cwd, add_dirs, refresh=True)
+            for name, value in _span_repository_attrs(end_snapshot, "end").items():
                 turn.set_attribute(name, value)
             if error:
                 # The class and the recovery bucket, not just the message. A store can

@@ -29,7 +29,7 @@ import os
 import sys
 from typing import Any
 
-from workhorse import gitstate, otel
+from workhorse import otel
 
 _LEVEL = (os.environ.get("WORKHORSE_LOG_LEVEL") or "INFO").strip().upper()
 # Third-party loggers that are chatty at DEBUG and say nothing about the run.
@@ -54,28 +54,27 @@ class _NodeFilter(logging.Filter):
 
 
 class _HeadFilter(logging.Filter):
-    """Stamp every record with the commit the run's tree was on when it was emitted.
+    """Stamp every record from the immutable snapshot of its innermost active span.
 
-    Same reasoning as :class:`_NodeFilter` — captured at emit, because by read time the
-    tree has moved — and the same mechanism: a non-standard attribute on the record,
-    which ``LoggingHandler`` carries through as a log attribute. It cannot be a
-    *resource* attribute instead: the resource is frozen when the provider is built,
-    and a resource that claimed one hash for a run whose HEAD moves would be wrong for
-    most of the run's records.
+    The span paid for the git observation when it opened. Copying that value here keeps
+    every log in the span pinned to the same origin/branch/commit without putting a git
+    subprocess on the logging path. Dotted names are deliberate OTel attributes; ``head``
+    stays beside ``git.head`` for collectors that predate the full repository snapshot.
 
     Attached to the OTel handler alone. The console renders neither this nor ``node``,
     and the value only has a consumer once records are being shipped.
 
-    Left absent rather than blank when nothing observed a tree, so a store can tell "not
-    a repo" from a hash it failed to read. The read is cached (see
-    :mod:`workhorse.gitstate`) — a `rev-parse` per log line is not affordable.
+    An unversioned primary directory still carries ``workspace.path`` and
+    ``workspace.vcs=unversioned``; git fields stay absent rather than claiming blanks.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if not hasattr(record, "head"):
-            head = gitstate.current_head()
-            if head:
-                record.head = head
+        snapshot = otel.current_repository()
+        for key, value in snapshot.items():
+            record.__dict__.setdefault(key, value)
+        head = snapshot.get("git.head")
+        if head:
+            record.__dict__.setdefault("head", head)
         return True
 
 

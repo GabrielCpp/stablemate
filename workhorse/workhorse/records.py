@@ -96,6 +96,8 @@ class RepoObservation(BaseModel):
     """
 
     path: str = ""
+    root: str = ""
+    origin: str = ""
     head: str = ""
     branch: str = ""
     dirty: bool | None = None

@@ -361,6 +361,8 @@ class Engine:
                 node_id,
                 "enter",
                 prompt=prompt,
+                repository_cwd=str(cwd) if cwd is not None else "",
+                repository_add_dirs=[str(path) for path in add_dirs or ()],
                 # Only when there is one: an `enter` carrying `chain: ""` would say a
                 # chainless turn had been considered for one, and every node has these
                 # events. With it, a reader of `events.jsonl` can tell lap 4 of one
