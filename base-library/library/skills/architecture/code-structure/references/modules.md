@@ -1,7 +1,7 @@
 # When a module becomes two
 
-Two triggers for splitting one module into two: what the docstring admits, and what an
-entry point is doing besides dispatching.
+Three triggers govern module-scale indirection: what the docstring admits, what an entry
+point is doing besides dispatching, and when a forwarding wrapper has no second job.
 
 Every rule below is one of the trigger rows in
 [the code-structure skill](../SKILL.md); read that table first if you are scanning for
@@ -33,3 +33,30 @@ command or endpoint.
 
 **Fix.** One module per command, holding that command's argument definition and its body; the entry
 point holds only the table that maps a name to it.
+
+## 2.3 One implementation has one body
+
+**Statement.** A required or public function owns its implementation. A private helper earns a
+separate name by serving another caller or by separating a different kind of work, not by moving
+the same body one hop away.
+
+**Trigger.** A function or method's meaningful body is only a call or returned call to a private
+helper defined in the same module; it forwards all or nearly all of its parameters unchanged; and
+that helper has no other production call or value reference. An added configuration or
+infrastructure argument does not stop the trigger: the caller can resolve it immediately before
+the inlined body. A method required by a port or framework still fires — the method is the body the
+contract requires, while the one-use helper is optional indirection.
+
+**Fix.** Move the helper's body into its sole caller, resolve any added argument there, and delete
+the helper. Keep the public or required name as the one place a reader enters and an implementation
+changes.
+
+This is a call-graph rule, not a line-count rule. A substantial helper behind one forwarding
+method is more expensive than a substantial method: navigation is mandatory, while reuse is zero.
+Tests calling the private helper do not create production reuse; test through the owning public
+function or inject the dependency the test needs to control.
+
+**Counter-case.** Keep the helper when it has another production caller or is passed as a callback;
+when the caller and helper deliberately separate effects from a pure decision and therefore do not
+forward the same parameter set; or when generated code, recursion, or a third-party registration
+requires the helper's independent identity. A hoped-for future caller is not a caller.

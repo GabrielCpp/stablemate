@@ -1,6 +1,6 @@
 ---
 name: stablemate-architecture-code-structure
-description: "The language-neutral rules for where code lives *inside* a layer — when a pile of functions becomes an object, when a module becomes two, when a value crossing a boundary needs a name, and where configuration and side effects are allowed to appear. Every rule carries a mechanically detectable trigger, so a violation is a finding rather than a matter of taste. Load when adding a module, growing a parameter list, choosing between a function and a class, or reviewing structure; hexagonal-architecture governs the boundaries *between* layers, and the stack architecture skill (go-architecture, python-architecture, flutter-architecture, typescript-architecture) supplies the mechanics. Applies to **/*.go,**/*.dart,**/*.ts,**/*.tsx,**/*.py."
+description: "The language-neutral rules for where code lives *inside* a layer — when a pile of functions becomes an object, when a module becomes two, when a forwarding wrapper should collapse, when a value crossing a boundary needs a name, and where configuration and side effects are allowed to appear. Every rule carries a mechanically detectable trigger, so a violation is a finding rather than a matter of taste. Load when adding a module, growing a parameter list, choosing between a function and a class, finding one function that only forwards to another, or reviewing structure; hexagonal-architecture governs the boundaries *between* layers, and the stack architecture skill (go-architecture, python-architecture, flutter-architecture, typescript-architecture) supplies the mechanics. Applies to **/*.go,**/*.dart,**/*.ts,**/*.tsx,**/*.py."
 metadata:
   generated_by: farrier
   source: library/skills/architecture/code-structure/SKILL.md
@@ -51,8 +51,9 @@ reason the rule exists. Each carries a quarter of the rule set:
 - **[references/objects.md](references/objects.md)** — rules 1.1–1.4. When a pile of functions
   becomes an object, and the stop condition that says it does not. Read it when you are weighing a
   function against a class, growing a parameter list, or looking at module-level mutable state.
-- **[references/modules.md](references/modules.md)** — rules 2.1–2.2. When one module is really
-  two. Read it when writing a module's docstring, or when an entry point started doing the work.
+- **[references/modules.md](references/modules.md)** — rules 2.1–2.3. When one module is really
+  two, or one function is only a corridor to another. Read it when writing a module's docstring,
+  when an entry point started doing the work, or when a private helper has only one caller.
 - **[references/boundaries.md](references/boundaries.md)** — rules 3.1–3.3. Values written and read
   back, returns with several pieces, and payloads from a schema you do not own. Read it when
   designing a checkpoint, a wire format, or a reader for another tool's output.
@@ -98,6 +99,7 @@ but this is the exception that is real.
 | [1.4](references/objects.md) | a class with no fields | make it a module |
 | [2.1](references/modules.md) | a module docstring that needs bullets | one module per bullet |
 | [2.2](references/modules.md) | wiring and >1 command body in one file | one module per command |
+| [2.3](references/modules.md) | one caller only forwards to one private helper | inline the helper |
 | [3.1](references/boundaries.md) | literal in, key-lookup-with-default out | one model owns both directions |
 | [3.2](references/boundaries.md) | 3+-tuple, documented map keys, mutated argument | a named record |
 | [3.3](references/boundaries.md) | a strict model mirroring a foreign schema | tolerant read, owned type |
