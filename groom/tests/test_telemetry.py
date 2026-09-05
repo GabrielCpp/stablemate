@@ -297,6 +297,62 @@ def test_usage_and_cost_land_in_promoted_columns_not_only_attrs_json():
         assert conn.execute(f"{unquoted} WHERE span_id = ?", ("a" * 16,)).fetchone()[0] is None
 
 
+def test_repository_snapshots_land_in_span_columns_and_remain_in_attrs():
+    repositories = json.dumps(
+        [
+            {
+                "path": "/workspace/docs",
+                "role": "cwd",
+                "vcs": "unversioned",
+                "root": "",
+                "origin": "",
+                "branch": "",
+                "head": "",
+            },
+            {
+                "path": "/workspace/api-service",
+                "role": "add_dir",
+                "vcs": "git",
+                "root": "/workspace/api-service",
+                "origin": "git@example.com:api-service.git",
+                "branch": "ostler-stories",
+                "head": "a" * 40,
+            },
+        ]
+    )
+    attrs = {
+        "workspace.path.start": "/workspace/api-service",
+        "workspace.path.end": "/workspace/api-service",
+        "workspace.vcs.start": "git",
+        "workspace.vcs.end": "git",
+        "git.origin.start": "git@example.com:api-service.git",
+        "git.origin.end": "git@example.com:api-service.git",
+        "git.branch.start": "ostler-stories",
+        "git.branch.end": "main",
+        "git.head.start": "a" * 40,
+        "git.head.end": "b" * 40,
+        "workhorse.repositories.start": repositories,
+        "workhorse.repositories.end": repositories,
+    }
+    with _TelemetryEnv():
+        store.insert_spans(
+            otlp.parse_traces(
+                _trace_request([{"name": "agent_turn", "node": "repair", "labels": attrs}])
+            )
+        )
+
+        span = store.query_spans()[0]
+        assert span["workspace_start"] == "/workspace/api-service"
+        assert span["vcs_start"] == "git"
+        assert span["origin_start"] == "git@example.com:api-service.git"
+        assert span["branch_start"] == "ostler-stories"
+        assert span["branch_end"] == "main"
+        assert span["head_start"] == "a" * 40
+        assert span["head_end"] == "b" * 40
+        assert span["repositories_start"] == repositories
+        assert json.loads(span["attrs_json"])["git.origin.start"] == attrs["git.origin.start"]
+
+
 def test_promoted_columns_are_added_to_a_database_that_predates_them():
     with _TelemetryEnv():
         # A groom.db from before the columns shipped. CREATE TABLE IF NOT EXISTS is a
@@ -1985,8 +2041,20 @@ def test_logs_roundtrip_and_query_filters():
             otlp.parse_logs(
                 _logs_request(
                     [
-                        {"body": "starting", "severity": 9, "ts": 10,
-                         "attrs": {"node": "prepare"}},
+                        {
+                            "body": "starting",
+                            "severity": 9,
+                            "ts": 10,
+                            "attrs": {
+                                "node": "prepare",
+                                "workspace.path": "/workspace/api-service",
+                                "workspace.vcs": "git",
+                                "git.origin": "https://example.com/api-service.git",
+                                "git.branch": "main",
+                                "git.head": "c" * 40,
+                                "workhorse.repositories": "[]",
+                            },
+                        },
                         {"body": "over budget", "severity": 13, "ts": 11,
                          "attrs": {"node": "select_item"}},
                         {"body": "exploded", "severity": 17, "ts": 12,
@@ -1996,6 +2064,13 @@ def test_logs_roundtrip_and_query_filters():
             )
         )
         assert len(store.query_logs()) == 3
+        starting = next(row for row in store.query_logs() if row["body"] == "starting")
+        assert starting["workspace"] == "/workspace/api-service"
+        assert starting["vcs"] == "git"
+        assert starting["origin"] == "https://example.com/api-service.git"
+        assert starting["branch"] == "main"
+        assert starting["head"] == "c" * 40
+        assert starting["repositories"] == "[]"
         assert {r["body"] for r in store.query_logs(node="select_item")} == {
             "over budget", "exploded"
         }

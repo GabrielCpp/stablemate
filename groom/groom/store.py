@@ -92,7 +92,17 @@ CREATE TABLE IF NOT EXISTS spans (
     pid INTEGER,
     resume_generation INTEGER,
     head_start TEXT,
-    head_end TEXT
+    head_end TEXT,
+    workspace_start TEXT,
+    workspace_end TEXT,
+    vcs_start TEXT,
+    vcs_end TEXT,
+    origin_start TEXT,
+    origin_end TEXT,
+    branch_start TEXT,
+    branch_end TEXT,
+    repositories_start TEXT,
+    repositories_end TEXT
 );
 CREATE INDEX IF NOT EXISTS spans_run ON spans(run_id, start_ts);
 CREATE INDEX IF NOT EXISTS spans_node ON spans(node);
@@ -116,7 +126,12 @@ CREATE TABLE IF NOT EXISTS logs (
     ts       REAL NOT NULL,
     trace_id TEXT NOT NULL DEFAULT '',
     attrs_json TEXT NOT NULL DEFAULT '{}',
-    head     TEXT
+    head     TEXT,
+    workspace TEXT,
+    vcs TEXT,
+    origin TEXT,
+    branch TEXT,
+    repositories TEXT
 );
 CREATE INDEX IF NOT EXISTS logs_run ON logs(run_id, ts);
 CREATE INDEX IF NOT EXISTS logs_node ON logs(run_id, node, ts);
@@ -166,6 +181,16 @@ _ADDED_SPAN_COLUMNS = (
     ("resume_generation", "INTEGER"),
     ("head_start", "TEXT"),
     ("head_end", "TEXT"),
+    ("workspace_start", "TEXT"),
+    ("workspace_end", "TEXT"),
+    ("vcs_start", "TEXT"),
+    ("vcs_end", "TEXT"),
+    ("origin_start", "TEXT"),
+    ("origin_end", "TEXT"),
+    ("branch_start", "TEXT"),
+    ("branch_end", "TEXT"),
+    ("repositories_start", "TEXT"),
+    ("repositories_end", "TEXT"),
     ("est_cost_usd", "REAL"),
     ("priced_model", "TEXT"),
 )
@@ -174,7 +199,14 @@ _ADDED_SPAN_COLUMNS = (
 #: rather than one for the whole run, because a workflow — or the agent inside a turn —
 #: may move HEAD at any point, and a run-level value would be wrong for most of the
 #: records. NULL means nothing observed a tree, which is not the same as an unknown hash.
-_ADDED_LOG_COLUMNS = (("head", "TEXT"),)
+_ADDED_LOG_COLUMNS = (
+    ("head", "TEXT"),
+    ("workspace", "TEXT"),
+    ("vcs", "TEXT"),
+    ("origin", "TEXT"),
+    ("branch", "TEXT"),
+    ("repositories", "TEXT"),
+)
 
 # OTel attribute key -> the `spans` column it is promoted to. OTel's attribute model
 # is a flat dict whose keys merely *look* dotted, so `usage.output_tokens` is stored
@@ -196,6 +228,16 @@ _PROMOTED_SPAN_COLUMNS = (
     # tree nobody looked at carries neither.
     ("git.head.start", "head_start", str),
     ("git.head.end", "head_end", str),
+    ("workspace.path.start", "workspace_start", str),
+    ("workspace.path.end", "workspace_end", str),
+    ("workspace.vcs.start", "vcs_start", str),
+    ("workspace.vcs.end", "vcs_end", str),
+    ("git.origin.start", "origin_start", str),
+    ("git.origin.end", "origin_end", str),
+    ("git.branch.start", "branch_start", str),
+    ("git.branch.end", "branch_end", str),
+    ("workhorse.repositories.start", "repositories_start", str),
+    ("workhorse.repositories.end", "repositories_end", str),
 )
 
 #: Promoted from the decoded span record rather than from its OTel attributes — these
@@ -590,10 +632,9 @@ def insert_metrics(points: list[dict[str, Any]]) -> None:
         )
 
 
-def _log_head(attrs: dict[str, Any]) -> str | None:
-    """The commit this record was emitted on, or NULL for a record nobody observed one
-    for. Kept out of the promoted-column machinery above because that one reads spans."""
-    raw = attrs.get("head")
+def _log_attribute(attrs: dict[str, Any], key: str) -> str | None:
+    """One log snapshot field, or NULL when the producer observed no value."""
+    raw = attrs.get(key)
     return raw if isinstance(raw, str) and raw else None
 
 
@@ -612,14 +653,21 @@ def insert_logs(records: list[dict[str, Any]]) -> None:
     with _STORE.writing() as conn:
         conn.executemany(
             "INSERT INTO logs (run_id, workflow, run_dir, node, logger, severity, body,"
-            " ts, trace_id, attrs_json, head) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " ts, trace_id, attrs_json, head, workspace, vcs, origin, branch, repositories)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (
                     r.get("run_id", ""), r.get("workflow", ""), r.get("run_dir", ""),
                     r.get("node", ""), r.get("logger", ""), r.get("severity", "INFO"),
                     r.get("body", ""), r.get("ts", 0.0), r.get("trace_id", ""),
                     json.dumps(r.get("attrs") or {}),
-                    _log_head(r.get("attrs") or {}),
+                    _log_attribute(r.get("attrs") or {}, "git.head")
+                    or _log_attribute(r.get("attrs") or {}, "head"),
+                    _log_attribute(r.get("attrs") or {}, "workspace.path"),
+                    _log_attribute(r.get("attrs") or {}, "workspace.vcs"),
+                    _log_attribute(r.get("attrs") or {}, "git.origin"),
+                    _log_attribute(r.get("attrs") or {}, "git.branch"),
+                    _log_attribute(r.get("attrs") or {}, "workhorse.repositories"),
                 )
                 for r in records
             ],
@@ -669,7 +717,8 @@ def query_logs(
     conn = _connection()
     rows = conn.execute(
         f"SELECT run_id, workflow, run_dir, node, logger, severity, body, ts, trace_id,"  # noqa: S608
-        f" attrs_json FROM logs {clause} ORDER BY ts DESC LIMIT ?",
+        f" attrs_json, head, workspace, vcs, origin, branch, repositories"
+        f" FROM logs {clause} ORDER BY ts DESC LIMIT ?",
         (*params, limit),
     ).fetchall()
     return [
@@ -1361,7 +1410,9 @@ def run_profile(run: str) -> dict[str, Any] | None:
 # migration can't silently change a query result's shape.
 _SPAN_COLUMNS = (
     "span_id, trace_id, parent_id, run_id, workflow, repo, branch, node, name,"
-    " run_dir, start_ts, end_ts, status, attrs_json"
+    " run_dir, start_ts, end_ts, status, attrs_json, head_start, head_end,"
+    " workspace_start, workspace_end, vcs_start, vcs_end, origin_start, origin_end,"
+    " branch_start, branch_end, repositories_start, repositories_end"
 )
 
 
