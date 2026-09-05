@@ -48,18 +48,51 @@ class ClaudeBackend(AgentBackend):
         add_dirs: list[str] | None = None,
         effort: str | None = None,
     ) -> str:
-        # Claude has a native reasoning-effort flag (`--effort low|medium|high|xhigh|max`).
-        return _run_cli(
-            prompt,
+        """Run one Claude CLI turn and return its final result text."""
+        cmd = [
+            "claude",
+            "--dangerously-skip-permissions",
+            "--output-format", "stream-json",
+            "--verbose",
+        ]
+        if model:
+            cmd.extend(["--model", model])
+        if effort:
+            cmd.extend(["--effort", effort])
+        for directory in add_dirs or []:
+            cmd.extend(["--add-dir", directory])
+        cmd.append("-p")
+
+        if session_id_path and session_id_path.exists():
+            sid = session_id_path.read_text().strip()
+            if sid:
+                cmd.extend(["--resume", sid])
+                print(f"[{node_id}] 🔄 Resuming session: {sid[:8]}...", flush=True)
+
+        # Stream through the shared supervised spawn path so timeout and process-group
+        # handling stay identical across harnesses.
+        stream = _stream_events(
+            cmd,
             node_id,
-            session_id_path,
-            model,
+            timeout,
             resilience=resilience,
-            timeout=timeout,
-            cwd=cwd,
-            add_dirs=add_dirs,
-            effort=effort,
+            stdin_data=prompt,
+            cwd=cwd or None,
             env_extra=self.harness_env(),
+        )
+
+        return _failure.classify_turn(
+            "claude",
+            node_id,
+            result_text=stream.result_text,
+            diagnostics=stream.diagnostics_text,
+            timed_out=stream.timed_out,
+            returncode=stream.returncode,
+            timeout=timeout,
+            session_id=stream.session_id,
+            session_id_path=session_id_path,
+            rate_limited=stream.rate_limited,
+            rate_reset_at=stream.rate_reset_at,
         )
 
     def compact(
@@ -71,191 +104,81 @@ class ClaudeBackend(AgentBackend):
         timeout: float,
         resilience: AgentResilience,
     ) -> bool:
-        # Same harness, same environment: a knob that shapes the turn must also shape
-        # the /compact turn, or compaction runs under a different CLI configuration
-        # than the conversation it is compacting.
-        return _compact_session(
-            session_id_path,
-            node_id,
-            model,
-            resilience=resilience,
-            timeout=timeout,
-            env_extra=self.harness_env(),
-        )
+        """Resume the node's session and ask Claude to compact its context.
 
-
-def _run_cli(
-    prompt: str,
-    node_id: str,
-    session_id_path: Path | None,
-    model: str | None = None,
-    *,
-    resilience: AgentResilience,
-    timeout: float,
-    cwd: str | None = None,
-    add_dirs: list[str] | None = None,
-    effort: str | None = None,
-    env_extra: dict[str, str] | None = None,
-) -> str:
-    """Run a single Claude CLI turn for ``prompt``, returning the final result
-    text. Raises ``BackendInvocationError`` (via ``classify_turn``) on CLI failure,
-    classifying it as transient when the captured output matches a known retryable
-    marker.
-
-    Args:
-        timeout: Maximum seconds to wait for a result event from the agent.
-        cwd: Working directory for the subprocess (controls CLAUDE.md discovery).
-        add_dirs: Additional directories to grant the agent access to.
-        env_extra: Operator-configured extra environment for this harness
-            (``[harness.claude].env``), layered over the inherited environment.
-    """
-    cmd = [
-        "claude",
-        "--dangerously-skip-permissions",
-        "--output-format", "stream-json",
-        "--verbose",
-    ]
-    if model:
-        cmd.extend(["--model", model])
-    if effort:
-        cmd.extend(["--effort", effort])
-    for d in (add_dirs or []):
-        cmd.extend(["--add-dir", d])
-    cmd.append("-p")
-
-    # Resume session if one exists
-    if session_id_path and session_id_path.exists():
+        Persist the resulting session id and return whether compaction ran. Missing
+        sessions and failed or timed-out compactions return ``False`` so the ladder
+        can reframe instead.
+        """
+        if not (session_id_path and session_id_path.exists()):
+            return False
         sid = session_id_path.read_text().strip()
-        if sid:
-            cmd.extend(["--resume", sid])
-            print(f"[{node_id}] 🔄 Resuming session: {sid[:8]}...", flush=True)
+        if not sid:
+            return False
 
-    # Stream Claude's events through the shared supervised spawn path: own process
-    # group, hard watchdog, and group-reaping kill all live in stream_subprocess, so the
-    # timeout behaves identically here and in every other harness. The diagnostics string
-    # captures non-event output (e.g. "Spending cap reached") and error-result subtypes
-    # so the caller can classify transient failures.
-    stream = _stream_events(
-        cmd, node_id, timeout,
-        resilience=resilience,
-        stdin_data=prompt, cwd=cwd or None, env_extra=env_extra,
-    )
+        cmd = [
+            "claude",
+            "--dangerously-skip-permissions",
+            "--output-format", "stream-json",
+            "--verbose",
+        ]
+        if model:
+            cmd.extend(["--model", model])
+        cmd.extend(["--resume", sid, "-p"])
 
-    # Classify the finished turn through the one shared classifier so the Claude
-    # path and every other backend produce identical messages and transient /
-    # overflow / cap / non-recoverable verdicts. Claude's structured-cap signals
-    # (rate_limited / rate_reset_at, from the stream-json rate_limit_event) are
-    # passed in so a capped window still carries its precise reset epoch.
-    return _failure.classify_turn(
-        "claude",
-        node_id,
-        result_text=stream.result_text,
-        diagnostics=stream.diagnostics_text,
-        timed_out=stream.timed_out,
-        returncode=stream.returncode,
-        timeout=timeout,
-        session_id=stream.session_id,
-        session_id_path=session_id_path,
-        rate_limited=stream.rate_limited,
-        rate_reset_at=stream.rate_reset_at,
-    )
+        print(f"[{node_id}] 🗜 compacting session {sid[:8]}… to free context", flush=True)
+        st = {
+            "saw_compacting": False,
+            "compact_failed": False,
+            "compact_error": "",
+            "new_session_id": sid,
+        }
 
-
-def _compact_session(
-    session_id_path: Path | None,
-    node_id: str,
-    model: str | None = None,
-    *,
-    resilience: AgentResilience,
-    timeout: float,
-    env_extra: dict[str, str] | None = None,
-) -> bool:
-    """Best-effort: resume the node's session and run the CLI's ``/compact`` command
-    to summarize the conversation so far, freeing context so the node can continue
-    on the same (now smaller) session.
-
-    Persists the resulting session id so the next attempt resumes the compacted
-    conversation. Returns True when compaction ran without itself overflowing;
-    returns False (never raises) when there is no session to compact, the call
-    fails, or ``/compact`` couldn't run within the window — callers then fall back
-    to reframing.
-
-    The headless CLI (verified on Claude Code 2.1.x) honors ``/compact`` in ``-p
-    --resume`` mode and reports the outcome via ``system``/``status`` events:
-    ``status: "compacting"`` then a terminal event carrying ``compact_result``
-    ("success" / "failed", with ``compact_error``). The session id is preserved.
-    We key success off ``compact_result`` (treating "started but no explicit
-    failure" as success for forward-compat), and persist the session id so the
-    retry resumes the compacted conversation.
-    """
-    if not (session_id_path and session_id_path.exists()):
-        return False
-    sid = session_id_path.read_text().strip()
-    if not sid:
-        return False
-
-    cmd = [
-        "claude",
-        "--dangerously-skip-permissions",
-        "--output-format", "stream-json",
-        "--verbose",
-    ]
-    if model:
-        cmd.extend(["--model", model])
-    cmd.extend(["--resume", sid, "-p"])
-
-    print(f"[{node_id}] 🗜 compacting session {sid[:8]}… to free context", flush=True)
-    st = {"saw_compacting": False, "compact_failed": False, "compact_error": "",
-          "new_session_id": sid}
-
-    def on_line(raw: str) -> None:
-        line = raw.strip()
-        if not line:
-            return
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            return
-        if event.get("session_id"):
-            st["new_session_id"] = event["session_id"]
-        if event.get("status") == "compacting":
-            st["saw_compacting"] = True
-        if "compact_result" in event:
-            if event.get("compact_result") == "failed":
-                st["compact_failed"] = True
-                st["compact_error"] = str(event.get("compact_error") or "")
-            elif event.get("compact_result") == "success":
+        def on_line(raw: str) -> None:
+            line = raw.strip()
+            if not line:
+                return
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                return
+            if event.get("session_id"):
+                st["new_session_id"] = event["session_id"]
+            if event.get("status") == "compacting":
                 st["saw_compacting"] = True
+            if "compact_result" in event:
+                if event.get("compact_result") == "failed":
+                    st["compact_failed"] = True
+                    st["compact_error"] = str(event.get("compact_error") or "")
+                elif event.get("compact_result") == "success":
+                    st["saw_compacting"] = True
 
-    try:
-        # Shares the supervised spawn path (own process group, hard watchdog, group
-        # reap), so a wedged /compact turn can't hang the run either.
-        _process.stream_subprocess(
-            cmd, node_id, timeout, on_line,
-            resilience=resilience,
-            stdin_data="/compact", env_extra=env_extra,
-        )
-    except reload.ReloadRequested:
-        # Best-effort covers compaction *failing*; it does not cover the operator
-        # cutting it. Swallowed here it would return False, the ladder would read that
-        # as "compaction is unavailable" and spend a reframe — a fresh session and a
-        # whole new turn against the very code the reload is replacing.
-        raise
-    except Exception as exc:  # noqa: BLE001 — compaction is best-effort
-        print(f"[{node_id}] ⚠ compaction call failed: {exc}", flush=True)
-        return False
+        try:
+            _process.stream_subprocess(
+                cmd,
+                node_id,
+                timeout,
+                on_line,
+                resilience=resilience,
+                stdin_data="/compact",
+                env_extra=self.harness_env(),
+            )
+        except reload.ReloadRequested:
+            # A reload cut is not a failed best-effort compaction: the ladder must
+            # unwind instead of spending a reframe on code being replaced.
+            raise
+        except Exception as exc:  # noqa: BLE001 — compaction is best-effort
+            print(f"[{node_id}] ⚠ compaction call failed: {exc}", flush=True)
+            return False
 
-    saw_compacting = st["saw_compacting"]
-    compact_failed = st["compact_failed"]
-    compact_error = st["compact_error"]
-    new_session_id = st["new_session_id"]
-    if new_session_id:
-        session_id_path.write_text(new_session_id)
+        new_session_id = st["new_session_id"]
+        if new_session_id:
+            session_id_path.write_text(new_session_id)
 
-    if compact_failed:
-        print(f"[{node_id}] ⚠ compaction failed: {compact_error}", flush=True)
-        return False
-    return saw_compacting
+        if st["compact_failed"]:
+            print(f"[{node_id}] ⚠ compaction failed: {st['compact_error']}", flush=True)
+            return False
+        return st["saw_compacting"]
 
 
 @dataclass(slots=True)

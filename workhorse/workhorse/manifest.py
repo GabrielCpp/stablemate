@@ -52,11 +52,6 @@ _SKILL_DIR = "_skill_dir"
 _REPO_ROOT = "_repo_root"
 
 
-def _mapping(value: Any) -> dict[str, Any]:
-    """A dict, or an empty one — see :class:`ContextManifest` on tolerance."""
-    return dict(value) if isinstance(value, Mapping) else {}
-
-
 def _str_map(value: Any) -> dict[str, str]:
     """The string→string pairs of a mapping, dropping anything else."""
     if not isinstance(value, Mapping):
@@ -124,7 +119,7 @@ class ContextManifest(BaseModel):
     @field_validator("template", "repo", "vars", mode="before")
     @classmethod
     def _tolerate_mapping(cls, value: Any) -> dict[str, Any]:
-        return _mapping(value)
+        return dict(value) if isinstance(value, Mapping) else {}
 
     @field_validator("instructions", "prompts", mode="before")
     @classmethod
