@@ -32,6 +32,7 @@ from pathlib import Path
 
 from workhorse.config_run import AgentResilience
 from workhorse.runner import usage as _usage
+from workhorse.runner.backends import ensure_prompt_is_not_in_argv, prepare_argv_prompt
 from workhorse.runner.backends.jsonl import JsonlBackend
 from workhorse.runner.backends.turn import TurnState, finalize_turn, read_session_id
 
@@ -82,7 +83,9 @@ class ClineBackend(JsonlBackend):
 
     Autonomous by construction: ``--auto-approve true`` answers every tool prompt, and
     headless mode is what ``--json`` already implies. Sessions resume by id via
-    ``--id``. ``add_dirs`` has no cline equivalent — it works the tree at ``cwd`` — so
+    ``--id``. Oversized prompts are staged as the node's prompt artifact and the bounded
+    positional message directs the agent to read it. ``add_dirs`` has no cline
+    equivalent — it works the tree at ``cwd`` — so
     a multi-repo node must be given a ``cwd`` that contains what it needs.
 
     Compaction is declined here even though cline has a ``--compaction`` flag: that
@@ -106,6 +109,7 @@ class ClineBackend(JsonlBackend):
         session_id_path: Path | None,
         model: str | None = None,
         *,
+        prompt_path: Path | None = None,
         timeout: float,
         resilience: AgentResilience,
         cwd: str | None = None,
@@ -113,6 +117,7 @@ class ClineBackend(JsonlBackend):
         effort: str | None = None,
     ) -> str:
         sid = read_session_id(session_id_path)
+        argv_prompt, _attachment = prepare_argv_prompt(prompt, prompt_path)
         cmd = [
             "cline",
             "--json",
@@ -133,7 +138,8 @@ class ClineBackend(JsonlBackend):
             print(f"[{node_id}] 🔄 Resuming cline session: {sid[:8]}...", flush=True)
         # The prompt is a positional argument, and `--` ends option parsing so one
         # starting with '-' is still the message.
-        cmd += ["--", prompt]
+        cmd += ["--", argv_prompt]
+        ensure_prompt_is_not_in_argv(prompt, cmd)
         state = self.stream(
             cmd, node_id, timeout, None, _on_event,
             resilience=resilience, cwd=cwd,

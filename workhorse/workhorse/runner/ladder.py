@@ -418,6 +418,7 @@ class AgentRunner:
             try:
                 outputs = self._invoke_and_parse(
                     prompt, node, session_id_path, model,
+                    prompt_path=prompt_path,
                     timeout=effective_timeout,
                     cwd=rendered_cwd, add_dirs=rendered_add_dirs,
                     effort=node_effort,
@@ -570,6 +571,7 @@ class AgentRunner:
         session_id_path: Path | None,
         model: str | None,
         *,
+        prompt_path: Path | None = None,
         timeout: float,
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
@@ -587,6 +589,7 @@ class AgentRunner:
         for attempt in range(max_output_retries + 1):
             result_text = self.turn(
                 prompt, node.id, session_id_path, model=model, timeout=timeout,
+                prompt_path=prompt_path,
                 cwd=cwd, add_dirs=add_dirs, effort=effort,
             )
             try:
@@ -631,6 +634,7 @@ class AgentRunner:
         session_id_path: Path | None,
         model: str | None = None,
         *,
+        prompt_path: Path | None = None,
         timeout: float,
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
@@ -682,6 +686,7 @@ class AgentRunner:
                         node_id,
                         session_id_path,
                         model,
+                        prompt_path=prompt_path,
                         timeout=timeout,
                         resilience=resilience,
                         cwd=cwd,

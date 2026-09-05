@@ -86,6 +86,7 @@ def test_rendered_prompt_is_written_and_only_path_is_printed():
 
     def fake_invoke(prompt, node_id, sid, model=None, timeout=None, **kwargs):
         assert prompt == "Hello hunter2"
+        assert kwargs["prompt_path"] == prompt_path
         assert prompt_path.read_text(encoding="utf-8") == "Hello hunter2"
         return payload
 

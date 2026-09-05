@@ -80,7 +80,11 @@ runs/
 Artifacts are written under `--runs-dir` (default `<cwd>/.agents/runs`). Before
 each agent turn, workhorse writes the rendered `prompt.md` and logs only that path
 so failed or interrupted nodes remain inspectable without dumping variables. A
-`<step-id>/` directory is overwritten on every visit, so a node in a loop leaves only
+prompt above 96 KiB also uses this artifact for delivery: OpenCode and Copilot attach
+it natively, Cline receives a short instruction to read it, and stdin-native Claude
+and Codex continue receiving the complete prompt on stdin. This keeps large prompt
+content out of the subprocess argument vector and below operating-system argv limits.
+A `<step-id>/` directory is overwritten on every visit, so a node in a loop leaves only
 its last prompt there; `turns/` keeps the earlier ones, which are what a node that
 re-decided the same thing five times has to be diagnosed from. The
 Docker harness redirects artifacts to a persistent volume instead — see

@@ -31,6 +31,7 @@ from workhorse import sessions
 from workhorse.runner import failure, ladder, process
 from workhorse.runner.backends import (
     AgentBackend,
+    claude,
     cline,
     codex,
     copilot,
@@ -238,6 +239,22 @@ def test_non_claude_backends_registered():
         assert b.supports_compaction is False  # none compact in place
 
 
+def test_cline_points_a_large_prompt_at_its_artifact_instead_of_putting_it_in_argv():
+    """Cline has no attachment flag, so its bounded message names the complete artifact."""
+    prompt = "large prompt\n" * 12_000
+    prompt_path = Path(tempfile.mkdtemp()) / "prompt.md"
+    fake, captured = _fake_stream(
+        turn.TurnState(result_text="ANSWER", session_id="task-1")
+    )
+
+    _run_turn(ClineBackend(fake), prompt, "n", None, prompt_path=prompt_path)
+
+    cmd = captured["cmd"]
+    assert prompt not in cmd
+    assert str(prompt_path) in cmd[-1]
+    assert prompt_path.read_text(encoding="utf-8") == prompt
+
+
 def _fake_stream(canned):
     """Return a ``stream_jsonl`` stand-in that records the cmd/stdin/cwd/env and returns
     a canned ``TurnState``."""
@@ -334,6 +351,24 @@ def test_claude_no_effort_omits_flag():
     assert "--effort" not in cmd
 
 
+def test_claude_keeps_a_large_prompt_on_stdin():
+    prompt = "large prompt\n" * 12_000
+    captured = {}
+
+    def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
+        captured["cmd"] = cmd
+        captured["stdin"] = kwargs["stdin_data"]
+        on_line(json.dumps({"type": "result", "result": "OK", "subtype": "success"}))
+        return False, 0
+
+    with patch.object(claude._process, "stream_subprocess", fake_stream):
+        out = _run_turn(ClaudeBackend(), prompt, "n", None)
+
+    assert out == "OK"
+    assert prompt not in captured["cmd"]
+    assert captured["stdin"] == prompt
+
+
 def test_copilot_effort_maps_to_native_flag():
     """Copilot has a native `--effort <level>` flag; the prompt is passed verbatim."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
@@ -377,6 +412,18 @@ def test_codex_run_turn_fresh_then_resume():
     _run_turn(CodexBackend(fake2), "P2", "n", sidp)
     assert captured2["cmd"][:3] == ["codex", "exec", "resume"]
     assert "tid-123" in captured2["cmd"]
+
+
+def test_codex_keeps_a_large_prompt_on_stdin():
+    prompt = "large prompt\n" * 12_000
+    fake, captured = _fake_stream(
+        turn.TurnState(result_text="OK", session_id="tid-123")
+    )
+
+    _run_turn(CodexBackend(fake), prompt, "n", None)
+
+    assert prompt not in captured["cmd"]
+    assert captured["stdin"] == prompt
 
 
 def test_codex_profile_from_env():
@@ -508,6 +555,22 @@ def test_copilot_run_turn_fresh_then_resume():
     )
     _run_turn(CopilotBackend(fake2), "P2", "n", sidp)
     assert captured2["cmd"][captured2["cmd"].index("--session-id") + 1] == "sess-1"
+
+
+def test_copilot_attaches_a_large_prompt_instead_of_putting_it_in_argv():
+    """A prompt larger than Linux's per-argument limit must reach Copilot as a file."""
+    prompt = "large prompt\n" * 12_000
+    prompt_path = Path(tempfile.mkdtemp()) / "prompt.md"
+    fake, captured = _fake_stream(
+        turn.TurnState(result_text="ANSWER", session_id="sess-1")
+    )
+
+    _run_turn(CopilotBackend(fake), prompt, "n", None, prompt_path=prompt_path)
+
+    cmd = captured["cmd"]
+    assert prompt not in cmd
+    assert cmd[cmd.index("--attachment") + 1] == str(prompt_path)
+    assert prompt_path.read_text(encoding="utf-8") == prompt
 
 
 def test_codex_on_event_extracts_text_and_session():
@@ -752,6 +815,22 @@ def test_opencode_run_turn_fresh_then_resume():
     )
     _run_turn(OpenCodeBackend(fake2), "P2", "n", sidp, model="openrouter/xiaomi/mimo-v2.5")
     assert captured2["cmd"][captured2["cmd"].index("--session") + 1] == "ses_1"
+
+
+def test_opencode_attaches_a_large_prompt_instead_of_putting_it_in_argv():
+    """A prompt larger than Linux's per-argument limit must reach OpenCode as a file."""
+    prompt = "large prompt\n" * 12_000
+    prompt_path = Path(tempfile.mkdtemp()) / "prompt.md"
+    fake, captured = _fake_stream(
+        turn.TurnState(result_text="PONG", session_id="ses_1")
+    )
+
+    _run_turn(OpenCodeBackend(fake), prompt, "n", None, prompt_path=prompt_path)
+
+    cmd = captured["cmd"]
+    assert prompt not in cmd
+    assert cmd[cmd.index("--file") + 1] == str(prompt_path)
+    assert prompt_path.read_text(encoding="utf-8") == prompt
 
 
 def test_opencode_effort_variant_mapping_and_omit():

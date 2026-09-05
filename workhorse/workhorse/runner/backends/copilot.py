@@ -7,6 +7,7 @@ from pathlib import Path
 
 from workhorse.config_run import AgentResilience
 from workhorse.runner import usage as _usage
+from workhorse.runner.backends import ensure_prompt_is_not_in_argv, prepare_argv_prompt
 from workhorse.runner.backends.jsonl import JsonlBackend
 from workhorse.runner.backends.turn import TurnState, finalize_turn, read_session_id
 
@@ -36,7 +37,8 @@ def _on_event(event, state: TurnState, node_id):
 
 class CopilotBackend(JsonlBackend):
     """GitHub Copilot CLI (``copilot -p --output-format json``). No in-place
-    compaction. --allow-all-tools + --no-ask-user make it fully autonomous (the
+    compaction. Oversized prompts use its native ``--attachment``. --allow-all-tools
+    + --no-ask-user make it fully autonomous (the
     container is the sandbox). Session is resumed by id via --session-id.
     ``add_dirs`` maps to one --add-dir per directory: Copilot's own path sandbox
     only allows CWD + subdirs + the temp dir by default, so multi-repo dispatch
@@ -54,6 +56,7 @@ class CopilotBackend(JsonlBackend):
         session_id_path: Path | None,
         model: str | None = None,
         *,
+        prompt_path: Path | None = None,
         timeout: float,
         resilience: AgentResilience,
         cwd: str | None = None,
@@ -61,11 +64,12 @@ class CopilotBackend(JsonlBackend):
         effort: str | None = None,
     ) -> str:
         sid = read_session_id(session_id_path)
+        argv_prompt, attachment = prepare_argv_prompt(prompt, prompt_path)
         # Copilot takes the prompt as a --prompt arg (no stdin prompt channel).
         cmd = [
             "copilot",
             "-p",
-            prompt,
+            argv_prompt,
             "--output-format",
             "json",
             "--allow-all",
@@ -83,9 +87,12 @@ class CopilotBackend(JsonlBackend):
         # sandbox only allows CWD + subdirs + temp dir by default.
         for d in add_dirs or []:
             cmd += ["--add-dir", d]
+        if attachment is not None:
+            cmd += ["--attachment", str(attachment)]
         if sid:
             cmd += ["--session-id", sid]
             print(f"[{node_id}] 🔄 Resuming copilot session: {sid[:8]}...", flush=True)
+        ensure_prompt_is_not_in_argv(prompt, cmd)
         state = self.stream(
             cmd, node_id, timeout, None, _on_event,
             resilience=resilience, cwd=cwd,

@@ -13,6 +13,7 @@ from pathlib import Path
 from workhorse.config_run import AgentResilience
 from workhorse.runner import failure as _failure
 from workhorse.runner import usage as _usage
+from workhorse.runner.backends import ensure_prompt_is_not_in_argv, prepare_argv_prompt
 from workhorse.runner.backends.jsonl import JsonlBackend
 from workhorse.runner.backends.turn import TurnState, finalize_turn, read_session_id
 
@@ -156,8 +157,9 @@ class OpenCodeBackend(JsonlBackend):
     """OpenCode CLI (``opencode run --format json``). Speaks plain chat-completions
     to whatever provider its model names, so it drives OpenRouter models directly —
     e.g. ``openrouter/xiaomi/mimo-v2.5`` — with no proxy. The prompt is passed as the
-    positional message (after ``--`` so a leading dash can't be read as a flag);
-    sessions resume by id via ``--session``. No in-place compaction."""
+    positional message (after ``--`` so a leading dash can't be read as a flag), or
+    attaches an oversized message with ``--file``; sessions resume by id via
+    ``--session``. No in-place compaction."""
 
     name = "opencode"
     default_model = (
@@ -172,6 +174,7 @@ class OpenCodeBackend(JsonlBackend):
         session_id_path: Path | None,
         model: str | None = None,
         *,
+        prompt_path: Path | None = None,
         timeout: float,
         resilience: AgentResilience,
         cwd: str | None = None,
@@ -179,6 +182,7 @@ class OpenCodeBackend(JsonlBackend):
         effort: str | None = None,
     ) -> str:
         sid = read_session_id(session_id_path)
+        argv_prompt, attachment = prepare_argv_prompt(prompt, prompt_path)
         # --print-logs routes ERROR-level logs to stderr (merged into stdout by stream_subprocess),
         # so quota/limit errors like "The usage limit has been reached" appear as non-JSON lines in
         # diagnostics. The existing _is_cap() check then catches "usage limit" and triggers the
@@ -202,8 +206,11 @@ class OpenCodeBackend(JsonlBackend):
         if sid:
             cmd += ["--session", sid]
             print(f"[{node_id}] 🔄 Resuming opencode session: {sid[:8]}...", flush=True)
+        if attachment is not None:
+            cmd += ["--file", str(attachment)]
         # `--` ends option parsing so a prompt starting with '-' is still the message.
-        cmd += ["--", prompt]
+        cmd += ["--", argv_prompt]
+        ensure_prompt_is_not_in_argv(prompt, cmd)
         # OpenCode reads the message from argv (no stdin prompt channel), so pass
         # nothing on stdin.
         # opencode's internal title/summary helper reads `small_model` from config —

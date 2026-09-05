@@ -289,6 +289,9 @@ visit a looping node overwrote, `sessions.jsonl` mapping each turn to its agent-
 session, and `transcripts/` capturing the turns themselves — from a native session store,
 OpenCode's full JSON session export, or a redacted stream fallback — because the CLI's own
 session data lives on one host and is pruned whenever it likes.
+For argv-based CLIs, prompts above 96 KiB are delivered through that persisted
+`prompt.md` instead of being placed in one subprocess argument; stdin-native CLIs keep
+their existing transport.
 
 ```
 runs/<workflow>-<run-id>/{run.json,launch.json,checkpoint.json,context.json,events.jsonl,sessions.jsonl,turns/,transcripts/,<step-id>/}

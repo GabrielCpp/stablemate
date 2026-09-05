@@ -84,6 +84,7 @@ class CodexBackend(JsonlBackend):
         session_id_path: Path | None,
         model: str | None = None,
         *,
+        prompt_path: Path | None = None,
         timeout: float,
         resilience: AgentResilience,
         cwd: str | None = None,

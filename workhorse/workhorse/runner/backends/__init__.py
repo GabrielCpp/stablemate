@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from workhorse._vendor.stablemate_core.config import resolve_harness_env
+from workhorse.runner.failure import BackendInvocationError
 
 if TYPE_CHECKING:
     # Annotation-only, and load-bearing that it stays that way: ``config_run`` holds
@@ -37,6 +38,35 @@ if TYPE_CHECKING:
     # stands for "no CLI selected"). A runtime import here would close that into a
     # cycle. Nothing in this module *uses* the type — it only types two signatures.
     from workhorse.config_run import AgentResilience
+
+
+# Linux permits an argv vector much larger than any one argument. Keep file-backed
+# delivery comfortably below the common 128 KiB per-argument ceiling.
+INLINE_PROMPT_LIMIT_BYTES = 96 * 1024
+
+
+def prepare_argv_prompt(prompt: str, prompt_path: Path | None) -> tuple[str, Path | None]:
+    """Return a bounded argv message and stage oversized content at ``prompt_path``."""
+    if len(prompt.encode("utf-8")) <= INLINE_PROMPT_LIMIT_BYTES:
+        return prompt, None
+    if prompt_path is None:
+        raise BackendInvocationError(
+            "an oversized prompt needs a prompt artifact path for file-backed delivery"
+        )
+    prompt_path.write_text(prompt, encoding="utf-8")
+    message = (
+        "The complete prompt for this turn is in the attached file at "
+        f"{prompt_path}. Read it in full and follow it as the user request."
+    )
+    return message, prompt_path
+
+
+def ensure_prompt_is_not_in_argv(prompt: str, command: list[str]) -> None:
+    """Enforce the transport invariant before spawning an argv-based harness."""
+    if len(prompt.encode("utf-8")) > INLINE_PROMPT_LIMIT_BYTES and any(
+        prompt in argument for argument in command
+    ):
+        raise RuntimeError("oversized prompt remained in the subprocess argument vector")
 
 
 class AgentBackend(ABC):
@@ -76,6 +106,7 @@ class AgentBackend(ABC):
         session_id_path: Path | None,
         model: str | None = None,
         *,
+        prompt_path: Path | None = None,
         timeout: float,
         resilience: AgentResilience,
         cwd: str | None = None,
@@ -88,6 +119,8 @@ class AgentBackend(ABC):
         classifying it as ``transient`` / ``overflow`` / cap (``reset_at``) so the
         ladder can recover appropriately.
 
+        ``prompt_path`` is the persisted full prompt available for file-backed
+        delivery when an argv-only harness would exceed its argument limit.
         ``cwd`` sets the subprocess working directory (controls CLAUDE.md/skills
         discovery). ``add_dirs`` are additional directories the agent can access
         (passed as --add-dir flags to Claude). ``effort`` is the node's reasoning
