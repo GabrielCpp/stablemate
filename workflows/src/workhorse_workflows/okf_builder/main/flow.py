@@ -63,7 +63,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
 from workhorse_workflows.okf_builder.main.nodes import (
@@ -110,6 +110,33 @@ MAX_RESCAN_ROUNDS = 6
 #: so on a four-thousand-item book it essentially never repeats. What actually stops a
 #: stubborn repair is the per-target counter; this stays as the coarse backstop it was.
 MAX_STALL_ROUNDS = 3
+
+
+def repair_power(current_item: dict[str, Any], item_context: str) -> str:
+    """Choose the repair turn's model tier from deterministic worklist context."""
+    try:
+        attempts = int(current_item.get("attempts", 0) or 0)
+    except (TypeError, ValueError):
+        attempts = 0
+    if attempts > 0:
+        return "high"
+    try:
+        context = json.loads(item_context or "{}")
+    except ValueError:
+        return "medium"
+    if not isinstance(context, dict):
+        return "medium"
+    findings = context.get("findings")
+    related = context.get("related")
+    paths_in_scope = context.get("paths")
+    if (
+        context.get("grounded") is True
+        or (isinstance(related, list) and bool(related))
+        or (isinstance(paths_in_scope, list) and len(paths_in_scope) > 1)
+        or (isinstance(findings, list) and len(findings) >= 3)
+    ):
+        return "high"
+    return "medium"
 
 
 class OkfBuilder(Workflow):
@@ -404,7 +431,7 @@ class OkfBuilder(Workflow):
         result = self.agent(
             "main/prompts/repair.md" if repair else "main/prompts/investigate.md",
             returns=Investigation,
-            power="medium",
+            power=repair_power(current_item, item_context) if repair else "medium",
             cwd=self.ctx.repo_root,
             add_dirs=[self.ctx.repo_root],
             args={

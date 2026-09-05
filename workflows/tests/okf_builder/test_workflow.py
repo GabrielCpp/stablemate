@@ -65,6 +65,7 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
 from workhorse_workflows import okf_builder
+from workhorse_workflows.okf_builder.main.flow import repair_power
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared.worklist import MAX_TARGET_ATTEMPTS
 from workhorse_workflows.okf_builder.walkthrough_web.flow import WalkthroughWeb
@@ -157,6 +158,7 @@ class _Agent:
         self.cwds: list[str] = []
         self.targets: list[str] = []
         self.add_dirs: list[list[str]] = []
+        self.powers: list[str | None] = []
 
     # -- the seam ---------------------------------------------------------
 
@@ -167,6 +169,7 @@ class _Agent:
         self.args.append(data)
         self.cwds.append(str(node.cwd))
         self.add_dirs.append([str(path) for path in node.add_dirs or []])
+        self.powers.append(node.power)
         handler = getattr(self, f"_{stem.replace('-', '_')}")
         return f"(scripted) {node.prompt}", handler(data, self.counts()[stem])
 
@@ -175,6 +178,9 @@ class _Agent:
 
     def args_for(self, stem: str) -> list[dict[str, Any]]:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
+
+    def powers_for(self, stem: str) -> list[str | None]:
+        return [p for s, p in zip(self.calls, self.powers, strict=True) if s == stem]
 
     # -- the turns --------------------------------------------------------
 
@@ -251,6 +257,33 @@ def _worklist(repo: Path) -> list[dict[str, Any]]:
     return json.loads(wl.read_text())["items"]
 
 
+# ---------------------------------------------------------------------- repair power
+
+
+def test_repair_power_keeps_a_single_mechanical_first_attempt_medium() -> None:
+    """Routine one-finding repairs should not spend the high-power tier."""
+    context = {"grounded": False, "findings": [{"code": "undeclared-obligation"}]}
+
+    assert repair_power({"attempts": 0}, json.dumps(context)) == "medium"
+
+
+@pytest.mark.parametrize(
+    ("current", "context"),
+    [
+        ({"attempts": 1}, {"grounded": False, "findings": [{}]}),
+        ({"attempts": 0}, {"grounded": True, "findings": [{}]}),
+        ({"attempts": 0}, {"grounded": False, "related": ["docs/features/acme/a.md#a"]}),
+        ({"attempts": 0}, {"grounded": False, "paths": ["a.md", "b.md"]}),
+        ({"attempts": 0}, {"grounded": False, "findings": [{}, {}, {}]}),
+    ],
+)
+def test_repair_power_escalates_difficult_repairs(
+    current: dict[str, Any], context: dict[str, Any]
+) -> None:
+    """Retries, source grounding, grouped scope, and large batches need high power."""
+    assert repair_power(current, json.dumps(context)) == "high"
+
+
 # ---------------------------------------------------------------------------- the drain
 
 
@@ -269,6 +302,7 @@ def test_an_empty_book_is_filled_top_down_from_the_code_s_surfaces(
     result = _drive(_env(tmp_path), agent)
 
     assert agent.counts() == {"enumerate-surfaces": 1, "investigate": 1}, agent.counts()
+    assert agent.powers == ["medium", "medium"]
 
     # The drain closed what it opened.
     items = _worklist(unbooked)
@@ -423,6 +457,7 @@ def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
     # Discovery was skipped entirely, and the one turn rendered the *repair* prompt —
     # `investigate.md` no longer carries repair instructions, so the stem is the assertion.
     assert agent.counts() == {"repair": 1}, agent.counts()
+    assert agent.powers_for("repair") == ["high"]
     assert agent.targets == [REPAIR], agent.targets
     args = agent.args_for("repair")[0]
     assert args["item_kind"] == "fix:missing-code-symbol", args
