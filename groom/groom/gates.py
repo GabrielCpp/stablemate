@@ -40,12 +40,13 @@ def is_awaiting(text: str) -> bool:
 
 
 def extract_question(text: str) -> str:
-    """Best-effort extraction of the human-facing question. Falls back to a
-    truncated dump of the whole file when no recognizable section header is
-    present — still useful, just less tidy.
+    """Extract the latest human-facing question from the append-only gate.
+
+    Falls back to a truncated dump of the whole file when no recognizable
+    section header is present — still useful, just less tidy.
     """
-    match = _QUESTIONS_RE.search(text)
-    body = match.group(1).strip() if match else text.strip()
+    matches = list(_QUESTIONS_RE.finditer(text))
+    body = matches[-1].group(1).strip() if matches else text.strip()
     return body[:_QUESTION_PREVIEW_LIMIT]
 
 

@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from groom import gates, state
 from groom.models import WorkflowContainer
+from workhorse import gates as gate_file
 
 _GATE_FILE = """STATUS: AWAITING_OPERATOR
 
@@ -40,6 +41,13 @@ def test_extract_question_pulls_the_named_section():
     question = gates.extract_question(_GATE_FILE)
     assert question == 'Should the fallback default to "unknown" or raise?'
     assert "Some other section" not in question
+
+
+def test_extract_question_pulls_latest_ask_from_rearmed_gate():
+    first = gate_file.apply_answer(_GATE_FILE, "Default to unknown.")
+    rearmed = gate_file.append_operator_gate(first, "Authorize one more review?")
+
+    assert gates.extract_question(rearmed) == "Authorize one more review?"
 
 
 def test_extract_question_falls_back_to_whole_text_when_no_header():
