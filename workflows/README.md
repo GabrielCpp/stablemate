@@ -40,24 +40,21 @@ shipped and is now kept only for its reasoning.
   classified deterministically — for measurements an agent turn is the wrong container
   for.
 
-Story-aware incremental builds take a story alias plus explicit source repository diffs.
-The docs checkout remains the agent cwd; each named workspace checkout is added read-only
-to the turn:
+Use `since` to narrow reconciliation to source changed since a revision. `story` no longer
+selects a build mode; when supplied, it is retained as provenance on the completed book's
+commit:
 
 ```bash
 workhorse-okf-builder run --params '{
   "docs_path": "/workspace/product-docs",
-  "workspace_file": "/workspace/product.code-workspace",
   "service": "billing",
   "story": "TEAM-123",
-  "sources": [
-    {"repo": "api-service", "surface": "billing", "root": "src", "base": "main"}
-  ]
+  "source_path": "billing",
+  "since": "main"
 }'
 ```
 
-`story` and `sources` are supplied together. Each source may override `head` (default
-`WORKTREE`); bulk `service`/`source_path` mode and `diff_base` retain their existing behavior.
+Omit `story` for a bulk book commit with no `Story:` trailer.
 
 ## Authoring authority
 

@@ -363,6 +363,60 @@ def test_a_book_that_exists_is_reconciled_to_head_rather_than_re_enumerated(
     assert result.is_webapp is False, result
 
 
+@pytest.mark.parametrize(
+    ("story", "expected_message"),
+    [
+        ("", "docs: update the OKF book"),
+        ("PRED-123", "docs: update the OKF book\n\nStory: PRED-123"),
+    ],
+)
+def test_a_completed_book_is_committed_with_optional_story_provenance(
+    booked: Path,
+    tmp_path: Path,
+    story: str,
+    expected_message: str,
+) -> None:
+    """The successful tail commits the book, and nothing beside that book.
+
+    A bulk reconciliation has no story to cite. A narrowed run may still carry the
+    retiring story input, and that provenance belongs in git's parsed trailer rather
+    than in the subject. In either mode, another process's work outside this service's
+    book must remain untouched.
+    """
+    unrelated = booked / "notes.txt"
+    unrelated.write_text("another process is working here\n", encoding="utf-8")
+
+    result = _drive(_env(tmp_path), _Agent(booked), story=story)
+
+    message = subprocess.run(
+        ["git", "log", "-1", "--format=%B"],
+        cwd=booked,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    committed = subprocess.run(
+        ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+        cwd=booked,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--", str(unrelated.relative_to(booked))],
+        cwd=booked,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+    assert result.is_webapp is False, result
+    assert message == expected_message
+    assert committed
+    assert all(path.startswith(f"{BOOK}/") for path in committed), committed
+    assert status == "?? notes.txt\n"
+
+
 def test_the_build_scratch_ignores_itself_so_a_commit_all_cannot_eat_it(
     booked: Path, tmp_path: Path
 ) -> None:

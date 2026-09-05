@@ -131,6 +131,12 @@ class Prepared(OkfResult):
     initial_items: tuple[dict[str, Any], ...] = ()
 
 
+class Committed(OkfResult):
+    """Whether the completed book produced a git commit."""
+
+    committed: bool = False
+
+
 # ── the drain loop ──────────────────────────────────────────────────────────
 
 
@@ -413,6 +419,7 @@ __all__ = [
     "BlockedRows",
     "BrowserBoot",
     "Checkpoint",
+    "Committed",
     "Coverage",
     "Discovery",
     "Evidence",

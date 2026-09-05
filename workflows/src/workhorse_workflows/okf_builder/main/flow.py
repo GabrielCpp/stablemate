@@ -1,7 +1,7 @@
 """The okf-builder workflow: a service's code becomes an exhaustive OKF book.
 
 Ported from `base-library/workflows/okf-builder/workflow.yaml` — 29 nodes (plus the
-walk's 19, in `walkthrough_web/flow.py`) reduced to 12 states. Entry-point-first: seed
+walk's 19, in `walkthrough_web/flow.py`) reduced to 13 states. Entry-point-first: seed
 the surfaces, then drain a typed worklist where each item's investigation spawns the
 deeper items it reveals (surface → elements → handler layer → callee layers → concepts
 and formats), descending the code layer by layer. When the drain is dry, a deterministic
@@ -70,6 +70,7 @@ from workhorse_workflows.okf_builder.main.nodes import (
     advance_watermark,
     apply_verdict,
     blocked_rows,
+    commit_book,
     compute_coverage,
     gather_evidence,
     inventory_source,
@@ -85,6 +86,7 @@ from workhorse_workflows.okf_builder.shared.schemas import (
     Recheck,
     Recorded,
     SourceRequest,
+    WebApp,
 )
 from workhorse_workflows.okf_builder.shared.vocabulary import bullet_grammar, check_vocabulary
 from workhorse_workflows.okf_builder.shared.worklist import (
@@ -184,7 +186,7 @@ class OkfBuilder(Workflow):
     #: widening to a full scan or narrowing to nothing.
     since: str = ""
 
-    #: Retired and unread, kept declared for one release. They selected between two prepare
+    #: Retired as selectors, kept declared for one release. They selected between two prepare
     #: functions and three ways of computing what was stale; one reconcile against the
     #: book's own watermark answers all of them, so `since` is the only narrowing left and
     #: `recheck_only` falls out of the book already existing. Deleting a field kills every
@@ -192,6 +194,7 @@ class OkfBuilder(Workflow):
     #: one gets a warning out of `prepare`, not a crash.
     recheck_only: bool = False
     diff_base: str = ""
+    #: Retained only as optional provenance on the completed book's commit.
     story: str = ""
     workspace_file: str = ""
     sources: tuple[SourceRequest, ...] = ()
@@ -934,22 +937,28 @@ class OkfBuilder(Workflow):
 
     # --- the live-app walk ---------------------------------------------------
 
-    def walkthrough(self) -> Done:
-        """Hand the complete book to the walk, and end on what it found.
+    def walkthrough(self) -> Continue:
+        """Hand the complete book to the walk, then preserve what it found.
 
         A no-op for a service with no web surface — the sub-flow's own `detect_webapp`
         decides that, and it decides it by reading the book rather than by being told,
         which is what lets the same flow be invoked standalone.
         """
-        return Done(
-            self.handoff(
-                WalkthroughWeb,
-                service=self.service,
-                docs_path=self.docs_path,
-                source_path=self.source_path,
-                max_items=self.max_items,
-            )
-        ).because("book complete: walked when there is an app")
+        walked = self.handoff(
+            WalkthroughWeb,
+            service=self.service,
+            docs_path=self.docs_path,
+            source_path=self.source_path,
+            max_items=self.max_items,
+        )
+        return Continue(walked, self.commit, walked=walked).because(
+            "book complete: walked when there is an app"
+        )
+
+    def commit(self, walked: WebApp) -> Done:
+        """Record the completed book without touching work outside its directory."""
+        self.call(commit_book, self.ctx.repo_root, self.ctx.features_root, self.story)
+        return Done(walked).because("completed book committed")
 
 
 

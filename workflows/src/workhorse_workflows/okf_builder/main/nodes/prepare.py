@@ -100,8 +100,9 @@ def prepare(
     Every unusable setting comes back as a `Prepared` with `ostler_ok` false and a
     `prepare_error` saying which one — `start()` is where that becomes a failed run.
 
-    `recheck_only`, `diff_base`, `story`, `workspace_file` and `sources` are **retired and
-    unread**. They selected between two prepare functions and three ways of computing what
+    `recheck_only`, `diff_base`, `workspace_file` and `sources` are **retired and unread**.
+    `story` remains only as commit provenance. These inputs selected between two prepare
+    functions and three ways of computing what
     was stale; one reconcile against the book's own watermark answers all of them, `since`
     is the only narrowing left, and `recheck_only` falls out of the book already existing.
     They stay declared for one release because deleting a field kills every in-flight run
@@ -109,7 +110,6 @@ def prepare(
     """
     root = paths.docs_root(docs_path, repo_dir)
     for name, value in (("recheck_only", recheck_only), ("diff_base", diff_base),
-                        ("story", story),
                         ("workspace_file", workspace_file), ("sources", sources)):
         if value:
             logger.warning(

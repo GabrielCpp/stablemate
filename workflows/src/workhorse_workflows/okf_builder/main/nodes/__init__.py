@@ -8,6 +8,7 @@ package's contents legible as "the build's own work":
 * `coverage` — the source inventory and the join that decides whether the book covers it
 * `adjudicate` — the other side of a blocked finding: the story it answers to, and the
   routing of the verdict (`book` re-queues, `code` seeds and records, `story` conflicts)
+* `finalize` — the scoped commit that records a completed book
 
 The drain's own primitives (`worklist`), the convergence gate (`checkpoint`), the
 `blueprint` every node registers on and the stand-ins are in `shared/`, because the
@@ -36,6 +37,7 @@ from workhorse_workflows.okf_builder.main.nodes.coverage import (
     compute_coverage,
     inventory_source,
 )
+from workhorse_workflows.okf_builder.main.nodes.finalize import commit_book
 from workhorse_workflows.okf_builder.main.nodes.prepare import prepare
 
 __all__ = [
@@ -43,6 +45,7 @@ __all__ = [
     "apply_verdict",
     "blocked_rows",
     "compute_coverage",
+    "commit_book",
     "gather_evidence",
     "inventory_source",
     "prepare",
