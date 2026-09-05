@@ -90,22 +90,28 @@ _STORES: dict[str, Callable[[str], list[Path]]] = {
 
 def _opencode_export(session_id: str) -> bytes | None:
     """OpenCode's public full-session export, including reasoning and tool parts."""
-    try:
-        result = subprocess.run(
-            ["opencode", "export", session_id],
-            capture_output=True,
-            check=False,
-            timeout=30,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode != 0 or not result.stdout.strip():
-        return None
-    try:
-        loaded = json.loads(result.stdout)
-    except ValueError:
-        return None
-    return result.stdout if isinstance(loaded, dict) else None
+    for _attempt in range(2):
+        try:
+            result = subprocess.run(
+                ["opencode", "export", session_id],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if result.returncode != 0:
+            return None
+        try:
+            loaded = json.loads(result.stdout)
+        except ValueError:
+            # A completed `opencode run` can briefly expose a partial export while its
+            # session is being finalized. Re-running the public read is the readiness
+            # check; there is no separate session-settled signal to wait on.
+            continue
+        if isinstance(loaded, dict):
+            return result.stdout
+    return None
 
 
 #: Backends whose public CLI can materialize a full session but whose internal store is

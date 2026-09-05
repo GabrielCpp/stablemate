@@ -163,6 +163,22 @@ def test_opencode_export_uses_the_public_full_session_command():
     )
 
 
+def test_opencode_export_rereads_a_partial_successful_snapshot():
+    """This fails when OpenCode exits zero during session finalization but its partial
+    JSON snapshot is treated as a terminal export failure."""
+    partial = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout=b'{"messages":[', stderr=b""
+    )
+    complete = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout=b'{"messages":[]}', stderr=b""
+    )
+    with patch.object(transcript.subprocess, "run", side_effect=[partial, complete]) as run:
+        exported = transcript.export_session("opencode", "ses_123")
+
+    assert exported == b'{"messages":[]}'
+    assert run.call_count == 2
+
+
 def test_the_tee_stops_at_the_cap_and_says_so():
     _reset()
     with tempfile.TemporaryDirectory() as tmp:
