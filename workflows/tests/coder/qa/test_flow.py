@@ -610,6 +610,7 @@ class _Agent:
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.dirs: list[list[str]] = []
+        self.powers: list[str | None] = []
 
     # -- the seam ---------------------------------------------------------
 
@@ -624,6 +625,7 @@ class _Agent:
         self.calls.append(stem)
         self.args.append(data)
         self.dirs.append(list(node.add_dirs or []))
+        self.powers.append(node.power)
         if stem in self.explode:
             raise RuntimeError(f"killed during {stem}")
         nth = self.planned() if stem in self.PLAN_STEMS else self.counts()[stem]
@@ -652,6 +654,9 @@ class _Agent:
 
     def args_for(self, stem: str) -> list[dict[str, Any]]:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
+
+    def powers_for(self, stem: str) -> list[str | None]:
+        return [p for s, p in zip(self.calls, self.powers, strict=True) if s == stem]
 
     def plan_args(self) -> list[dict[str, Any]]:
         """Every plan turn's brief in order, whichever of its two prompts served it."""
@@ -976,6 +981,7 @@ def test_an_unmappable_packet_is_repaired_and_rebuilt(
     assert result.status == "passed", result
     assert result.docs_recheck_required is True
     assert agent.counts()["repair-qa-context"] == 1, agent.counts()
+    assert agent.powers_for("repair-qa-context") == ["low"]
     # The packet was genuinely rebuilt rather than re-validated in place.
     assert okf.contexts == 2, okf.contexts
     # The repair turn was handed the validator's own complaint.
@@ -1064,6 +1070,7 @@ def test_an_unrepairable_packet_goes_to_the_auto_operator(
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
     # `apply_resolved` runs the fix prompt and spends a rework on the operator's answer.
     assert agent.counts()["apply-qa-fixes"] == 1, agent.counts()
+    assert agent.powers_for("apply-qa-fixes") == ["low"]
     assert result.qa_rework == 1
     assert "the diff touches code" in agent.args_for("resolve-operator")[0]["block_notes"]
 
@@ -2788,6 +2795,7 @@ def test_a_dev_target_reports_findings_instead_of_fixing_them(
 
     assert result.status == "inconclusive", result
     assert agent.counts()["report-qa-dev"] == 1, agent.counts()
+    assert agent.powers_for("report-qa-dev") == ["low"]
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
 
 
@@ -2805,6 +2813,7 @@ def test_a_dev_target_still_reports_a_pass(
 
     assert result.status == "passed", result
     assert agent.counts()["report-qa-dev-pass"] == 1, agent.counts()
+    assert agent.powers_for("report-qa-dev-pass") == ["low"]
 
 
 # --------------------------------------------------------------------------- feedback
@@ -2832,6 +2841,7 @@ def test_a_dropped_operator_note_buys_exactly_one_re_qa(
 
     assert result.status == "passed", result
     assert agent.counts()["apply-qa-fixes"] == 1, agent.counts()
+    assert agent.powers_for("apply-qa-fixes") == ["low"]
     assert okf.runs == 2, okf.runs
     # Feedback is not a failure of the fix loop, so no rework is spent on it.
     assert result.qa_rework == 0

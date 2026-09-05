@@ -822,9 +822,9 @@ class Qa(Workflow):
         reply = self.agent(
             turn.prompt,
             returns=turn.returns,
-            # medium: mechanical reconciliation of a diff against a graph, against a
+            # low: mechanical reconciliation of a diff against a graph, against a
             # validator that will re-check the result.
-            power="medium",
+            power="low",
             add_dirs=self._dirs(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
@@ -1592,8 +1592,8 @@ class Qa(Workflow):
         report = self.agent(
             turn.prompt,
             returns=turn.returns,
-            # medium: summarising findings that are already written down, into a tracker.
-            power="medium",
+            # low: summarising findings that are already written down, into a tracker.
+            power="low",
             session=backbone(self),
             add_dirs=self._dirs(),
             args=turn.args | {
@@ -1641,7 +1641,7 @@ class Qa(Workflow):
         result = self._apply_fixes(
             qa_notes="",
             operator_feedback=content,
-            power="medium",
+            power="low",
             session=f"qa-feedback:{self.ctx.story_slug}",
         )
         return Continue(
@@ -1830,8 +1830,8 @@ class Qa(Workflow):
         report = self.agent(
             turn.prompt,
             returns=turn.returns,
-            # medium: the same summarising job as `report_qa_dev`, on a green story.
-            power="medium",
+            # low: the same summarising job as `report_qa_dev`, on a green story.
+            power="low",
             session=backbone(self),
             add_dirs=self._dirs(),
             args=turn.args | {
@@ -2171,7 +2171,7 @@ class Qa(Workflow):
     def apply_resolved(self, loop: QaLoop, content: str) -> Continue | Await:
         """Apply the operator's answer as a QA fix, and spend a rework on it.
 
-        The same prompt `apply-qa-fixes.md` runs, at medium rather than high, because the
+        The same prompt `apply-qa-fixes.md` runs at low because the
         hard thinking was the operator's.
 
         The budget is re-read *here* rather than only in `_guard_qa`. `_guard_qa` bounds the
@@ -2188,7 +2188,7 @@ class Qa(Workflow):
         result = self._apply_fixes(
             qa_notes=loop.qa.notes,
             operator_feedback=content,
-            power="medium",
+            power="low",
             session=backbone(self),
         )
         loop = loop.charged(time.monotonic() - started).update(
