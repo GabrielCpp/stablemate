@@ -101,8 +101,10 @@ its own copy: each turn is captured into `transcripts/` under the same visit key
 prefers a resolvable backend session store; for OpenCode it invokes the public
 `opencode export <session_id>` command, whose JSON includes reasoning, tool, file, patch,
 snapshot and subtask parts; otherwise it keeps a redacted tee of the live stream. OpenCode
-runs also enable `--thinking`, so the tee still includes completed reasoning parts when the
-full export is unavailable. Every capture's `.meta.json` records its source, bytes, the head
-observed at the time, and whether the per-turn cap truncated it.
+runs also enable `--thinking`, so the tee still includes completed reasoning parts while the
+full export is unavailable. An OpenCode export can remain incomplete briefly after its process
+exits; when that happens, the next turn retries the settled session and promotes the provisional
+tee to the full export. Every capture's `.meta.json` records its source, bytes, the head observed
+at the time, and whether the per-turn cap truncated it.
 Bounds are `WORKHORSE_CAPTURE_TRANSCRIPTS` (default on) and
 `WORKHORSE_TRANSCRIPT_MAX_BYTES` (default 32 MiB per turn).

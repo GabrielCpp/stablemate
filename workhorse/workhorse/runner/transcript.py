@@ -178,6 +178,15 @@ def probe_exporters(session_id: str) -> tuple[str, bytes | None]:
 # -------------------------------------------------------------------------- settings
 
 
+@dataclass(frozen=True, slots=True)
+class _DeferredExport:
+    """A tee whose richer session export was not stable when its turn ended."""
+
+    backend: str
+    session_id: str
+    stem: Path
+
+
 @dataclass
 class _Settings:
     run_dir: Path | None = None
@@ -191,6 +200,7 @@ class _Settings:
     #: store is proven.
     backend: str = ""
     captures: list[Path] = field(default_factory=list)
+    deferred_exports: list[_DeferredExport] = field(default_factory=list)
 
 
 _settings = _Settings()
@@ -379,6 +389,32 @@ def _discard(paths: Iterable[Path]) -> None:
             pass
 
 
+def _recover_deferred_export() -> None:
+    """Promote one earlier tee after another turn has given its session time to settle."""
+    if not _settings.deferred_exports:
+        return
+    deferred = _settings.deferred_exports.pop(0)
+    exported = export_session(deferred.backend, deferred.session_id)
+    if exported is None:
+        _settings.deferred_exports.append(deferred)
+        return
+    tee = Path(f"{deferred.stem}.tee.jsonl")
+    meta_path = Path(f"{deferred.stem}.meta.json")
+    try:
+        loaded = json.loads(meta_path.read_text(encoding="utf-8"))
+        if not isinstance(loaded, dict):
+            _settings.deferred_exports.append(deferred)
+            return
+        written, truncated = _write_bytes_capped(
+            exported, Path(f"{deferred.stem}.export.json"), _settings.max_bytes
+        )
+        loaded |= {"source": "export", "bytes": written, "truncated": truncated}
+        meta_path.write_text(json.dumps(loaded, indent=2), encoding="utf-8")
+        _discard([tee])
+    except (OSError, ValueError):
+        _settings.deferred_exports.append(deferred)
+
+
 def capture(backend: str, node_id: str, session_id: str, tee: Tee | None = None) -> Path | None:
     """Keep this turn's transcript, and return where it landed (None when nothing was).
 
@@ -413,6 +449,7 @@ def capture(backend: str, node_id: str, session_id: str, tee: Tee | None = None)
 
     try:
         root.mkdir(parents=True, exist_ok=True)
+        _recover_deferred_export()
         files = store_files(backend, session_id)
         if files:
             written, truncated = 0, False
@@ -453,6 +490,10 @@ def capture(backend: str, node_id: str, session_id: str, tee: Tee | None = None)
             }
             _write_meta(stem, meta)
             _settings.captures.append(stem)
+            if backend in _EXPORTERS:
+                _settings.deferred_exports.append(
+                    _DeferredExport(backend=backend, session_id=session_id, stem=stem)
+                )
             return stem
         _discard([pending])
     except OSError:

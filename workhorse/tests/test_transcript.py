@@ -145,6 +145,43 @@ def test_a_failed_backend_export_preserves_the_stream_tee():
         assert _meta(stem)["source"] == "tee"
 
 
+def test_the_next_turn_promotes_a_provisional_tee_after_the_session_settles():
+    """This fails when an incomplete completion-time export leaves a lower-fidelity tee
+    permanent even though the same session is readable by the next turn."""
+    _reset()
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = Path(tmp) / "run"
+        run_dir.mkdir()
+        transcript.bind(run_dir)
+        first_slug = _begin(run_dir)
+        first_attempt = True
+
+        def export(session_id: str) -> bytes | None:
+            nonlocal first_attempt
+            if session_id == "sess-first" and first_attempt:
+                first_attempt = False
+                return None
+            return json.dumps({"session": session_id, "messages": []}).encode()
+
+        transcript._EXPORTERS["acme-cli"] = export
+        tee = transcript.tee_begin("qa-plan")
+        assert tee is not None
+        tee.write('{"from":"tee"}\n')
+        tee.close()
+        first = transcript.capture("acme-cli", "qa-plan", "sess-first", tee)
+        assert first is not None
+        assert _meta(first)["source"] == "tee"
+
+        _begin(run_dir)
+        transcript.capture("acme-cli", "qa-plan", "sess-second")
+
+        first = run_dir / "transcripts" / f"{first_slug}__sess-first"
+        assert _meta(first)["source"] == "export"
+        assert Path(f"{first}.export.json").is_file()
+        assert not Path(f"{first}.tee.jsonl").exists()
+    _reset()
+
+
 def test_opencode_export_uses_the_public_full_session_command():
     """This fails when the registered OpenCode exporter no longer addresses the completed
     session through the CLI's supported export surface."""
