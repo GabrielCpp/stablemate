@@ -112,14 +112,25 @@ MAX_RESCAN_ROUNDS = 6
 MAX_STALL_ROUNDS = 3
 
 
+def _attempts(current_item: dict[str, Any]) -> int:
+    try:
+        return int(current_item.get("attempts", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def investigation_power(current_item: dict[str, Any]) -> str:
+    """Escalate an investigation only after its first model attempt failed."""
+    return "medium" if _attempts(current_item) > 0 else "low"
+
+
 def repair_power(current_item: dict[str, Any], item_context: str) -> str:
     """Choose the repair turn's model tier from deterministic worklist context."""
-    try:
-        attempts = int(current_item.get("attempts", 0) or 0)
-    except (TypeError, ValueError):
-        attempts = 0
-    if attempts > 0:
+    attempts = _attempts(current_item)
+    if attempts >= 2:
         return "high"
+    if attempts == 1:
+        return "medium"
     try:
         context = json.loads(item_context or "{}")
     except ValueError:
@@ -135,8 +146,8 @@ def repair_power(current_item: dict[str, Any], item_context: str) -> str:
         or (isinstance(paths_in_scope, list) and len(paths_in_scope) > 1)
         or (isinstance(findings, list) and len(findings) >= 3)
     ):
-        return "high"
-    return "medium"
+        return "medium"
+    return "low"
 
 
 class OkfBuilder(Workflow):
@@ -264,7 +275,7 @@ class OkfBuilder(Workflow):
         result = self.agent(
             "main/prompts/enumerate-surfaces.md",
             returns=Discovery,
-            power="medium",
+            power="low",
             cwd=self.ctx.repo_root,
             add_dirs=[self.ctx.repo_root],
             args={
@@ -431,7 +442,11 @@ class OkfBuilder(Workflow):
         result = self.agent(
             "main/prompts/repair.md" if repair else "main/prompts/investigate.md",
             returns=Investigation,
-            power=repair_power(current_item, item_context) if repair else "medium",
+            power=(
+                repair_power(current_item, item_context)
+                if repair
+                else investigation_power(current_item)
+            ),
             cwd=self.ctx.repo_root,
             add_dirs=[self.ctx.repo_root],
             args={

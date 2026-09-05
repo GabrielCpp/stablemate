@@ -65,7 +65,7 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
 from workhorse_workflows import okf_builder
-from workhorse_workflows.okf_builder.main.flow import repair_power
+from workhorse_workflows.okf_builder.main.flow import investigation_power, repair_power
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared.worklist import MAX_TARGET_ATTEMPTS
 from workhorse_workflows.okf_builder.walkthrough_web.flow import WalkthroughWeb
@@ -260,28 +260,41 @@ def _worklist(repo: Path) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------- repair power
 
 
-def test_repair_power_keeps_a_single_mechanical_first_attempt_medium() -> None:
-    """Routine one-finding repairs should not spend the high-power tier."""
+def test_repair_power_keeps_a_single_mechanical_first_attempt_low() -> None:
+    """A machine-rechecked one-finding repair should start on the cheapest model."""
     context = {"grounded": False, "findings": [{"code": "undeclared-obligation"}]}
 
-    assert repair_power({"attempts": 0}, json.dumps(context)) == "medium"
+    assert repair_power({"attempts": 0}, json.dumps(context)) == "low"
 
 
 @pytest.mark.parametrize(
     ("current", "context"),
     [
-        ({"attempts": 1}, {"grounded": False, "findings": [{}]}),
         ({"attempts": 0}, {"grounded": True, "findings": [{}]}),
         ({"attempts": 0}, {"grounded": False, "related": ["docs/features/acme/a.md#a"]}),
         ({"attempts": 0}, {"grounded": False, "paths": ["a.md", "b.md"]}),
         ({"attempts": 0}, {"grounded": False, "findings": [{}, {}, {}]}),
     ],
 )
-def test_repair_power_escalates_difficult_repairs(
+def test_repair_power_routes_difficult_first_attempts_to_medium(
     current: dict[str, Any], context: dict[str, Any]
 ) -> None:
-    """Retries, source grounding, grouped scope, and large batches need high power."""
-    assert repair_power(current, json.dumps(context)) == "high"
+    """Source grounding, grouped scope, and large batches need Terra, not Luna."""
+    assert repair_power(current, json.dumps(context)) == "medium"
+
+
+def test_repair_power_climbs_the_ladder_only_after_each_tier_fails() -> None:
+    """One failed Luna repair buys Terra; two failed attempts finally buy Sol."""
+    context = json.dumps({"grounded": False, "findings": [{}]})
+
+    assert repair_power({"attempts": 1}, context) == "medium"
+    assert repair_power({"attempts": 2}, context) == "high"
+
+
+def test_investigation_power_promotes_only_a_retried_item() -> None:
+    """The high-volume crawl starts on Luna and buys Terra only after a failed visit."""
+    assert investigation_power({"attempts": 0}) == "low"
+    assert investigation_power({"attempts": 1}) == "medium"
 
 
 # ---------------------------------------------------------------------------- the drain
@@ -302,7 +315,7 @@ def test_an_empty_book_is_filled_top_down_from_the_code_s_surfaces(
     result = _drive(_env(tmp_path), agent)
 
     assert agent.counts() == {"enumerate-surfaces": 1, "investigate": 1}, agent.counts()
-    assert agent.powers == ["medium", "medium"]
+    assert agent.powers == ["low", "low"]
 
     # The drain closed what it opened.
     items = _worklist(unbooked)
@@ -457,7 +470,7 @@ def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
     # Discovery was skipped entirely, and the one turn rendered the *repair* prompt —
     # `investigate.md` no longer carries repair instructions, so the stem is the assertion.
     assert agent.counts() == {"repair": 1}, agent.counts()
-    assert agent.powers_for("repair") == ["high"]
+    assert agent.powers_for("repair") == ["medium"]
     assert agent.targets == [REPAIR], agent.targets
     args = agent.args_for("repair")[0]
     assert args["item_kind"] == "fix:missing-code-symbol", args
