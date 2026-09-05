@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import _forensics as fx
 from _frozenapp import BLANK, TRIALS, capture_witness, trials_dir
 from _stablemate import (
     TrialError,
@@ -173,6 +174,88 @@ def run_build(run: Run, fixture: Fixture) -> None:
         "wall": wall,
         "witness": str(witness.relative_to(run.stage)),
     }])
+
+
+def clone_build_repo(run: Run, fixture: Fixture, profile: str) -> Path:
+    """Clone the stripped baseline into one profile's isolated scratch tree."""
+    destination = run.workdir(f"book-{profile}") / fixture.repo_dir
+    git("clone", "--quiet", str(run.repo), str(destination), cwd=run.scratch)
+    return destination
+
+
+def _build_telemetry(run_id: str, wall: float, since: float) -> dict[str, Any]:
+    """Snapshot telemetry while the machine-wide store still holds this trial."""
+    from groom import store
+
+    profile = store.run_profile(run_id) or {}
+    return {
+        "work": profile.get("work") or {},
+        "timing": fx.timing_of(run_id, wall, since),
+        "laps": fx.laps_of(run_id, since),
+    }
+
+
+def run_paired_build(
+    run: Run, fixture: Fixture, profiles: tuple[str, ...] = ("luna", "terra")
+) -> None:
+    """Build the same stripped book once per model profile from isolated clones."""
+    if not profiles or len(set(profiles)) != len(profiles):
+        raise TrialError("paired build profiles must be non-empty and unique")
+
+    checkout = stablemate_checkout(run)
+    budget = run.param_float("budget", fixture.budget_s)
+    config = effective(run)
+    runs_dir = trials_dir(run) / "runs"
+    baseline_head = git("rev-parse", "HEAD", cwd=run.repo)
+    ledger: list[dict[str, Any]] = []
+
+    with no_leaks(checkout, pinned=pin_held(run.pinned)):
+        for profile in profiles:
+            repo = clone_build_repo(run, fixture, profile)
+            run_id = f"{fixture.repo_dir}-{run.label}-book-{profile}"
+            run.cli(
+                *uv_run(checkout, "farrier"),
+                "farrier", "install", "--repo", str(repo),
+                cwd=checkout, log_name=f"{run_id}-farrier", check=True,
+            )
+            params: dict[str, Any] = {
+                "service": fixture.service,
+                "source_path": fixture.source_path,
+                "docs_path": str(repo),
+            }
+            excludes = run.param("source_excludes", fixture.source_excludes)
+            if excludes:
+                params["source_excludes"] = excludes
+
+            started, since = time.monotonic(), time.time()
+            result = run.cli(
+                *uv_run(checkout, "workhorse-workflows"),
+                "workhorse-okf-builder", "run",
+                "--runs-dir", str(runs_dir), "--run-id", run_id,
+                "--config", str(config), "--profile", profile,
+                "--params", json.dumps(params),
+                cwd=repo,
+                env={
+                    **os.environ,
+                    "WORKHORSE_MAX_RUNTIME_S": str(budget),
+                    "AGENT_REPO_DIR": str(repo),
+                },
+                log_name=f"{run_id}-build",
+            )
+            wall = time.monotonic() - started
+            witness = capture_build_witness(
+                repo, trials_dir(run) / run_id / "witness", fixture
+            )
+            ledger.append({
+                "profile": profile,
+                "run_id": run_id,
+                "baseline_head": baseline_head,
+                "rc": result.returncode,
+                "wall": wall,
+                "witness": str(witness.relative_to(run.stage)),
+                "telemetry": _build_telemetry(run_id, wall, since),
+            })
+            run.write_json(trials_dir(run) / "trials.json", ledger)
 
 
 # ── the rulers ────────────────────────────────────────────────────────────────────────
@@ -458,6 +541,129 @@ def _judgment_cell(judgment: dict[str, int] | None) -> str:
     if judgment is None:
         return BLANK
     return f"{judgment['concepts']} concepts, {judgment['detail_links']} detail links"
+
+
+def _measure_build(run: Run, fixture: Fixture, entry: dict[str, Any]) -> dict[str, Any]:
+    witness = run.stage / str(entry["witness"])
+    doctor = doctor_counts(witness)
+    unformatted = fmt_check(witness)
+    coverage = coverage_counts(witness, fixture)
+    graph = graph_counts(witness)
+    judgment = judgment_counts(witness)
+    accepted = bool(
+        int(entry["rc"]) == 0
+        and doctor is not None
+        and doctor["errors"] == 0
+        and doctor["warnings"] == 0
+        and unformatted == []
+        and coverage is not None
+        and coverage["covered"] == coverage["total"]
+    )
+    return {
+        "accepted": accepted,
+        "trial": entry,
+        "doctor": doctor,
+        "unformatted": unformatted,
+        "coverage": coverage,
+        "graph": graph,
+        "judgment": judgment,
+    }
+
+
+def _arm_line(profile: str, measured: dict[str, Any]) -> str:
+    entry = measured["trial"]
+    graph = measured["graph"]
+    obligations = str(graph["obligations"]) if graph else BLANK
+    return (
+        f"{profile}: doctor {_doctor_cell(measured['doctor'])} "
+        f"fmt {_fmt_cell(measured['unformatted'])} "
+        f"coverage {_coverage_cell(measured['coverage'])} "
+        f"obligations {obligations} | rc {int(entry['rc'])} "
+        f"in {float(entry['wall']) / 60:.0f}m"
+    )
+
+
+def _paired_delta(
+    arms: dict[str, dict[str, Any]], profiles: tuple[str, str]
+) -> dict[str, Any]:
+    first, second = profiles
+    left_entry = arms[first]["trial"]
+    right_entry = arms[second]["trial"]
+    left_work = (left_entry.get("telemetry") or {}).get("work") or {}
+    right_work = (right_entry.get("telemetry") or {}).get("work") or {}
+    delta: dict[str, Any] = {"direction": f"{second}-minus-{first}"}
+    values = {
+        "wall_s": (left_entry.get("wall"), right_entry.get("wall")),
+        "turns": (left_work.get("turns"), right_work.get("turns")),
+        "backend_retries": (
+            left_work.get("backend_retries"), right_work.get("backend_retries")
+        ),
+        "input_tokens": (left_work.get("input_tokens"), right_work.get("input_tokens")),
+        "output_tokens": (left_work.get("output_tokens"), right_work.get("output_tokens")),
+        "cost_usd": (left_work.get("cost_usd"), right_work.get("cost_usd")),
+        "est_cost_usd": (
+            left_work.get("est_cost_usd"), right_work.get("est_cost_usd")
+        ),
+    }
+    for name, (left, right) in values.items():
+        if (
+            isinstance(left, (int, float))
+            and not isinstance(left, bool)
+            and isinstance(right, (int, float))
+            and not isinstance(right, bool)
+        ):
+            delta[name] = round(float(right) - float(left), 6)
+    return delta
+
+
+def score_paired_round(
+    run: Run, fixture: Fixture, profiles: tuple[str, str] = ("luna", "terra")
+) -> Score:
+    """Compare two isolated builds without collapsing quality and cost into a winner."""
+    ledger = run.stage.joinpath(*TRIALS) / "trials.json"
+    if not ledger.is_file():
+        return Score(headline="no paired builds recorded — the round did not reach a run")
+
+    entries = json.loads(ledger.read_text(encoding="utf-8"))
+    by_profile = {str(entry.get("profile", "")): entry for entry in entries}
+    missing = [profile for profile in profiles if profile not in by_profile]
+    if missing:
+        return Score(
+            headline=f"paired build incomplete — missing {', '.join(missing)}",
+            data={"trials": entries},
+            caveats=("not every configured model arm ran",),
+        )
+
+    arms = {
+        profile: _measure_build(run, fixture, by_profile[profile])
+        for profile in profiles
+    }
+    caveats = tuple(
+        f"{profile} exited rc {int(arms[profile]['trial']['rc'])}"
+        for profile in profiles
+        if int(arms[profile]["trial"]["rc"]) != 0
+    )
+    detail = tuple(
+        f"{profile}: turns {work.get('turns', BLANK)}, "
+        f"retries {work.get('backend_retries', BLANK)}, "
+        f"output tokens {work.get('output_tokens', BLANK)}, "
+        f"estimated cost {work.get('est_cost_usd', BLANK)}"
+        for profile in profiles
+        for work in [
+            (arms[profile]["trial"].get("telemetry") or {}).get("work") or {}
+        ]
+    )
+    return Score(
+        headline="book comparison: " + " || ".join(
+            _arm_line(profile, arms[profile]) for profile in profiles
+        ),
+        detail=detail,
+        data={
+            "arms": arms,
+            "delta": _paired_delta(arms, profiles),
+        },
+        caveats=caveats,
+    )
 
 
 def score_round(run: Run, fixture: Fixture) -> Score:

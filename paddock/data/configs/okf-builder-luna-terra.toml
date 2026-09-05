@@ -1,0 +1,57 @@
+# A controlled OKF Builder comparison: model is the only difference between profiles.
+config_version = 1
+default_cli = "opencode"
+
+[profiles.luna]
+default_cli = "opencode"
+
+[profiles.luna.power.low.opencode]
+model = "openai/gpt-5.6-luna"
+effort = "low"
+
+[profiles.luna.power.medium.opencode]
+model = "openai/gpt-5.6-luna"
+effort = "medium"
+
+[profiles.luna.power.high.opencode]
+model = "openai/gpt-5.6-luna"
+effort = "high"
+
+[profiles.luna.power.smart.opencode]
+model = "openai/gpt-5.6-luna"
+effort = "high"
+
+[profiles.luna.power.extra-smart.opencode]
+model = "openai/gpt-5.6-luna"
+effort = "xhigh"
+
+[profiles.luna.default.opencode]
+model = "openai/gpt-5.6-luna"
+effort = "medium"
+
+[profiles.terra]
+default_cli = "opencode"
+
+[profiles.terra.power.low.opencode]
+model = "openai/gpt-5.6-terra"
+effort = "low"
+
+[profiles.terra.power.medium.opencode]
+model = "openai/gpt-5.6-terra"
+effort = "medium"
+
+[profiles.terra.power.high.opencode]
+model = "openai/gpt-5.6-terra"
+effort = "high"
+
+[profiles.terra.power.smart.opencode]
+model = "openai/gpt-5.6-terra"
+effort = "high"
+
+[profiles.terra.power.extra-smart.opencode]
+model = "openai/gpt-5.6-terra"
+effort = "xhigh"
+
+[profiles.terra.default.opencode]
+model = "openai/gpt-5.6-terra"
+effort = "medium"

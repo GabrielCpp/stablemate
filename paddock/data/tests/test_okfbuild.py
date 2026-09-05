@@ -14,6 +14,7 @@ import importlib.util
 import json
 import re
 import sys
+import tomllib
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -22,6 +23,7 @@ import pytest
 from paddock import loader
 from paddock.pointer import Pointer
 from paddock.runner import Run
+from stablemate_core import config as core_config
 
 DATA = Path(__file__).parents[1]
 
@@ -141,6 +143,31 @@ def test_build_witness_seals_every_participating_source_root(tmp_path: Path) -> 
 
     assert (sealed / "api/service.py").read_text(encoding="utf-8") == "value = 'api'\n"
     assert (sealed / "worker/jobs.py").read_text(encoding="utf-8") == "value = 'worker'\n"
+
+
+def test_paired_build_clones_cannot_contaminate_each_other(tmp_path: Path) -> None:
+    """Each model must receive the same baseline, never the other model's edits."""
+    run = make_run(tmp_path)
+    run.repo.mkdir(parents=True)
+    write(run.repo / "docs/features/svc/book.md", "# Book\n")
+    write(run.repo / "svc/app.py", "value = 1\n")
+    for args in (
+        ("init", "--quiet", "--initial-branch", "main"),
+        ("config", "user.email", "benchmark@example.com"),
+        ("config", "user.name", "stablemate benchmark"),
+        ("add", "--all"),
+        ("commit", "--quiet", "-m", "baseline"),
+    ):
+        okfbuild.git(*args, cwd=run.repo)
+
+    luna = okfbuild.clone_build_repo(run, fixture(), "luna")
+    write(luna / "luna-only.txt", "changed\n")
+    terra = okfbuild.clone_build_repo(run, fixture(), "terra")
+
+    assert okfbuild.git("rev-parse", "HEAD", cwd=luna) == okfbuild.git(
+        "rev-parse", "HEAD", cwd=terra
+    )
+    assert not (terra / "luna-only.txt").exists()
 
 
 def test_coverage_is_the_builders_own_claim(tmp_path: Path) -> None:
@@ -354,3 +381,75 @@ def test_score_round_renders_blank_for_what_it_could_not_read(tmp_path: Path) ->
 def test_score_round_without_a_ledger_says_so(tmp_path: Path) -> None:
     score = okfbuild.score_round(make_run(tmp_path), fixture())
     assert score.headline == "no build recorded — the round did not reach a run"
+
+
+def test_paired_score_compares_quality_retries_tokens_cost_and_time(tmp_path: Path) -> None:
+    """The pair must retain quality and resource evidence, not announce a synthetic winner."""
+    run = make_run(tmp_path)
+    trials = run.stage / "artifacts" / "trials"
+    entries = []
+    for profile, covered, wall, turns, retries, tokens, cost in (
+        ("luna", 3, 120.0, 4, 1, 800, 0.08),
+        ("terra", 4, 90.0, 3, 0, 600, 0.80),
+    ):
+        root = trials / profile / "witness"
+        write(
+            root / "docs/features/svc/policy-format.md",
+            "---\ntype: concept\nslug: policy-format\ntitle: Policy format\n---\n# Policy format\n",
+        )
+        write(
+            root / "docs/features/svc/coverage.json",
+            json.dumps({"covered": covered, "total": 4}),
+        )
+        entries.append({
+            "profile": profile,
+            "run_id": f"app-t1-{profile}",
+            "rc": 0,
+            "wall": wall,
+            "witness": str(root.relative_to(run.stage)),
+            "telemetry": {
+                "work": {
+                    "turns": turns,
+                    "backend_retries": retries,
+                    "output_tokens": tokens,
+                    "est_cost_usd": cost,
+                },
+                "laps": [],
+            },
+        })
+    run.write_json(trials / "trials.json", entries)
+
+    score = okfbuild.score_paired_round(run, fixture(), ("luna", "terra"))
+
+    assert "luna" in score.headline and "terra" in score.headline
+    assert score.data["arms"]["luna"]["coverage"] == {"covered": 3, "total": 4}
+    assert score.data["arms"]["terra"]["accepted"] is True
+    assert score.data["arms"]["luna"]["accepted"] is False
+    assert score.data["delta"] == {
+        "direction": "terra-minus-luna",
+        "wall_s": -30.0,
+        "turns": -1,
+        "backend_retries": -1,
+        "output_tokens": -200,
+        "est_cost_usd": 0.72,
+    }
+
+
+def test_paired_task_and_profiles_are_native_paddock_declarations() -> None:
+    """A missing arm or accidental shared model would invalidate every comparison."""
+    task = loader.load_path(DATA / "tasks" / "link_shortener_book_luna_terra.py")
+    config_path = DATA / task.config
+    config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+
+    assert task.name == "link-shortener-book-luna-terra"
+    assert task.seed == "link-shortener-built"
+    assert [step.name for step in task.steps] == ["pin_config", "strip_book", "builds"]
+    assert core_config.profile_names(config) == ["luna", "terra"]
+    for profile, model in (
+        ("luna", "openai/gpt-5.6-luna"),
+        ("terra", "openai/gpt-5.6-terra"),
+    ):
+        selected = core_config.select_profile(config, profile)
+        assert core_config.profile_backends(selected) == ["opencode"]
+        for tier in ("low", "medium", "high", "smart", "extra-smart"):
+            assert core_config.resolve_power(tier, "opencode", selected).model == model
