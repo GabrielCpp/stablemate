@@ -92,11 +92,12 @@ _TRANSIENT_MARKERS = (
     "mid-response",
     "response above may be incomplete",
     # opencode's session store (a shared sqlite) under concurrent writers — several
-    # runs driving opencode at once contend on it and a losing turn exits 1 with
-    # this message. The store is fine a moment later, nothing is wrong with the
-    # prompt, and the same turn re-run completes; five run-generations died on it
-    # in one afternoon before it was classified.
+    # runs driving opencode at once contend on it and a losing turn exits 1. Depending
+    # on where the lock times out, opencode exposes either the underlying execution
+    # failure or only the project upsert. The store is fine a moment later, nothing is
+    # wrong with the prompt, and the same turn re-run completes.
     "failed to execute statement",
+    'failed query: insert into "project"',
 )
 
 # Substrings (case-insensitive) that mark an exhausted context window — the model

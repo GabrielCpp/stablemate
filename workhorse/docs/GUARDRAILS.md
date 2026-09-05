@@ -44,9 +44,10 @@ through three layers before it can ever crash the run (see
    actionable non-transient `BackendInvocationError`. (A single-probe check here is what let
    an okf-builder run misread a self-update as an absent CLI and fail its
    last item.)
-1. **Transient retries** — rate limits, overloads, network blips, timeouts, and
-   *empty results* (the `No 'result' event received` case above) are retried with
-   exponential backoff. For JSONL backends, a matching provider error event or
+1. **Transient retries** — rate limits, overloads, network blips, timeouts,
+   OpenCode shared-store lock contention, and *empty results* (the `No 'result'
+   event received` case above) are retried with exponential backoff. For JSONL
+   backends, a matching provider error event or
    error log (for example OpenCode's `ProviderHeaderTimeoutError`) immediately
    stops the CLI's internal retry loop so Workhorse owns the bounded retry and
    backoff. **Scheduled-reset caps** — spending cap, usage/weekly

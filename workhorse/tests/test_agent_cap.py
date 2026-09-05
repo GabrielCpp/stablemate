@@ -373,6 +373,38 @@ def test_non_timeout_transient_retries_prompt_unchanged():
     assert seen_prompts == ["DO THE TASK", "DO THE TASK"]
 
 
+def test_opencode_project_store_lock_retries_through_transient_ladder():
+    """OpenCode's project-upsert rendering of SQLite contention must not end the run."""
+    diagnostics = (
+        "Error: Unexpected error\n"
+        'Failed query: insert into "project" '
+        '("id", "worktree", "vcs") values (?, ?, ?) on conflict ("project"."id") '
+        "do update set \"worktree\" = ?"
+    )
+    prompts = []
+
+    def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            failure.classify_turn(
+                "opencode",
+                node_id,
+                result_text=None,
+                diagnostics=diagnostics,
+                timed_out=False,
+                returncode=1,
+                timeout=1200,
+            )
+        return "RESULT_OK"
+
+    clock = FakeClock()
+    out = _turn(fake_cli, "DO THE TASK", "repair", clock=clock, timeout=1200)
+
+    assert out == "RESULT_OK"
+    assert prompts == ["DO THE TASK", "DO THE TASK"]
+    assert clock.slept == [RESILIENCE.invoke_backoff_base_s]
+
+
 def test_cap_sleeps_until_reset_then_resumes():
     """A cap error pauses (parsed reset, not short backoff) and retries to success."""
     calls = {"n": 0}
