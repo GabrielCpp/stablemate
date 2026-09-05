@@ -120,6 +120,49 @@ def test_a_non_message_line_and_a_broken_line_are_not_messages():
     assert all("role" in message for message in session["messages"])
 
 
+def test_an_opencode_export_keeps_reasoning_and_tool_parts():
+    """This fails when the archive has a full OpenCode export but the by-node dataset
+    silently treats its non-JSONL shape as an empty transcript."""
+    with _archive() as tmp:
+        record = turns.transcripts_root() / "R1/001-00001-plan-qa__s1"
+        (record / "transcript.jsonl").unlink()
+        (record / "transcript.json").write_text(
+            json.dumps(
+                {
+                    "messages": [
+                        {
+                            "info": {
+                                "role": "assistant",
+                                "providerID": "openai",
+                                "modelID": "gpt-5.6-terra",
+                                "path": {"cwd": "/workspace/acme"},
+                            },
+                            "parts": [
+                                {"type": "reasoning", "text": "inspect the failure"},
+                                {
+                                    "type": "tool",
+                                    "tool": "read",
+                                    "state": {"status": "completed", "output": "contents"},
+                                },
+                            ],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        target = tmp / "dataset"
+        export.export_by_node(target)
+        session = _read(target, "coder/plan-qa/store__s1.json")
+
+    assert session["cwd"] == "/workspace/acme"
+    assert session["model"] == "openai/gpt-5.6-terra"
+    assert [part["type"] for part in session["messages"][0]["content"]] == [
+        "reasoning",
+        "tool",
+    ]
+
+
 def test_the_index_names_every_exported_session():
     with _archive() as tmp:
         target = tmp / "dataset"

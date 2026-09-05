@@ -15,7 +15,8 @@ So groom harvests its own copy on a tick (`GROOM_HARVEST_EVERY_S`, 300) into:
 
 ```
 <archive>/<run_id>/<gen>-<seq>-<node>__<session_id>/
-    transcript.jsonl      # what the runner captured
+    transcript.jsonl      # a native store or redacted stream capture
+    transcript.json       # a CLI's full-session JSON export (OpenCode)
     prompt.md             # the rendered prompt that provoked the turn
     output.json           # the parsed answer
     context_after.json    # optional
@@ -41,8 +42,10 @@ Three things routinely surprise people here:
 
 - **`src` is recorded, never inferred.** `store` is the CLI's own session directory and is
   the richest — it carries attachments and the subagent sidechains that never cross stdout.
-  `tee` is the redacted stream capture, used when that store is not on this host.
-  `store-backfill` came from the CLI after the fact.
+  `export` is a CLI's public full-session JSON; OpenCode includes reasoning, tools, files,
+  patches, snapshots and subtasks. `tee` is the redacted stream capture used when neither
+  richer source is available. `store-backfill` and `export-backfill` came from the CLI after
+  the fact.
 - **`legacy-N` is a reconstructed ordinal, not a real visit.** A `sessions.jsonl` written
   before the engine stamped `generation`/`seq` gets a key rebuilt from the map's own order.
   It orders the run's turns and claims nothing more — don't read `legacy-17` as generation 1,
@@ -81,6 +84,7 @@ DIR/INDEX.json
 One file per session (`task`, `source`, `session_id`, `cwd`, `model`, `time_created`,
 `n_messages`, `messages[]`), streamed a line at a time because the corpus does not fit in
 memory. `task` is the node, from the `sessions.jsonl` index join — classification is
-**exact**, with no heading regex and no unclassified bucket. The export is a *view*: it
+**exact**, with no heading regex and no unclassified bucket. The export keeps OpenCode's full
+parts array as message content, including reasoning and tool records. It is a *view*: it
 duplicates nothing, has no default output directory, and should be thrown away and retaken
 after the next harvest rather than maintained.

@@ -193,6 +193,7 @@ class OpenCodeBackend(JsonlBackend):
             "run",
             "--format",
             "json",
+            "--thinking",
         ]
         if model:
             cmd += ["-m", model]

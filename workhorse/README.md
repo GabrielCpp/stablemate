@@ -286,8 +286,9 @@ Each run writes a directory under `--runs-dir` (default `<cwd>/.agents/runs`), h
 the `events.jsonl` log of every state transition, one `<step-id>/` per step with the
 rendered `prompt.md` and extracted `output.json`, a `turns/` dir keeping every *earlier*
 visit a looping node overwrote, `sessions.jsonl` mapping each turn to its agent-CLI
-session, and `transcripts/` capturing the turns themselves — because the CLI's own session
-store lives on one host and is pruned whenever it likes.
+session, and `transcripts/` capturing the turns themselves — from a native session store,
+OpenCode's full JSON session export, or a redacted stream fallback — because the CLI's own
+session data lives on one host and is pruned whenever it likes.
 
 ```
 runs/<workflow>-<run-id>/{run.json,launch.json,checkpoint.json,context.json,events.jsonl,sessions.jsonl,turns/,transcripts/,<step-id>/}
@@ -311,7 +312,7 @@ environment is deliberately not recorded: it is read at the process boundary and
 secrets on disk.
 
 The full tree, what `prompt.md` does and does not capture, how a transcript capture records
-which of its two sources it came from, and the `WORKHORSE_CAPTURE_TRANSCRIPTS` /
+which source it came from, and the `WORKHORSE_CAPTURE_TRANSCRIPTS` /
 `WORKHORSE_TRANSCRIPT_MAX_BYTES` bounds are in
 [docs/RUNS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/RUNS.md).
 The Docker harness redirects artifacts to a persistent volume instead — see

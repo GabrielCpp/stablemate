@@ -201,7 +201,7 @@ recorded in `sessions.jsonl`:
 $ groom transcript ls --run RUN --node plan-qa
 when      visit        node                         src              size  session
 14:02:11  1-37         plan-qa                      store           612K  9f2c…
-14:19:40  1-44         plan-qa                      store           701K  a13b…
+14:19:40  1-44         plan-qa                      export          701K  a13b…
 14:41:02  1-52         plan-qa                      tee             498K  c07e…
 ```
 
@@ -209,8 +209,10 @@ One row per lap, in the order the run took them — by the visit key rather than
 clock, so the order survives a checkpoint rewind, which a wall clock read across two
 generations does not. `src` is where the copy came from and is never inferred: `store`
 is the CLI's own session directory (richer — it carries attachments and the subagent
-sidechains that never cross stdout), `tee` is the redacted stream capture used when
-that store is not on this host, `store-backfill` came from the CLI after the fact.
+sidechains that never cross stdout), `export` is a CLI's public full-session JSON (OpenCode
+includes reasoning, tools, files, patches, snapshots and subtasks), and `tee` is the
+redacted stream capture used when neither richer source is available. `store-backfill`
+and `export-backfill` identify the corresponding sources recovered after the fact.
 
 ```bash
 groom transcript show --session SESSION   # its files on disk, and the prompt that caused it
@@ -248,7 +250,9 @@ Each file is one session — `task`, `source`, `session_id`, `cwd`, `model`,
 corpus does not fit in memory and neither does some of its individual sessions. `task`
 is the node, taken from the index join that `sessions.jsonl` made possible, so
 classification is **exact**: there is no heading regex and no unclassified bucket. The
-export is a view and duplicates nothing in the archive — throw it away and take it again
+OpenCode mapping keeps its full `parts` array as message content, rather than flattening
+away reasoning and tool records. The export is a view and duplicates nothing in the
+archive — throw it away and take it again
 after the next harvest. There is no default output directory: where a dataset lands is
 the caller's decision, not groom's.
 

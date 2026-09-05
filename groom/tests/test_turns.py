@@ -277,6 +277,70 @@ def test_backfill_finds_the_store_for_a_row_that_never_recorded_a_backend():
             capture._STORES.pop("acme-cli", None)
 
 
+def test_harvest_keeps_an_opencode_session_export():
+    """This fails when groom ignores the richer OpenCode export beside a turn."""
+    with _DB(), _workspace() as tmp:
+        row = _rows()[0]
+        run_dir = _run_dir(tmp, [row])
+        slug = f"{row['generation']:03d}-{row['seq']:05d}-{row['node']}"
+        stem = run_dir / "transcripts" / f"{slug}__{row['session_id']}"
+        Path(f"{stem}.export.json").write_text(
+            '{"messages":[{"info":{"modelID":"gpt-5.6-terra"},"parts":[]}]}',
+            encoding="utf-8",
+        )
+        Path(f"{stem}.meta.json").write_text(
+            json.dumps({"source": "export"}), encoding="utf-8"
+        )
+
+        assert turns.harvest_run(run_dir, "R1", "coder") == 1
+        indexed = store.query_turns(run="R1")
+        record = turns.record_path(indexed[0])
+        assert (record / "transcript.json").is_file()
+
+
+def test_backfill_recovers_a_cli_session_export():
+    """This fails when delayed recovery only asks path-backed CLI stores."""
+    from workhorse.runner import transcript as capture
+
+    with _DB(), _workspace() as tmp:
+        rows = _rows()[:1]
+        run_dir = _run_dir(tmp, rows)
+        _span(run_dir)
+        payload = b'{"messages":[{"info":{"role":"assistant"},"parts":[]}]}'
+        capture._EXPORTERS["acme-cli"] = lambda _sid: payload
+        try:
+            planned = turns.backfill()
+            indexed = store.query_turns(run="R1")
+            record = turns.record_path(indexed[0])
+            assert [item["source"] for item in planned] == ["export-backfill"]
+            assert (record / "transcript.json").read_bytes() == payload
+        finally:
+            capture._EXPORTERS.pop("acme-cli", None)
+
+
+def test_session_models_reads_opencode_export_shape():
+    """This fails when model resolution only understands line-oriented CLI stores."""
+    from workhorse.runner import transcript as capture
+
+    with _workspace():
+        payload = json.dumps(
+            {
+                "messages": [
+                    {"info": {"providerID": "openai", "modelID": "gpt-5.6-terra"}},
+                    {"info": {"providerID": "openrouter", "modelID": "vendor/model"}},
+                ]
+            }
+        ).encode()
+        capture._EXPORTERS["acme-cli"] = lambda _sid: payload
+        try:
+            assert turns.session_models("s1", "acme-cli") == [
+                "openai/gpt-5.6-terra",
+                "openrouter/vendor/model",
+            ]
+        finally:
+            capture._EXPORTERS.pop("acme-cli", None)
+
+
 # --------------------------------------------------------------------------- pruning
 def test_the_archive_keeps_everything_by_default():
     """Retention is its own clock and its default is *keep*: a transcript is wanted

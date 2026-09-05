@@ -78,26 +78,52 @@ def _message_of(entry: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _transcript_lines(record: Path) -> Iterator[dict[str, Any]]:
-    """Parsed JSONL of one archived record, skipping what will not parse.
+    """Parsed records from one archived JSONL stream or full-session JSON export.
 
     A truncated capture ends mid-line by construction — the runner's byte cap cuts the
     file rather than dropping it — so the last line of a large transcript is routinely
     half a line. That is a reason to skip it, not to fail the export.
     """
     path = record / "transcript.jsonl"
-    if not path.is_file():
+    if path.is_file():
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(entry, dict):
+                    yield entry
         return
-    with path.open(encoding="utf-8", errors="replace") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(entry, dict):
-                yield entry
+
+    try:
+        payload = json.loads((record / "transcript.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    messages = payload.get("messages", []) if isinstance(payload, dict) else []
+    for item in messages if isinstance(messages, list) else []:
+        if not isinstance(item, dict):
+            continue
+        info, parts = item.get("info", {}), item.get("parts", [])
+        if not isinstance(info, dict) or not isinstance(parts, list):
+            continue
+        model, provider = info.get("modelID"), info.get("providerID")
+        full_model = (
+            f"{provider}/{model}"
+            if isinstance(provider, str) and provider and isinstance(model, str) and model
+            else model
+        )
+        message: dict[str, Any] = {"role": info.get("role"), "content": parts}
+        if isinstance(full_model, str) and full_model:
+            message["model"] = full_model
+        entry: dict[str, Any] = {"message": message}
+        path_info = info.get("path", {})
+        if isinstance(path_info, dict) and isinstance(path_info.get("cwd"), str):
+            entry["cwd"] = path_info["cwd"]
+        yield entry
 
 
 def _write_session(row: dict[str, Any], target: Path) -> dict[str, Any]:

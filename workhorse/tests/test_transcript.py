@@ -13,8 +13,10 @@ where there is one and from a tee of the redacted stream where there is not.
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 from workhorse import turnkey
 from workhorse.runner import transcript
@@ -46,6 +48,7 @@ def _reset() -> None:
     turnkey.clear()
     transcript.unbind()
     transcript._STORES.pop("acme-cli", None)
+    transcript._EXPORTERS.pop("acme-cli", None)
 
 
 def test_the_store_is_preferred_and_the_tee_it_beats_is_dropped():
@@ -93,6 +96,71 @@ def test_a_backend_with_no_store_is_captured_from_the_tee():
         assert meta["source"] == "tee"
         assert meta["session_id"] == "sess-2"
         assert meta["node"] == "qa-plan"
+
+
+def test_a_backend_export_is_preferred_over_the_stream_tee():
+    """This fails when a backend's complete session export is discarded in favour of
+    the smaller live event stream."""
+    _reset()
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = Path(tmp) / "run"
+        run_dir.mkdir()
+        transcript.bind(run_dir)
+        slug = _begin(run_dir)
+        transcript._EXPORTERS["acme-cli"] = lambda _sid: b'{"messages":[{"parts":[]}]}'
+
+        tee = transcript.tee_begin("qa-plan")
+        assert tee is not None
+        tee.write('{"from":"tee"}\n')
+        tee.close()
+
+        stem = transcript.capture("acme-cli", "qa-plan", "sess-export", tee)
+
+        assert stem is not None
+        assert Path(f"{stem}.export.json").read_bytes() == b'{"messages":[{"parts":[]}]}'
+        assert _meta(stem)["source"] == "export"
+        assert not tee.path.exists()
+        assert stem.name == f"{slug}__sess-export"
+
+
+def test_a_failed_backend_export_preserves_the_stream_tee():
+    """This fails when an unavailable full export turns a usable tee into no record."""
+    _reset()
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = Path(tmp) / "run"
+        run_dir.mkdir()
+        transcript.bind(run_dir)
+        _begin(run_dir)
+        transcript._EXPORTERS["acme-cli"] = lambda _sid: None
+
+        tee = transcript.tee_begin("qa-plan")
+        assert tee is not None
+        tee.write('{"from":"tee"}\n')
+        tee.close()
+
+        stem = transcript.capture("acme-cli", "qa-plan", "sess-fallback", tee)
+
+        assert stem is not None
+        assert Path(f"{stem}.tee.jsonl").read_text() == '{"from":"tee"}\n'
+        assert _meta(stem)["source"] == "tee"
+
+
+def test_opencode_export_uses_the_public_full_session_command():
+    """This fails when the registered OpenCode exporter no longer addresses the completed
+    session through the CLI's supported export surface."""
+    completed = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout=b'{"messages":[]}', stderr=b""
+    )
+    with patch.object(transcript.subprocess, "run", return_value=completed) as run:
+        exported = transcript.export_session("opencode", "ses_123")
+
+    assert exported == b'{"messages":[]}'
+    run.assert_called_once_with(
+        ["opencode", "export", "ses_123"],
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
 
 
 def test_the_tee_stops_at_the_cap_and_says_so():

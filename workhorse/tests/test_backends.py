@@ -832,6 +832,15 @@ def test_opencode_pin_composes_with_other_harness_env():
     }
 
 
+def test_opencode_stream_includes_reasoning_parts():
+    """This fails when the headless stream omits reasoning that only --thinking emits."""
+    fake, captured = _fake_stream(turn.TurnState(result_text="X", session_id="s"))
+
+    _run_turn(OpenCodeBackend(fake), "P", "n", None, model="openai/gpt-5.6-terra")
+
+    assert "--thinking" in captured["cmd"]
+
+
 def test_opencode_on_event_text_session_and_error():
     state = turn.TurnState()
     # The text parts opencode streams live on its own reader, not on the TurnState

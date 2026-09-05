@@ -7,11 +7,14 @@ exists only on the host that ran the CLI, and the CLI is free to prune it. So a 
 re-decided the same thing five times is diagnosable for exactly as long as the CLI feels
 like keeping the evidence.
 
-Two sources, in this order:
+Three sources, in this order:
 
 * **The store**, which is strictly richer than the stream: a Claude session directory
   carries attachments, queued operations and a whole sibling tree of subagent sidechains
   that never cross stdout at all.
+* **A public session export**, for a CLI such as OpenCode whose internal database is not
+  a stable filesystem contract but whose export includes reasoning, tool, file and subtask
+  parts.
 * **A tee of the stream**, for a CLI whose store this module cannot resolve and for a
   container whose store is not on this host. It is opened at the one redaction choke
   point, so what it keeps is redacted by construction.
@@ -27,6 +30,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -84,6 +88,34 @@ _STORES: dict[str, Callable[[str], list[Path]]] = {
 }
 
 
+def _opencode_export(session_id: str) -> bytes | None:
+    """OpenCode's public full-session export, including reasoning and tool parts."""
+    try:
+        result = subprocess.run(
+            ["opencode", "export", session_id],
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    try:
+        loaded = json.loads(result.stdout)
+    except ValueError:
+        return None
+    return result.stdout if isinstance(loaded, dict) else None
+
+
+#: Backends whose public CLI can materialize a full session but whose internal store is
+#: not a stable filesystem contract. Kept separate from `_STORES` because these produce
+#: bytes rather than paths.
+_EXPORTERS: dict[str, Callable[[str], bytes | None]] = {
+    "opencode": _opencode_export,
+}
+
+
 def store_files(backend: str, session_id: str) -> list[Path]:
     """What this backend kept for ``session_id``, or an empty list.
 
@@ -115,6 +147,26 @@ def probe_stores(session_id: str) -> tuple[str, list[Path]]:
         if files:
             return backend, files
     return "", []
+
+
+def export_session(backend: str, session_id: str) -> bytes | None:
+    """A backend's public full-session export, or ``None`` when unavailable."""
+    exporter = _EXPORTERS.get(backend)
+    if exporter is None:
+        return None
+    try:
+        return exporter(session_id)
+    except OSError:
+        return None
+
+
+def probe_exporters(session_id: str) -> tuple[str, bytes | None]:
+    """Which public backend exporter recognizes ``session_id``, if any."""
+    for backend in _EXPORTERS:
+        exported = export_session(backend, session_id)
+        if exported is not None:
+            return backend, exported
+    return "", None
 
 
 # -------------------------------------------------------------------------- settings
@@ -292,6 +344,17 @@ def _copy_tree_capped(src: Path, dst: Path, budget: int) -> tuple[int, bool]:
     return written, truncated
 
 
+def _write_bytes_capped(data: bytes, dst: Path, budget: int) -> tuple[int, bool]:
+    """Write a command-backed export with the same bounded-record contract as stores."""
+    body = data[:budget]
+    truncated = len(data) > len(body)
+    with dst.open("wb") as fh:
+        fh.write(body)
+        if truncated:
+            fh.write(b'\n{"truncated":true,"bytes":' + str(len(body)).encode() + b"}\n")
+    return len(body), truncated
+
+
 def _write_meta(stem: Path, meta: dict[str, object]) -> None:
     try:
         Path(f"{stem}.meta.json").write_text(json.dumps(meta, indent=2))
@@ -360,6 +423,16 @@ def capture(backend: str, node_id: str, session_id: str, tee: Tee | None = None)
             _settings.store_proven = True
             _discard([pending])
             meta |= {"source": "store", "bytes": written, "truncated": truncated}
+            _write_meta(stem, meta)
+            _settings.captures.append(stem)
+            return stem
+        exported = export_session(backend, session_id)
+        if exported is not None:
+            written, truncated = _write_bytes_capped(
+                exported, Path(f"{stem}.export.json"), _settings.max_bytes
+            )
+            _discard([pending])
+            meta |= {"source": "export", "bytes": written, "truncated": truncated}
             _write_meta(stem, meta)
             _settings.captures.append(stem)
             return stem

@@ -97,9 +97,12 @@ than once (loop revisits, compact/reframe within a node), so the mapping is
 session id is also set as the `session.id` attribute on the agent-turn span.
 
 That store is on one host and the CLI prunes it whenever it likes, so the run also keeps
-its own copy: each turn is captured into `transcripts/` under the same visit key, from
-the backend's session store where workhorse can resolve one and from a redacted tee of
-the stream where it cannot. Every capture's `.meta.json` says which of the two it is,
-plus the bytes, the head observed at the time, and whether the per-turn cap truncated it.
+its own copy: each turn is captured into `transcripts/` under the same visit key. Workhorse
+prefers a resolvable backend session store; for OpenCode it invokes the public
+`opencode export <session_id>` command, whose JSON includes reasoning, tool, file, patch,
+snapshot and subtask parts; otherwise it keeps a redacted tee of the live stream. OpenCode
+runs also enable `--thinking`, so the tee still includes completed reasoning parts when the
+full export is unavailable. Every capture's `.meta.json` records its source, bytes, the head
+observed at the time, and whether the per-turn cap truncated it.
 Bounds are `WORKHORSE_CAPTURE_TRANSCRIPTS` (default on) and
 `WORKHORSE_TRANSCRIPT_MAX_BYTES` (default 32 MiB per turn).

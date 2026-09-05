@@ -153,6 +153,7 @@ def _sources(run_dir: Path, slug: str, session_id: str) -> list[tuple[str, Path]
     for name, path in (
         ("transcript.jsonl", Path(f"{stem}.jsonl")),
         ("transcript.jsonl", Path(f"{stem}.tee.jsonl")),
+        ("transcript.json", Path(f"{stem}.export.json")),
         ("sidechains", Path(f"{stem}.d")),
         ("capture.json", Path(f"{stem}.meta.json")),
     ):
@@ -166,7 +167,7 @@ def _sources(run_dir: Path, slug: str, session_id: str) -> list[tuple[str, Path]
 
 
 def _capture_source(run_dir: Path, slug: str, session_id: str) -> str:
-    """What the capture layer said it was — ``store``, ``tee``, or empty when it is gone.
+    """What capture reported — ``store``, ``export``, ``tee``, or empty when absent.
 
     Read from the sidecar meta rather than inferred from the filename, because a
     consumer that has to guess what it is holding will guess wrong about the turn that
@@ -369,18 +370,24 @@ def backfill(dry_run: bool = False) -> list[dict[str, Any]]:
                 continue
             backend = str(row.get("backend", ""))
             files = capture.store_files(backend, session_id)
+            exported = capture.export_session(backend, session_id) if backend and not files else None
             if not files and not backend:
                 # A row from before the map recorded which CLI ran the turn. The store
                 # that holds the session is the one that answers to its id, so ask them
                 # rather than drop a turn for want of a field it was never written with.
                 backend, files = capture.probe_stores(session_id)
-            if not files:
+                if not files:
+                    backend, exported = capture.probe_exporters(session_id)
+            if not files and exported is None:
                 continue
             sources = [
                 ("transcript.jsonl" if path.is_file() else "sidechains", path)
                 for path in files
             ]
-            digest, size = _digest_of(sources)
+            if exported is not None:
+                digest, size = hashlib.sha256(exported).hexdigest(), len(exported)
+            else:
+                digest, size = _digest_of(sources)
             # Recorded as known straight away, so a session the map names twice is
             # planned once — what is being copied is the CLI's whole session file, and
             # both lines point at the same one.
@@ -396,7 +403,7 @@ def backfill(dry_run: bool = False) -> list[dict[str, Any]]:
                 "seq": seq,
                 "ts": row.get("ts") or 0.0,
                 "backend": backend,
-                "source": "store-backfill",
+                "source": "export-backfill" if exported is not None else "store-backfill",
                 "path": str(target.relative_to(root)),
                 "bytes": size,
                 "sha256": digest,
@@ -406,7 +413,14 @@ def backfill(dry_run: bool = False) -> list[dict[str, Any]]:
             if dry_run:
                 continue
             try:
-                record["bytes"] = _copy_record(sources, target)
+                if exported is not None:
+                    shutil.rmtree(target, ignore_errors=True)
+                    target.mkdir(parents=True, exist_ok=True)
+                    body = exported[:MAX_RECORD_BYTES]
+                    (target / "transcript.json").write_bytes(body)
+                    record["bytes"] = len(body)
+                else:
+                    record["bytes"] = _copy_record(sources, target)
             except OSError:
                 logger.debug("backfill could not write %s", target)
                 continue
@@ -435,6 +449,9 @@ def session_models(session_id: str, backend: str = "") -> list[str]:
     files = capture.store_files(backend, session_id) if backend else []
     if not files:
         _backend, files = capture.probe_stores(session_id)
+    exported = capture.export_session(backend, session_id) if backend and not files else None
+    if not files and exported is None and not backend:
+        _backend, exported = capture.probe_exporters(session_id)
     found: dict[str, None] = {}
     for path in files:
         if not path.is_file():
@@ -454,6 +471,21 @@ def session_models(session_id: str, backend: str = "") -> list[str]:
                     value = value.get(key) if isinstance(value, dict) else None
                 if isinstance(value, str) and value:
                     found[value] = None
+    if exported is not None:
+        try:
+            payload = json.loads(exported)
+        except ValueError:
+            payload = {}
+        messages = payload.get("messages", []) if isinstance(payload, dict) else []
+        for message in messages if isinstance(messages, list) else []:
+            info = message.get("info", {}) if isinstance(message, dict) else {}
+            if not isinstance(info, dict):
+                continue
+            model = info.get("modelID")
+            provider = info.get("providerID")
+            if isinstance(model, str) and model:
+                full = f"{provider}/{model}" if isinstance(provider, str) and provider else model
+                found[full] = None
     return list(found)
 
 
