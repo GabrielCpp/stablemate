@@ -146,7 +146,8 @@ def test_invalid_verdicts_retry_twice_then_checkpoint_await(
 
 
 def test_sampling_and_unsupported_source_are_explicit_partial_reports(booked: Path, tmp_path: Path) -> None:
-    (booked / "acme/a.py").write_text("def _other():\n    return 2\n")
+    # A module-level candidate is tier 1 without being an exported, uncited symbol.
+    (booked / "acme/a.py").write_text("LIMIT = 2\nif LIMIT < 0:\n    raise ValueError('no')\n")
     (booked / "acme/client.ts").write_text("export const x = 1;")
     agent = AuditAgent()
     result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme", max_packets=1),
@@ -159,8 +160,8 @@ def test_sampling_and_unsupported_source_are_explicit_partial_reports(booked: Pa
 
 
 def test_turn_budget_ends_the_pass_with_the_unaudited_packets_listed(booked: Path, tmp_path: Path) -> None:
-    (booked / "acme/a.py").write_text("def _other():\n    return 2\n")
-    (booked / "acme/b.py").write_text("def _more():\n    return 3\n")
+    (booked / "acme/a.py").write_text("LIMIT = 2\nif LIMIT < 0:\n    raise ValueError('no')\n")
+    (booked / "acme/b.py").write_text("MORE = 3\nif MORE < 0:\n    raise ValueError('no')\n")
     agent = AuditAgent()
     env = audit_env(tmp_path, agent)
     result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme", turn_budget=1), env)
