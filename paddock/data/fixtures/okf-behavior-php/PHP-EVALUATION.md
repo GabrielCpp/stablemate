@@ -37,11 +37,56 @@ packet. The PHP arm shares the Go and TypeScript arms' `max_turns` ceiling of si
 
 ## Observation
 
-No model run has been scored against this fixture yet. The harness tests pass
-(oracle mutants, fixture isolation, packet/receipt/scoring composition, stale-source
-rejection); the measured run is the next step and gets its own label.
+The real Paddock run `php-controlled-v1` on 2026-09-06 assessed all three cases
+through `workhorse-okf-builder run audit` against the PHP table of the tree-sitter
+extractor (`ostler/behavior_tree.py`). No prompt adjustment, answer-key change,
+manual receipt edit, or second benchmark run followed the responses. All
+witnesses stayed unchanged. One run was discarded before the model ran because a
+relative `--store` broke the `--context-file` path; that was a harness defect,
+fixed in `paddock/cli.py`, and the scored run started from a clean stage.
 
-```bash
-uv run --all-packages pytest paddock/data/tests/test_behavior_php_eval.py -q
-uv run --all-packages paddock --data-dir paddock/data --store <store> run okf-behavior-audit --label php-controlled-v1 --no-pin-project --no-seal --param language=php --param max_turns=6
-```
+| Case | Curated detection | Missed | Unmatched adverse IDs | Unresolved | Backend attempts |
+| --- | --- | --- | ---: | ---: | ---: |
+| control | none expected | none | 0 | 0 | 1 |
+| omissions | OMIT-ERROR, OMIT-EMPTY | none | 1 | 0 | 1 |
+| incorrect | WRONG-EFFECT, WRONG-RESPONSE | none | 0 | 0 | 1 |
+
+Observed detection is **4/4**, with **zero adverse findings on the correct
+control** (four claims and four candidates). This is one deliberately selected
+function, not a statistical accuracy estimate. Each case has four candidates;
+control/incorrect have four claims each, omissions has two. Zero packets omitted,
+zero memo hits. Append-versus-replace is `contradicted` ("it does not replace
+that list"); wrong status is `partial`, explicitly explained as `sent` rather
+than `queued`. Both omission candidates are `missing`. Every case took exactly
+one model turn and one backend attempt; output tokens were 902 / 587 / 790 and
+wall time 55 / 49 / 82 seconds. The subscription backend reports zero cost.
+Exact IDs and statuses remain in the original score.
+
+### Unmatched Findings
+
+The one unmatched ID is the enclosing function contract
+`evidence:b9c53ff53ac478fad030b04049772ead34bfffa8c73e400fb3e3dd06f33c070e` in
+the omissions case, marked `missing`: the reviewer restated the two seeded
+omissions (the negative-limit throw and the empty-input return) as gaps in the
+whole-function contract, in addition to marking the two branch candidates
+`missing` on their own. The oracle's negative-limit and empty cases confirm both
+branches. This is the same overlap the Go run produced on its function contract,
+not a new seeded defect and not a false alarm on correct text. This is author
+adjudication, not a blinded second reviewer; the raw unmatched count stays **1**.
+
+### Comparison With Go and TypeScript
+
+The same seeded defects on the same function shape gave the same 4/4 detection
+in all three languages. PHP matched TypeScript on backend attempts (3 in total)
+and on the unmatched count (1), against Go's 5 attempts and 3 unmatched. The
+PHP overlap sits on the function contract where the TypeScript one sat on the
+remaining `returns:` claim; both are restatements of OMIT-ERROR. One sample
+each; the difference is noted, not claimed as significant.
+
+### Twig
+
+Twig gets no arm. The grammar is flat (an end tag is a sibling of its opening
+tag, not its parent), so a candidate would have no block to attach a condition
+to, and `.twig` files report `unsupported` by design rather than parsing into
+unconditioned noise. A template's behavior is audited through the PHP that
+renders it.
