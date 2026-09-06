@@ -1796,6 +1796,7 @@ dependencies = [
     { name = "keyring" },
     { name = "platformdirs" },
     { name = "pyyaml" },
+    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
@@ -1813,6 +1814,7 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "websockets", specifier = ">=13.0" },
 ]
 provides-extras = ["vault", "test"]
 
