@@ -91,6 +91,8 @@ class BehaviorAuditOutcome(BaseModel):
     reports: tuple[AuditReport, ...] = ()
     repairs: tuple[AuditRepair, ...] = ()
     unresolved: tuple[str, ...] = ()
+    undocumented_files: tuple[str, ...] = Field(
+        default=(), description="Source files with exported symbols that no claim cites; queued as repairs")
     limitations: tuple[str, ...] = ()
     error: str = ""
 
@@ -202,6 +204,16 @@ def assess_audit(
                     f"{claim.status}: {claim.id}: {claim.explanation}\n"
                     f"Node {claims[claim.id].node}: {claims[claim.id].text}\n{evidence_text}"
                 )
+    for file in prepared.undocumented:
+        symbols = ", ".join(f"{symbol} (line {line})" for symbol, line
+                            in zip(file.exported_symbols, file.first_lines, strict=False))
+        grouped[file.path].append(
+            f"Undocumented file {file.path}: {file.candidate_count} behavior candidates and no claim "
+            f"in the book cites this file.\nExported symbols: {symbols}\n"
+            "Document the behavior these symbols carry under the node that owns them, with a "
+            "`code:` citation into this file, or exclude the file from the source scope when it "
+            "is not product behavior."
+        )
     repairs: list[AuditRepair] = []
     for target, findings in sorted(grouped.items()):
         batches: list[str] = []
@@ -229,6 +241,7 @@ def assess_audit(
         empty_packets=sum(not report.verdicts.candidates and not report.verdicts.claims for report in reports),
         selected_candidates=prepared.selected_candidates, selected_claims=prepared.selected_claims,
         reports=tuple(reports), unresolved=tuple(unresolved),
+        undocumented_files=tuple(file.path for file in prepared.undocumented),
         repairs=tuple(repairs),
         limitations=(*prepared.inventory.limitations,
                       "Model judgments are not semantic proofs or whole-book completeness guarantees.",

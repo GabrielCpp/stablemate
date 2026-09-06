@@ -109,6 +109,23 @@ def test_read_only_audit_reports_missing_behavior_and_persists_receipts(booked: 
     assert after == before
 
 
+def test_uncited_exported_file_is_queued_without_a_packet(booked: Path, tmp_path: Path) -> None:
+    (booked / "acme/shipping.py").write_text(
+        "def ship(order):\n    return order\n\n\ndef _pack(order):\n    return order\n", encoding="utf-8",
+    )
+    agent = AuditAgent()
+    result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), audit_env(tmp_path, agent))
+    assert isinstance(result, BehaviorAuditOutcome)
+    assert result.status == "assessed"
+    assert not result.scope_clear
+    assert result.undocumented_files == ("acme/shipping.py",)
+    assert [packet.group for packet in agent.packets] == ["source_file"]
+    assert all(candidate.path == "acme/service.py" for packet in agent.packets for candidate in packet.candidates)
+    repair = next(item for item in result.repairs if item.target == "acme/shipping.py")
+    assert "Undocumented file acme/shipping.py" in repair.context
+    assert "ship (line 2)" in repair.context and "_pack" not in repair.context
+
+
 @pytest.mark.parametrize("status", ["invalid_ids", "invalid_schema"])
 def test_invalid_verdicts_retry_twice_then_checkpoint_await(
     booked: Path, tmp_path: Path, status: str,
@@ -131,7 +148,7 @@ def test_invalid_verdicts_retry_twice_then_checkpoint_await(
 
 
 def test_sampling_and_unsupported_source_are_explicit_partial_reports(booked: Path, tmp_path: Path) -> None:
-    (booked / "acme/a.py").write_text("def other():\n    return 2\n")
+    (booked / "acme/a.py").write_text("def _other():\n    return 2\n")
     (booked / "acme/client.ts").write_text("export const x = 1;")
     agent = AuditAgent()
     result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme", max_packets=1),
