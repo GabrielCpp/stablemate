@@ -158,6 +158,44 @@ def test_sampling_and_unsupported_source_are_explicit_partial_reports(booked: Pa
     assert not result.scope_clear
 
 
+def test_turn_budget_ends_the_pass_with_the_unaudited_packets_listed(booked: Path, tmp_path: Path) -> None:
+    (booked / "acme/a.py").write_text("def _other():\n    return 2\n")
+    (booked / "acme/b.py").write_text("def _more():\n    return 3\n")
+    agent = AuditAgent()
+    env = audit_env(tmp_path, agent)
+    result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme", turn_budget=1), env)
+    assert isinstance(result, BehaviorAuditOutcome)
+    assert result.status == "partial"
+    assert len(agent.packets) == 1
+    assert result.assessed_packets == 1
+    assert len(result.unaudited_packets) == result.total_packets - 1 == 2
+    assert all(len(entry.split()) >= 2 for entry in result.unaudited_packets), "digest then paths"
+    assert any("Turn budget spent: 1 of 1" in note for note in result.limitations)
+    assert not result.scope_clear
+    # The receipt on disk is the partial one, and a resume under a fresh budget reads on.
+    saved = BehaviorAuditOutcome.model_validate_json(Path(result.report_path).read_text())
+    assert saved.unaudited_packets == result.unaudited_packets
+    resumed = drive(Audit(docs_path=str(booked), source_path="acme", service="acme", turn_budget=0), env)
+    assert isinstance(resumed, BehaviorAuditOutcome)
+    assert resumed.status == "assessed" and not resumed.unaudited_packets
+    assert len(agent.packets) == 3
+
+
+def test_clear_except_unaudited_names_only_the_budget_shape() -> None:
+    def outcome(**fields: object) -> BehaviorAuditOutcome:
+        scope = audit_nodes.AuditScope(docs_path="x", source_path="y")
+        return BehaviorAuditOutcome.model_validate(
+            {"status": "partial", "report_path": "r", "scope_digest": "d", "scope": scope, **fields},
+        )
+
+    repair = audit_nodes.AuditRepair(target="t", context="c")
+    assert outcome(unaudited_packets=("abc acme/a.py",)).clear_except_unaudited
+    assert not outcome().clear_except_unaudited
+    assert not outcome(unaudited_packets=("abc",), omitted_packets=1).clear_except_unaudited
+    assert not outcome(unaudited_packets=("abc",), unresolved=("u",)).clear_except_unaudited
+    assert not outcome(unaudited_packets=("abc",), repairs=(repair,)).clear_except_unaudited
+
+
 @pytest.mark.parametrize("status", ["partial", "contradicted"])
 def test_book_to_source_mismatches_queue_only_the_selected_book(
     booked: Path, tmp_path: Path, status: str,

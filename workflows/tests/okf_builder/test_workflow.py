@@ -326,6 +326,43 @@ def test_fully_cited_book_cannot_commit_with_behavior_gaps(
         assert agent.counts()["repair-behavior"] == MAX_TARGET_ATTEMPTS
 
 
+CITED_CONCEPT = """---
+type: concept
+slug: {slug}
+title: {title}
+---
+# {title}
+
+- code: `acme/service.py::{symbol}`
+
+{prose}
+"""
+
+
+def test_budget_partial_audit_ships_after_the_pass_cap(booked: Path, tmp_path: Path) -> None:
+    """Three cited files make three packets beside the booked one; one turn per pass and
+    two passes read two of them, and the other two ship in the receipt."""
+    for name in ("a", "b", "c"):
+        (booked / f"acme/{name}.py").write_text(f'def {name}(x):\n    """Return {name}."""\n    return x\n')
+        (booked / BOOK / f"concepts/{name}.md").write_text(CITED_CONCEPT.format(
+            slug=name, title=name.upper(), symbol=name, prose=f"{name} returns its input.",
+        ).replace("acme/service.py", f"acme/{name}.py"))
+    Repo(booked).git.add(all=True)
+    Repo(booked).index.commit("cited helpers")
+    agent = _Agent(booked)
+    env = _env(tmp_path)
+    with patch.object(pyflow_driver, "wait_for_answer", _parked_at([])):
+        _drive(env, agent, audit_turn_budget=1, audit_max_passes=2)
+    assert agent.counts()["behavior-audit"] == 2, agent.counts()
+    assert (env.run_dir / "behavior-audit" / "passes").read_text() == "2"
+    assert (env.run_dir / "commit_book").is_dir()
+    report = BehaviorAuditOutcome.model_validate_json((env.run_dir / "behavior-audit.json").read_text())
+    assert report.status == "partial" and not report.scope_clear
+    assert report.clear_except_unaudited
+    assert len(report.unaudited_packets) == 2, report.unaudited_packets
+    assert any("Turn budget spent" in note for note in report.limitations) or report.assessed_packets == 2
+
+
 def test_behavior_repair_changes_book_and_reaudits_before_commit(booked: Path, tmp_path: Path) -> None:
     agent = _SemanticAgent(booked, "repair")
     env = _env(tmp_path)

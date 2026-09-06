@@ -93,8 +93,27 @@ class BehaviorAuditOutcome(BaseModel):
     unresolved: tuple[str, ...] = ()
     undocumented_files: tuple[str, ...] = Field(
         default=(), description="Source files with exported symbols that no claim cites; queued as repairs")
+    unaudited_packets: tuple[str, ...] = Field(
+        default=(), description="Packets with no current receipt, as `<digest> <paths>`; a budget stop ships them")
     limitations: tuple[str, ...] = ()
     error: str = ""
+
+    @property
+    def clear_except_unaudited(self) -> bool:
+        """Nothing blocks a commit but packets no reviewer has read yet.
+
+        This is the shape a turn budget leaves behind: no repair, no unresolved verdict,
+        no omitted packet, only receipts still owed. The pass cap in the main flow decides
+        whether that ships; the outcome only says that it *could*.
+        """
+        return (self.status == "partial" and bool(self.unaudited_packets)
+                and not self.repairs and not self.unresolved and not self.omitted_packets)
+
+
+def packet_label(packet: AuditPacket) -> str:
+    """A digest a receipt dir is named by, plus the paths a reader can find it under."""
+    paths_seen = sorted({candidate.path for candidate in packet.candidates} | {claim.path for claim in packet.claims})
+    return f"{packet.digest} {' '.join(paths_seen)}".rstrip()
 
 
 class AuditWork(BaseModel):
@@ -242,6 +261,7 @@ def assess_audit(
         selected_candidates=prepared.selected_candidates, selected_claims=prepared.selected_claims,
         reports=tuple(reports), unresolved=tuple(unresolved),
         undocumented_files=tuple(file.path for file in prepared.undocumented),
+        unaudited_packets=tuple(packet_label(packet) for packet in pending),
         repairs=tuple(repairs),
         limitations=(*prepared.inventory.limitations,
                       "Model judgments are not semantic proofs or whole-book completeness guarantees.",
@@ -279,6 +299,40 @@ def record_audit_verdicts(
     policy_path.write_text(policy.model_dump_json(indent=2), encoding="utf-8")
     logger.info("validated audit packet %s", packet.digest)
     return report
+
+
+@blueprint.node(stub=lambda logger, run_dir, advance: 1)
+def audit_pass(logger: logging.Logger, run_dir: str, advance: bool) -> int:
+    """How many audit passes this run has opened; `advance` opens one more.
+
+    The count lives beside the receipts rather than in a state kwarg because the drain
+    between passes threads its own counters through a dozen signatures, and a reload
+    re-enters from a checkpoint that predates any kwarg added after it was written.
+    """
+    path = Path(run_dir) / "behavior-audit" / "passes"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    count = int(path.read_text(encoding="utf-8") or 0) if path.exists() else 0
+    if advance:
+        count += 1
+        path.write_text(str(count), encoding="utf-8")
+        logger.info("behavior audit: pass %d opened", count)
+    return count
+
+
+@blueprint.node
+def record_audit_budget_stop(
+    logger: logging.Logger, outcome: BehaviorAuditOutcome, turns: int, budget: int,
+) -> BehaviorAuditOutcome:
+    """Write the partial report a spent turn budget leaves: what was read, what was not."""
+    stopped = outcome.model_copy(update={
+        "status": "partial", "scope_clear": False,
+        "limitations": (*outcome.limitations,
+                        f"Turn budget spent: {turns} of {budget} reviewer turns; "
+                        f"{len(outcome.unaudited_packets)} packets have no receipt."),
+    })
+    Path(outcome.report_path).write_text(stopped.model_dump_json(indent=2), encoding="utf-8")
+    logger.info("behavior audit: turn budget %d spent, %d packets unaudited", budget, len(outcome.unaudited_packets))
+    return stopped
 
 
 @blueprint.node

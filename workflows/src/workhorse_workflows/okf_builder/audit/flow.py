@@ -9,7 +9,8 @@ from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow, Work
 
 from workhorse_workflows.okf_builder.shared import audit as audit_nodes
 from workhorse_workflows.okf_builder.shared.audit import (
-    AuditScope, ReviewContractChanged, assess_audit, record_audit_error, record_audit_verdicts,
+    AuditScope, ReviewContractChanged, assess_audit, record_audit_budget_stop, record_audit_error,
+    record_audit_verdicts,
 )
 
 
@@ -23,10 +24,16 @@ class Audit(Workflow):
     max_packets: int | None = Field(default=None, gt=0)
     packet_max_items: int = Field(default=80, ge=2)
     packet_max_chars: int = Field(default=60000, gt=0)
+    #: Reviewer turns this pass may spend; 0 is unbudgeted. A retry on an invalid reply is
+    #: a turn. At the budget the pass ends with the unaudited packets listed in its report,
+    #: which is a partial audit the caller may ship — never a silent skip.
+    turn_budget: int = Field(default=0, ge=0)
     #: Parent-run storage survives the engine resetting a completed handoff scope.
     artifact_dir: str = ""
 
-    def start(self, failed_digest: str = "", attempts: int = 0, feedback: str = "") -> Continue | Done | Await:
+    def start(
+        self, failed_digest: str = "", attempts: int = 0, feedback: str = "", turns: int = 0,
+    ) -> Continue | Done | Await:
         scope = AuditScope(
             docs_path=self.docs_path, source_path=self.source_path, service=self.service,
             context_paths=self.context_paths,
@@ -50,7 +57,11 @@ class Audit(Workflow):
         try:
             if not packet.candidates and not packet.claims:
                 verdicts = AuditVerdicts(claims=(), candidates=())
+            elif self.turn_budget and turns >= self.turn_budget:
+                stopped = self.call(record_audit_budget_stop, work.outcome, turns, self.turn_budget)
+                return Done(stopped).because("turn budget spent: unaudited packets listed in report")
             else:
+                turns += 1
                 verdicts = self.agent(
                     "audit/prompts/behavior-audit.md", returns=AuditVerdicts,
                     # No reframe and three provider retries: a 5xx storm ends here as a
@@ -76,5 +87,6 @@ class Audit(Workflow):
                 ).because("invalid verdict budget exhausted: operator gate")
             return Continue(
                 None, self.start, failed_digest=packet.digest, attempts=attempts + 1, feedback=str(exc),
+                turns=turns,
             ).because("invalid receipt: retry with validator findings")
-        return Continue(None, self.start).because("receipt saved: rebuild scope before next packet")
+        return Continue(None, self.start, turns=turns).because("receipt saved: rebuild scope before next packet")

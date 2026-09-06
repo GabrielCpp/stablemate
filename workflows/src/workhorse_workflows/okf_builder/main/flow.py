@@ -79,7 +79,7 @@ from workhorse_workflows.okf_builder.main.nodes import (
     prepare,
 )
 from workhorse_workflows.okf_builder.shared import paths
-from workhorse_workflows.okf_builder.shared.audit import AuditScope, assess_audit
+from workhorse_workflows.okf_builder.shared.audit import AuditScope, assess_audit, audit_pass
 from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book
 from workhorse_workflows.okf_builder.shared.schemas import (
     Adjudication,
@@ -186,6 +186,14 @@ class OkfBuilder(Workflow):
     max_items: int = 0
     #: Live runtime exploration is opt-in; semantic source/book review always runs.
     runtime_walkthrough: bool = False
+    #: Reviewer turns one audit pass may spend; 0 runs the audit to the end of the source
+    #: tree, which on a large book is a run that never finishes. What a pass leaves unread
+    #: is listed in the report and, after `audit_max_passes`, shipped as a partial audit
+    #: rather than a reason not to commit.
+    audit_turn_budget: int = 60
+    #: Audit passes before a budget-partial audit ships. Repairs the audit queues drain in
+    #: between, so a pass after the first mostly reads re-keyed packets.
+    audit_max_passes: int = 3
     #: Narrow the run to what changed since this revision — every path differing from its
     #: merge base with HEAD, working tree and untracked included. `""` reconciles the whole
     #: book. A narrowing that cannot be computed blocks the run rather than silently
@@ -945,10 +953,18 @@ class OkfBuilder(Workflow):
         ).because("real gaps queued")
 
     def semantic_audit(self) -> Continue | Await:
-        """Audit current source and claims, then queue coherent file/node repairs."""
+        """Audit current source and claims, then queue coherent file/node repairs.
+
+        Each pass spends at most `audit_turn_budget` reviewer turns. A pass that ends on
+        its budget with nothing else open is followed by another, up to
+        `audit_max_passes`; past that the audit ships partial, with the unaudited packets
+        in the receipt. A contradicted or missing verdict is a repair either way, and a
+        repair blocks the commit until the drain has closed it.
+        """
+        passes = self.call(audit_pass, str(self.run_dir), True)
         result = self.handoff(
             Audit, docs_path=self.ctx.repo_root, source_path=self.ctx.source_root,
-            service=self.service, artifact_dir=str(self.run_dir),
+            service=self.service, artifact_dir=str(self.run_dir), turn_budget=self.audit_turn_budget,
         )
         if result.repairs:
             recorded = self.call(record, self.ctx.worklist_path, None, [
@@ -963,6 +979,13 @@ class OkfBuilder(Workflow):
                     self.retry_blocked,
                 ).because("behavior repair attempts exhausted: operator gate")
             return Continue(recorded, self.select).because("behavior gaps queued by source file or book node")
+        if result.clear_except_unaudited:
+            if passes < self.audit_max_passes:
+                return Continue(result, self.semantic_audit).because("turn budget spent: next pass")
+            if self.runtime_walkthrough:
+                return Continue(result, self.walkthrough).because("audit partial by budget: walkthrough requested")
+            return Continue(result, self.commit, walked=WebApp()).because(
+                "audit partial by budget at the pass cap: commit with unaudited list")
         if result.unresolved or result.status != "assessed":
             return Await(
                 paths.operator_context_path(Path(self.ctx.repo_root), self.service, self.ctx.scope_id),
@@ -1007,7 +1030,10 @@ class OkfBuilder(Workflow):
             str(self.run_dir),
         )
         if not work.outcome.scope_clear:
-            return Continue(work.outcome, self.semantic_audit).because("current source/book lacks a clear audit receipt")
+            passes = self.call(audit_pass, str(self.run_dir), False)
+            if not (work.outcome.clear_except_unaudited and passes >= self.audit_max_passes):
+                return Continue(work.outcome, self.semantic_audit).because(
+                    "current source/book lacks a clear audit receipt")
         self.call(commit_book, self.ctx.repo_root, self.ctx.features_root, self.story)
         return Done(walked).because("completed book committed")
 
