@@ -33,18 +33,28 @@ def test_audit_prepares_uncited_evidence_and_ungrounded_claims(
     assert main(["-C", str(behavior_repo), "audit", "api.py", "--json", "--no-index"]) == 0
     data = json.loads(capsys.readouterr().out)
     assert data["status"] == "prepared"
-    candidates = [item for packet in data["packets"] for item in packet["candidates"]]
+    candidates = data["inventory"]["candidates"]
     claims = [item for packet in data["packets"] for item in packet["claims"]]
     assert {item["kind"] for item in candidates} >= {"route", "function_default", "raise", "return"}
     assert any("limit=20" in item["text"] for item in candidates)
     assert any("50 items" in item["text"] for item in claims)
     assert any("missing.py::list_items" in item["citations"] for item in claims)
-    assert {packet["group"] for packet in data["packets"]} == {"source_file", "ungrounded_book"}
-    assert all(not packet["claims"] for packet in data["packets"] if packet["group"] == "source_file")
+    # api.py exports list_items and nothing cites it: a deterministic finding, never a packet.
+    assert {packet["group"] for packet in data["packets"]} == {"ungrounded_book"}
+    assert [(item["path"], item["exported_symbols"]) for item in data["undocumented"]] == [("api.py", ["list_items"])]
     assert len(claims) == 1, "The API and endpoint titles must not become semantic claims"
     assert all(packet["digest"] for packet in data["packets"])
     assert data["omitted_candidates"] == data["omitted_claims"] == 0
     assert not (behavior_repo / "docs/features/sources.json").exists()
+
+
+def test_audit_prints_the_undocumented_file_finding(
+    behavior_repo: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["-C", str(behavior_repo), "audit", "api.py", "--no-index"]) == 0
+    out = capsys.readouterr().out
+    assert "Undocumented: api.py:" in out
+    assert "list_items" in out and "no claim cites this file" in out
 
 
 def test_audit_reports_unsupported_files_without_claiming_complete(

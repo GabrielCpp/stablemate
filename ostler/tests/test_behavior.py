@@ -6,9 +6,9 @@ import hashlib
 import pytest
 
 from ostler.behavior import (
-    AuditPacket, AuditVerdicts, BookClaim, CandidateVerdict, ClaimVerdict,
-    build_audit_packets, duplicate_node_ids, extract_book, extract_claims, extract_evidence,
-    validate_verdicts,
+    AuditPacket, AuditVerdicts, BookClaim, BookClaims, CandidateVerdict, ClaimVerdict,
+    build_audit_packets, duplicate_node_ids, exported_symbol, extract_book, extract_claims,
+    extract_evidence, validate_verdicts,
 )
 from ostler.model import load
 
@@ -93,7 +93,7 @@ def test_large_file_packets_pair_local_evidence_and_claims_without_truncation(tm
         build_audit_packets(inventory, claims, max_chars=10)
     without_source = build_audit_packets(extract_evidence(tmp_path, []), claims, max_items=3)
     assert {claim.id for packet in without_source.packets for claim in packet.claims} == {claim.id for claim in claims}
-    without_book = build_audit_packets(inventory, [])
+    without_book = build_audit_packets(inventory, [], skip_undocumented=False)
     assert {item.id for packet in without_book.packets for item in packet.candidates} == {item.id for item in inventory.candidates}
 
 
@@ -118,8 +118,9 @@ def test_packet_count_is_linear_for_100_files_and_claims(tmp_path: Path) -> None
 def test_normalized_file_binding_keeps_uncited_source_and_ungrounded_book(tmp_path: Path) -> None:
     source = tmp_path / "src"
     source.mkdir()
-    for name in ("a.py", "b.py", "uncited.py"):
+    for name in ("a.py", "b.py"):
         (source / name).write_text("def a():\n    return 1\n", encoding="utf-8")
+    (source / "uncited.py").write_text("def _a():\n    return 1\n", encoding="utf-8")
     citations = [
         ("`./src/a.py::wrong`, `src\\b.py::other`",),
         (), ("repo://api-service/src/a.py::a",), ("missing.py::a",), ("repo://malformed",),
@@ -133,6 +134,7 @@ def test_normalized_file_binding_keeps_uncited_source_and_ungrounded_book(tmp_pa
     assert {claim.id for claim in by_module["src/b.py"].claims} == {"claim:0"}
     assert not by_module["src/uncited.py"].claims
     assert len(by_module["src/uncited.py"].candidates) == 1
+    assert not preparation.undocumented
     book_only = next(packet for packet in preparation.packets if not packet.module)
     assert book_only.model_dump()["group"] == "ungrounded_book"
     assert not book_only.candidates
@@ -186,7 +188,7 @@ def test_empty_scope_empty_directories_and_empty_files_are_explicit(tmp_path: Pa
         assert preparation.packets[0].model_dump()["group"] == "empty_scope"
     inventory = extract_evidence(tmp_path, ["empty.py"])
     assert inventory.files[0].status == "parsed"
-    packet = build_audit_packets(inventory, []).packets[0]
+    packet = build_audit_packets(inventory, [], skip_undocumented=False).packets[0]
     assert packet.module == "empty.py" and not packet.candidates
     assert any("No behavior candidates" in note for note in packet.limitations)
     with pytest.raises(ValueError, match="empty selector"):
@@ -329,7 +331,7 @@ def test_packet_shows_side_effect_preceding_return_and_prior_guard(tmp_path: Pat
     path = tmp_path / "api.py"
     path.write_text(source, encoding="utf-8")
     inventory = extract_evidence(tmp_path, ["api.py"])
-    packet = build_audit_packets(inventory, []).packets[0]
+    packet = build_audit_packets(inventory, [], skip_undocumented=False).packets[0]
     assert "sent.extend(selected)" in packet.model_dump_json()
     contexts = packet.source_context
     enclosing = next(context for context in contexts if context.symbol == "send")
@@ -342,12 +344,12 @@ def test_packet_shows_side_effect_preceding_return_and_prior_guard(tmp_path: Pat
     assert inventory.source_context == contexts
     receipt = verdicts(packet)
     validate_verdicts(packet, receipt)
-    for chunk in build_audit_packets(inventory, [], max_items=2).packets:
+    for chunk in build_audit_packets(inventory, [], max_items=2, skip_undocumented=False).packets:
         assert enclosing in chunk.source_context
     path.write_text(source.replace("sent.extend(selected)", "sent.clear()"), encoding="utf-8")
     current_inventory = extract_evidence(tmp_path, ["api.py"])
     assert [item.id for item in current_inventory.candidates] == [item.id for item in inventory.candidates]
-    current = build_audit_packets(current_inventory, []).packets[0]
+    current = build_audit_packets(current_inventory, [], skip_undocumented=False).packets[0]
     with pytest.raises(ValueError, match="stale"):
         validate_verdicts(current, receipt)
 
@@ -418,7 +420,7 @@ def test_class_field_context_does_not_include_unrelated_methods(tmp_path: Path) 
         "    def unrelated(self):\n        # " + "large method " * 7000 + "\n        consume(self)\n",
         encoding="utf-8",
     )
-    packet = build_audit_packets(extract_evidence(tmp_path, ["api.py"]), [], max_chars=6000).packets[0]
+    packet = build_audit_packets(extract_evidence(tmp_path, ["api.py"]), [], max_chars=6000, skip_undocumented=False).packets[0]
     assert "Delivery settings." in packet.model_dump_json()
     assert "large method" not in packet.model_dump_json()
     assert any("no candidates" in note.lower() for note in packet.limitations)
@@ -477,7 +479,7 @@ def test_support_context_failures_are_visible_in_every_packet(tmp_path: Path) ->
     assert {file.path: file.status for file in inventory.context_files} == {
         "missing.py": "unreadable", "helper.ts": "unsupported", "bad.py": "parse_error", "directory": "unsupported",
     }
-    packet = build_audit_packets(inventory, []).packets[0]
+    packet = build_audit_packets(inventory, [], skip_undocumented=False).packets[0]
     assert not packet.candidates and not packet.support_context
     for file in inventory.context_files:
         assert any(file.path in note and file.status in note and "unresolved" in note for note in packet.limitations)
@@ -490,7 +492,7 @@ def test_support_context_budget_counts_full_file_and_empty_files(tmp_path: Path)
     assert empty.support_context[0].text == ""
     helper.write_text("# " + "context " * 2000 + "\n", encoding="utf-8")
     inventory = extract_evidence(tmp_path, [], context_paths=["helper.py"])
-    packet = build_audit_packets(inventory, []).packets[0]
+    packet = build_audit_packets(inventory, [], skip_undocumented=False).packets[0]
     assert packet.support_context[0].text == helper.read_text(encoding="utf-8")
     size = len(packet.model_dump_json())
     assert build_audit_packets(inventory, [], max_chars=size).packets == (packet,)
@@ -597,3 +599,50 @@ def test_duplicate_anchor_claims_are_skipped_and_named(tmp_path: Path) -> None:
     preparation = build_audit_packets(extract_evidence(tmp_path, ["api.py"]), book)
     assert all(book.limitations[0] in packet.limitations for packet in preparation.packets)
     assert len(preparation.packets) >= 1
+
+
+def test_uncited_file_with_exported_symbols_is_a_finding_not_a_packet(tmp_path: Path) -> None:
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "public.py").write_text(
+        "def _helper():\n    return 0\n\nclass Api:\n    def get(self):\n        return 1\n", encoding="utf-8",
+    )
+    (source / "private.py").write_text("def _only():\n    return 2\n", encoding="utf-8")
+    (source / "empty.py").write_text("x = 1\n", encoding="utf-8")
+    (source / "exported.go").write_text(
+        "package p\n\ntype thing struct{}\n\nfunc (t thing) Do() int { return 1 }\n\nfunc Run() int { return 2 }\n",
+        encoding="utf-8",
+    )
+    preparation = build_audit_packets(extract_evidence(tmp_path, ["src"]), [])
+    assert {packet.module for packet in preparation.packets} == {"src/private.py", "src/empty.py"}
+    found = {file.path: file for file in preparation.undocumented}
+    assert set(found) == {"src/public.py", "src/exported.go"}
+    assert found["src/public.py"].exported_symbols == ("Api.get",)
+    assert found["src/public.py"].first_lines == (6,)
+    assert found["src/public.py"].candidate_count == 2
+    assert found["src/exported.go"].exported_symbols == ("Run",)
+    # The finding is a fact about the book: one citation turns the file back into a packet.
+    claim = BookClaim(id="claim:0", node="node", path="docs/book.md", line=1, kind="does",
+                      text="Gets", citations=("src/public.py::Api.get",))
+    cited = build_audit_packets(extract_evidence(tmp_path, ["src"]), [claim])
+    assert {file.path for file in cited.undocumented} == {"src/exported.go"}
+    assert any(packet.module == "src/public.py" for packet in cited.packets)
+
+
+def test_cited_claimless_file_keeps_its_packet(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/public.py").write_text("def get():\n    return 1\n", encoding="utf-8")
+    inventory = extract_evidence(tmp_path, ["src"])
+    assert build_audit_packets(inventory, BookClaims(claims=())).undocumented
+    cited = build_audit_packets(inventory, BookClaims(claims=(), cited_paths=("src/public.py",)))
+    assert not cited.undocumented
+    assert [packet.group for packet in cited.packets] == ["source_file"]
+
+
+@pytest.mark.parametrize(("path", "symbol", "expected"), [
+    ("a.py", "Api.get", True), ("a.py", "Api._get", False), ("a.py", "_Api.get", False),
+    ("a.py", "<module>", False), ("a.go", "Run", True), ("a.go", "thing.Do", False),
+    ("a.go", "Thing.Do", True), ("a.go", "Thing.do", False),
+])
+def test_exported_symbol_rule_per_language(path: str, symbol: str, expected: bool) -> None:
+    assert exported_symbol(path, symbol) is expected

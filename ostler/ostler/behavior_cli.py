@@ -24,5 +24,8 @@ def run(graph: Graph, args: argparse.Namespace) -> int:
             print(f"{file.path}: {file.status}" + (f" ({file.message})" if file.message else ""))
         for limitation in dict.fromkeys(limitation for packet in result.packets for limitation in packet.limitations):
             print(f"Limit: {limitation}")
+        for file in result.undocumented:
+            print(f"Undocumented: {file.path}: {file.candidate_count} candidates on "
+                  f"{', '.join(file.exported_symbols)}; no claim cites this file")
         print("Use --json for evidence, claims, packet digests, and exact scope counts.")
     return 0

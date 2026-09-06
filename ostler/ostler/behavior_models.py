@@ -124,6 +124,22 @@ class BookClaims(BehaviorModel):
 
     claims: tuple[BookClaim, ...]
     limitations: tuple[str, ...] = ()
+    cited_paths: tuple[Nonblank, ...] = Field(
+        default=(), description="Every repo-relative source path some node cites, claim or not")
+
+
+class UndocumentedFile(BehaviorModel):
+    """A source file with behavior candidates on exported symbols that no book node cites.
+
+    This is a fact about the book, not a question for a reviewer: no packet is built for
+    the file until a claim cites it. ``exported_symbols`` lists the symbols the
+    language's rule exports, each with the line of its first candidate.
+    """
+
+    path: Nonblank
+    candidate_count: int = Field(ge=1)
+    exported_symbols: tuple[Nonblank, ...] = Field(min_length=1)
+    first_lines: tuple[int, ...] = ()
 
 
 class AuditPreparation(BehaviorModel):
@@ -133,6 +149,7 @@ class AuditPreparation(BehaviorModel):
     packets: tuple[AuditPacket, ...]
     selected_candidates: int
     selected_claims: int
+    undocumented: tuple[UndocumentedFile, ...] = ()
     omitted_candidates: Literal[0] = 0
     omitted_claims: Literal[0] = 0
 

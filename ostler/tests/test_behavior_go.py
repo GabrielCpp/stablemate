@@ -93,7 +93,7 @@ def test_go_candidates_keep_control_flow_signatures_fields_and_full_context(tmp_
         assert item.snippet in span
         assert any(context.start_line <= item.start_line <= item.end_line <= context.end_line
                    and item.snippet in context.text for context in inventory.source_context)
-    for packet in build_audit_packets(inventory, [], max_items=2).packets:
+    for packet in build_audit_packets(inventory, [], max_items=2, skip_undocumented=False).packets:
         for item in packet.candidates:
             assert any(item.snippet in context.text for context in packet.source_context)
         assert AuditPacket.model_validate_json(packet.model_dump_json()) == packet
@@ -172,7 +172,7 @@ def test_mixed_go_python_real_book_packets_support_and_receipts(tmp_path: Path, 
 def test_go_anonymous_struct_binding_keeps_declaration_context(tmp_path: Path) -> None:
     source = 'package api\nvar Config struct { Limit *int `json:"limit,omitempty"` }\n'
     (tmp_path / "api.go").write_text(source, encoding="utf-8")
-    packet = build_audit_packets(extract_evidence(tmp_path, ["api.go"]), []).packets[0]
+    packet = build_audit_packets(extract_evidence(tmp_path, ["api.go"]), [], skip_undocumented=False).packets[0]
     assert len(packet.candidates) == 1
     assert packet.candidates[0].kind == "schema_field"
     assert len(packet.source_context) == 1
@@ -182,7 +182,7 @@ def test_go_anonymous_struct_binding_keeps_declaration_context(tmp_path: Path) -
 def test_go_signature_struct_fields_are_evidence_not_just_context(tmp_path: Path) -> None:
     source = 'package api\nfunc Accept(req struct { Name string `json:"name"` }) {}\n'
     (tmp_path / "api.go").write_text(source, encoding="utf-8")
-    packet = build_audit_packets(extract_evidence(tmp_path, ["api.go"]), []).packets[0]
+    packet = build_audit_packets(extract_evidence(tmp_path, ["api.go"]), [], skip_undocumented=False).packets[0]
     fields = [item for item in packet.candidates if item.kind == "schema_field"]
     assert len(fields) == 1
     assert fields[0].text == 'Name string `json:"name"`'

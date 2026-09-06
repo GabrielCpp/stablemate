@@ -25,7 +25,7 @@ from ostler.behavior_models import (
     CandidateVerdict as CandidateVerdict, ClaimVerdict as ClaimVerdict,
     EvidenceFile as EvidenceFile, EvidenceInventory as EvidenceInventory,
     BookContext as BookContext, BookEvidenceRef as BookEvidenceRef, SourceContext as SourceContext,
-    SourceExcerpt as SourceExcerpt,
+    SourceExcerpt as SourceExcerpt, UndocumentedFile as UndocumentedFile,
 )
 from ostler.behavior_python import PythonEvidence
 from ostler.model import Graph
@@ -220,6 +220,15 @@ def extract_book(graph: Graph) -> BookClaims:
         for node_id in sorted(duplicates)
     )
     documents: dict[Path, tuple[markdown.MarkdownDoc, str]] = {}
+    cited_paths: set[str] = set()
+    for node in graph.ui_nodes:
+        for citation in refs.code_refs(node.meta.get("code")):
+            try:
+                ref = refs.parse_code_ref(citation)
+            except ValueError:
+                continue
+            if not ref.repository:
+                cited_paths.add(posixpath.normpath(ref.path))
     for node in sorted(graph.ui_nodes, key=lambda node: node.id):
         if node.id in duplicates:
             continue
@@ -255,12 +264,40 @@ def extract_book(graph: Graph) -> BookClaims:
             claims.append(BookClaim(id=f"okf:{node.id}:{kind}:{counts[key]}", node=node.id,
                                     path=path, line=max(1, node.bullet_lines.get(position, node.line)), kind=kind, text=text,
                                     citations=citations, title=node.title, context=(context,)))
-    return BookClaims(claims=tuple(claims), limitations=limitations)
+    return BookClaims(claims=tuple(claims), limitations=limitations, cited_paths=tuple(sorted(cited_paths)))
+
+
+def exported_symbol(path: str, symbol: str) -> bool:
+    """Whether a candidate's symbol is exported by its language's rule.
+
+    Go exports a capitalized name, and a method is exported only on an exported type.
+    Python exports a name with no leading underscore, at every level of nesting. The
+    module itself (``<module>``) is never a symbol. This is the tier-1 rule the audit
+    reads; a ``__all__`` that re-exports an underscored name is not consulted.
+    """
+    if symbol == "<module>":
+        return False
+    parts = symbol.split(".")
+    if path.endswith(".go"):
+        return all(part[:1].isupper() for part in parts)
+    return all(part and not part.startswith("_") for part in parts)
+
+
+def undocumented_file(path: str, evidence: Sequence[BehaviorEvidence]) -> UndocumentedFile | None:
+    """The deterministic finding for a parsed file no claim cites, or None to build packets."""
+    first: dict[str, int] = {}
+    for item in sorted(evidence, key=lambda item: (item.start_line, item.start_column, item.id)):
+        if exported_symbol(path, item.symbol):
+            first.setdefault(item.symbol, item.start_line)
+    if not first:
+        return None
+    return UndocumentedFile(path=path, candidate_count=len(evidence),
+                            exported_symbols=tuple(first), first_lines=tuple(first.values()))
 
 
 def build_audit_packets(
     inventory: EvidenceInventory, claims: Sequence[BookClaim] | BookClaims, *,
-    max_items: int = 80, max_chars: int = 60_000,
+    max_items: int = 80, max_chars: int = 60_000, skip_undocumented: bool = True,
 ) -> AuditPreparation:
     """Prepare file-local review packets without an all-book Cartesian product.
 
@@ -272,6 +309,13 @@ def build_audit_packets(
     is incorrect. Claims without a matching local file go into explicit book-only
     packets; files without citing claims retain all their candidates. Repository-
     qualified citations stay ungrounded: this inventory has no repository mapping.
+    A parsed file with candidates on exported symbols that no claim and no book node
+    cites (a `BookClaims` carries the book's ``cited_paths``) is a fact a rule can
+    compute: it is listed under ``undocumented`` and no packet is built for it, so no
+    reviewer turn is spent finding what the book never mentions. A file some node cites
+    without a claim still reaches a reviewer, who reports what the book leaves out. A
+    file whose candidates all sit on private symbols audits as before, and
+    ``skip_undocumented=False`` builds every file's packet regardless.
     Oversized files cross only their own evidence/claim chunks, never other files.
     Per-packet omitted counts name context in sibling packets, not discarded work.
     The preparation's omitted counts are always zero. Item and serialized-character
@@ -285,8 +329,10 @@ def build_audit_packets(
     if max_chars < 1:
         raise ValueError("max_chars must be positive")
     book_limitations: tuple[str, ...] = ()
+    cited_paths: frozenset[str] = frozenset()
     if isinstance(claims, BookClaims):
         book_limitations = claims.limitations
+        cited_paths = frozenset(claims.cited_paths)
         claims = claims.claims
     ordered_claims = tuple(sorted(claims, key=lambda claim: claim.id))
     _exact_ids([claim.id for claim in ordered_claims], {claim.id for claim in ordered_claims}, "input claims")
@@ -313,9 +359,16 @@ def build_audit_packets(
     inventory_digest = _digest(inventory.model_dump(mode="json"))
     files_by_path = {file.path: file for file in inventory.files}
     packets: list[AuditPacket] = []
+    undocumented: list[UndocumentedFile] = []
     for module, evidence in sorted(grouped.items()):
         local_claims = tuple(claims_by_file[module])
         evidence.sort(key=lambda item: (item.start_line, item.start_column, item.id))
+        if (skip_undocumented and module in files_by_path and files_by_path[module].status == "parsed"
+                and evidence and not local_claims and module not in cited_paths):
+            finding = undocumented_file(module, evidence)
+            if finding is not None:
+                undocumented.append(finding)
+                continue
         limitations = inventory.limitations + book_limitations
         if module in files_by_path:
             file = files_by_path[module]
@@ -355,7 +408,7 @@ def build_audit_packets(
                 pending[0:0] = [(candidates, chunk[:half]), (candidates, chunk[half:])]
             else:
                 raise ValueError(f"oversized packet for {module or 'ungrounded book'}: cannot fit max_chars={max_chars} without truncation")
-    return AuditPreparation(inventory=inventory, packets=tuple(packets),
+    return AuditPreparation(inventory=inventory, packets=tuple(packets), undocumented=tuple(undocumented),
                             selected_candidates=len(inventory.candidates), selected_claims=len(ordered_claims))
 
 
