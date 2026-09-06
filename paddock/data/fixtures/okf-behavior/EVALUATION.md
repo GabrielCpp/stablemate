@@ -725,3 +725,35 @@ After any parent-authorized at-boundary reload, inspect new repair prompts and
 logs for an actual repaired obligation before claiming live improvement. No
 external private filesystem, live book edit, model call, commit, push, restart,
 or reload was performed for this change. No new waiver or runtime hatch remains.
+
+## Packet sizing before and after context trimming, 2026-09-06
+
+Measured with `ostler audit ostler --json --no-index` on the `ostler` package from a clean
+checkout of `d0fca5d6` (before) and the same tree with plan step 8 applied (after). Sizes are
+characters of packet JSON, summed across packets.
+
+| Run | Packets | Candidates | Selected claims | Total chars | Limitations | Claims | Book context | Source context |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| before, tier 1 | 336 | 2,261 | 9,203 | 17,017,663 | 8,900,000 | 4,260,000 | 3,560,000 | 70,000 |
+| before, tier all | crashed: `oversized packet for ostler/ostler/doctor.py` | | | | | | | |
+| after, tier 1 | 20 | 2,265 | 55 | 517,208 | 288,000 | 25,000 | 47,500 | 67,000 |
+| after, tier all | 25 | 3,903 | 55 | 763,360 | | | | |
+
+After trimming, tier 1 also reports 1,638 deferred candidates, 9,148 out-of-scope claims and
+83 undocumented files. Three changes account for the reduction:
+
+1. **Out-of-scope claims.** Before, every claim whose citations resolved to no selected file
+   was treated as ungrounded and attached to every packet — 318 of the 336 packets carried
+   the whole book. With `root` passed, a claim whose citations all name existing files
+   outside the selection is counted and skipped instead. A citation to a file that does not
+   exist stays ungrounded, since that is a defect a reviewer should see.
+2. **Per-file limitations.** A `path::symbol` extraction note now rides only the packet for
+   that file; the generic notes still ride every packet.
+3. **Windowed book context.** Each node's section is cut to forty lines either side of the
+   packet's claims, which is what let the `doctor.py` pair fit under `max_chars`.
+
+Same-file binding excerpts, the plan's other candidate for a cap, measured about 2,500
+characters across all packets before trimming and were left uncapped. The remaining bulk
+per packet is the limitations list, dominated in a whole-repository audit by the
+duplicate-heading skips of other services' books; the okf-builder scopes those to the
+service it audits, so its packets do not carry them.

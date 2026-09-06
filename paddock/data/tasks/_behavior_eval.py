@@ -160,7 +160,7 @@ def prepare(root: Path, source: str, *, context_paths: Sequence[str] = ()) -> Au
                 for file in evidence.context_files if file.status != "parsed"]
     if failures:
         raise ValueError("Support context unavailable: " + "; ".join(failures))
-    return build_audit_packets(evidence, extract_book(load(root)))
+    return build_audit_packets(evidence, extract_book(load(root)), root=root)
 
 
 def bind_truth(case: Case, preparation: AuditPreparation) -> dict[str, set[str]]:
