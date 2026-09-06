@@ -10,10 +10,10 @@ import time
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
-from saddlebag import browser, envfile, manifest, render, totp
+from saddlebag import browser, envfile, keychain, manifest, render, totp
 from saddlebag.context import infer_project
-from saddlebag.db import DEFAULT_TTL, Pool, PoolError, default_db_path
-from saddlebag.models import FORMATS, KIND_CONFIG, KIND_CREDENTIAL_REF, KIND_PENDING, KIND_SECRET, Credential, Environment, EnvironmentEntry, Requirement, parse_cred_ref, utcnow
+from saddlebag.db import DEFAULT_TTL, REF_COLUMNS, Pool, PoolError, default_db_path
+from saddlebag.models import FORMATS, KIND_CONFIG, KIND_CREDENTIAL_REF, KIND_PENDING, KIND_SECRET, Credential, Environment, EnvironmentEntry, KeychainRef, Requirement, parse_cred_ref, utcnow
 from saddlebag.selector import SelectionError, select
 from saddlebag.store import SecretStore, StoreUnavailableError, open_store
 from saddlebag.workhorse import write_private
@@ -114,6 +114,9 @@ def _resolve_password(args: argparse.Namespace) -> str:
 
 
 def cmd_add(args: argparse.Namespace, pool: Pool) -> int:
+    if args.password_keychain:
+        return _add_linked(args, pool)
+
     password = _resolve_password(args)
     store = _open_store(args)
 
@@ -137,6 +140,38 @@ def cmd_add(args: argparse.Namespace, pool: Pool) -> int:
     else:
         scope = f" in project {cred.project}" if cred.project else ""
         print(f"added {cred.id} ({cred.username}){scope} to the {store.name} store")
+    return 0
+
+
+def _add_linked(args: argparse.Namespace, pool: Pool) -> int:
+    """``add --password-keychain``: the password stays where somebody already put it.
+
+    The reference is resolved once, here, and the value is dropped on the next line.
+    A reference that does not resolve is refused rather than recorded: the pool would
+    otherwise look healthy right up until a run needed the password, which is the
+    worst moment to discover a typo in an attribute name.
+    """
+    try:
+        ref = KeychainRef.of(keychain.parse_attributes(args.password_keychain))
+        keychain.lookup(ref)
+    except keychain.KeychainError as exc:
+        return _fail(str(exc))
+
+    cred = pool.add(
+        username=args.username,
+        env=args.env,
+        project=_resolve_project(args),
+        roles=args.roles or (),
+        features=args.features or (),
+        surface=args.surface,
+        password_ref=ref,
+    )
+    if args.json:
+        _emit(cred.to_dict())
+    else:
+        scope = f" in project {cred.project}" if cred.project else ""
+        print(f"added {cred.id} ({cred.username}){scope}, password read from the "
+              f"keychain item {ref.describe()}")
     return 0
 
 
@@ -166,6 +201,12 @@ def cmd_remove(args: argparse.Namespace, pool: Pool) -> int:
     store.delete(cred.totp_store_key)
     pool.remove(cred.id)
     print(f"removed {cred.id}")
+    for field, ref in (("password", cred.password_ref), ("totp", cred.totp_ref)):
+        if ref is not None:
+            # saddlebag did not write that item and does not delete it. Saying so is
+            # the difference between an operator who knows a secret is still on this
+            # machine and one who believes `remove` cleaned up after itself.
+            print(f"  its {field} was read from {ref.describe()}, which is untouched")
     return 0
 
 
@@ -212,7 +253,7 @@ def _lease_and_emit(args: argparse.Namespace, pool: Pool, credential_id: str) ->
         return 1
 
     store = _open_store(args)
-    if store.get(_store_key(cred)) is None:
+    if keychain.password_for(cred, store) is None:
         logger.error(
             "%s has no password in the %s store — the pool and the store disagree; "
             "run 'saddlebag doctor'",
@@ -278,8 +319,8 @@ def cmd_doctor(args: argparse.Namespace, pool: Pool) -> int:
 
     orphans: list[str] = []
     if store is not None:
-        orphans = [c.id for c in creds if store.get(_store_key(c)) is None]
-        problems.extend(f"{cid}: metadata in pool, no password in store" for cid in orphans)
+        orphans = [c.id for c in creds if _password_missing(c, store)]
+        problems.extend(f"{cid}: metadata in pool, no password behind it" for cid in orphans)
 
     if args.json:
         _emit({
@@ -737,8 +778,8 @@ def cmd_env_doctor(args: argparse.Namespace, pool: Pool) -> int:
                 if cred is None:
                     dangling.append(f"{entry.key} -> {credential_id} (no such credential)")
                 elif (cred_field == "password" and store is not None
-                      and store.get(cred.store_key) is None):
-                    dangling.append(f"{entry.key} -> {credential_id} (no password in the store)")
+                      and _password_missing(cred, store)):
+                    dangling.append(f"{entry.key} -> {credential_id} (no password behind it)")
 
         problems.extend(f"{environment.name}: {k} is pending — a human must supply it"
                         for k in pending)
@@ -831,6 +872,15 @@ def cmd_totp_set(args: argparse.Namespace, pool: Pool) -> int:
         logger.error("%s", exc)
         return 2
 
+    if cred.totp_ref is not None:
+        # Storing one here would be inert: `seed_for` reads the reference first, so
+        # the value written would never be used and the operator would have no way to
+        # tell from the outside.
+        return _fail(
+            f"{cred.id} reads its TOTP seed from the keychain item "
+            f"{cred.totp_ref.describe()}. Update it there, or run "
+            f"'saddlebag unlink {cred.id} --field totp' first"
+        )
     store = _open_store(args)
     store.put(cred.totp_store_key, seed)
     print(f"stored a TOTP seed for {cred.id} in the {store.name} store")
@@ -847,6 +897,57 @@ def cmd_totp_unset(args: argparse.Namespace, pool: Pool) -> int:
     return 0
 
 
+def cmd_link(args: argparse.Namespace, pool: Pool) -> int:
+    """Point a credential's password or seed at a keychain item saddlebag did not write."""
+    cred = pool.get(args.credential_id)
+    if cred is None:
+        return _fail(f"no such credential: {args.credential_id}")
+
+    try:
+        attributes = keychain.parse_attributes(args.attributes)
+        ref = KeychainRef.of(attributes)
+        # Resolved before it is recorded, for the reason in `_add_linked`, and the
+        # value is discarded here — linking never returns a secret to anyone.
+        keychain.lookup(ref)
+    except keychain.KeychainError as exc:
+        return _fail(str(exc))
+
+    store = _open_store(args)
+    key = cred.store_key if args.field == "password" else cred.totp_store_key
+    if store.get(key) is not None and not args.force:
+        # Two homes for one secret is the state this whole feature exists to avoid.
+        # Refusing here rather than shadowing means the operator decides which copy
+        # is authoritative, instead of finding out from a login that used the old one.
+        return _fail(
+            f"{cred.id} already has a {args.field} in the {store.name} store; linking "
+            f"would shadow it. Pass --force to drop the stored copy and use the "
+            f"keychain item instead."
+        )
+    if args.force:
+        store.delete(key)
+
+    updated = pool.set_ref(cred.id, args.field, ref)
+    if args.json:
+        _emit(updated.to_dict())
+    else:
+        print(f"{updated.id}: {args.field} now reads from {ref.describe()}")
+    return 0
+
+
+def cmd_unlink(args: argparse.Namespace, pool: Pool) -> int:
+    """Forget a reference. The keychain item itself is untouched — saddlebag never wrote it."""
+    cred = pool.get(args.credential_id)
+    if cred is None:
+        return _fail(f"no such credential: {args.credential_id}")
+    ref = cred.password_ref if args.field == "password" else cred.totp_ref
+    if ref is None:
+        return _fail(f"{cred.id}: {args.field} is not linked to a keychain item")
+    pool.set_ref(cred.id, args.field, None)
+    print(f"{cred.id}: {args.field} is no longer linked ({ref.describe()} is untouched). "
+          f"Nothing holds a {args.field} for it now")
+    return 0
+
+
 def _value_to_fill(args: argparse.Namespace, cred: Credential, store: SecretStore) -> tuple[str, dict[str, object]]:
     """The value for ``--field``, plus whatever is safe to report about it.
 
@@ -856,7 +957,7 @@ def _value_to_fill(args: argparse.Namespace, cred: Credential, store: SecretStor
     if args.field == "username":
         return cred.username, {}
     if args.field == "password":
-        password = store.get(_store_key(cred))
+        password = keychain.password_for(cred, store)
         if password is None:
             raise SystemExit(
                 _fail(f"{cred.id} has no password in the {store.name} store — "
@@ -864,11 +965,12 @@ def _value_to_fill(args: argparse.Namespace, cred: Credential, store: SecretStor
             )
         return password, {}
 
-    seed = store.get(cred.totp_store_key)
+    seed = keychain.seed_for(cred, store)
     if seed is None:
         raise SystemExit(
             _fail(f"{cred.id} has no TOTP seed. Store one with: "
-                  f"saddlebag totp set {cred.id}")
+                  f"saddlebag totp set {cred.id} — or, if it is already in the "
+                  f"keychain, point at it with: saddlebag link {cred.id} --field totp")
         )
     remaining = totp.seconds_remaining()
     if remaining < args.min_seconds:
@@ -884,6 +986,19 @@ def _value_to_fill(args: argparse.Namespace, cred: Credential, store: SecretStor
 def _fail(message: str) -> int:
     logger.error("%s", message)
     return 1
+
+
+def _password_missing(cred: Credential, store: SecretStore) -> bool:
+    """Whether a credential's password cannot be read at all — from either home.
+
+    A broken keychain reference counts as missing, and that is the point: `doctor`
+    exists to find the disagreements that only surface mid-run, and an attribute that
+    stopped matching is exactly one of them.
+    """
+    try:
+        return keychain.password_for(cred, store) is None
+    except keychain.KeychainError:
+        return True
 
 
 def cmd_fill(args: argparse.Namespace, pool: Pool) -> int:
@@ -935,6 +1050,9 @@ def build_parser() -> argparse.ArgumentParser:
     pw.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
     pw.add_argument("--password-env-file", metavar="ENVFILE",
                     help="read the password from a variable in a .env file")
+    pw.add_argument("--password-keychain", metavar="NAME=VALUE", nargs="+",
+                    help="leave the password in an existing keychain item and read it "
+                         "there, addressed by these attributes")
     a.add_argument("--password-var", metavar="NAME",
                    help="the variable in --password-env-file to import as the password")
     a.add_argument("--json", action="store_true")
@@ -1004,6 +1122,30 @@ def build_parser() -> argparse.ArgumentParser:
                     help="with --field totp, wait out a code with fewer than N seconds left")
     fl.add_argument("--json", action="store_true")
     fl.set_defaults(func=cmd_fill)
+
+    lk = sub.add_parser(
+        "link",
+        help="read a secret from an existing keychain item instead of storing a copy",
+        description="Point a credential's password or TOTP seed at a keychain item "
+                    "that already exists — one created with secret-tool, the desktop's "
+                    "keychain app, or anything else. saddlebag records the attributes "
+                    "and resolves them on each use, so a rotation at the source is "
+                    "picked up with nothing to re-import.",
+    )
+    lk.add_argument("credential_id", metavar="ID")
+    lk.add_argument("attributes", metavar="NAME=VALUE", nargs="+",
+                    help="attributes identifying exactly one keychain item")
+    lk.add_argument("--field", choices=sorted(REF_COLUMNS), default="password",
+                    help="which secret this item holds (default: password)")
+    lk.add_argument("--force", action="store_true",
+                    help="drop saddlebag's own stored copy, which linking would shadow")
+    lk.add_argument("--json", action="store_true")
+    lk.set_defaults(func=cmd_link)
+
+    ul = sub.add_parser("unlink", help="stop reading a secret from a keychain item")
+    ul.add_argument("credential_id", metavar="ID")
+    ul.add_argument("--field", choices=sorted(REF_COLUMNS), default="password")
+    ul.set_defaults(func=cmd_unlink)
 
     tp = sub.add_parser("totp", help="a credential's second factor (seed in, codes only ever typed)")
     tsub = tp.add_subparsers(dest="totp_command", required=True)

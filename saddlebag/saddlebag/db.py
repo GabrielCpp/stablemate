@@ -24,7 +24,16 @@ from pathlib import Path
 
 import platformdirs
 
-from saddlebag.models import FORMATS, Credential, Environment, EnvironmentEntry, Lease, Requirement, utcnow
+from saddlebag.models import (
+    FORMATS,
+    Credential,
+    Environment,
+    EnvironmentEntry,
+    KeychainRef,
+    Lease,
+    Requirement,
+    utcnow,
+)
 
 #: Default lease lifetime, in seconds (2 hours).
 DEFAULT_TTL = 7200
@@ -38,6 +47,8 @@ CREATE TABLE IF NOT EXISTS credentials (
     roles       TEXT NOT NULL DEFAULT '[]',
     features    TEXT NOT NULL DEFAULT '[]',
     surface     TEXT,
+    password_ref TEXT,
+    totp_ref     TEXT,
     last_used   REAL,
     lease_id    TEXT UNIQUE,
     run_id      TEXT,
@@ -76,7 +87,15 @@ CREATE TABLE IF NOT EXISTS environment_entries (
 # Each entry is (column_name, "ALTER TABLE ... ADD COLUMN ..." statement).
 _MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("project", "ALTER TABLE credentials ADD COLUMN project TEXT"),
+    ("password_ref", "ALTER TABLE credentials ADD COLUMN password_ref TEXT"),
+    ("totp_ref", "ALTER TABLE credentials ADD COLUMN totp_ref TEXT"),
 )
+
+#: The ``--field`` an operator names, mapped to the column that holds its reference.
+#: A whitelist, because these names reach an UPDATE statement: the alternative is a
+#: column name built from an argument, which is the shape SQL injection takes when
+#: the value is not a bindable parameter.
+REF_COLUMNS: dict[str, str] = {"password": "password_ref", "totp": "totp_ref"}
 
 # Indexes are created after migrations, so an index may reference a migrated
 # column that an old pool did not originally have.
@@ -129,6 +148,15 @@ def _dt_at(row: sqlite3.Row, column: str) -> datetime:
     if when is None:
         raise ValueError(f"credential {row['id']!r} holds a lease with no {column}")
     return when
+
+
+def _ref(value: str | None) -> KeychainRef | None:
+    """A stored keychain reference, or None. Attributes travel as a JSON object."""
+    return KeychainRef.of(json.loads(value)) if value else None
+
+
+def _ref_json(ref: KeychainRef | None) -> str | None:
+    return json.dumps(ref.as_dict()) if ref is not None else None
 
 
 def _row_to_entry(row: sqlite3.Row) -> EnvironmentEntry:
@@ -195,6 +223,8 @@ class Pool:
             roles=tuple(json.loads(row["roles"])),
             features=tuple(json.loads(row["features"])),
             surface=row["surface"],
+            password_ref=_ref(row["password_ref"]),
+            totp_ref=_ref(row["totp_ref"]),
             last_used=_dt(row["last_used"]),
             lease_id=row["lease_id"],
             run_id=row["run_id"],
@@ -281,6 +311,8 @@ class Pool:
         features: Iterable[str] = (),
         surface: str | None = None,
         credential_id: str | None = None,
+        password_ref: KeychainRef | None = None,
+        totp_ref: KeychainRef | None = None,
     ) -> Credential:
         cred = Credential(
             id=credential_id or self._next_id(),
@@ -290,11 +322,14 @@ class Pool:
             roles=tuple(roles),
             features=tuple(features),
             surface=surface,
+            password_ref=password_ref,
+            totp_ref=totp_ref,
         )
         try:
             self._conn.execute(
-                "INSERT INTO credentials (id, username, env, project, roles, features, surface) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO credentials "
+                "(id, username, env, project, roles, features, surface, password_ref, totp_ref) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     cred.id,
                     cred.username,
@@ -303,11 +338,38 @@ class Pool:
                     json.dumps(list(cred.roles)),
                     json.dumps(list(cred.features)),
                     cred.surface,
+                    _ref_json(cred.password_ref),
+                    _ref_json(cred.totp_ref),
                 ),
             )
         except sqlite3.IntegrityError as exc:
             raise PoolError(f"credential {cred.id} already exists") from exc
         return cred
+
+    def set_ref(
+        self, credential_id: str, field: str, ref: KeychainRef | None
+    ) -> Credential:
+        """Point ``field`` at a keychain item, or (with ``None``) stop pointing at one.
+
+        Returns the credential as it now reads, so a caller reports what is true after
+        the write rather than what it asked for.
+        """
+        column = REF_COLUMNS.get(field)
+        if column is None:
+            raise PoolError(
+                f"unknown secret field {field!r} "
+                f"(expected one of {', '.join(sorted(REF_COLUMNS))})"
+            )
+        cur = self._conn.execute(
+            f"UPDATE credentials SET {column} = ? WHERE id = ?",  # noqa: S608 - column from REF_COLUMNS
+            (_ref_json(ref), credential_id),
+        )
+        if cur.rowcount == 0:
+            raise PoolError(f"no such credential: {credential_id}")
+        updated = self.get(credential_id)
+        if updated is None:  # pragma: no cover - the UPDATE just matched a row
+            raise PoolError(f"no such credential: {credential_id}")
+        return updated
 
     def remove(self, credential_id: str) -> bool:
         cur = self._conn.execute("DELETE FROM credentials WHERE id = ?", (credential_id,))

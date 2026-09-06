@@ -166,8 +166,12 @@ def test_list_json_never_emits_a_password(add_one, run, capsys):
     assert run("list", "--json") == 0
     payload = out(capsys)
     assert "hunter2" not in payload
-    assert "password" not in payload
-    assert json.loads(payload)[0]["id"] == "cred-001"
+    row = json.loads(payload)[0]
+    assert row["id"] == "cred-001"
+    # The only key naming a password says where one is read from, and for a credential
+    # saddlebag stores itself the answer is nothing at all.
+    assert [k for k in row if "password" in k] == ["password_ref"]
+    assert row["password_ref"] is None
 
 
 def test_list_filters_by_env(add_one, run, capsys):

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from datetime import timedelta
 from pathlib import Path
 
@@ -12,7 +14,7 @@ import platformdirs
 from conftest import present
 
 from saddlebag.db import Pool, PoolError, _dt, default_db_path
-from saddlebag.models import Requirement
+from saddlebag.models import KeychainRef, Requirement
 
 
 def test_default_db_path_honours_the_env_override(monkeypatch, tmp_path):
@@ -63,7 +65,58 @@ def test_pool_never_stores_a_password(pool: Pool, db_path: Path):
     pool.add(username="a@x.com", env="staging")
     columns = {r[1] for r in pool._conn.execute("PRAGMA table_info(credentials)")}
     assert "password" not in columns
-    assert not any("password" in c for c in columns)
+    # `password_ref` is the one column whose name contains the word, and it holds a
+    # set of keychain attributes — an address, checked below to be one. Nothing here
+    # may hold the value at that address.
+    assert {c for c in columns if "password" in c} == {"password_ref"}
+
+
+def test_a_password_reference_stores_the_address_and_not_the_secret(pool: Pool, db_path: Path):
+    ref = KeychainRef.of({"service": "github", "account": "bot", "type": "password"})
+    cred = pool.add(username="a@x.com", env="staging", password_ref=ref)
+
+    reread = pool.get(cred.id)
+    assert reread is not None
+    assert reread.password_ref == ref
+    stored = pool._conn.execute(
+        "SELECT password_ref FROM credentials WHERE id = ?", (cred.id,)
+    ).fetchone()[0]
+    assert json.loads(stored) == {"service": "github", "account": "bot", "type": "password"}
+
+
+def test_a_reference_survives_a_pool_that_predates_the_column(db_path: Path):
+    # The shape an already-installed saddlebag left behind: no ref columns at all.
+    # Opening it must add them rather than fail, and every existing row reads as
+    # unlinked — which is what those credentials actually are.
+    legacy = sqlite3.connect(str(db_path))
+    legacy.executescript(
+        "CREATE TABLE credentials (id TEXT PRIMARY KEY, username TEXT NOT NULL, "
+        "env TEXT NOT NULL, roles TEXT NOT NULL DEFAULT '[]', "
+        "features TEXT NOT NULL DEFAULT '[]', surface TEXT, last_used REAL, "
+        "lease_id TEXT UNIQUE, run_id TEXT, acquired_at REAL, expires_at REAL);"
+        "INSERT INTO credentials (id, username, env) VALUES ('cred-001', 'a@x.com', 'staging');"
+    )
+    legacy.commit()
+    legacy.close()
+
+    with Pool(db_path) as pool:
+        cred = pool.get("cred-001")
+        assert cred is not None
+        assert cred.password_ref is None
+        assert cred.totp_ref is None
+        assert pool.set_ref("cred-001", "password", KeychainRef.of({"service": "gh"})).password_ref
+
+
+def test_set_ref_rejects_a_field_that_is_not_a_column(pool: Pool):
+    cred = pool.add(username="a@x.com", env="staging")
+    with pytest.raises(PoolError, match="unknown secret field"):
+        pool.set_ref(cred.id, "roles", KeychainRef.of({"service": "gh"}))
+
+
+def test_unlinking_clears_the_reference(pool: Pool):
+    cred = pool.add(username="a@x.com", env="staging",
+                    password_ref=KeychainRef.of({"service": "gh"}))
+    assert pool.set_ref(cred.id, "password", None).password_ref is None
 
 
 def test_roles_match_as_a_superset(populated: Pool):

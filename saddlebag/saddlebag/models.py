@@ -16,6 +16,7 @@ render`` with owner-only permissions.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -87,6 +88,30 @@ def parse_cred_ref(ref: str) -> tuple[str, str]:
 
 
 @dataclass(frozen=True)
+class KeychainRef:
+    """Where a secret lives in the OS keychain, when saddlebag does not hold it.
+
+    Attributes only — the reference is metadata, printable by ``list`` and ``doctor``
+    like any other field, and it is the whole point that it is not the secret. Held as
+    a sorted tuple of pairs rather than a dict so a :class:`Credential` stays frozen
+    *and* hashable; :meth:`as_dict` is what the lookup takes.
+    """
+
+    attributes: tuple[tuple[str, str], ...]
+
+    @classmethod
+    def of(cls, attributes: Mapping[str, str]) -> KeychainRef:
+        return cls(tuple(sorted(attributes.items())))
+
+    def as_dict(self) -> dict[str, str]:
+        return dict(self.attributes)
+
+    def describe(self) -> str:
+        """One line, for a human deciding whether this names the item they meant."""
+        return " ".join(f"{name}={value}" for name, value in self.attributes)
+
+
+@dataclass(frozen=True)
 class Credential:
     """A test identity. Metadata only — the password lives in the secret store."""
 
@@ -97,6 +122,12 @@ class Credential:
     roles: tuple[str, ...] = ()
     features: tuple[str, ...] = ()
     surface: str | None = None
+    #: Set when the password lives in a keychain item saddlebag did not write. Then
+    #: nothing is stored at :attr:`store_key`, and reads go through
+    #: :func:`saddlebag.keychain.password_for`.
+    password_ref: KeychainRef | None = None
+    #: The same, for the TOTP enrolment seed.
+    totp_ref: KeychainRef | None = None
     last_used: datetime | None = None
     lease_id: str | None = None
     run_id: str | None = None
@@ -116,7 +147,11 @@ class Credential:
 
     @property
     def store_key(self) -> str:
-        """Where this credential's password lives in the secret store."""
+        """Where this credential's password lives in the secret store.
+
+        Unused when :attr:`password_ref` is set — a credential's password has exactly
+        one home, and which one it is, is what the reference records.
+        """
         return qualify(self.project, self.id)
 
     @property
@@ -143,6 +178,11 @@ class Credential:
             "locked": self.is_locked(now),
             "last_used": _iso(self.last_used),
             "lease_id": self.lease_id,
+            # Where the secrets are, never what they are. An agent reading this needs
+            # to know a value comes from outside saddlebag's own store, because that
+            # is the difference between `totp set` and rotating it at the source.
+            "password_ref": self.password_ref.describe() if self.password_ref else None,
+            "totp_ref": self.totp_ref.describe() if self.totp_ref else None,
         }
 
 

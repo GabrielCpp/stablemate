@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from saddlebag import envfile
+from saddlebag import envfile, keychain
 from saddlebag.db import DEFAULT_TTL, Pool, PoolError
 from saddlebag.models import KIND_CONFIG, KIND_CREDENTIAL_REF, KIND_PENDING, KIND_SECRET, Environment, parse_cred_ref
 from saddlebag.store import SecretStore
@@ -92,7 +92,10 @@ def _cred_value(
     if cred_field == "username":
         return cred.username, None
 
-    password = open_store().get(cred.store_key)
+    try:
+        password = keychain.password_for(cred, open_store())
+    except keychain.KeychainError as exc:
+        return None, f"{credential_id}: {exc}"
     if password is None:
         return None, f"{credential_id} has no password in the store"
     return password, None
