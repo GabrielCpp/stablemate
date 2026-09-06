@@ -49,6 +49,11 @@ def _digest(value: object) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()).hexdigest()
 
 
+def packet_digest(packet: AuditPacket) -> str:
+    """The digest a packet carries: its whole content, the digest field itself excluded."""
+    return _digest(packet.model_dump(mode="json", exclude={"digest"}))
+
+
 def extract_evidence(root: Path, paths: Sequence[str], *, context_paths: Sequence[str] = ()) -> EvidenceInventory:
     """Read selected relative files/directories; retain every failed/unsupported file.
 
@@ -397,7 +402,7 @@ def build_audit_packets(
                                   support_context=tuple(dict.fromkeys(inventory.support_context)),
                                  omitted_candidates=len(inventory.candidates) - len(candidates),
                                  omitted_claims=len(ordered_claims) - len(chunk), limitations=limitations)
-            packet = packet.model_copy(update={"digest": _digest(packet.model_dump(mode="json", exclude={"digest"}))})
+            packet = packet.model_copy(update={"digest": packet_digest(packet)})
             if len(packet.model_dump_json()) <= max_chars:
                 packets.append(packet)
             elif len(candidates) > 1:
@@ -428,7 +433,7 @@ def validate_verdicts(packet: AuditPacket, payload: object) -> AuditReport:
     claims that name it. Support/contradiction/partial claims require candidate links. Source coverage requires a supported/partial
     claim link or a resolvable book span, which establishes documentation, not QA proof.
     """
-    current_digest = _digest(packet.model_dump(mode="json", exclude={"digest"}))
+    current_digest = packet_digest(packet)
     if packet.digest != current_digest:
         raise ValueError("packet content digest does not match its contents")
     verdicts = AuditVerdicts.model_validate(payload)

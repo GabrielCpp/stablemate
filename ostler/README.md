@@ -279,17 +279,25 @@ about it is designed so that the worst thing a wrong index can do is be slow.
 
 ### What is cached, and what deliberately is not
 
-Two products, and only two:
+Three products, and only three:
 
 | Product | Key |
 |---|---|
 | **Parse products** — a document's frontmatter, sections, bullets, links and tables | the repo-name-qualified repo-relative path + the file's content sha |
 | **Code-grounding symbol tables** — the symbol set extracted from a source file | the code file's content sha + the tree-sitter grammar version |
+| **Behavior verdicts** — one reviewer's verdict on one claim or one source candidate (`ostler.behavior_memo`) | the review contract's digest + the item's content digest + the digest of the counterparts it was judged against + the excerpts the reviewer read, none of it positional |
 
-Both are pure functions of bytes, which is what lets them be stored under a content key with
-no invalidation rule beyond a single *epoch* hash over the global inputs (ostler's version, the
-bundled schemas, the dynamic kind registry, the config files, the freeze
+All three are pure functions of bytes, which is what lets them be stored under a content key
+with no invalidation rule beyond a single *epoch* hash over the global inputs (ostler's
+version, the bundled schemas, the dynamic kind registry, the config files, the freeze
 manifest). Change any of those and every entry is invalidated at once.
+
+The verdict memo is the one product that is not ostler's own computation: it is what a model
+said, stored so the okf-builder audit never asks twice. Its key says what could have moved the
+answer — an edited claim drops its own verdict and every candidate's in its packet (their pool
+of claims changed), an edited source file drops everything in that file, a changed prompt or
+schema drops everything — and nothing else. A line shift hits; book evidence is stored relative
+to its node and rebased on recall. The two-week prune applies to it as to every entry.
 
 **Doctor's findings are not cached.** Nothing that a check *concluded* is ever served from the
 index — only the parse products a check reads. And the **graph-global checks are always
