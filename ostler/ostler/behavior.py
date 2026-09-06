@@ -1,0 +1,385 @@
+"""Public API for preparing bounded two-way behavior reviews and checking receipts.
+
+Extraction supplies candidates, not semantic verdicts. Rebuild packets from current
+source and graph before validating persisted receipts. Validation checks the external
+review's shape and binding, never whether its explanations are true.
+"""
+from __future__ import annotations
+
+import ast
+import hashlib
+import io
+import json
+import posixpath
+import tokenize
+from collections import defaultdict
+from collections.abc import Sequence
+from pathlib import Path
+
+from ostler import markdown, refs, registry, syntax
+from ostler.behavior_go import GoEvidence
+from ostler.behavior_models import (
+    AuditPacket as AuditPacket, AuditPreparation as AuditPreparation,
+    AuditReport as AuditReport, AuditVerdicts as AuditVerdicts,
+    BehaviorEvidence as BehaviorEvidence, BookClaim as BookClaim,
+    CandidateVerdict as CandidateVerdict, ClaimVerdict as ClaimVerdict,
+    EvidenceFile as EvidenceFile, EvidenceInventory as EvidenceInventory,
+    BookContext as BookContext, BookEvidenceRef as BookEvidenceRef, SourceContext as SourceContext,
+    SourceExcerpt as SourceExcerpt,
+)
+from ostler.behavior_python import PythonEvidence
+from ostler.model import Graph
+
+_LIMITATIONS = (
+    "Python AST and Go tree-sitter candidates only; other languages remain unsupported. No execution, call graph, data flow, inheritance, or semantic proof.",
+    "Conditions describe lexical enclosure, not reachability; preceding guards and side effects are not inferred.",
+    "Route/decorator, add_argument, and annotated-field framework identities are unresolved; syntax can be implementation detail.",
+    "Python extracts explicit decorators, function defaults, raise/return statements, add_argument calls, and class annotated fields.",
+    "Go extracts function/method/literal contracts, returns, panic-like calls, net/http-like registration/response calls, and struct fields with literal tags/types. Call bindings, JSON encoding, validation, build tags and interface dispatch are not resolved; similarly named non-HTTP calls may be candidates.",
+    "Source context retains enclosing functions and declarations. Python class context excludes unrelated methods and retrieves referenced module assignments lexically; Python functions with no candidates are not audited. Go retains full function/method/literal bodies and struct declarations, without resolving package bindings or delegated effects.",
+    "Files outside the explicit source scope are not audited. Non-normative same-node book text is context, not additional obligations.",
+    "Support context contains only explicitly selected Python or Go files, not automatic import closure; unselected delegated behavior remains unresolved. Support files do not add candidate obligations.",
+    "Citation grouping is retrieval context, not semantic grounding. Reviewers must search source/book across files and sibling packets; use unresolved when local context is insufficient.",
+    "Missing means an externally judged omission within the reviewed scope, not absence of a local citation. No packet or receipt asserts global completeness.",
+)
+_CACHE_DIRECTORIES = frozenset({"__pycache__", ".git", ".venv", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".nox", "node_modules"})
+
+
+def _digest(value: object) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()).hexdigest()
+
+
+def extract_evidence(root: Path, paths: Sequence[str], *, context_paths: Sequence[str] = ()) -> EvidenceInventory:
+    """Read selected relative files/directories; retain every failed/unsupported file.
+
+    Prefer explicit files or source directories, not a repository root. Directory
+    walks prune named cache/environment directories and bytecode; excluded paths are
+    recorded. Explicit file selectors still include such files. Empty selector lists
+    are allowed for book-only reviews; an empty string is not a root-directory alias.
+    Symlinks escaping root are rejected. No source or catalog is written.
+    context_paths selects full Python or Go support files for every packet, without adding
+    candidates. Directories are unsupported. Failures remain explicit limitations.
+    """
+    root = root.resolve()
+    selected: set[str] = set()
+    excluded: set[str] = set()
+    empty_selectors: list[str] = []
+    support_paths: set[str] = set()
+    for raw in context_paths:
+        if not raw.strip():
+            raise ValueError("empty selector: supply an explicit Python or Go context file")
+        path = Path(raw)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(f"context path must be relative and inside root: {raw}")
+        if not (root / path).resolve().is_relative_to(root):
+            raise ValueError(f"context path outside root: {raw}")
+        support_paths.add(path.as_posix())
+
+    def walk_error(error: OSError) -> None:
+        raise error
+
+    for raw in paths:
+        if not raw.strip():
+            raise ValueError("empty selector: supply an explicit file/directory or [] for a book-only review")
+        path = Path(raw)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(f"source path must be relative and inside root: {raw}")
+        target = root / path
+        if not target.resolve().is_relative_to(root):
+            raise ValueError(f"source path outside root: {raw}")
+        entries = [target]
+        if target.is_dir():
+            entries = []
+            for directory, subdirs, filenames in target.walk(on_error=walk_error):
+                for name in subdirs[:]:
+                    if name in _CACHE_DIRECTORIES:
+                        subdirs.remove(name)
+                        excluded.add((directory / name).relative_to(root).as_posix())
+                for name in filenames:
+                    entry = directory / name
+                    if entry.suffix in {".pyc", ".pyo"} or entry.is_dir():
+                        excluded.add(entry.relative_to(root).as_posix())
+                    else:
+                        entries.append(entry)
+            if not entries:
+                empty_selectors.append(path.as_posix())
+        for entry in entries:
+            if not entry.resolve().is_relative_to(root):
+                raise ValueError(f"source path outside root: {entry.relative_to(root)}")
+            if not entry.is_dir():
+                selected.add(entry.relative_to(root).as_posix())
+    files: list[EvidenceFile] = []
+    candidates: list[BehaviorEvidence] = []
+    source_context: list[SourceContext] = []
+    support_context: list[SourceExcerpt] = []
+    context_limitations: list[str] = []
+    for relative in sorted(selected | support_paths):
+        if relative in support_paths and (root / relative).is_dir():
+            files.append(EvidenceFile(path=relative, status="unsupported",
+                                      message="Support context requires explicit Python .py or Go .go files, not directories."))
+            continue
+        try:
+            data = (root / relative).read_bytes()
+        except OSError as exc:
+            files.append(EvidenceFile(path=relative, status="unreadable", message=exc.strerror or type(exc).__name__))
+            continue
+        digest = hashlib.sha256(data).hexdigest()
+        if Path(relative).suffix not in {".py", ".go"}:
+            files.append(EvidenceFile(path=relative, status="unsupported", source_digest=digest,
+                                      message="Only Python .py and Go .go files have an extractor."))
+            continue
+        if Path(relative).suffix == ".go":
+            try:
+                source = data.decode("utf-8")
+                go_tree = syntax.parse("go", source)
+                if go_tree.has_error:
+                    raise SyntaxError(f"{relative}: Go syntax tree contains errors; no partial evidence extracted")
+            except (SyntaxError, UnicodeError) as exc:
+                files.append(EvidenceFile(path=relative, status="parse_error", source_digest=digest, message=str(exc)))
+                continue
+            if relative in selected:
+                go_visitor = GoEvidence(relative, source, digest)
+                go_visitor.visit(go_tree)
+                candidates.extend(go_visitor.candidates)
+                source_context.extend(go_visitor.source_context)
+            if relative in support_paths:
+                support_context.append(SourceExcerpt(path=relative, start_line=1,
+                                                     end_line=max(1, len(source.splitlines())),
+                                                     text=source, source_digest=digest))
+            files.append(EvidenceFile(path=relative, status="parsed", source_digest=digest))
+            continue
+        try:
+            encoding, _ = tokenize.detect_encoding(io.BytesIO(data).readline)
+            source = data.decode(encoding)
+            tree = ast.parse(source, filename=relative)
+        except (SyntaxError, UnicodeError, LookupError) as exc:
+            files.append(EvidenceFile(path=relative, status="parse_error", source_digest=digest,
+                                      message=str(exc)))
+            continue
+        if relative in selected:
+            visitor = PythonEvidence(relative, source, digest)
+            visitor.visit(tree)
+            candidates.extend(visitor.candidates)
+            source_context.extend(visitor.source_context)
+            context_limitations.extend(visitor.limitations)
+        if relative in support_paths:
+            support_context.append(SourceExcerpt(path=relative, start_line=1,
+                                                 end_line=max(1, len(source.splitlines())),
+                                                 text=source, source_digest=digest))
+        files.append(EvidenceFile(path=relative, status="parsed", source_digest=digest))
+    context_files = tuple(file for file in files if file.path in support_paths)
+    files = [file for file in files if file.path in selected]
+    limitations = (*_LIMITATIONS, *context_limitations,
+                   *(f"Support context {file.path}: {file.status}: {file.message} Treat dependent behavior as unresolved."
+                     for file in context_files if file.status != "parsed"),
+                   "Directory selectors exclude " + ", ".join(sorted(_CACHE_DIRECTORIES)) + "; .pyc/.pyo files and directory symlinks are not traversed. Explicit file selectors override cache exclusions.",
+                   *(f"Selector {selector} selected no source files after exclusions." for selector in sorted(empty_selectors)),
+                   *(("No source files selected; this is not evidence of source coverage.",) if not files else ()))
+    return EvidenceInventory(scope=tuple(sorted({Path(path).as_posix() for path in paths})), files=tuple(files),
+                             candidates=tuple(candidates), limitations=limitations, excluded_paths=tuple(sorted(excluded)),
+                             source_context=tuple(source_context), context_paths=tuple(sorted(support_paths)),
+                             context_files=context_files, support_context=tuple(support_context),
+                             grammar_version=syntax.grammar_version() if any(Path(path).suffix == ".go" for path in selected | support_paths) else "")
+
+
+def extract_claims(graph: Graph) -> tuple[BookClaim, ...]:
+    """Use the real graph's normative bullets and existing QA obligation ID spelling.
+
+    Titles and original same-node text are context, not synthetic semantic claims.
+    Context ends at the first child heading, using the document parser's spans.
+    When a node cites no source,
+    use the nearest citing containment ancestor in the same document; do not inherit
+    across documents or replace an explicit but incorrect citation. Citations guide
+    file-local retrieval, never prove support. Locations come from the graph parser.
+    """
+    claims: list[BookClaim] = []
+    by_id = {node.id: node for node in graph.ui_nodes}
+    documents: dict[Path, tuple[markdown.MarkdownDoc, str]] = {}
+    for node in sorted(graph.ui_nodes, key=lambda node: node.id):
+        owner = node
+        visited: set[str] = set()
+        citations = tuple(refs.code_refs(owner.meta.get("code")))
+        while not citations and owner.parent in by_id and owner.id not in visited:
+            visited.add(owner.id)
+            owner = by_id[owner.parent]
+            if owner.path != node.path:
+                break
+            citations = tuple(refs.code_refs(owner.meta.get("code")))
+        path = node.path.resolve().relative_to(graph.root.resolve()).as_posix()
+        if not any(key in registry.normative_keys(node.type) for key, _, _ in node.bullet_order):
+            continue
+        if node.path not in documents:
+            data = node.path.read_bytes()
+            documents[node.path] = (markdown.split(data.decode("utf-8")), hashlib.sha256(data).hexdigest())
+        doc, digest = documents[node.path]
+        section = next((section for section in doc.walk_sections()
+                        if doc.body_offset + section.line_start + 1 == node.line), None)
+        if section is None:
+            raise ValueError(f"Cannot locate book context for {node.id}; reload the graph from current documents")
+        end = min((child.line_start for child in section.children), default=section.line_end)
+        context = BookContext(path=path, node=node.id, start_line=node.line, end_line=doc.body_offset + end,
+                              text="".join(doc.body.splitlines(keepends=True)[section.line_start:end]), source_digest=digest)
+        counts: dict[str, int] = defaultdict(int)
+        for key, text, position in node.bullet_order:
+            if key not in registry.normative_keys(node.type):
+                continue
+            counts[key] += 1
+            kind = key.replace(" ", "-")
+            claims.append(BookClaim(id=f"okf:{node.id}:{kind}:{counts[key]}", node=node.id,
+                                    path=path, line=max(1, node.bullet_lines.get(position, node.line)), kind=kind, text=text,
+                                    citations=citations, title=node.title, context=(context,)))
+    return tuple(claims)
+
+
+def build_audit_packets(
+    inventory: EvidenceInventory, claims: Sequence[BookClaim], *,
+    max_items: int = 80, max_chars: int = 60_000,
+) -> AuditPreparation:
+    """Prepare file-local review packets without an all-book Cartesian product.
+
+    All symbols in a source file share its citing claims, even when the cited symbol
+    is incorrect. Claims without a matching local file go into explicit book-only
+    packets; files without citing claims retain all their candidates. Repository-
+    qualified citations stay ungrounded: this inventory has no repository mapping.
+    Oversized files cross only their own evidence/claim chunks, never other files.
+    Per-packet omitted counts name context in sibling packets, not discarded work.
+    The preparation's omitted counts are always zero. Item and serialized-character
+    limits split packets; the character budget includes all deduplicated excerpts,
+    spans and digests. An indivisible oversized context raises instead of truncating.
+    Cross-file semantics require reviewer source/book search and unresolved decisions
+    when local context cannot settle them. No verdict establishes global completeness.
+    """
+    if max_items < 2:
+        raise ValueError("max_items must be at least 2")
+    if max_chars < 1:
+        raise ValueError("max_chars must be positive")
+    ordered_claims = tuple(sorted(claims, key=lambda claim: claim.id))
+    _exact_ids([claim.id for claim in ordered_claims], {claim.id for claim in ordered_claims}, "input claims")
+    _exact_ids([item.id for item in inventory.candidates], {item.id for item in inventory.candidates}, "input candidates")
+    grouped: dict[str, list[BehaviorEvidence]] = {file.path: [] for file in inventory.files}
+    for candidate in inventory.candidates:
+        grouped.setdefault(candidate.path, []).append(candidate)
+    claims_by_file: dict[str, list[BookClaim]] = defaultdict(list)
+    for claim in ordered_claims:
+        matches: set[str] = set()
+        for citation in refs.code_refs(list(claim.citations)):
+            try:
+                ref = refs.parse_code_ref(citation)
+            except ValueError:
+                # Malformed citations remain visible on the ungrounded claim.
+                continue
+            path = posixpath.normpath(ref.path)
+            if not ref.repository and path in grouped:
+                matches.add(path)
+        for module in sorted(matches) if matches else [""]:
+            claims_by_file[module].append(claim)
+    if "" in claims_by_file or not grouped:
+        grouped[""] = []
+    inventory_digest = _digest(inventory.model_dump(mode="json"))
+    files_by_path = {file.path: file for file in inventory.files}
+    packets: list[AuditPacket] = []
+    for module, evidence in sorted(grouped.items()):
+        local_claims = tuple(claims_by_file[module])
+        evidence.sort(key=lambda item: (item.start_line, item.start_column, item.id))
+        limitations = inventory.limitations
+        if module in files_by_path:
+            file = files_by_path[module]
+            if file.status != "parsed":
+                limitations += (f"{file.path}: {file.status}: {file.message}",)
+            elif not evidence:
+                limitations += (f"No behavior candidates extracted from {module}; this is not proof of no behavior.",)
+        if not module and local_claims:
+            limitations += ("Ungrounded book-only packet: citations are absent, malformed, foreign, or outside the selected files. Search source before deciding support.",)
+        size = max_items // 2 if local_claims else max_items
+        claim_size = max_items - size if evidence and local_claims else max_items
+        candidate_chunks = [tuple(evidence[i:i + size]) for i in range(0, len(evidence), size)] or [()]
+        claim_chunks = [local_claims[i:i + claim_size] for i in range(0, len(local_claims), claim_size)] if local_claims else [()]
+        pending = [(candidates, chunk) for candidates in candidate_chunks for chunk in claim_chunks]
+        while pending:
+            candidates, chunk = pending.pop(0)
+            source_context = tuple(context for context in inventory.source_context if context.path == module
+                                   and any(context.symbol == "<module>" or candidate.symbol == context.symbol
+                                           or candidate.symbol.startswith(context.symbol + ".") for candidate in candidates))
+            book_context = tuple(dict.fromkeys(context for claim in chunk for context in claim.context))
+            packet = AuditPacket(module=module, symbol="", scope=(module,) if module else (),
+                                 group="source_file" if module else "ungrounded_book" if local_claims else "empty_scope",
+                                 inventory_digest=inventory_digest, candidates=candidates,
+                                 claims=tuple(claim.model_copy(update={"context": ()}) for claim in chunk),
+                                  source_context=source_context, book_context=book_context,
+                                  support_context=tuple(dict.fromkeys(inventory.support_context)),
+                                 omitted_candidates=len(inventory.candidates) - len(candidates),
+                                 omitted_claims=len(ordered_claims) - len(chunk), limitations=limitations)
+            packet = packet.model_copy(update={"digest": _digest(packet.model_dump(mode="json", exclude={"digest"}))})
+            if len(packet.model_dump_json()) <= max_chars:
+                packets.append(packet)
+            elif len(candidates) > 1:
+                half = len(candidates) // 2
+                pending[0:0] = [(candidates[:half], chunk), (candidates[half:], chunk)]
+            elif len(chunk) > 1:
+                half = len(chunk) // 2
+                pending[0:0] = [(candidates, chunk[:half]), (candidates, chunk[half:])]
+            else:
+                raise ValueError(f"oversized packet for {module or 'ungrounded book'}: cannot fit max_chars={max_chars} without truncation")
+    return AuditPreparation(inventory=inventory, packets=tuple(packets),
+                            selected_candidates=len(inventory.candidates), selected_claims=len(ordered_claims))
+
+
+def _exact_ids(actual: Sequence[str], expected: set[str], label: str) -> None:
+    if len(actual) != len(set(actual)):
+        raise ValueError(f"duplicate IDs in {label}: {actual}")
+    if set(actual) != expected:
+        raise ValueError(f"{label}: missing IDs {sorted(expected - set(actual))}; foreign IDs {sorted(set(actual) - expected)}")
+
+
+def validate_verdicts(packet: AuditPacket, payload: object) -> AuditReport:
+    """Validate external decisions and links against this exact current packet.
+
+    Raises ValueError (including Pydantic ValidationError) for invalid receipts. A
+    valid receipt is an attributed external review, not an ostler semantic judgment.
+    Claim/candidate links must agree in both directions. Support/contradiction/partial
+    claims require candidate links. Source coverage requires a supported/partial
+    claim link or a resolvable book span, which establishes documentation, not QA proof.
+    """
+    current_digest = _digest(packet.model_dump(mode="json", exclude={"digest"}))
+    if packet.digest != current_digest:
+        raise ValueError("packet content digest does not match its contents")
+    verdicts = AuditVerdicts.model_validate(payload)
+    if verdicts.packet_digest != current_digest:
+        raise ValueError("verdict packet_digest is stale or foreign")
+    claim_ids = {claim.id for claim in packet.claims}
+    candidate_ids = {candidate.id for candidate in packet.candidates}
+    _exact_ids([claim.id for claim in verdicts.claims], claim_ids, "claim verdicts")
+    _exact_ids([candidate.id for candidate in verdicts.candidates], candidate_ids, "candidate verdicts")
+    claim_links: set[tuple[str, str]] = set()
+    candidate_links: set[tuple[str, str]] = set()
+    supported_claims = {claim.id for claim in verdicts.claims if claim.status in {"supported", "partial"}}
+    for claim in verdicts.claims:
+        _exact_ids(claim.candidate_ids, set(claim.candidate_ids) & candidate_ids, f"links for {claim.id}")
+        if claim.status != "unresolved" and not claim.candidate_ids:
+            raise ValueError(f"{claim.id}: {claim.status} requires candidate links")
+        claim_links.update((claim.id, candidate_id) for candidate_id in claim.candidate_ids)
+    for candidate in verdicts.candidates:
+        _exact_ids(candidate.claim_ids, set(candidate.claim_ids) & claim_ids, f"links for {candidate.id}")
+        if candidate.book_evidence and candidate.status != "covered":
+            raise ValueError(f"{candidate.id}: {candidate.status} cannot carry book evidence")
+        if len(candidate.book_evidence) != len(set(candidate.book_evidence)):
+            raise ValueError(f"{candidate.id}: duplicate book evidence")
+        for ref in candidate.book_evidence:
+            contexts = [context for context in packet.book_context if context.node == ref.node]
+            if len(contexts) != 1:
+                raise ValueError(f"{candidate.id}: book evidence node is absent or ambiguous: {ref.node}")
+            context = contexts[0]
+            if not context.start_line <= ref.start_line <= ref.end_line <= context.end_line:
+                raise ValueError(f"{candidate.id}: book evidence range outside context or reversed: {ref}")
+            lines = context.text.splitlines()[ref.start_line - context.start_line:ref.end_line - context.start_line + 1]
+            if len(lines) != ref.end_line - ref.start_line + 1 or not "\n".join(lines).strip():
+                raise ValueError(f"{candidate.id}: book evidence range is unseen or blank: {ref}")
+        if candidate.status == "covered" and not supported_claims.intersection(candidate.claim_ids) and not candidate.book_evidence:
+            raise ValueError(f"{candidate.id}: covered requires a supported or partial claim link or book evidence")
+        if candidate.status == "implementation_detail" and candidate.claim_ids:
+            raise ValueError(f"{candidate.id}: implementation_detail cannot claim book links")
+        candidate_links.update((claim_id, candidate.id) for claim_id in candidate.claim_ids)
+    if claim_links != candidate_links:
+        raise ValueError(f"claim/candidate links disagree: {sorted(claim_links ^ candidate_links)}")
+    return AuditReport(verdicts=verdicts, limitations=(*packet.limitations,
+        "Validated book evidence confirms externally reviewed documented source coverage, not QA proof; span resolution does not establish semantic correctness."))

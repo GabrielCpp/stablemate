@@ -18,6 +18,7 @@ from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
 from ostler import index as index_mod
 from ostler import source_snapshots
+from ostler import behavior_cli
 from ostler.model import find_root, load
 
 _TYPES = (
@@ -116,6 +117,12 @@ def _build_parser() -> argparse.ArgumentParser:
     ck = sub.add_parser("checks", help="the `verify:` check vocabulary and its signatures")
     ck.add_argument("name", nargs="?", help="one check, instead of all of them")
     ck.add_argument("--json", action="store_true")
+
+    audit = sub.add_parser("audit", help="prepare bounded two-way source/book review packets (no semantic decisions)")
+    audit.add_argument("paths", nargs="+", help="explicit repo-relative source files or directories")
+    audit.add_argument("--max-items", type=int, default=80, help="maximum claims plus candidates per packet")
+    audit.add_argument("--max-chars", type=int, default=60000, help="maximum serialized characters per packet; never truncate")
+    audit.add_argument("--json", action="store_true")
 
     t = sub.add_parser("trace", help="walk the graph from a node")
     t.add_argument("token", help="seed id, story slug, surface or doc path")
@@ -1668,6 +1675,8 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
 
     if c == "doctor":
         return _cmd_doctor(graph, args, store)
+    if c == "audit":
+        return behavior_cli.run(graph, args)
     if c == "trace":
         lines, found = trace.run(graph, ids_mod.resolve(graph, args.token))
         _out("\n".join(lines))

@@ -183,6 +183,8 @@ class UINode:
     meta: dict = field(default_factory=dict)                 # parsed `- key: value` bullets
     # The same bullets in document order, which `meta` cannot express: see `_bullet_pairs`.
     bullet_order: list[tuple[str, str, int]] = field(default_factory=list)
+    # Top-level bullet ordinal -> file-absolute line (nested values cite their owning bullet).
+    bullet_lines: dict[int, int] = field(default_factory=dict)
     links: list = field(default_factory=list)                # (text, href) inside the node's region
     data: dict = field(default_factory=dict)                 # frontmatter (file nodes)
 
@@ -1042,6 +1044,7 @@ def _promote_section(section: markdown.Section, rel: str, path: Path, offset: in
         title=ntitle, level=section.level, parent=parent_id,
         line=offset + section.line_start + 1,
         meta=_meta_from_bullets(section), bullet_order=_bullet_pairs(section),
+        bullet_lines={i: offset + bullet.line_start + 1 for i, bullet in enumerate(section.bullets)},
         links=section.refs.links,
     ))
     # container_type applies only to a container's direct children, so it resets on descent.
@@ -1077,6 +1080,7 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
             type=ftype.name, kind="file", id=rel, path=path, level=1, parent="",
             title=str(fm.get("title") or (main.title if main else rel)),
             line=line, meta=meta, bullet_order=order,
+            bullet_lines={i: offset + bullet.line_start + 1 for i, bullet in enumerate(main.bullets)} if main else {},
             links=markdown.extract_refs(text).links, data=fm,
         ))
 

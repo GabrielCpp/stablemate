@@ -79,7 +79,7 @@ INDEX_DIR_NAME = "ostler-index"
 #: source checkout, where the version is ``unknown`` and never moves. So a field added to a
 #: stored dataclass (`UINode`, `_DocProducts`) is a bump here too; it costs one
 #: recomputation and is the only lever that invalidates a stale entry deterministically.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 #: How long an entry may go unwritten before a prune removes it. Two weeks: long enough
 #: that an occasional book survives a quiet fortnight, short enough that an unattended

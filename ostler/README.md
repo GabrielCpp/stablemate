@@ -17,6 +17,14 @@ It is a standalone, repo-agnostic CLI that operates relative to the **current wo
 roots default to `<cwd>/docs/{epics,features,specs}` and the organization name to the repo
 folder name. Point it at any repo with `-C/--chdir`.
 
+The feature graph is also a contract: it is what
+[coder's QA](https://github.com/GabrielCpp/stablemate/blob/main/workflows/README.md#coder-documentation-convergence)
+holds the running application to, promise by promise. Ostler's part in that is detection —
+structural findings, source units no node covers, citations whose declaration has changed
+underneath them — which is what gives a repair loop something to converge on. It is not a
+verdict that the behaviour worth documenting is documented, or that a declared check can
+tell success from failure: a clean `doctor` is the floor, not the proof.
+
 ## Install
 
 ```bash
@@ -280,7 +288,7 @@ Two products, and only two:
 
 Both are pure functions of bytes, which is what lets them be stored under a content key with
 no invalidation rule beyond a single *epoch* hash over the global inputs (ostler's version, the
-bundled schemas, the dynamic kind registry, the config files, the waiver file, the freeze
+bundled schemas, the dynamic kind registry, the config files, the freeze
 manifest). Change any of those and every entry is invalidated at once.
 
 **Doctor's findings are not cached.** Nothing that a check *concluded* is ever served from the
