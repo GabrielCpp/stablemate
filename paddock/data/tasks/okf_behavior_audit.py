@@ -54,15 +54,22 @@ def trial_root(run: Run) -> Path:
     return run.stage / "artifacts" / "cases"
 
 
+CONTROLLED_SOURCES: dict[str, tuple[str, str]] = {
+    "go": ("go", "service.go"),
+    "typescript": ("ts", "service.ts"),
+}
+"""Fixture-directory suffix and source file for each controlled non-Python arm."""
+
+
 @step()
 def freeze_inputs(run: Run) -> None:
     replay = run.param("replay_stage")
     book_state = run.param("book_state", "baseline")
     language = run.param("language", "python")
-    if language not in {"python", "go"}:
-        raise ValueError("language must be python or go")
-    if language == "go" and (replay or book_state != "baseline" or run.param_bool("support_context", False)):
-        raise ValueError("language=go requires fresh controlled baseline cases without support_context")
+    if language not in CONTROLLED_SOURCES and language != "python":
+        raise ValueError("language must be python, go or typescript")
+    if language != "python" and (replay or book_state != "baseline" or run.param_bool("support_context", False)):
+        raise ValueError(f"language={language} requires fresh controlled baseline cases without support_context")
     if book_state not in {"baseline", "repaired"}:
         raise ValueError("book_state must be baseline or repaired")
     if replay and book_state == "repaired":
@@ -81,9 +88,9 @@ def freeze_inputs(run: Run) -> None:
                                                     "original_steps": json.loads((original / "steps.json").read_text())})
         return
     checkout = stablemate_checkout(run)
-    fixture = run.data_dir / ("fixtures/okf-behavior-go" if language == "go" else "fixtures/okf-behavior")
+    fixture = run.data_dir / ("fixtures/okf-behavior" if language == "python" else f"fixtures/okf-behavior-{CONTROLLED_SOURCES[language][0]}")
     truth = GroundTruth.model_validate_json((fixture / "ground-truth.json").read_text())
-    slices = [] if language == "go" else TypeAdapter(list[Slice]).validate_json((fixture / "stablemate-slices.json").read_text())
+    slices = [] if language != "python" else TypeAdapter(list[Slice]).validate_json((fixture / "stablemate-slices.json").read_text())
     wanted = set(run.param_list("cases")) or {case.id for case in truth.cases} | {item.id for item in slices}
     unknown = wanted - {case.id for case in truth.cases} - {item.id for item in slices}
     if unknown:
@@ -118,16 +125,16 @@ def freeze_inputs(run: Run) -> None:
         else:
             shutil.copytree(run.repo, witness)
             source, service = "service.py", "dispatch"
-            if language == "go":
+            if language != "python":
                 (witness / "service.py").unlink()
                 shutil.copytree(fixture / "source", witness, dirs_exist_ok=True)
-                source = "service.go"
+                source = CONTROLLED_SOURCES[language][1]
             book = witness / "docs/features/dispatch/dispatch.md"
             book.write_text(variant_book(book.read_text(), case.id), encoding="utf-8")
         started = time.monotonic()
         prepared = prepare(witness, source, context_paths=context_paths)
-        if language == "go" and not prepared.inventory.candidates:
-            raise ValueError("Go extraction unavailable: selected service.go produced no candidates")
+        if language != "python" and not prepared.inventory.candidates:
+            raise ValueError(f"{language} extraction unavailable: selected {source} produced no candidates")
         aliases = bind_truth(case, prepared)
         elapsed = time.monotonic() - started
         if len(prepared.packets) != 1:
@@ -148,7 +155,8 @@ def freeze_inputs(run: Run) -> None:
         "language": language,
         "audit_flow_hashes": file_hashes(audit) if audit.exists() else {},
         "behavior_hashes": {name: file_hashes(checkout / "ostler/ostler").get(name)
-                            for name in ("behavior.py", "behavior_models.py", "behavior_python.py", "behavior_go.py")},
+                            for name in ("behavior.py", "behavior_models.py", "behavior_python.py", "behavior_go.py",
+                                         "behavior_tree.py")},
         "model_config": run.config.read_text(),
         "scope_note": "Current working-tree slices, not HEAD. Originals never edited. No whole-book conclusion.",
     })
@@ -181,7 +189,7 @@ def semantic_review(run: Run) -> None:
     # Six packets normally mean six turns. Reserve two attempts per next packet and
     # stop before exceeding ten, rather than silently buying another repair ladder.
     turns = 0
-    ceiling = 6 if run.param("language", "python") == "go" else 10
+    ceiling = 10 if run.param("language", "python") == "python" else 6
     maximum = int(run.param("max_turns", str(ceiling)))
     if not 1 <= maximum <= ceiling:
         raise ValueError(f"max_turns must be between 1 and {ceiling}")
