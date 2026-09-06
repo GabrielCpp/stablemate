@@ -205,11 +205,10 @@ def audit_packet(tmp_path: Path) -> AuditPacket:
 
 def verdicts(packet: AuditPacket) -> AuditVerdicts:
     return AuditVerdicts(
-        packet_digest=packet.digest,
         claims=tuple(ClaimVerdict(id=claim.id, status="contradicted", explanation="Returns 20, not 50.",
                                  candidate_ids=tuple(item.id for item in packet.candidates)) for claim in packet.claims),
-        candidates=tuple(CandidateVerdict(id=item.id, status="missing", explanation="Book promises a different value.",
-                                         claim_ids=tuple(claim.id for claim in packet.claims)) for item in packet.candidates),
+        candidates=tuple(CandidateVerdict(id=item.id, status="missing", explanation="Book promises a different value.")
+                         for item in packet.candidates),
     )
 
 
@@ -218,13 +217,12 @@ def test_verdicts_are_external_not_inferred_from_shared_words(audit_packet: Audi
     assert report.verdicts.claims[0].status == "contradicted"
     assert report.verdicts.candidates[0].status == "missing"
     assert report.limitations
-    unresolved = AuditVerdicts(packet_digest=audit_packet.digest,
-                              claims=(ClaimVerdict(id=audit_packet.claims[0].id, status="unresolved", explanation="Need execution context."),),
+    unresolved = AuditVerdicts(claims=(ClaimVerdict(id=audit_packet.claims[0].id, status="unresolved", explanation="Need execution context."),),
                               candidates=(CandidateVerdict(id=audit_packet.candidates[0].id, status="unresolved", explanation="Need owner decision."),))
     assert validate_verdicts(audit_packet, unresolved).verdicts == unresolved
 
 
-@pytest.mark.parametrize("fault", ["missing", "duplicate", "foreign", "foreign_link", "duplicate_link", "unpaired_link", "blank", "stale", "unsupported_support"])
+@pytest.mark.parametrize("fault", ["missing", "duplicate", "foreign", "foreign_link", "duplicate_link", "blank", "unsupported_support", "detail_linked"])
 def test_verdict_validator_rejects_invalid_receipts(audit_packet: AuditPacket, fault: str) -> None:
     payload = verdicts(audit_packet).model_dump(mode="json")
     if fault == "missing":
@@ -237,16 +235,13 @@ def test_verdict_validator_rejects_invalid_receipts(audit_packet: AuditPacket, f
         payload["claims"][0]["candidate_ids"] = ["foreign"]
     elif fault == "duplicate_link":
         payload["claims"][0]["candidate_ids"] *= 2
-    elif fault == "unpaired_link":
-        payload["candidates"][0]["claim_ids"] = []
     elif fault == "blank":
         payload["claims"][0]["explanation"] = "   "
-    elif fault == "stale":
-        payload["packet_digest"] = "old"
+    elif fault == "detail_linked":
+        payload["candidates"][0].update(status="implementation_detail", explanation="Private helper.")
     else:
         payload["claims"][0]["status"] = "supported"
         payload["claims"][0]["candidate_ids"] = []
-        payload["candidates"][0]["claim_ids"] = []
     with pytest.raises(ValueError):
         validate_verdicts(audit_packet, payload)
 
@@ -259,7 +254,8 @@ def test_packet_mutation_and_source_or_book_edits_invalidate_receipts(audit_pack
         validate_verdicts(tampered, receipt)
     (tmp_path / "api.py").write_text("def items():\n    return 50\n", encoding="utf-8")
     current = build_audit_packets(extract_evidence(tmp_path, ["api.py"]), audit_packet.claims).packets[0]
-    with pytest.raises(ValueError, match="digest"):
+    assert validate_verdicts(audit_packet, receipt).packet_digest != current.digest, "a source edit re-keys the receipt"
+    with pytest.raises(ValueError, match="foreign IDs"):
         validate_verdicts(current, receipt)
 
 
@@ -284,7 +280,7 @@ def test_linked_supported_and_partial_reviews_are_preserved(audit_packet: AuditP
 def test_implementation_detail_requires_a_reason_but_no_book_claim(audit_packet: AuditPacket) -> None:
     payload = verdicts(audit_packet).model_dump(mode="json")
     payload["claims"][0].update(status="unresolved", candidate_ids=[])
-    payload["candidates"][0].update(status="implementation_detail", claim_ids=[], explanation="Private helper; not a public contract.")
+    payload["candidates"][0].update(status="implementation_detail", explanation="Private helper; not a public contract.")
     assert validate_verdicts(audit_packet, payload).verdicts.candidates[0].status == "implementation_detail"
 
 
@@ -350,8 +346,7 @@ def test_packet_shows_side_effect_preceding_return_and_prior_guard(tmp_path: Pat
     current_inventory = extract_evidence(tmp_path, ["api.py"])
     assert [item.id for item in current_inventory.candidates] == [item.id for item in inventory.candidates]
     current = build_audit_packets(current_inventory, [], skip_undocumented=False).packets[0]
-    with pytest.raises(ValueError, match="stale"):
-        validate_verdicts(current, receipt)
+    assert validate_verdicts(packet, receipt).packet_digest != current.digest, "a context edit re-keys the receipt"
 
 
 def test_book_context_retains_signature_output_and_neighboring_prose_not_siblings(tmp_path: Path) -> None:
@@ -379,20 +374,18 @@ def test_book_context_retains_signature_output_and_neighboring_prose_not_sibling
     assert all(claim.context == (context,) for claim in claims)
     assert all(not claim.context for claim in packet.claims), "Packet context is deduplicated by node"
     assert AuditPacket.model_validate_json(packet.model_dump_json()) == packet
-    receipt = AuditVerdicts(packet_digest=packet.digest, candidates=(), claims=tuple(
+    receipt = AuditVerdicts(candidates=(), claims=tuple(
         ClaimVerdict(id=claim.id, status="unresolved", explanation="No source selected.") for claim in packet.claims))
     validate_verdicts(packet, receipt)
     path.write_text(text.replace("limit=20", "limit=30"), encoding="utf-8")
     changed = extract_claims(load(tmp_path))
     assert [(claim.id, claim.text) for claim in changed] == [(claim.id, claim.text) for claim in claims]
     current = build_audit_packets(extract_evidence(tmp_path, []), changed).packets[0]
-    with pytest.raises(ValueError, match="stale"):
-        validate_verdicts(current, receipt)
+    assert validate_verdicts(packet, receipt).packet_digest != current.digest, "a sibling edit re-keys the receipt"
     path.write_text(text.replace("Unrelated prose.", "Changed sibling."), encoding="utf-8")
     sibling_edit = build_audit_packets(extract_evidence(tmp_path, []), extract_claims(load(tmp_path))).packets[0]
     assert sibling_edit.book_context[0].text == context.text
-    with pytest.raises(ValueError, match="stale"):
-        validate_verdicts(sibling_edit, receipt)
+    assert validate_verdicts(packet, receipt).packet_digest != sibling_edit.digest, "a sibling edit re-keys the receipt"
 
 
 @pytest.mark.parametrize("side", ["source", "book"])
@@ -456,8 +449,7 @@ def test_explicit_support_context_preserves_helpers_without_minting_candidates(t
     current = extract_evidence(tmp_path, ["api.py"], context_paths=inventory.context_paths)
     assert current.candidates == inventory.candidates
     after = build_audit_packets(current, claims, max_items=2).packets[0]
-    with pytest.raises(ValueError, match="stale"):
-        validate_verdicts(after, receipt)
+    assert validate_verdicts(before, receipt).packet_digest != after.digest, "a helper edit re-keys the receipt"
     assert any("import closure" in note for note in after.limitations)
 
 
@@ -519,7 +511,7 @@ def test_signature_span_covers_default_without_minting_claims(signature_packet: 
     for claim in payload["claims"]:
         claim.update(status="unresolved", candidate_ids=[])
     for candidate in payload["candidates"]:
-        candidate.update(status="unresolved", claim_ids=[])
+        candidate.update(status="unresolved")
     default = next(item for item in packet.candidates if item.kind == "function_default")
     context = packet.book_context[0]
     line = context.start_line + context.text.splitlines().index("- sig: review(run_dir='')")
@@ -527,7 +519,7 @@ def test_signature_span_covers_default_without_minting_claims(signature_packet: 
     target.update(status="covered", book_evidence=[{"node": context.node, "start_line": line, "end_line": line}])
     report = validate_verdicts(packet, payload)
     recorded = next(item for item in report.verdicts.candidates if item.id == default.id)
-    assert recorded.status == "covered" and not recorded.claim_ids
+    assert recorded.status == "covered"
     assert recorded.model_dump(mode="json")["book_evidence"] == [{"node": context.node, "start_line": line, "end_line": line}]
     assert len(report.verdicts.candidates) == len(packet.candidates) == 2
     assert len(report.verdicts.claims) == len(packet.claims) == 1
@@ -538,8 +530,7 @@ def test_signature_span_covers_default_without_minting_claims(signature_packet: 
     book.write_text(book.read_text().replace("run_dir=''", "run_dir='other'"), encoding="utf-8")
     current = build_audit_packets(extract_evidence(tmp_path, ["api.py"]), extract_claims(load(tmp_path))).packets[0]
     assert current.candidates == packet.candidates and current.claims == packet.claims
-    with pytest.raises(ValueError, match="stale"):
-        validate_verdicts(current, report.verdicts)
+    assert current.digest != report.packet_digest, "a book-context edit re-keys the receipt"
 
 
 @pytest.mark.parametrize("fault", ["foreign", "before", "after", "reversed", "blank", "duplicate", "missing", "unresolved", "implementation_detail", "claim_link"])
@@ -549,7 +540,7 @@ def test_book_evidence_rejects_invalid_spans_and_statuses(signature_packet: Audi
     payload = verdicts(packet).model_dump(mode="json")
     payload["claims"][0].update(status="unresolved", candidate_ids=[])
     for candidate in payload["candidates"]:
-        candidate.update(status="unresolved", claim_ids=[])
+        candidate.update(status="unresolved")
     ref = {"node": context.node, "start_line": context.start_line + 1, "end_line": context.start_line + 1}
     target = payload["candidates"][0]
     target.update(status="covered", book_evidence=[ref])

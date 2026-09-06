@@ -170,9 +170,10 @@ class BookEvidenceRef(BehaviorModel):
 
 
 class CandidateVerdict(BehaviorModel):
+    """One candidate's verdict. Its claim links are the claims that name it, not an echo."""
+
     id: Nonblank
     status: Literal["covered", "missing", "implementation_detail", "unresolved"]
-    claim_ids: tuple[Nonblank, ...] = ()
     book_evidence: tuple[BookEvidenceRef, ...] = Field(
         default=(), description="Distinct nonblank book spans establishing covered source behavior. Only covered verdicts may supply these; not QA proof.",
     )
@@ -180,13 +181,21 @@ class CandidateVerdict(BehaviorModel):
 
 
 class AuditVerdicts(BehaviorModel):
-    packet_digest: Nonblank
+    """The reviewer's reply: one verdict per supplied id, links stated once, on the claim.
+
+    The packet digest is deliberately absent. The caller already holds the packet it
+    dispatched, so binding the reply to it is the caller's job (`validate_verdicts` takes
+    both); asking the model to echo a 64-character digest buys nothing and is one more
+    field to get wrong.
+    """
+
     claims: tuple[ClaimVerdict, ...]
     candidates: tuple[CandidateVerdict, ...]
 
 
 class AuditReport(BehaviorModel):
-    version: Literal[1] = 1
+    version: Literal[2] = 2
     status: Literal["reviewed"] = "reviewed"
+    packet_digest: Nonblank = Field(description="The packet these verdicts were validated against.")
     verdicts: AuditVerdicts
     limitations: tuple[str, ...]

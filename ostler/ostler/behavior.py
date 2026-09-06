@@ -424,30 +424,28 @@ def validate_verdicts(packet: AuditPacket, payload: object) -> AuditReport:
 
     Raises ValueError (including Pydantic ValidationError) for invalid receipts. A
     valid receipt is an attributed external review, not an ostler semantic judgment.
-    Claim/candidate links must agree in both directions. Support/contradiction/partial
-    claims require candidate links. Source coverage requires a supported/partial
+    Links are stated once, on the claim; a candidate's claim links are derived from the
+    claims that name it. Support/contradiction/partial claims require candidate links. Source coverage requires a supported/partial
     claim link or a resolvable book span, which establishes documentation, not QA proof.
     """
     current_digest = _digest(packet.model_dump(mode="json", exclude={"digest"}))
     if packet.digest != current_digest:
         raise ValueError("packet content digest does not match its contents")
     verdicts = AuditVerdicts.model_validate(payload)
-    if verdicts.packet_digest != current_digest:
-        raise ValueError("verdict packet_digest is stale or foreign")
     claim_ids = {claim.id for claim in packet.claims}
     candidate_ids = {candidate.id for candidate in packet.candidates}
     _exact_ids([claim.id for claim in verdicts.claims], claim_ids, "claim verdicts")
     _exact_ids([candidate.id for candidate in verdicts.candidates], candidate_ids, "candidate verdicts")
-    claim_links: set[tuple[str, str]] = set()
-    candidate_links: set[tuple[str, str]] = set()
+    linked_claims: dict[str, set[str]] = defaultdict(set)
     supported_claims = {claim.id for claim in verdicts.claims if claim.status in {"supported", "partial"}}
     for claim in verdicts.claims:
         _exact_ids(claim.candidate_ids, set(claim.candidate_ids) & candidate_ids, f"links for {claim.id}")
         if claim.status != "unresolved" and not claim.candidate_ids:
             raise ValueError(f"{claim.id}: {claim.status} requires candidate links")
-        claim_links.update((claim.id, candidate_id) for candidate_id in claim.candidate_ids)
+        for candidate_id in claim.candidate_ids:
+            linked_claims[candidate_id].add(claim.id)
     for candidate in verdicts.candidates:
-        _exact_ids(candidate.claim_ids, set(candidate.claim_ids) & claim_ids, f"links for {candidate.id}")
+        links = linked_claims[candidate.id]
         if candidate.book_evidence and candidate.status != "covered":
             raise ValueError(f"{candidate.id}: {candidate.status} cannot carry book evidence")
         if len(candidate.book_evidence) != len(set(candidate.book_evidence)):
@@ -462,12 +460,9 @@ def validate_verdicts(packet: AuditPacket, payload: object) -> AuditReport:
             lines = context.text.splitlines()[ref.start_line - context.start_line:ref.end_line - context.start_line + 1]
             if len(lines) != ref.end_line - ref.start_line + 1 or not "\n".join(lines).strip():
                 raise ValueError(f"{candidate.id}: book evidence range is unseen or blank: {ref}")
-        if candidate.status == "covered" and not supported_claims.intersection(candidate.claim_ids) and not candidate.book_evidence:
+        if candidate.status == "covered" and not supported_claims & links and not candidate.book_evidence:
             raise ValueError(f"{candidate.id}: covered requires a supported or partial claim link or book evidence")
-        if candidate.status == "implementation_detail" and candidate.claim_ids:
-            raise ValueError(f"{candidate.id}: implementation_detail cannot claim book links")
-        candidate_links.update((claim_id, candidate.id) for claim_id in candidate.claim_ids)
-    if claim_links != candidate_links:
-        raise ValueError(f"claim/candidate links disagree: {sorted(claim_links ^ candidate_links)}")
-    return AuditReport(verdicts=verdicts, limitations=(*packet.limitations,
+        if candidate.status == "implementation_detail" and links:
+            raise ValueError(f"{candidate.id}: implementation_detail cannot be linked by claims {sorted(links)}")
+    return AuditReport(packet_digest=current_digest, verdicts=verdicts, limitations=(*packet.limitations,
         "Validated book evidence confirms externally reviewed documented source coverage, not QA proof; span resolution does not establish semantic correctness."))

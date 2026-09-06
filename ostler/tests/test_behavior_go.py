@@ -159,7 +159,7 @@ def test_mixed_go_python_real_book_packets_support_and_receipts(tmp_path: Path, 
     for packet in preparation.packets:
         assert len(packet.claims) == len(packet.candidates) == 1
         assert packet.support_context == inventory.support_context
-        receipt = AuditVerdicts(packet_digest=packet.digest,
+        receipt = AuditVerdicts(
             claims=(ClaimVerdict(id=packet.claims[0].id, status="unresolved", explanation="Needs review."),),
             candidates=(CandidateVerdict(id=packet.candidates[0].id, status="unresolved", explanation="Needs review."),))
         assert validate_verdicts(packet, receipt).verdicts == receipt
