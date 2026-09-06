@@ -8,9 +8,9 @@ title: Docker container-id listing reader
 Docker container-id listing reader is Groom's current-container existence lookup for the [workflow discovery scan](workflow-discovery-scan.md#method-present-container-ids) and a public helper indexed by the [Groom Docker I/O module](groom-docker-io-module.md#list-container-ids). It asks Docker for every currently known container id through the shared [Docker subprocess runner](docker-subprocess-runner.md), normalizes each non-empty stdout line to Docker's twelve-character short id form, and preserves the distinction between a reachable empty Docker fleet and an unreachable or failed Docker listing command.
 
 - code: groom/groom/docker_io.py::list_container_ids
-- verify: groom/tests/test_docker_io.py::test_list_container_ids_returns_short_id_set
-- verify: groom/tests/test_docker_io.py::test_list_container_ids_returns_none_on_docker_failure
-- verify: groom/tests/test_docker_io.py::test_list_container_ids_empty_when_no_containers
+- tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_short_id_set
+- tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_none_on_docker_failure
+- tests: groom/tests/test_docker_io.py::test_list_container_ids_empty_when_no_containers
 - refs: [Groom Docker I/O module](groom-docker-io-module.md#list-container-ids), [Docker subprocess runner](docker-subprocess-runner.md)
 
 ## Contract
@@ -74,11 +74,15 @@ Docker container-id listing reader is Groom's current-container existence lookup
 - sig: `list_container_ids() -> set[str] | None`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the shared runner are intentionally surfaced rather than mapped to `None`.
-- returns: a set of twelve-character-or-shorter container id strings when Docker exits successfully, or `None` when Docker exits non-zero.
+- returns: a set of twelve-character-or-shorter container id strings when Docker exits successfully.
+- verify: count(subject="returned container ids", equals=2)
+- verify: count(subject="returned container ids", equals=0)
+- returns: `None` when Docker exits non-zero.
+- verify: absent(subject="returned container-id set")
 - code: groom/groom/docker_io.py::list_container_ids
-- verify: groom/tests/test_docker_io.py::test_list_container_ids_returns_short_id_set
-- verify: groom/tests/test_docker_io.py::test_list_container_ids_returns_none_on_docker_failure
-- verify: groom/tests/test_docker_io.py::test_list_container_ids_empty_when_no_containers
+- tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_short_id_set
+- tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_none_on_docker_failure
+- tests: groom/tests/test_docker_io.py::test_list_container_ids_empty_when_no_containers
 
 Returns the normalized short-id set for every Docker container currently known to Docker. The method is intentionally an existence reader for prune safety: a successful empty set means Docker was reachable and no containers are present, while `None` means Docker could not provide a reliable listing and callers must not infer absence.
 

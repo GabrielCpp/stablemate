@@ -57,6 +57,7 @@ rehearsal walks **one** — the path a machine of stand-in values happens to tak
   [run artifacts](../run-artifacts.md) under `<runs_dir>/<name>-<run_id>` record the outcome
   and make it resumable, continuing the [crash-and-resume](workhorse-crash-resume.md)
   journey if it dies mid-machine.
-- verify: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`,
-  `workhorse/tests/test_pyflow.py::test_dry_run_records_the_calls_without_making_them`,
-  `workhorse/tests/test_pyflow.py::test_a_dry_run_answers_a_prompt_with_the_reply_the_registry_declared`
+- verify: exit_status(code=0)
+- tests: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`
+- tests: `workhorse/tests/test_pyflow.py::test_dry_run_records_the_calls_without_making_them`
+- tests: `workhorse/tests/test_pyflow.py::test_a_dry_run_answers_a_prompt_with_the_reply_the_registry_declared`

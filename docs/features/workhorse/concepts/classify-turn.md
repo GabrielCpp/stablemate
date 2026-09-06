@@ -18,7 +18,7 @@ are one subject: how a finished turn is judged. The module holds no process hand
 knowledge — the backends import it, never the reverse.
 
 - code: `workhorse/workhorse/runner/failure.py::classify_turn`
-- verify: `workhorse/tests/test_agent_cap.py::test_classification`,
+- tests: `workhorse/tests/test_agent_cap.py::test_classification`,
   `workhorse/tests/test_agent_cap.py::test_cap_hang_classified_as_cap_not_timeout`,
   `workhorse/tests/test_backends.py::test_finalize_turn_classifies_failures`,
   `workhorse/tests/test_backends.py::test_finalize_turn_non_recoverable_names_each_backend`,
@@ -29,8 +29,7 @@ knowledge — the backends import it, never the reverse.
 
 - **Input:**
   - `backend_name: str` (positional) — the running CLI's name (`"claude"`, `"codex"`, `"copilot"`,
-    `"cline"`, `"opencode"`), interpolated into every error message so a shared classifier never
-    hardcodes one backend.
+    `"cline"`, `"opencode"`).
   - `node_id: str` (positional) — the workflow node this turn belonged to, interpolated into every
     message.
   - Everything below is **keyword-only** (the signature marks `*` after `node_id`):
@@ -58,6 +57,12 @@ knowledge — the backends import it, never the reverse.
 - **Raises:** `BackendInvocationError` on every non-success path, flagged per the ladder below.
 
 ## Ladder (first match wins)
+
+OpenCode cap failures are the motivating case for the first branch: its stream can log
+`"AI_APICallError: The usage limit has been reached"` while the CLI's internal retry loop remains
+active, leaving Workhorse to abort and reap the subprocess. The finished turn therefore carries
+both cap diagnostics and `timed_out=True` even though the cap, rather than the elapsed budget, is
+the useful cause for recovery.
 
 ```
 tail = f": {diagnostics.strip()}" if diagnostics.strip() else ""
@@ -92,15 +97,13 @@ if session_id_path and session_id:
 return result_text
 ```
 
-1. **Cap marker or structured rate-limit signal → a scheduled-reset cap.** Checked *before*
-   `timed_out` because a cap often makes the CLI hang until the watchdog reaps it (e.g. opencode
-   logs `"AI_APICallError: The usage limit has been reached"` to its stream but never exits) —
-   classifying that as a cap (not a timeout) is what lets the run wait the window out under a
-   truthful "cap reached" message instead of a bogus "Timeout waiting for result … after Ns" that
-   buries the real cause. `capped` is `rate_limited OR is_cap(diagnostics)`
-   (substring match against `_CAP_MARKERS`: `"spending cap"`, `"usage limit"`, `"weekly limit"`,
-   `"session limit"`, `"quota"`, `"key limit"`, `"daily limit"`). `transient=True`; `reset_at` is
-   `rate_reset_at` when `capped` (else `None`, so a non-cap failure can never look like one).
+1. `classify_turn` computes `capped = rate_limited or is_cap(diagnostics)` and handles that branch
+   before `timed_out` (`workhorse/workhorse/runner/failure.py::classify_turn`). `is_cap` performs a
+   substring match against `_CAP_MARKERS`: `"spending cap"`, `"usage limit"`, `"weekly limit"`,
+   `"session limit"`, `"quota"`, `"key limit"`, and `"daily limit"`. The resulting error is
+   transient and carries `rate_reset_at` as `reset_at`; non-cap failures leave `reset_at` unset.
+   - consistency: A cap signal is classified as a scheduled-reset cap before `timed_out`, so its failure message does not present it as a timeout.
+   - verify: omits(subject="cap failure message", text="Timeout waiting for result")
 2. **`timed_out` *with* transient diagnostics → a transient provider failure, not a budget
    overrun.** [`stream_jsonl`](stream-jsonl.md#early-abort) asks
    `stream_subprocess` to stop the moment a provider error identifies a short transient — and that
@@ -247,12 +250,14 @@ reason?
 - **Output:** `bool` — `True` iff `diagnostics`, lowercased, contains any of
   `_CONTEXT_OVERFLOW_MARKERS`: `"prompt is too long"`, `"input is too long"`, `"context length"`,
   `"context window"`, `"maximum context"`, `"context limit"`, `"exceeds the maximum"`, `"too many
-  tokens"`, `"conversation is too long"`, `"dimension limit"`, `"many-image requests"` — the last
-  two cover Claude rejecting a session for too many/too-large images, which the runner also treats
-  as overflow so compaction purges the images from context rather than dying as non-recoverable.
+  tokens"`, `"conversation is too long"`, `"dimension limit"`, `"many-image requests"`.
 - **Algorithm:** lowercase `diagnostics` once (`low = diagnostics.lower()`), then
   `any(marker in low for marker in _CONTEXT_OVERFLOW_MARKERS)` — a plain substring scan, no regex,
   identical shape to [`is_cap`](#is_cap) and [`is_transient`](#is_transient).
+
+The final two markers cover Claude rejecting a session for too many or too-large images. Such a
+rejection enters the overflow recovery path, where compaction removes image-heavy history from the
+session context instead of ending the run as non-recoverable.
 
 Unlike a cap or a generic transient, an overflow is **not** retried with backoff — retrying the same
 prompt on the same full session would just overflow again. `classify_turn` instead marks it
@@ -275,12 +280,13 @@ failing ones) with a machine-readable status and reset time.
 - **Output:** `tuple[bool, float | None]` — `(blocked, reset_at)`:
   - `blocked: bool` — `True` when `rate_limit_info.status`, lowercased, contains any of
     `_LIMIT_STATUS_MARKERS`: `"block"`, `"reject"`, `"exceed"`, `"throttl"`, `"reached"`,
-    `"denied"`, `"over_limit"`, `"limit_reached"`. Deliberately conservative — an unknown or benign
-    status (e.g. `"allowed"`) must never be mistaken for a hit, so this is an *additional* signal
-    layered on top of the text markers, not a replacement for them.
+    `"denied"`, `"over_limit"`, `"limit_reached"`. This conservative classification makes the
+    event an *additional* signal layered on top of the text markers, not a replacement for them.
   - `reset_at: float | None` — `rate_limit_info.resetsAt` coerced to `float`, or `None` if absent or
     not coercible. Populated on *every* event (allowed or blocked), since the window's reset time is
     useful even before the limit is actually hit.
+- consistency: rate-limit-status — An unknown or benign `rate_limit_info.status`, including `"allowed"`, produces
+  `blocked=False`.
 - **Algorithm:**
   1. `info = event.get("rate_limit_info") or {}` — tolerate a missing/`None` key.
   2. `status = str(info.get("status") or "").lower()`.
@@ -311,8 +317,9 @@ branches that persist a session id: [success](#ladder-first-match-wins) and
 - verify: `workhorse/tests/test_backends.py::test_classify_turn_records_node_to_session_manifest`,
   `workhorse/tests/test_backends.py::test_classify_turn_without_session_writes_no_manifest`
 
-- **Input:** `session_id_path: Path | None`, `node_id: str`, `session_id: str | None`. If either
-  path or id is falsy the function returns immediately — nothing to map.
+- **Input:** `session_id_path: Path | None`, `node_id: str`, `session_id: str | None`.
+- consistency: session-mapping — A falsy `session_id_path` or `session_id` records no session mapping.
+- verify: count(subject="recorded session mappings", equals=0)
 - **Output:** none. **Raises:** nothing — an `OSError` on the manifest write is swallowed, because
   telemetry must never fault an unattended run.
 

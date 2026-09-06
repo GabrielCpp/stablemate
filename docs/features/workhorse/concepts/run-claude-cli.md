@@ -1,27 +1,25 @@
 ---
 type: concept
 slug: run-claude-cli
-title: _run_cli — the Claude CLI turn runner
+title: ClaudeBackend.run_turn — the Claude CLI turn runner
 ---
-# `_run_cli` — the Claude CLI turn runner
+# `ClaudeBackend.run_turn` — the Claude CLI turn runner
 
-The implementation behind [`ClaudeBackend.run_turn`](claude-backend.md#contract): builds the
-`claude` CLI argv for one turn, resumes the node's persisted session if one exists, streams the
-turn through [`_stream_events`](stream-events.md), and hands the finished
+`ClaudeBackend.run_turn` builds the `claude` CLI argv for one turn, resumes the node's persisted
+session if one exists, streams the turn through [`_stream_events`](stream-events.md), and hands the finished
 [`ClaudeTurnStream`](stream-events.md#claudeturnstream) to
 [`classify_turn`](classify-turn.md#ladder-first-match-wins) to become either the final result text
 or a raised `BackendInvocationError`.
 
-It is a **module-level function**, not a method — the class is a five-line delegation to it, and
-the protocol lives here beside the other Claude-only symbols. Its old name, `_run_claude_cli`, was
-qualified because it once sat in the CLI-agnostic ladder among functions belonging to no backend
-in particular; one module per CLI supplies that disambiguation now, so it is simply `_run_cli`
-(the same unqualification the other adapters' `_on_event` got).
+This behaviour was consolidated from the former module-level `_run_cli` into
+`ClaudeBackend.run_turn`; the method now owns the Claude-only protocol beside the other adapter
+symbols.
 
-- code: `workhorse/workhorse/runner/backends/claude.py::_run_cli`
-- verify: `workhorse/tests/test_backends.py::test_claude_effort_maps_to_native_flag`,
-  `workhorse/tests/test_backends.py::test_claude_no_effort_omits_flag`,
-  `workhorse/tests/test_config_harness_env.py::test_every_backend_forwards_its_own_table`
+- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.run_turn`
+
+Regression coverage includes `workhorse/tests/test_backends.py::test_claude_effort_maps_to_native_flag`,
+`workhorse/tests/test_backends.py::test_claude_no_effort_omits_flag`, and
+`workhorse/tests/test_config_harness_env.py::test_every_backend_forwards_its_own_table`.
 
 ## Contract
 
@@ -55,11 +53,10 @@ in particular; one module per CLI supplies that disambiguation now, so it is sim
     (`--effort low|medium|high|xhigh|max`); passed straight through with no clamping (contrast
     [CodexBackend](codex-backend.md), which clamps `xhigh`/`max` down to `high`, and
     [ClineBackend](cline-backend.md#_efforts), which drops a `max` it has no level for).
-  - `env_extra: dict[str, str] | None` (**keyword-only**, default `None`) — the operator's
-    `[harness.claude].env` table, supplied by
+  - The operator's `[harness.claude].env` table is obtained through
     [`ClaudeBackend.harness_env()`](agent-backend.md#harness_env-concrete) and layered over the
     inherited environment inside `stream_subprocess`.
-- **Output:** `str` — the classified result text, exactly what
+- consistency: returns the classified `str` result text exactly as
   [`classify_turn`](classify-turn.md#ladder-first-match-wins) returns on a successful turn.
 - **Raises:** `BackendInvocationError` (via `classify_turn`), classified transient /
   scheduled-reset cap / context-overflow / non-recoverable per the shared ladder — this function
@@ -78,17 +75,17 @@ in particular; one module per CLI supplies that disambiguation now, so it is sim
    the stripped id is non-empty, extend argv with `["--resume", sid]` and print
    `[{node_id}] 🔄 Resuming session: {sid[:8]}...`. A missing or blank file leaves the argv
    untouched — the turn starts a fresh session.
-7. **Stream the turn:** call `_stream_events(cmd, node_id, timeout, resilience=resilience,
-   stdin_data=prompt, cwd=cwd or None, env_extra=env_extra)`, which runs the argv through the
-   shared supervised spawn path ([`stream_subprocess`](stream-subprocess.md)) and returns a
-   [`ClaudeTurnStream`](stream-events.md#claudeturnstream).
-8. **Classify and return:** call `classify_turn("claude", node_id, …)` with the stream's fields
-   read off **by name** — `result_text=stream.result_text`,
-   `diagnostics=stream.diagnostics_text`, `timed_out=stream.timed_out`,
-   `returncode=stream.returncode`, `timeout=timeout`, `session_id=stream.session_id`,
-   `session_id_path=session_id_path`, `rate_limited=stream.rate_limited`,
-   `rate_reset_at=stream.rate_reset_at` — and return its result directly. This is the function's
-   only return path; a failure raises out of `classify_turn` instead.
+7. The method calls `_stream_events(cmd, node_id, timeout, resilience=resilience,
+   stdin_data=prompt, cwd=cwd or None, env_extra=self.harness_env())`. That call runs the argv through the
+   shared supervised spawn path ([`stream_subprocess`](stream-subprocess.md)); its completed
+   [`ClaudeTurnStream`](stream-events.md#claudeturnstream) feeds the classification step.
+
+The completed stream is classified by `classify_turn("claude", node_id, …)`, with its fields read
+off **by name**: `result_text=stream.result_text`, `diagnostics=stream.diagnostics_text`,
+`timed_out=stream.timed_out`, `returncode=stream.returncode`, `timeout=timeout`,
+`session_id=stream.session_id`, `session_id_path=session_id_path`,
+`rate_limited=stream.rate_limited`, and `rate_reset_at=stream.rate_reset_at`. Its text is the
+function's result; failures leave through `classify_turn` as `BackendInvocationError`.
 
 Claude's structured cap signals (`rate_limited` / `rate_reset_at`, read off the stream-json
 `rate_limit_event`) are passed in explicitly so a capped window still carries its precise reset
@@ -96,8 +93,6 @@ epoch into [the cap wait](cap-delay-seconds.md) rather than falling back to a bl
 
 ## Related pieces
 
-- [`ClaudeBackend.run_turn`](claude-backend.md#contract) — the sole caller; forwards every argument
-  unchanged and adds `env_extra=self.harness_env()`.
 - [`_stream_events`](stream-events.md) — parses the `claude --output-format stream-json` line
   stream into the [`ClaudeTurnStream`](stream-events.md#claudeturnstream) this function reads;
   itself delegates the supervised subprocess spawn to [`stream_subprocess`](stream-subprocess.md).

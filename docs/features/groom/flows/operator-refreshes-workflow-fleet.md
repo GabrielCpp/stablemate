@@ -30,16 +30,6 @@ in it the socket does not already deliver, in a shape the renderer already knows
   partially hydrated by sidecar pushes, or already reconciled by startup
   discovery; the manual refresh does not require a selected run, selected
   repository, open settings pane, or idle startup scan.
-- code: groom/groom/assets/dashboard.js::doRefresh
-- code: groom/groom/assets/dashboard.js::Fleet
-- code: groom/groom/assets/dashboard.js::StatusBar
-- code: groom/groom/app.py::refresh
-- code: groom/groom/app.py::_broadcast_shell
-- code: groom/groom/app.py::_reconcile
-- code: groom/groom/discovery.py::scan
-- code: groom/groom/discovery.py::present_container_ids
-- code: groom/groom/state.py::prune_workflows
-- code: groom/groom/projection.py::state_message
 - steps:
   1. The operator chooses a refresh entry point. In settings mode, activating
      [rescan containers from settings](../gui/screens/groom-dashboard.md#rescan-containers-from-settings)
@@ -114,24 +104,37 @@ in it the socket does not already deliver, in a shape the renderer already knows
       frame that arrives mid-request and the same element reference is still the
       live button when cleanup runs.
 - end: every connected dashboard tab that still has an active dashboard
-  websocket has received the refresh state frames that the server successfully
-  broadcast. The process-local workflow registry contains the discovered
-  workhorse containers plus any previously visible entries retained because
-  Docker presence was unavailable, minus safely pruned vanished containers; the
-  scanning flag is false on successful reconciliation completion; and the HTTP
+  websocket has received each refresh state frame that the server successfully
+  broadcast.
+- end: the process-local workflow registry contains the discovered workhorse
+  containers plus any previously visible entries retained because Docker
+  presence was unavailable, minus safely pruned vanished containers.
+- end: after successful reconciliation, the scanning flag is false and the HTTP
   caller receives only the success JSON count rather than row-level details.
-  Failed pre-scan broadcast leaves the scanning flag true because reconciliation
-  never starts, reconciliation failure clears the scanning flag but skips the
-  post-scan broadcast and success response, and post-scan broadcast failure
-  propagates after the registry has already been reconciled and the scanning
-  flag cleared.
-- verify: groom/tests/test_app.py::test_refresh_prunes_vanished_containers,
-  groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable,
-  groom/tests/test_state.py::test_prune_drops_absent_keeps_present,
-  groom/tests/test_state.py::test_prune_empty_present_removes_everything,
-  groom/tests/test_state.py::test_prune_also_forgets_gate_locks_of_removed,
-  groom/tests/test_projection.py::test_state_message_reports_whether_discovery_is_still_running,
-  groom/tests/test_projection.py::test_status_bar_counts_states,
-  groom/tests/test_projection.py::test_state_message_is_json_serializable
+- end: a failed pre-scan broadcast leaves the scanning flag true because
+  reconciliation never starts.
+- end: a reconciliation failure clears the scanning flag but skips the post-scan
+  broadcast and success response.
+- end: a post-scan broadcast failure propagates after the registry has already
+  been reconciled and the scanning flag cleared.
+- verify: emitted(event="state", count=2)
+- tests: groom/tests/test_app.py::test_refresh_prunes_vanished_containers
+- tests: groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
+- tests: groom/tests/test_state.py::test_prune_drops_absent_keeps_present
+- tests: groom/tests/test_state.py::test_prune_empty_present_removes_everything
+- tests: groom/tests/test_state.py::test_prune_also_forgets_gate_locks_of_removed
+- tests: groom/tests/test_projection.py::test_state_message_reports_whether_discovery_is_still_running
+- tests: groom/tests/test_projection.py::test_status_bar_counts_states
+- tests: groom/tests/test_projection.py::test_state_message_is_json_serializable
+- code: groom/groom/assets/dashboard.js::doRefresh
+- code: groom/groom/assets/dashboard.js::Fleet
+- code: groom/groom/assets/dashboard.js::StatusBar
+- code: groom/groom/app.py::refresh
+- code: groom/groom/app.py::_broadcast_shell
+- code: groom/groom/app.py::_reconcile
+- code: groom/groom/discovery.py::scan
+- code: groom/groom/discovery.py::present_container_ids
+- code: groom/groom/state.py::prune_workflows
+- code: groom/groom/projection.py::state_message
 - screenshot: docs/features/groom/gui/screenshots/operator-refreshes-workflow-fleet-settings-idle.png
 - screenshot: docs/features/groom/gui/screenshots/operator-refreshes-workflow-fleet-post-scan.png

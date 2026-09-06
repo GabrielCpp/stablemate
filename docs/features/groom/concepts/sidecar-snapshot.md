@@ -82,9 +82,12 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
 - abstract: false
 - raises: none intentionally raised by the aggregator itself; exceptions from
   delegated readers that are outside their normalization contracts can propagate.
+- verify: json_path(path="$.current_node", equals="write_story")
+- verify: json_path(path="$.terminal", equals="")
+- verify: count(subject="snapshot gate entries", equals=1)
 - code: groom/groom/sidecar.py::snapshot
-- verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
-- verify: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch
+- tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
+- tests: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch
 - input: no call arguments; uses the sidecar's configured runs mount and
   workspace mount.
 - output: one [sidecar snapshot data](../sidecar-snapshot-data.md) dictionary with
@@ -108,8 +111,9 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
 - abstract: false
 - raises: none for a missing runs mount; that case returns `None`. Directory
   iteration errors from an existing runs mount are not absorbed.
+- verify: count(subject="latest run directories returned", equals=1)
 - code: groom/groom/sidecar.py::_latest_run_dir
-- verify: groom/tests/test_sidecar.py::test_terminal_reads_latest_run_json
+- tests: groom/tests/test_sidecar.py::test_terminal_reads_latest_run_json
 - input: no call arguments; uses the sidecar's configured runs mount path.
 - output: the latest run directory path, or `None` when the configured runs mount
   is not a directory or contains no child directories.
@@ -137,8 +141,9 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
   malformed checkpoint JSON; those cases return `""`. A parseable non-object
   JSON value is outside the accepted checkpoint shape and can raise instead of
   normalizing.
+- verify: json_path(path="$.current_node", equals="write_story")
 - code: groom/groom/sidecar.py::_current_node
-- verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
+- tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
 - input: no call arguments; uses `method-_latest_run_dir` to find the latest run
   directory from the sidecar's configured runs mount.
 - output: current workhorse graph-node id from the latest [sidecar run checkpoint
@@ -166,8 +171,9 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
   malformed metadata JSON; those cases return `""`. A parseable non-object JSON
   value is outside the accepted metadata shape and can raise instead of
   normalizing.
+- verify: json_path(path="$.terminal", equals="done")
 - code: groom/groom/sidecar.py::_terminal
-- verify: groom/tests/test_sidecar.py::test_terminal_reads_latest_run_json
+- tests: groom/tests/test_sidecar.py::test_terminal_reads_latest_run_json
 - input: no call arguments; uses `method-_latest_run_dir` to find the latest run
   directory from the sidecar's configured runs mount.
 - output: truthy terminal-state value from the latest run's [sidecar run
@@ -192,8 +198,9 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
 - abstract: false
 - raises: none for a missing workspace mount or per-file read failures; those
   cases return an empty list or skip the unreadable file.
+- verify: count(subject="awaiting gate entries returned", equals=1)
 - code: groom/groom/sidecar.py::scan_gates
-- verify: groom/tests/test_sidecar.py::test_scan_gates_finds_awaiting_and_skips_git_and_non_awaiting
+- tests: groom/tests/test_sidecar.py::test_scan_gates_finds_awaiting_and_skips_git_and_non_awaiting
 - input: no call arguments; uses the sidecar's configured workspace mount as the
   scan root.
 - output: a list of [sidecar snapshot data](../sidecar-snapshot-data.md) gate

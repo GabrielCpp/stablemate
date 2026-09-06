@@ -8,11 +8,12 @@ title: Docker run-directory reader
 Docker run-directory reader, also described by Groom's run-artifact formats as the Docker volume run-directory reader, is the read-only Docker volume helper in the [Groom Docker I/O module](groom-docker-io-module.md) used by the [workflow discovery scan](workflow-discovery-scan.md#method-current-run-state) to choose the latest stopped-or-legacy run directory before reading [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md) and [sidecar run metadata](../sidecar-run-metadata.md). Its [list-run-dirs](#list-run-dirs) method mounts the workflow's runs volume through the shared [Docker subprocess runner](docker-subprocess-runner.md), lists only top-level directories under the volume root, strips the container-local `/vol/` prefix, and returns sorted volume-relative directory names.
 
 - code: groom/groom/docker_io.py::list_run_dirs
+- tests: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
+- tests: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
 - parent: [Groom Docker I/O module](groom-docker-io-module.md)
 - alias: Docker volume run-directory reader
 - refs: [Docker subprocess runner](docker-subprocess-runner.md), [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md), [sidecar run metadata](../sidecar-run-metadata.md), [workflow discovery scan](workflow-discovery-scan.md#method-current-run-state)
-- verify: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
-- verify: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
+- verify: count(subject="run directories returned by list_run_dirs", equals=1)
 
 ## Contract
 
@@ -126,9 +127,9 @@ Docker run-directory reader, also described by Groom's run-artifact formats as t
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the shared runner are intentionally surfaced rather than mapped to an empty listing.
 - returns: sorted list of direct-child run directory names relative to the mounted runs volume root; an empty list means the Docker process exited non-zero, the volume has no retained direct child directories, or stdout produced no retained `/vol/` paths.
-- code: groom/groom/docker_io.py::list_run_dirs
 - verify: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
 - verify: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
+- code: groom/groom/docker_io.py::list_run_dirs
 - args:
   - `volume`: [field-runs-volume-name](#field-runs-volume-name), required, no default.
 - output: zero or more [field-returned-run-directory-name](#field-returned-run-directory-name) values sorted lexicographically.

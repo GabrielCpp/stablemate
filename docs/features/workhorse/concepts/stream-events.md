@@ -64,16 +64,19 @@ accumulator shaped for that call rather than for the shared one.
   - `env_extra: dict[str, str] | None` (keyword, default `None`) — the `[harness.claude].env`
     table, layered over the inherited environment inside `stream_subprocess`.
 - **Output:** a [`ClaudeTurnStream`](#claudeturnstream), fully populated.
-- **Raises:** nothing turn-specific — a malformed line is caught (`json.JSONDecodeError`) and
-  folded into `diagnostics` rather than propagated. A permanently-missing or un-exec'able CLI
-  surfaces as the `BackendInvocationError`
-  [`_spawn_streaming`](stream-subprocess.md#_spawn_streaming) raises, never a bare `OSError`.
+- consistency: A non-empty malformed stream line is retained in `ClaudeTurnStream.diagnostics`
+  after `json.JSONDecodeError`, rather than propagating the decoding error.
+- verify: json_path(path="$.diagnostics[0]", equals="not-json")
+
+Permanent CLI startup failures remain the `BackendInvocationError` raised by
+[`_spawn_streaming`](stream-subprocess.md#_spawn_streaming), rather than bare `OSError` values
+from the launcher.
 
 ## Algorithm
 
 1. **Construct the accumulator:** `stream = ClaudeTurnStream()`, closed over and mutated by the
    nested `on_line`.
-2. **Define `on_line(raw_line: str) -> None`**, the per-line callback:
+2. The nested `on_line(raw_line: str) -> None` callback handles each delivered line as follows:
    - Strip the line; a blank line is a no-op.
    - Parse it as JSON. **On `JSONDecodeError`** (e.g. merged stderr text, a non-JSON banner line):
      print `[{node_id}] {line}` for live visibility and append the raw line to

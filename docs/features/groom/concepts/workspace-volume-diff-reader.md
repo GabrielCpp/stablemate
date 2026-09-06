@@ -8,7 +8,7 @@ title: Workspace volume diff reader
 Workspace volume diff reader is the fallback implementation used by the [serve workspace diff](../http/groom.md#serve-working-tree-diff) invocation when the connected sidecar cannot provide [workspace diff data](../workspace-diff-data.md). It reads one checkout inside a known workspace Docker volume through a throwaway read-only git container, delegates process execution to the [Docker subprocess runner](docker-subprocess-runner.md), and returns raw unified working-tree diff text without mutating the workflow container, repository, sidecar registry, or dashboard clients. When no checkout is supplied, it depends on the [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md) to choose the first discovered checkout.
 
 - code: groom/groom/docker_io.py::git_diff
-- verify: groom/tests/test_app.py::test_diff_endpoint_passes_repo_through,
+- tests: groom/tests/test_app.py::test_diff_endpoint_passes_repo_through,
   groom/tests/test_docker_io.py::test_git_diff_returns_empty_when_no_repo_found,
   groom/tests/test_docker_io.py::test_git_diff_returns_stdout_on_success,
   groom/tests/test_docker_io.py::test_git_diff_returns_empty_on_git_failure
@@ -32,20 +32,28 @@ Workspace volume diff reader is the fallback implementation used by the [serve w
 ### git-diff
 
 - sig: `git_diff(volume: str, repo_dir: str = "") -> str`
-- abstract: Read one checkout's working-tree-vs-`HEAD` unified diff from a workspace volume and return it as [workspace diff data](../workspace-diff-data.md).
-- raises: none intentionally surfaced for missing repositories or non-zero git/Docker exit codes; process-launch and timeout exceptions from the shared Docker subprocess runner are not caught here.
-- returns: raw unified diff stdout unchanged, or `""` for no selected checkout or non-zero git/Docker completion.
+- abstract: false
+- does: select the explicit checkout directory, or resolve the first sorted checkout when `repo_dir` is empty.
+- does: return an empty diff without starting a git container when no checkout resolves.
+- does: run `git diff HEAD` in a throwaway read-only container mounted at `/vol` with `safe.directory=*`.
+- does: leave the selected checkout and its containing workspace volume unchanged.
+- raises: process-launch and timeout exceptions from the shared Docker subprocess runner are not caught by this reader.
+- raises: missing repositories and non-zero Docker or git completion do not raise; they produce an empty result.
+- returns: raw unified diff stdout unchanged, including an empty string when the selected checkout has no working-tree changes.
+- verify: json_path(path="diff", matches="^diff --git")
+- verify: json_path(path="diff", equals="")
 - code: groom/groom/docker_io.py::git_diff
-- verify: groom/tests/test_docker_io.py::test_git_diff_returns_empty_when_no_repo_found
-- verify: groom/tests/test_docker_io.py::test_git_diff_returns_stdout_on_success
-- verify: groom/tests/test_docker_io.py::test_git_diff_returns_empty_on_git_failure
-- volume: required Docker workspace volume name; mounted read-only at `/vol` for the throwaway git command.
-- repo_dir: optional volume-relative checkout directory; default `""`; when empty, resolved through [find-repo-dir](workspace-volume-repository-directory-reader.md#find-repo-dir).
-- calls: [find-repo-dir](workspace-volume-repository-directory-reader.md#find-repo-dir) when `repo_dir` is empty, and the [Docker subprocess runner](docker-subprocess-runner.md#run) for the throwaway git command.
-- effects: creates a read-only temporary Docker container to inspect git state; performs no file writes, no dashboard broadcast, no sidecar RPC, and no workflow-container restart.
-- steps:
-  - If `repo_dir` is empty, ask the [first-repository lookup](workspace-volume-repository-directory-reader.md#find-repo-dir) for the checkout to diff.
-  - If no checkout is available after that lookup, return `""` without starting a git container.
-  - Run the read-only git container against `/vol/{repo_dir}` with `safe.directory=*` and `diff HEAD`.
-  - If the git container exits non-zero, return `""`.
-  - Otherwise return the container stdout unchanged, including an empty stdout when the checkout has no working-tree diff.
+- tests: groom/tests/test_docker_io.py::test_git_diff_returns_empty_when_no_repo_found,
+  groom/tests/test_docker_io.py::test_git_diff_returns_stdout_on_success,
+  groom/tests/test_docker_io.py::test_git_diff_returns_empty_on_git_failure
+
+The `volume` argument is the required Docker workspace volume name and is mounted read-only at
+`/vol`. `repo_dir` is an optional volume-relative checkout directory; an empty value delegates
+selection to [find-repo-dir](workspace-volume-repository-directory-reader.md#find-repo-dir). The
+reader delegates process launch, output capture, timeout enforcement, and return-code capture to
+the [Docker subprocess runner](docker-subprocess-runner.md#run). It performs no file writes,
+dashboard broadcast, sidecar RPC, or workflow-container restart.
+
+The algorithm is: resolve an empty `repo_dir`; return `""` if resolution finds no checkout; run
+the read-only git container against `/vol/{repo_dir}`; return `""` for a non-zero completion; and
+otherwise return stdout unchanged.

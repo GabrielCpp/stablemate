@@ -113,6 +113,7 @@ and by the typed helpers `write_library_dir`, `write_stablemate_dir`, `write_bas
 `write_worktree_dir` that wrap it.
 
 - code: `core/stablemate_core/config.py::write_config_key`
+- detail: [config write documentation contexts](../../farrier/concepts/config-write-context.md)
 
 ## profiles
 
@@ -143,15 +144,17 @@ model = "haiku"
 - `PROFILES_KEY` — `"profiles"`, the top-level key.
 - `profile_names(cfg=None) -> list[str]` — the names defined, sorted; empty when there are
   none.
-- `select_profile(cfg, name) -> dict` — narrows `cfg` to that profile's own table, which is
-  what makes replace-not-overlay structurally true:
-  [`resolve_power`](#resolve_power) and [`resolve_backend_default`](#resolve_backend_default)
-  need no notion of profiles at all, since their `cfg` parameter was already the seam. An
-  empty `name` means "no profile" and returns the config unchanged, so a caller threading an
-  unset selector needs no branch. An undefined name raises `UnknownProfileError` naming the
-  known ones — a hard failure on purpose, and only ever raised at startup where failing is
-  safe, because falling back to the top-level tables would spend a week of unattended run on
-  the wrong models with nothing in the log to say so.
+`select_profile(cfg, name) -> dict` is the seam between profile selection and model resolution.
+It hands the resulting config to [`resolve_power`](#resolve_power) and
+[`resolve_backend_default`](#resolve_backend_default), so those functions need no notion of
+profiles. Unknown names fail during startup, where reporting the mistake is safe; silently falling
+back to the top-level tables could otherwise run unattended on the wrong models.
+
+- consistency: config-profile — selecting a named profile returns that profile's own table without overlaying the
+  top-level model tables
+- consistency: config-profile — selecting an empty profile name returns the config unchanged
+- consistency: config-profile — selecting an undefined profile raises `UnknownProfileError` naming the requested
+  profile and the known alternatives
 - `profile_backends(profile) -> list[str]` — every backend name the narrowed config keys its
   model tables by, sorted (the per-tier `default` fallback is not one). **Nothing is
   validated here**: core knows no backend registry, so a misspelling is reported at the
@@ -231,7 +234,8 @@ The key is additive, so it does not bump `CONFIG_VERSION`: an older tool that ig
 to the same built-in it always used.
 
 - **Input:** `cfg: dict | None` (defaults to `load_config()`).
-- **Output:** `str` — always a non-empty, lowercased name.
+- consistency: default-cli — `resolve_default_cli` always returns a non-empty backend name
+  normalized with `strip().lower()`.
 - code: `core/stablemate_core/config.py::resolve_default_cli`
 - code: `core/stablemate_core/config.py::write_default_cli`
 - verify: `core/tests/test_config_unified.py::test_default_cli_is_the_builtin_when_unset`,

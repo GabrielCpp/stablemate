@@ -14,7 +14,7 @@ time out of the message text, and falls back to a fixed default when neither is 
 cap always eventually clears, so a delay is always produced, never an error.
 
 - code: `workhorse/workhorse/runner/caps.py::cap_delay_seconds`
-- verify: `workhorse/tests/test_agent_cap.py::test_cap_delay_prefers_structured_reset_at`,
+- tests: `workhorse/tests/test_agent_cap.py::test_cap_delay_prefers_structured_reset_at`,
   `workhorse/tests/test_agent_cap.py::test_cap_delay_falls_back_to_text_then_default`
 
 ## Contract
@@ -22,20 +22,21 @@ cap always eventually clears, so a delay is always produced, never an error.
 Public, and its two collaborators are keyword-only injections rather than module constants and a
 call to `time.time()`. Nothing here reads the environment or the wall clock.
 
-- **Input:**
-  - `exc: BackendInvocationError` — the caught cap failure; only its
-    [`reset_at`](classify-turn.md#backendinvocationerror) field and its `str(exc)` message text
-    are read.
-  - `resilience: AgentResilience` (keyword-only) — supplies `cap_max_wait_s`, `cap_wait_margin_s`
-    and `cap_default_wait_s`. These were loose module constants read from the environment at
-    import time; they are fields on the run's resilience policy now, so a test states a bound
-    instead of setting an env var.
-  - `clock: Clock` (keyword-only) — "now" comes from `clock.now()`, a `datetime`. Both the
-    structured and the text-parsing path read it, so a cap that reopens eight hours out is a test
-    that states the hour rather than one that patches `time`.
+The `exc: BackendInvocationError` argument is the caught cap failure. The function reads only its
+[`reset_at`](classify-turn.md#backendinvocationerror) field and its `str(exc)` message text. The
+keyword-only `resilience: AgentResilience` argument supplies `cap_max_wait_s`,
+`cap_wait_margin_s`, and `cap_default_wait_s`. These values were loose module constants read from
+the environment at import time; they are fields on the run's resilience policy now, so a test
+states a bound instead of setting an env var. The keyword-only `clock: Clock` argument supplies
+"now" through `clock.now()`, a `datetime`. Both the structured and text-parsing paths read it, so
+a cap that reopens eight hours out is a test that states the hour rather than one that patches
+`time`.
+
+The structured future-reset, structured stale-reset, parsed-text, and unparseable-text paths each
+produce a delay and label; this helper has no separate failure result for a classified cap.
+
 - **Output:** `tuple[float, str]` — `(delay_seconds, when_label)`: how long to sleep, and a
   label describing when the wait ends (or why it's short).
-- **Raises:** nothing — every branch returns a value; there is no failure path.
 
 ## Algorithm
 
@@ -56,30 +57,35 @@ delay = parsed + resilience.cap_wait_margin_s
 return delay, (now + timedelta(seconds=delay)).strftime("%a %H:%M")
 ```
 
-1. **Ask the clock.** `now = clock.now()` — one call, and every branch below measures against it.
-   `reset_at` is a unix epoch, so it is compared against `now.timestamp()`.
-2. **Structured `reset_at` takes priority.** When `exc.reset_at` is set (the CLI's own
-   `rate_limit_event.resetsAt`, attached by [`classify_turn`](classify-turn.md#ladder-first-match-wins)),
-   compute `secs = exc.reset_at - now.timestamp()`:
-   - **Still in the future (`secs > 0`).** The delay is `min(secs, resilience.cap_max_wait_s)` —
-     bounded so a bogus far-future epoch (clock skew, a malformed event) can't stall the run for
-     longer than that ceiling (env `AGENT_CAP_MAX_WAIT_S`, default `8 * 24 * 3600` = 8 days) —
-     plus `resilience.cap_wait_margin_s` (env `AGENT_CAP_WAIT_MARGIN_S`, default `120`)
-     so the retry lands safely *after* the window reopens rather than racing it. The `when` label
-     is computed from `now + delay` — the injected clock's now, never the real one — formatted
-     `"%a %H:%M"` (e.g. `"Tue 14:05"`).
-   - **Already in the past (`secs <= 0`).** A stale event or clock skew — reset already happened,
-     so there's nothing to wait out. Returns just the margin (`cap_wait_margin_s`) as the delay,
-     with a fixed label `"reset already passed — retrying shortly"` (no timestamp computed).
-3. **No structured `reset_at` → parse the message text.**
-   [`parse_reset_seconds(str(exc), now)`](parse-reset-seconds.md#algorithm) looks for a reset
-   clock-time embedded in the error string (e.g. `"resets 3:50am"`), measured against the same
-   `now` this function was handed.
-   - **Found.** `delay = parsed + resilience.cap_wait_margin_s`; the label is computed from that
-     same `now` plus `delay`, formatted the same `"%a %H:%M"`.
-   - **Not found.** Neither a structured epoch nor a parseable reset time — falls back to
-     `resilience.cap_default_wait_s` (env `AGENT_CAP_DEFAULT_WAIT_S`, default `3600` = 1 hour) with
-     a fixed label `"unknown reset — using default wait"`.
+**Clock snapshot.** `now = clock.now()` is called once, and every branch measures against that
+value. `reset_at` is a unix epoch, so the comparison uses `now.timestamp()`.
+
+**Structured reset path.** A populated `exc.reset_at` selects this path before message parsing.
+The value comes from the CLI's `rate_limit_event.resetsAt`, attached by
+[`classify_turn`](classify-turn.md#ladder-first-match-wins), and the remaining interval is
+`secs = exc.reset_at - now.timestamp()`.
+
+For a future reset (`secs > 0`), the delay is `min(secs, resilience.cap_max_wait_s)`. The bound
+keeps a bogus far-future epoch caused by clock skew or a malformed event from stalling the run
+past that ceiling (env `AGENT_CAP_MAX_WAIT_S`, default `8 * 24 * 3600` = 8 days). Adding
+`resilience.cap_wait_margin_s` (env `AGENT_CAP_WAIT_MARGIN_S`, default `120`) places the retry
+after the window reopens rather than racing it. The `when` label comes from the injected clock's
+`now + delay`, not the real clock, formatted as `"%a %H:%M"` (for example, `"Tue 14:05"`).
+
+For a reset already in the past (`secs <= 0`), the event is stale or the clocks are skewed and
+there is no reset interval left to wait out. The result uses only `cap_wait_margin_s` as the delay
+and the fixed label `"reset already passed — retrying shortly"`, without computing a timestamp.
+
+**Text fallback.** Without a structured `reset_at`,
+[`parse_reset_seconds(str(exc), now)`](parse-reset-seconds.md#algorithm) looks for a reset
+clock-time embedded in the error string (for example, `"resets 3:50am"`), measured against the
+same `now` this function received.
+
+When parsing succeeds, `delay = parsed + resilience.cap_wait_margin_s`; the label is computed
+from that same `now` plus `delay` and formatted as `"%a %H:%M"`. When parsing fails, neither a
+structured epoch nor a parseable reset time is available, so the result uses
+`resilience.cap_default_wait_s` (env `AGENT_CAP_DEFAULT_WAIT_S`, default `3600` = 1 hour) with the
+fixed label `"unknown reset — using default wait"`.
 
 Two of the four branches (structured-past, text-not-found) return a **fixed** label string instead
 of a computed timestamp — the label always states either a concrete "resuming around" time or an

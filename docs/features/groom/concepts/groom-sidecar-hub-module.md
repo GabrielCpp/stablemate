@@ -8,14 +8,8 @@ title: Groom sidecar hub module
 The Groom sidecar hub module is the host-process side of persistent sidecar sessions. It defines the current [sidecar connection registry](sidecar-connection-registry.md), the per-socket [sidecar connection](sidecar-connection.md) object, and the [sidecar error](sidecar-error.md) failure signal used when host requests over [sidecar live sessions](../sidecar-live-sessions.md) cannot complete. The [websocket-sidecar](../http/groom.md#websocket-sidecar) endpoint owns socket acceptance and incoming [sidecar websocket frame](../sidecar-websocket-frame.md) dispatch; this module owns only the host-side connection state and outbound RPC/reload data plane.
 
 - code: groom/groom/sidecar_hub.py
-- verify: groom/tests/test_sidecar_hub.py::test_rpc_sends_request_and_returns_resolved_data,
-  groom/tests/test_sidecar_hub.py::test_rpc_error_result_raises_sidecar_error,
-  groom/tests/test_sidecar_hub.py::test_rpc_times_out_when_no_reply,
-  groom/tests/test_sidecar_hub.py::test_correlation_ids_increment_per_connection,
-  groom/tests/test_sidecar_hub.py::test_resolve_is_ignored_after_timeout,
-  groom/tests/test_sidecar_hub.py::test_register_displaces_and_fails_prior_connection,
-  groom/tests/test_sidecar_hub.py::test_unregister_only_removes_current_connection,
-  groom/tests/test_sidecar_hub.py::test_send_reload_emits_reload_frame
+- tests: groom/tests/test_sidecar_hub.py::test_ask_questions_rides_the_registered_connections_rpc
+- tests: groom/tests/test_sidecar_hub.py::test_answer_gate_carries_run_path_and_body
 - refs: [sidecar connection registry](sidecar-connection-registry.md), [sidecar connection](sidecar-connection.md), [sidecar error](sidecar-error.md), [sidecar websocket frame](../sidecar-websocket-frame.md), [sidecar live sessions](../sidecar-live-sessions.md), [websocket-sidecar](../http/groom.md#websocket-sidecar)
 
 ## Contract
@@ -27,6 +21,8 @@ The Groom sidecar hub module is the host-process side of persistent sidecar sess
 - data plane: supports host-issued `getTree`, `getFile`, and `getDiff` RPCs by sending correlated `rpc` frames and resolving correlated `rpc_result` frames.
 - reload plane: supports host-issued best-effort sidecar reload by sending a no-payload `reload` frame to current connections.
 - fallback contract: socket absence, send failure, timeout, sidecar error result, unregister, or reconnect displacement is reported as [sidecar error](sidecar-error.md) or a missing registry entry so callers can use Docker volume fallback paths.
+- gate relay: `ask_questions` and `answer_gate` use the same correlated RPC path to relay operator-gate questions and answers to the run's own control socket through the connected sidecar; the run's reply is returned as a dictionary without being reinterpreted.
+- gate failure contract: a missing connection, failed RPC, or non-dictionary RPC result raises [sidecar error](sidecar-error.md); the module does not write gate files or decide whether the caller should use a file fallback.
 - authority boundary: losing a sidecar connection never deletes a [workflow container](workflow-container.md), removes a gate, answers an operator question, clears workflow state, or decides an HTTP response body by itself.
 - external boundary: `asyncio`, protocol typing, ASGI websocket senders, and exception base behavior are standard-library or framework boundaries and are not Groom-owned graph nodes to descend into.
 
@@ -57,33 +53,10 @@ The Groom sidecar hub module is the host-process side of persistent sidecar sess
 - detail: [sidecar connection registry](sidecar-connection-registry.md#field-connections).
 - responsibility: map normalized container ids to the currently registered sidecar connection object for that id.
 
-### register
-
-- kind: module function.
-- detail: [sidecar connection registry register](sidecar-connection-registry.md#method-register).
-- responsibility: make a connection current for its container id and fail pending RPCs on any displaced older connection.
-
-### unregister
-
-- kind: module function.
-- detail: [sidecar connection registry unregister](sidecar-connection-registry.md#method-unregister).
-- responsibility: remove a closing connection only when it is still current for its id, then fail that connection's pending RPCs.
-
-### get
-
-- kind: module function.
-- detail: [sidecar connection registry get](sidecar-connection-registry.md#method-get).
-- responsibility: return the current connection for exactly the requested container id, or `None` when none is registered.
-
-### connected_ids
-
-- kind: module function.
-- detail: [sidecar connection registry connected ids](sidecar-connection-registry.md#method-connected-ids).
-- responsibility: return a snapshot list of registry keys that currently have registered sidecar connections.
-
 ## Folded Internal Member
 
 - `_Sender`: private structural sender contract requiring async `send_json(data)`; folded into [sidecar connection](sidecar-connection.md)'s transport contract and not a public Groom concept.
+- `_gate_rpc`: private async helper that looks up a registered connection, performs one RPC, requires a dictionary reply, and raises [sidecar error](sidecar-error.md) for absence or invalid reply; folded into the two public gate relay functions.
 
 ## Module Flow
 
@@ -94,6 +67,84 @@ The Groom sidecar hub module is the host-process side of persistent sidecar sess
 5. The endpoint passes incoming `rpc_result` frames to [sidecar connection](sidecar-connection.md#method-resolve), which completes the matching pending RPC with data or [sidecar error](sidecar-error.md).
 6. On timeout, send failure, sidecar error result, socket close, or reconnect displacement, pending RPCs fail through [sidecar error](sidecar-error.md) and callers retain their fallback path.
 7. On socket cleanup, the endpoint calls [unregister](sidecar-connection-registry.md#method-unregister); late cleanup from an older displaced socket cannot evict a newer current connection.
+8. Gate callers invoke [ask questions](#method-ask-questions) or [answer gate](#method-answer-gate); each delegates to the shared gate RPC helper with `getQuestions` or `answerGate` and returns the run control socket's dictionary reply unchanged.
+
+## Methods
+
+### method-register
+
+- sig: `register(conn: SidecarConnection) -> None`
+- abstract: false
+- raises: none intentionally.
+- code: groom/groom/sidecar_hub.py::register
+- detail: [sidecar connection registry register](sidecar-connection-registry.md#method-register).
+
+### method-unregister
+
+- sig: `unregister(conn: SidecarConnection) -> None`
+- abstract: false
+- raises: none intentionally.
+- code: groom/groom/sidecar_hub.py::unregister
+- detail: [sidecar connection registry unregister](sidecar-connection-registry.md#method-unregister).
+
+### method-get
+
+- sig: `get(container_id: str) -> SidecarConnection | None`
+- abstract: false
+- raises: none intentionally.
+- code: groom/groom/sidecar_hub.py::get
+- detail: [sidecar connection registry get](sidecar-connection-registry.md#method-get).
+
+### method-connected-ids
+
+- sig: `connected_ids() -> list[str]`
+- abstract: false
+- raises: none intentionally.
+- code: groom/groom/sidecar_hub.py::connected_ids
+- detail: [sidecar connection registry connected ids](sidecar-connection-registry.md#method-connected-ids).
+
+### method-ask-questions
+
+- sig: `async ask_questions(container_id: str, run: str = "") -> dict[str, Any]`
+- abstract: false
+- does:
+  - Looks up the current sidecar connection for `container_id`.
+  - Raises [sidecar error](sidecar-error.md) with `no sidecar connected for <container_id>` when no connection is registered.
+  - Sends one `getQuestions` RPC with `{run: run}` through the connection's normal correlation, timeout, and cleanup behavior.
+  - Rejects a successful RPC result that is not a dictionary with [sidecar error](sidecar-error.md), naming the returned value.
+  - Returns a dictionary reply unchanged; it does not read gate files, alter workflow state, or interpret the questions.
+- raises: [sidecar error](sidecar-error.md) when no sidecar is registered, the RPC fails, or the reply is not a dictionary.
+- code: groom/groom/sidecar_hub.py::ask_questions
+- input-container-id: exact registry key for the container's current sidecar connection; this function does not normalize or truncate it.
+- input-run: run-directory name under the sidecar's `/runs` mount; an empty string asks the sidecar to use its latest run.
+- output: the run control socket's dictionary reply, including its `ok` status and question data, returned unchanged.
+- calls: [method-get](sidecar-connection-registry.md#method-get), [method-rpc](sidecar-connection.md#method-rpc), and the folded `_gate_rpc` helper.
+- algorithm:
+  1. Pass the container id, `getQuestions`, and `{run: run}` to the shared gate RPC helper.
+  2. Return the validated dictionary reply.
+
+### method-answer-gate
+
+- sig: `async answer_gate(container_id: str, run: str, path: str, body: str) -> dict[str, Any]`
+- abstract: false
+- does:
+  - Builds `{run: run, path: path, body: body}` without changing any supplied value.
+  - Looks up the current sidecar connection and raises [sidecar error](sidecar-error.md) if none is registered.
+  - Sends one `answerGate` RPC through the connection's normal correlation, timeout, and cleanup behavior.
+  - Rejects a successful RPC result that is not a dictionary with [sidecar error](sidecar-error.md), naming the returned value.
+  - Returns the dictionary reply unchanged; persistence and acceptance decisions remain with the run's control socket.
+- raises: [sidecar error](sidecar-error.md) when no sidecar is registered, the RPC fails, or the reply is not a dictionary.
+- code: groom/groom/sidecar_hub.py::answer_gate
+- input-container-id: exact registry key for the container's current sidecar connection; this function does not normalize or truncate it.
+- input-run: run-directory name under the sidecar's `/runs` mount.
+- input-path: container-absolute gate-file path as known by the run's control socket.
+- input-body: operator answer text forwarded without trimming or other interpretation.
+- output: the run control socket's dictionary reply, including its `ok` status and path/error data, returned unchanged.
+- calls: [method-get](sidecar-connection-registry.md#method-get), [method-rpc](sidecar-connection.md#method-rpc), and the folded `_gate_rpc` helper.
+- algorithm:
+  1. Build the `answerGate` parameter object from `run`, `path`, and `body`.
+  2. Pass the container id, `answerGate`, and that parameter object to the shared gate RPC helper.
+  3. Return the validated dictionary reply.
 
 ## Non-Responsibilities
 

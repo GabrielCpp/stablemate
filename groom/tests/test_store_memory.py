@@ -119,6 +119,26 @@ def test_query_spans_keyset_cursor_pages():
         assert [s["node"] for s in nxt] == ["a"]
 
 
+def test_broad_telemetry_queries_do_not_scan_the_wide_spans_table():
+    """This fails when telemetry reads every attrs_json payload to show its first page."""
+    with _DB():
+        conn = store._connection()
+        latest_plan = conn.execute(
+            "EXPLAIN QUERY PLAN SELECT span_id FROM spans ORDER BY start_ts DESC LIMIT 200"
+        ).fetchall()
+        summary_plan = conn.execute(
+            "EXPLAIN QUERY PLAN SELECT run_id, MAX(workflow), MAX(repo), MIN(start_ts),"
+            " MAX(end_ts), COUNT(*),"
+            " SUM(CASE WHEN status = 'ERROR' THEN 1 ELSE 0 END)"
+            " FROM spans WHERE run_id != '' AND end_ts >= ? GROUP BY run_id"
+            " ORDER BY MAX(end_ts) DESC LIMIT 50",
+            (0.0,),
+        ).fetchall()
+
+        assert any("spans_start" in row[3] for row in latest_plan), latest_plan
+        assert any("COVERING INDEX spans_summary" in row[3] for row in summary_plan), summary_plan
+
+
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-q"]))

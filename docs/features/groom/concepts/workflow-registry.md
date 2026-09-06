@@ -84,10 +84,13 @@ Returns a new list containing the current registry values. The snapshot freezes 
 - sig: `upsert_workflow(container_id: str, **fields: object) -> WorkflowContainer`
 - abstract: false
 - raises: no domain-specific errors; ordinary Python call-binding, workflow-container construction, or attribute-assignment errors propagate to the caller.
+- verify: count(subject="WORKFLOWS['abc123'].gates", equals=0)
+- verify: count(subject="WORKFLOWS['abc123def456'].gates", equals=1)
+- verify: count(subject="WORKFLOWS['abc123def456'].gates", equals=0)
 - code: groom/groom/state.py::upsert_workflow
-- verify: groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code
-- verify: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
-- verify: groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively
+- tests: groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code
+- tests: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
+- tests: groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively
 
 Creates or updates one workflow registry entry and returns the exact mutable [workflow container](workflow-container.md) stored under the supplied container id. The method is shared by [receive progress push](../http/groom.md#receive-progress-push), [receive blocked push](../http/groom.md#receive-blocked-push), [receive exited push](../http/groom.md#receive-exited-push), [sidecar hello applier](sidecar-hello-applier.md), [sidecar progress applier](sidecar-progress-applier.md), [sidecar blocked applier](sidecar-blocked-applier.md), and push-first volume metadata resolution so sparse updates from different sources converge without erasing fields absent from the current event.
 
@@ -122,9 +125,11 @@ Creates or updates one workflow registry entry and returns the exact mutable [wo
 - sig: `async _reconcile() -> int`
 - abstract: false
 - raises: propagates discovery-scan, present-id lookup, and registry-prune exceptions from the called first-party discovery and state helpers.
+- verify: removed(subject="WORKFLOWS['gone']")
+- verify: unchanged(subject="WORKFLOWS['keep']")
 - code: groom/groom/app.py::_reconcile
-- verify: groom/tests/test_app.py::test_refresh_prunes_vanished_containers
-- verify: groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
+- tests: groom/tests/test_app.py::test_refresh_prunes_vanished_containers
+- tests: groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
 
 Refreshes the registry from one Docker discovery pass. The method is shared by the manual [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) invocation and startup background discovery, and returns the number of workflow containers found by the scan before any stale-entry pruning decision.
 
@@ -143,12 +148,17 @@ Refreshes the registry from one Docker discovery pass. The method is shared by t
 - sig: `prune_workflows(present_ids: set[str]) -> list[str]`
 - abstract: false
 - raises: no domain-specific errors; ordinary mapping mutation errors would propagate.
+- verify: removed(subject="WORKFLOWS['bbb']")
+- verify: removed(subject="WORKFLOWS['aaa']")
+- verify: removed(subject="_gate_locks entries scoped to 'aaa'")
+- verify: unchanged(subject="WORKFLOWS when every tracked container id is present")
+- verify: removed(subject="WORKFLOWS['gone']")
 - code: groom/groom/state.py::prune_workflows
-- verify: groom/tests/test_state.py::test_prune_drops_absent_keeps_present
-- verify: groom/tests/test_state.py::test_prune_empty_present_removes_everything
-- verify: groom/tests/test_state.py::test_prune_also_forgets_gate_locks_of_removed
-- verify: groom/tests/test_state.py::test_prune_is_noop_when_all_present
-- verify: groom/tests/test_app.py::test_refresh_prunes_vanished_containers
+- tests: groom/tests/test_state.py::test_prune_drops_absent_keeps_present
+- tests: groom/tests/test_state.py::test_prune_empty_present_removes_everything
+- tests: groom/tests/test_state.py::test_prune_also_forgets_gate_locks_of_removed
+- tests: groom/tests/test_state.py::test_prune_is_noop_when_all_present
+- tests: groom/tests/test_app.py::test_refresh_prunes_vanished_containers
 
 Removes workflow registry entries whose container ids are absent from the caller-supplied present-id set, returns the removed ids, and clears any per-gate answer locks scoped to those removed containers so long-lived groom processes do not retain locks for vanished workers.
 

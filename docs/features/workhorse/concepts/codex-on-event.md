@@ -19,7 +19,7 @@ by its module — `backends/codex.py` — not by a prefix in its own name.
 
 - code: `workhorse/workhorse/runner/backends/codex.py::_on_event`
 - extends: [stream_jsonl](stream-jsonl.md#contract)
-- verify: `workhorse/tests/test_backends.py::test_codex_on_event_extracts_text_and_session`
+- tests: `workhorse/tests/test_backends.py::test_codex_on_event_extracts_text_and_session`
 
 ## Contract
 
@@ -30,8 +30,6 @@ by its module — `backends/codex.py` — not by a prefix in its own name.
     go on `state.diagnostics`; there is no separate list argument.
   - `node_id` — the workflow node id, used only for the live-echo log-line prefix.
 - **Output:** `None` — all effects are the in-place mutations to `state` below.
-- **Raises:** nothing — a malformed `item`/`event` shape is read defensively (`.get(...)` with
-  falsy defaults), never indexed directly.
 
 ## Algorithm
 

@@ -28,14 +28,6 @@ with the same command has already replaced the pane's gate list, so no tab re-fe
   and the workflow is either about to be marked blocked by a push, discovered
   from existing Docker/run state, or already present with an open [gate info](../concepts/gate-info.md)
   record.
-- code: groom/groom/app.py::push_blocked
-- code: groom/groom/discovery.py::scan
-- code: groom/groom/app.py::dashboard_ws
-- code: groom/groom/app.py::_handle_command
-- code: groom/groom/gates.py::answer_gate
-- code: groom/groom/projection.py::detail_message
-- code: groom/groom/assets/dashboard.js::wireAnswerForm
-- code: groom/groom/assets/dashboard.js::select
 - steps:
   1. A blocked gate reaches groom through one of the supported sources. A valid
      [blocked push payload](../blocked-push-payload.md) sent to [receive blocked push](../http/groom.md#receive-blocked-push)
@@ -139,17 +131,22 @@ with the same command has already replaced the pane's gate list, so no tab re-fe
       run is untouched, because the frame that would change a pane is addressed to
       watchers of one run and this one changes no pane at all.
 - end: the accepted answer is present in the workflow workspace gate file as
-  `STATUS: ANSWERED` plus the stripped non-blank answer paragraph when supplied;
-  groom's process-local gate map no longer contains that `(workflow, file_path)`
-  gate; the workflow is displayed as running when its last gate cleared from a
-  blocked state; every connected dashboard tab receives a refreshed state payload
-  and every tab watching the answered run receives its refreshed detail; successful
-  answer submissions broadcast exactly one answered message per answer.
-  Failed, duplicate, stale, missing-volume, missing-file, or failed-write answer
-  attempts instead record a failed answer result, broadcast a state refresh
-  without an answered message, and leave the gate visible in both the list and
-  every open pane.
-- verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event,
+  `STATUS: ANSWERED` plus the stripped non-blank answer paragraph when supplied.
+- end: groom's process-local gate map no longer contains the answered
+  `(workflow, file_path)` gate.
+- end: the workflow is displayed as running when its last gate cleared from a
+  blocked state.
+- end: every connected dashboard tab receives a refreshed state payload, and
+  every tab watching the answered run receives its refreshed detail.
+- end: successful answer submissions broadcast exactly one answered message per
+  answer.
+- end: failed, duplicate, stale, missing-volume, missing-file, or failed-write
+  answer attempts record a failed answer result and broadcast a state refresh
+  without an answered message.
+- end: after any failed answer attempt, the gate remains visible in both the
+  runs list and every open pane for that run.
+- verify: emitted(event="answered", count=1)
+- tests: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event,
   groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch,
   groom/tests/test_app.py::test_watch_registers_the_tab_and_pushes_that_run_immediately,
   groom/tests/test_app.py::test_a_detail_push_reaches_only_the_tabs_watching_that_run,
@@ -160,3 +157,11 @@ with the same command has already replaced the pane's gate list, so no tab re-fe
   groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup,
   groom/tests/test_projection.py::test_run_detail_lists_every_open_gate,
   groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard
+- code: groom/groom/app.py::push_blocked
+- code: groom/groom/discovery.py::scan
+- code: groom/groom/app.py::dashboard_ws
+- code: groom/groom/app.py::_handle_command
+- code: groom/groom/gates.py::answer_gate
+- code: groom/groom/projection.py::detail_message
+- code: groom/groom/assets/dashboard.js::wireAnswerForm
+- code: groom/groom/assets/dashboard.js::select

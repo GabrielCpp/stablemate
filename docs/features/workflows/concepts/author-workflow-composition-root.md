@@ -1,0 +1,28 @@
+---
+type: concept
+slug: author-workflow-composition-root
+title: Author workflow composition root
+---
+# Author workflow composition root
+
+The `workhorse-author` console script imports this module and calls `main`. Its registry is the
+single catalogue of the Author machine: a bare run enters `Author`, while named flows select a
+separate machine. The default path implements the [roadmap intake](../flows/author-roadmap-intake.md);
+the two direct editing machines implement [epic edit](../flows/author-epic-edit.md) and
+[story edit](../flows/author-story-edit.md).
+
+The registry is rooted at the `workhorse_workflows.author` package so prompt paths and repository
+flavor lookup remain relative to the whole workflow, rather than the default flow's `main`
+subpackage. It contributes the main, survey, epic-edit, story-edit, milestone, epic-split,
+epic-author, story-author, and story-split node blueprints. It exposes ten named subflows:
+`surveyor`, `parity-surveyor`, `epic-edit`, `story-edit`, `milestone`, `epic-split`, `epic-author`,
+`story-split`, `story-author`, and `finalize`. The deterministic dry-run registry supplies a valid
+reply for each prompt role, including approval/complete outcomes for planning and review turns,
+an answered decision for resolver turns, and the explicit `design-mockup` skipped outcome.
+
+- code: `workflows/src/workhorse_workflows/author/workflow.py::workflow`
+- code: `workflows/src/workhorse_workflows/author/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/author/workflow.py::__all__`
+- tests: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
+- detail: [author epic split subflow](author-epic-split-subflow.md)
+- detail: [author story-author subflow](author-story-author-subflow.md)

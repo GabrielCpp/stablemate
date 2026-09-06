@@ -18,9 +18,12 @@ output: the process group, the watchdog, and the one stream loop every backend g
 Nothing in it knows any CLI's event vocabulary; that is each adapter's job.
 
 - code: `workhorse/workhorse/runner/process.py::stream_subprocess`
-- verify: `workhorse/tests/test_stream_subprocess.py::test_clean_stream_completes_without_timeout`,
-  `workhorse/tests/test_stream_subprocess.py::test_wedged_midline_is_killed_by_watchdog`,
-  `workhorse/tests/test_stream_subprocess.py::test_group_children_are_reaped`
+- The implementation is covered by `workhorse/tests/test_stream_subprocess.py::test_clean_stream_completes_without_timeout`,
+  `workhorse/tests/test_stream_subprocess.py::test_wedged_midline_is_killed_by_watchdog`, and
+  `workhorse/tests/test_stream_subprocess.py::test_group_children_are_reaped`.
+
+A truthy `on_line` result terminates the child process group; the early-abort path is covered by
+the implementation tests above.
 
 ## Contract
 
@@ -32,17 +35,13 @@ Nothing in it knows any CLI's event vocabulary; that is each adapter's job.
   - `timeout: float` — wall-clock budget in seconds for the whole call; `float("inf")` disables
     both the in-loop check and the watchdog (see [Timeout enforcement](#timeout-enforcement)).
   - `on_line` — invoked once per raw line (newline included) read from the merged stdout/stderr
-    stream; the caller does its own parsing/accumulation. A **truthy** return is an early-abort
-    request (e.g. a spending-cap marker was just seen) and is treated identically to a timeout:
-    the loop breaks and the process group is killed. The parameter is annotated
-    `Callable[[str], None]`, which understates this — the runtime contract is the truthy-return
-    one, and [`stream_jsonl`](stream-jsonl.md#early-abort) depends
-    on it.
+    stream; the caller does its own parsing/accumulation. The parameter is annotated
+    `Callable[[str], None]`, which understates the callback's runtime result, and
+    [`stream_jsonl`](stream-jsonl.md#early-abort) depends on it.
   - `resilience: AgentResilience` (**keyword-only, required**) — the run's tuning knobs. Three are
     read here: `watchdog_grace_s` (the watchdog's headroom past `timeout`), `heartbeat_every_s`
     (the idle-telemetry interval), and the `exec_retry_max`/`exec_retry_base_s`/`exec_retry_cap_s`
-    trio [`_spawn_streaming`](#_spawn_streaming) uses. It carries no default, so a turn can never
-    be supervised under import-time constants instead of the run's own configuration.
+    trio [`_spawn_streaming`](#_spawn_streaming) uses.
   - `stdin_data: str | None` (keyword, default `None`) — when set, written to the child's stdin and
     closed immediately (a single-shot prompt, e.g. Claude's `/compact` trigger); when `None`, stdin
     is `subprocess.DEVNULL`.
@@ -60,8 +59,11 @@ Nothing in it knows any CLI's event vocabulary; that is each adapter's job.
   timeout, not a hard crash). `returncode` is the child's exit code (negative when killed by a
   signal).
 - **Raises:** `BackendInvocationError` when the CLI cannot be launched at all — see
-  [`_spawn_streaming`](#_spawn_streaming). A raw `OSError`/`FileNotFoundError` never escapes: the
-  spawn path converts every exec failure into a classified, actionable error.
+  [`_spawn_streaming`](#_spawn_streaming).
+- consistency: Every exec failure surfaced by the process supervisor is a classified,
+  actionable `BackendInvocationError`, never a raw `OSError` or `FileNotFoundError`.
+- consistency: Every streamed turn receives its required `AgentResilience` from the run, rather
+  than using import-time supervision constants.
 
 ## Algorithm
 
@@ -165,12 +167,12 @@ would be a false negative on a run that is otherwise healthy.
 - **Terminal outcome:** the ambiguity in `ENOENT` — "mid-update" versus "not installed" — is
   resolved in **time**, not by a single probe: it is retried like a transient failure, and only
   once the budget is exhausted does `shutil.which(cmd[0])` decide which error to raise.
-  - Retryable errno **and** the name still resolves → `BackendInvocationError(..., transient=True)`
-    — the ladder may retry the whole turn.
-  - Otherwise → `BackendInvocationError(..., transient=False)`. When the name does not resolve, the
-    message carries a hint: *a non-interactive shell does not load nvm; install the CLI on a stable
-    PATH or export it before launching workhorse* — by far the most common cause of a CLI that
-    works in the operator's terminal and not under workhorse.
+- consistency: A retryable exec failure whose command still resolves, or which succeeded earlier
+  in this process, raises `BackendInvocationError(..., transient=True)` so the ladder may retry the
+  whole turn.
+- consistency: Any other terminal exec failure raises `BackendInvocationError(..., transient=False)`.
+  When the command does not resolve, the message advises installing the CLI on a stable `PATH` or
+  exporting it before launching workhorse, because a non-interactive shell does not load nvm.
 
 ## Process-group management
 
@@ -190,11 +192,11 @@ would be a false negative on a run that is otherwise healthy.
 
 ### `terminate_active`
 
-- **Input:** none. **Output:** none. A module-level function delegating to `_active.terminate()`.
-- **Behavior:** reads the handle under the lock; if `None` or already exited
-  (`proc.poll() is not None`), returns immediately. Otherwise `SIGTERM`s the group, waits up to 5s,
-  and `SIGKILL`s the group if it's still alive after that — the same graceful-then-hard pattern as
-  the in-`stream_subprocess` timeout kill.
+Takes no input and returns no output. This module-level function delegates to
+`_active.terminate()`, which reads the handle under the lock. With no active handle or one whose
+process has already exited (`proc.poll() is not None`), it returns immediately. For a live process,
+it sends `SIGTERM` to the group, waits up to five seconds, then sends `SIGKILL` if the group remains
+alive, following the graceful-then-hard pattern used for an in-`stream_subprocess` timeout kill.
 - Called from `pyflow/run.py`'s two abort paths — the `KeyboardInterrupt` handler and the
   `PyflowError` handler that back [`workhorse-<name> run`](../workhorse.md#run) — so an interrupted or
   fatally-failed run doesn't leave its in-flight agent CLI (and its process tree) orphaned when

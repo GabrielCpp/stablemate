@@ -42,11 +42,15 @@ The sidecar hello applier is the groom server layer that folds a connected sidec
 - sig: `async _apply_hello(container_id: str, data: dict) -> None`
 - abstract: false
 - raises: propagates metadata-resolution, workflow-upsert, gate-record construction, renderer, broadcast, truthy non-mapping identity/snapshot, malformed non-iterable gate-list, or malformed iterated gate-entry exceptions; missing identity, missing snapshot, empty gate paths, and falsey snapshot fields are handled as ordinary inputs.
+- verify: json_path(path="$.state", equals="BLOCKED")
+- verify: json_path(path="$.state", equals="RUNNING")
+- verify: json_path(path="$.state", equals="FINISHED")
+- verify: removed(subject="stale workflow gate")
 - code: groom/groom/app.py::_apply_hello
-- verify: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
-- verify: groom/tests/test_app.py::test_apply_hello_running_when_no_gates
-- verify: groom/tests/test_app.py::test_apply_hello_finished_when_terminal
-- verify: groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively
+- tests: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
+- tests: groom/tests/test_app.py::test_apply_hello_running_when_no_gates
+- tests: groom/tests/test_app.py::test_apply_hello_finished_when_terminal
+- tests: groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively
 
 Fold one useful sidecar `hello` frame for one already accepted sidecar websocket into the visible workflow fleet.
 

@@ -8,26 +8,26 @@ title: Groom Docker I/O module
 Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server](../http/groom.md) and [groom sidecar](../groom-sidecar.md) control plane: it centralizes shell-free local Docker subprocess execution, container fleet reads, live container commands, workspace-volume file and diff reads, gate-file writes, and repository discovery. Its public helpers are documented as sibling concepts, including the [Docker subprocess runner](docker-subprocess-runner.md), [Docker all-container listing reader](docker-all-container-listing-reader.md), [Docker container-id listing reader](docker-container-id-listing-reader.md), [Docker exec runner](docker-exec-runner.md), [host-to-container sidecar query](host-to-container-sidecar-query.md), [Docker inspection reader](docker-inspection-reader.md), [stopped container start fallback](stopped-container-start-fallback.md), [container running-state check](container-running-state-check.md), [workspace volume relative-path guard](workspace-volume-relative-path-guard.md), [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md), [workspace volume file-list reader](workspace-volume-file-list-reader.md), [Docker run-directory reader](docker-run-directory-reader.md), [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md), [workspace volume diff reader](workspace-volume-diff-reader.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), and [workspace volume file writer](workspace-volume-file-writer.md). It exchanges [Docker ps container row](../docker-ps-container-row.md), [Docker inspect container object](../docker-inspect-container-object.md), [sidecar snapshot data](../sidecar-snapshot-data.md), [workspace file list data](../workspace-file-list-data.md), [workspace file content data](../workspace-file-content-data.md), and [workspace diff data](../workspace-diff-data.md) without owning workflow registry state, dashboard rendering, sidecar websocket state, or gate-answer orchestration.
 
 - code: groom/groom/docker_io.py
-- verify: groom/tests/test_docker_io.py::test_list_container_ids_returns_short_id_set,
-  groom/tests/test_docker_io.py::test_list_container_ids_returns_none_on_docker_failure,
-  groom/tests/test_docker_io.py::test_list_container_ids_empty_when_no_containers,
-  groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git,
-  groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_when_none_found,
-  groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_on_docker_failure,
-  groom/tests/test_docker_io.py::test_git_diff_returns_empty_when_no_repo_found,
-  groom/tests/test_docker_io.py::test_git_diff_returns_stdout_on_success,
-  groom/tests/test_docker_io.py::test_git_diff_returns_empty_on_git_failure,
-  groom/tests/test_docker_io.py::test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths,
-  groom/tests/test_docker_io.py::test_grep_awaiting_files_empty_on_docker_failure,
-  groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs,
-  groom/tests/test_docker_io.py::test_list_files_volume_root_when_repo_dir_empty,
-  groom/tests/test_docker_io.py::test_list_files_empty_on_docker_failure,
-  groom/tests/test_docker_io.py::test_docker_exec_builds_user_and_env_flags,
-  groom/tests/test_docker_io.py::test_sidecar_query_parses_snapshot_json,
-  groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_nonzero_exit,
-  groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_non_json_output,
-  groom/tests/test_docker_io.py::test_sidecar_query_returns_none_when_docker_missing,
-  groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_timeout
+- tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_short_id_set
+- tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_none_on_docker_failure
+- tests: groom/tests/test_docker_io.py::test_list_container_ids_empty_when_no_containers
+- tests: groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git
+- tests: groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_when_none_found
+- tests: groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_on_docker_failure
+- tests: groom/tests/test_docker_io.py::test_git_diff_returns_empty_when_no_repo_found
+- tests: groom/tests/test_docker_io.py::test_git_diff_returns_stdout_on_success
+- tests: groom/tests/test_docker_io.py::test_git_diff_returns_empty_on_git_failure
+- tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths
+- tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_empty_on_docker_failure
+- tests: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs
+- tests: groom/tests/test_docker_io.py::test_list_files_volume_root_when_repo_dir_empty
+- tests: groom/tests/test_docker_io.py::test_list_files_empty_on_docker_failure
+- tests: groom/tests/test_docker_io.py::test_docker_exec_builds_user_and_env_flags
+- tests: groom/tests/test_docker_io.py::test_sidecar_query_parses_snapshot_json
+- tests: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_nonzero_exit
+- tests: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_non_json_output
+- tests: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_when_docker_missing
+- tests: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_timeout
 - refs: [groom server](../http/groom.md), [groom sidecar](../groom-sidecar.md), [Docker subprocess runner](docker-subprocess-runner.md), [Docker all-container listing reader](docker-all-container-listing-reader.md), [Docker container-id listing reader](docker-container-id-listing-reader.md), [Docker exec runner](docker-exec-runner.md), [host-to-container sidecar query](host-to-container-sidecar-query.md), [Docker inspection reader](docker-inspection-reader.md), [stopped container start fallback](stopped-container-start-fallback.md), [container running-state check](container-running-state-check.md), [workspace volume relative-path guard](workspace-volume-relative-path-guard.md), [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md), [workspace volume file-list reader](workspace-volume-file-list-reader.md), [Docker run-directory reader](docker-run-directory-reader.md), [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md), [workspace volume diff reader](workspace-volume-diff-reader.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), [workspace volume file writer](workspace-volume-file-writer.md)
 
 ## Contract
@@ -121,11 +121,14 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
 - returns: a set of twelve-character container id prefixes, an empty set when Docker reports no containers, or `None` when Docker cannot supply the listing.
+- verify: count(subject="twelve-character container ID prefixes from a successful listing", equals=2)
+- verify: absent(subject="container ID set when Docker listing fails")
+- verify: count(subject="container ID prefixes from a successful empty listing", equals=0)
 - code: groom/groom/docker_io.py::list_container_ids
-- verify: groom/tests/test_docker_io.py::test_list_container_ids_returns_short_id_set
-- verify: groom/tests/test_docker_io.py::test_list_container_ids_returns_none_on_docker_failure
-- verify: groom/tests/test_docker_io.py::test_list_container_ids_empty_when_no_containers
 - detail: [Docker container-id listing reader](docker-container-id-listing-reader.md)
+- tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_short_id_set
+- tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_none_on_docker_failure
+- tests: groom/tests/test_docker_io.py::test_list_container_ids_empty_when_no_containers
 
 ### docker-exec
 
@@ -133,9 +136,10 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
 - returns: the completed `docker exec` process result for caller-specific interpretation.
+- verify: exit_status(code=0)
 - code: groom/groom/docker_io.py::docker_exec
-- verify: groom/tests/test_docker_io.py::test_docker_exec_builds_user_and_env_flags
 - detail: [Docker exec runner](docker-exec-runner.md)
+- tests: groom/tests/test_docker_io.py::test_docker_exec_builds_user_and_env_flags
 
 ### sidecar-query
 
@@ -143,13 +147,18 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 - abstract: false
 - raises: no intentional exception for expected Docker missing, timeout, non-zero exit, non-JSON output, or non-dictionary JSON output; unexpected non-subprocess failures can propagate.
 - returns: parsed [sidecar snapshot data](../sidecar-snapshot-data.md) dictionary from `groom-sidecar --query`, or `None` when the live sidecar query path is unavailable.
+- verify: json_path(path="$.current_node", equals="n1")
+- verify: absent(subject="sidecar snapshot data after a non-zero sidecar query exit")
+- verify: absent(subject="sidecar snapshot data after non-JSON sidecar query output")
+- verify: absent(subject="sidecar snapshot data when Docker is unavailable")
+- verify: absent(subject="sidecar snapshot data after a sidecar query timeout")
 - code: groom/groom/docker_io.py::sidecar_query
-- verify: groom/tests/test_docker_io.py::test_sidecar_query_parses_snapshot_json
-- verify: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_nonzero_exit
-- verify: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_non_json_output
-- verify: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_when_docker_missing
-- verify: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_timeout
 - detail: [host-to-container sidecar query](host-to-container-sidecar-query.md)
+- tests: groom/tests/test_docker_io.py::test_sidecar_query_parses_snapshot_json
+- tests: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_nonzero_exit
+- tests: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_non_json_output
+- tests: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_when_docker_missing
+- tests: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_timeout
 
 ### docker-inspect
 
@@ -193,10 +202,12 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
 - returns: workspace-volume-relative paths for files that contain an awaiting [operator gate context file](../operator-gate-context-file.md) status line, or `[]` for Docker failure or no matches.
+- verify: count(subject="awaiting file paths after a successful sweep", equals=2)
+- verify: count(subject="awaiting file paths after Docker failure", equals=0)
 - code: groom/groom/docker_io.py::grep_awaiting_files
-- verify: groom/tests/test_docker_io.py::test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths
-- verify: groom/tests/test_docker_io.py::test_grep_awaiting_files_empty_on_docker_failure
 - detail: [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md)
+- tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths
+- tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_empty_on_docker_failure
 
 ### list-files
 
@@ -205,10 +216,10 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
 - returns: sorted repo-relative [workspace file list data](../workspace-file-list-data.md), or `[]` for Docker failure or an empty tree.
 - code: groom/groom/docker_io.py::list_files
-- verify: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs
-- verify: groom/tests/test_docker_io.py::test_list_files_volume_root_when_repo_dir_empty
-- verify: groom/tests/test_docker_io.py::test_list_files_empty_on_docker_failure
 - detail: [workspace volume file-list reader](workspace-volume-file-list-reader.md)
+- tests: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs
+- tests: groom/tests/test_docker_io.py::test_list_files_volume_root_when_repo_dir_empty
+- tests: groom/tests/test_docker_io.py::test_list_files_empty_on_docker_failure
 
 ### list-run-dirs
 
@@ -225,11 +236,14 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
 - returns: sorted volume-relative paths to git checkout roots discovered within two levels of the volume root, or `[]` for Docker failure or no repositories.
+- verify: count(subject="repository directories discovered from /vol/Acme/.git", equals=1)
+- verify: count(subject="repository directories discovered from a volume with no .git directory", equals=0)
+- verify: count(subject="repository directories after Docker failure", equals=0)
 - code: groom/groom/docker_io.py::list_repo_dirs
-- verify: groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git
-- verify: groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_when_none_found
-- verify: groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_on_docker_failure
 - detail: [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md)
+- tests: groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git
+- tests: groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_when_none_found
+- tests: groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_on_docker_failure
 
 ### find-repo-dir
 
@@ -238,10 +252,10 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 - raises: subprocess launch and timeout exceptions from [list-repo-dirs](#list-repo-dirs) can propagate.
 - returns: the first sorted repository directory from [list-repo-dirs](#list-repo-dirs), or `""` when none exists.
 - code: groom/groom/docker_io.py::find_repo_dir
-- verify: groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git
-- verify: groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_when_none_found
-- verify: groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_on_docker_failure
 - detail: [first-repository lookup](workspace-volume-repository-directory-reader.md#find-repo-dir)
+- tests: groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git
+- tests: groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_when_none_found
+- tests: groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_on_docker_failure
 
 ### git-diff
 
@@ -249,11 +263,14 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
 - returns: raw [workspace diff data](../workspace-diff-data.md) from `git diff HEAD`, or `""` when no repository is available or the git process fails.
+- verify: count(subject="diff output bytes when no repository is found", equals=0)
+- verify: count(subject="diff output bytes for a successful git diff", equals=31)
+- verify: count(subject="diff output bytes when git exits non-zero", equals=0)
 - code: groom/groom/docker_io.py::git_diff
-- verify: groom/tests/test_docker_io.py::test_git_diff_returns_empty_when_no_repo_found
-- verify: groom/tests/test_docker_io.py::test_git_diff_returns_stdout_on_success
-- verify: groom/tests/test_docker_io.py::test_git_diff_returns_empty_on_git_failure
 - detail: [workspace volume diff reader](workspace-volume-diff-reader.md)
+- tests: groom/tests/test_docker_io.py::test_git_diff_returns_empty_when_no_repo_found
+- tests: groom/tests/test_docker_io.py::test_git_diff_returns_stdout_on_success
+- tests: groom/tests/test_docker_io.py::test_git_diff_returns_empty_on_git_failure
 
 ### read-file
 

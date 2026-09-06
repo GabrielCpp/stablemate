@@ -29,23 +29,6 @@ shape, and nothing in it records which side of the fallback produced it.
   already connected over the primary [sidecar live session](../flows/sidecar-live-session-sync.md);
   and the sidecar process may be invoked in one-shot `--query` or `--exit-code`
   mode by Docker discovery or the workflow container entrypoint.
-- code: groom/groom/cli.py::sidecar_main
-- code: groom/groom/docker_io.py::sidecar_query
-- code: groom/groom/discovery.py::_resolve_container
-- code: groom/groom/discovery.py::_resolve_via_volumes
-- code: groom/groom/sidecar.py::snapshot
-- code: groom/groom/sidecar.py::_push
-- code: groom/groom/sidecar.py::push_progress
-- code: groom/groom/sidecar.py::push_blocked
-- code: groom/groom/sidecar.py::push_exited
-- code: groom/groom/sidecar.py::_handle_event
-- code: groom/groom/app.py::push_progress
-- code: groom/groom/app.py::push_blocked
-- code: groom/groom/app.py::push_exited
-- code: groom/groom/app.py::_sidecar_rpc
-- code: groom/groom/app.py::files
-- code: groom/groom/app.py::file_content
-- code: groom/groom/app.py::diff
 - steps:
   1. A startup discovery scan or manual refresh enters the [per-container
      discovery resolver](../concepts/workflow-discovery-scan.md#method-resolve-container)
@@ -159,7 +142,14 @@ shape, and nothing in it records which side of the fallback produced it.
   sidecar RPC result or return the documented workspace-volume fallback response.
   These paths preserve the primary live websocket session as the steady-state
   channel while keeping legacy, post-exit, startup, and no-socket cases usable.
-- verify: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch,
+- verify: json_path(path="sidecar snapshot.current_node", equals="write_story")
+- verify: json_path(path="workflow.state", equals="FINISHED")
+- verify: absent(subject="sidecar snapshot after query failure")
+- verify: emitted(event="dashboard state payload", count=1)
+- verify: emitted(event="notify", count=1)
+- verify: json_path(path="file-list response.paths", equals=["README.md"])
+- verify: json_path(path="file-content response.content", equals="")
+- tests: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch,
   groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates,
   groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape,
   groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape,
@@ -178,5 +168,22 @@ shape, and nothing in it records which side of the fallback produced it.
   groom/tests/test_app.py::test_push_exited_rejects_missing_container_id,
   groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors,
   groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path
+- code: groom/groom/cli.py::sidecar_main
+- code: groom/groom/docker_io.py::sidecar_query
+- code: groom/groom/discovery.py::_resolve_container
+- code: groom/groom/discovery.py::_resolve_via_volumes
+- code: groom/groom/sidecar.py::snapshot
+- code: groom/groom/sidecar.py::_push
+- code: groom/groom/sidecar.py::push_progress
+- code: groom/groom/sidecar.py::push_blocked
+- code: groom/groom/sidecar.py::push_exited
+- code: groom/groom/sidecar.py::_handle_event
+- code: groom/groom/app.py::push_progress
+- code: groom/groom/app.py::push_blocked
+- code: groom/groom/app.py::push_exited
+- code: groom/groom/app.py::_sidecar_rpc
+- code: groom/groom/app.py::files
+- code: groom/groom/app.py::file_content
+- code: groom/groom/app.py::diff
 - screenshot: docs/features/groom/gui/screenshots/residual-sidecar-push-and-query-fallback-files-file-selected.png
 - screenshot: docs/features/groom/gui/screenshots/residual-sidecar-push-and-query-fallback-diff-file-selected.png

@@ -7,23 +7,24 @@ title: parse_reset_seconds — reset-clock-time text parser
 
 Finds a cap-reset clock time embedded in a CLI error message's text (e.g. `"resets 3:50am"`,
 `"resets at 11pm"`, `"resets 15:50"`) and converts it into a duration — seconds from `now` until
-that clock time next occurs. This is the fallback [`cap_delay_seconds`](cap-delay-seconds.md#algorithm)
-calls when the caught `BackendInvocationError` carries no structured `reset_at` epoch; it never
-raises, returning `None` when no reset time is found so the caller can fall back to its own fixed
-default wait.
+ that clock time next occurs. This is the fallback [`cap_delay_seconds`](cap-delay-seconds.md#algorithm)
+ calls when the caught `BackendInvocationError` carries no structured `reset_at` epoch; it never
+ raises, returning `None` when no reset time is found so the caller can fall back to its own fixed
+ default wait. The parser searches for the bare 24-hour form only when the 12-hour pattern does not
+ match.
 
 - code: `workhorse/workhorse/runner/caps.py::parse_reset_seconds`
-- verify: `workhorse/tests/test_agent_cap.py::test_parse_reset_seconds_variants`,
-  `workhorse/tests/test_guardrails.py::test_reset_time_parsing`
+- tests: `workhorse/tests/test_agent_cap.py::test_parse_reset_seconds_variants`
+- tests: `workhorse/tests/test_guardrails.py::test_reset_time_parsing`
 
 ## Contract
 
 Public, and pure: a `str` and a `datetime` in, a `float | None` out. It reads no clock, no
-environment and no module state.
+environment and no module state. Its current caller supplies `str(exc)` from a caught
+`BackendInvocationError` as the text to search.
 
 - **Input:**
-  - `text: str` — the message to search (typically `str(exc)` from a caught
-    `BackendInvocationError`).
+  - `text: str` — the message to search.
   - `now: datetime` — the current time to measure against. **Required and positional** — there is no
     `datetime.now()` default inside. The shipped docstring states why: *"`now` is passed in, never
     read here: this is a parser, and a parser that reads the clock cannot be exercised without
@@ -58,8 +59,8 @@ return (target - now).total_seconds()
      `0`, `12pm` → `12` after the next step).
    - `+= 12` when the am/pm group is `"pm"`, producing a 24-hour `hour` in `0`–`23`.
    - `minute = int(group2 or 0)` — the captured minute group, or `0` when omitted.
-2. **Fall back to the bare 24-hour form.** Only tried when step 1's pattern didn't match:
-   `resets?(?:\s+at)?\s+(\d{1,2}):(\d{2})\b` matches `"resets 15:50"` (requires the colon+minutes —
+2. **Bare 24-hour syntax.** `resets?(?:\s+at)?\s+(\d{1,2}):(\d{2})\b` matches `"resets
+   15:50"` (requires the colon+minutes —
    there is no bare-hour 24-hour form). No match in either pattern → **return `None`** (the caller
    falls back to its own fixed default).
 3. **Sanity-check the parsed time.** `0 <= hour <= 23 and 0 <= minute <= 59` — guards against a

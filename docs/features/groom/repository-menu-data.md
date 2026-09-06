@@ -5,22 +5,21 @@ title: Repository menu data
 ---
 # Repository menu data
 
-Repository menu data is the JSON body of the [serve repository menu](http/groom.md#serve-repository-menu) invocation: one group per workflow container, each carrying the checkouts found on that container's workspace. It is what the [groom dashboard](gui/screens/groom-dashboard.md) picker turns into selectable rows, and the container/repository pair the operator picks is what every later files and diff request is scoped to.
+Repository menu data is the JSON body of the [serve repository menu](http/groom.md#serve-repository-menu) invocation: one group per workflow container, each carrying the checkouts found on that container's workspace. The [Groom projection module](concepts/groom-projection-module.md) produces the groups after the [workspace volume repository-directory reader](concepts/workspace-volume-repository-directory-reader.md) has enumerated checkouts; the [groom dashboard](gui/screens/groom-dashboard.md) picker turns them into selectable rows. The container/repository pair the operator picks is what every later files and diff request is scoped to.
 
 It arrives **grouped, not flat**, because grouped is the shape the server actually has — one checkout enumeration per container — and because a row's label is derived from both halves of the pair. Flattening on the server would throw away the grouping and then oblige the client to reconstruct it to render group order. The client flattens instead, in one function, at render time.
 
 Nothing in this format is markup. Every value is a string or an integer, and the picker's state dot, type badge, and label are Preact components fed from those values. That is the difference from the fragment era, when this endpoint returned rendered option rows and the escaping of an operator-supplied repository path was the renderer's responsibility.
 
-- file: not an on-disk artifact; this is a transient JSON HTTP response body.
 - code: groom/groom/app.py::repos
 - code: groom/groom/projection.py::repo_entries
 - code: groom/groom/assets/dashboard.js::repoItems
 - code: groom/groom/assets/dashboard.js::RepoMenu
-- refs: [groom projection module](concepts/groom-projection-module.md), [workspace volume repository-directory reader](concepts/workspace-volume-repository-directory-reader.md), [workflow container](concepts/workflow-container.md)
-- verify: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo
-- verify: groom/tests/test_app.py::test_repos_endpoint_reads_native_run_from_local_disk
-- verify: groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container
-- verify: groom/tests/test_projection.py::test_repo_entries_empty_when_nothing_is_running
+- tests: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
+  groom/tests/test_app.py::test_repos_endpoint_reads_native_run_from_local_disk,
+  groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container,
+  groom/tests/test_projection.py::test_repo_entries_empty_when_nothing_is_running
+- verify: count(subject="repository menu groups", equals=0)
 
 ## Contract
 
@@ -88,8 +87,8 @@ Nothing in this format is markup. Every value is a string or an integer, and the
 - type: `int` — 0–359
 - default: `0`
 - required: true
-- wire-key: `type_hue`
 - code: groom/groom/projection.py::type_hue
+- wire-key: `type_hue`
 - meaning: the badge's hue, derived deterministically from the type string so the same workflow kind is the same colour in the picker and in the fleet list without a shared palette table.
 
 ### field-group-repos
@@ -126,9 +125,10 @@ Nothing in this format is markup. Every value is a string or an integer, and the
 - sig: `repo_entries(entries: list[tuple[WorkflowContainer, list[str]]]) -> list[dict[str, Any]]`
 - abstract: false
 - raises: none intentionally; a workflow state outside the known set would fail the sort's state lookup.
+- verify: count(subject="repository menu groups", equals=0)
 - code: groom/groom/projection.py::repo_entries
-- verify: groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container
-- verify: groom/tests/test_projection.py::test_repo_entries_empty_when_nothing_is_running
+- tests: groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container,
+  groom/tests/test_projection.py::test_repo_entries_empty_when_nothing_is_running
 - input: pairs of workflow container and its discovered volume-relative checkout directories, in any order.
 - output: the group list described above, sorted and label-composed.
 - effects: pure. It reads only its argument, and mutates no workflow, registry, socket, or module state.
@@ -144,9 +144,10 @@ Nothing in this format is markup. Every value is a string or an integer, and the
 - sig: `async repos() -> list[dict]`
 - abstract: false
 - raises: no endpoint-specific exception for an empty fleet or a workflow with no discoverable checkout; discovery process-launch and timeout exceptions can propagate.
+- verify: count(subject="repository menu groups", equals=0)
 - code: groom/groom/app.py::repos
-- verify: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo
-- verify: groom/tests/test_app.py::test_repos_endpoint_reads_native_run_from_local_disk
+- tests: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
+  groom/tests/test_app.py::test_repos_endpoint_reads_native_run_from_local_disk
 - input: none; the handler reads the process-local workflow registry.
 - output: [field-groups](#field-groups), serialized as the JSON response body.
 - effects: reads workflow registry state and launches one read-only checkout enumeration per eligible workflow, on worker threads; it mutates nothing.

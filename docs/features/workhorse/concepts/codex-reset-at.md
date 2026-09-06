@@ -20,10 +20,11 @@ of the [codex backend](codex-backend.md): `CodexBackend` talks to the `codex` CL
 its own limits, while this probe exists because *OpenCode* drops the Codex provider's headers.
 
 - code: `workhorse/workhorse/runner/backends/opencode.py::_codex_reset_at`
-- verify: `workhorse/tests/test_backends.py::test_codex_reset_at_skips_non_openai_models_without_network`,
-  `workhorse/tests/test_backends.py::test_codex_reset_at_disabled_by_env`,
-  `workhorse/tests/test_backends.py::test_opencode_cap_attaches_codex_reset_at`,
-  `workhorse/tests/test_backends.py::test_opencode_non_cap_does_not_probe_codex`
+
+The behavior is covered by `workhorse/tests/test_backends.py::test_codex_reset_at_skips_non_openai_models_without_network`,
+`workhorse/tests/test_backends.py::test_codex_reset_at_disabled_by_env`,
+`workhorse/tests/test_backends.py::test_opencode_cap_attaches_codex_reset_at`, and
+`workhorse/tests/test_backends.py::test_opencode_non_cap_does_not_probe_codex`.
 
 ## Contract
 
@@ -83,9 +84,9 @@ except Exception:
    response.
 6. **Extract and return.** `headers.get("x-codex-primary-reset-at")`; if present, `float(...)` it
    and return; otherwise `None`.
-7. **Blanket exception guard.** Steps 3–6 run inside a `try`/`except Exception: return None` — a
-   missing auth file, malformed JSON, network error, timeout, or unparsable header all collapse to
-   the same `None`, never propagating to the caller.
+- consistency: codex-reset-probe — a missing auth file, malformed JSON, network error, timeout,
+  or unparsable reset header in steps 3–6 yields `None` instead of propagating an exception to
+  the caller.
 
 ### `_OPENCODE_AUTH_PATH`
 
@@ -104,12 +105,12 @@ backend's Responses-API endpoint this probe posts its minimal ping request to.
 
 ## Related pieces
 
-- [`OpenCodeBackend.run_turn`](opencode-backend.md#contract) — the sole caller: invokes this only
-  when [`failure.is_cap(state.diagnostics_text)`](classify-turn.md#is_cap) found the turn hit a
-  usage cap, and passes
-  the result through as `rate_reset_at` to [`finalize_turn`](finalize-turn.md), which carries it
-  onto the raised `BackendInvocationError.reset_at` (see [`_cap_delay_seconds`](cap-delay-seconds.md#algorithm),
-  which prefers a structured `reset_at` over parsing reset text).
+- consistency: rate-reset-at — [`OpenCodeBackend.run_turn`](opencode-backend.md#contract) invokes this only when
+  [`failure.is_cap(state.diagnostics_text)`](classify-turn.md#is_cap) reports a usage cap, then
+  passes the returned epoch to [`finalize_turn`](finalize-turn.md) as `rate_reset_at`.
+
+`finalize_turn` carries that value onto the raised `BackendInvocationError.reset_at`;
+[`_cap_delay_seconds`](cap-delay-seconds.md#algorithm) prefers this structured reset time over
+parsing reset text.
 - [`finalize_turn`](finalize-turn.md) — receives `rate_reset_at` from the caller and threads it
   onto the classified error.
-

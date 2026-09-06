@@ -5,13 +5,9 @@ title: Sidecar RPC helper
 ---
 # Sidecar RPC helper
 
-Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers ask a connected [sidecar connection](sidecar-connection.md) for workspace data without knowing registry or socket failure details. The [groom server](../http/groom.md) file-list, file-content, and diff invocations call it before falling back to Docker volume readers, and it uses the [sidecar connection registry](sidecar-connection-registry.md#method-get) plus the [sidecar connection RPC method](sidecar-connection.md#method-rpc) to exchange [sidecar websocket frame](../sidecar-websocket-frame.md) messages. Successful helper results bridge sidecar `rpc_result.data` objects into [workspace file list data](../workspace-file-list-data.md), [workspace file content data](../workspace-file-content-data.md), and [workspace diff data](../workspace-diff-data.md) endpoint responses; unavailable or failed sockets preserve those endpoints' Docker-volume fallback paths.
+Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers ask a connected [sidecar connection](sidecar-connection.md) for workspace data without knowing registry or socket failure details. The [groom server](../http/groom.md) file-list, file-content, and diff invocations call it before falling back to local-filesystem or Docker-volume readers, and it uses the [sidecar connection registry](sidecar-connection-registry.md#method-get) plus the [sidecar connection RPC method](sidecar-connection.md#method-rpc) to exchange [sidecar websocket frame](../sidecar-websocket-frame.md) messages. Successful helper results bridge sidecar `rpc_result.data` objects into [workspace file list data](../workspace-file-list-data.md), [workspace file content data](../workspace-file-content-data.md), and [workspace diff data](../workspace-diff-data.md) endpoint responses; unavailable or failed sockets preserve those endpoints' fallback paths.
 
 - code: groom/groom/app.py::_sidecar_rpc
-- verify: groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
-  groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors,
-  groom/tests/test_app.py::test_file_content_prefers_sidecar_socket,
-  groom/tests/test_app.py::test_diff_prefers_sidecar_socket
 
 ## Contract
 
@@ -34,12 +30,23 @@ Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers a
 
 - sig: `async _sidecar_rpc(container_id: str, method: str, params: dict) -> dict | None`
 - abstract: false
-- raises: no intentional exception for an absent sidecar connection or a sidecar RPC failure; unexpected exceptions from registry lookup or non-sidecar failure paths can propagate.
+- does: reads the current [sidecar connection registry](sidecar-connection-registry.md) once for `container_id` through [method-get](sidecar-connection-registry.md#method-get)
+- verify: json_path(path="file-list response.paths", matches=".+")
+- does: sends at most one `rpc` [sidecar websocket frame](../sidecar-websocket-frame.md) through the returned [sidecar connection](sidecar-connection.md), carrying the method and params unchanged and relying on the connection's default RPC timeout
+- verify: json_path(path="file-content response.content", matches=".+")
+- does: converts only expected sidecar socket failures reported as [sidecar error](sidecar-error.md) into `None` so callers can use their fallback readers
+- verify: omits(subject="HTTP response", text="sidecar transport error")
+- raises: no intentional exception for an absent sidecar connection or a sidecar RPC failure
+- verify: omits(subject="HTTP response", text="sidecar transport error")
+- returns: `None` when no sidecar connection is registered for `container_id`
+- verify: json_path(path="fallback response", matches=".+")
+- returns: the connection RPC result unchanged when the sidecar call succeeds
+- verify: json_path(path="sidecar response", matches=".+")
 - code: groom/groom/app.py::_sidecar_rpc
-- verify: groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
-  groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors,
-  groom/tests/test_app.py::test_file_content_prefers_sidecar_socket,
-  groom/tests/test_app.py::test_diff_prefers_sidecar_socket
+- tests: groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected
+- tests: groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors
+- tests: groom/tests/test_app.py::test_file_content_prefers_sidecar_socket
+- tests: groom/tests/test_app.py::test_diff_prefers_sidecar_socket
 - input-container-id: already-selected workflow container id used exactly as the [sidecar connection registry](sidecar-connection-registry.md) lookup key; the helper does not normalize, truncate, coerce, or validate it.
 - input-method: sidecar data-plane method requested by the caller; first-party callers use `getTree`, `getFile`, and `getDiff`, matching the `rpc.method` field in [sidecar websocket frame](../sidecar-websocket-frame.md), but the helper accepts any string and sends it unchanged.
 - input-params: JSON-object payload sent unchanged in the outgoing RPC; current callers pass the selected `repo`, and file-content calls also pass `path`; the helper does not inspect, complete, copy, validate, escape-check, or default this object.
@@ -47,13 +54,6 @@ Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers a
 - output-unavailable: returns `None` when no sidecar is currently registered for the supplied container id.
 - output-failure: catches only [sidecar error](sidecar-error.md) from the connection RPC and returns `None`, preserving the endpoint-specific fallback path; unrelated exceptions from registry access or unexpected connection behavior remain outside the soft-failure contract.
 - output-boundary: does not validate that a successful result is a dictionary, does not normalize missing result keys, and does not convert falsey method-specific values to `None`; those interpretations belong to file-list, file-content, and diff invocations.
-- does:
-  - Reads the current [sidecar connection registry](sidecar-connection-registry.md) once for `container_id` through [method-get](sidecar-connection-registry.md#method-get).
-  - Stops immediately with `None` when the registry has no current connection for the supplied id.
-  - Sends at most one `rpc` [sidecar websocket frame](../sidecar-websocket-frame.md) through the returned [sidecar connection](sidecar-connection.md) when present, carrying the method and params unchanged and relying on the connection's default RPC timeout.
-  - Returns the connection RPC result unchanged on success so endpoint handlers can interpret method-specific keys such as `paths`, `content`, or `diff`.
-  - Converts only expected sidecar socket failures reported as [sidecar error](sidecar-error.md) into `None` instead of an endpoint error so callers can use their Docker-volume fallback readers.
-  - Does not inspect workflow containers, select fallback volumes, read workspace files, catch path-safety errors from fallback readers, mutate registry entries, broadcast dashboard messages, or shape HTTP response bodies.
 - calls: [method-get](sidecar-connection-registry.md#method-get), [method-rpc](sidecar-connection.md#method-rpc), and [sidecar error](sidecar-error.md) handling.
 - algorithm:
   1. Look up the current sidecar connection for the supplied container id.

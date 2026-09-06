@@ -22,8 +22,6 @@ always discarded.
 - **Output:** `None` — the sole effect is stdout writes (`print(..., flush=True)`); a
   line is flushed immediately so live tailing (e.g. `docker compose logs -f`) sees it
   without buffering delay.
-- **Raises:** nothing — reads `event` defensively (`.get(...)` with falsy defaults,
-  `or []` on the content list), never indexes it directly.
 
 ## Algorithm
 

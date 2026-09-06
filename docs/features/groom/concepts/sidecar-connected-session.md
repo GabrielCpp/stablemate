@@ -8,6 +8,7 @@ title: Sidecar connected session
 Sidecar connected session is the per-websocket runtime owned by the [sidecar serving loop](sidecar-serving-loop.md). For one accepted [websocket-sidecar](../http/groom.md#websocket-sidecar) socket, it immediately advertises a `hello` [sidecar websocket frame](../sidecar-websocket-frame.md), delegates recursive workspace and runs watching to the [sidecar filesystem watch](sidecar-filesystem-watch.md), starts the [sidecar outbound sender](sidecar-outbound-sender.md) for filesystem-derived frames, serves host-issued data-plane RPC frames, and raises [ReloadRequested](groom-sidecar-module.md#concept-reloadrequested) so [sidecar live sessions](../sidecar-live-sessions.md) can restart the sidecar process.
 
 - code: groom/groom/sidecar.py::_run_session
+- tests: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises
 - verify: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises
 
 ## Contract
@@ -65,8 +66,9 @@ Sidecar connected session is the per-websocket runtime owned by the [sidecar ser
 - sig: `async _run_session(ws) -> None`
 - abstract: false
 - raises: [ReloadRequested](groom-sidecar-module.md#concept-reloadrequested) for a host `reload` frame; JSON parsing and expected sender cancellation cleanup are handled locally, while unexpected websocket, watch, classifier, RPC, or serialization failures can propagate.
+- verify: emitted(event="hello", count=1)
 - code: groom/groom/sidecar.py::_run_session
-- verify: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises
+- tests: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises
 - input: one connected websocket object that can send JSON text frames and asynchronously yield inbound host text frames.
 - output: returns `None` only when the websocket inbound iterator ends without a reload request or uncaught failure.
 - effects: sends the initial `hello` frame, starts one watch task over the watchable workspace and runs mounts, starts one outbound sender task, consumes inbound frames, handles host RPCs, raises reload on request, and always attempts session cleanup.

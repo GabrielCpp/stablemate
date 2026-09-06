@@ -31,20 +31,25 @@ Workspace volume relative path guard is the validation layer used by the [worksp
 - type: `str`
 - default: none
 - required: true
-- meaning: caller-supplied workspace-volume path before it is embedded below `/vol` by a Docker-volume file operation.
-- accepted: non-empty relative path whose first character is neither `/` nor `\` and whose normalized segment list contains no empty segment and no segment exactly equal to `..`.
-- rejected: empty string, POSIX absolute path, backslash-rooted path, adjacent separators, trailing separator, and parent traversal segment.
-- normalization: every `\` character is treated as a separator and converted to `/` before segment checks complete.
-- not checked: non-string coercion, file existence, file type, symlink resolution, repository membership, Docker volume name, permissions, encoding, or maximum length.
+- semantics: caller-supplied workspace-volume path before a Docker-volume file operation embeds it below `/vol`.
+- semantics: acceptance requires a non-empty relative path whose first character is neither `/` nor `\`.
+- semantics: acceptance requires a normalized segment list with no empty segment and no segment exactly equal to `..`.
+- semantics: every `\` character is treated as a separator and converted to `/` before segment checks complete.
+- semantics: the guard does not check non-string coercion, file existence, file type, symlink resolution, repository membership, Docker volume name, permissions, encoding, or maximum length.
+- verify: omits(subject="accepted normalized path", text="..")
+- verify: omits(subject="accepted normalized path", text="\\")
 
 ### field-return-value
 
 - type: `str`
 - default: none
 - required: true
-- meaning: normalized volume-relative path that callers may append to `/vol/` for the Docker container destination.
-- invariant: non-empty, does not start with `/` or `\`, contains no empty segment, contains no `..` segment, and uses `/` as its only separator.
-- preservation: keeps accepted segment text exactly except for separator normalization, including `.`, `...`, spaces, colons, shell metacharacters, and other ordinary filename characters.
+- semantics: normalized volume-relative path that callers may append to `/vol/` for the Docker container destination.
+- semantics: the returned path is non-empty and does not start with `/` or `\`.
+- semantics: the returned path has no empty segment or `..` segment and uses `/` as its only separator.
+- semantics: accepted segment text is preserved except for separator normalization, including `.`, `...`, spaces, colons, shell metacharacters, and other ordinary filename characters.
+- verify: omits(subject="returned normalized path", text="..")
+- verify: omits(subject="returned normalized path", text="\\")
 
 ## Methods
 
@@ -52,15 +57,15 @@ Workspace volume relative path guard is the validation layer used by the [worksp
 
 - sig: `safe_relpath(path: str) -> str`
 - abstract: false
+- does: validates one [field-path](#field-path) value before a Docker volume reader or writer embeds it below `/vol`.
+- does: returns the `/`-normalized accepted path without collapsing `.` segments or otherwise changing accepted segment text.
+- does: raises `ValueError` using `unsafe path: {path!r}` for a rejected path.
+- does: performs no I/O or mutation.
+- verify: omits(subject="accepted normalized path", text="..")
+- verify: omits(subject="accepted normalized path", text="\\")
 - raises: `ValueError` for empty, leading-root, empty-segment, trailing-separator, or parent-traversal paths.
 - returns: [field-return-value](#field-return-value) on acceptance.
 - code: groom/groom/docker_io.py::safe_relpath
-- args: `path`; required; no default; follows the [field-path](#field-path) contract.
-- summary: validates and normalizes one workspace-volume relative path before any Docker volume read or write embeds it below `/vol`; accepted output is safe to concatenate as `/vol/{path}` because it cannot escape through an absolute prefix, an empty segment, or a `..` segment.
-- invariant: accepted output is non-empty, relative, and contains no empty or `..` segment.
-- failure-message: rejected paths use `unsafe path: {path!r}` in the raised `ValueError`.
-- non-effect: performs no I/O and no mutation.
-- consumers: [workspace volume file-content reader](workspace-volume-file-content-reader.md) and [workspace volume file writer](workspace-volume-file-writer.md) call this method before constructing the Docker container path under `/vol`.
 
 #### Effects
 

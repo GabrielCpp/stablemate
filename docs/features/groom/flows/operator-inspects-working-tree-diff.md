@@ -29,6 +29,17 @@ The wire carries the raw unified diff as one JSON string — `{"diff": "…"}` �
   16. The operator activates [select diff file row](../gui/screens/groom-dashboard.md#select-diff-file-row). The dashboard writes that leaf's parsed-file index into the diff slice — one store write, which is what marks that row and only that row `active`/`aria-current="true"`, since every row's selected state is derived from the same index.
   17. The diff viewer reads the parsed file at the selected index straight out of the cache and renders it with Diff2Html for a one-element array, using `drawFileList: false`, line matching, line-by-line output, and dark colour scheme. Selecting a file sends no HTTP request, reparses no raw diff text, mutates no server state, changes no URL, and sends no websocket message.
 - end: the dashboard remains in Diff mode with the selected repository label visible on both repository picker buttons, the diff tree built from the latest parsed-file cache, directory collapse state held per component, at most one changed-file row marked `active`/`aria-current`, and the diff viewer showing either the selected file's dark line-by-line Diff2Html render, the empty selected-file prompt, `(no changes)` in the tree, or `failed to load` after a client-side fetch or body-read failure. Server-side sidecar and fallback diff failures are represented as an empty `diff` string, not endpoint-specific error responses.
+- verify: json_path(path="$.diff", matches="diff --git")
+- verify: visible(locator="#diff-tree .tree-file.active", text="app.py")
+- tests: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
+  groom/tests/test_app.py::test_diff_prefers_sidecar_socket,
+  groom/tests/test_app.py::test_diff_endpoint_passes_repo_through,
+  groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container,
+  groom/tests/test_dashboard_client.py::test_every_endpoint_is_read_as_json,
+  groom/tests/test_dashboard_client.py::test_the_only_markup_the_client_sets_comes_from_a_sanitizer_or_a_renderer,
+  groom/tests/test_a11y_dynamic.py::test_diff_pane_is_accessible,
+  groom/tests/test_sidecar_session.py::test_git_diff_reports_working_tree_changes,
+  groom/tests/test_sidecar_session.py::test_git_diff_empty_when_no_repo
 - code: groom/groom/assets/dashboard.js::DiffDisclosure
 - code: groom/groom/assets/dashboard.js::setMode
 - code: groom/groom/assets/dashboard.js::openRepoMenu
@@ -41,15 +52,6 @@ The wire carries the raw unified diff as one JSON string — `{"diff": "…"}` �
 - code: groom/groom/assets/dashboard.js::diffMarkup
 - code: groom/groom/app.py::repos
 - code: groom/groom/app.py::diff
-- verify: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
-  groom/tests/test_app.py::test_diff_prefers_sidecar_socket,
-  groom/tests/test_app.py::test_diff_endpoint_passes_repo_through,
-  groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container,
-  groom/tests/test_dashboard_client.py::test_every_endpoint_is_read_as_json,
-  groom/tests/test_dashboard_client.py::test_the_only_markup_the_client_sets_comes_from_a_sanitizer_or_a_renderer,
-  groom/tests/test_a11y_dynamic.py::test_diff_pane_is_accessible,
-  groom/tests/test_sidecar_session.py::test_git_diff_reports_working_tree_changes,
-  groom/tests/test_sidecar_session.py::test_git_diff_empty_when_no_repo
 - screenshot: docs/features/groom/gui/screenshots/operator-inspects-working-tree-diff-detail-disclosure-expanded.png
 - screenshot: docs/features/groom/gui/screenshots/operator-inspects-working-tree-diff-diff-pane-tree-loaded.png
 - screenshot: docs/features/groom/gui/screenshots/operator-inspects-working-tree-diff-file-selected.png

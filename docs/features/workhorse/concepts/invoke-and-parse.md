@@ -13,7 +13,7 @@ This is the boundary where an `OutputParseError` is either absorbed (retried in-
 to escape to the ladder.
 
 - code: `workhorse/workhorse/runner/ladder.py::AgentRunner._invoke_and_parse`
-- verify: `workhorse/tests/test_agent_recovery.py::test_unparseable_output_reframes_then_defaults`
+- tests: `workhorse/tests/test_agent_recovery.py::test_unparseable_output_reframes_then_defaults`
 
 ## Contract
 
@@ -21,17 +21,17 @@ A private method on the [`AgentRunner`](run-agent.md#the-runner) dataclass. The 
 **not** a parameter — it is read from `self.resilience.max_output_retries` — and neither is the
 backend or the clock, which reach the CLI through `turn`.
 
-- **Input:**
-  - `prompt: str` — the prompt for the first attempt (the rendered node prompt, or a reframed
-    variant chosen by the caller).
-  - `node: AgentNode` — supplies `node.id` (logging) and `node.outputs` (the keys
-    `extract_outputs` must find).
-  - `session_id_path: Path | None` — passed straight through to `turn`; unchanged across
-    retries, so every attempt in this loop resumes the **same** session.
-  - `model: str | None` — passed straight through to `turn`.
-  - `timeout: float` (keyword-only) — the per-turn wall-clock budget, resolved once by the caller.
-  - `cwd: str | None`, `add_dirs: list[str] | None`, `effort: str | None` (keyword-only) — passed
-    straight through to `turn`.
+### Inputs
+
+| Parameter | Meaning |
+| --- | --- |
+| `prompt: str` | The prompt for the first attempt: the rendered node prompt or a reframed variant chosen by the caller. |
+| `node: AgentNode` | Supplies `node.id` for logging and `node.outputs`, whose declared keys `extract_outputs` extracts from the result text. |
+| `session_id_path: Path | None` | Passes straight through to `turn` and remains unchanged across retries, so every attempt in this loop resumes the **same** session. |
+| `model: str | None` | Passes straight through to `turn`. |
+| `timeout: float` (keyword-only) | The per-turn wall-clock budget, resolved once by the caller. |
+| `cwd: str | None`, `add_dirs: list[str] | None`, `effort: str | None` (keyword-only) | Pass straight through to `turn`. |
+
 - **From `self`:** `resilience.max_output_retries` (default `2`, env `AGENT_MAX_OUTPUT_RETRIES`) —
   additional same-session attempts after the first; total attempts = `max_output_retries + 1`.
 - **Output:** `dict[str, Any]` — the node's extracted outputs, as returned by `extract_outputs`.

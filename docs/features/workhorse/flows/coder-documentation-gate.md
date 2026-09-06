@@ -5,8 +5,9 @@ title: Coder documentation gate
 ---
 # Coder documentation gate
 
-- start: A coder story has completed implementation review, and its reviewed changes are present
-  in the working tree with a resolvable story and plan context.
+- start: A coder story has completed implementation review.
+- start: Its reviewed changes are present in the working tree.
+- start: The story and plan context are resolvable.
 - steps:
   1. The parent coder graph invokes the standalone `docs` flow before QA so QA derives its
      acceptance obligations from the updated as-built book.
@@ -40,18 +41,13 @@ title: Coder documentation gate
      remediation run without a selected story and are therefore contract-preserving only; they
      must fail and escalate rather than introduce behavior requiring new documentation.
 - end: The story reaches QA and later commit only when every applicable documentation pass reports
-  a conformant, directly grounded, semantically complete OKF book; missing documentation cannot be
-  flagged and bypassed in either story or epic mode.
-- verify: `workflows/tests/coder/docs/test_flow.py::test_a_revision_request_reworks_and_carries_the_notes_forward`,
+   a conformant, directly grounded, semantically complete OKF book.
+- verify: exit_status(code=0)
+- end: A documentation finding leaves no QA or commit transition available in either story or epic
+    mode.
+- verify: count(subject="QA or commit transitions after a documentation finding", equals=0)
+- tests: `workflows/tests/coder/docs/test_flow.py::test_a_revision_request_reworks_and_carries_the_notes_forward`,
   `workflows/tests/coder/docs/test_flow.py::test_a_revision_request_without_structured_findings_fails_the_flow`,
   `workflows/tests/coder/docs/test_flow.py::test_a_revision_request_with_an_empty_finding_fails_the_flow`,
   `workflows/tests/coder/docs/test_flow.py::test_the_grounding_failure_names_the_symbols_not_the_files`,
   `workflows/tests/coder/docs/test_flow.py::test_the_gates_failure_does_not_spend_the_reviewers_budget`
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs`
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::_review_finding_problems`,
-  `workflows/src/workhorse_workflows/coder/docs/flow.py::_format_finding`,
-  `workflows/src/workhorse_workflows/coder/docs/flow.py::_review_notes`
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationFinding`,
-  `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationReview`
-- code: `workflows/src/workhorse_workflows/coder/docs/prompts/document-story.md`
-- code: `workflows/src/workhorse_workflows/coder/docs/prompts/review-story-documentation.md`

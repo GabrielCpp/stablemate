@@ -101,78 +101,91 @@ still shows the subcommand listing.
     node resolves the consuming repo rather than the directory the installed workflow
     package happens to sit in
   - run: `--config`, if given, is written back to `$STABLEMATE_CONFIG`
-    ([`CONFIG_PATH_ENV`](concepts/config.md#location)) before anything reads the file — the
-    config is re-read per node and by every subprocess the run spawns, each through its own
-    `config_path()`, so a flag that only reached the resolver here would name one file while
-    the per-node re-read named another. A path that is not a file exits `1` rather than
-    reading as an empty config; with the flag absent nothing is written back, since stamping
-    the *discovered* path would suppress `load_config`'s legacy per-tool merge on a machine
-    nobody asked to migrate
-  - run: select the [profile](concepts/config.md#profiles) — `--profile`, else the name
-    recorded in the resumed run's [`run.json`](run-artifacts.md#runjson) (which is why the
-    resume dir is resolved first). A resume is a continuation, not a new decision: re-resolving
-    the same nodes against the machine's global model set is a substitution nothing in the
-    output would show, so the recorded name is re-applied unless this command line overrides
-    it. `select_profile` narrows the loaded config; an undefined name prints
-    `UnknownProfileError` (which lists the known ones) and exits `1`
-  - run: `--cli` (else `AGENT_CLI`, else the config's
-    [`default_cli`](concepts/config.md#resolve_default_cli) — the **profile's** first, then the
-    top level's, which is why the profile is selected first — else `claude`) sets `AGENT_CLI` for
-    the run — the resolved name is written back, so every later reader of that variable answers
-    with the CLI actually chosen rather than re-deriving it; select and
-    eagerly validate the [AgentBackend](concepts/agent-backend.md) via
-    [get_backend](concepts/get-backend.md) — an unknown name prints to stderr and exits `1`
-    before any state runs, rather than failing mid-run
-  - run: refuse a profile that maps no model for the backend just chosen — `--profile` and
-    `--cli` are independent axes, so an opencode-only profile run with `--cli claude` would
-    otherwise spend the whole run on the harness's own default model with nothing to say so.
-    Checked with [`profile_has_backend`](concepts/config.md#profiles), and a profile keying a
-    backend name no registry knows is reported the same way a typo'd `--cli` is; both exit `1`.
-    It runs under `--dry-run` too, that being the check's point
+    ([`CONFIG_PATH_ENV`](concepts/config.md#location)) before anything reads the file
+  - verify: exit_status(code=0)
+  - run: the config is re-read per node and by every subprocess the run spawns, each through
+    its own `config_path()`, so the selected file remains consistent throughout the run
+  - verify: exit_status(code=0)
+  - run: a `--config` path that is not a file exits `1` rather than reading as an empty config
+  - verify: exit_status(code=1)
+  - run: without `--config`, `$STABLEMATE_CONFIG` is not written, so `load_config` retains its
+    legacy per-tool merge instead of treating a discovered path as explicit
+  - verify: exit_status(code=0)
+  - run: select the [profile](concepts/config.md#profiles) from `--profile`, or from the resumed
+    run's [`run.json`](run-artifacts.md#runjson) after resolving its directory
+  - verify: exit_status(code=0)
+  - run: a resumed run re-applies its recorded profile unless `--profile` overrides it, so its
+    nodes do not silently resolve against the machine's global model set
+  - verify: exit_status(code=0)
+  - run: an undefined profile prints `UnknownProfileError`, including the known names, and exits
+    `1`
+  - verify: exit_status(code=1)
+  - run: select the CLI from `--cli`, `AGENT_CLI`, the profile's
+    [`default_cli`](concepts/config.md#resolve_default_cli), the top-level default, or `claude`
+  - verify: exit_status(code=0)
+  - run: write the resolved CLI name to `AGENT_CLI` so later readers use the selected backend
+    rather than re-deriving it
+  - verify: exit_status(code=0)
+  - run: eagerly validate the selected [AgentBackend](concepts/agent-backend.md) through
+    [get_backend](concepts/get-backend.md) before any state runs
+  - verify: exit_status(code=0)
+  - run: an unknown CLI backend prints an error to stderr and exits `1` before any state runs
+  - verify: exit_status(code=1)
+  - run: refuse a profile that has no model for the selected backend, preventing a harness
+    default model from being used silently
+  - verify: exit_status(code=1)
+  - run: report a profile keyed by an unknown backend name as the same error class as an unknown
+    `--cli` value
+  - verify: exit_status(code=1)
+  - run: validate the selected profile and backend under `--dry-run` as well as a live run
+  - verify: exit_status(code=1)
   - run: resolve `runs_dir` (`--runs-dir`, else `<cwd>/.agents/runs`)
   - run: load `--params`/`--params-file` into a starting-params dict via
     `load_params` (`workhorse/workhorse/cli/params.py::load_params`):
-    - starts from `params = {}`. If `--params-file` is given, reads its path as text
-      (`Path(file).read_text()`); an `OSError` (missing file, permission error, …) prints
-      `error: cannot read --params-file <file>: <error>` to stderr and exits `1`
-    - processes the two sources **in file-then-inline order** — the `--params-file` text
-      first, then `--params` itself — skipping whichever wasn't given (`None`); each
-      non-`None` source is `json.loads`-parsed, and a `json.JSONDecodeError` prints
-      `error: <label> is not valid JSON: <error>` to stderr and exits `1`, where `<label>`
-      is `--params-file` or `--params` matching the source
+      - starts from `params = {}`. If `--params-file` is given, reads its path as text
+        (`Path(file).read_text()`)
+      - an `OSError` while reading `--params-file` (missing file, permission error, …) prints
+        `error: cannot read --params-file <file>: <error>` to stderr and exits `1`
+      - processes the two sources **in file-then-inline order** — the `--params-file` text
+        first, then `--params` itself — skipping whichever wasn't given (`None`)
+      - parses each non-`None` source with `json.loads`. A `json.JSONDecodeError` prints
+        `error: <label> is not valid JSON: <error>` to stderr and exits `1`, where `<label>`
+        is `--params-file` or `--params` matching the source
     - a source that parses to something other than a JSON object (e.g. a list or scalar)
       prints `error: <label> must be a JSON object (key→value map)` to stderr and exits `1`
-    - each valid source's dict is folded into `params` via `dict.update` — so **`--params`
-      wins over `--params-file`** on overlapping keys, since inline is merged second; with
-      neither flag given, returns `{}`
+      - folds each valid source dict into `params` with `dict.update`, so **`--params` wins over
+        `--params-file`** on overlapping keys because inline is merged second
+      - returns `{}` when neither parameter source is given
   - run: load the `--context-file`/auto-detected manifest into a starting manifest dict
     (`load_context_manifest`)
   - run: resolve `resume_run_dir` from the mutually-exclusive resume flags — `--resume-run`
-    (an absolute path, an existing relative path, or else a name under `runs_dir`;
-    not-a-directory exits `1`) or `--resume-latest` (the newest unfinished run dir under
-    `runs_dir`, found by `workhorse/workhorse/rundir.py::find_latest_resumable`):
+    accepts an absolute path, an existing relative path, or a name under `runs_dir`
+  - run: a `--resume-run` target that is not a directory exits `1`
+  - run: `--resume-latest` resolves the newest unfinished run directory under `runs_dir` through
+    `workhorse/workhorse/rundir.py::find_latest_resumable`:
     - a `runs_dir` that doesn't exist on disk yields no candidates
-    - otherwise scans `runs_dir`'s immediate children; a child is a candidate only if it's
-      a directory **and** holds a [checkpoint file](run-artifacts.md#checkpointjson)
-      (`ArtifactWriter.CHECKPOINT_FILE`, i.e. `checkpoint.json`) — a dir with no checkpoint
-      yet (never reached its first state) is never resumable
-    - each candidate's [`run.json`](run-artifacts.md#runjson) is read and `json.loads`-parsed;
-      a candidate whose `run.json` is missing or not valid JSON is silently dropped rather
-      than failing the whole scan
+    - otherwise scans `runs_dir`'s immediate children
+    - a child is a candidate only when it is a directory with a
+      [checkpoint file](run-artifacts.md#checkpointjson) (`ArtifactWriter.CHECKPOINT_FILE`, or
+      `checkpoint.json`)
+    - a directory that has not reached its first state is never resumable
+    - reads and parses each candidate's [`run.json`](run-artifacts.md#runjson)
+    - silently drops a candidate whose `run.json` is missing or invalid JSON instead of failing
+      the whole scan
     - a candidate survives only if its `run.json` `terminal` key is `null`/absent — a
       finished run is never returned by `--resume-latest`
-    - among the survivors, the one whose `checkpoint.json` has the newest mtime wins; with
-      no survivors, `run` prints `error: no resumable run found under <runs_dir>` to
+    - chooses the surviving candidate whose `checkpoint.json` has the newest mtime
+    - with no surviving candidate, prints `error: no resumable run found under <runs_dir>` to
       stderr and exits `1`
     - with neither flag given, `resume_run_dir` stays `None` and the auto-resume-in-place
       rule inside `run_pyflow` decides
   - run: hand everything to the driver as one
     `workhorse/workhorse/pyflow/run.py::RunInvocation`, and `sys.exit()` with
     `run_pyflow`'s return code. That is where the run actually happens:
-    - **reference preflight** — unresolved skill/prompt references in the manifest are
-      *warned* about before the first state, because an unresolved one renders as prose
-      into a live agent prompt rather than failing; under `--dry-run` the same list becomes
-      an exit code
+    - **reference preflight** — warns about unresolved skill or prompt references in the manifest
+      before the first state, because an unresolved reference renders as prose in a live agent
+      prompt instead of failing
+    - under `--dry-run`, treats the same unresolved-reference list as an exit code
     - **`--dry-run`** — the [static preflight](concepts/pyflow-state-graph.md) first (every
       prompt path resolves, every state name binds, no state is unreachable, the machine
       can terminate), then the machine is driven **for real** with nodes and agent turns
@@ -182,9 +195,10 @@ still shows the subcommand listing.
       terminal is reported but *not* an error unless the workflow declared
       `stub_agents({…})` — undeclared, every agent reply is a blank model and any workflow
       with a reachable failure can be walked into one
-    - **run identity** — an explicit `--resume-run` wins; otherwise the one stable dir for
-      this `(workflow, run-id)` is resumed in place when it holds an unfinished checkpoint,
-      else started fresh in that same dir
+    - **run identity** — an explicit `--resume-run` wins
+    - otherwise, resumes the stable directory for this `(workflow, run-id)` when it holds an
+      unfinished checkpoint
+    - otherwise, starts fresh in that same stable directory
     - **the flow a checkpoint belongs to** — a resume re-enters the flow that wrote the
       checkpoint. Asking for a different `<flow>` in the same run dir is refused by name:
       the checkpoint's state and params mean nothing to another flow
@@ -193,14 +207,16 @@ still shows the subcommand listing.
       first state
     - **interrupt** — `Ctrl-C` terminates the active agent, records the interrupt against
       the state in flight, prints the `--resume-run` command, and exits `130`
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
 - code: `workhorse/workhorse/cli/run.py::run`
-- verify: `workhorse/tests/test_run_options.py::test_profile_travels_to_the_run_and_carries_its_default_cli`,
+- tests: `workhorse/tests/test_run_options.py::test_profile_travels_to_the_run_and_carries_its_default_cli`,
   `workhorse/tests/test_run_options.py::test_cli_flag_still_wins_over_a_profiles_default`,
   `workhorse/tests/test_run_options.py::test_an_unknown_profile_is_refused_before_the_first_state`,
   `workhorse/tests/test_run_options.py::test_a_profile_with_nothing_for_the_chosen_backend_is_refused`,
   `workhorse/tests/test_run_options.py::test_a_flagless_resume_re_applies_the_recorded_profile`,
   `workhorse/tests/test_run_options.py::test_an_explicit_profile_overrides_the_recorded_one`
-- verify: `workhorse/tests/test_console_script.py::test_every_flag_reaches_the_engine`,
+- tests: `workhorse/tests/test_console_script.py::test_every_flag_reaches_the_engine`,
   `workhorse/tests/test_console_script.py::test_the_cli_reports_the_zip_failure_and_exits`,
   `workhorse/tests/test_resume_auto.py::test_find_latest_resumable_picks_newest_of_several_unfinished`,
   `workhorse/tests/test_resume_auto.py::test_resume_latest_still_errors_when_none`
@@ -221,15 +237,21 @@ coder pipeline executes before QA and again before commit.
   - run: take the `Registry` off the namespace, exactly as `run` does — *which* workflow to
     render is not a question this command asks, since it is whichever one's console script
     started the process
-  - run: derive one graph per distinct flow class from the registry
-    (`registry_graphs`) and render them with `to_dot` — one `subgraph cluster_*` per flow,
-    **live state names only**, so an `aliases=[…]` rename never shows up as a second state.
-    The graph is read off each state's own source; see [state
-    graph](concepts/pyflow-state-graph.md)
-  - run: if `--output` is given, write the DOT text to that path and print
-    `[workhorse] wrote <path>` to stderr; otherwise write the DOT text to stdout
+  - run: derive one graph per distinct flow class from the registry (`registry_graphs`)
+  - verify: count(subject="graphs for a registry with two distinct flow classes", equals=2)
+  - run: render each flow graph with `to_dot` as one `subgraph cluster_*`
+  - verify: count(subject="subgraph clusters in DOT output for a two-flow registry", equals=3)
+  - run: read each flow graph off its states' own source; see [state graph](concepts/pyflow-state-graph.md)
+  - verify: omits(subject="DOT output for a workflow state renamed with aliases=[…]", text="qa")
+  - run: render live state names only, so an `aliases=[…]` rename never shows up as a second
+    state
+  - verify: omits(subject="DOT output", text="qa")
+  - run: if `--output` is given, write the DOT text to that path
+  - run: if `--output` is given, print `[workhorse] wrote <path>` to stderr
+  - run: if `--output` is not given, write the DOT text to stdout
+- verify: exit_status(code=0)
 - code: `workhorse/workhorse/cli/dot.py::run`
-- verify: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`
 
 There are no `--pin`/`--leaf` flags. They collapsed a *declared* branch node into one
 edge, and a Python workflow's branches are ordinary `if` statements in a state body —
@@ -242,8 +264,11 @@ there is nothing declared to pin.
     `importlib.metadata.version("workhorse-agent")` (the PyPI/installed package name; the
     import package is `workhorse`) and print it to stdout. It reports the **engine's**
     version, not the workflow distribution's — every workflow's command answers the same
-  - run: return with no explicit `sys.exit` (exit `0`); raises uncaught if
-    `workhorse-agent` isn't installed as a package, since no fallback is attempted
+  - run: return with no explicit `sys.exit` (exit `0`)
+  - run: raise uncaught if `workhorse-agent` isn't installed as a package, since no fallback is
+    attempted
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
 - code: `workhorse/workhorse/cli/version.py::run`
 
 ## Flows

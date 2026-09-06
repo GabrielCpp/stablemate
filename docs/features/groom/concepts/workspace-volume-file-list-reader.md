@@ -8,7 +8,7 @@ title: Workspace volume file-list reader
 Workspace volume file-list reader is the fallback implementation used by the [serve workspace file list](../http/groom.md#serve-workspace-file-list) invocation when the connected sidecar cannot provide [workspace file list data](../workspace-file-list-data.md). It is the [Groom Docker I/O module](groom-docker-io-module.md) detail for [list-files](groom-docker-io-module.md#list-files): it delegates process execution to the [Docker subprocess runner](docker-subprocess-runner.md), reads one selected checkout inside a known workspace Docker volume through a shell-free, read-only Docker command, and returns repo-relative file paths without mutating the workflow container or broadcasting dashboard updates.
 
 - code: groom/groom/docker_io.py::list_files
-- verify: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs,
+- tests: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs,
   groom/tests/test_docker_io.py::test_list_files_volume_root_when_repo_dir_empty,
   groom/tests/test_docker_io.py::test_list_files_empty_on_docker_failure
 
@@ -117,15 +117,6 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 
 - sig: `list_files(volume: str, repo_dir: str = "") -> list[str]`
 - abstract: false
-- raises: propagates process launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md); converts Docker process return-code failures to an empty list.
-- returns: sorted list of selected-root-relative file paths; an empty list means the selected tree is empty, the Docker process exited non-zero, or no stdout paths matched the selected base prefix.
-- code: groom/groom/docker_io.py::list_files
-- verify: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs
-- verify: groom/tests/test_docker_io.py::test_list_files_volume_root_when_repo_dir_empty
-- verify: groom/tests/test_docker_io.py::test_list_files_empty_on_docker_failure
-- args:
-  - `volume`: Docker volume name to mount at `/vol` read-only.
-  - `repo_dir`: volume-relative checkout directory to list; `""` selects the volume root; callers are responsible for supplying a bounded repository selection because this reader does not apply the relative-path guard.
 - does:
   - Builds the selected base path from `/vol` plus `repo_dir`, preserving the root case as exactly `/vol`.
   - Builds the prune expression from the shared skip directory names `.git`, `node_modules`, `__pycache__`, and `.venv`.
@@ -133,3 +124,15 @@ Workspace volume file-list reader is the fallback implementation used by the [se
   - Runs one read-only `alpine:3.20` container with `find` to print non-pruned regular files.
   - Converts only matching absolute mount paths into paths relative to the selected base.
   - Sorts the resulting list before returning it.
+- raises: propagates process launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md); converts Docker process return-code failures to an empty list.
+- returns: sorted list of selected-root-relative file paths; an empty list means the selected tree is empty, the Docker process exited non-zero, or no stdout paths matched the selected base prefix.
+- verify: count(subject="returned repo-relative file paths", equals=2)
+- verify: count(subject="returned volume-root-relative file paths", equals=2)
+- verify: count(subject="returned file paths after Docker failure", equals=0)
+- code: groom/groom/docker_io.py::list_files
+- tests: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs,
+  groom/tests/test_docker_io.py::test_list_files_volume_root_when_repo_dir_empty,
+  groom/tests/test_docker_io.py::test_list_files_empty_on_docker_failure
+- args:
+  - `volume`: Docker volume name to mount at `/vol` read-only.
+  - `repo_dir`: volume-relative checkout directory to list; `""` selects the volume root; callers are responsible for supplying a bounded repository selection because this reader does not apply the relative-path guard.

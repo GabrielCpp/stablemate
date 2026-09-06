@@ -18,7 +18,7 @@ already supplies the disambiguation a `_copilot_` prefix used to.
 
 - code: `workhorse/workhorse/runner/backends/copilot.py::_on_event`
 - extends: [stream_jsonl](stream-jsonl.md#contract)
-- verify: `workhorse/tests/test_backends.py::test_copilot_on_event_extracts_text_and_session`
+- tests: `workhorse/tests/test_backends.py::test_copilot_on_event_extracts_text_and_session`
 
 ## Contract
 
@@ -29,24 +29,24 @@ already supplies the disambiguation a `_copilot_` prefix used to.
     go on `state.diagnostics`; there is no separate list argument.
   - `node_id` — the workflow node id, used only for the live-echo log-line prefix.
 - **Output:** `None` — all effects are the in-place mutations to `state` below.
-- **Raises:** nothing — a malformed `event`/`data` shape is read defensively (`.get(...)` with
-  falsy defaults), never indexed directly.
 
 ## Algorithm
 
 Dispatches on `event.get("type") or ""` (`etype`):
 
+Copilot uses `result` for its turn summary, but its usage payload has not been verified against a
+live run. That uncertainty is why the adapter delegates usage interpretation to the shared
+tolerant [normalization](finalize-turn.md#turnstate) instead of defining a backend-specific
+payload.
+
 1. **`etype == "assistant.message"`** → read `content = (event.get("data") or {}).get("content") or
    ""`; if non-empty, set `state.result_text = content` (last non-empty message wins — a turn with
    multiple `assistant.message` events keeps only the final content) and echo
    `[{node_id}] {content.strip()[:500]}` to stdout (live progress, truncated to 500 chars).
-2. **`etype == "result"`** → the terminal event of the turn, carrying three things:
+2. **`etype == "result"`** → read three values from the event:
    - if `event.get("sessionId")` is truthy, set `state.session_id = event["sessionId"]` — the
      resumable session handle used as `sid` in a later turn's `copilot ... --session-id <sid>`.
    - `state.usage = state.usage.merge(usage.normalize(event))` — the turn's token/cost report.
-     Copilot's payload shape could not be verified against a live run, which is why
-     [normalization](finalize-turn.md#turnstate) is a tolerant search rather than a per-backend
-     parse: an unrecognized shape costs a missing attribute, never an exception on the hot path.
    - read `exit_code = event.get("exitCode")`; if it is neither `0` nor `None` (a real non-zero
      exit), append `f"copilot exitCode={exit_code}"` to `state.diagnostics`.
 3. **`"error" in etype`** (any other event type containing `"error"`) → append

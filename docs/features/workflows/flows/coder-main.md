@@ -1,0 +1,74 @@
+---
+type: flow
+slug: coder-main
+title: Coder main flow
+---
+# Coder main flow
+
+- The default [Coder composition root](../concepts/coder-workflow-composition-root.md) runs this
+  machine when no specialist flow is selected. It hands implementation, review, documentation,
+  QA, backlog fixing, CI repair, and merge work to the specialist flows while retaining the queue
+  and transition decisions here.
+
+- start: the run has a resolvable repository context and its checkpointed mode is `epic` or `story`
+- verify: exit_status(code=0)
+- start: a story-mode run has a non-empty story slug, or epic mode can inspect the configured epic queue
+- verify: count(subject="coder run entry paths", equals=1)
+- steps:
+  - [initialize](#initialize)
+  - [epic-queue](#epic-queue)
+  - [story-pipeline](#story-pipeline)
+  - [backlog-drain](#backlog-drain)
+  - [story-commit](#story-commit)
+  - [pull-request-gates](#pull-request-gates)
+- end: story mode has committed the selected story and finished its story pull request, or epic mode has advanced through the queue and completed each eligible epic pull request
+- verify: count(subject="coder terminal paths", equals=1)
+- end: a blocked documentation, CI, merge, or dirty-worktree condition is checkpointed at an operator gate instead of being silently committed or skipped
+- verify: count(subject="coder operator-gated blocking paths", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder`
+- detail: [coder workflow composition root](../concepts/coder-workflow-composition-root.md)
+- tests: `workflows/tests/coder/test_workflow.py`
+
+## Steps
+
+### initialize
+
+`setup` resolves the workspace directories before any story is selected, so the planning-only
+replan and merge paths have the same repository context as story work. `start` records the run,
+then either branches the explicit story or initializes the base branch for epic queue processing.
+
+### epic-queue
+
+Epic mode selects the front epic, branches every repository for it, and repeatedly selects the next
+unimplemented story. An empty epic queue tears down the reusable QA stack and ends normally. A
+blocked epic is flagged and set aside so the next epic can be considered; a completed epic proceeds
+to pull-request preparation.
+
+### story-pipeline
+
+Each selected story is snapshotted against pre-existing work, resolved to its paths, and sent through
+`dev`, `review`, `document`, and `qa`. A development or QA rescope/rework returns to the appropriate
+pipeline state with its counters preserved. Documentation failure parks at the documentation
+operator gate. QA failure in the development environment documents the attempt and terminates
+without a commit; other exhausted QA paths remain operator-gated inside QA.
+
+### backlog-drain
+
+A passing QA result hands the backlog to the `fix` flow. That flow documents and commits each
+drained item before this machine resumes, while the current story's documentation-taint flag is
+carried forward unchanged.
+
+### story-commit
+
+The finalization state re-runs documentation only when QA or backlog mutation marked the story
+tainted. Epic mode checks the repositories, allows one chained settle turn for uncommitted work,
+stamps the story only after a clean reading, and returns to story selection. Story mode commits the
+selected story, tears down QA, and opens its story pull request. A second unchanged dirty reading
+parks at the dirty-worktree operator gate.
+
+### pull-request-gates
+
+After an epic's queue is pruned, its pull request is opened when remote credentials and a PR exist.
+CI passes or is unavailable before merge; failed CI receives at most three automated repair laps
+before a human CI gate. Merge conflicts receive at most two automated resolution laps before a
+human merge gate. A successful or unavailable merge returns to epic selection.

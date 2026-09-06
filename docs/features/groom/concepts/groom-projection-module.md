@@ -85,7 +85,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - step: Resolve the clock, defaulting to wall time.
 - step: Project the filtered fleet through `fleet_rows` in display order.
 - step: Project the unfiltered fleet through `status_bar` so counts stay fleet-wide.
-- step: Return `{"type": "state", "ts", "scanning", "runs", "status"}` — the [dashboard state payload](../dashboard-state-payload.md).
+- step: Return `{"type": "state", "ts", "scanning", "runs", "status", "store"}` — the [dashboard state payload](../dashboard-state-payload.md), including the collector health independently of fleet counts.
 
 ### method-run-message
 
@@ -112,7 +112,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - abstract: false
 - raises: none intentionally raised.
 - code: groom/groom/projection.py::run_detail
-- step: Project identity (`id`, `run_id`, `state`, `node`), every open gate through `gate_dict`, and the live slice (`head`, `metrics`, `log`).
+- step: Project identity (`id`, `run_id`, `state`, `node`), every open gate through `gate_dict`, and the live slice (`head`, `metrics`, `logs`).
 - step: Return the same body both the pushed `detail` message and the detail fetch carry, so a subscription and a fetch cannot disagree.
 
 ### method-fleet-rows
@@ -178,6 +178,142 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - raises: none intentionally raised.
 - code: groom/groom/projection.py::file_lang
 - step: Match the whole filename first for the extensionless files that still have a grammar (`Dockerfile`, `Makefile`), then the extension against `EXT_LANG`, else return `""`.
+
+### method-format-timestamp
+
+- sig: `fmt_ts(ts: float) -> str`
+- abstract: false
+- does: Formats a nonzero epoch timestamp as month-day and local time, or returns an em dash for an absent timestamp.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::fmt_ts
+- tests: groom/tests/test_projection.py::test_run_card_live_comes_from_the_hot_cache_not_the_span_history
+
+### method-format-clock
+
+- sig: `fmt_clock(ts: float) -> str`
+- abstract: false
+- does: Formats a nonzero epoch timestamp as local time-of-day, or returns an em dash for an absent timestamp.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::fmt_clock
+- tests: groom/tests/test_projection.py::test_log_trail_newest_first_with_severity_classes
+
+### method-format-duration
+
+- sig: `fmt_duration(seconds: float) -> str`
+- abstract: false
+- does: Clamps a negative duration to zero before formatting seconds below one minute, minute-second pairs below one hour, or decimal hours otherwise.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::fmt_duration
+- tests: groom/tests/test_projection.py::test_run_metrics_merges_hot_cache_and_durable_facts
+
+### method-run-id-of
+
+- sig: `run_id_of(wf: WorkflowContainer) -> str`
+- abstract: false
+- does: Selects a workflow's run id when present, otherwise its container id, as the telemetry lookup key.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::run_id_of
+- tests: groom/tests/test_projection.py::test_detail_message_matches_the_fetched_detail
+
+### method-telemetry-for
+
+- sig: `telemetry_for(wf: WorkflowContainer) -> RunTelemetry | None`
+- abstract: false
+- does: Reads the telemetry hot-cache entry addressed by the workflow's telemetry key.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::telemetry_for
+- tests: groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished
+
+### method-silence-of
+
+- sig: `silence_of(tel: RunTelemetry | None, now: float) -> float`
+- abstract: false
+- does: Returns zero for missing telemetry, otherwise the nonnegative age of its newest heartbeat, span, or first-seen timestamp.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::silence_of
+- tests: groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished
+
+### method-gate-dict
+
+- sig: `gate_dict(gate: GateInfo) -> dict[str, Any]`
+- abstract: false
+- does: Projects a gate's path, source question, derived preview, and status as data without rendering its question as markup.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::gate_dict
+- tests: groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup
+
+### method-gates-of
+
+- sig: `gates_of(wf: WorkflowContainer) -> list[GateInfo]`
+- abstract: false
+- does: Orders a workflow's open gates lexically by file path before any payload projects them.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::gates_of
+- tests: groom/tests/test_projection.py::test_run_detail_lists_every_open_gate
+
+### method-detail-handle
+
+- sig: `handle(wf: WorkflowContainer) -> str`
+- abstract: false
+- does: Returns the whole chosen run id for a native workflow and Docker's twelve-character container-id form for a container workflow.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::handle
+- tests: groom/tests/test_projection.py::test_the_head_carries_the_whole_run_id_not_a_fragment
+
+### method-cli-label
+
+- sig: `cli_label(tel: RunTelemetry | None) -> str`
+- abstract: false
+- does: Returns the reported agent backend and model as one label, or an empty label until the backend is known.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::cli_label
+- tests: groom/tests/test_projection.py::test_the_head_names_the_cli_that_ran_the_last_turn
+
+### method-head
+
+- sig: `head(wf: WorkflowContainer, tel: RunTelemetry | None = None, now: float | None = None) -> dict[str, Any]`
+- abstract: false
+- does: Projects the detail pane's identity, workflow state, repository, liveness verdict, active node, process id, agent label, exit verdict, and activity.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::head
+- tests: groom/tests/test_projection.py::test_the_head_names_the_cli_that_ran_the_last_turn
+
+### method-metrics
+
+- sig: `metrics(wf: WorkflowContainer, tel: RunTelemetry | None = None, facts: dict[str, Any] | None = None, now: float | None = None) -> dict[str, Any]`
+- abstract: false
+- does: Returns an explicit empty metrics panel when neither telemetry nor durable facts exist.
+- does: Merges hot telemetry with durable facts into an ordered cell list, fired alerts, and run directory when either source exists.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::metrics
+- tests: groom/tests/test_projection.py::test_run_metrics_merges_hot_cache_and_durable_facts
+
+### method-log-lines
+
+- sig: `log_lines(logs: list[dict[str, Any]] | None) -> list[dict[str, Any]]`
+- abstract: false
+- does: Projects at most `LOG_TRAIL_LIMIT` supplied log records into timestamped, severity-classified detail-trail lines.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::log_lines
+- tests: groom/tests/test_projection.py::test_log_trail_newest_first_with_severity_classes
+
+### method-run-live
+
+- sig: `run_live(wf: WorkflowContainer, tel: RunTelemetry | None = None, facts: dict[str, Any] | None = None, logs: list[dict[str, Any]] | None = None, now: float | None = None) -> dict[str, Any]`
+- abstract: false
+- does: Combines the clock-refreshable detail head, metrics, and log trail without including editable gate state.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::run_live
+- tests: groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs
+
+### method-span-row
+
+- sig: `span_row(span: dict[str, Any]) -> dict[str, Any]`
+- abstract: false
+- does: Projects a telemetry span into its formatted start time, run identity, node, name, elapsed duration, and defaulted status.
+- raises: none intentionally raised.
+- code: groom/groom/projection.py::span_row
+- tests: groom/tests/test_projection.py::test_traces_view_shows_only_connected_runs_by_default
 
 ## Algorithms
 

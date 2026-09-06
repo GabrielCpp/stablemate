@@ -8,8 +8,8 @@ title: Docker exec runner
 Docker exec runner is Groom's host-to-container command helper for executing one already-running [workflow container](workflow-container.md) command through Docker's `exec` operation. The [host-to-container sidecar query](host-to-container-sidecar-query.md) uses it to run `groom-sidecar --query` in-place, and the helper delegates the completed argv to the [Docker subprocess runner](docker-subprocess-runner.md) for shell-free execution, text capture, and timeout enforcement.
 
 - code: groom/groom/docker_io.py::docker_exec
+- tests: `groom/tests/test_docker_io.py::test_docker_exec_builds_user_and_env_flags`
 - refs: [host-to-container sidecar query](host-to-container-sidecar-query.md), [Docker subprocess runner](docker-subprocess-runner.md), [workflow container](workflow-container.md)
-- verify: groom/tests/test_docker_io.py::test_docker_exec_builds_user_and_env_flags
 
 ## Contract
 
@@ -57,18 +57,27 @@ Docker exec runner is Groom's host-to-container command helper for executing one
 
 ## Methods
 
-### docker_exec
+### method: docker_exec
 
 - sig: `docker_exec(container_id: str, args: list[str], *, user: str | None = None, env: dict[str, str] | None = None, timeout: int = DOCKER_TIMEOUT) -> subprocess.CompletedProcess`
 - abstract: false
-- raises: process launch failures and timeout exceptions surfaced by the [Docker subprocess runner](docker-subprocess-runner.md); Docker non-zero exits are returned as completed process results instead of raised here.
-- returns: text-mode completed process result for the single `docker exec` command, preserving args, return code, stdout, and stderr.
+- does: constructs one `docker exec` argv beginning with `docker`, `exec` and ending with the supplied container id followed by the supplied command tokens in their original order.
+- verify: count(subject="Docker exec invocations", equals=1)
+- does: adds `-u` followed by the supplied user before the container id only when `user` is truthy.
+- verify: json_path(path="argv", matches="-u")
+- does: adds one `-e KEY=VALUE` pair before the container id for each supplied environment mapping item, preserving mapping iteration order.
+- verify: json_path(path="argv", matches="-e")
+- does: delegates the completed argv and supplied timeout once to the [Docker subprocess runner](docker-subprocess-runner.md) without shell parsing or Docker-result interpretation.
+- verify: count(subject="Docker subprocess runner calls", equals=1)
+- raises: surfaces process launch failures from the [Docker subprocess runner](docker-subprocess-runner.md).
+- verify: exit_status(code=1)
+- raises: surfaces timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md).
+- verify: exit_status(code=1)
+- returns: returns the text-mode completed process result unchanged when Docker exits before the timeout, including its args, return code, stdout, and stderr.
+- verify: json_path(path="returncode", equals=0)
 - code: groom/groom/docker_io.py::docker_exec
-- verify: groom/tests/test_docker_io.py::test_docker_exec_builds_user_and_env_flags
-- arg: `container_id`; type `str`; required; no default; identifies the already-running container targeted by Docker exec.
-- arg: `args`; type `list[str]`; required; no default; supplies the in-container command argv appended after the container id.
-- kwarg: `user`; type `str | None`; optional; default `None`; emits the Docker exec user flag only when present.
-- kwarg: `env`; type `dict[str, str] | None`; optional; default `None`; emits one Docker exec environment flag per mapping item when present.
-- kwarg: `timeout`; type `int`; optional; default `DOCKER_TIMEOUT`, currently 20 seconds; forwarded unchanged to the subprocess runner.
+- tests: `groom/tests/test_docker_io.py::test_docker_exec_builds_user_and_env_flags`
 
 Builds the host-side Docker exec argv for one already-running container and hands that argv to the shared subprocess layer exactly once. It is intentionally a command-construction boundary: it does not parse Docker output, validate sidecar payloads, retry failed execs, start stopped containers, or map Docker return codes into Groom domain values.
+
+The required `container_id` is the target identifier and `args` is the ordered in-container token list. The optional `user` defaults to `None`; when truthy it emits `-u` and its value. The optional `env` defaults to `None`; each mapping entry emits one `-e KEY=VALUE` pair in iteration order. The optional `timeout` defaults to `DOCKER_TIMEOUT` (20 seconds) and is forwarded unchanged. The existing test covers the populated user and environment flag path; launch and timeout propagation remain grounded in the delegated subprocess contract.

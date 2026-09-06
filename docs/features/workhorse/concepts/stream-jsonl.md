@@ -21,9 +21,13 @@ It is its own module, `runner/backends/jsonl.py`, so the shared loop is importab
 in any CLI adapter.
 
 - code: `workhorse/workhorse/runner/backends/jsonl.py::stream_jsonl`
-- verify: `workhorse/tests/test_backends.py::test_opencode_cap_log_line_aborts_stream_early`,
+- tests: `workhorse/tests/test_backends.py::test_opencode_cap_log_line_aborts_stream_early`,
   `workhorse/tests/test_backends.py::test_opencode_cap_structured_error_event_aborts_stream_early`,
   `workhorse/tests/test_backends.py::test_opencode_provider_header_timeout_aborts_into_short_retry`
+- consistency: A non-JSON input line is emitted as one node-prefixed diagnostic and retained verbatim for failure classification.
+
+For a non-JSON input line, `stream_jsonl` emits one node-prefixed diagnostic and retains the raw
+line verbatim for failure classification.
 
 ## Contract
 
@@ -48,12 +52,13 @@ in any CLI adapter.
     to `stream_subprocess`. This is how a harness's operator-configured `[harness.<backend>].env`
     block reaches the CLI process.
 - **Output:** [`TurnState`](finalize-turn.md#turnstate) — one struct, not a tuple. `result_text` and
-  `session_id` are whatever `on_event` populated; `diagnostics` holds every non-JSON line and every
-  diagnostic `on_event` appended; `timed_out` is `True` when `stream_subprocess` timed out/was
-  watchdog-killed **or** an [early abort](#early-abort) fired;
-  `returncode` is the child's exit code verbatim.
-- **Raises:** nothing turn-specific — a `stream_subprocess` `Popen` failure propagates as its
-  normal `OSError`.
+   `session_id` are whatever `on_event` populated; `diagnostics` holds every non-JSON line and every
+   diagnostic `on_event` appended; `timed_out` is `True` when `stream_subprocess` timed out/was
+   watchdog-killed **or** an [early abort](#early-abort) fired;
+   `returncode` is the child's exit code verbatim.
+
+`workhorse/workhorse/runner/backends/jsonl.py::stream_jsonl` does not intercept a
+`stream_subprocess` `Popen` failure, so Python surfaces it as its normal `OSError`.
 
 > **Both `cwd` and `env_extra` are honoured here.** `cwd` was previously accepted and silently
 > dropped, so Codex/Copilot/OpenCode nodes always ran in the launching process's working directory
@@ -67,12 +72,12 @@ in any CLI adapter.
    [`stream_subprocess`](stream-subprocess.md#algorithm):
    1. Strip `raw`; an empty stripped line is a no-op (`return False`).
    2. Record `before = len(state.diagnostics)`.
-   3. `json.loads(line)`:
-      - **Parse succeeds** → call `on_event(event, state, node_id)`; the backend's callback is
-        responsible for any printing and for anything it wants to add to `state.diagnostics`.
-      - **Parse fails** (`JSONDecodeError`) → print `[{node_id}] {line}` and append the raw line to
-        `state.diagnostics` verbatim (a CLI's plain-text log line, e.g. opencode's `--print-logs`
-        output, still reaches the classifier).
+    3. Parse `line` as JSON:
+       - **Parse succeeds** → call `on_event(event, state, node_id)`; the backend's callback is
+         responsible for any printing and for anything it wants to add to `state.diagnostics`.
+       - **Non-JSON input** → emit `[{node_id}] {line}` and retain the raw line in
+         `state.diagnostics` (a CLI's plain-text log line, e.g. opencode's `--print-logs` output,
+         still reaches the classifier).
    4. **Scan only what this line added** — `new_diag = "\n".join(state.diagnostics[before:])` — and
       run the [early-abort](#early-abort) checks against it.
    5. Otherwise `return False` (keep reading).

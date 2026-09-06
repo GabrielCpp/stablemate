@@ -33,6 +33,7 @@ Container running-state check is the `is_running` public member of the [Groom Do
 - abstract: false
 - raises: propagates subprocess launch and timeout exceptions from the Docker inspection reader path; propagates ordinary metadata-shape errors when present metadata contains a non-mapping `State` value.
 - returns: `True` only for present inspection metadata with truthy `State.Running`; otherwise `False` for absent metadata, absent `State`, absent `Running`, or falsey `Running`.
+- code: groom/groom/docker_io.py::is_running
 
 ## Algorithm
 

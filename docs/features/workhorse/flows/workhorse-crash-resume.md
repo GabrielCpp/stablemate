@@ -20,14 +20,21 @@ still resume correctly — and it is why a state should be sized around the work
 afford to repeat.
 
 - start: an in-progress `workhorse-<name> run [<flow>]` dies after at least one checkpoint
-  write, before any state returned [`Done`](../workflow-format.md#transition) — so
-  [`run.json`](../run-artifacts.md#runjson)'s `terminal` is still `null`. An operator Ctrl-C
-  qualifies and resumes identically: `run_pyflow`'s `KeyboardInterrupt` handler terminates
-  the active agent turn, records the stop via
-  [`record_interrupt`](../concepts/artifact-writer.md#record_interrupt), prints
-  the pause, and exits `130` — deliberately leaving `terminal` `null` so step 2 still sees
-  an unfinished run. A `PyflowError` (exit `1`) marks the run `fail` but leaves the same dir
-  on disk to be resumed explicitly once the cause is fixed.
+  write
+- verify: persists(subject="the in-progress run's checkpoint")
+- start: the run dies before any state returned [`Done`](../workflow-format.md#transition), so
+  [`run.json`](../run-artifacts.md#runjson)'s `terminal` is still `null`
+- verify: json_path(path="$.terminal", equals="null")
+- start: an operator Ctrl-C terminates the active agent turn, records the stop via
+  [`record_interrupt`](../concepts/artifact-writer.md#record_interrupt), prints the pause, and
+  exits `130`, leaving `terminal` `null` so step 2 still sees an unfinished run
+- verify: exit_status(code=130)
+- verify: json_path(path="$.terminal", equals="null")
+- start: a `PyflowError` exits `1`, marks the run `fail`, and leaves the same dir on disk to be
+  resumed explicitly once the cause is fixed
+- verify: exit_status(code=1)
+- verify: json_path(path="$.terminal", equals="fail")
+- verify: persists(subject="the failed run's stable directory")
 - steps:
   1. **Re-run the exact same command** — same name, same `--run-id` or default, same
      `--runs-dir`, and none of `--resume-run` / `--resume-latest` / `--no-cache`.
@@ -61,10 +68,13 @@ afford to repeat.
   5. **Walk on** — one state method per transition, checkpointing before each, until a state
      returns `Done`.
 - end: the entry flow returns `Done`, `finish(terminal="terminal")` stamps
-  [`run.json`](../run-artifacts.md#runjson)'s `ended_at`/`terminal`, and the process exits
-  `0`. Dying again leaves the same stable dir resumable for another retry of this same
-  journey; a `--dry-run` never participates, since it neither resumes nor is resumable.
-- verify: `workhorse/tests/test_pyflow.py::test_a_resume_re_enters_the_checkpointed_state_without_re_running_setup`,
-  `workhorse/tests/test_pyflow.py::test_a_checkpoint_naming_a_dead_state_fails_rather_than_starting_over`,
-  `workhorse/tests/test_pyflow.py::test_read_resume_refuses_a_yaml_checkpoint`,
-  `workhorse/tests/test_resume_auto.py::test_auto_resolve_skips_terminal_run`
+  [`run.json`](../run-artifacts.md#runjson)'s `ended_at`/`terminal`, and the process exits `0`.
+- verify: exit_status(code=0)
+- end: dying again leaves the same stable dir resumable for another retry of this same journey.
+- verify: persists(subject="the unfinished run's stable directory and checkpoint")
+- end: a `--dry-run` never participates, since it neither resumes nor is resumable.
+- verify: absent(subject="a dry-run resume target")
+- tests: `workhorse/tests/test_pyflow.py::test_a_resume_re_enters_the_checkpointed_state_without_re_running_setup`
+- tests: `workhorse/tests/test_pyflow.py::test_a_checkpoint_naming_a_dead_state_fails_rather_than_starting_over`
+- tests: `workhorse/tests/test_pyflow.py::test_read_resume_refuses_a_yaml_checkpoint`
+- tests: `workhorse/tests/test_resume_auto.py::test_auto_resolve_skips_terminal_run`

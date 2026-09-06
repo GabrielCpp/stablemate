@@ -8,8 +8,8 @@ title: _compact_session — Claude's in-place context compaction
 Claude's implementation of [`AgentBackend.compact`](agent-backend.md#compact-abstract) — Layer 2
 ("compact & continue") of [the resilience ladder](run-agent.md#the-ladder). When a node's context
 window is exhausted mid-run, [`AgentRunner`](agent-turn.md) calls `backend.compact(...)`;
-[`ClaudeBackend`](claude-backend.md#contract) delegates straight through to this module-level
-function, which resumes the node's persisted session and runs the CLI's `/compact` command in
+[`ClaudeBackend`](claude-backend.md#contract) implements the compaction protocol directly in
+its `compact` method, which resumes the node's persisted session and runs the CLI's `/compact` command in
 place, so the node can retry its **same** prompt on a smaller session afterward instead of losing
 its progress to a fresh-session reframe.
 
@@ -18,10 +18,13 @@ It is the only substantive implementation of Layer 2 in the tree. `compact` is
 other four backends each satisfy it with an unconditional `return False`, and their nodes always
 fall through to reframe on overflow.
 
-- code: `workhorse/workhorse/runner/backends/claude.py::_compact_session`
-- verify: `workhorse/tests/test_config_harness_env.py::test_compaction_runs_under_the_same_env`
+- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.compact`
+- tests: `workhorse/tests/test_config_harness_env.py::test_compaction_runs_under_the_same_env`
 
 ## Contract
+
+Compaction receives the operator-configured Claude harness environment used by normal turns. This
+keeps the `/compact` call under the same CLI configuration as the conversation it compacts.
 
 - **Input:**
   - `session_id_path: Path | None` — the run's [`.session_id`](../run-artifacts.md#session_id)
@@ -38,14 +41,12 @@ fall through to reframe on overflow.
     forwarded to `stream_subprocess`. There is no import-time constant behind this parameter; the
     caller supplies the same budget it uses for a normal turn.
   - `env_extra: dict[str, str] | None` (**keyword-only**, default `None`) — the operator's
-    `[harness.claude].env` table, supplied by `ClaudeBackend.compact` as `self.harness_env()`. A
-    knob that shapes a turn must also shape the `/compact` turn, or compaction runs under a
-    different CLI configuration than the conversation it is compacting.
+    `[harness.claude].env` table, supplied by `ClaudeBackend.compact` as `self.harness_env()`.
 - **Output:** `bool` — `True` when compaction ran without itself overflowing (safe to retry the
   node's prompt on the now-smaller session); `False` when there is no session to compact, the
-  call fails outright, or `/compact` reports failure. **Never raises** — compaction is
-  best-effort, and every failure mode maps to `False` so the caller falls back to Layer 3
-  (reframe) instead of crashing the node.
+  call fails outright, or `/compact` reports failure. Compaction is best-effort, so those
+  failures map to `False` and the caller falls back to Layer 3 (reframe) instead of crashing the
+  node.
 
 ## Algorithm
 
@@ -57,11 +58,7 @@ fall through to reframe on overflow.
    invocation shape as a normal turn ([`_run_cli`](run-claude-cli.md#algorithm)), but with no
    `--add-dir` or `--effort` flags (compaction doesn't need tool access or a reasoning-effort
    override). Print `[{node_id}] 🗜 compacting session {sid[:8]}… to free context`.
-3. **Stream `/compact` as the turn's stdin.** Runs the command through
-   [`stream_subprocess`](stream-subprocess.md#algorithm) (own process group, watchdog, group-kill
-   — a wedged compaction can't hang the run either) with `stdin_data="/compact"`,
-   `resilience=resilience` and `env_extra=env_extra`, driving an `on_line` callback that
-   accumulates a small dict of state as each JSON event arrives:
+3. Parse the compaction event stream:
    - `event["session_id"]`, if present, updates `new_session_id` (starts seeded at the original
      `sid`, so the persisted id is never lost even if no event repeats it).
    - `event["status"] == "compacting"` sets `saw_compacting = True` — the CLI has acknowledged the
@@ -73,10 +70,15 @@ fall through to reframe on overflow.
    - A blank line, or a line that isn't valid JSON, is silently skipped (best-effort parsing;
      unlike [`classify_turn`](classify-turn.md), a stray non-JSON line here doesn't count as a
      failure signal since compaction has no output-parsing step to fall back on).
-   This function does **not** use [`_stream_events`](stream-events.md) or
-   [`ClaudeTurnStream`](stream-events.md#claudeturnstream) — a `/compact` turn produces no result
-   text to classify, so it reads the three fields it cares about itself rather than filling a
-   turn accumulator it would then ignore.
+    This function does **not** use [`_stream_events`](stream-events.md) or
+    [`ClaudeTurnStream`](stream-events.md#claudeturnstream) — a `/compact` turn produces no result
+    text to classify, so it reads the three fields it cares about itself rather than filling a
+    turn accumulator it would then ignore.
+
+The current implementation invokes [`stream_subprocess`](stream-subprocess.md#algorithm) with
+`/compact` as stdin, `resilience`, and the Claude harness environment; its `on_line` callback
+builds the event state described above. See
+`workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.compact`.
 4. **Call failure → `False`.** If `stream_subprocess` itself raises (a broad `except Exception`,
    deliberate and marked `noqa: BLE001` — compaction is best-effort and must never propagate a
    crash into the ladder), print `[{node_id}] ⚠ compaction call failed: {exc}` and return `False`

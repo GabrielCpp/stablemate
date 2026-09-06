@@ -21,14 +21,15 @@ CLI, so importing [the port](agent-backend.md) drags in no adapter.
 
 - code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend`
 - extends: [AgentBackend](agent-backend.md)
-- verify: `workhorse/tests/test_backends.py::test_codex_run_turn_fresh_then_resume`,
-  `workhorse/tests/test_backends.py::test_codex_effort_clamped_to_high`,
-  `workhorse/tests/test_backends.py::test_codex_effort_sets_reasoning_override`,
-  `workhorse/tests/test_backends.py::test_codex_no_effort_omits_override`,
-  `workhorse/tests/test_backends.py::test_codex_per_node_profile_overrides_env`,
-  `workhorse/tests/test_backends.py::test_codex_profile_from_env`,
-  `workhorse/tests/test_backends.py::test_parse_codex_model`,
-  `workhorse/tests/test_backends.py::test_non_claude_backends_registered`
+
+Coverage includes `workhorse/tests/test_backends.py::test_codex_run_turn_fresh_then_resume`,
+`workhorse/tests/test_backends.py::test_codex_effort_clamped_to_high`,
+`workhorse/tests/test_backends.py::test_codex_effort_sets_reasoning_override`,
+`workhorse/tests/test_backends.py::test_codex_no_effort_omits_override`,
+`workhorse/tests/test_backends.py::test_codex_per_node_profile_overrides_env`,
+`workhorse/tests/test_backends.py::test_codex_profile_from_env`,
+`workhorse/tests/test_backends.py::test_parse_codex_model` and
+`workhorse/tests/test_backends.py::test_non_claude_backends_registered`.
 
 ## Contract
 
@@ -36,9 +37,10 @@ CLI, so importing [the port](agent-backend.md) drags in no adapter.
 - `default_model` = `None` — Codex's own configured default applies unless a node/profile names
   one.
 - `supports_compaction` = `False`.
-- **`run_turn(prompt, node_id, session_id_path, model=None, *, timeout, resilience, cwd=None,
-  add_dirs=None, effort=None)`** — `timeout` and `resilience` are keyword-only and required
-  ([why](agent-backend.md#run_turn-abstract)). Builds the argv:
+- consistency: run-turn — requires `timeout` and `resilience` as keyword-only arguments
+  ([why](agent-backend.md#run_turn-abstract)).
+- **`run_turn(prompt, node_id, session_id_path, model=None, *, prompt_path=None, timeout, resilience,
+  cwd=None, add_dirs=None, effort=None)`** builds the argv:
   ```
   codex [--profile <profile>] exec [resume <sid>] --json --skip-git-repo-check
         --dangerously-bypass-approvals-and-sandbox [-m <model_slug>]

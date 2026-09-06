@@ -45,6 +45,7 @@ command carries the workflow object, so there is no resolution step left to conf
   [run artifacts](../run-artifacts.md) under `<runs_dir>/<name>-<run_id>` record the outcome
   and make the run resumable from the state it stopped in — see
   [crash and resume](workhorse-crash-resume.md).
-- verify: `workhorse/tests/test_console_script.py::test_a_registry_resolves_to_its_own_package_directory`,
-  `workhorse/tests/test_console_script.py::test_the_cli_reports_the_zip_failure_and_exits`,
-  `workhorse/tests/test_console_script.py::test_the_workflows_distribution_declares_its_scripts`
+- verify: exit_status(code=1)
+- tests: `workhorse/tests/test_console_script.py::test_a_registry_resolves_to_its_own_package_directory`
+- tests: `workhorse/tests/test_console_script.py::test_the_cli_reports_the_zip_failure_and_exits`
+- tests: `workhorse/tests/test_console_script.py::test_the_workflows_distribution_declares_its_scripts`

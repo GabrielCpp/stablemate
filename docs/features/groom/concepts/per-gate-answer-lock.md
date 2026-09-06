@@ -77,8 +77,9 @@ Per-gate answer lock is groom's process-local serialization primitive for one op
 - sig: `gate_lock(container_id: str, file_path: str) -> asyncio.Lock`
 - abstract: false
 - raises: no domain-specific errors; ordinary memory allocation errors while creating a new lock would propagate.
+- verify: created(subject="lock entry for a new container-and-gate pair")
 - code: groom/groom/state.py::gate_lock
-- verify: groom/tests/test_state.py::test_prune_also_forgets_gate_locks_of_removed
+- tests: groom/tests/test_state.py::test_prune_also_forgets_gate_locks_of_removed
 
 Returns the shared lock for one container-and-gate-file pair, creating it when the pair has not been seen before in the current process.
 

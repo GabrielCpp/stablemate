@@ -14,20 +14,18 @@ kill) — this is the only one of the three that runs on a **fresh session**, so
 whole task rather than assuming any prior turn is still in context.
 
 - code: `workhorse/workhorse/runner/reframe.py::rephrase_prompt`
-- verify: `workhorse/tests/test_agent_recovery.py::test_unparseable_output_reframes_then_defaults`
+- tests: `workhorse/tests/test_agent_recovery.py::test_unparseable_output_reframes_then_defaults`
 
 ## Contract
 
 Public, and pure: it knows nothing about the runner, the backend or the session — the caller is
 what drops `session_id_path` before sending what this returns.
 
-- **Input:**
-  - `original_prompt: str` — the node's fully-rendered prompt (the same text on every attempt —
-    reframing always restarts from this, never from a previously-reframed variant).
-  - `node: AgentNode` — supplies `node.outputs` to build the output-keys contract each strategy
-    states.
-  - `attempt: int` — the 1-based reframe count for this node (the ladder's `rephrase` counter
-    *after* incrementing); selects which strategy to apply.
+`original_prompt: str` carries the node's fully rendered prompt. The ladder supplies that original
+text on each attempt rather than feeding a previously reframed variant back into the function.
+`node: AgentNode` supplies `node.outputs` for the output-keys contract included by each strategy,
+while `attempt: int` is the node's 1-based reframe count (the ladder's `rephrase` counter after
+incrementing) and selects the strategy.
 - **Output:** `str` — the reworded prompt to send on a **fresh session** (the caller drops
   `session_id_path` before invoking it — see [Sessions](run-agent.md#sessions)).
 - **Raises:** nothing — pure string construction.
@@ -68,5 +66,5 @@ previous attempt's wording, only on the fixed `original_prompt`.
 - [`retry_prompt`](retry-prompt.md) / [`timeout_retry_prompt`](timeout-retry-prompt.md) — the
   other two prompt-mutation strategies in `runner/reframe.py`, used in different failure paths
   (same-session output-parse retry, and a wall-clock-timeout retry respectively).
-- There is no rung below this one: once every reframe has failed the ladder re-raises and the
-  run stops at its checkpoint, rather than emitting an answer the agent never gave.
+- consistency: once every configured reframe has failed, [`AgentRunner.run`](run-agent.md#the-ladder)
+  re-raises so the run stops at its checkpoint rather than emitting an answer the agent never gave

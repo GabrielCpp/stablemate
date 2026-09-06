@@ -8,8 +8,8 @@ title: Workspace-volume awaiting-file reader
 Workspace-volume awaiting-file reader is the Docker-volume sweep used by the [workflow discovery scan](workflow-discovery-scan.md#method-find-awaiting-gates) when the sidecar query path is unavailable and Groom must recover open gates from a workflow container's `/workspace` volume. It uses the [Docker subprocess runner](docker-subprocess-runner.md) to start one throwaway read-only Alpine container, searches for files whose status line contains the [operator gate context file](../operator-gate-context-file.md) awaiting token, prunes heavy vendor and VCS directories, and returns workspace-volume-relative candidate paths for the discovery layer to reread before creating [gate info](gate-info.md) records.
 
 - code: groom/groom/docker_io.py::grep_awaiting_files
-- verify: groom/tests/test_docker_io.py::test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths
-- verify: groom/tests/test_docker_io.py::test_grep_awaiting_files_empty_on_docker_failure
+- tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths
+- tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_empty_on_docker_failure
 - refs: [workflow discovery scan](workflow-discovery-scan.md#method-find-awaiting-gates), [Docker subprocess runner](docker-subprocess-runner.md), [operator gate context file](../operator-gate-context-file.md), [gate info](gate-info.md)
 
 ## Contract
@@ -109,9 +109,11 @@ Workspace-volume awaiting-file reader is the Docker-volume sweep used by the [wo
 - abstract: false
 - raises: propagates process launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md); converts Docker process return-code failures to an empty list.
 - returns: workspace-volume-relative candidate file paths in observed command-output order, with no sorting, deduplication, status parser validation, or question extraction.
+- verify: count(subject="workspace-volume-relative candidate paths", equals=2)
+- verify: count(subject="workspace-volume-relative candidate paths", equals=0)
 - code: groom/groom/docker_io.py::grep_awaiting_files
-- verify: groom/tests/test_docker_io.py::test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths
-- verify: groom/tests/test_docker_io.py::test_grep_awaiting_files_empty_on_docker_failure
+- tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths
+- tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_empty_on_docker_failure
 
 Returns the workspace-volume-relative paths of files that appear to carry an awaiting operator status line. The method is intentionally a candidate producer: it does not parse gate context, extract questions, verify the file is still awaiting after the sweep, or create gate records.
 

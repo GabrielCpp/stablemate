@@ -15,20 +15,17 @@ kill) — this is the only one of the three that assumes the prior turn is still
 since the caller never drops `session_id_path` around it.
 
 - code: `workhorse/workhorse/runner/reframe.py::retry_prompt`
-- verify: `workhorse/tests/test_agent_recovery.py::test_unparseable_output_reframes_then_defaults`
+- tests: `workhorse/tests/test_agent_recovery.py::test_unparseable_output_reframes_then_defaults`
 
 ## Contract
 
 Public, and pure: it takes no runner, no config and no clock. `runner/reframe.py` holds nothing but
-the four prompt/output fallbacks, which is why none of them import the ladder that calls them.
-
-- **Input:**
-  - `node: AgentNode` — supplies `node.outputs` (a list of `OutputSpec`); only each entry's `key` is
-    used, to name the JSON keys the reply must contain.
-  - `error: OutputParseError` — the exception `extract_outputs` raised on this attempt; its `str()`
-    is embedded verbatim in the corrective prompt so the agent sees what went wrong.
-- **Output:** `str` — the replacement prompt for the next same-session attempt.
-- **Raises:** nothing — pure string construction.
+the four prompt/output fallbacks, which is why none of them import the ladder that calls them. For
+the `node` argument, `retry_prompt` reads only each `node.outputs` entry's `key` and lists those
+keys as the requested fields of the corrective JSON reply. Its `error: OutputParseError` argument
+is the exception `extract_outputs` raised on this attempt; the rendered prompt interpolates its
+`str()` value so the agent sees what went wrong. The result is a `str` replacement prompt for the
+next same-session attempt, assembled without raising from this pure string construction.
 
 ## Algorithm
 

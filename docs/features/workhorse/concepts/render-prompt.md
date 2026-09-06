@@ -17,10 +17,12 @@ Jinja global a rendered prompt can call — [`instruction_ref`, `prompt_ref`, `s
 [`_farrier_globals`](farrier-globals.md), so it shares that global set with
 [`render_string`](#render_string).
 
+The base and flavor rendering paths are covered by
+`workhorse/tests/test_flavor_render.py::test_plain_renders_base_unchanged`,
+`test_override_fills_block_keeps_base`, `test_override_dir_without_file_for_node_is_base`, and
+`test_no_repo_root_renders_base`.
+
 - code: `workhorse/workhorse/templates.py::render`
-- verify: `workhorse/tests/test_flavor_render.py::test_plain_renders_base_unchanged`,
-  `test_override_fills_block_keeps_base`, `test_override_dir_without_file_for_node_is_base`,
-  `test_no_repo_root_renders_base`
 
 ## Contract
 
@@ -52,14 +54,14 @@ Jinja global a rendered prompt can call — [`instruction_ref`, `prompt_ref`, `s
 2. **Absolute `template_path`** — search path is `[template_path.parent]`, template name is
    `template_path.name`; no flavor lookup (an absolute path names one file directly, not a
    node-relative prompt id).
-3. **Relative `template_path`** — template name is the path as given, search path starts as
-   `[workflow_dir]`, then:
-   1. Call [`_flavor_override(template_path, context, workflow_dir)`](#_flavor_override).
-   2. If it returns a hit `(flavor_dir, node_name)`: search path becomes `[flavor_dir,
-      workflow_dir]` (flavor first, so the override file itself resolves there) and template name
-      becomes the matched candidate — the override's `{% extends "<flow>/prompts/<node>.md" %}`
-      then finds the base prompt on the second search path entry.
-   3. No hit: search path/template name stay as set in step 3 — the base prompt renders unchanged.
+For a **relative `template_path`**, the template name begins as the path as given and the search
+path begins as `[workflow_dir]`. The renderer calls
+[`_flavor_override(template_path, context, workflow_dir)`](#_flavor_override). A hit
+`(flavor_dir, node_name)` changes the search path to `[flavor_dir, workflow_dir]` and the template
+name to the matched candidate. Putting the flavor first resolves the override file there, while
+the second entry lets its `{% extends "<flow>/prompts/<node>.md" %}` find the base prompt. Without a
+hit, the initial search path and template name remain in use, rendering the base prompt unchanged.
+
 4. Build a Jinja2 `Environment(loader=FileSystemLoader(search_paths), undefined=ResilientUndefined,
    keep_trailing_newline=True)` — a **fresh environment per call**, so no globals or loader state
    leaks between renders.
@@ -79,18 +81,23 @@ farrier copying or rewriting it. Presence alone activates it: no config, no sele
 - **Input:** `template_path: Path` (the prompt path — only `.name` is used, so a flavor is keyed by
   the prompt's **file name**, not its full relative path); `context: dict[str, Any]`;
   `workflow_dir: Path`.
-- **Algorithm:**
-  1. `repo_root = context.get("_node_cwd") or ManifestContext.from_context(context).repo_root` — an
-     agent turn with a declared [`cwd`](../workflow-format.md#cwd-and-add_dirs) looks its flavor up
-     **relative to that per-turn working directory** instead of the run's
-     [`_repo_root`](../context-manifest.md#runtime-mapping), so each repo in a multi-repo workflow
-     can carry its own flavor independent of the orchestrating repo. Neither available → return
-     `None` (no repo to look an override up against, e.g. a manifest-free run).
-  2. `flavor_dir = Path(repo_root) / ".agents" / "flavors" / workflow_dir.name`.
-  3. Two candidates, the **path-keyed** one first — `<flow>/<name>.md`, mirroring the prompt's own
-     directory (`dev/implement-plan.md` for `dev/prompts/implement-plan.md`), then `<name>.md` by
-     basename alone. Return `(str(flavor_dir), <candidate>)` for the first that is a file; else
-     `None`.
+
+The lookup proceeds as follows:
+
+1. It derives `repo_root` from `context.get("_node_cwd")` or
+   `ManifestContext.from_context(context).repo_root`. An agent turn with a declared
+   [`cwd`](../workflow-format.md#cwd-and-add_dirs) therefore looks its flavor up **relative to that
+   per-turn working directory** instead of the run's
+   [`_repo_root`](../context-manifest.md#runtime-mapping), so each repo in a multi-repo workflow can
+   carry its own flavor independent of the orchestrating repo. With neither value available, the
+   lookup yields `None` (there is no repo against which to look up an override, as in a
+   manifest-free run).
+2. It derives `flavor_dir` as
+   `Path(repo_root) / ".agents" / "flavors" / workflow_dir.name`.
+3. It considers two candidates, the **path-keyed** one first — `<flow>/<name>.md`, mirroring the
+   prompt's own directory (`dev/implement-plan.md` for `dev/prompts/implement-plan.md`) — and then
+   `<name>.md` by basename alone. The result is `(str(flavor_dir), <candidate>)` for the first
+   candidate that is a file, or `None` when neither candidate is a file.
 - **Output:** `tuple[str, str] | None` — `(flavor_dir, template_name)` on a hit, else `None`.
 
 The path-keyed location exists because a workflow whose flows each own their prompts has several
@@ -127,8 +134,10 @@ that needs a value computed calls a Python function and passes it, so there is n
   below.
 - **Output:** `str` — the rendered text. No `keep_trailing_newline` (irrelevant for a one-line
   arg/cwd value, unlike a multi-line prompt file).
-- **Raises:** none of its own — `env.from_string` never fails on a missing file (there is none);
-  a malformed Jinja expression still raises `jinja2.TemplateSyntaxError`, uncaught here.
+
+Template parsing is delegated to `env.from_string`, with no file lookup involved and no exception
+handling around it. A malformed Jinja expression consequently surfaces Jinja's
+`TemplateSyntaxError` directly.
 
 **Algorithm:**
 1. `env = Environment(undefined=ChainableUndefined if quiet else ResilientUndefined)` — a **fresh
@@ -160,4 +169,3 @@ instead of raising and aborting the run, while still logging a `[template] ⚠ �
 so the bad reference stays visible. This replaces Jinja's default `StrictUndefined`, which would
 raise and abort a node over a single malformed template reference — inconsistent with
 [workhorse's fail-soft posture](run-agent.md) for unattended runs.
-

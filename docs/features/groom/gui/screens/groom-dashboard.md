@@ -5,13 +5,14 @@ title: groom dashboard
 ---
 # groom dashboard
 
-- code: groom/groom/app.py::index
 - route: `/`; live-verified — selecting a run row, editing the answer textarea, and every activity-mode switch stay on this same landed path with no browser navigation.
-- requires: none — the root route is unauthenticated and unguarded; groom serves the shell to anyone who can reach the port.
-- params: none — the screen takes no path or query parameter. Everything it shows is chosen after load and held in the browser, never in the URL.
+- requires:
+  - none — the root route is unauthenticated and unguarded; groom serves the shell to anyone who can reach the port.
+- params:
+  - none — the screen takes no path or query parameter. Everything it shows is chosen after load and held in the browser, never in the URL.
 - entry: opened directly at the groom server's root URL. It is the only screen groom serves, so it is entered from outside in-app navigation and never linked to from another screen.
+- code: groom/groom/app.py::index
 - verify: groom/tests/test_a11y_dynamic.py::test_runs_pane_with_an_open_gate_is_accessible
-- verify: groom/tests/test_a11y_dynamic.py::test_the_activity_rail_is_reachable_and_operable_by_keyboard
 - verify: groom/tests/test_dashboard_client.py::test_the_client_module_parses
 - verify: groom/tests/test_projection.py::test_state_message_is_json_serializable
 - vet: docs/specs/groom-dashboard/vet.md
@@ -58,9 +59,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: not focusable itself; Tab moves through the five mode buttons it contains, in DOM order.
 - parent: [groom dashboard](#groom-dashboard)
 - states: static. It is shell markup, never re-rendered; only the `active` class and `aria-pressed` on its buttons change.
-- dom: a `<nav>` rather than a `role="toolbar"` div — switching panes *is* this page's navigation, and a toolbar is not a landmark, so its contents would otherwise sit outside every region.
+- verify: visible(locator="#activitybar", text="Panels")
 - code: groom/groom/templates/dashboard.html
-- verify: groom/tests/test_a11y_dynamic.py::test_the_activity_rail_is_reachable_and_operable_by_keyboard
+- tests: groom/tests/test_a11y_dynamic.py::test_the_activity_rail_is_reachable_and_operable_by_keyboard
+- dom: a `<nav>` rather than a `role="toolbar"` div — switching panes *is* this page's navigation, and a toolbar is not a landmark, so its contents would otherwise sit outside every region.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-rail.png
 
 ### main-region
@@ -71,8 +73,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: not focusable; a landmark, not a control.
 - parent: [groom dashboard](#groom-dashboard)
 - states: always present; its visible child is whichever pane `.app[data-mode]` selects.
-- dom: holds all five panes as siblings. The four inactive ones are `display:none`, so exactly one pane's controls are in the accessibility tree at a time.
 - code: groom/groom/templates/dashboard.html
+- dom: holds all five panes as siblings. The four inactive ones are `display:none`, so exactly one pane's controls are in the accessibility tree at a time.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-main-region.png
 
 ### page-heading
@@ -182,9 +184,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: not focusable itself; Tab reaches the run rows inside it, and `j`/`k` move the selection without focus leaving the document body.
 - parent: [groom dashboard](#groom-dashboard)
 - states: `Discovering containers…` while the startup scan runs and nothing has been found; `No workhorse runs — nothing is running.` when the fleet is empty and the scan is done; otherwise one [run row](#run-row) per matching run.
+- verify: count(subject="#runs-list .row[data-worker-id]", equals=3)
 - code: groom/groom/assets/dashboard.js::Fleet
-- verify: groom/tests/test_projection.py::test_fleet_rows_include_every_instance
-- verify: groom/tests/test_projection.py::test_query_filters_the_fleet
+- tests: groom/tests/test_projection.py::test_fleet_rows_include_every_instance
+- tests: groom/tests/test_projection.py::test_query_filters_the_fleet
 - dom: a shell `<div>` carrying `role="log"`, `aria-live="polite"`, and its label. The Preact island renders *into* it, so the region node itself is never replaced and assistive tech keeps tracking one region across every push.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-runs-live-region.png
 
@@ -196,9 +199,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: natively focusable with Tab; Enter or Space selects the run. `j` and `k` move the selection down and up from anywhere that is not a text field.
 - parent: [runs-live-region](#runs-live-region)
 - states: blocked rows carry the `blocked` class; the open row carries `selected` and `aria-current="true"`, and every other row omits `aria-current` entirely rather than setting it to `"false"`.
+- verify: visible(locator="#runs-list .row[data-worker-id]", text="{repo} #{short_handle} {liveness} {doing}")
 - code: groom/groom/assets/dashboard.js::RunRow
-- verify: groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished
-- verify: groom/tests/test_projection.py::test_run_message_row_matches_the_same_row_in_the_state_message
+- tests: `groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished`
+- tests: `groom/tests/test_projection.py::test_run_message_row_matches_the_same_row_in_the_state_message`
 - props:
   - `data-worker-id`: the [workflow container](../../concepts/workflow-container.md) id; required; read by the delegated click handler and by `j`/`k` row movement, which walks the rendered rows.
   - `data-state`: one of `blocked`, `running`, `idle`, `finished`; required; styling and row-navigation metadata.
@@ -216,8 +220,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: not focusable itself; contains the answer form and the diff disclosure.
 - parent: [groom dashboard](#groom-dashboard)
 - states: `Select a run to see its activity, answer its gate, and read its metrics and logs.` with nothing selected; `Loading…` between a selection and its first payload; `Run not found.` for an id the server does not know; otherwise the run header, gate blocks or a no-gate note, metrics, logs, and the diff disclosure.
+- verify: visible(locator="#detail", text="Metrics")
 - code: groom/groom/assets/dashboard.js::Detail
-- verify: groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs
+- tests: groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs
 - dom: a shell `<div>` the detail island renders into. It is refreshed by pushed `detail` frames for the watched run, not by re-fetching.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-detail-pane.png
 
@@ -229,8 +234,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: not focusable.
 - parent: [detail-pane](#detail-pane)
 - states: shows a state dot, type badge, repository label, an optional pulse label, the meta line (`#handle · state · node · pid`), an optional exit hint for a finished run, and an optional current-activity line.
+- verify: visible(locator="#detail .detail-head", text="exited")
 - code: groom/groom/assets/dashboard.js::RunHead
-- verify: groom/tests/test_projection.py::test_exit_hint_only_on_finished_with_a_code
+- tests: groom/tests/test_projection.py::test_exit_hint_only_on_finished_with_a_code
 - dom: one of three `role="status"` regions on this page. Each carries its own `aria-label` — this one, the [status bar region](#statusbar-region), and the [connection chip](#connection-chip) — so a screen reader and `getByRole` can tell them apart.
 - screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-run-header.png
 
@@ -242,9 +248,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: not focusable; rendered prose.
 - parent: [detail-pane](#detail-pane)
 - states: one block per open gate, keyed by gate file path; absent for a run with no open gate, which instead renders a note naming the run's state and node.
+- verify: visible(locator="#detail .gate-block .question", text="Use ?")
 - code: groom/groom/assets/dashboard.js::GateBlock
 - code: groom/groom/assets/dashboard.js::Markdown
-- verify: groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup
+- tests: groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup
 - dom: the gate's question travels as data, never as markup. The client renders it with `marked` and sanitizes the result with DOMPurify before it reaches `innerHTML`; the gate's file path is shown above it as a plain text node.
 - screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-gate-question.png
 
@@ -256,8 +263,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: natively focusable with Tab; multi-line text entry; Enter inserts a newline rather than submitting.
 - parent: [detail-pane](#detail-pane)
 - states: empty on render; cleared only after a successfully sent answer, so a rejected send leaves the text in the box.
+- verify: visible(locator="#detail form[data-answer] textarea[name=\"answer\"]")
 - code: groom/groom/assets/dashboard.js::AnswerForm
-- verify: groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard
+- tests: groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard
 - dom: four rows, inside a form carrying hidden `cmd`, `workflow_id`, and `file_path` fields. The form is re-rendered on every 5s push, but the gate block is keyed by file path, so Preact reuses the same `<textarea>` DOM node and a half-typed answer survives.
 - screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-answer-textarea.png
 
@@ -294,9 +302,11 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: not focusable.
 - parent: [detail-pane](#detail-pane)
 - states: `No telemetry for this run — it is either pre-OTel or exporting to another collector.` when the run has none; otherwise a grid of key/value cells in the projection's order, followed by an optional footer of fired alert-rule chips and the run directory.
+- verify: visible(locator="#detail .live-sec .metrics-grid .metric:first-child .m-k", text="node")
+- verify: visible(locator="#detail .live-sec .metrics-grid", text="review")
 - code: groom/groom/assets/dashboard.js::Metrics
-- verify: groom/tests/test_projection.py::test_run_metrics_cell_order_is_the_layout
-- verify: groom/tests/test_projection.py::test_run_metrics_merges_hot_cache_and_durable_facts
+- tests: groom/tests/test_projection.py::test_run_metrics_cell_order_is_the_layout
+- tests: groom/tests/test_projection.py::test_run_metrics_merges_hot_cache_and_durable_facts
 
 ### detail-log-trail
 
@@ -306,9 +316,11 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: not focusable.
 - parent: [detail-pane](#detail-pane)
 - states: `No log lines for this run (workhorse ships in-process script logs over OTLP).` when empty; otherwise capped, newest-first lines, each a timestamp, severity, node, and body.
+- verify: visible(locator="#detail .live-sec .log-line:first-child .lt-body", text="boom")
+- verify: count(subject="#detail .live-sec .log-line", equals=60)
 - code: groom/groom/assets/dashboard.js::LogTrail
-- verify: groom/tests/test_projection.py::test_log_trail_newest_first_with_severity_classes
-- verify: groom/tests/test_projection.py::test_log_trail_is_capped
+- tests: groom/tests/test_projection.py::test_log_trail_newest_first_with_severity_classes
+- tests: groom/tests/test_projection.py::test_log_trail_is_capped
 
 ### files-repository-picker-button
 
@@ -574,8 +586,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: not focusable itself; contains the refresh and palette buttons.
 - parent: [groom dashboard](#groom-dashboard)
 - states: four state counts in the order blocked, running, idle, finished, then the repo and worker totals, the connection chip, the refresh control, and the palette button.
+- verify: visible(locator="#statusbar", text="1 blocked 2 running 1 idle 0 finished")
 - code: groom/groom/assets/dashboard.js::StatusBar
-- verify: groom/tests/test_projection.py::test_status_bar_counts_states
+- tests: `groom/tests/test_projection.py::test_status_bar_counts_states`
 - dom: a shell `<div>` with `role="status"`, `aria-live="polite"`, and its own `aria-label`. It is one of three `role="status"` regions on this page; each is named so they are distinguishable.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-statusbar-region.png
 
@@ -587,10 +600,11 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: not focusable; it is a report, not a control.
 - parent: [statusbar-region](#statusbar-region)
 - states: `live` while a frame has arrived within the last 15 seconds; `stale` when the socket is open but has been silent longer; `reconnecting` for the first 60 seconds after the socket closes, while backoff is in flight; `offline` beyond that. `connecting` is the value the store starts with, before the first evaluation.
+- verify: visible(locator="#statusbar .stat.conn", text="live")
 - code: groom/groom/assets/dashboard.js::ConnectionChip
 - code: groom/groom/assets/dashboard.js::deriveConnection
-- verify: groom/tests/test_connection_state.py::test_the_full_live_to_stale_to_offline_progression
-- verify: groom/tests/test_connection_state.py::test_open_but_silent_socket_goes_stale_and_starts_resyncing
+- tests: groom/tests/test_connection_state.py::test_the_full_live_to_stale_to_offline_progression
+- tests: groom/tests/test_connection_state.py::test_open_but_silent_socket_goes_stale_and_starts_resyncing
 - props:
   - `data-conn`: the phase word; required; the only styling hook, so the four states differ visually as well as in their name.
   - `role`: literal `status`; required; the phase changing is exactly the kind of thing that should be announced, and it changes independently of the counts beside it.
@@ -813,10 +827,11 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Does not filter server-side. A server-filtered list would be clobbered by the next 5s push, which is the whole reason the fleet is sent whole.
   - Leaves the selected run, the detail pane, and the command palette's own hit list untouched — the palette reads the fleet from the store, so it still finds a run this filter is hiding.
   - Performs no HTTP request and no websocket send.
+- verify: visible(locator="#runs-list", text="author-002")
 - code: groom/groom/assets/dashboard.js::wireEvents
 - code: groom/groom/assets/dashboard.js::Fleet
 - code: groom/groom/assets/dashboard.js::rowHaystack
-- verify: groom/tests/test_projection.py::test_query_filters_the_fleet
+- tests: groom/tests/test_projection.py::test_query_filters_the_fleet
 
 ### select-run-row
 
@@ -836,11 +851,13 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Swallows a rejected fetch; the pane stays in its loading state and is filled by the subscription's next push, so a transient failure costs a tick rather than an error message.
   - Renders selection rather than applying it: the row emits `selected` and `aria-current="true"` from the store on every render, so a fleet push already agrees with the selection and nothing walks the document repainting rows.
   - Does not move focus, change the active mode, or mutate any server state beyond the subscription.
+- verify: emitted(event="detail", count=1)
+- verify: emitted(event="detail", count=1)
 - code: groom/groom/assets/dashboard.js::select
 - code: groom/groom/assets/dashboard.js::onDetail
 - code: groom/groom/assets/dashboard.js::RunRow
-- verify: groom/tests/test_app.py::test_watch_registers_the_tab_and_pushes_that_run_immediately
-- verify: groom/tests/test_app.py::test_a_detail_push_reaches_only_the_tabs_watching_that_run
+- tests: groom/tests/test_app.py::test_watch_registers_the_tab_and_pushes_that_run_immediately
+- tests: groom/tests/test_app.py::test_a_detail_push_reaches_only_the_tabs_watching_that_run
 - screenshot: docs/features/groom/gui/screenshots/operator-answers-blocked-gate-detail-selected.png
 
 ### keyboard-select-run-row
@@ -1042,12 +1059,14 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Pushes the `✗ not sent` toast, naming the lost connection, when the send is refused.
   - Does not re-fetch the pane. The server's [gate answering layer](../../concepts/gate-answering-layer.md) broadcasts a [dashboard answered message](../../dashboard-answered-message.md) to every tab, which only raises the `✓ answer sent` confirmation; the pane itself is refreshed by the `detail` push the same command triggers, which carries the gates — so no tab re-fetches and a half-typed answer against a different run is never touched.
   - Delegates from the document rather than binding per form, because the form is re-rendered on every push and a delegated handler outlives every one of them.
+- verify: visible(locator="#toasts", text="✗ not sent")
+- verify: visible(locator="#toasts", text="✓ answer sent")
 - code: groom/groom/assets/dashboard.js::wireAnswerForm
 - code: groom/groom/assets/dashboard.js::sendCommand
 - code: groom/groom/assets/dashboard.js::onAnswered
-- verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event
-- verify: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
-- verify: groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard
+- tests: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event
+- tests: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
+- tests: groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard
 - screenshot: docs/features/groom/gui/screenshots/operator-answers-blocked-gate-answer-drafted.png
 
 ### toggle-detail-working-tree-diff
@@ -1085,9 +1104,11 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Clears the busy marking and the spinner when the request settles, on success or failure alike.
   - Renders nothing from the reply. The server reconciles the fleet, prunes vanished containers, and broadcasts the resulting state on the socket, so the run list and status bar update through the same path as every other push.
   - Leaves the selected run, the detail pane, the files and diff caches, and the palette untouched.
+- verify: removed(subject="state.WORKFLOWS['gone']")
+- verify: unchanged(subject="state.WORKFLOWS['keep']")
 - code: groom/groom/assets/dashboard.js::doRefresh
-- verify: groom/tests/test_app.py::test_refresh_prunes_vanished_containers
-- verify: groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
+- tests: groom/tests/test_app.py::test_refresh_prunes_vanished_containers
+- tests: groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
 
 ### rescan-containers-from-statusbar
 

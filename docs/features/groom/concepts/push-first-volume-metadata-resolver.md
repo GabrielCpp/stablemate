@@ -46,8 +46,9 @@ The push-first volume metadata resolver fills Docker-derived volume fields for a
 - sig: `async _ensure_volumes(container_id: str) -> None`
 - abstract: false
 - raises: propagates process-launch or timeout failures from Docker inspection, valid-JSON shape errors from the inspection reader, workflow-container conversion errors, thread handoff failures, or registry-upsert assignment errors; Docker command failure, invalid JSON, and empty inspect output are not raised and are represented by no mutation.
+- verify: unchanged(subject="existing workflow registry fields other than workspace_volume, runs_volume, and workflow_type")
 - code: groom/groom/app.py::_ensure_volumes
-- verify: groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code
+- tests: groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code
 
 Ensure that the workflow registry entry for one already-normalized container id has Docker volume metadata before a push-first or sidecar-first caller continues with its own state update.
 

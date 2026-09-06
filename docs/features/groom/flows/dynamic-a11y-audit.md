@@ -32,16 +32,6 @@ instrument, not part of the product surface.
   and no network access is required. When the browser or the vendored axe bundle
   is missing the audit skips loudly rather than failing, so a machine without a
   browser does not report an accessibility result it never measured.
-- code: groom/tests/test_a11y_dynamic.py::_workspace
-- code: groom/tests/test_a11y_dynamic.py::_seed
-- code: groom/tests/test_a11y_dynamic.py::_Live
-- code: groom/tests/test_a11y_dynamic.py::_live
-- code: groom/tests/test_a11y_dynamic.py::_open
-- code: groom/tests/test_a11y_dynamic.py::_drive
-- code: groom/tests/test_a11y_dynamic.py::_scan
-- code: groom/tests/test_a11y_dynamic.py::_check_mode
-- code: groom/tests/test_a11y_dynamic.py::teardown_module
-- code: groom/groom/app.py::create_app
 - steps:
   1. The harness builds a workspace the way a native run leaves one: a checkout
      under a temporary directory, committed, then dirtied. That is what gives the
@@ -112,10 +102,21 @@ instrument, not part of the product surface.
   every check skips with a printed reason and the suite passes without claiming an
   accessibility result. The temporary workspace, the seeded fleet, the server
   thread, and the browser are all gone; nothing persists between runs.
-- verify: groom/tests/test_a11y_dynamic.py::test_runs_pane_with_an_open_gate_is_accessible,
+- verify: visible(locator="#runs-list .row.blocked", text="waiting on the operator")
+- tests: groom/tests/test_a11y_dynamic.py::test_runs_pane_with_an_open_gate_is_accessible,
   groom/tests/test_a11y_dynamic.py::test_files_pane_is_accessible,
   groom/tests/test_a11y_dynamic.py::test_diff_pane_is_accessible,
   groom/tests/test_a11y_dynamic.py::test_telemetry_pane_is_accessible,
   groom/tests/test_a11y_dynamic.py::test_settings_pane_is_accessible,
   groom/tests/test_a11y_dynamic.py::test_the_activity_rail_is_reachable_and_operable_by_keyboard,
   groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard
+- code: groom/tests/test_a11y_dynamic.py::_workspace
+- code: groom/tests/test_a11y_dynamic.py::_seed
+- code: groom/tests/test_a11y_dynamic.py::_Live
+- code: groom/tests/test_a11y_dynamic.py::_live
+- code: groom/tests/test_a11y_dynamic.py::_open
+- code: groom/tests/test_a11y_dynamic.py::_drive
+- code: groom/tests/test_a11y_dynamic.py::_scan
+- code: groom/tests/test_a11y_dynamic.py::_check_mode
+- code: groom/tests/test_a11y_dynamic.py::teardown_module
+- code: groom/groom/app.py::create_app

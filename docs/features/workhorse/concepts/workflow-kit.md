@@ -69,30 +69,21 @@ in each repo's own `agents.yml` `workspace:` section. This is the primary lookup
 - **Output:** `dict[str, dict]` — one entry per folder, each at least `{"path": <abs path str>}`,
   plus (when the folder's `agents.yml` exists and parses) `"template"` (its `template:` mapping) and
   every key of its `workspace:` mapping spread on top.
-- **Algorithm:**
-  1. **Locate folders** via `_read_workspace_file`. When it returns `(folders, ws_dir)`, `ws_dir` is
-     the workspace file's parent directory and folder `path`s resolve relative to it. When it
-     returns `None`, fall back to a **single-folder** workspace: the root is
-     `find_repo_root(repo_dir)`, i.e. the argument when given and otherwise the upward walk from
-     `Path.cwd()`; its name is the directory basename normalized by `_repo_name_from_dir` (the
-     same kebab rule farrier derives an install prefix with, so a checkout at `.../Acme` is keyed
-     `acme` here and its skills install as `acme-*`). `agents.yml` is not consulted for it — the
-     name is the directory's, so one repo cannot answer to two names; and `ws_dir`
-     is the root's **parent**, so the folder's `path` resolves back to the root itself. The
-     argument comes first for the same reason it does in
-     [`find_repo_root`](#find_repo_root) — a bare `Path.cwd()` would key a mono-repo
-     run off whatever directory the driver was launched from instead of the real repo.
-  2. **Merge each folder's `agents.yml`.** Resolve `ws_dir / folder["path"]`; if
-     `<abs path>/agents.yml` exists, `yaml.safe_load` it — on a YAML/OS error the entry is just
-     `{"path": ...}` with no merge; otherwise take its `template:` mapping (default `{}`) and spread
-     its `workspace:` mapping (default `{}`) over `{"path": ..., "template": ...}`, so workspace
-     keys win over the two fixed ones on collision. A folder with no `agents.yml` gets just
-     `{"path": ...}`.
+- `resolve_workspace` obtains folders from `_read_workspace_file`; their `path` values resolve
+  relative to the workspace file's parent directory. Without a workspace file, it creates a
+  single-folder workspace rooted at `find_repo_root(repo_dir)`, naming the entry from the
+  normalized directory basename. Its `agents.yml` is not consulted for that name, so a checkout
+  cannot answer to two names. For every folder, it resolves `ws_dir / folder["path"]` and, when
+  an `agents.yml` can be loaded, adds its `template:` mapping and overlays its `workspace:` mapping
+  onto the absolute `path`; unreadable, invalid, or absent files leave only the `path` entry.
+- consistency: without a workspace file, `resolve_workspace` uses `repo_dir` before `Path.cwd()`
+  to produce the single repository entry.
+- verify: json_path(path="$.acme.path", matches=".*/acme")
 - **Raises:** nothing on a missing/invalid `agents.yml` (caught and degraded per folder); an invalid
   `.code-workspace` file itself propagates `load_jsonc`'s `JSONDecodeError`.
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::resolve_workspace`
-- verify: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_uses_the_repo_dir_argument_over_cwd`
-- verify: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_falls_back_to_cwd_without_a_repo_dir`
+- tests: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_uses_the_repo_dir_argument_over_cwd`
+- tests: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_falls_back_to_cwd_without_a_repo_dir`
 
 The `agents.yml` `workspace:` section is this module's own reading of the file — a multi-repo
 extension distinct from farrier's field list for the same file (see
@@ -111,9 +102,10 @@ exists by the time the first state runs. Neither coder nor author has a "setup" 
   `worktree_root`. `supervisor.py` is the process boundary and passes what it read from the
   environment as arguments (this module's `__main__` exposes the same set as flags).
 - **`source_mode`:** `clone` (default) is a disposable copy reset to the remote on restart;
-  `worktree` gives each concurrent run its own working tree of one host repo, sharing its objects
-  and refs. A worktree is created **detached** (no workflow knows its branch yet) and an existing
-  one is **never reset** — it sits in the operator's own repo and may hold work in progress.
+   `worktree` gives each concurrent run its own working tree of one host repo, sharing its objects
+   and refs. A worktree is created **detached** because no workflow knows its branch yet.
+- consistency: re-running checkout leaves an existing `worktree` working tree unmodified.
+- verify: unchanged(subject="existing worktree contents")
 - **Output:** `None` (side effect: working trees under `workspace_root`); progress goes to stderr at
   `INFO` through a `"workhorse.checkout"` logger.
 - **Algorithm:**
@@ -291,7 +283,7 @@ trailing commas before a closing `}`/`]`, neither valid in strict JSON.
   from `//` to end of line without knowing what a string literal is, so any workspace file holding a
   URL — `{"url": "https://example.com"}` — was truncated mid-string and then reported as invalid
   JSON. `.code-workspace` files routinely hold URLs and `//` paths.
-- **Raises:** propagates the parser's `ValueError` if the text still isn't valid JSON5.
+- consistency: invalid JSON5 input propagates the parser's `ValueError`.
 - code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_jsonc`
 - verify: `workflows/tests/test_kit_jsonio.py::test_a_url_in_a_string_is_not_a_comment`
 
@@ -303,9 +295,12 @@ outright.
 
 - **Input:** `path: Path`, `label: str` (used only in the log message), `logger: logging.Logger`.
 - **Output:** the parsed `dict`, or `{}` on failure.
-- **Algorithm:** read `path` as UTF-8 and `json.loads` it; on `FileNotFoundError` log a warning
-  (`"<label> not found at <path>"`) and return `{}`; on `json.JSONDecodeError` or `OSError` log a
-  warning with the exception text and return `{}`.
+- consistency: a missing, invalid, or unreadable JSON file returns an empty object after its warning.
+- verify: count(subject="load_json result", equals=0)
+- emits: on `FileNotFoundError`, a single warning: `"<label> not found at <path>"`.
+- verify: emitted(event="<label> not found at <path>", count=1)
+- emits: on `json.JSONDecodeError` or `OSError`, a single warning that includes the exception text.
+- verify: emitted(event="<label> unreadable at <path>: <exception>", count=1)
 - code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_json`
 
 ## tools
@@ -318,7 +313,7 @@ have a richer in-process facade of their own; this is for the CLI that has none.
 - **Input:** `argv: list[str]`; `cwd: str | Path | None = None`; `check: bool = False` and
   `logger: logging.Logger | None = None` (keyword-only).
 - **Output:** the `subprocess.CompletedProcess` (`capture_output=True, text=True`).
-- **Raises:** with `check=True` and a non-zero exit, logs an error through `logger` (if given) and
+- consistency: with `check=True` and a non-zero exit, logs an error through `logger` (if given) and
   raises `RuntimeError(f"{argv[0]} failed: {stderr}")`. With `check=False` (the default) a failed
   result is returned to the caller as-is.
 - code: `workflows/src/workhorse_workflows/kit/tools.py::run_tool`

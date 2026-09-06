@@ -15,8 +15,13 @@ same-session parse-error nudge) — this is the only one of the three that fires
 [`turn`](agent-turn.md) (the invocation layer, before a `BackendInvocationError` ever reaches the
 ladder) and the only one that keeps the task text completely unchanged, only prepending context.
 
+On a timed-out retry, [`AgentRunner.turn`](agent-turn.md#algorithm) passes its `prompt` parameter,
+rather than the current `attempt_prompt`, to `timeout_retry_prompt`
+(`workhorse/workhorse/runner/ladder.py::AgentRunner.turn`), so repeated timeouts do not accumulate
+warning notices.
+
 - code: `workhorse/workhorse/runner/reframe.py::timeout_retry_prompt`
-- verify: `workhorse/tests/test_agent_cap.py::test_budget_timeout_warns_retry_with_time_budget`,
+- tests: `workhorse/tests/test_agent_cap.py::test_budget_timeout_warns_retry_with_time_budget`,
   `workhorse/tests/test_agent_cap.py::test_non_timeout_transient_retries_prompt_unchanged`
 
 ## Contract
@@ -24,9 +29,7 @@ ladder) and the only one that keeps the task text completely unchanged, only pre
 Public, and pure — two values in, a string out.
 
 - **Input:**
-  - `original_prompt: str` — the exact prompt text the killed attempt was sent (`turn` passes its
-    own `prompt` parameter, never the previously-warned `attempt_prompt`, so the warning never
-    stacks across repeated timeouts).
+  - `original_prompt: str` — the prompt text to precede with the warning notice.
   - `timeout: float` — the per-turn wall-clock budget in seconds (`turn`'s own `timeout`), the same
     value `backend.run_turn` was given and will be given again on the retry.
 - **Output:** `str` — the warning notice concatenated with `original_prompt`, unmodified, appended

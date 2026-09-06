@@ -37,8 +37,9 @@ Workflow gate clearer is the [Groom state module](groom-state-module.md) operati
 - abstract: false
 - raises: no domain-specific errors; ordinary mutation errors from an incompatible workflow object or gate map would propagate.
 - returns: `None`
+- verify: removed(subject="WORKFLOWS[container_id].gates[file_path]")
 - code: groom/groom/state.py::clear_gate
-- verify: groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running
+- tests: groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running
 
 Removes the gate entry keyed by `file_path` from the workflow stored under `container_id`, if both exist.
 

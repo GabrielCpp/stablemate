@@ -34,8 +34,9 @@ Sidecar-local relative path guard is the sidecar data-plane validation layer use
 - sig: `_safe_relpath(path: str) -> str`
 - abstract: false
 - raises: `ValueError` for empty, leading-root, empty-segment, trailing-separator, or parent-traversal paths.
+- verify: count(subject="unsafe path inputs rejected by _safe_relpath", equals=5)
 - code: groom/groom/sidecar.py::_safe_relpath
-- verify: groom/tests/test_sidecar_session.py::test_safe_relpath_accepts_normal_and_rejects_traversal
+- tests: groom/tests/test_sidecar_session.py::test_safe_relpath_accepts_normal_and_rejects_traversal
 - input: composed sidecar workspace-relative path string for a local data-plane read; callers must pass a string, not an arbitrary JSON value.
 - output: normalized relative path string using `/` separators, suitable for appending below the sidecar's local workspace directory.
 - invariant: accepted output is never absolute and never contains an empty or `..` path segment.

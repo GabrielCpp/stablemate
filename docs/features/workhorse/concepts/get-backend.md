@@ -17,15 +17,15 @@ means importing the type costs one small module, and only code that actually *se
 pays for the adapters.
 
 - code: `workhorse/workhorse/runner/backends/registry.py::get_backend`
-- verify: `workhorse/tests/test_backends.py::test_default_backend_is_claude_when_nothing_names_one`,
-  `workhorse/tests/test_backends.py::test_config_default_cli_selects_backend`,
-  `workhorse/tests/test_backends.py::test_env_var_beats_config_default_cli`,
-  `workhorse/tests/test_backends.py::test_unknown_config_default_cli_fails_like_any_typo`,
-  `workhorse/tests/test_backends.py::test_env_var_selects_backend`,
-  `workhorse/tests/test_backends.py::test_explicit_name_overrides_env`,
-  `workhorse/tests/test_backends.py::test_unknown_backend_raises`,
-  `workhorse/tests/test_backends.py::test_get_backend_caches_instance`,
-  `workhorse/tests/test_backends.py::test_non_claude_backends_registered`
+
+The selector's default, precedence, validation, environment-variable handling, caching, and
+backend registration behavior are covered by tests in
+`workhorse/tests/test_backends.py`, including
+`test_default_backend_is_claude_when_nothing_names_one`,
+`test_config_default_cli_selects_backend`, `test_env_var_beats_config_default_cli`,
+`test_unknown_config_default_cli_fails_like_any_typo`, `test_env_var_selects_backend`,
+`test_explicit_name_overrides_env`, `test_unknown_backend_raises`, `test_get_backend_caches_instance`,
+and `test_non_claude_backends_registered`.
 
 ## Contract
 
@@ -33,10 +33,10 @@ pays for the adapters.
 - **Resolution order:** explicit `name` → the `AGENT_CLI` environment variable → the shared
   config's `default_cli` key ([resolve_default_cli](config.md#resolve_default_cli)) →
   `"claude"`. The chosen value is `.strip().lower()`-ed, so `AGENT_CLI=" Codex "` resolves.
-- **Where a configured name is checked:** here. `stablemate_core` stores `default_cli` without
-  validating it — the registry of real names is this module's — so a misspelled config value raises
-  the same `ValueError` a typo'd `--cli` does, and the message names `default_cli` alongside
-  `AGENT_CLI` so the operator looks in the right place.
+- consistency: backend-name — every configured backend name is checked against this registry, so a misspelled
+  `default_cli` raises the same `ValueError` as a typo'd `--cli`.
+- consistency: unknown-backend-message — the unknown-backend message names `default_cli` alongside `AGENT_CLI`, so the
+  operator looks in the right place.
 - **Output:** the [`AgentBackend`](agent-backend.md) subclass instance registered under that key.
   Backends are stateless by contract, so **one instance per name is cached and reused** for the
   process's lifetime — `get_backend("claude") is get_backend("claude")`.

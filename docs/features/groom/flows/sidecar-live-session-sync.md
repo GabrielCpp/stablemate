@@ -23,25 +23,6 @@ and the visible workflow row state is stored as a [workflow container](../concep
   [workflow registry](../concepts/workflow-registry.md) may be empty, stale,
   hydrated from residual push endpoints, or already carrying a previous sidecar
   connection for the same container id.
-- code: groom/groom/cli.py::sidecar_main
-- code: groom/groom/sidecar.py::run
-- code: groom/groom/sidecar.py::_serve
-- code: groom/groom/sidecar.py::_run_session
-- code: groom/groom/sidecar.py::_hello_frame
-- code: groom/groom/sidecar.py::_classify_event
-- code: groom/groom/sidecar.py::_handle_rpc
-- code: groom/groom/sidecar_hub.py::SidecarConnection
-- code: groom/groom/sidecar_hub.py::register
-- code: groom/groom/sidecar_hub.py::unregister
-- code: groom/groom/app.py::dashboard_sidecar
-- code: groom/groom/app.py::_apply_hello
-- code: groom/groom/app.py::_apply_socket_progress
-- code: groom/groom/app.py::_apply_socket_blocked
-- code: groom/groom/app.py::_sidecar_rpc
-- code: groom/groom/app.py::files
-- code: groom/groom/app.py::file_content
-- code: groom/groom/app.py::diff
-- code: groom/groom/app.py::reload
 - steps:
   1. The container entrypoint invokes [groom-sidecar root](../groom-sidecar.md#groom-sidecar-root)
      with neither mode flag. The CLI parses successfully, imports the sidecar
@@ -167,32 +148,59 @@ and the visible workflow row state is stored as a [workflow container](../concep
   workflow state. A reload request intentionally terminates only the sidecar
   process with exit code `3`; the workflow process's own status remains outside
   the live session and is reported separately by the `--exit-code` residual path.
-- verify: groom/tests/test_sidecar_session.py::test_cli_sidecar_default_runs_session,
-  groom/tests/test_sidecar_session.py::test_hello_frame_carries_identity_and_snapshot,
-  groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises,
-  groom/tests/test_sidecar_session.py::test_serve_returns_reload_code_when_session_requests_reload,
-  groom/tests/test_sidecar_session.py::test_run_maps_reload_code_to_systemexit,
-  groom/tests/test_sidecar_session.py::test_classify_event_runs_write_is_progress,
-  groom/tests/test_sidecar_session.py::test_classify_event_awaiting_gate_is_blocked,
-  groom/tests/test_sidecar_session.py::test_handle_rpc_get_tree_replies_ok,
-  groom/tests/test_sidecar_session.py::test_handle_rpc_unknown_method_replies_error,
-  groom/tests/test_sidecar_session.py::test_handle_rpc_get_file_traversal_replies_error,
-  groom/tests/test_sidecar_hub.py::test_rpc_sends_request_and_returns_resolved_data,
-  groom/tests/test_sidecar_hub.py::test_rpc_error_result_raises_sidecar_error,
-  groom/tests/test_sidecar_hub.py::test_rpc_times_out_when_no_reply,
-  groom/tests/test_sidecar_hub.py::test_register_displaces_and_fails_prior_connection,
-  groom/tests/test_sidecar_hub.py::test_unregister_only_removes_current_connection,
-  groom/tests/test_sidecar_hub.py::test_send_reload_emits_reload_frame,
-  groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate,
-  groom/tests/test_app.py::test_apply_hello_running_when_no_gates,
-  groom/tests/test_app.py::test_apply_hello_finished_when_terminal,
-  groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively,
-  groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
-  groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors,
-  groom/tests/test_app.py::test_file_content_prefers_sidecar_socket,
-  groom/tests/test_app.py::test_diff_prefers_sidecar_socket,
-  groom/tests/test_app.py::test_reload_broadcasts_to_all_connected_sidecars,
-  groom/tests/test_app.py::test_reload_targets_one_container_when_id_given
+- verify: json_path(path="hello.identity.repo_name", equals="Acme")
+- verify: json_path(path="hello.snapshot.current_node", equals="n1")
+- verify: json_path(path="progress.current_node", equals="resolve")
+- verify: json_path(path="blocked.file_path", equals="docs/gate.md")
+- verify: json_path(path="rpc_result.data.paths", matches="README.md")
+- verify: json_path(path="rpc_result.data.content", equals="print(1)\n")
+- verify: json_path(path="rpc_result.data.diff", matches="diff --git")
+- verify: exit_status(code=3)
+- tests: groom/tests/test_sidecar_session.py::test_cli_sidecar_default_runs_session
+- tests: groom/tests/test_sidecar_session.py::test_hello_frame_carries_identity_and_snapshot
+- tests: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises
+- tests: groom/tests/test_sidecar_session.py::test_serve_returns_reload_code_when_session_requests_reload
+- tests: groom/tests/test_sidecar_session.py::test_run_maps_reload_code_to_systemexit
+- tests: groom/tests/test_sidecar_session.py::test_classify_event_runs_write_is_progress
+- tests: groom/tests/test_sidecar_session.py::test_classify_event_awaiting_gate_is_blocked
+- tests: groom/tests/test_sidecar_session.py::test_handle_rpc_get_tree_replies_ok
+- tests: groom/tests/test_sidecar_session.py::test_handle_rpc_unknown_method_replies_error
+- tests: groom/tests/test_sidecar_session.py::test_handle_rpc_get_file_traversal_replies_error
+- tests: groom/tests/test_sidecar_hub.py::test_rpc_sends_request_and_returns_resolved_data
+- tests: groom/tests/test_sidecar_hub.py::test_rpc_error_result_raises_sidecar_error
+- tests: groom/tests/test_sidecar_hub.py::test_rpc_times_out_when_no_reply
+- tests: groom/tests/test_sidecar_hub.py::test_register_displaces_and_fails_prior_connection
+- tests: groom/tests/test_sidecar_hub.py::test_unregister_only_removes_current_connection
+- tests: groom/tests/test_sidecar_hub.py::test_send_reload_emits_reload_frame
+- tests: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
+- tests: groom/tests/test_app.py::test_apply_hello_running_when_no_gates
+- tests: groom/tests/test_app.py::test_apply_hello_finished_when_terminal
+- tests: groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively
+- tests: groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected
+- tests: groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors
+- tests: groom/tests/test_app.py::test_file_content_prefers_sidecar_socket
+- tests: groom/tests/test_app.py::test_diff_prefers_sidecar_socket
+- tests: groom/tests/test_app.py::test_reload_broadcasts_to_all_connected_sidecars
+- tests: groom/tests/test_app.py::test_reload_targets_one_container_when_id_given
+- code: groom/groom/cli.py::sidecar_main
+- code: groom/groom/sidecar.py::run
+- code: groom/groom/sidecar.py::_serve
+- code: groom/groom/sidecar.py::_run_session
+- code: groom/groom/sidecar.py::_hello_frame
+- code: groom/groom/sidecar.py::_classify_event
+- code: groom/groom/sidecar.py::_handle_rpc
+- code: groom/groom/sidecar_hub.py::SidecarConnection
+- code: groom/groom/sidecar_hub.py::register
+- code: groom/groom/sidecar_hub.py::unregister
+- code: groom/groom/app.py::dashboard_sidecar
+- code: groom/groom/app.py::_apply_hello
+- code: groom/groom/app.py::_apply_socket_progress
+- code: groom/groom/app.py::_apply_socket_blocked
+- code: groom/groom/app.py::_sidecar_rpc
+- code: groom/groom/app.py::files
+- code: groom/groom/app.py::file_content
+- code: groom/groom/app.py::diff
+- code: groom/groom/app.py::reload
 - screenshot: docs/features/groom/gui/screenshots/sidecar-live-session-sync-detail-diff.png
 - screenshot: docs/features/groom/gui/screenshots/sidecar-live-session-sync-files-pane.png
 - screenshot: docs/features/groom/gui/screenshots/sidecar-live-session-sync-diff-file-selected.png

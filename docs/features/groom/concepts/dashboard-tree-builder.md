@@ -31,9 +31,12 @@ decision, since which directories start open and how siblings sort are questions
 renderer answers. Flat paths are the narrow contract between them.
 
 - code: groom/groom/assets/dashboard.js::buildTree
-- verify: groom/tests/test_tree_builder.py::test_flat_paths_become_directory_nodes_and_file_leaves
-- verify: groom/tests/test_tree_builder.py::test_paths_sharing_a_prefix_reuse_one_directory_node
-- verify: groom/tests/test_tree_builder.py::test_the_whole_entry_rides_along_on_the_leaf
+- tests: groom/tests/test_tree_builder.py::test_flat_paths_become_directory_nodes_and_file_leaves
+- tests: groom/tests/test_tree_builder.py::test_paths_sharing_a_prefix_reuse_one_directory_node
+- tests: groom/tests/test_tree_builder.py::test_the_whole_entry_rides_along_on_the_leaf
+- tests: groom/tests/test_tree_builder.py::test_insertion_order_is_preserved_and_nothing_is_deduplicated
+- tests: groom/tests/test_tree_builder.py::test_an_empty_entry_list_yields_an_empty_root
+- tests: groom/tests/test_tree_builder.py::test_a_non_string_path_is_coerced_rather_than_rejected
 
 ## Contract
 
@@ -56,12 +59,20 @@ renderer answers. Flat paths are the narrow contract between them.
 ### method-build-tree
 
 - sig: `buildTree(entries: Array<{path: any}>) -> PathTreeNode`
-- returns: the root [dashboard path tree](../dashboard-path-tree.md) node.
 - raises: ordinary JavaScript runtime errors when `entries` is not iterable with `forEach`.
+- returns: the root [dashboard path tree](../dashboard-path-tree.md) node.
+- verify: count(subject="empty root directories", equals=0)
+- verify: count(subject="empty root files", equals=0)
+- verify: count(subject="root files for duplicate path input", equals=3)
+- verify: json_path(path="$.files[0].name", equals="z.py")
+- verify: json_path(path="$.files[1].name", equals="a.py")
+- verify: json_path(path="$.files[2].name", equals="z.py")
+- verify: json_path(path="$.files[0].name", equals="null")
+- verify: json_path(path="$.files[1].name", equals="ok.py")
 - code: groom/groom/assets/dashboard.js::buildTree
-- verify: groom/tests/test_tree_builder.py::test_an_empty_entry_list_yields_an_empty_root
-- verify: groom/tests/test_tree_builder.py::test_insertion_order_is_preserved_and_nothing_is_deduplicated
-- verify: groom/tests/test_tree_builder.py::test_a_non_string_path_is_coerced_rather_than_rejected
+- tests: groom/tests/test_tree_builder.py::test_an_empty_entry_list_yields_an_empty_root
+- tests: groom/tests/test_tree_builder.py::test_insertion_order_is_preserved_and_nothing_is_deduplicated
+- tests: groom/tests/test_tree_builder.py::test_a_non_string_path_is_coerced_rather_than_rejected
 
 Creates an empty root, then for each entry coerces `entry.path` to a string, splits
 it on `/`, walks or creates a directory node per leading segment, and appends one

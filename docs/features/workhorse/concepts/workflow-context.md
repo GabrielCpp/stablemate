@@ -22,7 +22,7 @@ graph walk's live state, merged into after every node and snapshotted into
 lives on the workflow instance, and only the render base lives here.
 
 - code: `workhorse/workhorse/context.py::WorkflowContext`
-- verify: `workhorse/tests/test_agent_recovery.py::test_rendered_prompt_is_written_and_only_path_is_printed`
+- tests: `workhorse/tests/test_agent_recovery.py::test_rendered_prompt_is_written_and_only_path_is_printed`
 
 It sits at the package top level rather than under a driver subpackage on purpose: the agent
 runner takes one, and the runner is shared. The graph walk was only ever its first caller.
@@ -64,10 +64,10 @@ Algorithm:
 1. Split `path` on `.`; start `value = self._data`.
 2. For each segment: if `value` isn't a `dict`, or the segment isn't a key in it, the path is
    unresolvable — go to step 3. Otherwise `value = value[segment]` and continue.
-3. **Unresolvable case:** if a `default` was supplied (any value other than the private
-   `_MISSING` sentinel), return it. Otherwise raise `KeyError` — with a message distinguishing "not
+3. For an unresolvable path, return a supplied `default` (any value other than the private
+   `_MISSING` sentinel). Without one, the lookup raises `KeyError`; its message distinguishes "not
    a dict at this point" (`Cannot traverse '<part>' in non-dict value at path '<path>'`) from "key
-   absent" (`Key '<part>' not found (path: '<path>')`).
+   absent" (`Key '<part>' not found (path: '<path>'`).
 4. If every segment resolved, return the final `value`.
 
 `_MISSING` (a module-level `object()` sentinel, not `None`) is what lets a caller legitimately pass

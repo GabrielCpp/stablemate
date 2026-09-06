@@ -13,7 +13,7 @@ watching the log and a collector watching the telemetry can tell a long, legitim
 (hours, sometimes days) from an actual hang.
 
 - code: `workhorse/workhorse/runner/caps.py::sleep_with_notice`
-- verify: `workhorse/tests/test_agent_cap.py::test_cap_sleeps_until_reset_then_resumes`
+- tests: `workhorse/tests/test_agent_cap.py::test_cap_sleeps_until_reset_then_resumes`
 
 ## Contract
 

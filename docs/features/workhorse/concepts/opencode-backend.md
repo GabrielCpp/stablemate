@@ -24,7 +24,7 @@ so importing [the port](agent-backend.md) drags in no adapter.
 
 - code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend`
 - extends: [AgentBackend](agent-backend.md)
-- verify: `workhorse/tests/test_backends.py::test_opencode_run_turn_fresh_then_resume`,
+- tests: `workhorse/tests/test_backends.py::test_opencode_run_turn_fresh_then_resume`,
   `workhorse/tests/test_backends.py::test_opencode_effort_variant_mapping_and_omit`,
   `workhorse/tests/test_backends.py::test_opencode_cap_attaches_codex_reset_at`,
   `workhorse/tests/test_backends.py::test_opencode_non_cap_does_not_probe_codex`,
@@ -36,7 +36,7 @@ so importing [the port](agent-backend.md) drags in no adapter.
 - `default_model` = `None` — the node (or `AGENT_MODEL`) must name a provider/model (e.g.
   `openrouter/...`, `openai/...`); OpenCode has no usable backend default.
 - `supports_compaction` = `False`.
-- **`run_turn(prompt, node_id, session_id_path, model=None, *, timeout, resilience, cwd=None,
+**`run_turn(prompt, node_id, session_id_path, model=None, *, timeout, resilience, cwd=None,
   add_dirs=None, effort=None)`** — `timeout` and `resilience` are keyword-only and required
   ([why](agent-backend.md#run_turn-abstract)). Builds the argv:
   ```
@@ -46,7 +46,7 @@ so importing [the port](agent-backend.md) drags in no adapter.
   ```
   1. Read a persisted session id via [`read_session_id(session_id_path)`](read-session-id.md)
      (shared with the other JSONL backends).
-  2. `--print-logs --log-level ERROR` are always present: they route OpenCode's ERROR-level log
+   2. `--print-logs --log-level ERROR` route OpenCode's ERROR-level log
      lines (which carry quota/limit errors, e.g. `"The usage limit has been reached"`) onto stdout
      as non-JSON lines instead of only into `~/.local/share/opencode/log/opencode.log`. Without
      these flags those errors are invisible to the harness, and OpenCode's own internal exponential
@@ -79,7 +79,9 @@ so importing [the port](agent-backend.md) drags in no adapter.
       timeout, rate_reset_at=rate_reset_at)` — raises
       [`BackendInvocationError`](classify-turn.md#backendinvocationerror) on failure, carrying
       `rate_reset_at` through to the runner's [cap wait](cap-delay-seconds.md) so it sleeps until
-      the actual window reopens instead of a blind default wait.
+       the actual window reopens instead of a blind default wait.
+- consistency: every OpenCode `run_turn` command includes `--print-logs --log-level ERROR` before
+  `run`, so quota and limit errors are available to the harness as diagnostics
 - **`compact(session_id_path, node_id, model=None, *, timeout, resilience)`** — always returns
   `False`: OpenCode manages its own context internally (no in-place session compaction), so the
   resilience ladder reframes on context overflow instead.

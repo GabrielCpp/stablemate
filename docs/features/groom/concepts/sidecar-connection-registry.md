@@ -43,17 +43,18 @@ Sidecar connection registry is the process-local map of normalized workflow cont
 
 - sig: `register(conn: SidecarConnection) -> None`
 - abstract: false
-- raises: none intentionally.
-- code: groom/groom/sidecar_hub.py::register
-- verify: groom/tests/test_sidecar_hub.py::test_register_displaces_and_fails_prior_connection
-- input-conn: [sidecar connection](sidecar-connection.md) object whose `container_id` is already normalized for use as the registry key; the registry stores the same object and does not clone, wrap, validate, or close it.
-- output: returns `None` after the registry entry for `conn.container_id` points at `conn`.
 - does:
   - Reads the current registry entry keyed by the supplied connection's normalized `container_id`; it does not normalize or validate the id itself.
   - When the current entry is a different [sidecar connection](sidecar-connection.md), calls that connection's [fail-all](sidecar-connection.md#method-fail-all) method with message `superseded by a new sidecar connection` before changing the registry entry, making any waiting RPC observe [sidecar error](sidecar-error.md).
   - When the current entry is absent or is the same connection object, performs no prior-connection failure.
   - Stores `conn` as the current registry value for `conn.container_id`, replacing any previous value for that key.
   - Does not apply the `hello` frame, mutate workflow state, broadcast dashboard messages, or send a websocket frame; those effects belong to the endpoint after registration succeeds.
+- raises: none intentionally.
+- verify: count(subject="current sidecar connections for container id abc123", equals=1)
+- code: groom/groom/sidecar_hub.py::register
+- tests: groom/tests/test_sidecar_hub.py::test_register_displaces_and_fails_prior_connection
+- input-conn: [sidecar connection](sidecar-connection.md) object whose `container_id` is already normalized for use as the registry key; the registry stores the same object and does not clone, wrap, validate, or close it.
+- output: returns `None` after the registry entry for `conn.container_id` points at `conn`.
 - calls: [sidecar connection fail-all](sidecar-connection.md#method-fail-all) only when a different current connection is displaced; otherwise no groom-owned symbol is called.
 - algorithm:
   1. Read the map value currently stored under `conn.container_id`.
@@ -65,17 +66,18 @@ Sidecar connection registry is the process-local map of normalized workflow cont
 
 - sig: `unregister(conn: SidecarConnection) -> None`
 - abstract: false
-- raises: none intentionally.
-- code: groom/groom/sidecar_hub.py::unregister
-- verify: groom/tests/test_sidecar_hub.py::test_unregister_only_removes_current_connection
-- input-conn: [sidecar connection](sidecar-connection.md) object whose socket lifecycle is ending or whose caller wants all of that connection's pending RPCs failed.
-- output: returns `None` after the supplied connection's pending RPCs have been failed and the registry has removed it only if it was current.
 - does:
   - Reads the current registry entry for `conn.container_id` without creating or normalizing a key.
   - When that current entry is exactly the supplied `conn` object, removes the registry key so later lookups report no connected sidecar for that container id.
   - When the key is absent or points at a different [sidecar connection](sidecar-connection.md), leaves the registry unchanged so a late close from a superseded socket cannot evict a newer reconnect.
   - Calls `conn`'s [fail-all](sidecar-connection.md#method-fail-all) method with message `sidecar connection closed` after the registry branch, regardless of whether the registry entry was removed, making any waiting RPC observe [sidecar error](sidecar-error.md).
   - Does not close the websocket transport, clear workflow gates, mutate workflow state, broadcast dashboard updates, or remove any registry entry for another container id.
+- raises: none intentionally.
+- verify: unchanged(subject="sidecar connection registry")
+- code: groom/groom/sidecar_hub.py::unregister
+- tests: groom/tests/test_sidecar_hub.py::test_unregister_only_removes_current_connection
+- input-conn: [sidecar connection](sidecar-connection.md) object whose socket lifecycle is ending or whose caller wants all of that connection's pending RPCs failed.
+- output: returns `None` after the supplied connection's pending RPCs have been failed and the registry has removed it only if it was current.
 - calls: [sidecar connection fail-all](sidecar-connection.md#method-fail-all) on the supplied connection in every branch.
 - algorithm:
   1. Read the map value currently stored under `conn.container_id`.
@@ -88,9 +90,15 @@ Sidecar connection registry is the process-local map of normalized workflow cont
 
 - sig: `get(container_id: str) -> SidecarConnection | None`
 - abstract: false
+- does:
+  - Reads exactly the registry key supplied by the caller; it does not normalize, truncate, or coerce the id.
+  - Returns the current registered connection object for that key when present.
+  - Returns `None` when the key is absent, including after the current connection was unregistered or when a caller asks for a differently formatted id.
+  - Does not fail pending RPCs, create a connection, send a websocket frame, or trigger a fallback itself; callers decide what absence means for their endpoint.
 - raises: none intentionally.
+- verify: unchanged(subject="sidecar connection registry")
 - code: groom/groom/sidecar_hub.py::get
-- verify: groom/tests/test_sidecar_hub.py::test_register_displaces_and_fails_prior_connection,
+- tests: groom/tests/test_sidecar_hub.py::test_register_displaces_and_fails_prior_connection,
   groom/tests/test_sidecar_hub.py::test_unregister_only_removes_current_connection,
   groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
   groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors,
@@ -99,11 +107,6 @@ Sidecar connection registry is the process-local map of normalized workflow cont
 - input-container-id: lookup key supplied by the caller; callers that use truncated Docker ids must truncate before calling this method.
 - output-present: returns the currently registered [sidecar connection](sidecar-connection.md) object for exactly the supplied key.
 - output-absent: returns `None` when no current connection is stored under exactly the supplied key.
-- does:
-  - Reads exactly the registry key supplied by the caller; it does not normalize, truncate, or coerce the id.
-  - Returns the current registered connection object for that key when present.
-  - Returns `None` when the key is absent, including after the current connection was unregistered or when a caller asks for a differently formatted id.
-  - Does not fail pending RPCs, create a connection, send a websocket frame, or trigger a fallback itself; callers decide what absence means for their endpoint.
 - calls: no groom-owned symbol; bottoms out at the registry map lookup.
 - algorithm:
   1. Look up `container_id` in the registry map.
@@ -114,16 +117,17 @@ Sidecar connection registry is the process-local map of normalized workflow cont
 
 - sig: `connected_ids() -> list[str]`
 - abstract: false
-- raises: none intentionally.
-- code: groom/groom/sidecar_hub.py::connected_ids
-- verify: groom/tests/test_app.py::test_reload_broadcasts_to_all_connected_sidecars,
-  groom/tests/test_app.py::test_reload_targets_one_container_when_id_given
-- output: new `list[str]` snapshot of the currently registered container-id keys.
 - does:
   - Returns a new list containing the registry keys that currently have registered sidecar connections.
   - Preserves the registry's insertion order for the returned snapshot.
   - Does not keep the returned list live; later connects or disconnects do not change a previously returned target list.
   - Does not validate connection liveness or send reload frames; reload performs a fresh [method-get](#method-get) for each target before sending.
+- raises: none intentionally.
+- verify: count(subject="connected container-id keys", equals=2)
+- code: groom/groom/sidecar_hub.py::connected_ids
+- tests: groom/tests/test_app.py::test_reload_broadcasts_to_all_connected_sidecars
+- tests: groom/tests/test_app.py::test_reload_targets_one_container_when_id_given
+- output: new `list[str]` snapshot of the currently registered container-id keys.
 - calls: no groom-owned symbol; bottoms out at the registry map's key iteration.
 - algorithm:
   1. Iterate the registry map's keys in their current order.

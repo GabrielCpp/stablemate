@@ -1,0 +1,108 @@
+---
+type: concept
+slug: author-epic-author-subflow
+title: Author epic-author subflow
+---
+# Author epic-author subflow
+
+The `epic_author` package is the standalone Author subflow for authoring exactly one explicitly
+named epic. It loads author configuration, resolves the requested epic without consulting a
+worklist, gives one agent turn the epic prose and researched-seed pass, and validates the resulting
+epic document before returning evidence. A blocked turn or failed validation is routed through the
+operator resolver and then resumes the same epic; the subflow never creates a branch or authors
+stories. The parent [Author workflow composition root](author-workflow-composition-root.md) registers
+the flow and its package-local node registry.
+
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor`
+- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/_blueprint.py::blueprint`
+- tests: `workflows/tests/author/epic_author/test_flow.py::test_authors_only_the_explicit_epic_and_returns_document_evidence`
+
+## Methods
+
+### blueprint
+- sig: `Blueprint("author-epic-author") -> Blueprint`
+- does: provides the registration target for the deterministic epic-author nodes
+- returns: returns a blueprint named `author-epic-author`
+- verify: json_path(path="$.name", equals="author-epic-author")
+- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/_blueprint.py::blueprint`
+
+### setup
+- sig: `setup() -> EpicAuthorContext`
+- does: loads author configuration in `epic` mode
+- does: resolves the one caller-selected epic and merges its paths into the workflow context
+- returns: returns context containing configured paths and the resolved epic, epic directory, and epic document path
+- verify: count(subject="prepared explicit epic-author contexts", equals=1)
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.setup`
+
+### labels
+- sig: `labels() -> dict[str, str]`
+- does: labels the run with the selected epic as `work_id` and `epic`
+- returns: returns progress text identifying authoring of one epic
+- verify: json_path(path="$.epic", matches=".+")
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.labels`
+
+### state_labels
+- sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
+- does: adds the `resolves` counter label to the base epic-author run labels
+- returns: returns labels for the epic-author resolution budget
+- verify: json_path(path="$.resolves", matches=".+")
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.state_labels`
+
+### start
+- sig: `start() -> Continue`
+- does: begins authoring by forwarding to the `author_epic` state
+- returns: returns a continuation targeting `author_epic`
+- verify: count(subject="epic-author starts", equals=1)
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.start`
+
+### author_epic
+- sig: `author_epic(resolves: int = 0) -> Continue | Await | Done`
+- does: asks the high-power agent to research and write the selected epic's narrative and durable seeds
+- verify: count(subject="epic-author writing turns", equals=1)
+- does: sends a blocked agent result or failed document validation to resolution while the resolution budget remains
+- verify: visible(locator="operator-awaiting context", text="blocked")
+- does: returns `Done` with the validated epic identity, document path, seed count, and resolution count when validation succeeds
+- verify: json_path(path="$.status", equals="authored")
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic`
+
+### resolve_epic
+- sig: `resolve_epic(notes: str, resolves: int = 0) -> Await`
+- does: asks the shared operator resolver to diagnose the blocked write or validation result
+- verify: count(subject="epic-author resolution turns", equals=1)
+- does: resumes the same `author_epic` state through an operator-awaiting context with an incremented resolution count
+- verify: visible(locator="operator-awaiting context", text="blocked")
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic`
+
+## Nodes
+
+### prepare_epic_target
+- sig: `prepare_epic_target(logger: logging.Logger, epic: str, repo_dir: str = "") -> EpicTarget`
+- does: resolves the repository root from `repo_dir`
+- verify: count(subject="epic-author repository resolutions", equals=1)
+- does: rejects a blank epic name
+- raises: raises `WorkflowFailed` with `an explicit epic is required`
+- verify: count(subject="blank epic target failures", equals=1)
+- does: rejects a name that is absent from the Ostler epic graph
+- raises: raises `WorkflowFailed` naming the missing epic
+- verify: count(subject="missing epic target failures", equals=1)
+- does: resolves the canonical epic directory and `epic.md` path for the found epic
+- verify: json_path(path="$.epic_path", matches="/epic\\.md$")
+- returns: returns the normalized explicit epic identity and its canonical paths
+- verify: json_path(path="$.epic", matches=".+")
+- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::prepare_epic_target`
+
+### validate_authored_epic
+- sig: `validate_authored_epic(logger: logging.Logger, epic: str, repo_dir: str = "") -> EpicEvidence`
+- does: resolves the requested epic from the Ostler graph
+- verify: count(subject="epic-author document validations", equals=1)
+- does: reports an error and zero seeds when the requested epic is absent
+- verify: json_path(path="$.ok", equals=False)
+- does: reports an error when the epic has no `epic.md`
+- verify: json_path(path="$.ok", equals=False)
+- does: reports an error when the epic has no researched seeds
+- verify: json_path(path="$.errors", matches="no researched seeds")
+- does: returns successful evidence only when the epic document exists and at least one seed is present
+- verify: json_path(path="$.ok", equals=True)
+- returns: returns the epic identity, canonical document path, seed count, and newline-separated validation errors
+- verify: json_path(path="$.seed_count", matches=".+")
+- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::validate_authored_epic`

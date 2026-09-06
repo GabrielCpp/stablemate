@@ -23,7 +23,7 @@ imports and the cycle they worked around are both gone.
 
 - code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend`
 - extends: [AgentBackend](agent-backend.md)
-- verify: `workhorse/tests/test_backends.py::test_default_backend_is_claude`,
+- tests: `workhorse/tests/test_backends.py::test_default_backend_is_claude`,
   `workhorse/tests/test_backends.py::test_claude_effort_maps_to_native_flag`,
   `workhorse/tests/test_backends.py::test_claude_no_effort_omits_flag`,
   `workhorse/tests/test_config_harness_env.py::test_compaction_runs_under_the_same_env`
@@ -47,12 +47,12 @@ imports and the cycle they worked around are both gone.
   level for.
   Raises the `BackendInvocationError` [`classify_turn`](classify-turn.md#ladder-first-match-wins)
   raises inside `_run_cli`.
-- **`compact(session_id_path, node_id, model=None, *, timeout, resilience)`** — delegates to
-  [`_compact_session`](compact-session.md), forwarding `resilience` and `timeout` (the same
-  keyword-only pair, for the same reason) **and** `env_extra=self.harness_env()`. That last one is
-  not incidental: a knob that shapes a turn must also shape the `/compact` turn, or compaction runs
-  under a different CLI configuration than the conversation it is compacting
-  (`test_compaction_runs_under_the_same_env`). Never raises — see that page's contract.
+**`compact(session_id_path, node_id, model=None, *, timeout, resilience)`** delegates to
+[`_compact_session`](compact-session.md), forwarding `resilience` and `timeout` (the same
+keyword-only pair, for the same reason) and `env_extra=self.harness_env()`. Passing the harness
+environment keeps the `/compact` turn under the CLI configuration used by the conversation it
+summarizes (`test_compaction_runs_under_the_same_env`). It does not raise; see that page's
+contract.
 
 `harness_env()` is [the port's concrete method](agent-backend.md#harness_env-concrete), resolving
 `[harness.claude].env` from the operator's config **per turn** rather than once at import, so a

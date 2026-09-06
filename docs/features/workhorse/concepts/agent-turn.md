@@ -18,14 +18,15 @@ backoff** and then fails fast up to the ladder.
 > old filename said otherwise, so it was renamed rather than kept for link stability.
 
 - code: `workhorse/workhorse/runner/ladder.py::AgentRunner.turn`
-- verify: `workhorse/tests/test_agent_cap.py::test_cap_sleeps_until_reset_then_resumes`,
-  `workhorse/tests/test_agent_cap.py::test_cap_waits_do_not_consume_short_retry_budget`,
-  `workhorse/tests/test_agent_cap.py::test_cap_wait_safety_bound`,
-  `workhorse/tests/test_agent_cap.py::test_short_transient_uses_bounded_backoff_then_fails`,
-  `workhorse/tests/test_agent_cap.py::test_non_transient_fails_immediately`,
-  `workhorse/tests/test_agent_cap.py::test_budget_timeout_warns_retry_with_time_budget`,
-  `workhorse/tests/test_agent_cap.py::test_non_timeout_transient_retries_prompt_unchanged`,
-  `workhorse/tests/test_agent_cap.py::test_structured_reset_at_drives_invoke_wait`
+
+The resilience contract is covered by `workhorse/tests/test_agent_cap.py::test_cap_sleeps_until_reset_then_resumes`,
+`workhorse/tests/test_agent_cap.py::test_cap_waits_do_not_consume_short_retry_budget`,
+`workhorse/tests/test_agent_cap.py::test_cap_wait_safety_bound`,
+`workhorse/tests/test_agent_cap.py::test_short_transient_uses_bounded_backoff_then_fails`,
+`workhorse/tests/test_agent_cap.py::test_non_transient_fails_immediately`,
+`workhorse/tests/test_agent_cap.py::test_budget_timeout_warns_retry_with_time_budget`,
+`workhorse/tests/test_agent_cap.py::test_non_timeout_transient_retries_prompt_unchanged`, and
+`workhorse/tests/test_agent_cap.py::test_structured_reset_at_drives_invoke_wait`.
 
 ## Contract
 
@@ -34,8 +35,7 @@ knobs and the clock come from `self` — they are not parameters, and there is n
 resolves any of them.
 
 - **Input:**
-  - `prompt: str` — the text to send. Held unchanged across retries as the base for
-    [`timeout_retry_prompt`](timeout-retry-prompt.md), so a budget warning never stacks.
+  - `prompt: str` — the text to send.
   - `node_id: str` — used only for the console prefix and the otel events.
   - `session_id_path: Path | None` — the run's [`.session_id`](../run-artifacts.md#session_id);
     passed through to the backend, which persists the resulting id so the next call can `--resume`.
@@ -49,8 +49,8 @@ resolves any of them.
   read), `clock` (every `sleep` in this method and every `now` under it).
 - **Output:** `str` — the completed turn's result text, for
   [`extract_outputs`](extract-outputs.md) to parse.
-- **Raises:** `BackendInvocationError` — immediately when the failure is not transient; after
-  `resilience.max_invoke_retries` short retries; or after `resilience.max_cap_waits` cap waits
+- consistency: `BackendInvocationError` propagates immediately for non-transient failures, after
+  `resilience.max_invoke_retries` short retries, or after `resilience.max_cap_waits` cap waits
   (default `48`, the backstop against a cap that never actually clears).
 
 ## Algorithm
@@ -96,12 +96,14 @@ loop:
    and how long it has. A cap-triggered early abort also carries `timed_out=True` (the stream loop
    breaks the same way) but must **not** get the warning — the model never ran, so no budget was
    spent. Every other transient retries the prompt unchanged.
+- consistency: attempt-prompt — each budget-timeout retry derives its prompt from the original `prompt`, so the
+  timeout warning appears only once rather than stacking across retries
 5. **Cap → wait it out.** [`cap_delay_seconds`](cap-delay-seconds.md) computes how long and a
    human "resuming around" label; [`sleep_with_notice`](sleep-with-notice.md) sleeps it in
-   `resilience.cap_tick_s` chunks, printing proof of life. Then `continue` — same session, same
-   prompt. Cap waits are counted separately (`cap_waits`, bounded by `resilience.max_cap_waits`)
-   and **do not consume the short-retry budget**: a cap always clears eventually, so the run rides
-   it out instead of dying.
+   `resilience.cap_tick_s` chunks, printing proof of life. Then `continue` with the same session and
+   prompt. `cap_waits`, bounded by `resilience.max_cap_waits`, records each pass through this branch.
+- consistency: short-attempt — a cap wait leaves `short_attempt` unchanged, so it consumes none of
+  `resilience.max_invoke_retries`
 6. **Short transient → bounded backoff.** `min(invoke_backoff_base_s * 2**short_attempt,
    invoke_backoff_cap_s)` (defaults `15s` doubling to a `300s` ceiling), slept on `self.clock`,
    up to `resilience.max_invoke_retries` times (default `4`) before re-raising to the ladder's

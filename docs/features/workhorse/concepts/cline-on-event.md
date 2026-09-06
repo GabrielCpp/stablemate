@@ -23,7 +23,7 @@ documentation.
 
 - code: `workhorse/workhorse/runner/backends/cline.py::_on_event`
 - extends: [stream_jsonl](stream-jsonl.md#contract)
-- verify: `workhorse/tests/test_backends.py::test_cline_on_event_reads_the_terminal_result`,
+- tests: `workhorse/tests/test_backends.py::test_cline_on_event_reads_the_terminal_result`,
   `workhorse/tests/test_backends.py::test_cline_reports_an_unclean_finish_reason_as_a_diagnostic`,
   `workhorse/tests/test_backends.py::test_cline_per_iteration_usage_is_not_double_counted`,
   `workhorse/tests/test_usage.py::test_cline_reports_tokens_cost_and_duration`
@@ -37,8 +37,6 @@ documentation.
     on `state.diagnostics`; there is no separate list argument.
   - `node_id` — the workflow node id, used only for the live-echo log-line prefix.
 - **Output:** `None` — all effects are the in-place mutations to `state` below.
-- **Raises:** nothing — every nested shape is read defensively (`.get(...)` with falsy defaults),
-  never indexed directly.
 
 ## Algorithm
 
@@ -66,11 +64,13 @@ Dispatch on `etype = event.get("type") or ""`:
   "text"}` with non-empty text, print `[{node_id}] {text[:500]}`; nothing is stored.
   The inner `{"type": "usage", ...}` event is **deliberately ignored**: cline emits it per
   *iteration* while `run_result.usage` is already the turn's total, so folding both would bill every
-  turn twice. (Opencode is the opposite case — there the per-step events are the only report, so
-  [they must be summed](opencode-on-event.md).)
+  turn twice.
 - **Any `etype` containing `"error"`** → append `json.dumps(event)[:500]` to `state.diagnostics`,
   which feeds [`stream_jsonl`](stream-jsonl.md#early-abort)'s per-line early-abort scan and, at the
   end of the stream, [`finalize_turn`](finalize-turn.md)'s classification.
+
+[Opencode's adapter](opencode-on-event.md) is the opposite case: its per-step events are the only
+usage report, and it sums those reports across the turn.
 
 ## Related pieces
 

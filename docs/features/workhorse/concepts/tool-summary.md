@@ -26,7 +26,7 @@ tool name (`[{node_id}] ⚙ {name} {summary}`).
 
 1. **Scan a fixed key priority list**, in order: `file_path`, `path`, `command`,
    `pattern`, `url`, `query`, `description`. For each key, look up `inp.get(key)`.
-2. **On the first truthy value found:**
+2. The selected truthy value is then processed:
    - Coerce to `str` and collapse all whitespace (`" ".join(str(value).split())`) —
      this flattens embedded newlines (e.g. a multi-line `Edit` `command`/`file_path`
      value) into one line so the log stays one line per tool call.
@@ -36,9 +36,8 @@ tool name (`[{node_id}] ⚙ {name} {summary}`).
    (`_emit_event`) then prints just `[{node_id}] ⚙ {name}` (right-stripped, no
    trailing space).
 
-Only the *first* matching key is used — a block with both `file_path` and `command`
-set (not expected from Claude's own tool schema, but not rejected either) reports
-only the `file_path` summary.
+- consistency rule: Use only the first truthy value in key-priority order; an input
+  with both `file_path` and `command` produces the `file_path` summary.
 
 ## Related pieces
 

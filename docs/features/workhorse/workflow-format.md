@@ -12,7 +12,7 @@ that do its work; its distribution binds that registry to a command in
 There is no file to hand the CLI and no schema to validate — the package *is* the format, and
 Python's own import and signature machinery is what checks it. Why it is a package rather
 than a declarative file is argued once, in
-[workhorse/README.md](../../../workhorse/README.md#why-a-workflow-is-python-and-not-a-config-file).
+[workhorse/README.md](../../../workhorse/README.md#python-workflows).
 
 This page is the **structural reference**: what a workflow package contains and what each
 piece must be. The narrative guide to writing one — worked examples, the three tiers of
@@ -70,8 +70,10 @@ main = console_script(workflow.entry_point(Build))
   `Workflow` subclass. Those names are what `workhorse-<name> run <flow>` accepts.
 - `override(**by_name)` — returns a **copy** of the index with those names rebound. Used by
   tests; non-mutating, so a substitution cannot outlive the run that asked for it.
-- `stub_agents({stem: reply})` — declares what `--dry-run` returns for an agent turn, keyed
-  by prompt stem.
+- semantics: `stub_agents({stem: reply})` maps each prompt stem to the reply returned for that
+  agent turn during `--dry-run`; `workhorse/pyflow/registry.py::Registry.stub_agents` stores
+  that mapping in `agent_stubs`.
+- verify: json_path(path="$.review.kind", equals="approved")
 - `entry_point(entry)` — declares the flow a bare `run` starts, and returns `self` so it
   composes with the binding below: `console_script(workflow.entry_point(Build))`.
 - `directory()` — the package directory prompts resolve against.
@@ -280,8 +282,8 @@ in [WORKFLOW.md](../../../workhorse/docs/WORKFLOW.md#what-has-no-counterpart):
 
 - **`requires:`**, the tool preflight — a workflow is an installed distribution now, so its
   dependencies are `[project.dependencies]` and are resolved at install time.
-- **`default:` on an OutputSpec** — the resilience ladder still defaults an exhausted agent
-  turn, but emits the `returns=` model's keys as nulls rather than guessing a value.
+- consistency: an `OutputSpec` has no `default`; when recovery exhausts without an answer, the
+  runner stops at its checkpoint instead of emitting a fallback output.
 - **per-node `activity:`** — now a flagged log record
   (`logger.info(…, extra={"activity": True})`), so the rendered message *is* the activity.
 

@@ -13,12 +13,17 @@ located by the `--library` flag, the `$FARRIER_LIBRARY_DIR` env var or `library_
 *base* library that ships with stablemate. Either alone is a working setup; with neither, farrier
 exits with a setup hint. `farrier [--repo DIR]` with a leading flag rather than a recognized
 subcommand is treated as `install`; a bare `farrier` with no arguments at all prints the top-level
-help instead, the same as `farrier --help`. Both rules live in `main`.
+help instead, the same as `farrier --help`. Both rules live in `main`. Repository installs also
+refresh [QA-evidence ignore rules](concepts/qa-evidence-ignore-rules.md) when they render the
+staged-files gate.
 
 - binary: `farrier` (the console script is declared as `farrier.install:main`, which re-exports
   `main` from `farrier.cli` — `install.py` is a compatibility facade that declares nothing of its
   own)
 - code: `farrier/farrier/cli.py::main`
+- detail: [hook manager wiring](concepts/hook-manager-wiring.md)
+- detail: [QA-evidence ignore rules](concepts/qa-evidence-ignore-rules.md)
+- detail: [selection error reporting](concepts/selection-errors.md)
 
 **Exit codes:** `0` on success; commands raise `SystemExit(message)` on error, which propagates as
 a nonzero exit with the message printed to stderr. `install --check` specifically returns `1` when
@@ -34,15 +39,29 @@ already current.
     directory.
   - `--force` — replace an existing `agents.yml` instead of refusing.
 - does:
-  - run: resolve `--repo` to an absolute path; `SystemExit("error: <repo> is not a directory")` if
-    it is not one
-  - run: refuse when `<repo>/agents.yml` already exists and `--force` was not given —
-    `SystemExit` naming the path, `install` as the command they probably meant, and `--force` as
-    the way to overwrite anyway
-  - run: render the starter config from the module template; the repo's derived name appears
-    only inside a comment (spelled exactly as `repo_prefix` derives it, so the example skill name
-    in that comment is the real one)
-  - run: write it to `<repo>/agents.yml` and print the path plus the next step
+  - run: resolve `--repo` to an absolute path
+  - run: raise `SystemExit("error: <repo> is not a directory")` when the resolved path is not a
+    directory
+  - run: refuse to replace an existing `<repo>/agents.yml` unless `--force` was given
+  - run: name the existing path in the refusal, recommend `install`, and identify `--force` as
+    the explicit replacement option
+  - run: render the starter config from the module template
+  - run: place the repo's derived name only inside a comment
+  - run: spell the example skill name exactly as `repo_prefix` derives it
+  - run: write the rendered config to `<repo>/agents.yml`
+  - run: print the written path
+  - run: print `Next: list the packs you want under packs:, then farrier install.`
+- verify: json_path(path="$.agents.claude", equals=true)
+- verify: json_path(path="$.repo", absent=true)
+- verify: unchanged(subject="<repo>/agents.yml")
+- verify: created(subject="<repo>/agents.yml")
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- code: `farrier/farrier/cli.py::_run_init`
+- code: `farrier/farrier/init.py::default_config`
+- tests: `farrier/tests/test_init_command.py::test_init_writes_a_config_the_installer_can_read`
+- tests: `farrier/tests/test_init_command.py::test_init_refuses_to_overwrite_an_existing_config`
+- tests: `farrier/tests/test_init_command.py::test_init_needs_no_library_configured`
 - reads: nothing — no library resolution, no base-library fetch, no home config. It is the one
   command that runs before a repo is configured, so it must work on a machine where
   `farrier config set-library` has never been run.
@@ -50,11 +69,6 @@ already current.
 - produces: [`agents.yml`](agents-yml-config.md) with `agents: {claude: true}` and an empty
   `packs:` list live, and `skills`/`prompts`/`scaffolds`/`exclude`/`template`/`workflow` present
   as commented examples. No `repo:` block: the repo's name is derived from the directory.
-- code: `farrier/farrier/cli.py::_run_init`
-- code: `farrier/farrier/init.py::default_config`
-- verify: `farrier/tests/test_init_command.py::test_init_writes_a_config_the_installer_can_read`
-- verify: `farrier/tests/test_init_command.py::test_init_refuses_to_overwrite_an_existing_config`
-- verify: `farrier/tests/test_init_command.py::test_init_needs_no_library_configured`
 
 The template is a Python string constant rather than a copy of the repo's
 `farrier/agents.example.yml`: the wheel packages only the `farrier` package, so the example file
@@ -76,71 +90,149 @@ the pruned starting point, and the two are kept consistent by hand.
     `$FARRIER_LIBRARY_DIR` and the home config's `library_dir` for this invocation.
 - does:
   - run: check out the [base library](concepts/library-directory.md#fetching-and-updating-the-base)
-    before anything looks for it — `ensure_base_library_dir(refresh=not --check)` fetches it into
-    `~/.cache/stablemate` when absent and updates it to the head of `main` when present. Skipped
-    entirely when `$STABLEMATE_BASE_DIR`, `base_dir` or a `stablemate_dir` checkout already names
-    one. `--check` passes `refresh=False`: it fetches a missing base but never updates a present
-    one, because it writes nothing and runs in CI. A failed fetch is not an error here — it falls
-    through to the resolution below, which raises only if there is no overlay either
+    before anything looks for it by calling `ensure_base_library_dir(refresh=not --check)`
+  - run (base absent): fetch the base library into `~/.cache/stablemate`
+  - run (cached base present): update the base library to the head of `main`
+  - run (configured base): skip fetching and updating when `$STABLEMATE_BASE_DIR`, `base_dir` or a
+    `stablemate_dir` checkout already names the base library
+  - run (`--check`): pass `refresh=False`, fetching a missing base but never updating a present one,
+    because the check writes nothing and runs in CI
+  - run (failed fetch): continue to library resolution, which raises only if there is no overlay
+    either
   - run: resolve the [library directory](concepts/library-directory.md) (`--library` >
     `$FARRIER_LIBRARY_DIR` > home config) and point the module's library-content globals at it
-  - run: resolve `--repo` to an absolute path; resolve the config path to `--config` if given,
-    else `<repo>/agents.yml`
+  - run: resolve `--repo` to an absolute path used as the generated-output root
+  - verify: created(subject="expected generated output under the resolved --repo path")
+  - run: resolve the config path to `--config` if given, else `<repo>/agents.yml`
+  - verify: created(subject="generated output selected by the resolved config path")
   - run: read [`agents.yml`](agents-yml-config.md) via `read_yaml` — `SystemExit("Missing config:
     <path>")` if `config_path` doesn't exist, else parse it with `yaml.safe_load` (an empty file
     yields `{}` rather than `None`), then `SystemExit("Config must be a YAML mapping: <path>")` if
     the parsed value isn't a `dict`
-  - run: derive the install prefix — the repo dirname, kebab-cased (`naming.repo_prefix`); it is
-    not readable from `agents.yml` — and validate `agents:` selects at least one of
-    `codex`/`claude`/`copilot` (`normalize_agents`)
-    — else `SystemExit("No agents selected in config")`
+  - run: derive the install prefix from the kebab-cased repo dirname (`naming.repo_prefix`), never
+    from `agents.yml`
+  - verify: created(subject="generated output bearing the repo-derived install prefix")
+  - run: validate that `agents:` selects at least one of `codex`/`claude`/`copilot`
+    (`normalize_agents`), else raise `SystemExit("No agents selected in config")`
+  - verify: exit_status(code=1)
   - run: resolve the [`agents.yml`](agents-yml-config.md) selection (packs ∪ top-level
-    `skills`/`prompts`/`roots`, minus `exclude`) against the library's skill/prompt
-    sources; `SystemExit("Selected packs did not match any skills or prompts")` if
-    nothing at all was selected. (The `scaffolds:` lists are collected but consumed only by the
-    [`scaffold`](#scaffold) command — install renders no scaffold files.)
-  - run: build a [`Renderer`](concepts/renderer.md) over the selected skills/prompts and render
-    every enabled agent's skill/command files, the `roots`-driven Copilot instructions, and the
-    launcher scaffolding — `.agents/agents.mk` and `.agents/agents-context*.json` for every
-    repo, plus a thin root `Makefile` only when the repo has none
+    `skills`/`prompts`/`roots`, minus `exclude`) against the library's skill/prompt sources. The
+    `scaffolds:` lists are collected but consumed only by the [`scaffold`](#scaffold) command, so
+    install renders no scaffold files
+  - verify: created(subject="generated output selected by agents.yml")
+  - run: raise `SystemExit("Selected packs did not match any skills or prompts")` when the
+    selection contains no skills or prompts
+  - verify: exit_status(code=1)
+  - run: render every enabled agent's selected skill files through a
+    [`Renderer`](concepts/renderer.md)
+  - verify: created(subject="enabled agents' selected skill files")
+  - run: render every enabled agent's selected command files through the `Renderer`
+  - verify: created(subject="enabled agents' selected command files")
+  - run: render the `roots`-driven Copilot instructions through the `Renderer`
+  - verify: created(subject="roots-driven Copilot instructions")
+  - run: render `.agents/agents.mk` for every repository
+  - verify: created(subject=".agents/agents.mk")
+  - run: render `.agents/agents-context*.json` for every repository
+  - verify: created(subject=".agents/agents-context*.json manifests")
+  - run: render a thin root `Makefile` only when the repository has none
+  - verify: created(subject="thin root Makefile in a repository that had none")
   - run: render each [`localInstructions`](agents-yml-config.md#localinstructions) entry into its
-    target directories' `AGENTS.md` (plus a `CLAUDE.md` pointer when `claude` is enabled; every target directory must already
-    exist — `SystemExit` pointing at `farrier scaffold` otherwise) — together these compute the
-    full `{output path: content}` map (`render_expected`) that `--check`/install below act on
+    target directories' `AGENTS.md` as part of the full `{output path: content}` map
+    (`render_expected`) that `--check` or install acts on
+  - verify: created(subject="localInstructions AGENTS.md output")
+  - run: render a `CLAUDE.md` pointer for each local-instructions target when `claude` is enabled
+  - verify: created(subject="localInstructions CLAUDE.md pointer")
+  - run: raise `SystemExit` pointing at `farrier scaffold` when a local-instructions target
+    directory does not already exist
+  - verify: exit_status(code=1)
   - run (`--check`): for each expected output, record `missing: <repo-relative path>` if
     the file doesn't exist on disk, or `changed: <repo-relative path>` if its on-disk text differs
     from the expected content (both sides normalized to a single trailing newline before comparing)
-  - run (`--check`): scan every directory farrier owns — `.agents/skills`, `.agents/prompts`,
-    `.agents/hooks`, `.claude/skills`, `.claude/commands`, `.github/instructions`,
-    `.github/prompts`, `.github/skills`, `.github/agents` (`MANAGED_DIRS`) — for files it
-    [generated](#ownership) that are not in the expected output map, and record each as
-    `extra: <repo-relative path>`. An **untagged** file in one of those directories is *not*
-    `extra`: it is somebody's own file sitting where farrier also writes, install leaves it
-    alone, and reporting it would fail `--check` with nothing to fix. Neither `.agents/workflows`
-    nor `.agents/local.compose.yaml` is scanned: farrier rendered a workflow's YAML tree into the
-    first and a per-workflow compose override into the second while workflows were its concern,
-    and it emits neither now — so scanning them would report a leftover from an older install as
-    `extra:`, a `--check` failure no re-render can fix. `.github/instructions` is the
-    opposite case and stays scanned: farrier no longer writes a per-skill
-    `<name>.instructions.md` copy there, and keeping the directory managed is what lets a
-    later install sweep the ones an older install tagged
+  - run (`--check`): scan `MANAGED_DIRS` for [generated](#ownership) files absent from the expected
+    output map, recording each as `extra: <repo-relative path>`
+  - verify: count(subject="generated files absent from the expected output map", equals=1)
+  - run (`--check`): leave an untagged file in a managed directory alone instead of reporting it as
+    `extra`, because it is somebody's own file and an install cannot fix it
+  - verify: unchanged(subject="untagged file in a managed directory")
+  - run (`--check`): omit `.agents/workflows` from the scan because Farrier no longer emits its
+    legacy workflow YAML tree, so a reported leftover could not be fixed by re-rendering
+  - verify: omits(subject="--check extra report", matches="^extra: \\.agents/workflows/")
+  - run (`--check`): omit `.agents/local.compose.yaml` from the scan because Farrier no longer
+    emits the legacy per-workflow compose override
+  - verify: omits(subject="--check extra report", text="extra: .agents/local.compose.yaml")
+  - run (`--check`): keep `.github/instructions` in `MANAGED_DIRS` so a later install reports the
+    per-skill `<name>.instructions.md` copies tagged by an older install
+  - verify: count(subject="obsolete generated .github/instructions copies", equals=1)
   - run (`--check`): also record as `extra` any of these fixed paths that exist on disk, are
     farrier's, and aren't in the expected map: `.github/copilot-instructions.md` and the
     launcher/hook scaffolding `.agents/agents.mk`, `.agents/lefthook.farrier.yml`,
     `.agents/agents-context.json`
   - run (`--check`): if any `missing`/`changed`/`extra` entries were recorded, print them in that
-    order (one per line, e.g. `missing: .claude/skills/foo/SKILL.md`) and return `1`; otherwise
-    return `0` with no output
-  - run (no `--check`): refuse the install outright if any expected output path is held by a file
-    farrier did not generate (`refuse_conflicts`) — every conflict named, nothing written, see
-    [ownership](#ownership) below; otherwise delete farrier's previous output, write the computed
-    files into `--repo`, then seed the managed `.gitignore` rules and a root `Makefile` `include`
-    line pointing at the generated launcher; print the count of installed files and return `0`
+    order, one per line, such as `missing: .claude/skills/foo/SKILL.md`
+  - verify: count(subject="ordered missing, changed, and extra stdout lines", equals=3)
+  - run (`--check`): return `1` when any `missing`/`changed`/`extra` entries were recorded
+  - verify: exit_status(code=1)
+  - run (`--check`): produce no output when no drift entries were recorded
+  - verify: omits(subject="stdout", matches=".+")
+  - run (`--check`): return `0` when no drift entries were recorded
+  - verify: exit_status(code=0)
+  - run (no `--check`): refuse the install through `refuse_conflicts` when an expected output path
+    is held by a file Farrier did not generate, according to the [ownership](#ownership) contract
+  - verify: exit_status(code=1)
+  - run (no `--check`): name every unowned output conflict in the refusal
+  - verify: count(subject="unowned output conflicts named in the refusal", equals=2)
+  - run (no `--check`): write nothing after detecting an unowned output conflict
+  - verify: unchanged(subject="repository after an unowned-output conflict")
+  - run (no `--check`): perform the conflict scan before deleting any prior output
+  - verify: unchanged(subject="repository before the conflict scan succeeds")
+  - run (no `--check`): when a path is unowned, abort with every conflicting repo-relative path
+    and leave the repository unchanged
+  - verify: unchanged(subject="repository after an unowned-output conflict")
+   - run (no `--check`): remove only Farrier-owned output files under the managed directories and
+     files
+   - verify: removed(subject="deselected Farrier-owned output file")
+   - run (no `--check`): remove empty directories left by Farrier-owned output deletion
+   - verify: removed(subject="empty directory left by deselected Farrier-owned output")
+   - run (no `--check`): delete the convention-owned legacy `.agents/local.compose.yaml` when it is
+     present, even though current rendering no longer produces it
+   - verify: removed(subject="legacy .agents/local.compose.yaml")
+   - run (no `--check`): leave untagged neighboring files in place during removal
+   - verify: unchanged(subject="untagged neighboring output")
+  - run (no `--check`): write expected outputs in repo-relative path order
+  - verify: created(subject="expected generated output")
+  - run (no `--check`): normalize ordinary output to one trailing newline
+  - run (no `--check`): preserve executable permission for executable content
+  - run (no `--check`): when `.agents/agents.mk` is among the outputs, refresh the managed
+    `.agents/` ignore rules
+  - verify: persists(subject="managed .agents ignore rules")
+  - run (no `--check`): when `.agents/agents.mk` is among the outputs and a root `Makefile` exists,
+    append the launcher include without replacing the existing file
+  - verify: persists(subject="root Makefile launcher include")
+  - run (no `--check`): when the generated staged-files gate is among the outputs and repo
+    scaffolding is enabled, refresh the QA-evidence ignore rules
+  - verify: persists(subject="QA-evidence ignore rules")
+  - run (no `--check`): when a hook manager is supplied, splice Farrier's fenced hook entry after
+    all generated files have been written
+- verify: persists(subject="hook-manager fenced entry")
+- detail: [hook manager wiring](concepts/hook-manager-wiring.md)
+  - run (no `--check`): when the supplied hook manager is `none`, remove Farrier's existing fenced
+    hook entry from each supported manager file instead of adding a new entry
+  - verify: removed(subject="Farrier fenced hook entry for the disabled hook manager")
+  - run (no `--check`): when `managed.repo_scaffolding` is false, skip the QA-evidence ignore
+    rules because the user-home install scope supplies no repository launcher output or hook manager
+  - verify: unchanged(subject="user-home QA-evidence ignore rules")
+  - code: `farrier/farrier/outputs.py::install_outputs`
+  - tests: `farrier/tests/test_tagged_deletion.py::test_an_untagged_file_at_an_output_path_aborts_the_whole_install`
+  - tests: `farrier/tests/test_tagged_deletion.py::test_a_deselected_skill_is_still_removed`
+  - tests: `farrier/tests/test_qa_evidence_ignore.py::test_the_install_follows_the_skill_that_ships_the_gate`
+  - tests: `farrier/tests/test_makefile_include.py::test_appends_include_block_and_preserves_existing`
+  - tests: `farrier/tests/test_hook_managers.py::test_every_manager_gets_the_command_and_keeps_the_users_lines`
 
 #### ownership
 
-Install deletes what farrier generated and nothing else. Ownership is a property of the *file*,
-not of where it sits (`farrier/farrier/ownership.py`):
+Install deletes what farrier generated and nothing else. The
+[installation output ownership](concepts/installation-output-ownership.md) contract makes
+ownership a property of the *file*, not of where it sits (`farrier/farrier/ownership.py`):
 
 - a generated skill, prompt or command says so in its front matter —
   `metadata.generated_by: farrier`, see [generated-file metadata](generated-file-metadata.md);
@@ -160,7 +252,7 @@ it — are the operator's to choose, not farrier's.
 - verify: `farrier/tests/test_base_fetch_on_install.py::test_install_refreshes_the_base`
 - verify: `farrier/tests/test_base_fetch_on_install.py::test_check_fetches_but_does_not_refresh`
 
-### install --user
+### install---user
 - usage: `farrier install --user [--check] [--home DIR] [--library DIR]`
 - flags:
   - `--user` — install into the harness home directories instead of a repo. Selection comes from
@@ -175,18 +267,28 @@ it — are the operator's to choose, not farrier's.
 - does:
   - run: read `[user_library.<harness>]` from the config — one table per harness that gets a
     personal library, holding the same `skills:`/`prompts:`/`exclude:` keys
-    [`agents.yml`](agents-yml-config.md) uses. A harness with no table installs nothing; no table
-    at all is an error naming the config path, since `--user` was asked for explicitly
+    [`agents.yml`](agents-yml-config.md) uses. A harness with no table installs nothing
+  - verify: count(subject="user-scope outputs for an unconfigured harness", equals=0)
+  - run: no user-library table at all is an error naming the config path, since `--user` was
+    asked for explicitly
+  - verify: exit_status(code=1)
   - run: render each table's selection with a [`Renderer`](concepts/renderer.md) at user scope
     into `~/.claude/skills/<name>/SKILL.md`, `~/.claude/commands/<name>.md`,
     `~/.codex/skills/<name>/SKILL.md` and `~/.copilot/skills/<name>/SKILL.md`
   - run: name each installed skill by its **library group** (`stablemate/ostler` →
     `stablemate-ostler`), never by a repo — there is no repo to prefix with, and a personal skill
     is the same skill in every checkout
-  - run: substitute `{{ template.* }}` from one shared `[user_library.template]` table. A template
-    value is a fact about the machine, not about the harness reading it, so it is not per-harness.
-    An **undefined** reference is a hard error, and so is any `{{ repo.* }}` reference: nothing at
-    user scope can supply one, and rendering it empty would install a skill that silently lies
+  - run: substitute `{{ template.* }}` from the shared `[user_library.template]` table
+  - verify: persists(subject="user-scope skill rendered with shared template values")
+  - run: treat a template value as a fact about the machine rather than the harness reading it, so
+    the value is not configured per harness
+  - verify: persists(subject="shared user-library template configuration")
+  - run: reject an undefined `{{ template.* }}` reference as a hard error rather than rendering it
+    empty
+  - verify: exit_status(code=1)
+  - run: reject any `{{ repo.* }}` reference as a hard error because user scope has no repository
+    to supply it
+  - verify: exit_status(code=1)
   - run: `prompts:` under any harness but `claude` is a hard error — Claude alone has a personal
     command directory. A silent skip would be a prompt the agent never sees and nobody misses
   - run: write **no repo scaffolding** — no launcher, no `.agents/` context manifest, no
@@ -198,9 +300,13 @@ it — are the operator's to choose, not farrier's.
   copy an agent gets depends on the harness. That is a decision for the operator to take once,
   explicitly, rather than a side effect of installing into some repo.
 - code: `farrier/farrier/cli.py::_run_user_install`, `farrier/farrier/outputs.py::render_user_expected`
-- verify: `farrier/tests/test_user_install.py::test_skills_and_prompts_land_in_the_harness_home`
-- verify: `farrier/tests/test_user_install.py::test_the_repo_scaffolding_stays_out_of_the_home`
-- verify: `farrier/tests/test_user_install.py::test_a_deselected_skill_is_swept_and_a_hand_written_one_is_not`
+- verify: created(subject="selected user-scope harness outputs")
+- verify: absent(subject="repo scaffolding in the user home")
+- verify: removed(subject="deselected user-scope generated outputs")
+- verify: unchanged(subject="hand-written user-home skill")
+- tests: `farrier/tests/test_user_install.py::test_skills_and_prompts_land_in_the_harness_home`
+- tests: `farrier/tests/test_user_install.py::test_the_repo_scaffolding_stays_out_of_the_home`
+- tests: `farrier/tests/test_user_install.py::test_a_deselected_skill_is_swept_and_a_hand_written_one_is_not`
 
 ### config
 - usage: `farrier config [--config PATH] <set-library|set-stablemate|set-base|set-worktree|show> [args]`
@@ -249,16 +355,19 @@ it — are the operator's to choose, not farrier's.
     in the [home config file](home-config.md) via `write_worktree_dir` (no validation); print
     `worktree_dir=<path>`
   - run (any action): `--config`, if given, is written into `$STABLEMATE_CONFIG` before dispatch
-  - run (`show`): read the [home config file](home-config.md) via `read_config`; with `--profile`,
-    narrow it with `select_profile` and flatten to dotted leaves first; with a `key`,
-    print its bare value (`SystemExit` if unset, naming the profile when one was given); without
-    one, print every entry as `key=value`
+  - run (`show`): read the [home config file](home-config.md) via `read_config`
+  - run (`show --profile`): narrow the config with `select_profile` and flatten it to dotted
+    leaves first
+  - run (`show <key>`): print the key's bare value
+  - run (`show <key>`): `SystemExit` if the key is unset, naming the profile when one was given
+  - run (`show`): without a key, print every entry as `key=value`
+- verify: omits(subject="selected profile output", text="power.high.claude.model=opus")
 - code: `farrier/farrier/cli.py::_run_config`
-- verify: `farrier/tests/test_config_profiles_cli.py::test_the_config_flag_reads_the_file_it_names`,
-  `farrier/tests/test_config_profiles_cli.py::test_a_profile_is_shown_flattened_to_dotted_keys`,
-  `farrier/tests/test_config_profiles_cli.py::test_the_profile_replaces_the_top_level_rather_than_layering_over_it`,
-  `farrier/tests/test_config_profiles_cli.py::test_an_unknown_profile_exits_cleanly_and_lists_the_ones_there_are`,
-  `farrier/tests/test_config_profiles_cli.py::test_set_worktree_records_a_directory_that_does_not_exist_yet`
+- tests: `farrier/tests/test_config_profiles_cli.py::test_the_config_flag_reads_the_file_it_names`,
+   `farrier/tests/test_config_profiles_cli.py::test_a_profile_is_shown_flattened_to_dotted_keys`,
+   `farrier/tests/test_config_profiles_cli.py::test_the_profile_replaces_the_top_level_rather_than_layering_over_it`,
+   `farrier/tests/test_config_profiles_cli.py::test_an_unknown_profile_exits_cleanly_and_lists_the_ones_there_are`,
+   `farrier/tests/test_config_profiles_cli.py::test_set_worktree_records_a_directory_that_does_not_exist_yet`
 
 The one command that reads and writes the [shared config file](../workhorse/concepts/config.md):
 workhorse is a library and ships no `config` of its own, so `agents.mk` and other scripts go
@@ -268,10 +377,6 @@ through farrier for every shared setting. The nested `[power.<tier>.<backend>]` 
 
 ### library
 - usage: `farrier library list|show|check [--library DIR] [--layer base|overlay]`
-- args:
-  - `list` — print the catalog of what the resolved layer stack provides
-  - `show` — print one item's library source, as written
-  - `check` — report front-matter problems in the library's own sources
 - flags:
   - `--library <dir>` — same resolution override as `install`
   - `--<kind>s` (`--skills`, `--prompts`, `--policies`, `--packs`, `--scaffolds`, `--roots`) —
@@ -281,13 +386,25 @@ through farrier for every shared setting. The nested `[power.<tier>.<backend>]` 
     command means the same thing on the next machine.
   - `--strict` — `check` only; treat warnings (untagged skills, fragile unquoted values) as errors
   - `--check` — the older spelling of `library check`, kept working
+- args:
+  - `list` — print the catalog of what the resolved layer stack provides
+  - `show` — print one item's library source, as written
+  - `check` — report front-matter problems in the library's own sources
 - does:
-  - run: resolve the [library directory](concepts/library-directory.md) and set the layer stack;
-    `SystemExit` when the stack is empty (nothing configured and no base installed)
-  - run (`list`): print the layer stack, then a block per kind — the library id, the name it
-    installs under, the layer it resolves from, and the layers it shadows. Two layers naming the
-    same directory collapse to one, so a repo that pins its own tree as both overlay and base is
-    not reported as shadowing itself.
+  - run: resolve the [library directory](concepts/library-directory.md) into the active layer stack
+  - verify: exit_status(code=0)
+  - run: raise `SystemExit` when both configuration and an installed base library are absent
+  - verify: exit_status(code=1)
+  - run (`list`): print the layer stack
+  - run (`list`): print one block for each selected kind
+  - run (`list`): print each item's library id
+  - run (`list`): print each item's installed name
+  - run (`list`): print the layer each item resolves from
+  - run (`list`): print the layers each item shadows
+  - verify: visible(locator="library list --skills row for stacks/api", text="shadows")
+  - run (`list`): report one layer when base and overlay name the same directory, so a repo that
+    pins its own tree as both does not report it as shadowing itself
+  - tests: `farrier/tests/test_library_browse.py::test_a_shadowed_item_is_reported_as_shadowed`
   - run (`list --layer`): report what that layer **provides**, including items the other layer
     shadows — filtering on the winner would answer a different question than the one asked
   - run (`show`): resolve NAME by library id, then installed name, then bare basename; an
@@ -296,7 +413,6 @@ through farrier for every shared setting. The nested `[power.<tier>.<backend>]` 
   - run (`check`): run `check_library` over each layer's `library/` root and print the findings;
     return `1` on any error (or any warning under `--strict`)
 - code: `farrier/farrier/cli.py::_run_library`, `farrier/farrier/library_view.py`
-- verify: `farrier/tests/test_library_browse.py::test_a_shadowed_item_is_reported_as_shadowed`
 
 Ownership of a name belongs to whichever layer wins it, and nothing in a rendered repo says
 which one did. `list` is where that becomes visible before it becomes a surprise, and `show`
@@ -311,22 +427,30 @@ from a generated file back to the library.
 - args:
   - `<file>` — path to a farrier-generated `SKILL.md` or command `.md` file. Required.
 - does:
-  - run: resolve `<file>` to an absolute path; `SystemExit` if it is not a file
+  - run: resolve `<file>` to an absolute path
+  - run: `SystemExit` if `<file>` is not a file
   - run: read `<file>`'s YAML front matter and parse its
-    [`metadata:` block](generated-file-metadata.md) via `frontmatter_metadata`, extracting the
-    `source` field (a library-anchored, machine-independent path stamped in by `install`'s
-    generated-file provenance banner)
+     [`metadata:` block](generated-file-metadata.md) via `frontmatter_metadata`, extracting the
+     `source` field (a library-anchored, machine-independent path stamped in by `install`'s
+     generated-file provenance banner)
   - run: `SystemExit` if `source` is absent (`<file>` is not a farrier-generated skill/command)
   - run: resolve the [library directory](concepts/library-directory.md) the same way `install`
     does (`--library` > `$FARRIER_LIBRARY_DIR` > home config), then join `source` under it and
     resolve to an absolute path
-  - run: `SystemExit` if the resolved source is not a file (the library moved or renamed it since
-    the file was generated); otherwise print the resolved absolute path
+  - run: `SystemExit` if the resolved source is not a file because the library moved or renamed it
+    since the file was generated
+  - run: print the resolved absolute path
+- verify: exit_status(code=0)
 - code: `farrier/farrier/cli.py::_run_source`
-- verify: `farrier/tests/test_source_command.py::test_source_resolves_to_library_file`
+- code: `farrier/farrier/frontmatter.py::frontmatter_metadata`
+- tests: `farrier/tests/test_source_command.py::test_source_resolves_to_library_file`
+- tests: `farrier/tests/test_source_command.py::test_frontmatter_metadata_reads_nested_block`
+- tests: `farrier/tests/test_source_command.py::test_frontmatter_metadata_empty_without_block`
 
 Lets an agent go from a generated adapter under `.claude/`/`.agents/`/`.github/` back to its
 editable source of truth in the library, using only the generated file's front matter.
+`frontmatter_metadata` is declared in the frontmatter parser; `install.py` only re-exports it as
+a compatibility facade.
 
 ### scaffold
 - usage: `farrier scaffold [<id>] [--param KEY=VALUE]... [--repo DIR] [--list] [--library DIR]`
@@ -338,31 +462,63 @@ editable source of truth in the library, using only the generated file's front m
   - `--repo <dir>` — repository root to scaffold into. Default: current working directory.
   - `--library <dir>` — same resolution override as `install`.
 - does:
-  - run: resolve the [library directory](concepts/library-directory.md) and load every scaffold
-    definition from the library's `scaffolds/*.yml`/`*.yaml` files (`load_scaffold_defs`) — each
-    file maps scaffold ids to `{description?, params?, tree}`; a duplicate id across files or a
-    definition without a `tree:` mapping is a `SystemExit`
-  - run: compute the repo's catalog (`available_scaffold_ids`): with a `<repo>/agents.yml`, the
-    union of its `scaffolds:` list and every selected pack's `scaffolds:` list (ids must be plain
-    strings — the legacy `{source-prefix: dest}` mapping form errors with a migration hint,
-    `parse_scaffold_ids`); with no `agents.yml` (bootstrapping a fresh repo), every library id
-  - run: `SystemExit` when `<id>` is not defined in the library (lists the defined ids) or not in
-    the repo's catalog (points at the `agents.yml` `scaffolds:` list)
+  - run: resolve the [library directory](concepts/library-directory.md), then load every scaffold
+    definition from its `scaffolds/*.yml`/`*.yaml` files (`load_scaffold_defs`)
+  - verify: count(subject="loaded scaffold definitions", equals=1)
+  - run: interpret each scaffold file as ids mapped to `{description?, params?, tree}` definitions
+  - verify: count(subject="definitions loaded from one scaffold file", equals=1)
+  - run: raise `SystemExit` when two files in one layer define the same scaffold id
+  - verify: exit_status(code=1)
+  - run: raise `SystemExit` when a scaffold definition is not a mapping with a `tree:` mapping
+  - verify: exit_status(code=1)
+  - run: with `<repo>/agents.yml`, compute the repo's catalog (`available_scaffold_ids`) as the
+    union of its `scaffolds:` list plus every selected pack's `scaffolds:` list
+  - verify: count(subject="available scaffold ids from agents.yml and a selected pack", equals=2)
+  - run: reject non-string catalog entries, including the legacy `{source-prefix: dest}` mapping
+    form, with a migration hint from `parse_scaffold_ids`
+  - verify: exit_status(code=1)
+  - run: with no `agents.yml`, expose every library scaffold id to bootstrap a fresh repo
+  - verify: count(subject="available scaffold ids without agents.yml", equals=1)
+  - run: raise `SystemExit` for an `<id>` absent from the library, listing the defined ids
+  - verify: exit_status(code=1)
+  - run: raise `SystemExit` for an `<id>` absent from the repo's catalog, pointing at the
+    `agents.yml` `scaffolds:` list
+  - verify: exit_status(code=1)
   - run: resolve params (`resolve_scaffold_params`): declared defaults overlaid with `--param`
     values, plus built-ins `repo_name` (kebab-cased `--repo` dirname) and `repo_title`
     (title-cased words) unless shadowed
-  - run: flatten the definition's `tree:` (`flatten_scaffold_tree`) — a string value is inline
-    file content, a `{url: ...}` mapping is downloaded at write time (30s timeout, `SystemExit`
-    on failure), any other mapping is a nested sub-tree, and a null value (bare `dir:` key) or
-    empty mapping is an empty directory (created and reported like files, `created:`/`exists
-    (kept):` with a trailing `/`); substitute `$param` placeholders strictly in each path
-    (unknown param or a path
-    escaping the repo is a `SystemExit`) and leniently (`safe_substitute`) in inline content
-  - run: write each file that does not already exist (`created: <rel>`) and keep any that does
-    (`exists (kept): <rel>`) — every scaffolded file is a seed the repo owns after first write;
-    re-running is always a no-op for existing files; print a summary count and return `0`
+  - run: flatten string values in the definition's `tree:` into inline file content
+  - verify: created(subject="api/.gitignore from inline scaffold content")
+  - run: download a `{url: ...}` file value at write time with a 30-second timeout
+  - verify: created(subject=".gitignore from a URL-backed scaffold file")
+  - run: raise `SystemExit` when a URL-backed scaffold file cannot be downloaded
+  - verify: exit_status(code=1)
+  - run: recursively flatten mapping values that are nested sub-trees
+  - verify: created(subject="api/docs/README.md from a nested scaffold tree")
+  - run: create a null tree value or empty mapping as an empty directory
+  - verify: created(subject="api/logs empty scaffold directory")
+  - run: report an empty directory as `created: <rel>/` or `exists (kept): <rel>/`
+  - verify: count(subject="status line for an empty scaffold directory", equals=1)
+  - run: substitute `$param` placeholders strictly in each scaffold path
+  - verify: created(subject="backend/.gitignore selected by the dir parameter")
+  - run: raise `SystemExit` when a path contains an unknown parameter or escapes the repo
+  - verify: exit_status(code=1)
+  - run: substitute parameters leniently (`safe_substitute`) in inline file content
+  - verify: persists(subject="inline scaffold content containing literal dollar expressions")
+  - run: write each file absent from the target repo, reporting `created: <rel>`
+  - verify: created(subject="api/.gitignore")
+  - run: preserve each existing target file, reporting `exists (kept): <rel>`
+  - verify: unchanged(subject="existing api/.gitignore")
+  - run: treat every scaffolded file as a seed the repo owns after its first write
+  - verify: unchanged(subject="scaffolded file edited after its first write")
+  - run: make every re-run a no-op for existing files
+  - verify: unchanged(subject="existing files after a scaffold re-run")
+  - run: print the number of files created by this invocation
+  - verify: count(subject="files reported as created by a one-file scaffold", equals=1)
+  - run: return `0` after scaffolding completes
+  - verify: exit_status(code=0)
 - code: `farrier/farrier/cli.py::_run_scaffold`
-- verify: `farrier/tests/test_scaffold_command.py::test_scaffold_writes_tree_with_defaults`
+- tests: `farrier/tests/test_scaffold_command.py::test_scaffold_writes_tree_with_defaults`
 
 Lets an agent stand up a new repo or service folder from the library's parameterized scaffold
 definitions (per-stack `.gitignore` seeds, the standard `docs/` hierarchy) instead of hand-writing
@@ -373,3 +529,43 @@ boilerplate — placement folders are `--param` values, never baked into the lib
 - does:
   - run: print the installed `farrier` package's version (`importlib.metadata.version("farrier")`)
 - code: `farrier/farrier/cli.py::main`
+
+### workflows
+- usage: `farrier workflows [--names]`
+- flags:
+  - `--names` — print only the sorted, space-separated workflow names for the generated
+    [make launcher](concepts/generated-agent-launcher.md)
+- does:
+  - discover installed workflow distributions from `pipx list --json`
+  - when `--names` is given, print the discovered workflow names on one line
+  - when `--names` is given, sort the names alphabetically
+  - when `--names` is given, print a duplicate workflow name only once
+  - when `--names` is given and no workflow is discoverable, print an empty line
+  - without `--names`, print each provider's distribution name
+  - without `--names`, print each provider's version
+  - without `--names`, print each provider's origin
+  - without `--names`, print each provider's workflow names as indented lines
+  - without `--names` and with no discoverable workflows, print guidance to install a workflow
+    distribution
+  - without `--names`, mark a provider whose local source directory is missing with
+    `** source directory is gone **`
+- errors:
+  - treat a missing `pipx` executable as an empty discoverable workflow set
+  - treat a nonzero `pipx list --json` result as an empty discoverable workflow set
+  - treat malformed `pipx list --json` output as an empty discoverable workflow set
+- exits:
+  - return `0` for successful discovery output
+  - return `0` for an empty `--names` result
+  - return `1` in human-readable mode when any discovered provider has a missing local source
+    directory
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- verify: count(subject="space-separated workflow names", equals=2)
+- verify: count(subject="deduplicated workflow names", equals=1)
+- code: `farrier/farrier/cli.py::_run_workflows`
+- detail: [generated agent launcher](concepts/generated-agent-launcher.md)
+- detail: [installed workflow discovery](concepts/installed-workflow-discovery.md)
+- tests: `farrier/tests/test_pipx.py::test_discover_reads_the_json_pipx_actually_emits`
+- tests: `farrier/tests/test_pipx.py::test_pipx_not_installed_means_no_workflows_not_a_broken_build`
+- tests: `farrier/tests/test_pipx.py::test_pipx_failing_or_emitting_junk_means_no_workflows`
+- tests: `farrier/tests/test_launcher_make.py::test_a_discovered_workflow_becomes_a_real_target`

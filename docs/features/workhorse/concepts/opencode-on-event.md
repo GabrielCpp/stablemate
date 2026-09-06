@@ -25,9 +25,11 @@ structurally impossible rather than a discipline
 
 - code: `workhorse/workhorse/runner/backends/opencode.py::_OpenCodeEvents.on_event`
 - extends: [stream_jsonl](stream-jsonl.md#contract)
-- verify: `workhorse/tests/test_backends.py::test_opencode_on_event_text_session_and_error`,
-  `workhorse/tests/test_backends.py::test_opencode_text_parts_do_not_leak_between_turns`,
-  `workhorse/tests/test_backends.py::test_opencode_cap_structured_error_event_aborts_stream_early`
+
+The adapter's text, session, and error behaviour is covered by
+`workhorse/tests/test_backends.py::test_opencode_on_event_text_session_and_error`,
+`workhorse/tests/test_backends.py::test_opencode_text_parts_do_not_leak_between_turns`, and
+`workhorse/tests/test_backends.py::test_opencode_cap_structured_error_event_aborts_stream_early`.
 
 ## The `_OpenCodeEvents` instance
 
@@ -52,8 +54,6 @@ loop never sees the instance and needs no notion that this backend keeps state a
     to it — the text parts live on `self.parts` instead.
   - `node_id` — the workflow node id, used only for the live-echo log-line prefix.
 - **Output:** `None` — all effects are the in-place mutations to `state` and `self.parts` below.
-- **Raises:** nothing — a malformed `event`/`part`/`error` shape is read defensively (`.get(...)`
-  with falsy defaults), never indexed directly.
 
 ## Algorithm
 

@@ -61,8 +61,6 @@ exit through argparse's standard usage/error path.
   [`groom-sidecar-root`](#groom-sidecar-root) for the accepted command line.
   - Invokes [`groom-sidecar-root`](#groom-sidecar-root) after parsing the root
     flags.
-- code: groom/groom/cli.py::sidecar_main
-- detail: [sidecar live sessions](sidecar-live-sessions.md)
 - errors: parser errors happen before sidecar work; runtime errors follow the
   selected sidecar mode's own contract.
   - Unknown flags, unexpected positional arguments, and non-integer
@@ -77,6 +75,8 @@ exit through argparse's standard usage/error path.
   - Exit-notice mode returns after attempting one exited push.
   - Default live-session mode normally keeps running until the session handler
     returns or raises its own process exit.
+- code: groom/groom/cli.py::sidecar_main
+- detail: [sidecar live sessions](sidecar-live-sessions.md)
 
 ## Invocations
 
@@ -138,15 +138,15 @@ exit through argparse's standard usage/error path.
   - When the serving loop returns a non-zero code, the runner raises a process
     exit with exactly that code; the reserved reload code is therefore surfaced
     to the container entrypoint without being translated by the CLI dispatcher.
-- consumes:
-  - `query` boolean from `--query`, default `false`.
-  - `exit_code` nullable integer from `--exit-code`, default `null`.
 - emits:
   - Query mode writes exactly one JSON object followed by stdout's normal print
     newline.
   - Exit-notice mode performs no command-line output of its own.
   - Default live-session mode performs no command-line output of its own before
     handing off to the live session handler.
+- consumes:
+  - `query` boolean from `--query`, default `false`.
+  - `exit_code` nullable integer from `--exit-code`, default `null`.
 - errors:
   - Parser errors exit through argparse before this invocation starts.
   - Import-time sidecar runtime failures, including malformed sidecar environment
@@ -157,13 +157,17 @@ exit through argparse's standard usage/error path.
     unreachable host does not raise from the push handler.
   - Default live-session connection, reload, and shutdown behavior is owned by
     the live session handler.
+- verify: json_path(path="$.current_node", equals="n1")
+- verify: json_path(path="$.terminal", equals="")
+- verify: count(subject="snapshot gates", equals=1)
+- verify: exit_status(code=0)
+- code: groom/groom/cli.py::sidecar_main
+- tests: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch
+- tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
+- tests: groom/tests/test_sidecar_session.py::test_cli_sidecar_default_runs_session
 - exits:
   - Query mode returns normally after stdout is written.
   - Exit-notice mode returns normally after the push handler returns.
   - Default live-session mode returns only if the live session handler returns;
     a sidecar reload request exits the process through that handler's reserved
     reload exit code.
-- code: groom/groom/cli.py::sidecar_main
-- verify: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch
-- verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
-- verify: groom/tests/test_sidecar_session.py::test_cli_sidecar_default_runs_session

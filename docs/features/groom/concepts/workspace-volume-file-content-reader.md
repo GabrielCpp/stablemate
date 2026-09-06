@@ -76,12 +76,16 @@ Workspace volume file-content reader is the shared volume text-read operation us
 - sig: `read_file(volume: str, rel_path: str) -> str | None`
 - abstract: false
 - raises: `ValueError` for unsafe relative paths before any reader process is started; process launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate unchanged.
+- verify: http_status(code=200, path="/file/abc123")
 - returns: the [field-return-value](#field-return-value) contract: raw stdout text on reader exit `0`, otherwise `None`.
+- verify: json_path(path="$.content", equals="print(1)\n")
+- verify: count(subject="discovered awaiting gate files", equals=1)
+- verify: absent(subject="gate answer write")
 - code: groom/groom/docker_io.py::read_file
-- verify: groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content
-- verify: groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path
-- verify: groom/tests/test_discovery.py::test_find_gates_only_keeps_files_still_awaiting
-- verify: groom/tests/test_gates.py::test_answer_gate_rejects_when_already_answered
+- tests: groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content
+- tests: groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path
+- tests: groom/tests/test_discovery.py::test_find_gates_only_keeps_files_still_awaiting
+- tests: groom/tests/test_gates.py::test_answer_gate_rejects_when_already_answered
 - args: `volume`; required; no default; Docker volume mounted read-only at `/vol` for this one read.
 - args: `rel_path`; required; no default; file path validated by the [workspace volume relative path guard](workspace-volume-relative-path-guard.md) before becoming `/vol/{rel_path}`.
 

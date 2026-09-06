@@ -136,7 +136,12 @@ tab receives is byte-identical to the body a recovering tab polls.
   payload. The process remains unauthenticated and single-process, with no durable
   persistence of the workflow registry, the connected clients, their run
   subscriptions, or the scanning flag beyond process memory.
-- verify: groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes,
+- verify: emitted(event="dashboard state payload", count=1)
+- verify: json_path(path="scanning", equals=false)
+- verify: visible(locator="#runs-list")
+- verify: visible(locator="#statusbar")
+- verify: visible(locator="[data-conn]", text="live")
+- tests: groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes,
   groom/tests/test_app.py::test_background_scan_clears_scanning_on_error,
   groom/tests/test_app.py::test_the_clock_refreshes_every_open_pane_alongside_the_fleet,
   groom/tests/test_projection.py::test_state_message_reports_whether_discovery_is_still_running,

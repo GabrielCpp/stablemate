@@ -14,10 +14,22 @@ optional except `agents:`. `read_yaml` checks the path exists first (`SystemExit
 so an empty `agents.yml` fails the required-`agents:` check below rather than crashing on a `None`
 lookup), then raises `SystemExit("Config must be a YAML mapping: <path>")` if the parsed value
 isn't a `dict` (e.g. a bare YAML list or scalar); `render_expected` then walks every key below to
-compute the `{output path: content}` map `install`/`install --check` act on.
+compute the `{output path: content}` map `install`/`install --check` act on. Repository installs
+also emit the [generated agent launcher](concepts/generated-agent-launcher.md), whose workflow
+run targets are resolved from installed workflow distributions when make parses the generated
+file; `agents.yml` itself does not list those workflows.
+
+The `packs:` field names `<id>.yml` files resolved from the library's `packs/` directory. Each
+file must be a YAML mapping and can contribute skills, prompts, roots, scaffolds, and recursively
+included packs. A missing pack, a non-mapping file, or an inclusion cycle stops selection before
+rendering; otherwise every pack contribution is unioned with this configuration's direct selections.
 
 - file: `agents.yml` at the repo root (or `--config PATH`)
 - code: `farrier/farrier/outputs.py::render_expected`
+- code: `farrier/farrier/sources.py::selected_sources`
+- detail: [library source record](concepts/source-record.md)
+- detail: [layered source resolution](concepts/layered-source-resolution.md)
+- detail: [source naming and selection](concepts/source-naming-selection.md)
 
 ## Fields
 
@@ -68,16 +80,8 @@ Each enabled name turns on a distinct output set in `Renderer.render`:
 
 ### packs
 - type: `list` of `string` (pack ids, `.yml` omitted) — required: no — default: `[]`
-
-Each id names a `<id>.yml` file under the library's `packs/` directory (`PACKS / f"{pack_id}.yml"`,
-`load_pack`); a missing pack raises `SystemExit("Unknown pack: <id>")` before the file is even
-opened. Once found, the pack file is read through the same `read_yaml` used for `agents.yml`
-itself, so a pack whose content isn't a YAML mapping fails with
-`SystemExit("Config must be a YAML mapping: <path>")` too. A pack file selects
-`skills`/`prompts`/`roots`/`scaffolds` and may itself list `includes:` (other pack ids),
-merged recursively — an include cycle raises `SystemExit("Pack include cycle detected at <id>")`.
-All selected packs' selections are unioned together (`collect_selection`), then unioned again with
-this file's own `skills`/`prompts`/`roots`/`scaffolds` keys below.
+- code: `farrier/farrier/sources.py::collect_selection`
+- detail: [selection aggregation](concepts/selection-aggregation.md)
 
 ### skills / prompts / roots
 - type: `list` of `string` — required: no — default: `[]`
@@ -95,6 +99,17 @@ entries are compared as literal names:
   across the layer stack and raises `SystemExit` listing every name no layer provides — only
   *rendered* when `copilot` is enabled, but validated either way.
 
+After pack and top-level selections have been merged, each skill and prompt source is retained when
+its source id, public id, grouped id, library-relative path, or recognized suffix-stripped path
+matches an include pattern and does not match an exclude pattern. Matching is case-insensitive;
+patterns also receive dot/underscore-to-dash normalization without changing glob characters. The
+result is sorted by source id before rendering, so selection order is deterministic and exclusion
+always wins over inclusion.
+
+- code: `farrier/farrier/sources.py::selected_sources`
+- tests: `farrier/tests/test_selection_misses.py::test_valid_selection_still_installs`
+- tests: `farrier/tests/test_selection_misses.py::test_glob_selecting_nothing_warns_but_proceeds`
+
 There is no `workflows:` key. Farrier installs skills and prompts; a workflow is an installed
 Python distribution that brings its own command — `pip`/`uv` installs it, and it is run as
 `workhorse-<name> run`. A leftover `workflows:` list in a pack or in this file is ignored.
@@ -105,6 +120,7 @@ Python distribution that brings its own command — `pip`/`uv` installs it, and 
 The catalog of scaffold ids this repo may apply with the
 [`farrier scaffold <id>` command](farrier.md#scaffold), unioned with the ids contributed by
 every selected pack's own `scaffolds:` list. Ids name definitions in the library's
+[scaffold definition loader](concepts/scaffold-definition-loader.md) and
 `scaffolds/*.yml` files (parameterized file trees; see the command doc for the definition
 format). **`install` renders no scaffold files** — this key only gates which ids `scaffold`
 accepts. Each entry must be a plain string; the legacy `{source-prefix: dest-dir}` mapping form
@@ -150,9 +166,10 @@ about the repo. `farrier source AGENTS.md` resolves the provenance instead.
   several already-selected skills, concatenated in list order, separated by a `\n\n---\n\n` rule.
   Takes precedence over `skill` when both are present.
 - `paths` — type: `list` of `string` (repo-relative directories) — required: no (no-op if
-  omitted/empty) — default: `[]`. Each path must already exist (scaffold it first — e.g.
-  `farrier scaffold shared-docs`); otherwise `SystemExit("Local instruction path does not
-  exist: <rel> ...")`.
+  omitted/empty) — default: `[]`.
+- semantics: when a `paths` value does not name an existing repo-relative directory,
+  `render_expected` raises `SystemExit("Local instruction path does not exist: <rel> ...")`.
+- verify: exit_status(code=1)
 - `prompt` / `prompts` — type: `string` / `list` of `string` — required: no — default: none. The
   same, for already-selected *prompts*, aggregated after the skills. A prompt's standalone
   `$ARGUMENTS` line is dropped on the way in — nothing substitutes it outside a slash-command

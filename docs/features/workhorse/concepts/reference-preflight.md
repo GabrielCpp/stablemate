@@ -1,7 +1,8 @@
 ---
 type: concept
 slug: reference-preflight
-title: Reference preflight — naming unresolvable skill/prompt references before the run
+title: Reference preflight — naming unresolvable skill/prompt references before the
+  run
 ---
 # Reference preflight — naming unresolvable skill/prompt references before the run
 
@@ -18,7 +19,8 @@ copied. Workflows now run from the library and farrier keeps no workflow knowled
 belongs where the manifest and the prompts finally meet: the runner.
 
 - code: `workhorse/workhorse/references.py`
-- verify: `workhorse/tests/test_references.py`
+
+The implementation is covered by `workhorse/tests/test_references.py`.
 
 ## Contract
 

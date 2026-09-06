@@ -82,10 +82,10 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 
 ### field-row-identity
 
-- type: `str` fields `id`, `run_id`, `short_id`, `name`
+- type: `str` fields `id`, `run_id`, `row_id`, `name`
 - default: none
 - required: true
-- meaning: `id` is the container id and the row's reconciliation key; `run_id` is the telemetry key, which for a native run *is* the run and for a docker run is whatever id it pushed; `short_id` is the first four characters of the container id, or `----`; `name` is the sort tiebreaker.
+- meaning: `id` is the container id and the row's reconciliation key; `run_id` is the telemetry key, which for a native run *is* the run and for a docker run is whatever id it pushed; `row_id` is the display identity, using the full run id for a native run and the first four container-id characters (or `----`) for a docker run; `name` is the sort tiebreaker.
 
 ### field-row-repository
 
@@ -223,22 +223,22 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - step: Return `repo_name` when it is not.
 - step: Return the em dash placeholder when neither is set.
 
-### method-short-run-id
+### method-row-id
 
-- sig: `short_id(wf: WorkflowContainer) -> str`
+- sig: `row_id(wf: WorkflowContainer) -> str`
 - abstract: false
 - raises: none intentionally raised for empty or short container ids.
-- code: groom/groom/projection.py::short_id
-- step: Return the first four characters of the container id, whole if it is shorter.
-- step: Return `----` when the id is empty. The `#` prefix is the row component's, not this value's.
+- code: groom/groom/projection.py::row_id
+- step: Use the full run id, falling back to the container id, for a native run; the helper was renamed from `short_id` because a chosen native run name must not be truncated.
+- step: For a docker run, return the first four characters of the container id, whole if it is shorter, or `----` when it is empty. The `#` prefix is the row component's, not this value's.
 
 ### method-exit-hint
 
 - sig: `exit_hint(wf: WorkflowContainer) -> str`
 - abstract: false
 - raises: none intentionally raised for live, code-less, or non-zero-code workflows.
-- code: groom/groom/projection.py::exit_hint
 - verify: groom/tests/test_projection.py::test_exit_hint_only_on_finished_with_a_code
+- code: groom/groom/projection.py::exit_hint
 - step: Return the empty string unless the workflow is finished and its exit code is known.
 - step: Otherwise return `exited {code}`. Classifying zero as success and non-zero as failure is the row component's styling decision, made from `exit_code`.
 

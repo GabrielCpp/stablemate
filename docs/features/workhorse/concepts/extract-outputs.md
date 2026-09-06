@@ -20,22 +20,23 @@ underscore while they lived inside the monolithic agent runner; the module split
 of their own, and a function another module imports is not private.
 
 - code: `workhorse/workhorse/runner/extract.py::extract_outputs`
-- verify: `workhorse/tests/test_json_parse.py::test_extract_outputs_happy_path`,
-  `workhorse/tests/test_json_parse.py::test_extract_outputs_no_json_raises`,
-  `workhorse/tests/test_json_parse.py::test_extract_outputs_missing_key_raises`,
-  `workhorse/tests/test_json_parse.py::test_extract_outputs_no_outputs_returns_empty`
+
+The behaviour described here is covered by
+`workhorse/tests/test_json_parse.py::test_extract_outputs_happy_path`,
+`workhorse/tests/test_json_parse.py::test_extract_outputs_no_json_raises`,
+`workhorse/tests/test_json_parse.py::test_extract_outputs_missing_key_raises`, and
+`workhorse/tests/test_json_parse.py::test_extract_outputs_no_outputs_returns_empty`.
 
 ## Contract
 
-- **Input:**
-  - `text: str` — the raw turn text returned by `AgentRunner.turn` (a completed CLI turn's result
-    text; not empty — an empty result is retried as transient before this function ever runs).
-  - `node: AgentNode` — the runner's internal description of the turn
-    (`workhorse/workhorse/runner/spec.py`), supplying `node.id` (error messages) and
-    `node.outputs: list[OutputSpec]` (the keys to extract, one per field of the state's declared
-    return model).
-- **Output:** `dict[str, Any]` — one entry per `spec.key` in `node.outputs`, valued from the parsed
-  JSON. `{}` when `node.outputs` is empty (a turn that declares no returns never needs to parse).
+The inputs are `text: str`, the raw result text from a completed `AgentRunner.turn`, and
+`node: AgentNode`, the runner's internal description of that turn from
+`workhorse/workhorse/runner/spec.py`. Empty turn results are handled as transient before this
+function is called. The node supplies `node.id` for error messages and
+`node.outputs: list[OutputSpec]` for the keys associated with the state's declared return model.
+The function returns a `dict[str, Any]` containing the declared keys found in the parsed JSON.
+- consistency: A node with no declared outputs yields an empty output mapping.
+- verify: count(subject="extracted outputs", equals=0)
 - **Raises:** `OutputParseError` (a `RuntimeError` subclass, distinct so the runner's ladder retries
   only this recoverable, re-promptable mistake and not e.g. a CLI crash) when:
   - no JSON object could be recovered from `text` at all — message: `"Node '{node.id}' declared
@@ -107,13 +108,11 @@ if tolerant is not None:
 return strict   # best strict effort (dict missing keys, or None) for the caller's error message
 ```
 
-1. **`_parse_json_strict(text)`** — stdlib-only, two attempts in order, first hit wins:
-   1. A fenced block: `` ```(json)?\s*(\{.*?\})\s*``` `` (non-greedy `{.*?}` — the *first* fenced
-      object), parsed with `json.loads`.
-   2. A bare top-level object: the first `{` to the last `}` in the whole text (greedy `\{.*\}`,
-      `re.DOTALL`), parsed with `json.loads`.
-   - Either regex matching but failing `json.loads` (a `JSONDecodeError`) falls through silently to
-     the next attempt, then to `None`.
+Strict candidates come from `_json_objects(text)`. It asks `JSONDecoder.raw_decode` to parse at
+each opening brace, keeps complete dictionaries in source order, and resumes after a decoded
+object. A brace that does not begin valid JSON is skipped, so prose, fences, and malformed
+fragments do not prevent a later complete object from being considered.
+
 2. **Strict success → look for the answer inside it** with [`_unwrap`](#_unwrap), which returns the
    object itself when it already carries every wanted key. A hit is returned immediately, unmodified.
 3. **Otherwise fall back to `_parse_json_tolerant(text, wanted)`** — see below. Its result, if any,

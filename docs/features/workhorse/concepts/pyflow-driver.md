@@ -29,9 +29,11 @@ unchanged by that, which is why a ported workflow's operator knobs still mean wh
   this value.
 - **Raises:** `WorkflowFailed` — from a state that raises it, from a state that returns something
   that is not a transition, when the transition budget is exhausted, or when a checkpoint's
-  parameters will not coerce; `UnknownStateError` when a checkpoint names a state the class no
-  longer has; `WorkflowFrozenError` when a state assigns to the instance; `RunBudgetExceeded`
-  when `deadline` passes between states.
+  parameters will not coerce; `WorkflowFrozenError` when a state assigns to the instance;
+  `RunBudgetExceeded` when `deadline` passes between states.
+- consistency: A state name matching neither a live name nor a declared alias raises
+  `UnknownStateError` naming the known live states and the `aliases=[…]` fix instead of falling
+  back to `start`, because silently restarting a long-running workflow is the worse failure.
 
 ## Algorithm
 
@@ -39,10 +41,8 @@ unchanged by that, which is why a ported workflow's operator knobs still mean wh
    `_seal(ctx)`, which sets `self._ctx` and flips the freeze. On a **resume**, `setup()` is *not*
    re-run — the recorded `ctx` is revived from the checkpoint and sealed instead, because a
    `setup()` that reads the world would otherwise re-read a world that has moved.
-2. **Resolve the state.** `type(wf).resolve_state(name)` walks the class's `NameIndex`: live
-   names first, then `aliases=[…]`. A name matching neither raises `UnknownStateError` naming the
-   known states and the fix, rather than falling back to `start` — silently restarting a
-   week-long run is the worse failure.
+2. **Resolve the state.** `type(wf).resolve_state(name)` uses the class's `NameIndex`, which holds
+   live names and declared `aliases=[…]`.
 3. **Coerce the parameters.** A resumed state's parameters arrive as JSON. Each is run through a
    pydantic `TypeAdapter` built from the state's own annotation, so a `Path` checkpointed as a
    string comes back a `Path`.

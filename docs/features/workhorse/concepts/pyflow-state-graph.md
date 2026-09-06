@@ -30,14 +30,16 @@ explored.
 - code: `workhorse/workhorse/pyflow/graph.py::state_graph`
 - code: `workhorse/workhorse/pyflow/graph.py::preflight`
 - code: `workhorse/workhorse/pyflow/dot.py::to_dot`
-- verify: `workhorse/tests/test_pyflow_graph.py`
+- tests: [state graph tests](../../../../workhorse/tests/test_pyflow_graph.py)
 
 ## Contract
 
-- **Input:** `state_graph(cls, names=())` — a `Workflow` subclass and the flow names a
-  [`Registry`](pyflow-driver.md) maps to it; `registry_graphs(registry)` returns one `FlowGraph`
-  per *distinct class* (entry flow first), since `main(Coder)` registers the entry class under
-  `default` **and** its own name and rendering it twice would show one machine as two.
+`state_graph(cls, names=())` accepts a `Workflow` subclass and the flow names a
+[`Registry`](pyflow-driver.md) maps to it.
+
+- consistency: `registry_graphs(registry)` returns one `FlowGraph` per distinct workflow class,
+  with the entry flow first and all of the class's registered names collected on that graph.
+- verify: count(subject="FlowGraph entries for one workflow class registered under multiple names", equals=1)
 - **Output:** a `FlowGraph` — `workflow` (the class name), `names`, `start`, and one `StateNode`
   per **live** state name. Aliases never appear: the walk is over `cls.state_names()`, so a
   renamed state shows one node, not two.

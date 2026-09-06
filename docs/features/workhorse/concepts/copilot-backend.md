@@ -21,9 +21,10 @@ importing [the port](agent-backend.md) drags in no adapter.
 
 - code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend`
 - extends: [AgentBackend](agent-backend.md)
-- verify: `workhorse/tests/test_backends.py::test_copilot_run_turn_fresh_then_resume`,
-  `workhorse/tests/test_backends.py::test_copilot_effort_maps_to_native_flag`,
-  `workhorse/tests/test_backends.py::test_non_claude_backends_registered`
+
+The implementation is covered by `workhorse/tests/test_backends.py::test_copilot_run_turn_fresh_then_resume`,
+`workhorse/tests/test_backends.py::test_copilot_effort_maps_to_native_flag`, and
+`workhorse/tests/test_backends.py::test_non_claude_backends_registered`.
 
 ## Contract
 
@@ -41,8 +42,8 @@ importing [the port](agent-backend.md) drags in no adapter.
   1. Read a persisted session id via [`read_session_id(session_id_path)`](read-session-id.md).
   2. `-p <prompt>` — Copilot takes the prompt as a `-p` arg, not on stdin (unlike Codex's
      resume-with-prompt path).
-  3. `--output-format json --allow-all --no-ask-user` are always present: JSON streaming, full tool
-     autonomy, no interactive prompts.
+  3. `--output-format json`, `--allow-all` and `--no-ask-user` configure JSON streaming, full tool
+     autonomy and non-interactive operation.
   4. `--model <model>` only when the caller named one.
   5. `--effort <effort>` only when the caller named one — Copilot has a native reasoning-effort
      flag spanning the same level range as Claude's, passed through verbatim with no clamping (in
@@ -63,6 +64,12 @@ importing [the port](agent-backend.md) drags in no adapter.
   9. Return [`finalize_turn`](finalize-turn.md)`("copilot", node_id, state, session_id_path,
      timeout)` — raises [`BackendInvocationError`](classify-turn.md#backendinvocationerror) on
      failure, exactly as classified there.
+- consistency: copilot-invocation-argv — every Copilot invocation includes one `--output-format json` argument pair
+- verify: count(subject="--output-format json argument pair in Copilot invocation argv", equals=1)
+- consistency: copilot-invocation-argv — every Copilot invocation includes one `--allow-all` flag
+- verify: count(subject="--allow-all flag in Copilot invocation argv", equals=1)
+- consistency: copilot-invocation-argv — every Copilot invocation includes one `--no-ask-user` flag
+- verify: count(subject="--no-ask-user flag in Copilot invocation argv", equals=1)
 - **`compact(session_id_path, node_id, model=None, *, timeout, resilience)`** — always returns
   `False`: Copilot has no in-place session compaction, so the resilience ladder reframes on
   context overflow instead.

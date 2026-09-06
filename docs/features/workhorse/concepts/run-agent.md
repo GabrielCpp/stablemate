@@ -35,7 +35,7 @@ live-echo, or via the shared [`stream_jsonl`](stream-jsonl.md) loop for the JSON
 session continuity between turns is read back by [`read_session_id`](read-session-id.md).
 
 - code: `workhorse/workhorse/runner/ladder.py::AgentRunner.run`
-- verify: `workhorse/tests/test_agent_recovery.py::test_success_on_first_attempt_returns_outputs`,
+- tests: `workhorse/tests/test_agent_recovery.py::test_success_on_first_attempt_returns_outputs`,
   `workhorse/tests/test_agent_recovery.py::test_reframe_count_then_default`,
   `workhorse/tests/test_agent_recovery.py::test_overflow_compacts_then_continues_same_prompt`,
   `workhorse/tests/test_agent_recovery.py::test_non_recoverable_backend_error_aborts_without_reframe`,
@@ -85,12 +85,16 @@ a stand-in entirely via `RunEnv(agent_runner=...)` — see [testing](testing.md)
 - **Output:** `tuple[str, dict[str, Any]]` — `(rendered_prompt, outputs)`, the fully-rendered
   prompt text and the node's extracted output dict (for `output.json` and the context
   merge) — see [run artifacts](../run-artifacts.md#node-idpromptmd).
-- **Raises:** `BackendInvocationError` when a non-recoverable backend failure occurs, or when every
-  layer of the ladder is exhausted. The ladder absorbs a recoverable failure for as long as its
-  budget allows — days, for a transient — but it never returns outputs the agent did not give.
-  It is a `RuntimeError`, **not** a `PyflowError`, so it propagates all the way out of
-  `pyflow/run.py`'s driver call without passing either of that module's two cleanup handlers — see
-  [Related pieces](#related-pieces).
+- consistency: A non-recoverable backend failure is re-raised immediately as its
+  `BackendInvocationError`, without spending the reframe budget.
+- consistency: When every recovery layer is exhausted, the ladder re-raises the final
+  `BackendInvocationError` or `OutputParseError` instead of returning fallback outputs the agent
+  did not give.
+When every recovery layer is exhausted, the ladder records one otel `exhausted` error event.
+
+`BackendInvocationError` is a `RuntimeError`, not a `PyflowError`, so it propagates all the way out
+of `pyflow/run.py`'s driver call without passing either of that module's two cleanup handlers; see
+[Related pieces](#related-pieces).
 
 The counters the ladder is tuned by are **not** parameters — they are `resilience` fields:
 `max_output_retries`, `max_invoke_retries`, `max_rephrase_attempts`, `max_compact_attempts`,
@@ -187,10 +191,10 @@ loop:
    `min(10 * (rephrase + 1), 60)` seconds first — on the **injected clock**, so this pause costs a
    test nothing — so a struggling service isn't hammered back-to-back. Up to
    `resilience.max_rephrase_attempts` times, with an otel `reframe` event each.
-**There is no fourth layer.** Once reframing is exhausted the last exception is re-raised, with
-an otel `exhausted` error event: the run stops at its checkpoint for an operator to resume. The
-ladder never fabricates the node's answer — a null verdict is not a degraded answer, and every
-state downstream would do real work on it while the run reported success.
+
+Returning a null verdict would cause every downstream state to do real work on a value the agent
+never supplied while the run reported success. Stopping at the checkpoint instead leaves the run
+available for an operator to resume after the cause is cleared.
 
 **Non-recoverable fast path.** A `BackendInvocationError` that is neither `transient` nor
 `overflow` (a crashed CLI, a hard server error) skips straight to re-raising — reframing can't
@@ -217,6 +221,13 @@ Each node runs its agent CLI with a **clean context** by default — node *N* ne
 The ladder's own logic lives in `AgentRunner.run`; the following are separate mechanisms it calls
 into, each in its own module under `workhorse/workhorse/runner/`:
 
+The outer run boundary in `pyflow/run.py` explicitly calls `terminate_active` for a core reload and
+when it handles `KeyboardInterrupt`, `PyflowError`, or `BackendInvocationError`. The interrupt path
+records the interruption, prints the `--resume-run` command, and exits with status 130. The
+`PyflowError` path records a resumable budget interruption or marks the run failed, while the
+`BackendInvocationError` path records an interruption and returns status 1 so an exhausted ladder
+can be resumed after its cause is fixed.
+
 - [`AgentRunner._invoke_and_parse`](invoke-and-parse.md) — the same-session output-retry loop
   (`resilience.max_output_retries`) that precedes a reframe; itself calls
   [`AgentRunner.turn`](agent-turn.md) for Layer-1 transient retry and cap-wait.
@@ -226,13 +237,8 @@ into, each in its own module under `workhorse/workhorse/runner/`:
 - [`stream_subprocess`](stream-subprocess.md) and its watchdog (`runner/process.py`) — the
   supervised-spawn path (own process group, in-loop + out-of-band timeout, group-kill reap) every
   backend's CLI turn streams through. Its sibling
-  [`terminate_active`](stream-subprocess.md#terminate_active) is what `pyflow/run.py` calls to
-  terminate the in-flight process when a run ends abnormally. It wraps its `drive(wf, env, resume)`
-  call in exactly two handlers: `KeyboardInterrupt` (terminate, record the interrupt, print the
-  `--resume-run` line, `SystemExit(130)`) and `PyflowError` (terminate, then mark the run `fail` and
-  leave the run dir resumable). A `BackendInvocationError` is neither — it is a plain `RuntimeError`
-  — so an exhausted ladder unwinds past both and the subprocess is reaped by process-group exit
-  rather than by this call (see [Raises](#contract) above).
+  [`terminate_active`](stream-subprocess.md#terminate_active) is the process supervisor's explicit
+  cleanup entry point.
 - [`_compact_session`](compact-session.md) — Claude's `/compact`-and-continue implementation of
   [`AgentBackend.compact`](agent-backend.md#contract).
 - [`extract_outputs`](extract-outputs.md) (`runner/extract.py`; strict then `json-repair`-tolerant

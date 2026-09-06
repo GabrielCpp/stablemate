@@ -48,19 +48,21 @@ Four ways to obtain a writer, covering fresh start, resume, and nested handoff s
 ### `__init__`
 `__init__(workflow_name, runs_dir, run_id=None)`
 The top-level, fresh-run constructor.
-1. If `run_id` is `None`, derive one: `<UTC timestamp %Y%m%d-%H%M%S>-<4 hex chars of a uuid4>`. A
-   caller-supplied `run_id` instead gives a single stable run dir that is resumed in place across
-   restarts — which is what `run_pyflow`'s `auto_resolve` always supplies (the explicit
-   `--run-id`, a digest of `--params`, or `default`).
-2. `run_dir = runs_dir / f"{workflow_name}-{run_id}"`; create it (`mkdir(parents=True,
+- consistency: run-id — if `run_id` is `None`, derive it as `<UTC timestamp %Y%m%d-%H%M%S>-<4 hex chars of a uuid4>`
+
+A caller-supplied `run_id` instead gives a single stable run dir that is resumed in place across
+restarts — which is what `run_pyflow`'s `auto_resolve` always supplies (the explicit
+`--run-id`, a digest of `--params`, or `default`). The constructor then:
+
+1. Sets `run_dir = runs_dir / f"{workflow_name}-{run_id}"`; create it (`mkdir(parents=True,
    exist_ok=True)`).
-3. **Fresh-start hygiene:** unlink (`missing_ok=True`) any existing `CHECKPOINT_FILE` and
+2. **Fresh-start hygiene:** unlink (`missing_ok=True`) any existing `CHECKPOINT_FILE` and
    `EVENTS_FILE` in `run_dir`. A stable-id dir may be reused after its previous run already
    finished; dropping both means an interruption before this run's first checkpoint can't
    resurrect the old run on the next auto-resume, and a prior run's event log can't interleave
    with this one's.
-4. Set `_started_at` to now, `_workflow_name`, `_run_id`, `_seq = 0`.
-5. `_write_run_json(terminal=None)`.
+3. Sets `_started_at` to now, `_workflow_name`, `_run_id`, `_seq = 0`.
+4. Calls `_write_run_json(terminal=None)`.
 
 ### `resume`
 `resume(run_dir) -> ArtifactWriter` (classmethod)
@@ -93,9 +95,10 @@ node's own subdirectory rather than a sibling of other runs under `runs_dir`.
 `subscope(node_id, flow_name, *, resume=False) -> ArtifactWriter`
 Returns the writer for a child workflow handed off at `node_id`, rooted under this run's node
 directory (`<run_dir>/<node_id>/_flow`).
-- Algorithm: `sub_dir = run_dir / node_id / "_flow"`; if `resume` and `(sub_dir /
-  CHECKPOINT_FILE).exists()`, return `ArtifactWriter.resume(sub_dir)`; otherwise return
-  `ArtifactWriter.at(sub_dir, flow_name, node_id)`.
+- consistency: child-writer — when `resume` is true and `<run_dir>/<node_id>/_flow/checkpoint.json` exists,
+  return the child writer resumed from `<run_dir>/<node_id>/_flow`
+- consistency: child-writer — otherwise return a fresh child writer rooted at `<run_dir>/<node_id>/_flow`, with
+  `flow_name` as its workflow name and `node_id` as its run ID
 - **The engine's `handoff` never passes `resume`**, so today every handoff starts its child scope
   clean. That is not an oversight: pyflow checkpoints the *parent* state, and re-entering that
   state re-runs the handoff from the top. The contract a state owes is
@@ -262,13 +265,14 @@ two that are parsed rather than trusted: one pydantic model owns each in both di
 [`workhorse/records.py`](../../../../workhorse/workhorse/records.py). `ArtifactWriter` owns the
 files; that module owns their shape and does no I/O of its own.
 
-- **`PyflowCheckpoint`** — what `write_state_checkpoint` writes and a resume reads. `engine:
-  Literal["pyflow"]` is a fail-closed discriminator, and `state` is required and non-empty, so a
-  checkpoint that cannot name a state is refused on the way off disk instead of failing later on a
-  key lookup. `params` / `inputs` / `ctx` stay opaque — they are a *workflow's* data, and workhorse
-  never learns its vocabulary. `workflow`, `run_id` and `updated_at` carry defaults on purpose:
-  they are annotations nothing reads back, and an operator hand-trimming the file at hour 30 to
-  unstick a run must still be able to resume it.
+- **`PyflowCheckpoint`** — what `write_state_checkpoint` writes and a resume reads. `params` /
+  `inputs` / `ctx` are opaque workflow data whose vocabulary is not interpreted by workhorse.
+  `workflow`, `run_id` and `updated_at` are annotations nothing reads back, so their defaults let an
+  operator hand-trim them from a long-running checkpoint without preventing resume.
+- consistency: pyflow-checkpoint — `PyflowCheckpoint.engine` accepts only `"pyflow"`, so parsing refuses a checkpoint
+  that identifies another engine.
+- consistency: pyflow-checkpoint — `PyflowCheckpoint.state` is required and non-empty, so parsing refuses a checkpoint
+  that cannot name the state to resume.
 - **`NodeGraphCheckpoint`** — the retired YAML engine's shape (`current_id` + `context`), kept as a
   union member so `read_resume` can still recognize such a run directory and refuse it *by name*
   rather than by coincidence.

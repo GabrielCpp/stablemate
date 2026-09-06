@@ -13,6 +13,8 @@ never a default. Cline speaks plain chat-completions to whatever provider its mo
 drives OpenRouter models directly (e.g. `openrouter/example-org/example-model`) with **no proxy** — the OpenRouter-native role it shares
 with [OpenCodeBackend](opencode-backend.md). The prompt is passed as a positional argv
 message after `--` (not stdin); sessions resume by id via `--id`; it has no in-place compaction.
+The backend keeps unknown reasoning levels out of the invocation because Cline treats an unknown
+`--thinking` value as invalid rather than applying a fallback.
 `run_turn` streams the CLI's event log through [the module's `_on_event`](cline-on-event.md), the
 vocabulary callback that turns cline's own `run_result` / `hook_event` events into the turn's
 result text, session id and usage.
@@ -20,12 +22,14 @@ result text, session id and usage.
 Class and event callback live together in `runner/backends/cline.py` — one module per CLI, so
 importing [the port](agent-backend.md) drags in no adapter.
 
+The fresh-session, resume, effort pass-through, unknown-effort omission, and backend registration
+behaviors are covered by `workhorse/tests/test_backends.py::test_cline_run_turn_fresh_then_resume`,
+`workhorse/tests/test_backends.py::test_cline_effort_passes_through_unmapped`,
+`workhorse/tests/test_backends.py::test_cline_unknown_effort_omits_the_flag`, and
+`workhorse/tests/test_backends.py::test_non_claude_backends_registered`.
+
 - code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend`
 - extends: [AgentBackend](agent-backend.md)
-- verify: `workhorse/tests/test_backends.py::test_cline_run_turn_fresh_then_resume`,
-  `workhorse/tests/test_backends.py::test_cline_effort_passes_through_unmapped`,
-  `workhorse/tests/test_backends.py::test_cline_unknown_effort_omits_the_flag`,
-  `workhorse/tests/test_backends.py::test_non_claude_backends_registered`
 
 ## Contract
 
@@ -33,41 +37,45 @@ importing [the port](agent-backend.md) drags in no adapter.
 - `default_model` = `None` — cline resolves its own model from the provider it was authenticated
   against, and naming a backend default here would silently override that.
 - `supports_compaction` = `False`.
-- **`run_turn(prompt, node_id, session_id_path, model=None, *, timeout, resilience, cwd=None,
-  add_dirs=None, effort=None)`** — `timeout` and `resilience` are keyword-only and required
-  ([why](agent-backend.md#run_turn-abstract)). Builds the argv:
-  ```
-  cline --json --auto-approve true --compaction basic
-        [--model <model>] [--thinking <effort>] [--cwd <cwd>] [--id <sid>]
-        -- <prompt>
-  ```
-  1. Read a persisted session id via [`read_session_id(session_id_path)`](read-session-id.md)
-     (shared with the other JSONL backends).
-  2. `--json` — headless NDJSON event stream, one `{"type": …, "ts": …}` envelope per line.
-  3. `--auto-approve true` answers every tool prompt, so the turn is fully autonomous — the
-     container is the sandbox.
-  4. `--compaction basic` on every turn, so cline manages its own context window. This is *not* the
-     ladder's compaction (see `compact` below).
-  5. `--model <model>` only when the caller named one.
-  6. `--thinking <effort>` only when `effort` is one of cline's own reasoning levels
-     ([`_EFFORTS`](#_efforts)) — they are exactly workhorse's, so a recognized level passes through
-     unmapped, unlike [codex](codex-backend.md)'s clamp or [opencode](opencode-backend.md)'s
-     `--variant` names. An unrecognized level (`"max"`) omits the flag rather than guessing at a
-     mapping the CLI would reject the whole turn over.
-  7. `--cwd <cwd>` only when the caller named one. `add_dirs` has no cline equivalent — cline works
-     the tree at `cwd` — and is ignored, so a multi-repo node must be given a `cwd` containing
-     everything it needs.
-  8. If a session id was read, append `--id <sid>` and log
-     `[{node_id}] 🔄 Resuming cline session: {sid[:8]}...`.
-  9. `-- <prompt>` — `--` ends option parsing so a prompt beginning with `-` is still read as the
-     positional message, never as a flag.
-  10. Stream the command through [`stream_jsonl`](stream-jsonl.md#contract) with
-      [`_on_event`](cline-on-event.md) as the vocabulary callback and `stdin_data=None` (cline reads
-      its message from argv, not stdin), forwarding `resilience=resilience`, `cwd=cwd` and
-      `env_extra=self.harness_env()` → a [`TurnState`](finalize-turn.md#turnstate).
-  11. Return [`finalize_turn`](finalize-turn.md)`("cline", node_id, state, session_id_path,
-      timeout)` — raises [`BackendInvocationError`](classify-turn.md#backendinvocationerror) on
-      failure, exactly as classified there.
+`run_turn(prompt, node_id, session_id_path, model=None, *, timeout, resilience, cwd=None,
+add_dirs=None, effort=None)` declares `timeout` and `resilience` after the keyword-only separator,
+matching [AgentBackend's abstract signature](agent-backend.md#run_turn-abstract). It builds the argv:
+
+- consistency: Calls to `ClineBackend.run_turn` must supply `timeout` and `resilience` by keyword.
+- verify: exit_status(code=1)
+
+```
+cline --json --auto-approve true --compaction basic
+      [--model <model>] [--thinking <effort>] [--cwd <cwd>] [--id <sid>]
+      -- <prompt>
+```
+1. Read a persisted session id via [`read_session_id(session_id_path)`](read-session-id.md)
+   (shared with the other JSONL backends).
+2. `--json` — headless NDJSON event stream, one `{"type": …, "ts": …}` envelope per line.
+3. `--auto-approve true` answers every tool prompt, so the turn is fully autonomous — the
+   container is the sandbox.
+4. `--compaction basic` on every turn, so cline manages its own context window. This is *not* the
+   ladder's compaction (see `compact` below).
+5. `--model <model>` only when the caller named one.
+6. `--thinking <effort>` only when `effort` is one of cline's own reasoning levels
+   ([`_EFFORTS`](#_efforts)) — they are exactly workhorse's, so a recognized level passes through
+   unmapped, unlike [codex](codex-backend.md)'s clamp or [opencode](opencode-backend.md)'s
+   `--variant` names. An unrecognized level (`"max"`) omits the flag rather than guessing at a
+   mapping.
+7. `--cwd <cwd>` only when the caller named one. `add_dirs` has no cline equivalent — cline works
+   the tree at `cwd` — and is ignored, so a multi-repo node must be given a `cwd` containing
+   everything it needs.
+8. If a session id was read, append `--id <sid>` and log
+   `[{node_id}] 🔄 Resuming cline session: {sid[:8]}...`.
+9. `-- <prompt>` — `--` ends option parsing so a prompt beginning with `-` is still read as the
+   positional message, never as a flag.
+10. Stream the command through [`stream_jsonl`](stream-jsonl.md#contract) with
+    [`_on_event`](cline-on-event.md) as the vocabulary callback and `stdin_data=None` (cline reads
+    its message from argv, not stdin), forwarding `resilience=resilience`, `cwd=cwd` and
+    `env_extra=self.harness_env()` → a [`TurnState`](finalize-turn.md#turnstate).
+11. Return [`finalize_turn`](finalize-turn.md)`("cline", node_id, state, session_id_path,
+    timeout)` — raises [`BackendInvocationError`](classify-turn.md#backendinvocationerror) on
+    failure, exactly as classified there.
 - **`compact(session_id_path, node_id, model=None, *, timeout, resilience)`** — always returns
   `False`. Cline *has* a `--compaction` flag, but it configures cline's own automatic compaction
   for the turn, which is a different capability from the ladder's "compact this session and retry

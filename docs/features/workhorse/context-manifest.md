@@ -19,7 +19,12 @@ them back at render time for the [farrier Jinja helpers](concepts/farrier-global
 
 - file: `.agents/agents-context.json` (or a per-backend override, `.agents/agents-context.<AGENT_CLI>.json`)
 - code: `workhorse/workhorse/manifest.py::load_context_manifest`
-- verify: `workhorse/tests/test_context_manifest.py::test_explicit_missing_context_file_is_hard_error`, `test_absent_auto_detected_manifest_returns_empty`, `workhorse/tests/test_pyflow.py::test_the_context_manifest_is_the_outer_layer_of_an_agent_turn`
+
+The loader's explicit-missing-file error and empty auto-detected-manifest behaviour are covered by
+`workhorse/tests/test_context_manifest.py::test_explicit_missing_context_file_is_hard_error` and
+`workhorse/tests/test_context_manifest.py::test_absent_auto_detected_manifest_returns_empty`;
+the manifest's position as the outer layer of an agent turn is covered by
+`workhorse/tests/test_pyflow.py::test_the_context_manifest_is_the_outer_layer_of_an_agent_turn`.
 
 ## Resolution
 

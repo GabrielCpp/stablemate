@@ -16,10 +16,12 @@ gets its own nested instance of this same layout, rooted under the calling node'
   defaults to `<cwd>/.agents/runs`; `<run-id>` is the explicit `--run-id`, else a digest of
   `--params` (`p<sha1[:8]>`), else `default` — see [`run`](workhorse.md#run))
 - code: `workhorse/workhorse/artifacts.py::ArtifactWriter`
-- verify: `workhorse/tests/test_pyflow.py::test_the_checkpoint_is_the_state_and_its_params`,
-  `workhorse/tests/test_pyflow.py::test_a_resume_re_enters_the_checkpointed_state_without_re_running_setup`,
-  `workhorse/tests/test_pyflow.py::test_await_writes_the_ask_and_checkpoints_before_it_waits`,
-  `workhorse/tests/test_idempotency.py::test_checkpoint_seq_increments`
+
+The checkpoint, resume, await, and sequence behavior is covered by
+`workhorse/tests/test_pyflow.py::test_the_checkpoint_is_the_state_and_its_params`,
+`workhorse/tests/test_pyflow.py::test_a_resume_re_enters_the_checkpointed_state_without_re_running_setup`,
+`workhorse/tests/test_pyflow.py::test_await_writes_the_ask_and_checkpoints_before_it_waits`, and
+`workhorse/tests/test_idempotency.py::test_checkpoint_seq_increments`.
 
 ## Layout
 
@@ -79,10 +81,15 @@ state changes:
 - `ended_at` — type `string | null` (ISO-8601 UTC) — default `null`; set only when the run reaches a
   terminal state (`finish()` is called); `null` while the run is in progress, including immediately
   after a resume (re-marked in-progress until it finishes again).
-- `terminal` — type `enum{terminal,fail} | null` — default `null` (in progress); `terminal` when the
-  entry flow returned [`Done`](workflow-format.md#transition), `fail` when a `PyflowError` ended the
-  run. One `PyflowError` is deliberately excluded: `RunBudgetExceeded` records itself as a stop
-  (below) instead, because a run cut off by the clock decided nothing and must stay resumable.
+- `terminal` — type `enum{terminal,fail} | null` — default `null` (in progress).
+- semantics: `terminal` is `terminal` when the entry flow returns
+  [`Done`](workflow-format.md#transition).
+- verify: json_path(path="$.terminal", equals="terminal")
+- semantics: `terminal` is `fail` when a `PyflowError` ends the run.
+- verify: json_path(path="$.terminal", equals="fail")
+- semantics: `RunBudgetExceeded` records a stop with `terminal` still `null`, because a run cut
+  off by the clock decided nothing and remains resumable.
+- verify: json_path(path="$.terminal", equals=None)
 - `interrupted_at` — type `string | null` (ISO-8601 UTC) — default `null`; set by
   [`record_interrupt`](concepts/artifact-writer.md#record_interrupt) when the run **stopped
   without deciding** — an operator Ctrl-C, or `WORKHORSE_MAX_RUNTIME_S` running out between
@@ -184,13 +191,17 @@ the OTel exporter, which is why node spans need no other hook. Each line:
 - `node` — type `string`, required — the **state** name for a checkpoint's `enter`, the node id for
   a node's `enter`/`done`, or the literal `<run>` for the run-level `terminal` event.
 - `phase` — type `enum{enter,done,terminal,error}`, required.
-- extra fields — merged in by the call site: a state `enter` adds `waiting_on` (type
-  `string | null`); a node `enter` adds `blueprint` (a `self.call`), `prompt` (a `self.agent`) or
-  `flow` (a `self.handoff`), plus a stand-in marker under `--dry-run`; a `done` event adds `next`
-  (type `string | null`, always `null` under pyflow); the run-level `terminal` event adds `terminal`
-  (type `enum{terminal,fail}`); an `error` event adds `error` (type `string`) and closes the
-  in-flight node's `enter` window when a Ctrl-C stops the run (see
-  [`record_interrupt`](concepts/artifact-writer.md#record_interrupt)).
+- semantics: Call-site extras are preserved as top-level event properties rather than nested under
+  an `extra` object.
+- verify: json_path(path="$.blueprint", equals="coder")
+
+The extras vary by phase: a state `enter` carries `waiting_on` (type `string | null`); a node
+`enter` carries `blueprint` (a `self.call`), `prompt` (a `self.agent`) or `flow` (a `self.handoff`),
+plus a stand-in marker under `--dry-run`; a `done` event carries `next` (type `string | null`, always
+`null` under pyflow); the run-level `terminal` event carries `terminal` (type
+`enum{terminal,fail}`); and an `error` event carries `error` (type `string`) and closes the
+in-flight node's `enter` window when a Ctrl-C stops the run (see
+[`record_interrupt`](concepts/artifact-writer.md#record_interrupt)).
 
 ### context.json
 - type: `object` — required: no — default: `{}` (present only after the run reaches a terminal
@@ -235,10 +246,12 @@ write failure is swallowed. Each line:
   `generation` it names the visit, and it is the same key naming that visit's stored prompt. Both
   are omitted for a turn taken outside a visit the engine opened — a library caller driving the
   runner directly — because a wrong number is worse than none.
-- `ts` — type `int`, optional — epoch seconds, so a line can be placed against the run's spans and
-  logs without inferring order from file position. `(generation, ts)` is a total order that survives
-  a checkpoint rewind: a rewind cannot decrease the generation, and this log is append-only, so
-  re-running a node adds rows rather than rewriting one.
+- `ts` — type `int`, optional.
+- semantics: `ts` is positive epoch seconds, letting a line be placed against the run's spans and
+  logs without inferring order from file position.
+- verify: json_path(path="$.ts", matches="^[1-9][0-9]*$")
+- semantics: Re-running a node appends another session row rather than rewriting its earlier row.
+- verify: count(subject="sessions.jsonl rows for one revisited node", equals=2)
 - `backend` — type `string`, optional — which CLI's vocabulary the session id is in. `opencode
   export <id>` and `~/.claude/projects/` are not interchangeable and the id does not say which.
 - `head` — type `string`, optional — the commit the run's tree was on when the turn was recorded
@@ -270,19 +283,10 @@ tree is therefore the largest thing in the run dir.
 
 ### transcripts/
 - type: `directory` — required: no — default: absent until the first agent turn is captured
-
-One capture per agent turn: what the agent actually said and did between the prompt and the
-answer. `prompt.md` and `output.json` are the two ends of a turn; everything in between — the
-reasoning, the tool calls, the file it read and then ignored — is only in the agent CLI's own
-session store, which lives on the host that ran the CLI, is keyed by nothing telemetry can join
-on, and is pruned whenever the CLI likes.
-
-Two sources, tried in that order, and every capture records **which one it came from** in its
-`.meta.json` (`source: "store" | "tee"`) — a consumer must never have to guess what it is holding:
-
-- **the backend's session store**, strictly richer than the stream: a Claude session directory
-  carries attachments, queued operations and a whole sibling tree of subagent sidechains that
-  never cross stdout at all. That tree lands as `…__<session-id>.d/`.
+- persistence: A capture from the backend's session store retains its attachments, queued
+  operations, and sibling subagent sidechain tree that never crosses stdout; the tree is filed as
+  `…__<session-id>.d/`.
+- verify: persists(subject="the captured backend-session transcript and sidechain tree")
 - **a tee of the stream**, for a CLI whose store workhorse cannot resolve and for a container
   whose store is not on this host. It is opened at the one point every backend's output passes
   through *after* redaction, so a teed transcript is redacted by construction. The tee runs
@@ -330,10 +334,12 @@ every call site. The file is still written so the node directory's shape is unch
 Completion marker for the node, written by `_write_done` after its step files.
 - `seq` — type `int`, required — the checkpoint `seq` this node ran under (see
   [`checkpoint.json`](#checkpointjson)).
-- `next` — type `string | null`, required — always `null` under pyflow. There is no node graph and
-  therefore no edge to name: what runs next is whatever
-  [`Continue`](workflow-format.md#transition) the enclosing state returns, and that is recorded in
-  the checkpoint, not here.
+- `next` — type `string | null`, required.
+- semantics: Always `null` under pyflow. There is no node graph and therefore no edge to name:
+  what runs next is whatever [`Continue`](workflow-format.md#transition) the enclosing state
+  returns, and that is recorded in the checkpoint, not here.
+- verify: json_path(path="$.next", matches="^None$")
+- tests: `workhorse/tests/test_idempotency.py::test_done_marker_records_current_seq_and_next`
 
 ### `<node-id>/_flow/`
 - type: directory (a nested instance of this same [Layout](#layout)) — required: no — default:

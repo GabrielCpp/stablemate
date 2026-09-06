@@ -16,8 +16,10 @@ because wrapping `pytest <dir>/tests` in one bought nothing an author could not 
 The narrative version of the seam, with a worked example, is
 [AUTHORING.md](../../../../workhorse/docs/AUTHORING.md#the-node-index-is-the-substitution-seam).
 
-- start: a workflow package with states, nodes and prompts but no `tests/` subdirectory yet,
-  and `pytest` installed alongside it (`pip install 'workhorse-agent[test]'`).
+- start: a workflow package with states, nodes and prompts but no `tests/` subdirectory yet
+- verify: absent(subject="the workflow package's tests subdirectory")
+- start: `pytest` installed alongside the workflow package (`pip install 'workhorse-agent[test]'`)
+- verify: exit_status(code=0)
 - steps:
   1. **Create `<workflow_dir>/tests/test_*.py`.** Import the workflow's own classes plus
      `drive` and `RunEnv`; a test is a function, not a fixture-heavy harness.
@@ -55,6 +57,7 @@ The narrative version of the seam, with a worked example, is
   if any fails. Each test's run dir
   is left under pytest's `tmp_path` for post-mortem inspection. `workhorse`'s own
   `tests/test_pyflow.py` is written exactly this way and is the worked reference.
-- verify: `workhorse/tests/test_pyflow.py::test_the_run_index_supplies_the_body_the_callsite_only_names`,
+- verify: exit_status(code=0)
+- tests: `workhorse/tests/test_pyflow.py::test_the_run_index_supplies_the_body_the_callsite_only_names`,
   `workhorse/tests/test_pyflow.py::test_the_run_agent_backend_is_a_run_dependency_not_a_module_attribute`,
   `workhorse/tests/test_pyflow.py::test_a_declared_stub_is_what_a_dry_run_runs_in_place_of_the_node`

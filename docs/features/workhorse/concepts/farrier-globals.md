@@ -17,7 +17,7 @@ rendered/instantiated, so every helper is visible to `{{ ... }}` expressions in 
 node `args:`, `cwd:`, and `command:` strings alike.
 
 - code: `workhorse/workhorse/templates.py::_farrier_globals`
-- verify: `workhorse/tests/test_context_manifest.py::test_instruction_ref_resolves_from_manifest`, `test_instruction_ref_unknown_returns_placeholder_not_crash`, `test_is_using_instruction_is_real_bool`
+- tests: `workhorse/tests/test_context_manifest.py::test_instruction_ref_resolves_from_manifest`, `test_instruction_ref_unknown_returns_placeholder_not_crash`, `test_is_using_instruction_is_real_bool`
 
 ## Contract
 
@@ -28,9 +28,10 @@ node `args:`, `cwd:`, and `command:` strings alike.
   with no `_instruction_tags` simply matches no tag query; `workflow_dir: Path` — the running
   workflow's own directory, used as `skill_dir()`'s fallback.
 - **Output:** a `dict[str, Callable]` of Jinja global names → functions, merged into the
-  `Environment.globals` of the caller (later `env.globals.update(...)` calls, i.e. a second render
-  in the same process, simply overwrite with a freshly-built dict — the helpers close over that
-  particular call's `context`/`workflow_dir`, so two renders never share state).
+  `Environment.globals` of the caller.
+
+Helpers returned for one render close over only that render's `context` and `workflow_dir`; building
+helpers for a later render does not change the earlier helpers' values.
 
 ## Globals
 

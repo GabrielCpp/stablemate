@@ -140,13 +140,19 @@ so pointing one run at cheaper models no longer means editing the file every oth
      resolving from the set the operator switched away from.
 - end: the node's turn runs against the model/effort named by the `power.<tier>.<backend>` entry of
   the config the run selected — the top-level tables, or one `[profiles.<name>]` table replacing
-  them — for the run's chosen `--cli`. The same workflow reruns unchanged under a different `--cli`
-  *or* a different `--profile`, each node's relative "how much power" intent carrying over via a
-  fresh tier/backend lookup rather than a model name baked into the workflow; and the name of the
-  set it ran under survives on `run.json` and on the root span's `workhorse.profile`, so a finished
-  run can still answer which models it bought after the config has moved on.
-- verify: `workhorse/tests/test_model_resolution.py`
-- verify: `workhorse/tests/test_run_options.py`
+  them — for the run's chosen `--cli`.
+- verify: persists(subject="the selected profile and resolved power settings")
+- end: the same workflow reruns unchanged under a different `--cli` or a different `--profile`.
+- verify: unchanged(subject="the workflow")
+- end: each node's relative "how much power" intent carries over via a fresh tier/backend lookup
+  rather than a model name baked into the workflow.
+- verify: persists(subject="the node's relative power intent")
+- end: the name of the set it ran under survives on `run.json` and on the root span's
+  `workhorse.profile`, so a finished run can still answer which models it bought after the config
+  has moved on.
+- verify: persists(subject="the selected profile name and run power provenance")
+- tests: `workhorse/tests/test_model_resolution.py`
+- tests: `workhorse/tests/test_run_options.py`
 
 ## Missing element noticed
 

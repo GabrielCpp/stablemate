@@ -17,7 +17,7 @@ halves of one contract: what a streaming turn accumulates, and how that accumula
 result or a `BackendInvocationError`. Nothing in that module names a CLI.
 
 - code: `workhorse/workhorse/runner/backends/turn.py::finalize_turn`
-- verify: `workhorse/tests/test_backends.py::test_finalize_turn_classifies_failures`,
+- tests: `workhorse/tests/test_backends.py::test_finalize_turn_classifies_failures`,
   `workhorse/tests/test_backends.py::test_finalize_turn_non_recoverable_names_each_backend`
 
 ## Contract
@@ -40,12 +40,19 @@ result or a `BackendInvocationError`. Nothing in that module names a CLI.
     event stream, since opencode drops the reset headers on its headless path); on a cap the
     classifier attaches it to the raised error so the runner sleeps until exactly then instead of
     the blind default wait.
-- **Output:** `str` — the turn's result text on success, identical to what `classify_turn` returns.
+- consistency: classification-result — returns `classify_turn`'s successful `str` result unchanged
 - **Raises:** `BackendInvocationError`, exactly as classified by
   [`classify_turn`](classify-turn.md#ladder-first-match-wins) — this function adds no error paths of
   its own.
 
 ## Algorithm
+
+- emits: normalized token counts and cost to the open agent-turn span when `state.usage` is
+  non-empty
+- verify: emitted(event="normalized token counts and cost to the open agent-turn span", count=1)
+- emits: empty usage leaves the open agent-turn span's usage and cost attributes absent rather than
+  reporting zero
+- verify: omits(subject="open agent-turn span", matches="usage\\..*|total_cost_usd")
 
 ```python
 if not state.usage.is_empty:
@@ -59,12 +66,10 @@ return _failure.classify_turn(
 )
 ```
 
-1. **Report usage, if the turn reported any.** This is the one place every non-Claude turn ends, so
-   it is where a turn's normalized token counts and cost reach the open agent-turn span — no
-   backend needs its own `otel` call, and a *new* backend gets cost/token attribution by populating
-   `state.usage` and nothing else. The `is_empty` guard is load-bearing: a harness that reports no
-   usage must leave the attributes **absent**, not zero, because averaging a real zero together
-   with an unknown understates spend.
+1. **Report usage.** This is the one place every non-Claude turn ends, which centralizes telemetry
+   instead of requiring a separate `otel` call in each backend. The cited `finalize_turn` branch
+   supplies a new backend's cost/token attribution from `state.usage`; preserving unknown values
+   as absent keeps them out of averages of actual zero-cost turns.
 2. **Delegate the verdict.** Every remaining argument is unpacked from `state` and handed to
    `classify_turn`, which owns every classification rule — see its
    [ladder](classify-turn.md#ladder-first-match-wins). `diagnostics` comes from

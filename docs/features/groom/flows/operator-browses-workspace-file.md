@@ -28,6 +28,24 @@ Every response on this path is JSON — a `paths` array, and a `{path, content, 
   15. The dashboard discards the response if a later click has already changed the selected path, so a slow read cannot overwrite a newer file. Otherwise it stores `path`, `content`, and `lang`, and the [file view region](../gui/screens/groom-dashboard.md#file-view-region) renders a header carrying the path as a text node plus either `(empty or binary file)` for empty content or a `<pre class="file-pre hljs">` body.
   16. For non-empty content the viewer runs Highlight.js in the browser with the server-supplied language, falling back to auto-detection when the language is unknown to the loaded highlighter. Highlight.js emits escaped HTML, so its output is set as markup; when the library is absent or throws, the viewer inserts the file text as a text node instead, so the plain code block always remains visible. File viewing mutates no server state, navigates nowhere, and sends no websocket message.
 - end: the Files pane remains active with the selected repository label visible on every picker button, the file tree still built from the latest `paths` response, exactly one file row marked `active`/`aria-current` in the current tree, and the file view region showing either the selected path with highlighted or plain raw text, the selected path with `(empty or binary file)`, or `failed to load` after a client-side fetch failure. Server-side sidecar or fallback read failures are represented as empty JSON data, not endpoint-specific error responses.
+- verify: json_path(path="$.paths", matches="README.md")
+- verify: json_path(path="$.path", equals="src/a.py")
+- verify: json_path(path="$.content", equals="print(1)\n")
+- verify: json_path(path="$.lang", equals="python")
+- verify: visible(locator="#files-tree .tree-file.active", text="README.md")
+- tests: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
+  groom/tests/test_app.py::test_repos_endpoint_reads_native_run_from_local_disk,
+  groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
+  groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
+  groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors,
+  groom/tests/test_app.py::test_file_content_prefers_sidecar_socket,
+  groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content,
+  groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path,
+  groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container,
+  groom/tests/test_dashboard_client.py::test_every_endpoint_is_read_as_json,
+  groom/tests/test_a11y_dynamic.py::test_files_pane_is_accessible,
+  groom/tests/test_sidecar_session.py::test_rpc_get_tree_lists_files_skipping_vendor_dirs,
+  groom/tests/test_sidecar_session.py::test_rpc_get_file_reads_local_file
 - code: groom/groom/assets/dashboard.js::setMode
 - code: groom/groom/assets/dashboard.js::openRepoMenu
 - code: groom/groom/assets/dashboard.js::selectRepo
@@ -41,18 +59,5 @@ Every response on this path is JSON — a `paths` array, and a `{path, content, 
 - code: groom/groom/app.py::files
 - code: groom/groom/app.py::file_content
 - code: groom/groom/projection.py::file_lang
-- verify: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
-  groom/tests/test_app.py::test_repos_endpoint_reads_native_run_from_local_disk,
-  groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
-  groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
-  groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors,
-  groom/tests/test_app.py::test_file_content_prefers_sidecar_socket,
-  groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content,
-  groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path,
-  groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container,
-  groom/tests/test_dashboard_client.py::test_every_endpoint_is_read_as_json,
-  groom/tests/test_a11y_dynamic.py::test_files_pane_is_accessible,
-  groom/tests/test_sidecar_session.py::test_rpc_get_tree_lists_files_skipping_vendor_dirs,
-  groom/tests/test_sidecar_session.py::test_rpc_get_file_reads_local_file
 - screenshot: docs/features/groom/gui/screenshots/operator-browses-workspace-file-repo-menu-open.png
 - screenshot: docs/features/groom/gui/screenshots/operator-browses-workspace-file-file-loaded.png

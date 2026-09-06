@@ -14,7 +14,8 @@ independently by [`source`](../farrier.md#source), which resolves it to look up 
 editable origin.
 
 - code: `farrier/farrier/layers.py::resolve_library_dir`
-- verify: `farrier/tests/test_config_resolution.py::test_precedence_flag_over_env_over_config`
+- tests: `farrier/tests/test_config_resolution.py::test_precedence_flag_over_env_over_config`
+- detail: [library layer](library-layer.md)
 
 ### Resolution precedence
 
@@ -43,9 +44,9 @@ with farrier about what a library is: a base one tool can see and the other cann
 indistinguishable, from the outside, from the library being broken.
 
 - code: `core/stablemate_core/layout.py::is_library_dir`
-- verify: `farrier/tests/test_config_resolution.py::test_unresolved_errors_with_hint`
-- verify: `farrier/tests/test_config_resolution.py::test_bad_library_path_errors`
-- verify: `farrier/tests/test_config_resolution.py::test_no_overlay_is_fine_when_base_is_installed`
+- tests: `farrier/tests/test_config_resolution.py::test_unresolved_errors_with_hint`
+- tests: `farrier/tests/test_config_resolution.py::test_bad_library_path_errors`
+- tests: `farrier/tests/test_config_resolution.py::test_no_overlay_is_fine_when_base_is_installed`
 
 ### Fetching and updating the base
 
@@ -79,9 +80,9 @@ library, and turning that into "no library" would make an offline machine worse 
 
 - code: `core/stablemate_core/discovery.py::ensure_base_library_dir`
 - code: `core/stablemate_core/base_cache.py::refresh_cached_base`
-- verify: `core/tests/test_discovery.py::test_ensure_never_fetches_over_a_chosen_base`
-- verify: `core/tests/test_base_cache.py::test_refresh_does_not_clone_when_already_current`
-- verify: `core/tests/test_base_cache.py::test_refresh_keeps_the_cache_when_the_remote_is_unreachable`
+- tests: `core/tests/test_discovery.py::test_ensure_never_fetches_over_a_chosen_base`
+- tests: `core/tests/test_base_cache.py::test_refresh_does_not_clone_when_already_current`
+- tests: `core/tests/test_base_cache.py::test_refresh_keeps_the_cache_when_the_remote_is_unreachable`
 
 ### The layer stack
 
@@ -111,8 +112,83 @@ So the paths the old globals named are now `parts` tuples passed to these helper
 `("packs", f"{pack_id}.yml")` for a pack.
 
 - code: `farrier/farrier/layers.py::set_layers`
-- verify: `farrier/tests/test_config_resolution.py::test_overlay_shadows_base`
-- verify: `farrier/tests/test_config_resolution.py::test_unknown_pack_names_the_layers`
+- tests: `farrier/tests/test_config_resolution.py::test_overlay_shadows_base`
+- tests: `farrier/tests/test_config_resolution.py::test_unknown_pack_names_the_layers`
+
+## Fields
+
+### field: LAYERS
+- type: `list[Layer]`
+- default: `[]`
+- required: true
+- semantics: process-local ordered stack of configured library layers, highest precedence first
+- code: `farrier/farrier/layers.py::LAYERS`
+
+### field: BASE_LAYER_NAME
+- type: `str`
+- default: `base-library (base)`
+- required: true
+- semantics: provenance label assigned to the installed base layer
+- code: `farrier/farrier/layers.py::BASE_LAYER_NAME`
+
+## Methods
+
+### method: set_layers
+- sig: `set_layers(overlay: Path | None) -> None`
+- does: places the supplied overlay first when it is present
+- does: appends the installed base layer after the overlay when a base exists
+- does: updates the existing `LAYERS` list in place
+- returns: `None`
+- verify: count(subject="configured library layers", equals=2)
+- code: `farrier/farrier/layers.py::set_layers`
+- tests: `farrier/tests/test_config_resolution.py::test_overlay_shadows_base`
+
+### method: layer_dirs
+- sig: `layer_dirs(*parts: str) -> list[tuple[Layer, Path]]`
+- does: returns one entry for each layer containing the requested directory
+- returns: entries in layer precedence order
+- verify: count(subject="matching layer directories", equals=1)
+- code: `farrier/farrier/layers.py::layer_dirs`
+
+### method: find_in_layers
+- sig: `find_in_layers(*parts: str) -> tuple[Layer, Path] | None`
+- does: checks layers from highest to lowest precedence for the requested path
+- returns: the first matching layer and path
+- returns: `None` when no layer contains the requested path
+- verify: count(subject="highest-precedence matching layer", equals=1)
+- code: `farrier/farrier/layers.py::find_in_layers`
+
+### method: searched_layers
+- sig: `searched_layers() -> str`
+- does: lists each configured layer name on its own indented line
+- returns: a no-layer diagnostic when the stack is empty
+- returns: the ordered layer-name listing when layers are configured
+- verify: count(subject="searched layer names", equals=1)
+- code: `farrier/farrier/layers.py::searched_layers`
+
+### method: available_names
+- sig: `available_names(*parts: str, suffix: str = "") -> list[str]`
+- does: scans every matching layer directory for regular files
+- does: filters entries by the requested suffix when one is supplied
+- does: strips the suffix from returned names
+- does: deduplicates names supplied by multiple layers
+- returns: names sorted lexicographically
+- verify: count(subject="deduplicated available names", equals=1)
+- code: `farrier/farrier/layers.py::available_names`
+
+### method: resolve_library_dir
+- sig: `resolve_library_dir(cli_library: Path | None) -> Path | None`
+- does: chooses the overlay candidate in flag, environment, then home-config precedence order
+- raises: `SystemExit` when a selected candidate does not contain `library/`
+- raises: `SystemExit` when neither an overlay nor a base library is available
+- verify: count(subject="overlay resolution candidates", equals=1)
+- returns: the expanded absolute overlay path when the candidate is a usable library directory
+- returns: `None` when no overlay is configured but a base library is installed
+- code: `farrier/farrier/layers.py::resolve_library_dir`
+- tests: `farrier/tests/test_config_resolution.py::test_precedence_flag_over_env_over_config`
+- tests: `farrier/tests/test_config_resolution.py::test_no_overlay_is_fine_when_base_is_installed`
+- tests: `farrier/tests/test_config_resolution.py::test_bad_library_path_errors`
+- tests: `farrier/tests/test_config_resolution.py::test_unresolved_errors_with_hint`
 
 ### Persisting the config-file candidate
 

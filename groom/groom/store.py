@@ -107,6 +107,9 @@ CREATE TABLE IF NOT EXISTS spans (
 CREATE INDEX IF NOT EXISTS spans_run ON spans(run_id, start_ts);
 CREATE INDEX IF NOT EXISTS spans_node ON spans(node);
 CREATE INDEX IF NOT EXISTS spans_status ON spans(status);
+CREATE INDEX IF NOT EXISTS spans_start ON spans(start_ts DESC);
+CREATE INDEX IF NOT EXISTS spans_summary
+    ON spans(run_id, end_ts, workflow, repo, start_ts, status);
 CREATE TABLE IF NOT EXISTS metrics (
     run_id TEXT NOT NULL DEFAULT '',
     name   TEXT NOT NULL,
