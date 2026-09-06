@@ -161,7 +161,7 @@ def test_real_task_composition_keeps_truth_out_of_witness_and_rejects_stale_sour
             assert trial["expected"] == {}
             assert (directory / "repair.json").is_file()
             assert "fixed_defect_ids" not in packet.model_dump_json()
-        verdicts = AuditVerdicts(packet_digest=packet.digest,
+        verdicts = AuditVerdicts(
                                  claims=tuple(ClaimVerdict(id=item.id, status="unresolved", explanation="Test abstention")
                                               for item in packet.claims),
                                  candidates=tuple(CandidateVerdict(id=item.id, status="missing" if book_state == "repaired" else "unresolved", explanation="Synthetic receipt")

@@ -100,7 +100,7 @@ def test_go_task_uses_separate_fixture_without_changing_seed(tmp_path: Path, mis
     for trial in trials:
         directory = cases / trial["id"]
         packet = AuditPreparation.model_validate_json((directory / "preparation.json").read_text()).packets[0]
-        verdicts = AuditVerdicts(packet_digest=packet.digest,
+        verdicts = AuditVerdicts(
                                 claims=tuple(ClaimVerdict(id=item.id, status="unresolved", explanation="sent queued append error")
                                              for item in packet.claims),
                                 candidates=tuple(CandidateVerdict(id=item.id, status="missing" if missing else "unresolved",

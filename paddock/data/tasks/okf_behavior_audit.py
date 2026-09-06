@@ -254,7 +254,7 @@ def score(run: Run) -> Score:
         unresolved: set[str] = set()
         seen: set[str] = set()
         for report in review.reports:
-            packet = packets[report.verdicts.packet_digest]
+            packet = packets[report.packet_digest]
             validate_verdicts(packet, report.verdicts)
             if packet.digest in seen:
                 raise ValueError(f"{trial.id}: duplicate receipt")
