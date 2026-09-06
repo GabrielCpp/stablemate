@@ -183,6 +183,7 @@ your shell history, so it cannot honestly be called a secret.
 | `acquire` `release` `expire` | leases, by id or by `--run-id` |
 | `fill` | type a credential's username, password or TOTP into a browser field |
 | `totp set` `totp unset` | a credential's second-factor enrolment seed |
+| `link` `unlink` | point a credential at a secret already in the OS keychain |
 | `env add` `import` `set` `unset` `remove` | define an environment and its entries |
 | `env list` `show` `doctor` | inspect it — none of these can emit a secret |
 | `env export` | write the checkable-in YAML manifest |
@@ -201,6 +202,13 @@ password. It is also why a **TOTP seed** is stored but has no `credential-ref`: 
 generates every future code, so rendering one to a file would be strictly worse than
 rendering the password beside it. Saddlebag computes the six-digit code itself and
 types that.
+
+A secret does not have to arrive through `add`. A machine account's password is
+usually put into the OS keychain by whoever created the account, under attributes that
+describe the account rather than the tool reading it. `link` points a credential at that
+item instead of copying it — the pool records the *address*, which is metadata, and
+resolves it on every use. Copying would leave two copies of one password, and the copy
+is the one that goes stale silently after a rotation at the source.
 
 A credential belongs to a **project**, inferred from the enclosing git repository's
 name, so `list` and `scan` show only the current repo's credentials with no flag
@@ -233,6 +241,8 @@ saddlebag/
 ├── db.py                # SQLite pool — schema, metadata CRUD, lease management,
 │                        #   environments and their entries
 ├── store.py             # Secret stores: OS keyring (default) + Vault (fallback)
+├── keychain.py          # Reading an item saddlebag did not write, addressed by
+│                        #   Secret Service attributes; `link` / `unlink`
 ├── browser.py           # `fill` — CDP target discovery and Input.insertText; the
 │                        #   value is typed, and only a length comes back
 ├── totp.py              # RFC 6238, computed in-process so the seed never leaves

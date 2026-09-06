@@ -88,6 +88,14 @@ was never a claim that non-secret material must be treated as if it were.
   database itself: a `CHECK (kind = 'config' OR value IS NULL)` constraint means a
   bug in a caller — or a caller that has not been written yet — *cannot* quietly put
   a secret in a row.
+- A credential may instead **point at a keychain item saddlebag did not write**
+  (`saddlebag link`). What the pool then holds is an *address* — a set of Secret
+  Service attributes — never a value, and `list --json` prints it as one. Saddlebag
+  neither writes nor deletes an item it did not create, so `unlink` and `remove`
+  leave it standing. This is a reference precisely so that there are never two copies
+  of one password on the machine: the copy is the one that goes stale silently after
+  a rotation at the source, and the failure surfaces as a login against an account
+  that locks.
 - A secret is only ever *entered* on stdin (`--password-stdin`, `--secret-stdin`) —
   never as an argv element, where it would land in the process table and shell
   history. A value supplied on argv is therefore `config`, by definition rather than

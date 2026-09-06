@@ -76,6 +76,54 @@ saddlebag remove cred-007                    # --force removes it even while lea
 saddlebag doctor
 ```
 
+### Linking to a secret already in the keychain
+
+A machine account's password is usually already in the OS keychain before any pool
+exists — put there by whoever created the account, with `secret-tool`, `security
+add-generic-password`, or the desktop's own keychain app, under attributes that
+describe *the account* rather than the tool that will read it.
+
+Saddlebag reads that item where it is. The pool records the **address** — a set of
+Secret Service attributes, which is metadata and safe to print — and resolves it on
+every use.
+
+```bash
+# Register a credential whose password saddlebag will never hold a copy of
+saddlebag add \
+  --env prod --project docs-app --username bot \
+  --password-keychain service=github account=bot type=password
+
+# Or point an existing credential at an item, per field
+saddlebag link cred-007 --field password service=github account=bot type=password
+saddlebag link cred-007 --field totp     service=github account=bot type=totp
+
+# Stop following the reference. The keychain item is left exactly as it was.
+saddlebag unlink cred-007 --field totp
+```
+
+Three rules make this safe to reason about:
+
+- **A secret has exactly one home.** `link` refuses to shadow a password saddlebag
+  already stores unless you pass `--force`, which deletes the stored copy first; and
+  `totp set` refuses on a linked credential, because that write would be inert.
+- **An address must name exactly one item.** A Secret Service search matches every
+  item whose attributes are a *superset* of the query, so `service=github
+  account=bot` matches both the password and the seed above. An ambiguous reference
+  is an error naming the candidates, never a guess — guessing here types a seed into
+  a password field, and the login fails for a reason nothing in the trace explains.
+- **Saddlebag never writes or deletes an item it did not create.** `unlink` and
+  `remove` drop the reference and say so; rotating the value is done where it was
+  created.
+
+A reference that stops resolving — the item renamed, deleted, or its attributes
+changed at the source — is a `saddlebag doctor` finding, so it surfaces on a health
+check rather than mid-run.
+
+This is Linux (Secret Service) only: the portable keyring contract is
+`(service, username)` and has no attribute map in it, so there is nothing to address
+an item with on macOS or Windows. Saddlebag says so rather than resolving to a
+different item than you meant.
+
 ### Project scoping
 
 A credential belongs to a **project**, and by default that project is inferred
