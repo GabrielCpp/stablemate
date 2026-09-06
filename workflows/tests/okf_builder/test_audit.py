@@ -148,14 +148,16 @@ def test_invalid_verdicts_retry_twice_then_checkpoint_await(
 def test_sampling_and_unsupported_source_are_explicit_partial_reports(booked: Path, tmp_path: Path) -> None:
     # A module-level candidate is tier 1 without being an exported, uncited symbol.
     (booked / "acme/a.py").write_text("LIMIT = 2\nif LIMIT < 0:\n    raise ValueError('no')\n")
-    (booked / "acme/client.ts").write_text("export const x = 1;")
+    # Ruby has no extractor; TypeScript did not either when this test was written, and
+    # the point is a language the audit must *report* rather than silently skip.
+    (booked / "acme/client.rb").write_text("X = 1\n")
     agent = AuditAgent()
     result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme", max_packets=1),
                    audit_env(tmp_path, agent))
     assert result.status == "partial"
     assert result.omitted_packets == result.total_packets - 1 > 0
     assert len(agent.packets) == 1
-    assert any("client.ts: unsupported" in reason for reason in result.unresolved)
+    assert any("client.rb: unsupported" in reason for reason in result.unresolved)
     assert not result.scope_clear
 
 
