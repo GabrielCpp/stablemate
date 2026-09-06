@@ -77,6 +77,14 @@ class AgentNode(BaseModel):
     # Only the caller knows whether a partial artifact is worth something, so this is a
     # per-node decision, not a run-level one.
     retries: int | None = None
+    # Per-node bound on the ladder's *transient* retries — rate limit, overload, network —
+    # for one turn. None (the default) means the run's `resilience.max_invoke_retries`,
+    # which is sized in days so an unattended run rides out an outage. Set a small
+    # number for a turn whose caller has a cheaper answer to a provider storm than
+    # waiting it out — a reviewer whose failure is recorded and gated rather than
+    # retried for a day. The cap-wait recovery is untouched: a spending cap always
+    # clears, so it is never a reason to stop.
+    invoke_retries: int | None = None
 
     @field_validator("timeout", mode="before")
     @classmethod

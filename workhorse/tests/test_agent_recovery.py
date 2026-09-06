@@ -526,6 +526,64 @@ def test_transient_failure_still_reframes_not_aborts():
     assert calls["n"] == 3, "transient failure should reframe (initial + 2), then stop"
 
 
+def test_node_invoke_retries_bounds_transient_retries_below_the_run_default():
+    """A node's `invoke_retries` caps the transient ladder for that turn alone."""
+    calls = {"n": 0}
+    clock = FakeClock()
+
+    def always_transient(*args, **kwargs):
+        calls["n"] += 1
+        raise BackendInvocationError("upstream 503", transient=True)
+
+    runner = ladder.AgentRunner(
+        backend=FakeBackend(always_transient),
+        resilience=AgentResilience(
+            max_output_retries=0,
+            max_invoke_retries=60,
+            max_rephrase_attempts=0,
+            invoke_backoff_base_s=1,
+            invoke_backoff_cap_s=1,
+            retry_wait_budget_s=600,
+        ),
+        clock=clock,
+    )
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)):
+        with pytest.raises(BackendInvocationError):
+            runner.run(_node(invoke_retries=2), WorkflowContext(initial={}), Path("."), None)
+
+    assert calls["n"] == 3, "initial call plus the node's two retries, not the run's sixty"
+    assert sum(clock.slept) == 2
+
+
+def test_node_invoke_retries_unset_keeps_the_run_default():
+    """The per-node bound is opt-in: a node that says nothing follows `resilience`."""
+    calls = {"n": 0}
+
+    def flaky(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] <= 3:
+            raise BackendInvocationError("upstream 503", transient=True)
+        return json.dumps({"decision": "approve", "review": "ok"})
+
+    runner = ladder.AgentRunner(
+        backend=FakeBackend(flaky),
+        resilience=AgentResilience(
+            max_output_retries=0,
+            max_invoke_retries=5,
+            max_rephrase_attempts=0,
+            invoke_backoff_base_s=1,
+            invoke_backoff_cap_s=1,
+            retry_wait_budget_s=600,
+        ),
+        clock=FakeClock(),
+    )
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)):
+        _, outputs = runner.run(_node(), WorkflowContext(initial={}), Path("."), None)
+
+    assert outputs["decision"] == "approve"
+    assert calls["n"] == 4
+
+
 def test_retry_wait_budget_is_shared_across_output_retries():
     """A parse retry cannot renew the node's transient-backoff allowance."""
     calls = {"n": 0}

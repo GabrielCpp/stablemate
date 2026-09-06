@@ -591,6 +591,7 @@ class AgentRunner:
                 prompt, node.id, session_id_path, model=model, timeout=timeout,
                 prompt_path=prompt_path,
                 cwd=cwd, add_dirs=add_dirs, effort=effort,
+                invoke_retries=node.invoke_retries,
             )
             try:
                 outputs = extract_outputs(result_text, node)
@@ -639,6 +640,7 @@ class AgentRunner:
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
+        invoke_retries: int | None = None,
     ) -> str:
         """Run one agent-CLI turn for ``prompt``, recovering from transient failures.
 
@@ -649,7 +651,8 @@ class AgentRunner:
           NOT bounded by the short-retry budget: a cap always recovers eventually, so
           the run rides it out instead of dying.
         - **Short transient** (rate limit, overload, network) — bounded exponential
-          backoff, then fail fast.
+          backoff, then fail fast. ``invoke_retries`` bounds this for one turn; None
+          means the run's ``resilience.max_invoke_retries``.
 
         Persists the resulting session id (when available) so a subsequent call
         resumes the same conversation.
@@ -660,7 +663,9 @@ class AgentRunner:
         resilience = self.resilience
         backend = self.backend
         budget = active_recovery_wait_budget() or RecoveryWaitBudget.from_resilience(resilience)
-        max_invoke_retries = resilience.max_invoke_retries
+        max_invoke_retries = (
+            resilience.max_invoke_retries if invoke_retries is None else invoke_retries
+        )
         short_attempt = 0
         cap_waits = 0
         # The prompt sent on the current attempt. After a budget timeout we prepend a

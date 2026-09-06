@@ -228,6 +228,13 @@ under a tight `timeout` it multiplies that budget by the number of reframes befo
 stops. Whether a partial artifact is worth something is only knowable here, which is why
 this is a per-node keyword and not a run-level setting.
 
+`invoke_retries` bounds the other retry the ladder makes — the *transient* one, after a
+provider 5xx, a rate limit or a dropped connection — for this node alone. The run's default
+(`AGENT_MAX_INVOKE_RETRIES`) is sized in days so an unattended run rides an outage out. Pass
+a small number where the state has a cheaper answer than waiting: a reviewer whose failure is
+recorded and gated costs one operator look, where a day of backoff costs the run's whole
+wall clock. Spending-cap waits are unaffected — a cap always clears.
+
 Such a node usually wants to *land* an overrun too, and `AgentTimeout` is the name it
 catches to do so — raised by `self.agent` once the ladder has finished with a turn its
 `timeout` cut, so catching it is not short-circuiting a retry that would have worked.

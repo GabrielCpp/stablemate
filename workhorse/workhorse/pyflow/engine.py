@@ -336,6 +336,7 @@ class Engine:
         power: str | None = None,
         timeout: float | None = None,
         retries: int | None = None,
+        invoke_retries: int | None = None,
         cwd: str | Path | None = None,
         add_dirs: Sequence[str | Path] | None = None,
         session: str | None = None,
@@ -386,6 +387,8 @@ class Engine:
                 budget["timeout"] = timeout
             if retries is not None:
                 budget["retries"] = retries
+            if invoke_retries is not None:
+                budget["invoke_retries"] = invoke_retries
             # The runner Jinja-renders `cwd`/`add_dirs` — a literal path is a no-op render,
             # so real values pass through unchanged and the cwd de-dupe and `--add-dir`
             # flags come for free.

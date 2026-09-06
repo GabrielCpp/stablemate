@@ -333,6 +333,7 @@ class Workflow(BaseModel):
         power: str | None = None,
         timeout: float | None = None,
         retries: int | None = None,
+        invoke_retries: int | None = None,
         cwd: str | Path | None = None,
         add_dirs: Sequence[str | Path] | None = None,
         session: str | None = None,
@@ -353,7 +354,11 @@ class Workflow(BaseModel):
         failed turn is re-asked from scratch, overriding the run's reframe budget for
         this node alone — pass 0 for a turn whose deliverable is a file this state can
         read back and act on partially, where a fresh re-ask costs full price and
-        recovers nothing the file does not already hold. All of them default to None =
+        recovers nothing the file does not already hold. `invoke_retries` bounds how
+        many times one turn is retried after a *transient* provider failure — a 5xx, a
+        rate limit — before the failure is raised to this state; the run's default is
+        sized in days, so pass a small number where recording the failure and gating
+        is cheaper than waiting the outage out. All of them default to None =
         whatever the engine defaults to, so a state that says nothing behaves exactly
         as before.
 
@@ -380,6 +385,7 @@ class Workflow(BaseModel):
             power=power,
             timeout=timeout,
             retries=retries,
+            invoke_retries=invoke_retries,
             cwd=cwd,
             add_dirs=add_dirs,
             session=session,
