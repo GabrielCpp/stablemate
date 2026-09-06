@@ -25,27 +25,39 @@ each selected hook.
 
 ### SkillHook.skill
 - type: `str`
-- default: none; supplied when the record is constructed
+- default: none
+- verify: count(subject="skill hook owner field has no default", equals=1)
+- default: supplied when the record is constructed
+- verify: count(subject="skill hook owner field supplied at construction", equals=1)
 - required: true
 - semantics: the installed skill name whose declaration owns the hook
 - verify: count(subject="skill hook owner field", equals=1)
 - code: `farrier/farrier/skill_hooks.py::SkillHook`
+- detail: [skill hook record fields](skill-hook-record-fields.md)
 
 ### SkillHook.stage
 - type: `str`
-- default: none; supplied when the record is constructed
+- default: none
+- verify: count(subject="skill hook stage field has no default", equals=1)
+- default: supplied when the record is constructed
+- verify: count(subject="skill hook stage field supplied at construction", equals=1)
 - required: true
 - semantics: the supported git-hook stage at which the script runs
 - verify: count(subject="skill hook stage field", equals=1)
 - code: `farrier/farrier/skill_hooks.py::SkillHook`
+- detail: [skill hook record fields](skill-hook-record-fields.md)
 
 ### SkillHook.run
 - type: `str`
-- default: none; supplied when the record is constructed
+- default: none
+- verify: count(subject="skill hook script path field has no default", equals=1)
+- default: supplied when the record is constructed
+- verify: count(subject="skill hook script path field supplied at construction", equals=1)
 - required: true
 - semantics: a path relative to the declaring skill directory for the script to execute
 - verify: count(subject="skill hook script path field", equals=1)
 - code: `farrier/farrier/skill_hooks.py::SkillHook`
+- detail: [skill hook record fields](skill-hook-record-fields.md)
 
 ## Methods
 

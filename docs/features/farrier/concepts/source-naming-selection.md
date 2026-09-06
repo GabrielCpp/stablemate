@@ -11,7 +11,7 @@ glob metacharacters. Exclusion is applied after inclusion, and a selected result
 
 - code: `farrier/farrier/sources.py::selected_sources`
 - tests: `farrier/tests/test_group_prefix.py::test_a_skill_stays_selectable_by_every_spelling`
-- detail: [agents.yml source selections](../agents-yml-config.md#fields--skills--prompts--roots)
+- detail: [agents.yml source selections](../agents-yml-config.md#skills-prompts-roots)
 
 ## Methods
 

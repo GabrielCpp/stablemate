@@ -1,0 +1,11 @@
+{
+  "covered": 630,
+  "total": 630,
+  "waived": 424,
+  "screens": 0,
+  "generated_from": {
+    "sourceRoot": "farrier",
+    "excludes": [],
+    "commit": "495cb64b"
+  }
+}

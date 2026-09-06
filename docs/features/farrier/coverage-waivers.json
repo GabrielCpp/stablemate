@@ -1,0 +1,1700 @@
+{
+  "waivers": [
+    {
+      "code": "farrier/farrier/__init__.py",
+      "reason": "folded into farrier CLI's console-entry contract; this module only re-exports main"
+    },
+    {
+      "code": "farrier/farrier/install.py",
+      "reason": "folded into farrier CLI's compatibility-entry contract; this module only preserves historical re-exports"
+    },
+    {
+      "code": "farrier/farrier/_vendor/stablemate_core/base_cache.py::remote_commit",
+      "reason": "folded into Library directory's Fetching and updating the base contract"
+    },
+    {
+      "code": "farrier/tests/conftest.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_regen_targets_always_present",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_help_and_default_goal_are_left_to_the_including_makefile",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_no_workflow_name_is_ever_written_into_the_file",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_the_workflow_list_is_resolved_when_make_runs",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_discovery_is_gated_on_actually_wanting_to_run_something",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_a_reader_with_no_run_target_is_told_where_to_look",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_no_yaml_era_run_targets_or_docker_plumbing",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_each_launch_mints_its_own_run_id",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_each_run_gets_its_own_worktree_of_the_repo",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_the_repo_is_bound_at_its_own_host_path",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_the_base_branch_is_resolved_lazily",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_runs_as_nobody_with_the_operators_group",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_run_output_stays_writable_from_the_host",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_the_operators_own_repo_config_is_only_touched_when_absent",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_credentials_are_staged_per_run_rather_than_read_in_place",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_a_machine_with_no_credentials_file_still_launches",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_operating_targets_address_a_single_run",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_compose_file_comes_from_the_stablemate_checkout",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_agents_mk.py::test_farrier_regeneration_is_library_aware",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_base_fetch_on_install.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_base_fetch_on_install.py::repo",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_base_fetch_on_install.py::base",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_base_fetch_on_install.py::spy",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_base_fetch_on_install.py::test_install_refreshes_the_base",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_base_fetch_on_install.py::test_check_fetches_but_does_not_refresh",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_base_fetch_on_install.py::test_the_default_action_refreshes_too",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_base_fetch_on_install.py::test_the_fetched_base_becomes_a_layer",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_base_fetch_on_install.py::test_a_configured_base_is_not_fetched_over",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_base_fetch_on_install.py::test_install_survives_a_failed_fetch_when_an_overlay_exists",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_profiles_cli.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_profiles_cli.py::written",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_profiles_cli.py::test_the_config_flag_reads_the_file_it_names",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_profiles_cli.py::test_a_profile_is_shown_flattened_to_dotted_keys",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_profiles_cli.py::test_the_profile_replaces_the_top_level_rather_than_layering_over_it",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_profiles_cli.py::test_a_key_is_looked_up_by_its_dotted_path_within_the_profile",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_profiles_cli.py::test_an_unknown_profile_exits_cleanly_and_lists_the_ones_there_are",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_profiles_cli.py::test_a_key_the_profile_does_not_set_says_which_profile_it_looked_in",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_profiles_cli.py::test_a_config_with_no_profiles_at_all_still_shows_the_top_level",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_profiles_cli.py::test_set_worktree_records_a_directory_that_does_not_exist_yet",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_resolution.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_resolution.py::make_library",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_resolution.py::with_temp_config",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_resolution.py::base_library",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_resolution.py::clear_env",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_resolution.py::test_is_library_dir",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_resolution.py::test_write_then_read_config",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_resolution.py::test_precedence_flag_over_env_over_config",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_resolution.py::test_no_overlay_is_fine_when_base_is_installed",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_resolution.py::test_unresolved_errors_with_hint",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_resolution.py::test_bad_library_path_errors",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_resolution.py::test_overlay_shadows_base",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_config_resolution.py::test_unknown_pack_names_the_layers",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_copilot_open_skills.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_copilot_open_skills.py::test_skill_dir_path_copilot_returns_github_skills",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_copilot_open_skills.py::test_skill_output_path_copilot_uses_open_skills_format",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_copilot_open_skills.py::test_the_copilot_instruction_target_is_gone",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_copilot_open_skills.py::test_context_manifest_copilot_uses_open_skills_paths",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_copilot_open_skills.py::test_context_manifest_copilot_no_instructions_path",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_copilot_open_skills.py::test_render_copilot_skills_include_frontmatter",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_copilot_open_skills.py::test_render_copilot_no_legacy_instructions_files",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_doctor_command.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_doctor_command.py::test_a_repo_with_no_services_block_is_warned_that_nothing_is_gated",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_doctor_command.py::test_a_partially_declared_service_is_warned_about_the_missing_gate",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_doctor_command.py::test_a_fully_declared_repo_has_nothing_to_report",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_doctor_command.py::test_the_legacy_lint_map_counts_as_an_adopted_lint_gate",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_doctor_command.py::test_a_missing_agents_yml_is_the_one_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_doctor_command.py::test_warnings_alone_exit_zero",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_drift_report.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_drift_report.py::rendered",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_drift_report.py::test_a_hand_edit_names_the_file_the_edit_belongs_in",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_drift_report.py::test_the_report_says_the_comparison_is_against_the_working_tree",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_drift_report.py::test_the_prefix_lines_survive_for_the_other_two_verdicts",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_drift_report.py::test_a_current_repo_reports_nothing",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_drift_report.py::test_an_edit_inside_one_half_of_an_aggregate_names_that_half",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_drift_report.py::test_an_append_past_the_last_source_attributes_to_neither",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_drift_report.py::test_an_edit_perturbing_every_part_falls_back_to_listing_all",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_drift_report.py::test_the_report_marks_the_attributed_source_and_only_it",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_drift_report.py::test_a_generated_skill_resolves_through_its_own_front_matter",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_drift_report.py::test_the_aggregate_resolves_even_though_it_carries_no_banner",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_drift_report.py::test_provenance_is_read_off_the_expected_text_not_the_edited_copy",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_frontmatter_parsing.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_frontmatter_parsing.py::test_banner_sources_stop_at_the_end_of_the_banner",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_frontmatter_parsing.py::test_banner_sources_survive_crlf",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_frontmatter_parsing.py::test_a_file_without_a_farrier_banner_has_no_sources",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_frontmatter_parsing.py::test_folded_description_is_read",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_frontmatter_parsing.py::test_a_value_containing_a_colon_is_not_truncated",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_frontmatter_parsing.py::test_nested_metadata_does_not_leak_top_level_keys",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_frontmatter_parsing.py::test_a_list_value_keeps_its_flow_spelling",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_frontmatter_parsing.py::test_body_drops_exactly_one_separator_line",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_frontmatter_parsing.py::test_front_matter_survives_crlf_and_a_missing_trailing_newline",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_frontmatter_parsing.py::test_tags_and_metadata_read_the_same_block_as_split",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_frontmatter_parsing.py::test_first_heading_ignores_a_heading_inside_a_fence",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_frontmatter_parsing.py::test_first_heading_falls_back_when_there_is_none",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_gitignore_migration.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_gitignore_migration.py::test_fresh_repo_appends_block",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_gitignore_migration.py::test_block_entries_carry_no_leading_slash",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_gitignore_migration.py::test_idempotent",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_gitignore_migration.py::test_migrates_legacy_wholesale_agents_line",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_gitignore_migration.py::test_migrates_exclude_list_block",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_gitignore_migration.py::test_migrates_slash_prefixed_block",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_group_prefix.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_group_prefix.py::test_the_group_prefixes_the_installed_name",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_group_prefix.py::test_the_repo_name_collapses_when_it_is_also_the_group",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_group_prefix.py::test_a_skill_stays_selectable_by_every_spelling",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::repo",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_the_config_names_the_manager",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_an_unconfigured_repo_falls_back_to_what_it_looks_like",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_a_bare_repo_detects_as_githooks",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_husky_is_detected_before_npm_install_has_run",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_a_manager_outside_the_vocabulary_is_refused",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_the_fence_is_replaced_in_place_not_appended",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_unsplicing_leaves_the_rest_of_the_file",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_every_manager_gets_the_command_and_keeps_the_users_lines",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_installing_twice_changes_nothing",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_a_shell_hook_farrier_creates_is_executable",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_githooks_points_git_at_the_tracked_directory",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_lefthook_references_a_file_farrier_owns_whole",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_a_legacy_whole_file_hook_is_migrated_not_appended_to",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_a_pre_commit_config_farrier_creates_opens_with_repos",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_none_removes_the_entry_and_leaves_the_file",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_a_missing_fence_is_drift_not_an_opt_out",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_an_edit_inside_the_fence_is_drift",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_an_edit_outside_the_fence_is_not",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_a_leftover_fence_is_drift_under_none",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_the_runner_tries_every_adapter_path_for_a_declared_hook",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_a_repo_whose_skills_declare_nothing_still_gets_a_runner",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_the_hooks_command_wires_a_repo_whose_packs_do_not_resolve",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_hook_managers.py::test_the_hooks_command_falls_back_to_detection_with_no_agents_yml",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_init_command.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_init_command.py::run",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_init_command.py::test_init_writes_a_config_the_installer_can_read",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_init_command.py::test_init_needs_no_library_configured",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_init_command.py::test_init_refuses_to_overwrite_an_existing_config",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_init_command.py::test_init_force_replaces_an_existing_config",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_init_command.py::test_init_rejects_a_repo_path_that_is_not_a_directory",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_init_command.py::test_init_sets_no_repo_name",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_init_command.py::test_bare_farrier_prints_help_rather_than_installing",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_init_command.py::test_naming_a_flag_first_still_means_install",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_install_prefix.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_install_prefix.py::make_library",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_install_prefix.py::install",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_install_prefix.py::test_the_prefix_is_the_repo_directory_name",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_install_prefix.py::test_a_directory_name_is_kebab_cased_into_the_prefix",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_install_prefix.py::test_agents_yml_cannot_override_the_prefix",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_install_prefix.py::test_other_repo_keys_still_reach_the_template_context",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_launcher_make.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_launcher_make.py::launcher",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_launcher_make.py::test_the_generated_launcher_parses",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_launcher_make.py::test_a_discovered_workflow_becomes_a_real_target",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_launcher_make.py::test_the_launch_creates_a_worktree_root_for_this_run_alone",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_launcher_make.py::test_a_hyphenated_workflow_name_survives_the_eval",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_launcher_make.py::test_a_workflow_nobody_installed_fails_instead_of_launching_nothing",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_launcher_make.py::test_an_unrelated_target_never_pays_for_discovery",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_launcher_make.py::test_a_profile_reaches_the_container_with_a_config_to_look_it_up_in",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_launcher_make.py::test_a_launch_that_names_no_profile_selects_nothing",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_launcher_make.py::test_a_config_that_cannot_be_read_stops_the_launch",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_launcher_make.py::test_an_operating_target_without_RUN_says_which_one_to_pass",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::write",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::skill",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::stack",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::run",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_list_names_the_layer_each_item_resolves_from",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_a_shadowed_item_is_reported_as_shadowed",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_an_item_only_one_layer_has_is_not_reported_as_shadowed",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_list_prints_the_installed_name_beside_the_library_id",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_layer_base_reports_what_the_base_holds_even_where_it_loses",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_layer_overlay_reports_the_overlay_alone",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_no_kind_flag_reports_every_kind",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_a_kind_the_stack_has_none_of_is_reported_as_empty_not_omitted",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_show_prints_the_winning_layers_source",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_show_can_be_pinned_to_a_layer",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_show_prints_the_source_verbatim_so_it_pipes",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_show_accepts_the_installed_name",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_show_accepts_a_bare_basename",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_an_ambiguous_basename_is_refused_with_both_spellings",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_an_unknown_name_lists_what_does_exist",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_show_needs_exactly_one_selector",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_show_refuses_a_layer_that_does_not_have_the_item",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_packs_and_prompts_are_listed_too",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_show_reads_a_pack",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_the_older_dash_dash_check_spelling_still_runs_the_check",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_check_is_a_mode_of_its_own",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_browse.py::test_library_with_no_mode_says_what_the_modes_are",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_glob_starting_with_a_star_is_an_unparsable_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_template_expression_starting_with_a_brace_is_an_unparsable_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_double_quoted_value_containing_an_inner_quote_is_an_unparsable_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_the_quoted_spelling_of_all_three_is_clean",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_unparsable_is_exactly_the_case_farrier_reads_as_no_front_matter",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_an_unquoted_hash_truncates_the_value_and_is_an_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_value_starting_with_an_indicator_that_happens_to_parse_is_a_warning",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_an_unquoted_template_expression_mid_value_is_a_warning",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_tag_yaml_reads_as_a_bool_or_null_is_reported_with_the_name_it_installs_under",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_quoting_a_retyped_tag_is_the_fix_the_message_prescribes",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_the_real_tag_vocabulary_needs_no_quoting",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_flow_sequence_is_the_documented_spelling_for_tags_not_a_fragile_value",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_missing_name_on_a_prompt_is_not_reported",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_quoted_colon_or_brace_is_clean_wherever_it_appears",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_prompt_is_not_asked_for_tags",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_skill_with_no_tags_is_warned_but_not_failed",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_missing_description_on_a_prompt_is_warned_not_failed",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_name_matching_its_directory_is_silent",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_skill_with_no_name_is_an_error_naming_the_folder_it_must_match",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_name_that_disagrees_with_its_directory_is_an_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_skill_with_no_description_is_an_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_name_over_the_limit_is_an_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_name_at_the_limit_is_clean",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_description_over_the_limit_is_an_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_description_at_the_limit_is_clean",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_body_over_the_limit_is_an_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_body_at_the_limit_is_clean",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_the_front_matter_is_not_counted_against_the_body_limit",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_prompt_is_held_to_none_of_the_spec_limits",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_file_with_no_fence_is_an_error_and_stops_further_checks",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_front_matter_that_is_not_a_mapping_is_an_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_crlf_front_matter_is_read_the_same_as_lf",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_check_library_reads_skills_and_prompts_and_counts_what_it_read",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_bundled_reference_without_front_matter_is_not_a_source",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_an_overlay_layer_shadowing_a_base_file_is_checked_once",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_errors_print_before_warnings_so_a_truncated_terminal_shows_what_fails",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_clean_library_says_so_rather_than_printing_nothing",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_stuttering_basename_warns_and_names_the_installed_name",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_library_check.py::test_a_basename_that_merely_starts_like_its_folder_is_not_a_stutter",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_local_instruction_mapping.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_local_instruction_mapping.py::test_prompt_body_is_aggregated_after_the_skills",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_local_instruction_mapping.py::test_arguments_placeholder_is_dropped_when_aggregated",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_local_instruction_mapping.py::test_prompt_only_mapping_needs_no_skill",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_local_instruction_mapping.py::test_mapping_with_no_source_is_rejected",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_local_instruction_mapping.py::test_claude_only_repo_still_writes_agents_md_plus_a_pointer",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_local_instruction_mapping.py::test_codex_only_repo_gets_no_claude_pointer",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_local_instruction_mapping.py::test_readme_is_imported_when_claude_is_the_only_adapter",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_local_instruction_mapping.py::test_readme_is_copied_when_another_adapter_reads_the_file",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_local_instruction_mapping.py::test_legacy_include_readme_spellings_still_map_onto_the_boolean",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_local_instruction_mapping.py::test_unknown_include_readme_value_is_rejected",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_local_instruction_mapping.py::test_source_resolves_either_generated_file_to_skill_and_prompt",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_makefile_include.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_makefile_include.py::test_appends_include_block_and_preserves_existing",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_makefile_include.py::test_is_idempotent",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_makefile_include.py::test_noop_when_include_already_present",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_makefile_include.py::test_noop_when_no_makefile",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_a_workflow_is_a_workhorse_prefixed_console_script",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_venvs_that_provide_no_workflow_are_not_reported",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_the_bare_prefix_and_the_libraries_themselves_are_not_workflows",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_a_name_is_reported_once_even_from_two_distributions",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_a_pypi_install_has_no_local_path_to_mount",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_a_vcs_install_has_no_local_path_either",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_a_local_install_reports_the_directory_the_container_must_bind",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_an_editable_install_whose_source_is_gone_is_flagged",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_a_deleted_path_is_not_silently_reclassified_as_a_pypi_name",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_a_home_relative_path_is_expanded",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_an_unrecognisable_payload_costs_workflows_not_a_traceback",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_a_venv_missing_the_metadata_pipx_used_to_write_is_skipped",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_pipx_not_installed_means_no_workflows_not_a_broken_build",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_pipx_failing_or_emitting_junk_means_no_workflows",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_pipx.py::test_discover_reads_the_json_pipx_actually_emits",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py::test_policy_body_is_aggregated_before_skills_and_prompts",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py::test_policy_front_matter_never_reaches_the_generated_file",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py::test_a_policy_is_installed_nowhere",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py::test_a_policy_is_named_by_bare_basename_with_no_prefix",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py::test_the_namespaced_id_also_resolves",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py::test_unknown_policy_names_the_ones_that_exist",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py::test_one_basename_in_two_namespaces_is_ambiguous",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py::test_singular_policy_key_works_like_the_plural",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py::test_policy_only_mapping_is_a_complete_mapping",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py::test_a_mapping_selecting_nothing_still_names_policies",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py::test_policy_bodies_render_templates",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py::test_an_overlay_policy_shadows_the_base_one",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py::test_source_resolves_a_generated_file_back_to_its_policy",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_policies.py::test_mapping_policy_names_reads_both_spellings",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_provenance_banner.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_provenance_banner.py::test_library_source_path_anchors_at_library",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_provenance_banner.py::test_metadata_block_names_source_and_warns",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_provenance_banner.py::test_generated_skill_carries_metadata_in_front_matter",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_provenance_banner.py::test_generated_skill_metadata_follows_description",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_provenance_banner.py::test_generated_command_gets_description_front_matter",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_provenance_banner.py::test_generated_command_prefers_source_description_and_drops_internal_keys",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_provenance_banner.py::test_generated_command_passes_through_argument_hint",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_provenance_banner.py::test_generated_command_carries_tags_into_metadata",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_provenance_banner.py::test_claude_pointer_gets_the_html_comment_banner",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_provenance_banner.py::test_claude_pointer_banner_lists_all_aggregated_sources",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_provenance_banner.py::test_aggregated_agents_file_carries_no_banner_at_all",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_provenance_banner.py::test_claude_pointer_imports_the_readme_alongside_the_body",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_provenance_banner.py::test_generated_copilot_prompt_with_front_matter_untouched",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_qa_evidence_ignore.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_qa_evidence_ignore.py::repo",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_qa_evidence_ignore.py::test_the_ignore_block_names_artifacts_not_the_qa_directory",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_qa_evidence_ignore.py::test_the_ignore_block_is_idempotent_and_keeps_the_repo_rules",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_qa_evidence_ignore.py::test_the_block_is_refreshed_in_place_when_it_changes",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_qa_evidence_ignore.py::test_the_install_follows_the_skill_that_ships_the_gate",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_qa_evidence_ignore.py::test_a_repo_without_the_skill_gets_nothing",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::make_library",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::write_scaffold",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::run",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_scaffold_writes_tree_with_defaults",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_scaffold_param_override_redirects_dir",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_scaffold_never_overwrites_existing_files",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_scaffold_required_param_missing_errors",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_scaffold_unknown_param_errors",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_scaffold_unknown_id_errors",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_agents_yml_scaffolds_list_gates_availability",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_pack_scaffolds_contribute_available_ids",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_no_agents_yml_allows_every_library_scaffold",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_scaffold_empty_dirs_null_and_empty_mapping",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_scaffold_list_shows_ids_and_params",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_scaffold_url_node_downloads_content",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_duplicate_scaffold_id_across_files_errors",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_path_escaping_repo_errors",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_scaffold_command.py::test_legacy_mapping_scaffold_entry_rejected",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::make_library",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::write_config",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::install",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::test_unknown_skill_fails_loudly",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::test_unknown_prompt_fails_loudly",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::test_every_miss_is_reported_in_one_run",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::test_glob_selecting_nothing_warns_but_proceeds",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::test_valid_selection_still_installs",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::test_unknown_root_fails_loudly",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::test_unknown_root_fails_even_with_copilot_disabled",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::test_known_root_still_renders",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::test_unknown_pack_is_verbose",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::test_empty_catalog_says_the_layer_is_missing_not_the_name",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::test_suggestions_catch_transpositions_difflib_misses",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_selection_misses.py::test_suggestions_drop_non_competitive_runners_up",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_reference_markdown_does_not_register_as_its_own_skill",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_readme_does_not_register_as_a_source",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_scripts_are_not_loaded_as_sources",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_a_references_dir_outside_a_skill_still_holds_skills",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_nested_skill_dirs_do_not_swallow_each_others_assets",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_running_a_bundled_script_does_not_bundle_its_bytecode",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_a_flat_source_bundles_nothing",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_reference_installs_next_to_the_skill_under_every_adapter",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_a_reference_keeps_the_path_the_library_author_wrote",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_markdown_references_are_templated_from_their_own_location",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_a_markdown_reference_carries_resolvable_provenance",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_scripts_and_non_markdown_references_are_copied_untouched",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_a_binary_asset_is_rejected_by_name",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_an_installed_script_is_executable_and_byte_faithful",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_check_is_clean_right_after_install",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_check_flags_a_script_that_lost_its_executable_bit",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_a_removed_reference_is_reported_as_extra",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_assets.py::test_raw_tags_are_honoured_in_a_file_that_names_no_helper",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_hooks.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_hooks.py::test_a_well_formed_declaration_passes_and_parses",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_hooks.py::test_a_skill_declaring_nothing_declares_no_hooks",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_hooks.py::test_install_never_raises_on_a_malformed_declaration",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_hooks.py::test_a_run_naming_a_script_the_skill_does_not_ship",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_hooks.py::test_a_stage_farrier_does_not_wire_is_an_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_hooks.py::test_the_error_names_the_stages_that_are_accepted",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_hooks.py::test_the_malformed_shapes_are_each_named",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_hooks.py::test_a_prompt_cannot_declare_hooks",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_lookup_prefix_fallback.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_lookup_prefix_fallback.py::test_generic_name_falls_back_to_repo_prefixed_skill",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_lookup_prefix_fallback.py::test_exact_prefixed_name_still_resolves",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_lookup_prefix_fallback.py::test_unknown_name_still_errors",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_tags.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_tags.py::test_normalize_tags_lowercases_dedupes_and_keeps_order",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_tags.py::test_normalize_tags_splits_the_string_form",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_tags.py::test_normalize_tags_of_a_non_list_is_no_tags",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_tags.py::test_frontmatter_tags_reads_the_flow_list",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_tags.py::test_frontmatter_tags_reads_the_block_list",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_tags.py::test_frontmatter_tags_of_an_untagged_or_broken_file_is_empty",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_tags.py::test_generated_skill_carries_its_tags_in_the_metadata_block",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_tags.py::test_generated_skill_omits_tags_when_the_source_declares_none",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_tags.py::test_context_manifest_publishes_tags_for_every_alias",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_tags.py::test_context_manifest_omits_the_untagged",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_tags.py::test_skills_with_tags_is_an_and",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_tags.py::test_find_by_tags_renders_the_matches_as_a_reference_list",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_skill_tags.py::test_find_by_tags_renders_nothing_when_the_repo_has_no_match",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_source_command.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_source_command.py::test_frontmatter_metadata_reads_nested_block",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_source_command.py::test_frontmatter_metadata_empty_without_block",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_source_command.py::test_source_resolves_to_library_file",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_source_command.py::test_source_errors_without_metadata",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_source_command.py::test_source_resolves_claude_md_banner",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_source_command.py::test_source_prints_every_aggregated_banner_source",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_source_command.py::test_source_prefers_agents_yml_mapping_over_banner",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_source_command.py::test_source_errors_when_mapping_removed_from_agents_yml",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_source_command.py::test_source_banner_fallback_warns_without_agents_yml",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_source_command.py::test_source_banner_errors_when_library_lacks_a_source",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_source_command.py::test_source_errors_when_library_lacks_the_source",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py::make_library",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py::install",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py::test_a_hand_written_skill_survives_an_install",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py::test_a_deselected_skill_is_still_removed",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py::test_an_untagged_file_at_an_output_path_aborts_the_whole_install",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py::test_every_conflict_is_reported_not_just_the_first",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py::test_a_hand_written_skill_is_not_reported_as_drift",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py::test_a_stale_generated_skill_is_still_reported_as_drift",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py::test_a_generated_skills_untagged_script_goes_with_it",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py::test_a_root_instruction_file_is_marked_and_reinstallable",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py::test_a_hand_written_root_instruction_file_aborts_the_install",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py::test_a_root_source_with_front_matter_keeps_its_fence_on_line_one",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py::test_the_aggregated_agents_md_can_be_regenerated",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_tagged_deletion.py::test_a_hand_written_agents_md_is_still_overwritten",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::make_library",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::write_config",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::install",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::test_skills_and_prompts_land_in_the_harness_home",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::test_the_repo_scaffolding_stays_out_of_the_home",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::test_a_second_run_reports_no_drift",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::test_check_reports_an_edited_file",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::test_a_deselected_skill_is_swept_and_a_hand_written_one_is_not",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::test_a_hand_written_file_in_the_way_is_refused",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::test_prompts_under_a_non_claude_harness_are_an_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::test_an_unknown_harness_table_is_an_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::test_no_user_library_at_all_is_an_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::test_a_template_value_comes_from_the_shared_table",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::test_an_undefined_template_value_is_an_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::test_a_repo_reference_is_an_error",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_user_install.py::test_the_generated_file_names_the_user_scope_command",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    }
+  ]
+}

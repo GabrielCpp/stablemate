@@ -65,6 +65,7 @@ boundary between the retired YAML-era launcher and the current installed-workflo
 - tests: `farrier/tests/test_agents_mk.py::test_each_run_gets_its_own_worktree_of_the_repo`
 - tests: `farrier/tests/test_agents_mk.py::test_credentials_are_staged_per_run_rather_than_read_in_place`
 - tests: `farrier/tests/test_agents_mk.py::test_operating_targets_address_a_single_run`
+- detail: [output cleanup documentation](output-cleanup-documentation.md)
 
 ## Methods
 
@@ -72,10 +73,12 @@ boundary between the retired YAML-era launcher and the current installed-workflo
 - sig: `remove_targets(repo: Path, managed: Managed = REPO_MANAGED) -> None`
 - does: sweep each configured managed directory and delete only files classified as Farrier-owned
 - does: delete each existing Farrier-owned file named by the managed-file list
-- does: delete each regular file matching an assumed-owned path pattern, including the legacy
-  `.agents/local.compose.yaml`, without requiring an ownership marker
+- does: delete each regular file matching the scope's assumed-owned path pattern without requiring
+  an ownership marker
 - does: leave non-file matches for assumed-owned patterns unchanged
 - returns: `None` after the configured cleanup passes complete
-- verify: removed(subject="legacy .agents/local.compose.yaml")
+- verify: removed(subject="assumed-owned output")
 - verify: unchanged(subject="untagged file during output cleanup")
 - code: `farrier/farrier/outputs.py::remove_targets`
+- detail: [output cleanup selection](output-cleanup-selection.md)
+- detail: [output cleanup documentation](output-cleanup-documentation.md)

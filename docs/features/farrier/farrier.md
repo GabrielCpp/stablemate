@@ -24,6 +24,24 @@ staged-files gate.
 - detail: [hook manager wiring](concepts/hook-manager-wiring.md)
 - detail: [QA-evidence ignore rules](concepts/qa-evidence-ignore-rules.md)
 - detail: [selection error reporting](concepts/selection-errors.md)
+- detail: [vendored core package](concepts/vendored-core-package.md)
+- detail: [drift report](concepts/drift-report.md)
+- detail: [repository diagnosis](concepts/doctor-diagnosis.md)
+- detail: [library front-matter check](concepts/library-frontmatter-check.md)
+- detail: [front-matter parsing](concepts/frontmatter-parsing.md)
+- detail: [library view](concepts/library-view.md)
+- detail: [output installation](concepts/output-installation.md)
+- detail: [output cleanup](concepts/output-cleanup.md)
+- detail: [scaffold operations](concepts/scaffold-operations.md)
+- detail: [template values](concepts/template-values.md)
+- detail: [user library](concepts/user-library.md)
+- detail: [CLI internals](concepts/cli-internals.md)
+- detail: [compatibility facade](concepts/compatibility-facade.md)
+- detail: [runtime clock](concepts/runtime-clock.md)
+- detail: [initialize and render repository](flows/initialize-and-render-repository.md)
+- detail: [inspect and maintain library](flows/inspect-and-maintain-library.md)
+- detail: [verify and repair generated outputs](flows/verify-and-repair-generated-outputs.md)
+- detail: [Farrier CLI and Make drivers](ops/farrier-cli-and-make-drivers.md)
 
 **Exit codes:** `0` on success; commands raise `SystemExit(message)` on error, which propagates as
 a nonzero exit with the message printed to stderr. `install --check` specifically returns `1` when
@@ -88,19 +106,32 @@ the pruned starting point, and the two are kept consistent by hand.
     and prints which files would be rewritten if any are stale or missing, `0` otherwise.
   - `--library <dir>` — the library directory (the `agents/` tree). Overrides
     `$FARRIER_LIBRARY_DIR` and the home config's `library_dir` for this invocation.
+- verify: unchanged(subject="repository after an install --check run")
 - does:
   - run: check out the [base library](concepts/library-directory.md#fetching-and-updating-the-base)
-    before anything looks for it by calling `ensure_base_library_dir(refresh=not --check)`
+    by calling `ensure_base_library_dir(refresh=not --check)`
+  - verify: created(subject="base library checkout used for install")
+  - run: check out the base library before anything looks for it
+  - verify: created(subject="generated output from a base library fetched before layer resolution")
   - run (base absent): fetch the base library into `~/.cache/stablemate`
+  - verify: created(subject="previously absent base library cache")
   - run (cached base present): update the base library to the head of `main`
+  - verify: persists(subject="base library cache after install refresh")
   - run (configured base): skip fetching and updating when `$STABLEMATE_BASE_DIR`, `base_dir` or a
     `stablemate_dir` checkout already names the base library
-  - run (`--check`): pass `refresh=False`, fetching a missing base but never updating a present one,
-    because the check writes nothing and runs in CI
+  - verify: unchanged(subject="configured base library directory")
+  - run (`--check`, base absent): pass `refresh=False`, which fetches the base library into the cache
+  - verify: created(subject="base library cache during --check")
+  - run (`--check`, cached base present): pass `refresh=False` to leave the cache at its current
+    revision, because the check writes nothing and runs in CI
+  - verify: unchanged(subject="present base library cache during --check")
+  - verify: unchanged(subject="existing base library cache during --check")
   - run (failed fetch): continue to library resolution, which raises only if there is no overlay
     either
+  - verify: created(subject="generated output from the overlay after a failed base fetch")
   - run: resolve the [library directory](concepts/library-directory.md) (`--library` >
     `$FARRIER_LIBRARY_DIR` > home config) and point the module's library-content globals at it
+  - verify: created(subject="generated output from the highest-precedence resolved library layer")
   - run: resolve `--repo` to an absolute path used as the generated-output root
   - verify: created(subject="expected generated output under the resolved --repo path")
   - run: resolve the config path to `--config` if given, else `<repo>/agents.yml`
@@ -109,6 +140,7 @@ the pruned starting point, and the two are kept consistent by hand.
     <path>")` if `config_path` doesn't exist, else parse it with `yaml.safe_load` (an empty file
     yields `{}` rather than `None`), then `SystemExit("Config must be a YAML mapping: <path>")` if
     the parsed value isn't a `dict`
+  - verify: count(subject="stderr lines equal to Config must be a YAML mapping: <path>", equals=1)
   - run: derive the install prefix from the kebab-cased repo dirname (`naming.repo_prefix`), never
     from `agents.yml`
   - verify: created(subject="generated output bearing the repo-derived install prefix")
@@ -148,6 +180,7 @@ the pruned starting point, and the two are kept consistent by hand.
   - run (`--check`): for each expected output, record `missing: <repo-relative path>` if
     the file doesn't exist on disk, or `changed: <repo-relative path>` if its on-disk text differs
     from the expected content (both sides normalized to a single trailing newline before comparing)
+  - verify: count(subject="--check drift lines for output differing only in trailing-newline count", equals=0)
   - run (`--check`): scan `MANAGED_DIRS` for [generated](#ownership) files absent from the expected
     output map, recording each as `extra: <repo-relative path>`
   - verify: count(subject="generated files absent from the expected output map", equals=1)
@@ -163,10 +196,10 @@ the pruned starting point, and the two are kept consistent by hand.
   - run (`--check`): keep `.github/instructions` in `MANAGED_DIRS` so a later install reports the
     per-skill `<name>.instructions.md` copies tagged by an older install
   - verify: count(subject="obsolete generated .github/instructions copies", equals=1)
-  - run (`--check`): also record as `extra` any of these fixed paths that exist on disk, are
-    farrier's, and aren't in the expected map: `.github/copilot-instructions.md` and the
-    launcher/hook scaffolding `.agents/agents.mk`, `.agents/lefthook.farrier.yml`,
-    `.agents/agents-context.json`
+   - run (`--check`): also record as `extra` every existing Farrier-owned fixed path absent from
+     the expected map: `.github/copilot-instructions.md`, `.agents/agents.mk`,
+     `.agents/lefthook.farrier.yml`, `.agents/agents-context.json`
+  - verify: count(subject="fixed-path extras absent from the expected output map", equals=4)
   - run (`--check`): if any `missing`/`changed`/`extra` entries were recorded, print them in that
     order, one per line, such as `missing: .claude/skills/foo/SKILL.md`
   - verify: count(subject="ordered missing, changed, and extra stdout lines", equals=3)
@@ -188,20 +221,22 @@ the pruned starting point, and the two are kept consistent by hand.
   - run (no `--check`): when a path is unowned, abort with every conflicting repo-relative path
     and leave the repository unchanged
   - verify: unchanged(subject="repository after an unowned-output conflict")
-   - run (no `--check`): remove only Farrier-owned output files under the managed directories and
-     files
-   - verify: removed(subject="deselected Farrier-owned output file")
-   - run (no `--check`): remove empty directories left by Farrier-owned output deletion
-   - verify: removed(subject="empty directory left by deselected Farrier-owned output")
-   - run (no `--check`): delete the convention-owned legacy `.agents/local.compose.yaml` when it is
-     present, even though current rendering no longer produces it
-   - verify: removed(subject="legacy .agents/local.compose.yaml")
-   - run (no `--check`): leave untagged neighboring files in place during removal
-   - verify: unchanged(subject="untagged neighboring output")
+  - run (no `--check`): remove only Farrier-owned output files under the managed directories and
+    files
+  - verify: removed(subject="previously existing deselected Farrier-owned output file")
+  - run (no `--check`): remove empty directories left by Farrier-owned output deletion
+  - verify: removed(subject="previously existing empty directory left by deselected Farrier-owned output")
+  - run (no `--check`): delete the convention-owned legacy `.agents/local.compose.yaml` when it is
+    present, even though current rendering no longer produces it
+  - verify: removed(subject="previously existing legacy .agents/local.compose.yaml")
+  - run (no `--check`): leave untagged neighboring files in place during removal
+  - verify: unchanged(subject="untagged neighboring output")
   - run (no `--check`): write expected outputs in repo-relative path order
   - verify: created(subject="expected generated output")
   - run (no `--check`): normalize ordinary output to one trailing newline
+  - verify: count(subject="trailing newlines in ordinary generated output", equals=1)
   - run (no `--check`): preserve executable permission for executable content
+  - verify: exit_status(code=0)
   - run (no `--check`): when `.agents/agents.mk` is among the outputs, refresh the managed
     `.agents/` ignore rules
   - verify: persists(subject="managed .agents ignore rules")
@@ -213,11 +248,10 @@ the pruned starting point, and the two are kept consistent by hand.
   - verify: persists(subject="QA-evidence ignore rules")
   - run (no `--check`): when a hook manager is supplied, splice Farrier's fenced hook entry after
     all generated files have been written
-- verify: persists(subject="hook-manager fenced entry")
-- detail: [hook manager wiring](concepts/hook-manager-wiring.md)
+  - verify: persists(subject="hook-manager fenced entry")
   - run (no `--check`): when the supplied hook manager is `none`, remove Farrier's existing fenced
     hook entry from each supported manager file instead of adding a new entry
-  - verify: removed(subject="Farrier fenced hook entry for the disabled hook manager")
+  - verify: removed(subject="previously existing Farrier fenced hook entry for the disabled hook manager")
   - run (no `--check`): when `managed.repo_scaffolding` is false, skip the QA-evidence ignore
     rules because the user-home install scope supplies no repository launcher output or hook manager
   - verify: unchanged(subject="user-home QA-evidence ignore rules")
@@ -227,6 +261,9 @@ the pruned starting point, and the two are kept consistent by hand.
   - tests: `farrier/tests/test_qa_evidence_ignore.py::test_the_install_follows_the_skill_that_ships_the_gate`
   - tests: `farrier/tests/test_makefile_include.py::test_appends_include_block_and_preserves_existing`
   - tests: `farrier/tests/test_hook_managers.py::test_every_manager_gets_the_command_and_keeps_the_users_lines`
+- detail: [hook manager wiring](concepts/hook-manager-wiring.md)
+  - run (no `--check`): when the supplied hook manager is `none`, remove Farrier's existing fenced
+    hook entry from each supported manager file instead of adding a new entry
 
 #### ownership
 
@@ -249,8 +286,6 @@ Anything else at a managed path is somebody's own work. It survives every instal
 wants to write over it the install aborts naming the file: the two ways out — rename it, or delete
 it — are the operator's to choose, not farrier's.
 - code: `farrier/farrier/cli.py::_run_install`
-- verify: `farrier/tests/test_base_fetch_on_install.py::test_install_refreshes_the_base`
-- verify: `farrier/tests/test_base_fetch_on_install.py::test_check_fetches_but_does_not_refresh`
 
 ### install---user
 - usage: `farrier install --user [--check] [--home DIR] [--library DIR]`
@@ -392,27 +427,45 @@ through farrier for every shared setting. The nested `[power.<tier>.<backend>]` 
   - `check` — report front-matter problems in the library's own sources
 - does:
   - run: resolve the [library directory](concepts/library-directory.md) into the active layer stack
-  - verify: exit_status(code=0)
   - run: raise `SystemExit` when both configuration and an installed base library are absent
-  - verify: exit_status(code=1)
   - run (`list`): print the layer stack
   - run (`list`): print one block for each selected kind
   - run (`list`): print each item's library id
   - run (`list`): print each item's installed name
   - run (`list`): print the layer each item resolves from
   - run (`list`): print the layers each item shadows
-  - verify: visible(locator="library list --skills row for stacks/api", text="shadows")
   - run (`list`): report one layer when base and overlay name the same directory, so a repo that
     pins its own tree as both does not report it as shadowing itself
-  - tests: `farrier/tests/test_library_browse.py::test_a_shadowed_item_is_reported_as_shadowed`
   - run (`list --layer`): report what that layer **provides**, including items the other layer
     shadows — filtering on the winner would answer a different question than the one asked
-  - run (`show`): resolve NAME by library id, then installed name, then bare basename; an
-    ambiguous basename is refused with every spelling it could mean, and an unknown one lists the
-    catalog. Print the source file verbatim, so the output pipes.
-  - run (`check`): run `check_library` over each layer's `library/` root and print the findings;
-    return `1` on any error (or any warning under `--strict`)
+  - run (`show`): resolve NAME by library id, then installed name, then bare basename
+  - run (`show`): when a bare basename matches more than one item, refuse it with every matching
+    full library id
+  - run (`show`): when NAME is unknown, refuse it with the full library-id catalog
+  - run (`show`): print the selected source file verbatim, so the output pipes
+  - run (`check`): run `check_library` over each layer's `library/` root and print the findings
+  - run (`check`): return `1` on any error (or any warning under `--strict`)
+- verify: exit_status(code=0)
+- verify: count(subject="resolved library layers", equals=1)
+- verify: exit_status(code=1)
+- verify: count(subject="library list layer headers containing '# layer:'", equals=2)
+- verify: count(subject="library list blocks for selected kinds", equals=1)
+- verify: count(subject="library ids in the selected kind block", equals=1)
+- verify: count(subject="installed names in the selected kind block", equals=1)
+- verify: count(subject="resolving layer labels in the selected kind block", equals=1)
+- verify: count(subject="'shadows' annotations on the library list row for stacks/api", equals=1)
+- verify: count(subject="library list layer headers for an identical base and overlay", equals=1)
+- verify: count(subject="items provided by the selected library layer", equals=1)
+- verify: count(subject="library show name resolution result", equals=1)
+- verify: exit_status(code=1)
+- verify: count(subject="full library ids in the ambiguous-basename refusal", equals=2)
+- verify: exit_status(code=1)
+- verify: count(subject="full library ids in the unknown-name catalog", equals=3)
+- verify: count(subject="bytes differing between library show output and the selected source", equals=0)
+- verify: count(subject="library front-matter findings reported", equals=1)
+- verify: exit_status(code=1)
 - code: `farrier/farrier/cli.py::_run_library`, `farrier/farrier/library_view.py`
+- tests: `farrier/tests/test_library_browse.py::test_a_shadowed_item_is_reported_as_shadowed`
 
 Ownership of a name belongs to whichever layer wins it, and nothing in a rendered repo says
 which one did. `list` is where that becomes visible before it becomes a surprise, and `show`
@@ -464,59 +517,60 @@ a compatibility facade.
 - does:
   - run: resolve the [library directory](concepts/library-directory.md), then load every scaffold
     definition from its `scaffolds/*.yml`/`*.yaml` files (`load_scaffold_defs`)
-  - verify: count(subject="loaded scaffold definitions", equals=1)
   - run: interpret each scaffold file as ids mapped to `{description?, params?, tree}` definitions
-  - verify: count(subject="definitions loaded from one scaffold file", equals=1)
   - run: raise `SystemExit` when two files in one layer define the same scaffold id
-  - verify: exit_status(code=1)
   - run: raise `SystemExit` when a scaffold definition is not a mapping with a `tree:` mapping
-  - verify: exit_status(code=1)
   - run: with `<repo>/agents.yml`, compute the repo's catalog (`available_scaffold_ids`) as the
     union of its `scaffolds:` list plus every selected pack's `scaffolds:` list
-  - verify: count(subject="available scaffold ids from agents.yml and a selected pack", equals=2)
   - run: reject non-string catalog entries, including the legacy `{source-prefix: dest}` mapping
     form, with a migration hint from `parse_scaffold_ids`
-  - verify: exit_status(code=1)
   - run: with no `agents.yml`, expose every library scaffold id to bootstrap a fresh repo
-  - verify: count(subject="available scaffold ids without agents.yml", equals=1)
   - run: raise `SystemExit` for an `<id>` absent from the library, listing the defined ids
-  - verify: exit_status(code=1)
   - run: raise `SystemExit` for an `<id>` absent from the repo's catalog, pointing at the
     `agents.yml` `scaffolds:` list
-  - verify: exit_status(code=1)
   - run: resolve params (`resolve_scaffold_params`): declared defaults overlaid with `--param`
     values, plus built-ins `repo_name` (kebab-cased `--repo` dirname) and `repo_title`
     (title-cased words) unless shadowed
   - run: flatten string values in the definition's `tree:` into inline file content
-  - verify: created(subject="api/.gitignore from inline scaffold content")
   - run: download a `{url: ...}` file value at write time with a 30-second timeout
-  - verify: created(subject=".gitignore from a URL-backed scaffold file")
   - run: raise `SystemExit` when a URL-backed scaffold file cannot be downloaded
-  - verify: exit_status(code=1)
   - run: recursively flatten mapping values that are nested sub-trees
-  - verify: created(subject="api/docs/README.md from a nested scaffold tree")
   - run: create a null tree value or empty mapping as an empty directory
-  - verify: created(subject="api/logs empty scaffold directory")
   - run: report an empty directory as `created: <rel>/` or `exists (kept): <rel>/`
-  - verify: count(subject="status line for an empty scaffold directory", equals=1)
   - run: substitute `$param` placeholders strictly in each scaffold path
-  - verify: created(subject="backend/.gitignore selected by the dir parameter")
   - run: raise `SystemExit` when a path contains an unknown parameter or escapes the repo
-  - verify: exit_status(code=1)
   - run: substitute parameters leniently (`safe_substitute`) in inline file content
-  - verify: persists(subject="inline scaffold content containing literal dollar expressions")
   - run: write each file absent from the target repo, reporting `created: <rel>`
-  - verify: created(subject="api/.gitignore")
   - run: preserve each existing target file, reporting `exists (kept): <rel>`
-  - verify: unchanged(subject="existing api/.gitignore")
   - run: treat every scaffolded file as a seed the repo owns after its first write
-  - verify: unchanged(subject="scaffolded file edited after its first write")
   - run: make every re-run a no-op for existing files
-  - verify: unchanged(subject="existing files after a scaffold re-run")
   - run: print the number of files created by this invocation
-  - verify: count(subject="files reported as created by a one-file scaffold", equals=1)
   - run: return `0` after scaffolding completes
-  - verify: exit_status(code=0)
+- verify: count(subject="loaded scaffold definitions", equals=1)
+- verify: count(subject="definitions loaded from one scaffold file", equals=1)
+- verify: exit_status(code=1)
+- verify: exit_status(code=1)
+- verify: count(subject="available scaffold ids from agents.yml and a selected pack", equals=2)
+- verify: exit_status(code=1)
+- verify: count(subject="available scaffold ids without agents.yml", equals=1)
+- verify: exit_status(code=1)
+- verify: exit_status(code=1)
+- verify: count(subject="resolved scaffold parameters", equals=1)
+- verify: created(subject="api/.gitignore from inline scaffold content")
+- verify: created(subject=".gitignore from a URL-backed scaffold file")
+- verify: exit_status(code=1)
+- verify: created(subject="api/docs/README.md from a nested scaffold tree")
+- verify: created(subject="api/logs empty scaffold directory")
+- verify: count(subject="status line for an empty scaffold directory", equals=1)
+- verify: created(subject="backend/.gitignore selected by the dir parameter")
+- verify: exit_status(code=1)
+- verify: persists(subject="inline scaffold content containing literal dollar expressions")
+- verify: created(subject="api/.gitignore")
+- verify: unchanged(subject="existing api/.gitignore")
+- verify: unchanged(subject="scaffolded file edited after its first write")
+- verify: unchanged(subject="existing files after a scaffold re-run")
+- verify: count(subject="files reported as created by a one-file scaffold", equals=1)
+- verify: exit_status(code=0)
 - code: `farrier/farrier/cli.py::_run_scaffold`
 - tests: `farrier/tests/test_scaffold_command.py::test_scaffold_writes_tree_with_defaults`
 
@@ -528,6 +582,7 @@ boilerplate — placement folders are `--param` values, never baked into the lib
 - usage: `farrier version`
 - does:
   - run: print the installed `farrier` package's version (`importlib.metadata.version("farrier")`)
+- verify: count(subject="stdout lines equal to the installed farrier package version", equals=1)
 - code: `farrier/farrier/cli.py::main`
 
 ### workflows
@@ -569,3 +624,77 @@ boilerplate — placement folders are `--param` values, never baked into the lib
 - tests: `farrier/tests/test_pipx.py::test_pipx_not_installed_means_no_workflows_not_a_broken_build`
 - tests: `farrier/tests/test_pipx.py::test_pipx_failing_or_emitting_junk_means_no_workflows`
 - tests: `farrier/tests/test_launcher_make.py::test_a_discovered_workflow_becomes_a_real_target`
+
+### doctor
+- usage: `farrier doctor [--repo DIR]`
+- flags:
+  - `--repo <dir>` — repository root whose `agents.yml` is diagnosed. Default: current working
+    directory.
+- does:
+  - run: resolve the supplied repository path through `doctor.report`
+  - run: report an error when `<repo>/agents.yml` is absent
+  - run: report an error when `agents.yml` cannot be read or parsed as YAML
+  - run: report an error when the parsed `agents.yml` value is not a mapping
+  - run: warn when `workspace.service_roots` is empty
+  - run: warn when `workspace.service_markers` is empty
+  - run: warn when no top-level `services:` mapping or `workflow.services:` mapping exists
+  - run: warn when a service entry is not a mapping
+  - run: warn when a declared service omits a `lint` or `test` command, while accepting the
+    legacy top-level `lint` mapping as a lint declaration
+  - run: warn when a workspace service root matches neither a service key nor its complete root
+    path
+  - run: print each finding with its severity and operator-facing message
+  - run: print an error and warning count summary when findings exist
+- exits:
+  - return `0` for a readable mapping, including when it has warnings
+  - return `1` when the repository configuration produces an error finding
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- verify: visible(locator="doctor output", text="warning:")
+- code: `farrier/farrier/doctor.py::report`
+- detail: [repository diagnosis](concepts/doctor-diagnosis.md)
+- tests: `farrier/tests/test_doctor_command.py::test_a_repo_with_no_services_block_is_warned_that_nothing_is_gated`
+- tests: `farrier/tests/test_doctor_command.py::test_a_missing_agents_yml_is_the_one_error`
+- tests: `farrier/tests/test_doctor_command.py::test_warnings_alone_exit_zero`
+
+`doctor` does not resolve a library, render files, or fail merely because a repository has not
+adopted a workflow gate. Its only nonzero result is an unreadable or invalid `agents.yml`.
+
+### hooks
+- usage: `farrier hooks [--repo DIR]`
+- flags:
+  - `--repo <dir>` — repository root whose hook manager is wired. Default: current working
+    directory.
+- does:
+  - run: resolve the supplied repository path to an absolute path
+  - run: read `<repo>/agents.yml` when it exists, otherwise use an empty configuration
+  - run: choose `hooks.manager` when declared as one of `pre-commit`, `lefthook`, `husky`,
+    `githooks`, or `none`
+  - run: detect the repository's hook manager from marker files when `hooks.manager` is absent
+  - run: reject a declared manager outside the accepted manager vocabulary
+  - run: remove Farrier's fenced hook entry from every supported manager file when the manager is
+    `none`
+  - run: replace a legacy whole-file Farrier hook before writing a new fenced entry
+  - run: write the manager-specific fenced entry that delegates to `make farrier-run-hook`
+  - run: preserve user-owned lines outside Farrier's fenced region
+  - run: create missing `husky` and `githooks` shell hook files with an executable preamble
+  - run: ensure a newly created pre-commit configuration begins with `repos:`
+  - run: set Git `core.hooksPath` to `.githooks` for the `githooks` manager
+  - run: print messages for changed or removed hook-manager files
+  - run: print the selected manager as `hooks wired through: <manager>`
+  - run: perform hook wiring without resolving a library or rendering repository outputs
+- errors:
+  - print the invalid `hooks.manager` value and the accepted manager names when configuration names
+    an unsupported manager
+- exits:
+  - return `0` after wiring completes, including when no `agents.yml` exists
+  - terminate nonzero when `hooks.manager` is invalid
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- verify: persists(subject="configured repository hook-manager fence")
+- verify: unchanged(subject="user-owned lines outside hook-manager fence")
+- verify: persists(subject="githooks core.hooksPath")
+- code: `farrier/farrier/cli.py::_run_hooks`
+- detail: [hook manager wiring](concepts/hook-manager-wiring.md)
+- tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_wires_a_repo_whose_packs_do_not_resolve`
+- tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_falls_back_to_detection_with_no_agents_yml`

@@ -18,14 +18,20 @@ Directories with those names elsewhere in the library remain ordinary source tre
 ### field: path
 - type: `Path`
 - required: true
+- verify: json_path(path="$.path", matches="^/.+/(references|scripts)/.+")
 - semantics: filesystem path of the bundled asset
+- verify: json_path(path="$.path", matches="^/.+/(references|scripts)/.+")
 - code: `farrier/farrier/sources.py::Asset`
+- detail: [asset path representations](asset-path-representations.md)
 
 ### field: rel
 - type: `str`
 - required: true
+- verify: json_path(path="$.rel", matches="^(references|scripts)/[^/\\\\]+(?:/[^/\\\\]+)*$")
 - semantics: POSIX path relative to the owning skill directory and generated skill document
+- verify: json_path(path="$.rel", matches="^(references|scripts)/[^/\\\\]+(?:/[^/\\\\]+)*$")
 - code: `farrier/farrier/sources.py::Asset`
+- detail: [asset path representations](asset-path-representations.md)
 
 ## Methods
 

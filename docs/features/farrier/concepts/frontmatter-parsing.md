@@ -13,6 +13,16 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 
 - code: `farrier/farrier/frontmatter.py::frontmatter_mapping`
 
+## Fields
+
+### LOCAL_INSTRUCTION_FILES
+- type: `tuple[str, str]`
+- default: `("AGENTS.md", "CLAUDE.md")`
+- required: true
+- semantics: the generated instruction filenames accepted by source lookup
+- verify: count(subject="local instruction filenames", equals=2)
+- code: `farrier/farrier/frontmatter.py::LOCAL_INSTRUCTION_FILES`
+
 ## Methods
 
 ### frontmatter_mapping
@@ -20,7 +30,6 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - does: parse the first markdown front-matter block as a YAML mapping
 - verify: json_path(path="$.name", equals="n")
 - returns: the complete mapping, or an empty mapping when there is no block, malformed YAML, or a non-mapping YAML value
-- verify: json_path(path="$.metadata", absent=true)
 - verify: json_path(path="$.metadata", absent=true)
 - code: `farrier/farrier/frontmatter.py::frontmatter_mapping`
 - tests: `farrier/tests/test_frontmatter_parsing.py::test_tags_and_metadata_read_the_same_block_as_split`
@@ -36,7 +45,6 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - returns: the parsed YAML mapping, using an empty mapping for an empty file
 - verify: json_path(path="$.agents", absent=true)
 - code: `farrier/farrier/frontmatter.py::read_yaml`
-- tests: `farrier/tests/test_local_instruction_mapping.py::test_mapping_with_no_source_is_rejected`
 
 ### banner_sources
 - sig: `banner_sources(text: str) -> list[str]`

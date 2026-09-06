@@ -32,38 +32,54 @@ are discoverable; they do not produce a traceback from the launcher path.
 ### field: WORKFLOW_SCRIPT_PREFIX
 - type: `str`
 - required: true
+- verify: json_path(path="$.workflow_script_prefix", equals="workhorse-")
 - semantics: console-script prefix whose suffix names a runnable workflow
+- verify: count(subject="workflow suffixes derived from workhorse-prefixed console scripts", equals=3)
 - code: `farrier/farrier/pipx.py::WORKFLOW_SCRIPT_PREFIX`
 
 ### field: distribution
 - type: `str`
 - required: true
+- verify: json_path(path="$.distribution", matches="^\\S+$")
 - semantics: installed distribution name reported by pipx
+- verify: json_path(path="$.distribution", equals="workhorse-workflows")
 - code: `farrier/farrier/pipx.py::Installed`
+- detail: [installed record fields](installed-record-fields.md)
 
 ### field: workflows
 - type: `tuple[str, ...]`
 - required: true
+- verify: json_path(path="$.workflows", equals="[author, coder, okf-builder]")
 - semantics: sorted workflow suffixes exposed by the distribution
 - code: `farrier/farrier/pipx.py::Installed`
+- detail: [installed record fields](installed-record-fields.md)
 
 ### field: origin
 - type: `str`
 - required: true
+- verify: json_path(path="$.origin", equals="workhorse-workflows")
 - semantics: pipx's verbatim PyPI name, remote URL, or host path
+- verify: json_path(path="$.origin", equals="workhorse-workflows")
 - code: `farrier/farrier/pipx.py::Installed`
+- detail: [installed record fields](installed-record-fields.md)
 
 ### field: version
 - type: `str`
 - required: true
+- verify: json_path(path="$.version", equals="0.1.0")
 - semantics: installed distribution version reported by pipx
+- verify: json_path(path="$.version", equals="0.1.0")
 - code: `farrier/farrier/pipx.py::Installed`
+- detail: [installed record fields](installed-record-fields.md)
 
 ### field: editable
 - type: `bool`
 - required: true
+- verify: json_path(path="$.editable", equals=true)
 - semantics: whether pipx's install arguments include `--editable`
+- verify: json_path(path="$.editable", equals=true)
 - code: `farrier/farrier/pipx.py::Installed`
+- detail: [installed record fields](installed-record-fields.md)
 
 ## Methods
 

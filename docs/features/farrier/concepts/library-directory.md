@@ -43,7 +43,8 @@ unusable resolved path raises `SystemExit`, naming which source (`--library` /
 with farrier about what a library is: a base one tool can see and the other cannot is
 indistinguishable, from the outside, from the library being broken.
 
-- code: `core/stablemate_core/layout.py::is_library_dir`
+- code: `farrier/farrier/_vendor/stablemate_core/layout.py::is_library_dir`
+- code: `farrier/farrier/_vendor/stablemate_core/layout.py`
 - tests: `farrier/tests/test_config_resolution.py::test_unresolved_errors_with_hint`
 - tests: `farrier/tests/test_config_resolution.py::test_bad_library_path_errors`
 - tests: `farrier/tests/test_config_resolution.py::test_no_overlay_is_fine_when_base_is_installed`
@@ -78,8 +79,10 @@ holds no `library/` — leaves the existing cache untouched and returns it. That
 point: a *fetch* that fails has nothing to hand back, but a *refresh* that fails still has a good
 library, and turning that into "no library" would make an offline machine worse off for asking.
 
-- code: `core/stablemate_core/discovery.py::ensure_base_library_dir`
-- code: `core/stablemate_core/base_cache.py::refresh_cached_base`
+- code: `farrier/farrier/_vendor/stablemate_core/discovery.py::ensure_base_library_dir`
+- code: `farrier/farrier/_vendor/stablemate_core/base_cache.py::refresh_cached_base`
+- code: `farrier/farrier/_vendor/stablemate_core/discovery.py`
+- code: `farrier/farrier/_vendor/stablemate_core/base_cache.py`
 - tests: `core/tests/test_discovery.py::test_ensure_never_fetches_over_a_chosen_base`
 - tests: `core/tests/test_base_cache.py::test_refresh_does_not_clone_when_already_current`
 - tests: `core/tests/test_base_cache.py::test_refresh_keeps_the_cache_when_the_remote_is_unreachable`
@@ -120,15 +123,20 @@ So the paths the old globals named are now `parts` tuples passed to these helper
 ### field: LAYERS
 - type: `list[Layer]`
 - default: `[]`
+- verify: count(subject="LAYERS", equals=0)
 - required: true
+- verify: count(subject="initial LAYERS", equals=0)
 - semantics: process-local ordered stack of configured library layers, highest precedence first
 - code: `farrier/farrier/layers.py::LAYERS`
 
 ### field: BASE_LAYER_NAME
 - type: `str`
 - default: `base-library (base)`
+- verify: json_path(path="return value", equals="base-library (base)")
 - required: true
+- verify: json_path(path="return value", equals="base-library (base)")
 - semantics: provenance label assigned to the installed base layer
+- verify: json_path(path="Layer.name", equals="base-library (base)")
 - code: `farrier/farrier/layers.py::BASE_LAYER_NAME`
 
 ## Methods
@@ -198,4 +206,85 @@ then calls `write_library_dir`, which persists the `library_dir` field of the
 [home config file](../home-config.md) alongside any other keys already there (e.g.
 `stablemate_dir`, `base_dir`).
 
-- code: `core/stablemate_core/config.py::write_library_dir`
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_library_dir`
+- detail: [config write documentation contexts](config-write-context.md)
+
+### base_library_dir
+- sig: `base_library_dir() -> Path | None`
+- does: checks the explicit environment path, configured base path, configured checkout, then the cache
+- does: skips invalid explicit candidates and never fetches during lookup
+- returns: the resolved usable base library path, or `None`
+- verify: json_path(path="$.base_library_dir", equals="/base-library")
+- code: `farrier/farrier/_vendor/stablemate_core/discovery.py::base_library_dir`
+
+### ensure_base_library_dir
+- sig: `ensure_base_library_dir(*, refresh: bool = False, quiet: bool = False) -> Path | None`
+- does: returns an explicit base without probing the network
+- does: populates the cache when no explicit base exists
+- does: refreshes an existing cache only when `refresh` is true
+- returns: the resolved usable base path, or `None` when unavailable
+- verify: created(subject="base library cache")
+- code: `farrier/farrier/_vendor/stablemate_core/discovery.py::ensure_base_library_dir`
+
+### cache_root
+- sig: `cache_root() -> Path`
+- does: uses `STABLEMATE_CACHE_DIR` when it is non-empty
+- returns: the expanded shared stablemate cache directory otherwise
+- verify: json_path(path="$.cache_root", matches="stablemate$")
+- code: `farrier/farrier/_vendor/stablemate_core/base_cache.py::cache_root`
+
+### cached_library_dir
+- sig: `cached_library_dir() -> Path`
+- does: appends `library` to the shared cache root
+- returns: the cache checkout directory
+- verify: json_path(path="$.cached_library_dir", matches="library$")
+- code: `farrier/farrier/_vendor/stablemate_core/base_cache.py::cached_library_dir`
+
+### fetch_allowed
+- sig: `fetch_allowed() -> bool`
+- does: permits fetching when `STABLEMATE_FETCH_BASE` is unset
+- does: refuses fetching for `0`, `false`, `no`, or `off`, ignoring case and surrounding whitespace
+- returns: whether network fetching is allowed
+- verify: json_path(path="$.fetch_allowed", equals=false)
+- code: `farrier/farrier/_vendor/stablemate_core/base_cache.py::fetch_allowed`
+
+### cached_commit
+- sig: `cached_commit(clone: Path | None = None) -> str | None`
+- does: reads and strips the cache's `.commit` sidecar
+- returns: the recorded commit, or `None` when it cannot be read or is empty
+- verify: json_path(path="$.cached_commit", matches="^[0-9a-f]+$")
+- code: `farrier/farrier/_vendor/stablemate_core/base_cache.py::cached_commit`
+
+### cached_base
+- sig: `cached_base() -> Path | None`
+- does: validates that the cached `base-library` contains a `library/` directory
+- does: never fetches
+- returns: the usable cached base path, or `None`
+- verify: absent(subject="network fetch during cached base lookup")
+- code: `farrier/farrier/_vendor/stablemate_core/base_cache.py::cached_base`
+
+### ensure_cached_base
+- sig: `ensure_cached_base(*, quiet: bool = False) -> Path | None`
+- does: returns an existing usable cache without fetching
+- does: refuses fetching when `STABLEMATE_FETCH_BASE` disables network access
+- does: sparse-checks out only `base-library/`, records the commit, and removes `.git`
+- returns: the cached base, or `None` when unavailable
+- verify: created(subject="sparse base-library cache")
+- code: `farrier/farrier/_vendor/stablemate_core/base_cache.py::ensure_cached_base`
+
+### refresh_cached_base
+- sig: `refresh_cached_base(*, quiet: bool = False) -> Path | None`
+- does: delegates to `ensure_cached_base` when no usable cache exists
+- does: compares the cached commit with the remote `main` commit before cloning
+- does: replaces the cache only after the fetched tree passes library validation
+- returns: the refreshed cache, or the existing cache after a failed remote, clone, or swap
+- verify: unchanged(subject="existing base cache after failed refresh")
+- code: `farrier/farrier/_vendor/stablemate_core/base_cache.py::refresh_cached_base`
+
+### is_library_dir
+- sig: `is_library_dir(path: Path) -> bool`
+- does: accepts a path only when its `library/` child is a directory
+- does: not require `packs/` or `workflows/`
+- returns: whether the path has the usable library layout
+- verify: json_path(path="$.is_library_dir", equals=true)
+- code: `farrier/farrier/_vendor/stablemate_core/layout.py::is_library_dir`
