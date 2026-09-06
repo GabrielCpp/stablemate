@@ -109,6 +109,11 @@ def _data_dir(args: argparse.Namespace) -> Path:
     return (args.data_dir or paths.default_data_dir()).resolve()
 
 
+def _store(args: argparse.Namespace) -> Path:
+    """Absolute, because a task hands store-relative paths to subprocesses it runs under another cwd."""
+    return Path(args.store).resolve()
+
+
 def _params(given: list[str]) -> dict[str, str]:
     params: dict[str, str] = {}
     for item in given:
@@ -137,7 +142,7 @@ def cmd_capture(args: argparse.Namespace) -> int:
         args.repo,
         name=args.name,
         data_dir=data_dir,
-        store=args.store,
+        store=_store(args),
         excludes=tuple(args.exclude),
         url=args.url,
         note=args.note,
@@ -156,7 +161,7 @@ def cmd_unpack(args: argparse.Namespace) -> int:
     pointer = Pointer.load(paths.seed_pointer(data_dir, args.name))
     repo = seeds.unpack(
         pointer,
-        store=args.store,
+        store=_store(args),
         dest=args.dest.resolve(),
         install=not args.no_install,
         project=_project(data_dir),
@@ -168,7 +173,7 @@ def cmd_unpack(args: argparse.Namespace) -> int:
 def cmd_fetch(args: argparse.Namespace) -> int:
     data_dir = _data_dir(args)
     pointer = Pointer.load(paths.seed_pointer(data_dir, args.name))
-    print(seeds.fetch(pointer, store=args.store, force=args.force))
+    print(seeds.fetch(pointer, store=_store(args), force=args.force))
     return 0
 
 
@@ -180,7 +185,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         task,
         label=label,
         data_dir=data_dir,
-        store=args.store,
+        store=_store(args),
         params=_params(args.param),
         project=_project(data_dir),
         pin_project=not args.no_pin_project,
@@ -212,7 +217,7 @@ def cmd_list(args: argparse.Namespace) -> int:
             print(f"    seed pointer missing: {pointer_path}")
             continue
         pointer = Pointer.load(pointer_path)
-        present = paths.seed_zip(args.store, pointer.name).exists()
+        present = paths.seed_zip(_store(args), pointer.name).exists()
         print(f"    {describe(pointer)}  [{'local' if present else 'not fetched'}]")
     return 0
 
