@@ -8,7 +8,7 @@ import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
-from ostler.behavior import AuditPreparation, build_audit_packets, extract_claims, extract_evidence
+from ostler.behavior import AuditPreparation, build_audit_packets, extract_book, extract_evidence
 from ostler.model import load
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -160,7 +160,7 @@ def prepare(root: Path, source: str, *, context_paths: Sequence[str] = ()) -> Au
                 for file in evidence.context_files if file.status != "parsed"]
     if failures:
         raise ValueError("Support context unavailable: " + "; ".join(failures))
-    return build_audit_packets(evidence, extract_claims(load(root)))
+    return build_audit_packets(evidence, extract_book(load(root)))
 
 
 def bind_truth(case: Case, preparation: AuditPreparation) -> dict[str, set[str]]:
