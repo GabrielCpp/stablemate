@@ -27,6 +27,12 @@ class BehaviorEvidence(BehaviorModel):
     source_digest: Nonblank
     confidence: Literal["syntactic"] = "syntactic"
     framework: str = "python"
+    exported: bool | None = None
+    """The extractor's own verdict on the symbol's visibility, where the name alone cannot say.
+
+    TypeScript exports by an ``export`` keyword, not by spelling, so its extractor records
+    the answer here; Python and Go leave it ``None`` and ``exported_symbol`` reads the name.
+    """
 
 
 class EvidenceFile(BehaviorModel):

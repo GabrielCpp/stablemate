@@ -29,17 +29,19 @@ from ostler.behavior_models import (
     SourceExcerpt as SourceExcerpt, UndocumentedFile as UndocumentedFile,
 )
 from ostler.behavior_python import PythonEvidence
+from ostler.behavior_tree import TABLES, TreeEvidence
 from ostler.model import Graph
 
 _LIMITATIONS = (
-    "Python AST and Go tree-sitter candidates only; other languages remain unsupported. No execution, call graph, data flow, inheritance, or semantic proof.",
+    "Python AST and Go/TypeScript/TSX tree-sitter candidates only; other languages remain unsupported. No execution, call graph, data flow, inheritance, or semantic proof.",
     "Conditions describe lexical enclosure, not reachability; preceding guards and side effects are not inferred.",
     "Route/decorator, add_argument, and annotated-field framework identities are unresolved; syntax can be implementation detail.",
     "Python extracts explicit decorators, function defaults, raise/return statements, add_argument calls, and class annotated fields.",
     "Go extracts function/method/literal contracts, returns, panic-like calls, net/http-like registration/response calls, and struct fields with literal tags/types. Call bindings, JSON encoding, validation, build tags and interface dispatch are not resolved; similarly named non-HTTP calls may be candidates.",
+    "TypeScript/TSX extracts function, method, arrow and class/interface/alias declarations, parameter defaults, return/throw statements, express-like registration/response member calls, and class fields/interface properties. Module bindings, decorators, JSX output, promise rejection and type narrowing are not resolved; similarly named non-HTTP member calls may be candidates. Exportedness follows the export keyword, a re-export clause, and member accessibility.",
     "Source context retains enclosing functions and declarations. Python class context excludes unrelated methods and retrieves referenced module assignments lexically; Python functions with no candidates are not audited. Go retains full function/method/literal bodies and struct declarations, without resolving package bindings or delegated effects.",
     "Files outside the explicit source scope are not audited. Non-normative same-node book text is context, not additional obligations.",
-    "Support context contains only explicitly selected Python or Go files, not automatic import closure; unselected delegated behavior remains unresolved. Support files do not add candidate obligations.",
+    "Support context contains only explicitly selected Python, Go or TypeScript files, not automatic import closure; unselected delegated behavior remains unresolved. Support files do not add candidate obligations.",
     "Citation grouping is retrieval context, not semantic grounding. Reviewers must search source/book across files and sibling packets; use unresolved when local context is insufficient.",
     "Missing means an externally judged omission within the reviewed scope, not absence of a local citation. No packet or receipt asserts global completeness.",
 )
@@ -122,7 +124,7 @@ def extract_evidence(root: Path, paths: Sequence[str], *, context_paths: Sequenc
     for relative in sorted(selected | support_paths):
         if relative in support_paths and (root / relative).is_dir():
             files.append(EvidenceFile(path=relative, status="unsupported",
-                                      message="Support context requires explicit Python .py or Go .go files, not directories."))
+                                      message="Support context requires explicit source files, not directories."))
             continue
         try:
             data = (root / relative).read_bytes()
@@ -130,24 +132,26 @@ def extract_evidence(root: Path, paths: Sequence[str], *, context_paths: Sequenc
             files.append(EvidenceFile(path=relative, status="unreadable", message=exc.strerror or type(exc).__name__))
             continue
         digest = hashlib.sha256(data).hexdigest()
-        if Path(relative).suffix not in {".py", ".go"}:
+        language = syntax.language_for(relative)
+        table = TABLES.get(language) if language is not None else None
+        if language is None or (language not in {"python", "go"} and table is None):
             files.append(EvidenceFile(path=relative, status="unsupported", source_digest=digest,
-                                      message="Only Python .py and Go .go files have an extractor."))
+                                      message="Only Python, Go, TypeScript and TSX files have an extractor."))
             continue
-        if Path(relative).suffix == ".go":
+        if language != "python":
             try:
                 source = data.decode("utf-8")
-                go_tree = syntax.parse("go", source)
-                if go_tree.has_error:
-                    raise SyntaxError(f"{relative}: Go syntax tree contains errors; no partial evidence extracted")
+                tree_root = syntax.parse(language, source)
+                if tree_root.has_error:
+                    raise SyntaxError(f"{relative}: {language} syntax tree contains errors; no partial evidence extracted")
             except (SyntaxError, UnicodeError) as exc:
                 files.append(EvidenceFile(path=relative, status="parse_error", source_digest=digest, message=str(exc)))
                 continue
             if relative in selected:
-                go_visitor = GoEvidence(relative, source, digest)
-                go_visitor.visit(go_tree)
-                candidates.extend(go_visitor.candidates)
-                source_context.extend(go_visitor.source_context)
+                tree_visitor = GoEvidence(relative, source, digest) if table is None else TreeEvidence(relative, source, digest, table)
+                tree_visitor.visit(tree_root)
+                candidates.extend(tree_visitor.candidates)
+                source_context.extend(tree_visitor.source_context)
             if relative in support_paths:
                 support_context.append(SourceExcerpt(path=relative, start_line=1,
                                                      end_line=max(1, len(source.splitlines())),
@@ -185,7 +189,7 @@ def extract_evidence(root: Path, paths: Sequence[str], *, context_paths: Sequenc
                              candidates=tuple(candidates), limitations=limitations, excluded_paths=tuple(sorted(excluded)),
                              source_context=tuple(source_context), context_paths=tuple(sorted(support_paths)),
                              context_files=context_files, support_context=tuple(support_context),
-                             grammar_version=syntax.grammar_version() if any(Path(path).suffix == ".go" for path in selected | support_paths) else "")
+                             grammar_version=syntax.grammar_version() if any(syntax.language_for(path) not in {None, "python"} for path in selected | support_paths) else "")
 
 
 def extract_claims(graph: Graph) -> tuple[BookClaim, ...]:
@@ -277,16 +281,20 @@ def extract_book(graph: Graph) -> BookClaims:
                       cited_symbols=tuple(sorted(cited_symbols)))
 
 
-def exported_symbol(path: str, symbol: str) -> bool:
+def exported_symbol(path: str, symbol: str, exported: bool | None = None) -> bool:
     """Whether a candidate's symbol is exported by its language's rule.
 
     Go exports a capitalized name, and a method is exported only on an exported type.
     Python exports a name with no leading underscore, at every level of nesting. The
     module itself (``<module>``) is never a symbol. This is the tier-1 rule the audit
     reads; a ``__all__`` that re-exports an underscored name is not consulted.
+    TypeScript exports by keyword, not by spelling, so its extractor answers on the
+    candidate (``BehaviorEvidence.exported``) and that answer wins when it is given.
     """
     if symbol == "<module>":
         return False
+    if exported is not None:
+        return exported
     parts = symbol.split(".")
     if path.endswith(".go"):
         return all(part[:1].isupper() for part in parts)
@@ -301,7 +309,7 @@ def cited_symbol(path: str, symbol: str, cited_symbols: frozenset[str]) -> bool:
     return any(f"{path}::{'.'.join(parts[:depth])}" in cited_symbols for depth in range(1, len(parts) + 1))
 
 
-def candidate_tier(path: str, symbol: str, cited_symbols: frozenset[str]) -> Literal[1, 2]:
+def candidate_tier(path: str, symbol: str, cited_symbols: frozenset[str], exported: bool | None = None) -> Literal[1, 2]:
     """Tier 1 is what the book cites or the language exports; tier 2 is the private rest.
 
     The builder audits tier 1. Tier 2 — an uncited symbol its language keeps private —
@@ -309,7 +317,7 @@ def candidate_tier(path: str, symbol: str, cited_symbols: frozenset[str]) -> Lit
     through some tier-1 symbol, and that is where a claim about it is checked. A
     module-level candidate has no name to keep private, so it is always tier 1.
     """
-    if symbol == "<module>" or exported_symbol(path, symbol) or cited_symbol(path, symbol, cited_symbols):
+    if symbol == "<module>" or exported_symbol(path, symbol, exported) or cited_symbol(path, symbol, cited_symbols):
         return 1
     return 2
 
@@ -318,7 +326,7 @@ def undocumented_file(path: str, evidence: Sequence[BehaviorEvidence]) -> Undocu
     """The deterministic finding for a parsed file no claim cites, or None to build packets."""
     first: dict[str, int] = {}
     for item in sorted(evidence, key=lambda item: (item.start_line, item.start_column, item.id)):
-        if exported_symbol(path, item.symbol):
+        if exported_symbol(path, item.symbol, item.exported):
             first.setdefault(item.symbol, item.start_line)
     if not first:
         return None
@@ -388,7 +396,7 @@ def build_audit_packets(
     grouped: dict[str, list[BehaviorEvidence]] = {file.path: [] for file in inventory.files}
     deferred: dict[str, int] = defaultdict(int)
     for candidate in inventory.candidates:
-        if tier == 1 and candidate_tier(candidate.path, candidate.symbol, cited_symbols) == 2:
+        if tier == 1 and candidate_tier(candidate.path, candidate.symbol, cited_symbols, candidate.exported) == 2:
             deferred[candidate.path] += 1
             continue
         grouped.setdefault(candidate.path, []).append(candidate)

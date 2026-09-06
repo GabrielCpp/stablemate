@@ -111,13 +111,13 @@ def test_go_parse_errors_reject_whole_file_without_partial_context(tmp_path: Pat
     (tmp_path / "good.go").write_text("package api\nfunc Send() { send() }\n", encoding="utf-8")
     (tmp_path / "bad.go").write_text("package api\nfunc Good() { return }\nfunc Broken( {", encoding="utf-8")
     (tmp_path / "invalid.go").write_bytes(b"package api\n\xff")
-    (tmp_path / "other.ts").write_text("export function Send() {}", encoding="utf-8")
-    paths = ["good.go", "bad.go", "invalid.go", "other.ts", "missing.go"]
+    (tmp_path / "other.rb").write_text("def send; end", encoding="utf-8")
+    paths = ["good.go", "bad.go", "invalid.go", "other.rb", "missing.go"]
     inventory = extract_evidence(tmp_path, [] if support else paths, context_paths=paths if support else [])
     files = inventory.context_files if support else inventory.files
     assert {file.path: file.status for file in files} == {
         "good.go": "parsed", "bad.go": "parse_error", "invalid.go": "parse_error",
-        "other.ts": "unsupported", "missing.go": "unreadable",
+        "other.rb": "unsupported", "missing.go": "unreadable",
     }
     assert all(file.message and file.source_digest for file in files if file.status == "parse_error")
     assert {item.path for item in inventory.candidates} == (set() if support else {"good.go"})

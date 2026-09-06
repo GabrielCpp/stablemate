@@ -45,10 +45,10 @@ def test_python_candidates_preserve_defaults_branches_and_schema(tmp_path: Path)
 def test_extraction_keeps_failed_and_empty_files_and_rejects_escape(tmp_path: Path) -> None:
     (tmp_path / "bad.py").write_text("def broken(:", encoding="utf-8")
     (tmp_path / "empty.py").write_text("import os\n", encoding="utf-8")
-    (tmp_path / "app.ts").write_text("const a = 1;", encoding="utf-8")
-    inventory = extract_evidence(tmp_path, ["bad.py", "empty.py", "app.ts", "absent.py"])
+    (tmp_path / "app.rb").write_text("a = 1", encoding="utf-8")
+    inventory = extract_evidence(tmp_path, ["bad.py", "empty.py", "app.rb", "absent.py"])
     assert {item.path: item.status for item in inventory.files} == {
-        "bad.py": "parse_error", "empty.py": "parsed", "app.ts": "unsupported", "absent.py": "unreadable",
+        "bad.py": "parse_error", "empty.py": "parsed", "app.rb": "unsupported", "absent.py": "unreadable",
     }
     assert next(item for item in inventory.files if item.path == "bad.py").message
     with pytest.raises(ValueError, match="relative|outside"):
@@ -172,9 +172,9 @@ def test_directory_selection_prunes_caches_but_explicit_file_selectors_remain_vi
     cache.mkdir()
     (cache / "api.pyc").write_bytes(b"cached bytecode")
     (source / "loose.pyc").write_bytes(b"bytecode")
-    (source / "ui.ts").write_text("const a = 1;", encoding="utf-8")
+    (source / "ui.rb").write_text("a = 1", encoding="utf-8")
     inventory = extract_evidence(tmp_path, ["src"])
-    assert {file.path for file in inventory.files} == {"src/api.py", "src/ui.ts"}
+    assert {file.path for file in inventory.files} == {"src/api.py", "src/ui.rb"}
     assert any("__pycache__" in note for note in inventory.limitations)
     explicit = extract_evidence(tmp_path, ["src/__pycache__/api.pyc"])
     assert [(file.path, file.status) for file in explicit.files] == [("src/__pycache__/api.pyc", "unsupported")]
@@ -307,12 +307,12 @@ def test_scope_digest_changes_for_unsupported_edits_and_is_checkout_independent(
         root = tmp_path / name
         root.mkdir()
         (root / "api.py").write_text("def a():\n    return 1\n", encoding="utf-8")
-        (root / "ui.ts").write_text("const limit = 1;", encoding="utf-8")
-    first = extract_evidence(tmp_path / "one", ["api.py", "ui.ts", "absent.py"])
-    second = extract_evidence(tmp_path / "two", ["ui.ts", "absent.py", "api.py"])
+        (root / "ui.rb").write_text("limit = 1", encoding="utf-8")
+    first = extract_evidence(tmp_path / "one", ["api.py", "ui.rb", "absent.py"])
+    second = extract_evidence(tmp_path / "two", ["ui.rb", "absent.py", "api.py"])
     assert first == second
     before = build_audit_packets(first, []).packets[0]
-    (tmp_path / "one/ui.ts").write_text("const limit = 2;", encoding="utf-8")
+    (tmp_path / "one/ui.rb").write_text("limit = 2", encoding="utf-8")
     after = build_audit_packets(extract_evidence(tmp_path / "one", list(first.scope)), []).packets[0]
     assert before.digest != after.digest
 
@@ -467,12 +467,12 @@ def test_support_context_rejects_escape_and_empty_selectors(tmp_path: Path, sele
 
 
 def test_support_context_failures_are_visible_in_every_packet(tmp_path: Path) -> None:
-    (tmp_path / "helper.ts").write_text("return 1", encoding="utf-8")
+    (tmp_path / "helper.rb").write_text("return 1", encoding="utf-8")
     (tmp_path / "bad.py").write_text("def broken(:", encoding="utf-8")
     (tmp_path / "directory").mkdir()
-    inventory = extract_evidence(tmp_path, [], context_paths=["missing.py", "helper.ts", "bad.py", "directory"])
+    inventory = extract_evidence(tmp_path, [], context_paths=["missing.py", "helper.rb", "bad.py", "directory"])
     assert {file.path: file.status for file in inventory.context_files} == {
-        "missing.py": "unreadable", "helper.ts": "unsupported", "bad.py": "parse_error", "directory": "unsupported",
+        "missing.py": "unreadable", "helper.rb": "unsupported", "bad.py": "parse_error", "directory": "unsupported",
     }
     packet = build_audit_packets(inventory, [], skip_undocumented=False).packets[0]
     assert not packet.candidates and not packet.support_context

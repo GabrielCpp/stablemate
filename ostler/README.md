@@ -209,8 +209,15 @@ contract is in
 
 `audit` prepares the two-way behavior review a reviewer then judges: file-local packets of
 source candidates (returns, raises, routes, defaults) beside the book's normative claims. It
-prepares, it never decides. By default only **tier 1** candidates enter a packet — a symbol the
-book cites, one the language exports (Go: capitalized; Python: no leading underscore), or a
+prepares, it never decides. Python is read with its own AST; Go, TypeScript and TSX are read
+with the tree-sitter grammars `ostler.syntax` already carries — Go by its own visitor, the
+others by one generic visitor driven from a per-language table in `ostler.behavior_tree`
+(functions, containers, fields, returns, throws, express-like route and response calls,
+the branch headers that become a candidate's conditions), so PHP and Twig are a table each,
+not a visitor. By default only **tier 1** candidates enter a packet — a symbol the
+book cites, one the language exports (Go: capitalized; Python: no leading underscore;
+TypeScript: the `export` keyword or a re-export clause, and a class member without a
+`private`/`protected` modifier or a `#`/`_` name), or a
 module-level statement, which has no name to keep private. The rest is tier 2, counted as
 `deferred_candidates` and named in the file's packet limitations; `ostler audit --tier all`
 reviews it too. The okf-builder audits tier 1: a private symbol's behavior reaches a caller

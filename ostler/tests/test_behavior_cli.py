@@ -60,11 +60,11 @@ def test_audit_prints_the_undocumented_file_finding(
 def test_audit_reports_unsupported_files_without_claiming_complete(
     behavior_repo: Path, capsys: pytest.CaptureFixture[str],
 ) -> None:
-    (behavior_repo / "app.ts").write_text("export const limit = 50;", encoding="utf-8")
-    assert main(["-C", str(behavior_repo), "audit", "api.py", "app.ts", "--json", "--no-index"]) == 0
+    (behavior_repo / "app.rb").write_text("LIMIT = 50", encoding="utf-8")
+    assert main(["-C", str(behavior_repo), "audit", "api.py", "app.rb", "--json", "--no-index"]) == 0
     data = json.loads(capsys.readouterr().out)
     assert data["status"] == "prepared"
-    assert any(item["path"] == "app.ts" and item["status"] == "unsupported"
+    assert any(item["path"] == "app.rb" and item["status"] == "unsupported"
                for item in data["inventory"]["files"])
     assert data["inventory"]["limitations"]
 
