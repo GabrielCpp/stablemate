@@ -53,12 +53,11 @@ class AuditAgent:
         self.packets.append(packet)
         self.prompts.append(prompt)
         if self.status == "invalid_schema":
-            return "scripted", {"packet_digest": packet.digest}
+            return "scripted", {"claims": "not a list"}
         if self.status == "invalid_ids":
-            return "scripted", AuditVerdicts(packet_digest=packet.digest, claims=(), candidates=()).model_dump()
+            return "scripted", AuditVerdicts(claims=(), candidates=()).model_dump()
         if self.status in {"partial", "contradicted"}:
             return prompt, AuditVerdicts(
-                packet_digest=packet.digest,
                 claims=tuple(ClaimVerdict(
                     id=claim.id, status="partial" if self.status == "partial" else "contradicted",
                     candidate_ids=tuple(candidate.id for candidate in packet.candidates),
@@ -66,7 +65,7 @@ class AuditAgent:
                 ) for claim in packet.claims),
                 candidates=tuple(CandidateVerdict(
                     id=candidate.id, status="covered" if self.status == "partial" else "missing",
-                    claim_ids=tuple(claim.id for claim in packet.claims), explanation="See claim mismatch",
+                    explanation="See claim mismatch",
                 ) for candidate in packet.candidates),
             ).model_dump(mode="json")
         claims = tuple(ClaimVerdict(id=claim.id, status="unresolved", explanation="Needs more context")
@@ -76,8 +75,7 @@ class AuditAgent:
             status="unresolved" if self.status == "unresolved" else "missing",
             explanation="The return value is not described in the book",
         ) for candidate in packet.candidates)
-        return prompt, AuditVerdicts(packet_digest=packet.digest, claims=claims,
-                                         candidates=candidates).model_dump(mode="json")
+        return prompt, AuditVerdicts(claims=claims, candidates=candidates).model_dump(mode="json")
 
 
 def audit_env(tmp_path: Path, agent: AuditAgent) -> RunEnv:

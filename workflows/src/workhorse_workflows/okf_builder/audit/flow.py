@@ -49,7 +49,7 @@ class Audit(Workflow):
             attempts, feedback = 0, ""
         try:
             if not packet.candidates and not packet.claims:
-                verdicts = AuditVerdicts(packet_digest=packet.digest, claims=(), candidates=())
+                verdicts = AuditVerdicts(claims=(), candidates=())
             else:
                 verdicts = self.agent(
                     "audit/prompts/behavior-audit.md", returns=AuditVerdicts,

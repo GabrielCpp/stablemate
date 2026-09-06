@@ -235,7 +235,6 @@ class _Agent:
     def _behavior_audit(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         packet = AuditPacket.model_validate_json(data["packet"])
         return AuditVerdicts(
-            packet_digest=packet.digest,
             claims=tuple(ClaimVerdict(
                 id=claim.id, status="supported" if packet.candidates else "unresolved", explanation="Scripted source support",
                 candidate_ids=tuple(candidate.id for candidate in packet.candidates),
@@ -243,7 +242,6 @@ class _Agent:
             candidates=tuple(CandidateVerdict(
                 id=candidate.id, status="covered" if packet.claims else "implementation_detail",
                 explanation="Scripted scope classification",
-                claim_ids=tuple(claim.id for claim in packet.claims),
             ) for candidate in packet.candidates),
         ).model_dump(mode="json")
 
@@ -285,7 +283,6 @@ class _SemanticAgent(_Agent):
         if self.mode == "repair" and self.counts()["repair-behavior"]:
             return super()._behavior_audit(data, nth)
         return AuditVerdicts(
-            packet_digest=packet.digest,
             claims=tuple(ClaimVerdict(id=claim.id, status="unresolved", explanation="Needs source context")
                          for claim in packet.claims),
             candidates=() if self.mode == "invalid" else tuple(CandidateVerdict(

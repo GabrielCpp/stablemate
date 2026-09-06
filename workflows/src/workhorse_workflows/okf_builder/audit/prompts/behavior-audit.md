@@ -30,14 +30,15 @@ This is a read-only, packet-only assessment. Return JSON directly; do not use to
 run tests, open a browser, edit files, or seek additional repository context.
 The workflow re-extracts source and claims before accepting completion.
 
-Include exactly one verdict for every supplied claim and candidate ID, echo the exact
-packet digest, and make links reciprocal in both directions. Supported, contradicted,
-and partial claims require candidate links. Covered candidates require a supported or
-partial claim link or at least one validated book span. Only covered candidates may carry
-book evidence. Implementation details carry neither claim links nor book evidence.
+Include exactly one verdict for every supplied claim and candidate ID. Links are stated
+once, on the claim: a claim's `candidate_ids` names the candidates that bear on it, and a
+candidate is linked to exactly the claims that name it. Supported, contradicted, and
+partial claims require candidate links. Covered candidates require a supported or partial
+claim naming them or at least one validated book span. Only covered candidates may carry
+book evidence. Implementation details are named by no claim and carry no book evidence.
 Every book reference must resolve to a supplied node and a nonblank inclusive line range
 within that context, without duplicates. The deterministic validator rejects missing or
-foreign IDs, stale digests, invalid book spans, and inconsistent links.
+foreign IDs, invalid book spans, and links to ids outside the packet.
 
 ## Packet
 
