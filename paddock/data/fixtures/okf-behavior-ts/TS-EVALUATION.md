@@ -33,11 +33,47 @@ packet. The TypeScript arm shares the Go arm's `max_turns` ceiling of six.
 
 ## Observation
 
-No model run has been scored against this fixture yet. The harness tests pass
-(oracle mutants, fixture isolation, packet/receipt/scoring composition, stale-source
-rejection); the measured run is the next step and gets its own label.
+The real Paddock run `ts-controlled-v1` on 2026-09-06 assessed all three cases
+through `workhorse-okf-builder run audit` against the table-driven tree-sitter
+extractor (`ostler/behavior_tree.py`). No prompt adjustment, answer-key change,
+manual receipt edit, or second benchmark run followed the responses. All
+witnesses stayed unchanged.
 
-```bash
-uv run --all-packages pytest paddock/data/tests/test_behavior_ts_eval.py -q
-uv run --all-packages paddock --data-dir paddock/data --store <store> run okf-behavior-audit --label ts-controlled-v1 --no-pin-project --no-seal --param language=typescript --param max_turns=6
-```
+| Case | Curated detection | Missed | Unmatched adverse IDs | Unresolved | Backend attempts |
+| --- | --- | --- | ---: | ---: | ---: |
+| control | none expected | none | 0 | 0 | 1 |
+| omissions | OMIT-ERROR, OMIT-EMPTY | none | 1 | 0 | 1 |
+| incorrect | WRONG-EFFECT, WRONG-RESPONSE | none | 0 | 0 | 1 |
+
+Observed detection is **4/4**, with **zero adverse findings on the correct
+control** (four claims and four candidates). This is one deliberately selected
+function, not a statistical accuracy estimate. Each case has four candidates;
+control/incorrect have four claims each, omissions has two. Zero packets omitted,
+zero memo hits. Append-versus-replace is `contradicted` ("it does not replace the
+supplied list"); wrong status is `partial`, explicitly explained as `sent` rather
+than `queued`. Both omission candidates are `missing`. Every case took exactly one
+model turn and one backend attempt; output tokens were 821 / 623 / 683 and wall
+time 50 / 51 / 54 seconds. The subscription backend reports zero cost. Exact IDs
+and statuses remain in the original score.
+
+### Unmatched Findings
+
+The one unmatched ID is `okf:docs/features/dispatch/dispatch.md#dispatch:returns:1`
+in the omissions case, packet
+`bb4921078a5f83c82ea322535d24b50e45153f592980533be2cad8a6a2477c4b`, marked
+`partial`: with the negative-limit exception claim removed, the remaining
+nonempty-input success promise no longer states its error exclusion, and the
+reviewer cited the negative-limit throw as the counterexample. The oracle's
+negative-limit case confirms that counterexample. This is a consequence of
+OMIT-ERROR, the same overlap the Go run produced, not a new seeded defect and not
+a false alarm on correct text. This is author adjudication, not a blinded second
+reviewer; the raw unmatched count stays **1**.
+
+### Comparison With Go
+
+The same seeded defects on the same function shape gave the same 4/4 detection.
+TypeScript needed fewer backend attempts (3 versus 5) and produced fewer unmatched
+findings (1 versus 3): the Go run's two extra overlaps were the enclosing function
+contract restating the two missing branches, which the TypeScript reviewer instead
+marked `covered` with the claims it linked. One sample each; the difference is
+noted, not claimed as significant.
