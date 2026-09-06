@@ -29,6 +29,11 @@ dependencies = [
   # The environment manifest: the checkable-in YAML that lets an environment
   # travel off the machine it was defined on. Config only — never a secret value.
   "pyyaml>=6.0",
+  # `fill` talks to a running browser over the Chrome DevTools Protocol, whose
+  # transport is a WebSocket. A core dependency rather than an extra: filling a
+  # login form is what the pool is for, and a capability that is absent on half
+  # the installs is one no caller can rely on.
+  "websockets>=13.0",
 ]
 
 [project.optional-dependencies]

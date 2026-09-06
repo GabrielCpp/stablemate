@@ -35,6 +35,12 @@ KIND_CREDENTIAL_REF = "credential-ref"
 ENTRY_KINDS: tuple[str, ...] = (KIND_PENDING, KIND_CONFIG, KIND_SECRET, KIND_CREDENTIAL_REF)
 
 #: The credential fields a ``credential-ref`` may point at.
+#:
+#: Deliberately excludes the TOTP seed. A ``credential-ref`` exists to be resolved
+#: by ``env render``, and rendering a seed to a file would write out the one value
+#: that regenerates every future code — a strictly worse secret than the password
+#: beside it. The seed leaves the store only as a computed six-digit code, and only
+#: through ``fill``, which types it into a browser rather than returning it.
 CRED_REF_FIELDS: tuple[str, ...] = ("username", "password")
 
 #: How a rendered environment file is written.
@@ -112,6 +118,17 @@ class Credential:
     def store_key(self) -> str:
         """Where this credential's password lives in the secret store."""
         return qualify(self.project, self.id)
+
+    @property
+    def totp_store_key(self) -> str:
+        """Where this credential's TOTP enrolment seed lives, if it has one.
+
+        A separate key rather than a second field on one blob: the seed is written
+        by a different command, at a different time, and an identity with no second
+        factor simply has nothing at this key. It is also why ``credential-ref``
+        cannot name it — see :data:`CRED_REF_FIELDS`.
+        """
+        return qualify(self.project, self.id, "totp")
 
     def to_dict(self, now: datetime | None = None) -> dict[str, Any]:
         """Redacted form. Never contains a password — safe for ``list`` and ``scan``."""

@@ -6,10 +6,11 @@ import argparse
 import json
 import logging
 import sys
+import time
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
-from saddlebag import envfile, manifest, render
+from saddlebag import browser, envfile, manifest, render, totp
 from saddlebag.context import infer_project
 from saddlebag.db import DEFAULT_TTL, Pool, PoolError, default_db_path
 from saddlebag.models import FORMATS, KIND_CONFIG, KIND_CREDENTIAL_REF, KIND_PENDING, KIND_SECRET, Credential, Environment, EnvironmentEntry, Requirement, parse_cred_ref, utcnow
@@ -69,12 +70,12 @@ def _table(creds: list[Credential]) -> None:
               f"{roles:<24}  {c.username}")
 
 
-def _read_password() -> str:
-    password = sys.stdin.read().strip()
-    if not password:
-        logger.error("no password on stdin")
+def _read_password(what: str = "password") -> str:
+    value = sys.stdin.read().strip()
+    if not value:
+        logger.error("no %s on stdin", what.rstrip(": "))
         raise SystemExit(2)
-    return password
+    return value
 
 
 def _resolve_password(args: argparse.Namespace) -> str:
@@ -157,7 +158,12 @@ def cmd_remove(args: argparse.Namespace, pool: Pool) -> int:
         logger.error("%s is leased; release it first or pass --force", cred.id)
         return 1
 
-    _open_store(args).delete(_store_key(cred))
+    store = _open_store(args)
+    store.delete(_store_key(cred))
+    # A seed left behind would be re-adopted by the next credential to mint the same
+    # id, and it is the one value whose staleness is invisible: the code it produces
+    # looks exactly as valid as a correct one.
+    store.delete(cred.totp_store_key)
     pool.remove(cred.id)
     print(f"removed {cred.id}")
     return 0
@@ -798,6 +804,123 @@ def _add_lease_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", help="tag the lease with a workhorse run id")
 
 
+
+# -- filling a browser ------------------------------------------------------
+#
+# `fill` is the verb the pool exists for. Everything above it decides *which*
+# identity a run gets; this is where that identity actually signs in — and it does
+# so without the value ever reaching the caller. Saddlebag connects to a browser the
+# caller already controls, types into a selector the caller names, and reports a
+# character count. The opacity guarantee is unchanged: the browser ends up holding
+# the secret, which is the one place it was always going to have to arrive.
+
+
+def cmd_totp_set(args: argparse.Namespace, pool: Pool) -> int:
+    """Store a credential's TOTP enrolment seed. Write-only, like a password."""
+    cred = pool.get(args.credential_id)
+    if cred is None:
+        logger.error("no such credential: %s", args.credential_id)
+        return 1
+
+    seed = _read_password("TOTP seed")
+    try:
+        # Decoded before it is stored, so a seed pasted with a typo fails here rather
+        # than three months later as a login that mysteriously stopped working.
+        totp.decode_seed(seed)
+    except totp.SeedError as exc:
+        logger.error("%s", exc)
+        return 2
+
+    store = _open_store(args)
+    store.put(cred.totp_store_key, seed)
+    print(f"stored a TOTP seed for {cred.id} in the {store.name} store")
+    return 0
+
+
+def cmd_totp_unset(args: argparse.Namespace, pool: Pool) -> int:
+    cred = pool.get(args.credential_id)
+    if cred is None:
+        logger.error("no such credential: %s", args.credential_id)
+        return 1
+    _open_store(args).delete(cred.totp_store_key)
+    print(f"removed the TOTP seed for {cred.id}")
+    return 0
+
+
+def _value_to_fill(args: argparse.Namespace, cred: Credential, store: SecretStore) -> tuple[str, dict[str, object]]:
+    """The value for ``--field``, plus whatever is safe to report about it.
+
+    Bound to a local for the length of one insert and never returned to the caller
+    through any other path. The metadata is the part that gets printed.
+    """
+    if args.field == "username":
+        return cred.username, {}
+    if args.field == "password":
+        password = store.get(_store_key(cred))
+        if password is None:
+            raise SystemExit(
+                _fail(f"{cred.id} has no password in the {store.name} store — "
+                      "the pool and the store disagree; run 'saddlebag doctor'")
+            )
+        return password, {}
+
+    seed = store.get(cred.totp_store_key)
+    if seed is None:
+        raise SystemExit(
+            _fail(f"{cred.id} has no TOTP seed. Store one with: "
+                  f"saddlebag totp set {cred.id}")
+        )
+    remaining = totp.seconds_remaining()
+    if remaining < args.min_seconds:
+        # A code with a second left on it fails a verification that is working
+        # correctly, and the retry costs a login attempt against an account that
+        # locks after a few. Waiting out the window is cheaper than the diagnosis.
+        logger.info("current code expires in %ds; waiting for the next window", remaining)
+        time.sleep(remaining)
+        remaining = totp.seconds_remaining()
+    return totp.code(seed), {"valid_for_seconds": remaining}
+
+
+def _fail(message: str) -> int:
+    logger.error("%s", message)
+    return 1
+
+
+def cmd_fill(args: argparse.Namespace, pool: Pool) -> int:
+    cred = pool.get(args.credential_id)
+    if cred is None:
+        return _fail(f"no such credential: {args.credential_id}")
+
+    store = _open_store(args)
+    try:
+        value, detail = _value_to_fill(args, cred, store)
+        target = browser.select_target(browser.list_targets(args.cdp), args.url_contains)
+        session = browser.WebSocketSession(target.websocket_url)
+        try:
+            length = browser.fill(session, args.selector, value)
+        finally:
+            session.close()
+    except browser.BrowserError as exc:
+        return _fail(str(exc))
+    except totp.SeedError as exc:
+        return _fail(f"{cred.id}: {exc}")
+
+    report = {
+        "id": cred.id,
+        "field": args.field,
+        "selector": args.selector,
+        "characters": length,
+        "url": target.url,
+        **detail,
+    }
+    if args.json:
+        _emit(report)
+    else:
+        extra = f", valid for {detail['valid_for_seconds']}s" if detail else ""
+        print(f"filled {length} characters into {args.selector} on {target.url}{extra}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="saddlebag", description="Carry the right credentials for every ride.")
     p.add_argument("--version", action="version", version=f"saddlebag {_pkg_version('saddlebag')}")
@@ -858,6 +981,38 @@ def build_parser() -> argparse.ArgumentParser:
     dr = sub.add_parser("doctor", help="health check: store, locked and stale leases")
     dr.add_argument("--json", action="store_true")
     dr.set_defaults(func=cmd_doctor)
+
+    fl = sub.add_parser(
+        "fill",
+        help="type a credential's value into a browser field over CDP (never prints it)",
+        description=(
+            "Type one of a credential's values into a field of a page in a browser that "
+            "is already running with --remote-debugging-port. The value is typed, not "
+            "returned: fill reports only how many characters it entered."
+        ),
+    )
+    fl.add_argument("credential_id", metavar="ID")
+    fl.add_argument("--selector", required=True, metavar="CSS",
+                    help="the field to type into, e.g. \"input[name='password']\"")
+    fl.add_argument("--field", choices=("username", "password", "totp"), default="password",
+                    help="which value to type (default: password)")
+    fl.add_argument("--cdp", default=browser.DEFAULT_ENDPOINT, metavar="URL",
+                    help=f"DevTools endpoint, loopback only (default {browser.DEFAULT_ENDPOINT})")
+    fl.add_argument("--url-contains", metavar="TEXT",
+                    help="pick the page whose URL contains TEXT; required when several are open")
+    fl.add_argument("--min-seconds", type=int, default=5, metavar="N",
+                    help="with --field totp, wait out a code with fewer than N seconds left")
+    fl.add_argument("--json", action="store_true")
+    fl.set_defaults(func=cmd_fill)
+
+    tp = sub.add_parser("totp", help="a credential's second factor (seed in, codes only ever typed)")
+    tsub = tp.add_subparsers(dest="totp_command", required=True)
+    ts = tsub.add_parser("set", help="store an enrolment seed, read from stdin")
+    ts.add_argument("credential_id", metavar="ID")
+    ts.set_defaults(func=cmd_totp_set)
+    tu = tsub.add_parser("unset", help="forget a credential's seed")
+    tu.add_argument("credential_id", metavar="ID")
+    tu.set_defaults(func=cmd_totp_unset)
 
     _add_env_commands(sub)
     return p
