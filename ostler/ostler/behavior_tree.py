@@ -8,8 +8,9 @@ id scheme — a candidate's id hashes its path, symbol, kind and tokens — so t
 the ostler index keys the same way for every tree-sitter language.
 
 The first table is TypeScript, shared by ``.ts``, ``.tsx``, ``.js`` and ``.jsx`` since
-the TSX grammar is a superset of the same node vocabulary. PHP and Twig follow by adding
-a table, not a visitor.
+the TSX grammar is a superset of the same node vocabulary; the second is PHP. Twig has no
+table: its grammar is flat (``{% endif %}`` is a sibling of ``{% if %}``, not its parent),
+so a visitor that reads enclosure from the tree has nothing to read there.
 """
 from __future__ import annotations
 
@@ -55,8 +56,25 @@ class LanguageTable:
     exports: frozenset[str]
     """The wrapper that marks its declaration exported; a re-export clause names locals."""
     private_modifiers: frozenset[str] = frozenset({"private", "protected"})
+    private_prefixes: tuple[str, ...] = ("#", "_")
+    """Name spellings that mean private where the language has a convention for it; PHP has none."""
+    modifier: str = "accessibility_modifier"
+    """The child node that spells a member's visibility, on the member or on its holder."""
+    module_public: bool = False
+    """Whether a top-level declaration is public without an export marker (PHP), or not (TS)."""
+    sigil: str = ""
+    """A prefix a name carries in the source but not in a book citation (PHP's ``$``)."""
+    default_field: str = "value"
+    """The parameter field that carries a default."""
+    binder_fields: tuple[str, str] = ("name", "value")
+    consequence_field: str = "consequence"
+    """The conditional's taken-branch field; every other named child but the condition is an else."""
+    calls: frozenset[str] = frozenset({"call_expression"})
+    call_name: tuple[str, ...] = ("function", "property")
+    """Field path from a call to the member name it invokes; a missing hop means no member."""
     skip: frozenset[str] = frozenset({"comment"})
-    headers: frozenset[str] = field(default_factory=lambda: frozenset({"{", ":", "statement_block", "switch_body", "=>"}))
+    headers: frozenset[str] = field(default_factory=lambda: frozenset({
+        "{", ":", "statement_block", "switch_body", "=>", "compound_statement", "declaration_list", "switch_block"}))
     field_note: str = ""
     route_note: str = ""
     response_note: str = ""
@@ -91,7 +109,42 @@ TYPESCRIPT = LanguageTable(
     raise_note="typescript throw; the thrown value's type is not resolved",
 )
 
-TABLES: dict[str, LanguageTable] = {"typescript": TYPESCRIPT, "tsx": TYPESCRIPT}
+PHP = LanguageTable(
+    framework="php",
+    root="program",
+    functions=frozenset({"function_definition", "method_declaration"}),
+    literals=frozenset({"anonymous_function", "arrow_function"}),
+    containers=frozenset({"class_declaration", "interface_declaration", "trait_declaration", "enum_declaration"}),
+    binders=frozenset({"assignment_expression"}),
+    wrappers=frozenset({"expression_statement"}),
+    fields=frozenset({"property_element", "const_element", "enum_case"}),
+    field_holders=frozenset({"declaration_list", "enum_declaration_list"}),
+    parameters=frozenset({"simple_parameter", "property_promotion_parameter"}),
+    returns=frozenset({"return_statement"}),
+    raises=frozenset({"throw_expression"}),
+    routes=frozenset({"get", "post", "put", "delete", "patch", "options", "any", "map", "group", "route"}),
+    responses=frozenset({"withStatus", "json", "write", "redirect", "render", "setStatusCode", "send"}),
+    conditionals=frozenset({"if_statement", "else_if_clause"}),
+    contextual=frozenset({"switch_statement", "case_statement", "default_statement", "for_statement",
+                          "foreach_statement", "while_statement", "do_statement", "try_statement", "catch_clause",
+                          "finally_clause", "conditional_expression", "match_expression", "match_conditional_expression"}),
+    exports=frozenset(),
+    modifier="visibility_modifier",
+    module_public=True,
+    private_prefixes=(),
+    sigil="$",
+    default_field="default_value",
+    binder_fields=("left", "right"),
+    consequence_field="body",
+    calls=frozenset({"member_call_expression", "scoped_call_expression", "nullsafe_member_call_expression"}),
+    call_name=("name",),
+    field_note="php class property or constant; a type is syntax, not a validated constraint",
+    route_note="unresolved slim/laravel-like registration call",
+    response_note="unresolved psr-7-like response call",
+    raise_note="php throw; the thrown value's type is not resolved",
+)
+
+TABLES: dict[str, LanguageTable] = {"typescript": TYPESCRIPT, "tsx": TYPESCRIPT, "php": PHP}
 
 
 def _tokens(node: Node, skip: frozenset[str]) -> list[tuple[str, str]]:
@@ -109,11 +162,13 @@ def _tokens(node: Node, skip: frozenset[str]) -> list[tuple[str, str]]:
     return result
 
 
-def _member_name(call: Node) -> str:
-    function = call.child_by_field_name("function")
-    if function is None or function.type != "member_expression":
+def _member_name(call: Node, path: tuple[str, ...]) -> str:
+    current: Node | None = call
+    for hop in path[:-1]:
+        current = current.child_by_field_name(hop) if current is not None else None
+    if current is None or (len(path) > 1 and current.type != "member_expression"):
         return ""
-    return syntax.field_text(function, "property")
+    return syntax.field_text(current, path[-1])
 
 
 class TreeEvidence:
@@ -177,11 +232,18 @@ class TreeEvidence:
 
     def _visible(self, node: Node) -> bool:
         """A member is public unless a modifier or a private name says otherwise."""
-        if any(child.type == "accessibility_modifier" and syntax.text_of(child) in self.table.private_modifiers
-               for child in node.children):
+        holders = [node] + ([node.parent] if node.parent is not None and node.parent.type not in self.table.field_holders else [])
+        if any(child.type == self.table.modifier and syntax.text_of(child) in self.table.private_modifiers
+               for holder in holders for child in holder.children):
             return False
+        return not self._name(node).startswith(self.table.private_prefixes)
+
+    def _name(self, node: Node) -> str:
+        """The declared name: the ``name`` field, or the bare ``name`` child a grammar leaves unlabelled."""
         name = syntax.field_text(node, "name")
-        return not name.startswith(("#", "_"))
+        if not name:
+            name = next((syntax.text_of(child) for child in node.named_children if child.type == "name"), "")
+        return name.removeprefix(self.table.sigil)
 
     def _open(self, node: Node, name: str, *, exported: bool) -> None:
         self.symbols.append(name)
@@ -223,12 +285,13 @@ class TreeEvidence:
                 self.visit(child, exported=True)
             return
         if node.type in table.functions:
-            name = syntax.field_text(node, "name")
-            visible = exported or (bool(self.symbols) and self._visible(node)) or name in self.reexported
+            name = self._name(node)
+            visible = exported or (table.module_public and not self.symbols) or name in self.reexported
+            visible = visible or (bool(self.symbols) and self._visible(node))
             self._function(node, name, exported=visible)
             return
         if node.type in table.literals:
-            name = syntax.field_text(node, "name")
+            name = self._name(node)
             if not name:
                 parent = ".".join(self.symbols)
                 self.literals[parent] += 1
@@ -237,18 +300,19 @@ class TreeEvidence:
             self._function(node, name, exported=visible)
             return
         if node.type in table.binders:
-            value = node.child_by_field_name("value")
+            value = node.child_by_field_name(table.binder_fields[1])
             if value is not None and value.type in table.literals:
-                name = syntax.field_text(node, "name")
-                self._function(value, name, exported=exported or name in self.reexported or (bool(self.symbols) and all(self.exported)))
+                name = syntax.field_text(node, table.binder_fields[0]).removeprefix(table.sigil)
+                visible = exported or name in self.reexported or (table.module_public and not self.symbols)
+                self._function(value, name, exported=visible or (bool(self.symbols) and all(self.exported)))
                 return
         if node.type in table.wrappers:
             for child in node.named_children:
                 self.visit(child, exported=exported)
             return
         if node.type in table.containers:
-            name = syntax.field_text(node, "name")
-            self._open(node, name, exported=exported or name in self.reexported)
+            name = self._name(node)
+            self._open(node, name, exported=exported or name in self.reexported or (table.module_public and not self.symbols))
             before = len(self.candidates)
             for child in node.named_children:
                 self.visit(child)
@@ -257,12 +321,12 @@ class TreeEvidence:
             self._close()
             return
         if node.type in table.fields and self._held(node):
-            self._open(node, syntax.field_text(node, "name"), exported=self._visible(node))
+            self._open(node, self._name(node), exported=self._visible(node))
             self.emit(node, "schema_field", framework=table.field_note)
             self._close()
             return
         if node.type in table.parameters:
-            if node.child_by_field_name("value") is not None:
+            if node.child_by_field_name(table.default_field) is not None:
                 self.emit(node, "function_default")
             return
         if node.type in table.returns:
@@ -270,19 +334,19 @@ class TreeEvidence:
         elif node.type in table.raises:
             self.emit(node, "raise", framework=table.raise_note)
         handler = False
-        if node.type == "call_expression":
-            name = _member_name(node)
+        if node.type in table.calls:
+            name = _member_name(node, table.call_name)
             if name in table.routes:
                 self.emit(node, "route", framework=table.route_note)
                 handler = True
             elif name in table.responses:
                 self.emit(node, "http_response", framework=table.response_note)
         if node.type in table.conditionals:
-            condition = syntax.field_text(node, "condition")
-            consequence = node.child_by_field_name("consequence")
-            alternative = node.child_by_field_name("alternative")
+            condition_node = node.child_by_field_name("condition")
+            condition = syntax.text_of(condition_node) if condition_node is not None else ""
+            consequence = node.child_by_field_name(table.consequence_field)
             for child in node.named_children:
-                label = f"if {condition}" if child == consequence else f"else of {condition}" if child == alternative else ""
+                label = "" if child == condition_node else f"if {condition}" if child == consequence else f"else of {condition}"
                 if label:
                     self.conditions.append(label)
                 self.visit(child)

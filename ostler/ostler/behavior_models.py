@@ -30,8 +30,9 @@ class BehaviorEvidence(BehaviorModel):
     exported: bool | None = None
     """The extractor's own verdict on the symbol's visibility, where the name alone cannot say.
 
-    TypeScript exports by an ``export`` keyword, not by spelling, so its extractor records
-    the answer here; Python and Go leave it ``None`` and ``exported_symbol`` reads the name.
+    TypeScript exports by an ``export`` keyword and PHP by a visibility modifier, not by
+    spelling, so those extractors record the answer here; Python and Go leave it ``None``
+    and ``exported_symbol`` reads the name.
     """
 
 

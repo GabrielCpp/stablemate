@@ -33,15 +33,16 @@ from ostler.behavior_tree import TABLES, TreeEvidence
 from ostler.model import Graph
 
 _LIMITATIONS = (
-    "Python AST and Go/TypeScript/TSX tree-sitter candidates only; other languages remain unsupported. No execution, call graph, data flow, inheritance, or semantic proof.",
+    "Python AST and Go/TypeScript/TSX/PHP tree-sitter candidates only; other languages remain unsupported. Twig templates are read by no extractor: the grammar is flat (an end tag is a sibling of its opening tag, not its parent), so enclosure and conditions cannot be read from the tree. No execution, call graph, data flow, inheritance, or semantic proof.",
     "Conditions describe lexical enclosure, not reachability; preceding guards and side effects are not inferred.",
     "Route/decorator, add_argument, and annotated-field framework identities are unresolved; syntax can be implementation detail.",
     "Python extracts explicit decorators, function defaults, raise/return statements, add_argument calls, and class annotated fields.",
     "Go extracts function/method/literal contracts, returns, panic-like calls, net/http-like registration/response calls, and struct fields with literal tags/types. Call bindings, JSON encoding, validation, build tags and interface dispatch are not resolved; similarly named non-HTTP calls may be candidates.",
     "TypeScript/TSX extracts function, method, arrow and class/interface/alias declarations, parameter defaults, return/throw statements, express-like registration/response member calls, and class fields/interface properties. Module bindings, decorators, JSX output, promise rejection and type narrowing are not resolved; similarly named non-HTTP member calls may be candidates. Exportedness follows the export keyword, a re-export clause, and member accessibility.",
+    "PHP extracts function, method, closure and arrow-function contracts, parameter defaults, return statements, throw expressions, slim/laravel-like registration and psr-7-like response member calls, and class properties and constants. Namespaces, use imports, traits, attributes, magic methods and exception hierarchies are not resolved; similarly named non-HTTP member calls may be candidates. A top-level declaration is public; a member is public unless a private or protected modifier says otherwise.",
     "Source context retains enclosing functions and declarations. Python class context excludes unrelated methods and retrieves referenced module assignments lexically; Python functions with no candidates are not audited. Go retains full function/method/literal bodies and struct declarations, without resolving package bindings or delegated effects.",
     "Files outside the explicit source scope are not audited. Non-normative same-node book text is context, not additional obligations.",
-    "Support context contains only explicitly selected Python, Go or TypeScript files, not automatic import closure; unselected delegated behavior remains unresolved. Support files do not add candidate obligations.",
+    "Support context contains only explicitly selected Python, Go, TypeScript or PHP files, not automatic import closure; unselected delegated behavior remains unresolved. Support files do not add candidate obligations.",
     "Citation grouping is retrieval context, not semantic grounding. Reviewers must search source/book across files and sibling packets; use unresolved when local context is insufficient.",
     "Missing means an externally judged omission within the reviewed scope, not absence of a local citation. No packet or receipt asserts global completeness.",
 )
@@ -136,7 +137,7 @@ def extract_evidence(root: Path, paths: Sequence[str], *, context_paths: Sequenc
         table = TABLES.get(language) if language is not None else None
         if language is None or (language not in {"python", "go"} and table is None):
             files.append(EvidenceFile(path=relative, status="unsupported", source_digest=digest,
-                                      message="Only Python, Go, TypeScript and TSX files have an extractor."))
+                                      message="Only Python, Go, TypeScript, TSX and PHP files have an extractor."))
             continue
         if language != "python":
             try:
@@ -288,8 +289,8 @@ def exported_symbol(path: str, symbol: str, exported: bool | None = None) -> boo
     Python exports a name with no leading underscore, at every level of nesting. The
     module itself (``<module>``) is never a symbol. This is the tier-1 rule the audit
     reads; a ``__all__`` that re-exports an underscored name is not consulted.
-    TypeScript exports by keyword, not by spelling, so its extractor answers on the
-    candidate (``BehaviorEvidence.exported``) and that answer wins when it is given.
+    TypeScript exports by keyword and PHP by modifier, not by spelling, so their extractors
+    answer on the candidate (``BehaviorEvidence.exported``) and that answer wins when given.
     """
     if symbol == "<module>":
         return False
