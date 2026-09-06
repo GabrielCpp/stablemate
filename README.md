@@ -30,7 +30,31 @@ Two things have to be true for that to work in practice, and they are the two ha
 this repo: the runs must be **verified from independent evidence**
 ([the methodology](#the-methodology-three-evidence-bases-none-of-them-the-implementers)),
 and the runs must **survive being unattended**
-([the engine](#why-an-engine-and-not-a-bash-loop)).
+([the engine](#why-an-engine-and-not-a-bash-loop)). A third is what the work is about
+right now: the evidence QA checks against is a *book* the toolchain writes itself, and
+QA is exactly as good as that book
+([where the work is](#where-the-work-is-the-book-behind-qa)).
+
+## From intent to evidence
+
+One story's path through the toolchain, tool by tool:
+
+- **[author](workflows/)** takes an approved roadmap and writes the plan: milestones,
+  epics and vertical stories with acceptance criteria, as a normalized docs graph in the
+  repo that [ostler](ostler/) validates.
+- **[coder](workflows/)** takes a story from that plan, implements it, tests it, and has
+  it reviewed against the engineering skills [farrier](farrier/) installs from the
+  [base library](base-library/) — one versioned library, so a standard changes in one
+  place and every repository's installed copy follows.
+- **coder's Docs phase**, after review and before QA, writes what was built into the
+  repo's **feature book**: user journeys, surfaces, and the checks that observe them, each
+  claim grounded in the source file it was read from. **[okf-builder](workflows/)**
+  writes the same book for a codebase that was never authored this way.
+- **coder's QA** holds the *running application* to that book, with the code not in the
+  room, and a story passes on recorded evidence or parks for a human.
+- **[workhorse](workhorse/)** keeps all of it running across crashes, subscription caps
+  and days; **[groom](groom/)** is where you answer the questions a run cannot, and read
+  back what it did.
 
 ## The methodology: three evidence bases, none of them the implementer's
 
@@ -44,7 +68,7 @@ flowchart LR
     story["story (intent)"]
     code["code (the diff)"]
     skills["skills library<br/>(engineering standards)"]
-    okf["OKF book<br/>(normalized docs graph)"]
+    okf["feature book<br/>(normalized docs graph)"]
     live["live environment"]
 
     story --> A["A — test<br/>does the code do what was asked?"]
@@ -61,19 +85,46 @@ flowchart LR
 - **B — review** (code + story + skills): the diff is reviewed against the engineering
   knowledge in the [base library](base-library/)'s skills — a fresh context whose job is
   to hold the code to the standards, not to defend the choices that produced it.
-- **C — QA** (OKF book + live environment): the `author` workflow first encodes each
-  story's intent into the repo's **OKF book** — its planning docs as a normalized
-  knowledge graph in the [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md),
+- **C — QA** (feature book + live environment): after review, coder's Docs phase writes
+  the story's behaviour into the repo's **feature book** — a normalized knowledge graph
+  in the [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md),
   tended by [ostler](ostler/). QA then exercises the *running application* against what
-  that book promises, with the code deliberately not in the room. `ostler qa context`
-  maps the diff to the book's obligations, so QA is contractual — a story cannot pass by
-  testing only what its implementer thought to mention.
+  that book promises, with the code deliberately not in the room: `ostler qa context`
+  maps the diff to the book's obligations, the generated scenarios bind their assertions
+  to those obligations, and an evidence gate reads the recorded execution rather than a
+  claimed pass. A story cannot pass by testing only what its implementer thought to
+  mention.
 
 Same model, three different rooms: the independence is in the *inputs*, not the judge.
 And a leg that cannot produce its evidence is a stop, not a shrug — a QA give-up parks
-the run for an operator instead of stamping it passed. The C leg is as strong as the
-book behind it: a repo with a thin OKF book gets a thinner contract until
-[okf-builder](workflows/) backfills it.
+the run for an operator instead of stamping it passed. The C leg is exactly as strong as
+the book behind it, which is the next section.
+
+## Where the work is: the book behind QA
+
+The workflows generate, run and record QA today. What bounds their reach is the contract
+they run against: a promise the book never made is a defect QA cannot see, and a check
+that only observes a clean exit lets through the very failure the prose around it was
+written to prevent. Writing that book from source, and keeping it true of a codebase that
+keeps changing under it, is the open problem this repo is working on. Three things exist
+for it, and none of them is finished:
+
+- **Detection.** `ostler doctor` reports structural findings, source units no node
+  covers, and declarations that changed behind an existing citation. A clean report is
+  the floor, not the proof: structural validity, an accurate description and a check that
+  can tell success from failure are three different properties, and doctor sees one.
+- **Repair that cannot excuse itself.** `okf-builder` and coder's Docs phase clear
+  findings in checkpointed passes, and a finding that will not clear is adjudicated —
+  book error, code defect or intent conflict — rather than retried forever or waived: a
+  stalled book parks on an operator gate, and the waiver register is gone. Any QA step
+  that may have touched code or grounding taints the story, so Docs must pass again
+  before it commits. A repair has to keep the promise and sharpen the observation, not
+  merely make the finding go away.
+- **Measurement.** [paddock](paddock/) runs the book-builder and QA on frozen seed
+  repositories, with seeded defects and clean controls, so a change to a prompt or a
+  skill is judged by what it catches rather than by how it reads; groom's telemetry and
+  transcripts say what the agent actually read, changed and checked. The target is more
+  verification per agent turn, not more turns.
 
 ## Why an engine, and not a bash loop
 
@@ -102,7 +153,8 @@ The composite is the point: **multi-day, unattended runs on subscription-billed 
 CLIs** — Claude, Codex, Copilot, Cline, OpenCode — with a repo-local planning graph and
 asynchronous human gates. That durability is what makes the methodology above
 affordable: three verification legs per story is a lot of agent turns, and they only
-pay for themselves when nobody has to babysit them.
+pay for themselves when nobody has to babysit them. Durable is not lenient, though: a
+run kept alive for days still parks on missing evidence rather than passing without it.
 
 ## What's in the box
 

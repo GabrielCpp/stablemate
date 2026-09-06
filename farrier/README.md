@@ -8,7 +8,9 @@ Copilot, plus the launcher scaffolding (`.agents/agents.mk` and friends) that ke
 those adapters current.
 
 A farrier is the craftsman who fits the right gear onto each horse. This tool
-fits the shared prompt library onto each repository.
+fits the shared prompt library onto each repository — and refits it as the library
+moves, so an architecture, testing or review standard changes in one place and every
+repository's installed copy follows, instead of each one drifting on a private copy.
 
 ## Install
 
