@@ -12,6 +12,8 @@ from ostler.behavior import (
     AuditPacket, AuditPreparation, AuditReport, AuditVerdicts,
     build_audit_packets, extract_book, extract_evidence, validate_verdicts,
 )
+from ostler.behavior_memo import VerdictMemo, merge_verdicts, reduce_packet
+from ostler.index import IndexStore
 from ostler.model import load
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -95,6 +97,9 @@ class BehaviorAuditOutcome(BaseModel):
         default=(), description="Source files with exported symbols that no claim cites; queued as repairs")
     unaudited_packets: tuple[str, ...] = Field(
         default=(), description="Packets with no current receipt, as `<digest> <paths>`; a budget stop ships them")
+    memo_hits: int = Field(default=0, description="Packets whose every verdict the index remembered: no turn spent")
+    memo_partial: int = Field(
+        default=0, description="Packets reduced to the items the index did not remember before dispatch")
     limitations: tuple[str, ...] = ()
     error: str = ""
 
@@ -120,6 +125,68 @@ class AuditWork(BaseModel):
     outcome: BehaviorAuditOutcome
     pending: tuple[AuditPacket, ...] = ()
     result_schema: str = ""
+
+
+def verdict_memo(scope: AuditScope, contract: ReviewContract) -> VerdictMemo:
+    """The per-item verdict memo for this book, in ostler's index under this contract."""
+    return VerdictMemo(IndexStore(paths.docs_root(scope.docs_path)), contract.digest)
+
+
+def write_receipt(packet_dir: Path, report: AuditReport, contract: ReviewContract) -> None:
+    """Bind *report* to its packet dir: verdicts, report, and the contract they answer."""
+    raw = report.verdicts.model_dump_json(indent=2)
+    policy_path = packet_dir / "review-contract.json"
+    # Remove the old binding first: an interrupted write must never bless a new reply.
+    policy_path.unlink(missing_ok=True)
+    (packet_dir / "verdicts.json").write_text(raw, encoding="utf-8")
+    (packet_dir / "report.json").write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    policy = ReceiptPolicy(contract=contract, verdicts_digest=hashlib.sha256(raw.encode("utf-8")).hexdigest())
+    policy_path.write_text(policy.model_dump_json(indent=2), encoding="utf-8")
+
+
+def read_receipt(packet_dir: Path, packet: AuditPacket, contract: ReviewContract) -> AuditReport | None:
+    """The report a current receipt in *packet_dir* proves, or ``None`` when there is none."""
+    receipt = packet_dir / "verdicts.json"
+    policy_path = packet_dir / "review-contract.json"
+    if not receipt.exists() or not policy_path.exists():
+        return None
+    try:
+        policy = ReceiptPolicy.model_validate_json(policy_path.read_bytes())
+        raw = receipt.read_bytes()
+        if policy.contract != contract or policy.verdicts_digest != hashlib.sha256(raw).hexdigest():
+            return None
+        return validate_verdicts(packet, json.loads(raw))
+    except ValueError:
+        return None
+
+
+def recall_report(
+    artifacts: Path, packet: AuditPacket, memo: VerdictMemo, contract: ReviewContract,
+) -> AuditReport | AuditPacket:
+    """What the memo already settles about *packet*: a whole report, or the packet still owed.
+
+    A whole hit becomes a receipt in the packet's own dir, indistinguishable from one a
+    reviewer wrote, so the next assessment never asks the memo again. A partial hit
+    returns the reduced packet and leaves the full one beside it as ``parent.json``, for
+    the record node to merge the reduced reply into. A memo that does not validate against
+    the packet is a miss.
+    """
+    recall = memo.recall(packet)
+    reduced = reduce_packet(packet, recall)
+    if reduced is None:
+        try:
+            report = merge_verdicts(packet, recall, None)
+        except ValueError:
+            return packet
+        write_receipt(artifacts / packet.digest, report, contract)
+        return report
+    if reduced is packet:
+        return packet
+    reduced_dir = artifacts / reduced.digest
+    reduced_dir.mkdir(exist_ok=True)
+    (reduced_dir / "packet.json").write_text(reduced.model_dump_json(indent=2), encoding="utf-8")
+    (reduced_dir / "parent.json").write_text(packet.model_dump_json(indent=2), encoding="utf-8")
+    return reduced
 
 
 def preparation(scope: AuditScope) -> AuditPreparation:
@@ -182,25 +249,22 @@ def assess_audit(
     if not prepared.inventory.files or not prepared.selected_candidates:
         unresolved.append("No extractable behavior candidates in the selected source scope")
     grouped: dict[str, list[str]] = defaultdict(list)
+    memo = verdict_memo(scope, contract)
+    memo_hits = memo_partial = 0
     for packet in selected:
         packet_dir = artifacts / packet.digest
         packet_dir.mkdir(exist_ok=True)
         (packet_dir / "packet.json").write_text(packet.model_dump_json(indent=2), encoding="utf-8")
-        receipt = packet_dir / "verdicts.json"
-        policy_path = packet_dir / "review-contract.json"
-        if not receipt.exists() or not policy_path.exists():
-            pending.append(packet)
-            continue
-        try:
-            policy = ReceiptPolicy.model_validate_json(policy_path.read_bytes())
-            raw = receipt.read_bytes()
-            if policy.contract != contract or policy.verdicts_digest != hashlib.sha256(raw).hexdigest():
-                pending.append(packet)
+        report = read_receipt(packet_dir, packet, contract)
+        if report is None:
+            recalled = recall_report(artifacts, packet, memo, contract)
+            if isinstance(recalled, AuditPacket):
+                if recalled is not packet:
+                    memo_partial += 1
+                pending.append(recalled)
                 continue
-            report = validate_verdicts(packet, json.loads(raw))
-        except ValueError:
-            pending.append(packet)
-            continue
+            memo_hits += 1
+            report = recalled
         reports.append(report)
         (packet_dir / "report.json").write_text(report.model_dump_json(indent=2), encoding="utf-8")
         candidates = {candidate.id: candidate for candidate in packet.candidates}
@@ -262,42 +326,58 @@ def assess_audit(
         reports=tuple(reports), unresolved=tuple(unresolved),
         undocumented_files=tuple(file.path for file in prepared.undocumented),
         unaudited_packets=tuple(packet_label(packet) for packet in pending),
+        memo_hits=memo_hits, memo_partial=memo_partial,
         repairs=tuple(repairs),
         limitations=(*prepared.inventory.limitations,
                       "Model judgments are not semantic proofs or whole-book completeness guarantees.",
                       "Selection limits apply to packets; omitted packets are not assessed."),
     )
     report_path.write_text(outcome.model_dump_json(indent=2), encoding="utf-8")
-    logger.info("behavior audit: %s, %d/%d packets; report %s",
-                outcome.status, len(reports), len(prepared.packets), report_path)
+    logger.info("behavior audit: %s, %d/%d packets (%d whole memo hits, %d reduced); report %s",
+                outcome.status, len(reports), len(prepared.packets), memo_hits, memo_partial, report_path)
     return AuditWork(outcome=outcome, pending=tuple(pending), result_schema=result_schema)
 
 
 @blueprint.node
 def record_audit_verdicts(
     logger: logging.Logger, packet: AuditPacket, verdicts: AuditVerdicts, run_dir: str,
-    contract: ReviewContract, prompt_path: Path,
+    contract: ReviewContract, prompt_path: Path, scope: AuditScope | None = None,
 ) -> AuditReport:
-    """Persist the typed raw reply before checking its exact IDs and reciprocal links."""
+    """Persist the typed raw reply before checking its exact IDs and reciprocal links.
+
+    A reply to a reduced packet is merged over what the memo recalled and validated
+    against the full packet in ``parent.json``; the receipt is the full packet's. Every
+    verdict of the resulting report is then remembered, so the next pass over the same
+    bytes is a whole hit. Without a *scope* there is no memo, which is the standalone
+    shape a checkpoint written before the memo existed still resumes into.
+    """
     directory = Path(run_dir) / "behavior-audit" / packet.digest
     raw = verdicts.model_dump_json(indent=2)
     attempt = len(list(directory.glob("raw-*.json"))) + 1
     (directory / f"raw-{attempt}.json").write_text(raw, encoding="utf-8")
-    report = validate_verdicts(packet, verdicts)
+    memo = verdict_memo(scope, contract) if scope is not None else None
+    parent_path = directory / "parent.json"
+    if memo is not None and parent_path.exists():
+        parent = AuditPacket.model_validate_json(parent_path.read_bytes())
+        validate_verdicts(packet, verdicts)
+        report = merge_verdicts(parent, memo.recall(parent), verdicts)
+    else:
+        parent = packet
+        report = validate_verdicts(packet, verdicts)
     try:
         current = review_contract(prompt_path, verdict_schema())
     except OSError as exc:
         raise ReviewContractChanged(f"Review contract changed or became unreadable during dispatch: {exc}") from exc
     if current != contract:
         raise ReviewContractChanged("Review contract changed during dispatch; resume under a stable contract")
-    policy_path = directory / "review-contract.json"
-    # Remove the old binding first: an interrupted write must never bless a new reply.
-    policy_path.unlink(missing_ok=True)
-    (directory / "verdicts.json").write_text(raw, encoding="utf-8")
-    (directory / "report.json").write_text(report.model_dump_json(indent=2), encoding="utf-8")
-    policy = ReceiptPolicy(contract=contract, verdicts_digest=hashlib.sha256(raw.encode("utf-8")).hexdigest())
-    policy_path.write_text(policy.model_dump_json(indent=2), encoding="utf-8")
-    logger.info("validated audit packet %s", packet.digest)
+    parent_dir = Path(run_dir) / "behavior-audit" / parent.digest
+    parent_dir.mkdir(exist_ok=True)
+    write_receipt(parent_dir, report, contract)
+    if memo is not None:
+        remembered = memo.remember(parent, report)
+        logger.info("validated audit packet %s; %d verdicts remembered", parent.digest, remembered)
+    else:
+        logger.info("validated audit packet %s", parent.digest)
     return report
 
 

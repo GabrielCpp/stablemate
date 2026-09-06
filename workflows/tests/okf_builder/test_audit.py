@@ -236,6 +236,53 @@ def test_resume_rebuilds_source_and_claims_before_reusing_receipts(booked: Path,
     assert agent.packets[-1].claims
 
 
+def test_memoized_verdicts_cost_no_turn_in_another_run(
+    booked: Path, tmp_path: Path,
+) -> None:
+    """The same bytes under the same contract are judged once, whichever run asks."""
+    doc = booked / "docs/features/acme/concepts/charge.md"
+    doc.write_text(doc.read_text() + "\n- consistency: Charge always returns zero.\n")
+    agent = AuditAgent("contradicted")
+    audit = Audit(docs_path=str(booked), source_path="acme", service="acme")
+    first = drive(audit, audit_env(tmp_path / "one", agent))
+    assert first.memo_hits == 0 and len(agent.packets) == 1
+    other = audit_env(tmp_path / "two", agent)
+    second = drive(audit, other)
+    assert len(agent.packets) == 1, "the second run spent no reviewer turn"
+    assert second.status == "assessed" and second.memo_hits == 1 and second.assessed_packets == 1
+    assert second.reports[0].verdicts == first.reports[0].verdicts
+    packet_dir = other.run_dir / "behavior-audit" / agent.packets[0].digest
+    assert (packet_dir / "verdicts.json").is_file() and (packet_dir / "review-contract.json").is_file()
+    assert [repair.target for repair in second.repairs] == [repair.target for repair in first.repairs]
+
+
+def test_a_new_claim_reduces_the_packet_to_what_the_memo_lacks(
+    booked: Path, tmp_path: Path,
+) -> None:
+    """A claim added in another node keeps the first claim's verdict; the reviewer reads the rest."""
+    doc = booked / "docs/features/acme/concepts/charge.md"
+    doc.write_text(doc.read_text() + "\n- consistency: Charge always returns zero.\n")
+    agent = AuditAgent("contradicted")
+    audit = Audit(docs_path=str(booked), source_path="acme", service="acme")
+    env = audit_env(tmp_path, agent)
+    drive(audit, env)
+    refund = booked / "docs/features/acme/concepts/refund.md"
+    refund.write_text(doc.read_text().replace("slug: charge", "slug: refund").replace("# Charge", "# Refund"))
+    second = drive(audit, env)
+    assert len(agent.packets) == 2
+    reduced = agent.packets[1]
+    assert second.selected_claims == 2 and second.memo_partial == 0, "the reduced reply became a whole receipt"
+    assert len(reduced.claims) == 1 and "refund" in reduced.claims[0].path
+    assert len(reduced.candidates) == 1, "a missed claim keeps every candidate in front of the reviewer"
+    assert reduced.omitted_claims == 1
+    assert (env.run_dir / "behavior-audit" / reduced.digest / "parent.json").is_file()
+    report = second.reports[0]
+    assert {claim.status for claim in report.verdicts.claims} == {"contradicted"} and len(report.verdicts.claims) == 2
+    assert report.packet_digest != reduced.digest
+    third = drive(audit, env)
+    assert len(agent.packets) == 2 and third.assessed_packets == 1
+
+
 def test_support_context_reaches_packets_and_invalidates_receipts(booked: Path, tmp_path: Path) -> None:
     helper = booked / "helper.py"
     helper.write_text("def delegated():\n    return 1\n", encoding="utf-8")
@@ -313,7 +360,9 @@ def test_resume_binds_receipts_to_review_contract(
         checkpoint = parse_checkpoint((env.run_dir / "checkpoint.json").read_text())
         resumed = drive(audit, replace(env, writer=ArtifactWriter.resume(env.run_dir)),
                         resume=read_resume(checkpoint))
-    assert len(agent.packets) == (1 if change in {"same", "schema_order"} else 2)
+    # A lost or tampered receipt is rebuilt from the verdict memo; only a new
+    # contract sends the packet back to a reviewer.
+    assert len(agent.packets) == (2 if change in {"prompt", "schema"} else 1)
     assert resumed.scope_digest == first.scope_digest
     assert all(packet.digest == agent.packets[0].digest for packet in agent.packets)
     assert (packet_dir / "review-contract.json").is_file()

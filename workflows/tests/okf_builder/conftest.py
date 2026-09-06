@@ -82,6 +82,10 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         ("GIT_AUTHOR_EMAIL", "test@example.com"),
         ("GIT_COMMITTER_NAME", "Test"),
         ("GIT_COMMITTER_EMAIL", "test@example.com"),
+        # ostler's index is content-keyed and machine-wide by default. A verdict the
+        # audit memoizes here must not answer the next test, nor land in the developer's
+        # own cache — the repo's fixtures repeat across tests exactly as a real book does.
+        ("OSTLER_INDEX_DIR", str(tmp_path / "ostler-index")),
     ):
         monkeypatch.setenv(key, value)
     # The smallest installed skill `prepare._references_ok` accepts: the references corpus

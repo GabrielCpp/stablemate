@@ -893,7 +893,7 @@ def test_a_run_killed_mid_investigation_resumes_on_that_item_alone(
 
 @pytest.mark.parametrize("state", ["walkthrough", "commit"])
 def test_legacy_completion_checkpoints_require_a_current_audit(
-    booked: Path, tmp_path: Path, state: str,
+    booked: Path, tmp_path: Path, state: str, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     env = _env(tmp_path)
     _drive(env, _Agent(booked))
@@ -901,6 +901,8 @@ def test_legacy_completion_checkpoints_require_a_current_audit(
     resume = read_resume(checkpoint)
     for receipt in (env.run_dir / "behavior-audit").glob("*/verdicts.json"):
         receipt.unlink()
+    # Neither the receipt nor the verdict memo may answer for the missing audit.
+    monkeypatch.setenv("OSTLER_INDEX_DIR", str(tmp_path / "empty-index"))
     # The old checkpoint predates the opt-in field and has no semantic receipts.
     resume.inputs.pop("runtime_walkthrough")
     resume = replace(resume, state=state, params={} if state == "walkthrough" else resume.params)

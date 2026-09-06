@@ -71,7 +71,7 @@ class Audit(Workflow):
                     args={"packet": packet.model_dump_json(indent=2), "feedback": feedback,
                           "result_schema": work.result_schema},
                 )
-            self.call(record_audit_verdicts, packet, verdicts, str(directory), contract, prompt_path)
+            self.call(record_audit_verdicts, packet, verdicts, str(directory), contract, prompt_path, scope)
         except ReviewContractChanged as exc:
             self.call(record_audit_error, work.outcome, packet.digest, str(exc))
             return Await(
