@@ -57,6 +57,7 @@ def trial_root(run: Run) -> Path:
 CONTROLLED_SOURCES: dict[str, tuple[str, str]] = {
     "go": ("go", "service.go"),
     "typescript": ("ts", "service.ts"),
+    "php": ("php", "service.php"),
 }
 """Fixture-directory suffix and source file for each controlled non-Python arm."""
 
@@ -67,7 +68,7 @@ def freeze_inputs(run: Run) -> None:
     book_state = run.param("book_state", "baseline")
     language = run.param("language", "python")
     if language not in CONTROLLED_SOURCES and language != "python":
-        raise ValueError("language must be python, go or typescript")
+        raise ValueError("language must be python, go, typescript or php")
     if language != "python" and (replay or book_state != "baseline" or run.param_bool("support_context", False)):
         raise ValueError(f"language={language} requires fresh controlled baseline cases without support_context")
     if book_state not in {"baseline", "repaired"}:
