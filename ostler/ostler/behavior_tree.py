@@ -163,12 +163,15 @@ def _tokens(node: Node, skip: frozenset[str]) -> list[tuple[str, str]]:
 
 
 def _member_name(call: Node, path: tuple[str, ...]) -> str:
-    current: Node | None = call
-    for hop in path[:-1]:
-        current = current.child_by_field_name(hop) if current is not None else None
-    if current is None or (len(path) > 1 and current.type != "member_expression"):
+    if not path:
         return ""
-    return syntax.field_text(current, path[-1])
+    *hops, last = path
+    current: Node | None = call
+    for hop in hops:
+        current = current.child_by_field_name(hop) if current is not None else None
+    if current is None or (hops and current.type != "member_expression"):
+        return ""
+    return syntax.field_text(current, last)
 
 
 class TreeEvidence:
