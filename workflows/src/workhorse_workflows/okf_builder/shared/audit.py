@@ -10,7 +10,7 @@ from typing import Literal
 
 from ostler.behavior import (
     AuditPacket, AuditPreparation, AuditReport, AuditVerdicts,
-    build_audit_packets, extract_claims, extract_evidence, validate_verdicts,
+    build_audit_packets, extract_book, extract_evidence, validate_verdicts,
 )
 from ostler.model import load
 from pydantic import BaseModel, ConfigDict, Field
@@ -111,7 +111,8 @@ def preparation(scope: AuditScope) -> AuditPreparation:
         raise ValueError("source_path is required: choose an explicit source file or directory")
     graph = load(root)
     prefix = paths.book_scope(root, scope.service)
-    claims = tuple(claim for claim in extract_claims(graph) if claim.path.startswith(prefix))
+    book = extract_book(graph)
+    claims = book.model_copy(update={"claims": tuple(claim for claim in book.claims if claim.path.startswith(prefix))})
     evidence = extract_evidence(root, [source.as_posix()], context_paths=scope.context_paths)
     failures = [f"{file.path}: {file.status}: {file.message}"
                 for file in evidence.context_files if file.status != "parsed"]
