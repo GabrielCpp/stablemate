@@ -200,7 +200,11 @@ def preparation(scope: AuditScope) -> AuditPreparation:
     graph = load(root)
     prefix = paths.book_scope(root, scope.service)
     book = extract_book(graph)
-    claims = book.model_copy(update={"claims": tuple(claim for claim in book.claims if claim.path.startswith(prefix))})
+    claims = book.model_copy(update={
+        "claims": tuple(claim for claim in book.claims if claim.path.startswith(prefix)),
+        # A duplicate-heading skip elsewhere in the book is not this service's limitation.
+        "limitations": tuple(note for note in book.limitations if f" {prefix}" in note),
+    })
     evidence = extract_evidence(root, [source.as_posix()], context_paths=scope.context_paths)
     failures = [f"{file.path}: {file.status}: {file.message}"
                 for file in evidence.context_files if file.status != "parsed"]
@@ -208,7 +212,7 @@ def preparation(scope: AuditScope) -> AuditPreparation:
         raise ValueError("Support context unavailable: " + "; ".join(failures))
     return build_audit_packets(
         evidence, claims,
-        max_items=scope.packet_max_items, max_chars=scope.packet_max_chars,
+        max_items=scope.packet_max_items, max_chars=scope.packet_max_chars, root=root,
     )
 
 

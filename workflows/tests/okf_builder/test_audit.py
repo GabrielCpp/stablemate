@@ -205,7 +205,7 @@ def test_book_to_source_mismatches_queue_only_the_selected_book(
     doc.write_text(doc.read_text() + "\n- consistency: Charge always returns zero.\n")
     other = booked / "docs/features/globex/concepts/unrelated.md"
     other.parent.mkdir(parents=True)
-    other.write_text(doc.read_text().replace("slug: charge", "slug: unrelated"))
+    other.write_text(doc.read_text().replace("slug: charge", "slug: unrelated") + "\n## Effects\n\n- does: Twice.\n")
     agent = AuditAgent(status)
     result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), audit_env(tmp_path, agent))
     assert result.status == "assessed" and not result.scope_clear
@@ -213,6 +213,8 @@ def test_book_to_source_mismatches_queue_only_the_selected_book(
     assert result.selected_claims == 1
     assert len(agent.packets) == 1
     assert all("globex" not in claim.path for claim in agent.packets[0].claims)
+    assert not any("globex" in note for note in agent.packets[0].limitations), (
+        "a duplicate heading in another service's book is not this audit's limitation")
 
 
 def test_resume_rebuilds_source_and_claims_before_reusing_receipts(booked: Path, tmp_path: Path) -> None:
