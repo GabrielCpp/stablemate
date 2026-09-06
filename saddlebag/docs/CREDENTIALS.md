@@ -1,8 +1,9 @@
-# Credentials — scan, select, lease, release
+# Credentials — scan, select, lease, fill, release
 
 This is the reference for the credential half of saddlebag: what a credential record
-holds, how a lease keeps two runs from taking the same identity, and every command
-that manages the pool. The
+holds, how a lease keeps two runs from taking the same identity, how a credential is
+**typed into the login form that asks for it**, and every command that manages the
+pool. The
 [README](https://github.com/GabrielCpp/stablemate/blob/main/saddlebag/README.md)
 covers install and the shortest path through it; the environment half is in
 [docs/ENVIRONMENTS.md](https://github.com/GabrielCpp/stablemate/blob/main/saddlebag/docs/ENVIRONMENTS.md),
@@ -182,3 +183,92 @@ saddlebag expire
 
 `release` is idempotent: releasing an already-released lease succeeds, so a cleanup
 step cannot fail a build.
+
+## Filling a login form
+
+A lease says *which* identity a run may use. `fill` is what actually signs in as it,
+and it is the reason the pool can hold a real password without any consumer of the
+pool ever seeing one.
+
+Start the browser yourself, with a debugger port and a profile you own:
+
+```bash
+chromium --remote-debugging-port=9222 --user-data-dir=/tmp/qa-profile
+```
+
+Then name the field, and saddlebag supplies the value:
+
+```bash
+# --url-contains picks the page; it is required as soon as more than one matches,
+# because typing a password into whichever tab sorted first is silent and final.
+saddlebag fill cred-007 --field username --selector "#login_field" --url-contains github.com
+saddlebag fill cred-007 --field password --selector "#password"    --url-contains github.com
+
+# Output, on both: filled 7 characters into #password on https://github.com/session
+```
+
+The division of labour is the whole design. **The caller says where; saddlebag says
+what.** A selector is not a secret and belongs in a committed test; the value behind
+it never enters the calling process at all — `fill` reports a character count, a
+selector and a URL, and nothing else.
+
+Three details are load-bearing:
+
+- **Loopback only.** A DevTools port is unauthenticated and grants complete control
+  of the browser, so `--cdp` pointing anywhere but this machine is refused outright
+  rather than obeyed.
+- **`Input.insertText`, not an assignment to `el.value`.** A scripted assignment
+  raises none of the events a framework listens for, so a React-controlled field
+  shows the text and then submits the empty string its state still holds. insertText
+  enters the value the way a paste does, above the page, so every listener sees what
+  it would see from a person.
+- **The value never appears in an evaluated expression.** Interpolating it into a
+  `Runtime.evaluate` would put the password into the browser's own protocol log,
+  where an open DevTools window replays it in cleartext.
+
+### The second factor
+
+A machine identity with 2FA needs a code, and a code needs the enrolment seed. The
+seed is the one credential value that must *never* leave the store: it is not a
+password, it is a password generator, valid until the account is re-enrolled. So
+saddlebag stores it, computes RFC 6238 in-process, and lets only the six digits out —
+by typing them.
+
+```bash
+# The seed arrives on stdin, like every other secret, and is decoded before it is
+# stored: a mistyped seed fails here rather than months later as a login that
+# mysteriously stopped working.
+printf '%s' "$SEED" | saddlebag totp set cred-007
+
+saddlebag fill cred-007 --field totp --selector "#app_totp" --url-contains github.com
+# filled 6 characters into #app_totp on https://github.com/sessions/two-factor, valid for 24s
+
+saddlebag totp unset cred-007
+```
+
+`fill --field totp` waits out a code with fewer than `--min-seconds` left (default 5)
+rather than typing one that is about to expire — a code entered with a second on it
+fails a verification that is working perfectly, and the retry costs an attempt against
+an account that locks after a few.
+
+There is deliberately **no `credential-ref` for the seed**: `env render` writes values
+to a file, and a seed in a file is a strictly worse secret than the password beside it.
+
+### Filling from a Playwright test
+
+The browser Playwright launches is the browser saddlebag fills, so a spec that would
+otherwise have to read the password into the Node process shells out instead:
+
+```ts
+// playwright launches with --remote-debugging-port=9222
+function fill(field: "username" | "password" | "totp", selector: string) {
+  execFileSync("saddlebag", [
+    "fill", process.env.QA_CREDENTIAL_ID!,
+    "--field", field, "--selector", selector,
+    "--url-contains", "github.com",
+  ], { stdio: "inherit" });
+}
+```
+
+The test file names selectors and is committed as-is. No secret is in the repo, in
+the environment, or in the test process's memory.

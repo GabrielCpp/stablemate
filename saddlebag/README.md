@@ -2,17 +2,27 @@
 
 > Carry the right credentials for every ride.
 
-`saddlebag` carries the material a run needs, so that `workhorse` workflows — and
-the AI agents driving them — never touch a secret directly. It holds two kinds of
-material, in one pool:
+`saddlebag` carries the material a run needs **and puts it where it is needed**, so
+that `workhorse` workflows — and the AI agents driving them — never touch a secret
+directly. It holds two kinds of material, in one pool:
 
-- a **credential** — a test identity, scanned, selected and leased for the run;
+- a **credential** — a test identity, scanned, selected and leased for the run, and
+  **filled** into the login form that asks for it;
 - an **environment** — the `.env`-shaped configuration a dev stack needs to *boot*,
   secret and non-secret alike, rendered to a file on demand.
 
-Saddlebag is not only a vault. It is what **packages an environment**: an
-environment holding no secrets at all is still worth owning here, because the value
-of the pool is reproducing a stack anywhere, not merely hiding its passwords.
+The point is the last verb in each line. A vault that only *stores* a password
+leaves its holder with the problem it was supposed to solve: something still has to
+read the value out and type it, and that something is an agent's context, a shell
+history, a test process, a log. So saddlebag owns the delivery too, in exactly two
+forms and no others — `env render` writes an environment to its `0600` target file,
+and `fill` types a credential into a field of a browser it drives over the Chrome
+DevTools Protocol. Both hand the value to the thing that consumes it. Neither hands
+it back to the caller.
+
+Saddlebag is also what **packages an environment**: an environment holding no
+secrets at all is still worth owning here, because the value of the pool is
+reproducing a stack anywhere, not merely hiding its passwords.
 
 ---
 
@@ -73,9 +83,26 @@ saddlebag scan \
   --env staging --roles admin billing --surface checkout/login \
   --select-via claude --run-id "$RUN_ID" --json
 
-# 3. …run whatever needed the identity, then give every lease back.
+# 3. Sign in as it. The browser is already running with a debugger port; saddlebag
+#    types into the fields you name and reports character counts, not values.
+saddlebag fill cred-001 --field username --selector "#login_field" --url-contains github.com
+saddlebag fill cred-001 --field password --selector "#password"    --url-contains github.com
+saddlebag fill cred-001 --field totp     --selector "#app_totp"    --url-contains github.com
+
+# 4. …run whatever needed the identity, then give every lease back.
 saddlebag release --run-id "$RUN_ID"
 ```
+
+The browser the third step talks to is one **you** started and **you** control:
+
+```bash
+chromium --remote-debugging-port=9222 --user-data-dir=/tmp/qa-profile
+```
+
+Saddlebag only ever connects to a DevTools endpoint on loopback, and refuses any
+other host outright — that port is unauthenticated and grants total control of the
+browser, so a typo pointing it off-machine would be a password mailed to whoever
+answers.
 
 And the other half — the configuration a stack boots with:
 
@@ -154,15 +181,26 @@ your shell history, so it cannot honestly be called a secret.
 | `add` `list` `remove` `doctor` | manage the credential pool |
 | `scan` | query the pool and let an agent CLI select and lease a match |
 | `acquire` `release` `expire` | leases, by id or by `--run-id` |
+| `fill` | type a credential's username, password or TOTP into a browser field |
+| `totp set` `totp unset` | a credential's second-factor enrolment seed |
 | `env add` `import` `set` `unset` `remove` | define an environment and its entries |
 | `env list` `show` `doctor` | inspect it — none of these can emit a secret |
 | `env export` | write the checkable-in YAML manifest |
 | `env render` | materialize the target file (`--check` to diff without writing) |
 
 The vault is **opaque**: no command prints, logs or returns a stored secret — not
-`acquire`, not `scan`, not with any flag. `env render` is the single verb that turns
-a secret into anything outside the store, and what it writes is the environment's
-own `0600` target file, never stdout.
+`acquire`, not `scan`, not `fill`, not with any flag. Exactly two verbs move a secret
+out of the store, and neither returns it to whoever ran them:
+
+- `env render` writes the environment to its own `0600` target file, never stdout;
+- `fill` types a credential into a browser field and reports only how many characters
+  it entered, at which URL.
+
+`fill` is what makes an agent-driven login possible without the agent ever holding the
+password. It is also why a **TOTP seed** is stored but has no `credential-ref`: a seed
+generates every future code, so rendering one to a file would be strictly worse than
+rendering the password beside it. Saddlebag computes the six-digit code itself and
+types that.
 
 A credential belongs to a **project**, inferred from the enclosing git repository's
 name, so `list` and `scan` show only the current repo's credentials with no flag
@@ -191,10 +229,13 @@ Then, by topic:
 saddlebag/
 ├── __init__.py
 ├── cli.py               # argparse entry point: add, list, remove, scan, acquire,
-│                        #   release, expire, doctor, and the `env` subcommands
+│                        #   release, expire, doctor, fill, totp, and `env`
 ├── db.py                # SQLite pool — schema, metadata CRUD, lease management,
 │                        #   environments and their entries
 ├── store.py             # Secret stores: OS keyring (default) + Vault (fallback)
+├── browser.py           # `fill` — CDP target discovery and Input.insertText; the
+│                        #   value is typed, and only a length comes back
+├── totp.py              # RFC 6238, computed in-process so the seed never leaves
 ├── selector.py          # AI selection: build prompt, call agent CLI, parse response
 ├── models.py            # Credential, Lease, Requirement, Environment,
 │                        #   EnvironmentEntry — none of them carries a secret

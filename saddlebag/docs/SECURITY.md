@@ -94,10 +94,21 @@ was never a claim that non-secret material must be treated as if it were.
   by policy.
 - `list`, `scan`, `env list`, `env show`, `env doctor` and the agent selection prompt
   read pool metadata only, and so cannot emit a secret. `acquire` reads the store
-  only as a presence probe; `env render` is the sole reader that uses a value.
+  only as a presence probe; `env render` and `fill` are the sole readers that use a
+  value, and each hands it to a consumer — a `0600` file, a browser field — rather
+  than to the caller.
 - **The vault is opaque.** No command prints, logs, or returns a stored secret —
   there is no lookup verb and no flag that adds one. `acquire` and
   `scan --select-via` emit the lease and the identity; the password stays put.
+- `fill` moves a secret **into a browser, not back to its caller**: it types the value
+  over `Input.insertText` and reports a character count, a selector and a URL. The
+  value is never interpolated into an evaluated expression, so it does not reach the
+  browser's protocol log either. `fill` refuses any CDP endpoint that is not on
+  loopback — that port is unauthenticated, and a non-local one is a password sent to
+  whoever answers.
+- A **TOTP enrolment seed** is stored like a password and is additionally barred from
+  `credential-ref`, so no `env render` can write one to a file. It leaves the store
+  only as a computed six-digit code, and only by being typed.
 - **No password ever reaches an agent's context.** The candidate list `scan` renders
   into the selection prompt is built from pool metadata, and an id the agent returns
   that was not on that list is rejected rather than trusted.
