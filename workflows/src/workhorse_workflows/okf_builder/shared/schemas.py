@@ -162,6 +162,23 @@ class Pick(OkfResult):
     kinds: str = ""
 
 
+class Settled(OkfResult):
+    """A mid-drain settle: whether doctor was consulted, and what that closed."""
+
+    #: False when the pass was skipped — too soon since the last one, or nothing pending
+    #: that doctor could settle. Doctor is not run on a skip.
+    ran: bool = False
+    #: Pending `fix:` rows closed as `stale` because doctor no longer names them.
+    settled: int = 0
+    #: Repair items a fresh doctor pass would queue — the rows that still have a finding.
+    standing: int = 0
+    pending_count: int = 0
+    #: The worklist's `done` count the pass was taken at; the next one waits `every` more.
+    at_done: int = 0
+    #: Doctor failed and nothing was settled; the row that would explain why.
+    error: str = ""
+
+
 class Watermarked(OkfResult):
     """What a closed regrounding item retired: the files whose watermark moved to now."""
 
@@ -432,6 +449,7 @@ __all__ = [
     "Prepared",
     "Recheck",
     "Recorded",
+    "Settled",
     "SourceInventory",
     "SourceRequest",
     "TornDown",

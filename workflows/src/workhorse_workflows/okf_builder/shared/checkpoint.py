@@ -31,7 +31,8 @@ from ostler.autofix import run_autofix
 from ostler.fmt import run_fmt
 from workhorse_workflows.okf_builder.shared import stubs
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
-from workhorse_workflows.okf_builder.shared.schemas import Checkpoint
+from workhorse_workflows.okf_builder.shared.schemas import Checkpoint, Settled
+from workhorse_workflows.okf_builder.shared.worklist import settle_stale_rows
 
 #: Findings whose remedy cannot be read off the finding: the value has to come from the
 #: source. Everything else is mechanical and stays a `fixup`.
@@ -309,6 +310,79 @@ def scoped_findings(report: dict, repo_root: str, features: str) -> list[dict]:
     ]
 
 
+#: How many drained items between two mid-drain settles. A doctor pass over a large book
+#: costs a minute or two of wall clock and no agent turn; a stale repair row costs a whole
+#: turn. Twenty-five turns of drain against one doctor read keeps the read well under the
+#: cost of the first stale row it would have caught.
+SETTLE_EVERY = 25
+
+
+@blueprint.node
+def settle_stale(
+    logger: logging.Logger,
+    worklist_path: str,
+    repo_root: str = ".",
+    features_root: str = "",
+    every: int = SETTLE_EVERY,
+) -> Settled:
+    """Mid-drain, close the pending repair rows doctor no longer reports.
+
+    `record` already settles stale `fix:` rows — but only on the checkpoint's write, and
+    the checkpoint only runs when the drain goes dry. On a book queued with hundreds of
+    repairs that is hundreds of turns away, and every row whose finding has meanwhile
+    stopped firing (a rule retired under the run, a sibling repair that cleared the whole
+    node, an autofix) is still handed out and costs a turn to learn there is nothing to do.
+    Measured on live worklists before this existed: well over half of the pending repair
+    rows were already stale.
+
+    So the drain reads doctor itself, amortized: on first entry (no `settled_done` on the
+    worklist yet, which is also every reload and every resume) and then once every `every`
+    completed items. Doctor only — no autofix, no fmt: this pass must not rewrite the book
+    under an agent turn that may be editing it. The standing set is exactly what the
+    checkpoint would queue (`scoped_findings` → `_repair_items`), so a row this pass keeps
+    is a row the checkpoint would keep too.
+
+    A pass that finds nothing pending to settle skips the doctor read; a doctor failure is
+    reported and the watermark still advances, so a broken doctor costs one warning per
+    `every` items rather than a minute per pick.
+    """
+    path = Path(worklist_path)
+    data = json.loads(path.read_text())
+    items: list[dict[str, Any]] = [row for row in data.get("items", []) if isinstance(row, dict)]
+    done = sum(1 for i in items if i.get("status") == "done")
+    pending = sum(1 for i in items if i.get("status") == "pending")
+    last = data.get("settled_done")
+    due = not isinstance(last, int) or done - last >= every
+    fixable = any(
+        i.get("status") == "pending" and str(i.get("kind", "")).startswith("fix:") for i in items
+    )
+    if not due or not fixable:
+        return Settled(pending_count=pending, at_done=done if isinstance(last, int) else 0)
+
+    error = ""
+    standing: list[dict[str, Any]] = []
+    settled = 0
+    try:
+        findings = scoped_findings(Ostler(repo_root).doctor().data, repo_root, features_root)
+        standing = _repair_items(findings)
+        settled = settle_stale_rows(items, standing, where="mid-drain")
+    except (OSError, ValueError, RuntimeError) as exc:
+        error = str(exc)
+        logger.warning("settle skipped — ostler doctor failed: %s", exc)
+    data["items"] = items
+    data["settled_done"] = done
+    path.write_text(json.dumps(data, indent=2))
+    pending = sum(1 for i in items if i.get("status") == "pending")
+    logger.info(
+        "settle at %d done: %d standing repair item(s), closed %d stale row(s), %d pending",
+        done, len(standing), settled, pending,
+    )
+    return Settled(
+        ran=True, settled=settled, standing=len(standing), pending_count=pending,
+        at_done=done, error=error,
+    )
+
+
 @blueprint.node(stub=stubs.clean)
 def checkpoint_book(
     logger: logging.Logger,
@@ -432,5 +506,5 @@ def checkpoint_book(
     )
 
 
-__all__ = ["GROUNDED_CODES", "MAX_FINDINGS_PER_ITEM", "checkpoint_book",
-           "scoped_findings"]
+__all__ = ["GROUNDED_CODES", "MAX_FINDINGS_PER_ITEM", "SETTLE_EVERY", "checkpoint_book",
+           "scoped_findings", "settle_stale"]

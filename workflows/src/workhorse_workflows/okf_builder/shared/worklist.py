@@ -89,6 +89,40 @@ def load_worklist(
     return data, False
 
 
+def repair_keys(rows: list[dict[str, Any]]) -> set[tuple[str, str]]:
+    """The `(kind, target)` identity of each row, normalized the way `record` dedupes."""
+    return {(_norm(r.get("kind")), _norm(r.get("target"))) for r in rows if isinstance(r, dict)}
+
+
+def settle_stale_rows(
+    items: list[dict[str, Any]], standing: list[dict[str, Any]], *, where: str
+) -> int:
+    """Close every pending `fix:` row doctor no longer reports. Returns how many.
+
+    `standing` is the repair items a fresh doctor pass would queue — the rows a finding
+    still backs. A pending repair outside that set is a turn that would be spent finding
+    nothing to do: a rule retired under the run, a finding an earlier repair of the same
+    node already cleared, an autofix that moved. Only pending rows, and only `fix:` rows —
+    a blocked row keeps the story the operator gate prints, and a discovery item is not
+    doctor's to settle.
+
+    Shared by `record`'s checkpoint write and `checkpoint.settle_stale`, which does the
+    same thing mid-drain; `where` is the closing note's word for which one it was.
+    """
+    keys = repair_keys(standing)
+    settled = 0
+    for i in items:
+        if i.get("status") != "pending" or not str(i.get("kind", "")).startswith("fix:"):
+            continue
+        if (_norm(i.get("kind")), _norm(i.get("target"))) in keys:
+            continue
+        i["status"] = "done"
+        i["doc_status"] = "stale"
+        i["note"] = f"doctor no longer reports this finding; closed {where}"
+        settled += 1
+    return settled
+
+
 @blueprint.node
 def select_item(
     logger: logging.Logger,
@@ -316,19 +350,7 @@ def record(
 
     settled = 0
     if settle_fix_items:
-        standing = {
-            (_norm(d.get("kind")), _norm(d.get("target")))
-            for d in discovered or [] if isinstance(d, dict)
-        }
-        for i in items:
-            if i.get("status") != "pending" or not str(i.get("kind", "")).startswith("fix:"):
-                continue
-            if (_norm(i.get("kind")), _norm(i.get("target"))) in standing:
-                continue
-            i["status"] = "done"
-            i["doc_status"] = "stale"
-            i["note"] = "doctor no longer reports this finding; closed at the checkpoint"
-            settled += 1
+        settled = settle_stale_rows(items, discovered or [], where="at the checkpoint")
         if settled:
             logger.info("closed %d pending repair item(s) whose finding stopped firing", settled)
 
@@ -366,4 +388,12 @@ def record(
     )
 
 
-__all__ = ["MAX_TARGET_ATTEMPTS", "book_has_docs", "load_worklist", "record", "select_item"]
+__all__ = [
+    "MAX_TARGET_ATTEMPTS",
+    "book_has_docs",
+    "load_worklist",
+    "record",
+    "repair_keys",
+    "select_item",
+    "settle_stale_rows",
+]

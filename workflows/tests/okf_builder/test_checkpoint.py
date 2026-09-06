@@ -280,3 +280,94 @@ def test_a_pending_repair_whose_finding_stopped_firing_is_closed_at_the_checkpoi
     assert by_target["a.md#a.md#publish#undeclared-obligation"]["status"] == "pending"
     assert by_target["a.md#a.md#publish#weak-check"]["status"] == "blocked"
     assert by_target["docs/features/acme/a.md"]["status"] == "pending"
+
+
+def _standing_repair(repo: Path) -> dict:
+    """The one repair item `checkpoint_book` would queue on `dirty`, keyed as it keys it."""
+    from ostler import Ostler
+
+    items = _repair_items(scoped_findings(Ostler(str(repo)).doctor().data, str(repo), BOOK))
+    assert len(items) == 1, items
+    return items[0]
+
+
+def _stale_worklist(path: Path, standing: dict, *, settled_done: int | None = None) -> Path:
+    """Two pending repairs, one of which doctor still reports."""
+    data: dict = {
+        "items": [
+            {"kind": standing["kind"], "target": standing["target"],
+             "status": "pending", "context": "", "attempts": 0},
+            {"kind": "fix:undeclared-obligation",
+             "target": f"{BOOK}/concepts/charge.md#charge#undeclared-obligation",
+             "status": "pending", "context": "", "attempts": 0},
+            {"kind": "change", "target": f"{BOOK}/concepts/charge.md", "status": "pending",
+             "context": ""},
+            *({"kind": "surface", "target": f"s{n}", "status": "done", "context": ""}
+              for n in range(30)),
+        ],
+    }
+    if settled_done is not None:
+        data["settled_done"] = settled_done
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_the_drain_settles_a_stale_repair_before_it_is_picked(
+    dirty: Path, tmp_path: Path, logger: logging.Logger
+) -> None:
+    """A pending `fix:` row doctor no longer names is closed mid-drain, not at the checkpoint.
+
+    `dirty` still owes `missing-code-symbol` on refund.md, so that row stands; nothing
+    reports `undeclared-obligation` on charge.md, so that row is the stale one — the turn
+    this pass exists to not spend.
+    """
+    from workhorse_workflows.okf_builder.shared.checkpoint import settle_stale
+
+    standing = _standing_repair(dirty)
+    worklist = _stale_worklist(tmp_path / "w.json", standing)
+    result = settle_stale(logger, str(worklist), str(dirty), BOOK)
+
+    assert result.ran and result.settled == 1 and result.standing == 1 and not result.error
+    assert result.pending_count == 2 and result.at_done == 30
+    data = json.loads(worklist.read_text())
+    assert data["settled_done"] == 30
+    by_target = {i["target"]: i for i in data["items"]}
+    stale = by_target[f"{BOOK}/concepts/charge.md#charge#undeclared-obligation"]
+    assert stale["status"] == "done" and stale["doc_status"] == "stale"
+    assert "mid-drain" in stale["note"]
+    assert by_target[standing["target"]]["status"] == "pending"
+    assert by_target[f"{BOOK}/concepts/charge.md"]["status"] == "pending"
+
+
+def test_the_settle_is_amortized_over_the_drain(
+    dirty: Path, tmp_path: Path, logger: logging.Logger
+) -> None:
+    """Doctor is read on first entry and then once per `every` completed items, not per pick."""
+    from workhorse_workflows.okf_builder.shared.checkpoint import settle_stale
+
+    standing = _standing_repair(dirty)
+    recent = _stale_worklist(tmp_path / "recent.json", standing, settled_done=10)
+    skipped = settle_stale(logger, str(recent), str(dirty), BOOK, every=25)
+    assert not skipped.ran and skipped.settled == 0
+    assert json.loads(recent.read_text())["settled_done"] == 10
+
+    due = _stale_worklist(tmp_path / "due.json", standing, settled_done=5)
+    ran = settle_stale(logger, str(due), str(dirty), BOOK, every=25)
+    assert ran.ran and ran.settled == 1 and json.loads(due.read_text())["settled_done"] == 30
+
+
+def test_a_settle_with_nothing_to_settle_does_not_read_doctor(
+    tmp_path: Path, logger: logging.Logger
+) -> None:
+    """No pending repair rows: no doctor pass, no write — `repo_root` need not even exist."""
+    from workhorse_workflows.okf_builder.shared.checkpoint import settle_stale
+
+    worklist = tmp_path / "w.json"
+    worklist.write_text(json.dumps({"items": [
+        {"kind": "change", "target": "a.md", "status": "pending", "context": ""},
+        {"kind": "fix:weak-check", "target": "a.md#a#weak-check", "status": "blocked",
+         "context": "", "attempts": 3},
+    ]}))
+    result = settle_stale(logger, str(worklist), str(tmp_path / "nowhere"), BOOK)
+    assert not result.ran and result.pending_count == 1
+    assert "settled_done" not in json.loads(worklist.read_text())

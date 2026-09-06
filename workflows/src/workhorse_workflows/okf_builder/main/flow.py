@@ -80,7 +80,7 @@ from workhorse_workflows.okf_builder.main.nodes import (
 )
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared.audit import AuditScope, assess_audit, audit_pass
-from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book
+from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book, settle_stale
 from workhorse_workflows.okf_builder.shared.schemas import (
     Adjudication,
     Discovery,
@@ -331,7 +331,11 @@ class OkfBuilder(Workflow):
         did implicitly and what these parameters do visibly. `refuels` is the one that
         belongs to *this* guard: each operator pass through `refuel` grants one more
         `max_items` allowance on top of the baseline `prepare` froze at setup.
+
+        `settle_stale` goes first, so a repair row whose finding stopped firing is closed
+        before it can be picked — see its docstring for the cadence.
         """
+        self.call(settle_stale, self.ctx.worklist_path, self.ctx.repo_root, self.ctx.features_root)
         pick = self.call(
             select_item,
             self.ctx.worklist_path,
