@@ -53,7 +53,9 @@ class Audit(Workflow):
             else:
                 verdicts = self.agent(
                     "audit/prompts/behavior-audit.md", returns=AuditVerdicts,
-                    power="medium", retries=0, timeout=300,
+                    # No reframe and three provider retries: a 5xx storm ends here as a
+                    # recorded failure and an operator gate, not a day of backoff.
+                    power="medium", retries=0, invoke_retries=3, timeout=300,
                     cwd=directory / "behavior-audit" / packet.digest,
                     args={"packet": packet.model_dump_json(indent=2), "feedback": feedback,
                           "result_schema": work.result_schema},
@@ -69,7 +71,7 @@ class Audit(Workflow):
             if attempts >= 1:
                 return Await(
                     self.run_dir / "behavior-audit-context.md",
-                    f"Invalid audit verdict after two attempts: {exc}. "
+                    f"Reviewer failed twice on packet {packet.digest}: {exc}. "
                     f"Report: {work.outcome.report_path}. No completion is authorized.", self.start,
                 ).because("invalid verdict budget exhausted: operator gate")
             return Continue(
