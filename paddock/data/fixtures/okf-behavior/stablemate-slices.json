@@ -1,0 +1,24 @@
+[
+  {
+    "id": "stablemate-groom", "service": "groom",
+    "source": "groom/groom/sidecar.py", "symbol": "_current_node",
+    "book": "docs/features/groom/concepts/sidecar-snapshot.md",
+    "heading": "### method-_current_node",
+    "context": ["groom/groom/checkpoints.py"],
+    "defects": [{"id": "GROOM-NONOBJECT", "explanation": "parse_position normalizes parseable non-object JSON to an empty position rather than raising as the book says.", "claim_suffixes": ["raises:2"]}]
+  },
+  {
+    "id": "stablemate-workhorse", "service": "workhorse",
+    "source": "workhorse/workhorse/cli/target.py", "symbol": "groom_live_run",
+    "book": "docs/features/workhorse/concepts/run-target-resolution.md",
+    "heading": "### groom_live_run", "context": [], "defects": []
+  },
+  {
+    "id": "stablemate-workflows", "service": "workflows",
+    "source": "workflows/src/workhorse_workflows/coder/shared/review.py", "symbol": "check_feedback",
+    "book": "docs/features/workflows/concepts/coder-review-shared-review.md",
+    "heading": "### check_feedback",
+    "context": ["workflows/src/workhorse_workflows/coder/shared/schemas/review.py", "workflows/src/workhorse_workflows/kit/inbox.py"],
+    "defects": [{"id": "WORKFLOWS-SCOPE", "explanation": "check_feedback consumes content and scope but returns Feedback containing present and content only; the promised returned scope is discarded.", "claim_suffixes": ["returns:1"]}]
+  }
+]

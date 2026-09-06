@@ -1,0 +1,24 @@
+[
+  {
+    "id": "stablemate-groom",
+    "fixed_defect_ids": ["GROOM-NONOBJECT"],
+    "replacements": [
+      {
+        "before": "- raises: a parseable non-object JSON value is outside the accepted checkpoint\n  shape and can raise instead of normalizing.",
+        "after": "- raises: none for a parseable non-object checkpoint JSON value (array, string,\n  number, boolean, or null), which returns `\"\"`.\n- verify: json_path(path=\"$\", equals=\"\")"
+      }
+    ],
+    "defects": []
+  },
+  {
+    "id": "stablemate-workflows",
+    "fixed_defect_ids": ["WORKFLOWS-SCOPE"],
+    "replacements": [
+      {
+        "before": "- returns: the message scope narrowed to `story` or `epic`, defaulting unsupported or missing scopes to `story`\n- verify: json_path(path=\"$.present\", equals=true)",
+        "after": "- returns: a `Feedback` with only `present` and `content` fields, without the inbox message scope\n- verify: json_path(path=\"$.scope\", absent=true)"
+      }
+    ],
+    "defects": []
+  }
+]

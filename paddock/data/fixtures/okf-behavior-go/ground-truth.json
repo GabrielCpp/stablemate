@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {"id": "control", "defects": []},
+    {"id": "omissions", "defects": [
+      {"id": "OMIT-ERROR", "explanation": "The negative-limit error return and no-write branch are absent from the book.", "candidate_kind": "return", "candidate_line": 7},
+      {"id": "OMIT-EMPTY", "explanation": "The empty-input response and no-write branch are absent from the book.", "candidate_kind": "return", "candidate_line": 10}
+    ]},
+    {"id": "incorrect", "defects": [
+      {"id": "WRONG-EFFECT", "explanation": "The book promises replacing sent; execution appends and retains existing entries.", "claim_suffixes": ["does:1"]},
+      {"id": "WRONG-RESPONSE", "explanation": "The book promises status queued; execution returns sent.", "claim_suffixes": ["returns:1"]}
+    ]}
+  ]
+}

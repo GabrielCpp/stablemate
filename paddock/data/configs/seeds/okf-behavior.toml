@@ -1,0 +1,11 @@
+name = "okf-behavior"
+repo_dir = "source"
+sha256 = "5b16ceb696d217aafc77a91f8e740d8bc7ca4ba4cd3411a7437701b9a19bb33e"
+bytes = 1260
+head = "1ee216e51978f2b2ce97ede91cced844a3c4dea2"
+dirty = true
+url = ""
+note = "Exact default-value claim; ground truth separate from source-only seed"
+source = "fixtures/okf-behavior/source"
+tree_sha256 = "e97ec6a2da4099abde9d9895dd76a076908a1e3965a3e1d69bb9cc2cf77149d1"
+excludes = []

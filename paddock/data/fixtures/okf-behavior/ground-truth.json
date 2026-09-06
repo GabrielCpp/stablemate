@@ -1,0 +1,14 @@
+{
+  "cases": [
+    {"id": "control", "defects": []},
+    {"id": "omissions", "defects": [
+      {"id": "OMIT-ERROR", "explanation": "The negative-limit ValueError and its no-write branch are absent from the book.", "candidate_kind": "raise", "candidate_line": 7},
+      {"id": "OMIT-EMPTY", "explanation": "The empty-input response and no-write branch are absent from the book.", "candidate_kind": "return", "candidate_line": 9}
+    ]},
+    {"id": "incorrect", "defects": [
+      {"id": "WRONG-DEFAULT", "explanation": "The book promises a default limit value of exactly three, but the function default is two.", "claim_suffixes": ["does:1"], "candidate_kind": "function_default", "candidate_line": 5},
+      {"id": "WRONG-EFFECT", "explanation": "The book promises replacing sent, but execution appends and retains existing entries.", "claim_suffixes": ["does:2"]},
+      {"id": "WRONG-RESPONSE", "explanation": "The book promises status queued, but execution returns sent.", "claim_suffixes": ["returns:1"], "candidate_kind": "return", "candidate_line": 12}
+    ]}
+  ]
+}

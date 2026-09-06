@@ -1,0 +1,24 @@
+{
+  "stablemate-groom": {
+    "packet_digest": "202aa9baf69bcaf91f54e062a364dde75dc327552d86d19f6161fdd57b1d6250",
+    "false_positive_repairs": [
+      "okf:docs/features/groom/concepts/sidecar-snapshot.md#method-_current_node:raises:1",
+      "evidence:8ee2913dd0d796171e800760b18791668119058c8545f0caa8fd098256d3f74b"
+    ],
+    "explanation": "Frozen checkpoints.py:16-21 normalizes malformed and non-object JSON. Thus raises:1 is correct and the intended GROOM-NONOBJECT defect at raises:2 is not detected (unresolved). The alleged missing normal-return behavior is described in the same copied section's output/algorithm bullets at original lines 152-167, which the normative-claim extractor omitted. That prose has additional stale current_id/value-normalization details, but this finding does not identify them and receives no credit for them. False-positive classification here concerns the claimed absence of any normal-return description, not endorsement of that description's accuracy."
+  },
+  "stablemate-workhorse": {
+    "packet_digest": "ae3f69ab204900a04109d34d80af49fb08e6464a55fb5fe9e9a6bd8d75341e90",
+    "false_positive_repairs": [
+      "okf:docs/features/workhorse/concepts/run-target-resolution.md#groom_live_run:does:3"
+    ],
+    "explanation": "The frozen function at target.py:66-72 filters by workflow before checking local paths. The partial verdict explicitly says that filtering is absent from supplied snippets; the book claim itself is correct. This is an unnecessary repair, not an explicit contradiction. Other unresolved claims are abstentions."
+  },
+  "stablemate-workflows": {
+    "packet_digest": "4c6dfe528ca39cd3f0b1cb765b0d2d9527140bae49b0a1f47c7339f62532d34a",
+    "false_positive_repairs": [
+      "evidence:174f3174ed9d5357bb05c8858ce67d1828ba2e90b59f8a93888c55131463dab3"
+    ],
+    "explanation": "The default run_dir empty string is explicitly documented in the copied sig bullet at original book line 80. The extraction omits sig from the normative claims, making this a false missing-default repair against the actual book. The independent WORKFLOWS-SCOPE defect remains undetected (unresolved); review.py:211-213 discards scope and Feedback has no scope field."
+  }
+}

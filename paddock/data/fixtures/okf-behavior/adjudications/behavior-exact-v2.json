@@ -1,0 +1,24 @@
+{
+  "control": {
+    "packet_digest": "521b3af3be9ea892bed83af556d8edf6bc0864a0ed32aeb82dbe44834308f0f4",
+    "false_positive_repairs": [
+      "okf:docs/features/dispatch/dispatch.md#dispatch:raises:1",
+      "okf:docs/features/dispatch/dispatch.md#dispatch:returns:1",
+      "okf:docs/features/dispatch/dispatch.md#dispatch:returns:2"
+    ],
+    "explanation": "Independent source reading and test_fixture_execution_independently_confirms_error_default_response_and_effect establish every claim. service.py:6-9 returns/raises before the mutation at line 11; lines 10-12 select the bounded items and return their count. The reviewer correctly admits insufficient snippet context, but the workflow promotes those partial claims into unnecessary book repairs. These are false-positive repair targets, not false explicit contradictions. The side-effect unresolved verdict is an abstention, not a false positive."
+  },
+  "omissions": {
+    "packet_digest": "c297026bfc52c3a68a550f171903f99976759896516ba2b70aff99ab4ed410f5",
+    "false_positive_repairs": [],
+    "explanation": "Both missing verdicts identify the exact independent OMIT-ERROR and OMIT-EMPTY branches, exception/message and empty response. The remaining unresolved effect claim is true but not established by snippets; it is not accused of being wrong."
+  },
+  "incorrect": {
+    "packet_digest": "7d2c28430cc024874bcae1e3d37d85ee664f0737c28cfbe00ae4c103c5b0a725",
+    "false_positive_repairs": [
+      "okf:docs/features/dispatch/dispatch.md#dispatch:raises:1",
+      "okf:docs/features/dispatch/dispatch.md#dispatch:returns:2"
+    ],
+    "explanation": "WRONG-DEFAULT and WRONG-RESPONSE are genuinely identified: the actual default is 2 rather than exactly 3, and status is sent rather than queued. Their candidate missing and claim contradicted verdicts are duplicate aliases of the same two defects, not four detections. WRONG-EFFECT is not detected: the reviewer abstains. The negative-limit and empty-input no-write claims remain correct in this mutant, proven by branches preceding sent.extend, so the two partial repair targets are false positives."
+  }
+}
