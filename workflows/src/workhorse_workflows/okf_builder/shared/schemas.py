@@ -173,7 +173,8 @@ class Settled(OkfResult):
     #: Repair items a fresh doctor pass would queue — the rows that still have a finding.
     standing: int = 0
     pending_count: int = 0
-    #: The worklist's `done` count the pass was taken at; the next one waits `every` more.
+    #: The worklist's `done` count after the pass, settled rows included; the next one
+    #: waits `every` more.
     at_done: int = 0
     #: Doctor failed and nothing was settled; the row that would explain why.
     error: str = ""

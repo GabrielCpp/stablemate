@@ -369,6 +369,10 @@ def settle_stale(
     except (OSError, ValueError, RuntimeError) as exc:
         error = str(exc)
         logger.warning("settle skipped — ostler doctor failed: %s", exc)
+    # The watermark is the count *after* the close: a settled row is a done row, so a pass
+    # that closes more than `every` of them would otherwise be due again on the next pick
+    # and spend a second doctor read to find nothing.
+    done = sum(1 for i in items if i.get("status") == "done")
     data["items"] = items
     data["settled_done"] = done
     path.write_text(json.dumps(data, indent=2))

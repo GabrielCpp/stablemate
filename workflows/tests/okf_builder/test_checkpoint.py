@@ -328,9 +328,10 @@ def test_the_drain_settles_a_stale_repair_before_it_is_picked(
     result = settle_stale(logger, str(worklist), str(dirty), BOOK)
 
     assert result.ran and result.settled == 1 and result.standing == 1 and not result.error
-    assert result.pending_count == 2 and result.at_done == 30
+    # The one closed row counts as done, and the watermark is taken after the close.
+    assert result.pending_count == 2 and result.at_done == 31
     data = json.loads(worklist.read_text())
-    assert data["settled_done"] == 30
+    assert data["settled_done"] == 31
     by_target = {i["target"]: i for i in data["items"]}
     stale = by_target[f"{BOOK}/concepts/charge.md#charge#undeclared-obligation"]
     assert stale["status"] == "done" and stale["doc_status"] == "stale"
@@ -353,7 +354,7 @@ def test_the_settle_is_amortized_over_the_drain(
 
     due = _stale_worklist(tmp_path / "due.json", standing, settled_done=5)
     ran = settle_stale(logger, str(due), str(dirty), BOOK, every=25)
-    assert ran.ran and ran.settled == 1 and json.loads(due.read_text())["settled_done"] == 30
+    assert ran.ran and ran.settled == 1 and json.loads(due.read_text())["settled_done"] == 31
 
 
 def test_a_settle_with_nothing_to_settle_does_not_read_doctor(
