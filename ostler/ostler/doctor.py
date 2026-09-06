@@ -2065,7 +2065,11 @@ def _check_ui(graph: Graph, f: list[Finding],
         # of it: a node that declares no observation at all.
         # A `warn` for `compound-normative-bullet`'s reason — the remedy is authoring judgment,
         # and books written before the rule carry these by the hundred.
-        if check_keys and normative and not declared:
+        # A `field` is observed through the record that carries it: its `default:` and
+        # `required:` are proven by the check on the endpoint or entity that reads or writes
+        # the record, and a check per attribute is one nobody binds. A field may still
+        # declare `verify:`, and one that does not parse is `unparsed-check`'s as before.
+        if check_keys and normative and not declared and node.type != "field":
             f.append(Finding(
                 "warn", "undeclared-obligation",
                 f"{node.id}: {normative} normative bullet{'s' if normative > 1 else ''} and no "

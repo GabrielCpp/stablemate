@@ -593,6 +593,23 @@ def test_a_node_minting_no_obligation_is_not_asked_to_declare(repo: Path):
     assert "undeclared-obligation" not in all_codes(_run(repo))
 
 
+def test_a_field_inherits_its_observation_from_the_record_that_carries_it(repo: Path):
+    # A typed attribute's `default:`/`required:` are proven by the check on whatever reads
+    # or writes the record, so the field itself owes no declaration — asking would cost a
+    # repair per attribute for a check nobody binds. Declaring stays allowed, and a
+    # declaration that does not parse is still reported.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Fields\n\n### rowCount\n- type: integer\n- default: zero\n- required: no\n")
+    assert "undeclared-obligation" not in all_codes(_run(repo))
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Fields\n\n### rowCount\n- type: integer\n- default: zero\n"
+          "- verify: Test_Manifest_RowCount_Defaults\n")
+    found = all_codes(_run(repo))
+    assert "unparsed-check" in found and "undeclared-obligation" not in found
+
+
 def test_a_type_that_carries_no_check_key_is_never_reported(repo: Path):
     # A `step:` under a runbook mints obligations too, but its `verify:` keeps its own older
     # meaning — how to tell the step ran — and is not a check. There is no declaration for it
