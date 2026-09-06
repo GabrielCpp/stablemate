@@ -25,13 +25,14 @@ shipped and is now kept only for its reasoning.
 
 - **`hello-world`** — two states, one agent turn; the install check and the smallest
   example to copy when [shipping your own](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md#shipping-your-own-outside-this-repo).
-- **`author`** — turns product intent into the repo's OKF book: epics, stories with
-  acceptance criteria, seeds and coverage, as a normalized docs graph ostler validates.
-  What it writes is what `coder`'s QA later holds the running app to.
-- **`coder`** — implements stories from that book, then examines each one from three
-  independent evidence bases — tests against the story's intent, review against the
-  skills' engineering standards, QA of the live app against the book with the code not
-  in the room. The reasoning is in the workspace README's
+- **`author`** — turns an approved roadmap into the plan: milestones, epics, stories
+  with acceptance criteria, seeds and coverage, as a normalized planning graph ostler
+  validates. The feature book is read-only to it.
+- **`coder`** — implements stories from that plan and, after review and before QA,
+  writes what it built into the repo's feature book (its Docs phase). It then examines
+  each story from three independent evidence bases — tests against the story's intent,
+  review against the skills' engineering standards, QA of the live app against the book
+  with the code not in the room. The reasoning is in the workspace README's
   [methodology section](https://github.com/GabrielCpp/stablemate#the-methodology-three-evidence-bases-none-of-them-the-implementers).
 - **`okf-builder`** — backfills an OKF book for an existing codebase, grounding every
   claim in the file it read it from, so a brownfield repo can reach the same contract.
@@ -125,15 +126,23 @@ flows.
 
 ## Coder documentation convergence
 
+QA's scenarios are generated from the feature book and judged on recorded evidence from
+the running product, so QA sees exactly the defects the book lets it see: a promise the
+book never made, or a check that cannot tell success from failure, is invisible to it.
+Building that contract and keeping it true of the code is where the work is right now.
+Docs and `okf-builder` check grounding and repair findings, but a book that validates
+and cites its sources is not thereby a complete or a correct one.
+
 Coder documents a story after implementation and review, before QA. A clean QA pass then
 commits without repeating that agent flow. Any QA state that may edit code, setup, or OKF
-grounding sets a checkpointed `docs_recheck_required` taint; the nested backlog-fix drain
-sets the same taint. Tainted stories must pass Docs again before commit.
+grounding sets a checkpointed `docs_recheck_required` taint. The nested backlog-fix drain
+preserves the incoming taint: Fix owns documentation and commits for each drained item.
+Tainted stories must pass Docs again before commit.
 
 The taint is monotonic and defaults to required when checkpoint or QA state lacks it, so
 missing state never authorizes publishing stale documentation. If the required recheck is
-blocked, epic mode records a docs-blocked marker and moves on without the normal story
-commit; story mode fails because there is no queue in which to contain the block.
+blocked, both epic and story mode park on a checkpointed `Await` for operator input,
+without committing or skipping the story. Resuming returns to the required Docs pass.
 
 ## How a workflow gets a command
 

@@ -41,16 +41,54 @@ made-up check comes straight back as the finding you were paid to remove.
 
 {{ workhorse_var('check_vocabulary') }}
 
-- **Never invent a check or an argument.** `count(subject=…, expected=1)` is not a check —
-  `count` takes `equals`. Neither is `persists(…)` or `emitted(…)`; they are not in the list
-  above. If nothing in the list can observe the claim, the claim's verification is not yours
-  to invent: leave it standing and say so in `doc_status`.
+- **Use the rendered inventory as authority for check names and arguments.** A missing
+  dedicated check does not mean missing evidence: the scenario acquires observations,
+  and a registered check compares them. If no obtainable observation can discriminate
+  the claim, leave it standing and explain the specific evidence gap in `doc_status`.
 - **Pick the check the claim's own defect calls for**, using the `excludes` sentence. `visible`
   observes rendered UI — a Go function returning bytes is not visible to anything, and writing
   `visible(locator="PDFEngine output", …)` states an observation no harness can make.
 - **A check's arguments are values, not prose.** `json_path(path="$.x", equals="the second
   address line")` asserts the field equals that sentence. If you do not know the value, read
   the source for it; if the claim has no single value, choose a check that fits.
+
+### Capture evidence, then compare it
+
+Observations are **scenario-owned values, never invented product outputs**. Describe in
+the book how the scenario obtains them: invoke the real method and capture its return,
+expected exception, stdout/stderr, or independently read file content. The `verify:`
+bullet carries **comparison arguments only**, not an `observed` argument or capture code.
+For example, document a scenario calling `assert_file_contains` on an absent file (and
+separately on a file containing the wrong text), capturing the exception type and message:
+
+```markdown
+- verify: json_path(path="exception.type", equals="AssertionError")
+```
+
+This is the corresponding QA scenario body, not code for this docs-only turn to run.
+Here `sandbox` is the scenario's prepared directory, `rel` its absent or wrong-content
+file, `text` the required substring, and `covers` the obligation IDs being exercised:
+
+```python
+from workhorse.testing import assert_file_contains
+
+observed = {"exception": {}}
+try:
+    assert_file_contains(sandbox, rel, text)
+except AssertionError as exc:
+    observed["exception"] = {"type": type(exc).__name__, "message": str(exc)}
+
+qa.verify("json_path", observed, path="exception.type", equals="AssertionError", covers=covers)
+```
+
+A no-op helper leaves the mapping empty, so the check fails. Catch only the expected
+product exception around the product call; unexpected types propagate. Keep verifiers
+outside that handler so verifier errors cannot become product evidence. For a diagnostic
+claim, compare `exception.message` with a concrete `equals` or discriminating `matches`
+derived from the documented input. Do not pre-fill expected results or use a no-op check
+to claim behavior was proved. The same capture works for `assert_json_file` on mismatched
+JSON; captured stdout/stderr can likewise be checked with `json_path` and `matches`,
+without a dedicated exception, file-containment, or skip-output verifier.
 
 ## The bullet grammar — rendered from the registry, per node type
 

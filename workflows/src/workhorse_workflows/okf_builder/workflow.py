@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from workhorse.cli import console_script
 from workhorse.pyflow import Registry
+from workhorse_workflows.okf_builder.audit.flow import Audit
 from workhorse_workflows.okf_builder.main import MAX_RESCAN_ROUNDS, MAX_STALL_ROUNDS, OkfBuilder
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
 from workhorse_workflows.okf_builder.walkthrough_web import WalkthroughWeb
@@ -24,7 +25,7 @@ from workhorse_workflows.okf_builder.walkthrough_web import WalkthroughWeb
 workflow = (
     Registry("okf-builder", package=__package__)
     .add_blueprints(blueprint)
-    .add_flows(**{"walkthrough-web": WalkthroughWeb})
+    .add_flows(**{"audit": Audit, "walkthrough-web": WalkthroughWeb})
     .stub_agents(
         {
             # Keyed by prompt STEM. Each is the reply that makes a dry run *progress*

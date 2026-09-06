@@ -6,7 +6,8 @@ the surfaces, then drain a typed worklist where each item's investigation spawns
 deeper items it reveals (surface → elements → handler layer → callee layers → concepts
 and formats), descending the code layer by layer. When the drain is dry, a deterministic
 checkpoint (`ostler fmt` + `doctor`) and a computed coverage join queue whatever was
-missed and loop, until the book covers the inventory. Then it walks the running app.
+missed and loop, until the book covers the inventory. A two-way semantic audit then
+checks the selected source evidence against the book. Runtime exploration is opt-in.
 
     workhorse-okf-builder run --params '{"service":"acme","source_path":"acme"}'
 
@@ -66,6 +67,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
+from workhorse_workflows.okf_builder.audit.flow import Audit
 from workhorse_workflows.okf_builder.main.nodes import (
     advance_watermark,
     apply_verdict,
@@ -77,6 +79,7 @@ from workhorse_workflows.okf_builder.main.nodes import (
     prepare,
 )
 from workhorse_workflows.okf_builder.shared import paths
+from workhorse_workflows.okf_builder.shared.audit import AuditScope, assess_audit
 from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book
 from workhorse_workflows.okf_builder.shared.schemas import (
     Adjudication,
@@ -156,7 +159,8 @@ class OkfBuilder(Workflow):
     """Build (or repair) one service's OKF book from its source, exhaustively.
 
     The stop condition is convergence, not a budget: the run ends when the computed
-    coverage join is complete and `ostler doctor` is green. `max_items` is a safety valve
+    coverage join is complete, `ostler doctor` is green, and the source/book audit has
+    no gaps or unresolved decisions within its explicit scope. `max_items` is a safety valve
     for a quota-limited practice run, and reaching it **blocks** the run on an operator
     gate rather than ending it — a partial book must not read as a finished one, and a
     budget stop is not a defect, so the run waits for a fresh allowance instead of dying.
@@ -180,6 +184,8 @@ class OkfBuilder(Workflow):
     docs_path: str = ""
     #: Optional per-run investigation ceiling. 0 = run to convergence.
     max_items: int = 0
+    #: Live runtime exploration is opt-in; semantic source/book review always runs.
+    runtime_walkthrough: bool = False
     #: Narrow the run to what changed since this revision — every path differing from its
     #: merge base with HEAD, working tree and untracked included. `""` reconciles the whole
     #: book. A narrowing that cannot be computed blocks the run rather than silently
@@ -438,15 +444,17 @@ class OkfBuilder(Workflow):
         `unparsed-check`, so the round spent money to move a finding sideways.
         """
         repair = item_kind.startswith("fix:")
+        behavior_repair = item_kind == "behavior-repair"
         where = f"{'repairing' if repair else 'documenting'} {item_kind} {item_target}"
         self.logger.info(
             "%s%s", where, f" · {progress}" if progress else "", extra={"activity": True}
         )
         result = self.agent(
+            "main/prompts/repair-behavior.md" if behavior_repair else
             "main/prompts/repair.md" if repair else "main/prompts/investigate.md",
             returns=Investigation,
             power=(
-                repair_power(current_item, item_context)
+                "medium" if behavior_repair else repair_power(current_item, item_context)
                 if repair
                 else investigation_power(current_item)
             ),
@@ -457,6 +465,7 @@ class OkfBuilder(Workflow):
                 "item_code": item_code,
                 "item_target": item_target,
                 "item_context": item_context,
+                "result_schema": json.dumps(Investigation.model_json_schema(), indent=2),
                 "check_vocabulary": check_vocabulary(),
                 "bullet_grammar": bullet_grammar(),
                 "source_inventory_path": str(
@@ -847,7 +856,7 @@ class OkfBuilder(Workflow):
         # blind now, and this state is reachable only through a *clean* one, so asking again
         # would be a second, weaker reader of a question already answered upstream.
         if coverage.coverage_complete:
-            return Continue(coverage, self.walkthrough).because("inventory covered")
+            return Continue(coverage, self.semantic_audit).because("inventory cited: audit behavior in both directions")
         if coverage.regrounding:
             # A drifted citation is not an adjudication: the symbol under the node was
             # rewritten, and the bullet has to be re-read against it. So these go straight onto
@@ -935,7 +944,38 @@ class OkfBuilder(Workflow):
             refuels=refuels,
         ).because("real gaps queued")
 
-    # --- the live-app walk ---------------------------------------------------
+    def semantic_audit(self) -> Continue | Await:
+        """Audit current source and claims, then queue coherent file/node repairs."""
+        result = self.handoff(
+            Audit, docs_path=self.ctx.repo_root, source_path=self.ctx.source_root,
+            service=self.service, artifact_dir=str(self.run_dir),
+        )
+        if result.repairs:
+            recorded = self.call(record, self.ctx.worklist_path, None, [
+                {"kind": "behavior-repair", "target": item.target,
+                 "context": item.context, "requeue": True}
+                for item in result.repairs
+            ])
+            if recorded.blocked_count:
+                return Await(
+                    paths.operator_context_path(Path(self.ctx.repo_root), self.service, self.ctx.scope_id),
+                    f"Behavior repairs exhausted their attempts. Report: {result.report_path}",
+                    self.retry_blocked,
+                ).because("behavior repair attempts exhausted: operator gate")
+            return Continue(recorded, self.select).because("behavior gaps queued by source file or book node")
+        if result.unresolved or result.status != "assessed":
+            return Await(
+                paths.operator_context_path(Path(self.ctx.repo_root), self.service, self.ctx.scope_id),
+                f"Behavior audit incomplete: {result.report_path}\n"
+                + "\n".join(result.unresolved)
+                + "\nResolve the evidence or scope uncertainty; do not invent or remove claims to pass.",
+                self.semantic_audit,
+            ).because("unresolved behavior or incomplete scope: operator gate")
+        if self.runtime_walkthrough:
+            return Continue(result, self.walkthrough).because("audit clear: explicit runtime walkthrough requested")
+        return Continue(result, self.commit, walked=WebApp()).because("audit clear: runtime walkthrough not requested")
+
+    # --- the live-app walk (checkpoint-compatible) ---------------------------
 
     def walkthrough(self) -> Continue:
         """Hand the complete book to the walk, then preserve what it found.
@@ -944,6 +984,8 @@ class OkfBuilder(Workflow):
         decides that, and it decides it by reading the book rather than by being told,
         which is what lets the same flow be invoked standalone.
         """
+        if not self.runtime_walkthrough:
+            return Continue(None, self.semantic_audit).because("runtime walkthrough disabled: audit current evidence")
         walked = self.handoff(
             WalkthroughWeb,
             service=self.service,
@@ -955,8 +997,17 @@ class OkfBuilder(Workflow):
             "book complete: walked when there is an app"
         )
 
-    def commit(self, walked: WebApp) -> Done:
+    def commit(self, walked: WebApp) -> Done | Continue:
         """Record the completed book without touching work outside its directory."""
+        # Old paused commit states have no audit receipt. A runtime walk can also change
+        # the book. Neither may publish until the current bytes have cleared the audit.
+        work = self.call(
+            assess_audit,
+            AuditScope(docs_path=self.ctx.repo_root, source_path=self.ctx.source_root, service=self.service),
+            str(self.run_dir),
+        )
+        if not work.outcome.scope_clear:
+            return Continue(work.outcome, self.semantic_audit).because("current source/book lacks a clear audit receipt")
         self.call(commit_book, self.ctx.repo_root, self.ctx.features_root, self.story)
         return Done(walked).because("completed book committed")
 

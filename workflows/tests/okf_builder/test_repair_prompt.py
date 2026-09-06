@@ -103,6 +103,19 @@ def test_every_check_signature_reaches_the_prompt() -> None:
     for spec in checks.CHECKS:
         assert spec.signature() in rendered, f"{spec.name} is not in the repair prompt"
 
+    assert "they are not in the list" not in rendered
+
+
+def test_repair_distinguishes_observation_capture_from_comparison_arguments() -> None:
+    rendered = render("main/prompts/repair.md", _context("undeclared-obligation"), WORKFLOW_DIR)
+    assert "```python\n" in rendered, "Repair needs an executable evidence-acquisition example"
+    assert 'except AssertionError as exc:' in rendered
+    assert '"message": str(exc)' in rendered
+    assert 'json_path(path="exception.type", equals="AssertionError")' in rendered
+    assert "comparison arguments only" in rendered
+    assert "scenario-owned" in rendered
+    assert "never invented" in rendered
+
 
 def test_a_check_bearing_code_loads_the_falsifiability_bar_and_others_do_not() -> None:
     """The reference is conditional, so both directions are asserted — a guard that always
