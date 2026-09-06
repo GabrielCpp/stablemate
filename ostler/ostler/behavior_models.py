@@ -119,6 +119,13 @@ class AuditPacket(BehaviorModel):
     digest: str = ""
 
 
+class BookClaims(BehaviorModel):
+    """The book side of a review: its claims, and what it could not mint as one."""
+
+    claims: tuple[BookClaim, ...]
+    limitations: tuple[str, ...] = ()
+
+
 class AuditPreparation(BehaviorModel):
     version: Literal[1] = 1
     status: Literal["prepared"] = "prepared"

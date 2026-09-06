@@ -7,7 +7,8 @@ import pytest
 
 from ostler.behavior import (
     AuditPacket, AuditVerdicts, BookClaim, CandidateVerdict, ClaimVerdict,
-    build_audit_packets, extract_claims, extract_evidence, validate_verdicts,
+    build_audit_packets, duplicate_node_ids, extract_book, extract_claims, extract_evidence,
+    validate_verdicts,
 )
 from ostler.model import load
 
@@ -576,3 +577,23 @@ def test_old_receipt_without_book_evidence_still_validates(audit_packet: AuditPa
         candidate.pop("book_evidence", None)
     report = validate_verdicts(audit_packet, payload)
     assert all(item.model_dump()["book_evidence"] == () for item in report.verdicts.candidates)
+
+
+def test_duplicate_anchor_claims_are_skipped_and_named(tmp_path: Path) -> None:
+    docs = tmp_path / "docs/features/api"
+    docs.mkdir(parents=True)
+    (docs / "items.md").write_text(
+        "---\ntype: server\ntitle: API\n---\n\n# API\n\n## Endpoints\n\n### items\n\n"
+        "- does: Limit is 50.\n- code: api.py::items\n\n### items\n\n- does: Limit is 60.\n\n"
+        "### other\n\n- does: Ordering is by id.\n- code: api.py::other\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "api.py").write_text("def items():\n    return 50\n\ndef other():\n    return 1\n", encoding="utf-8")
+    graph = load(tmp_path)
+    assert duplicate_node_ids(graph) == ("docs/features/api/items.md#items",)
+    book = extract_book(graph)
+    assert [claim.node for claim in book.claims] == ["docs/features/api/items.md#other"]
+    assert len(book.limitations) == 1 and "duplicate-container-heading" in book.limitations[0]
+    preparation = build_audit_packets(extract_evidence(tmp_path, ["api.py"]), book)
+    assert all(book.limitations[0] in packet.limitations for packet in preparation.packets)
+    assert len(preparation.packets) >= 1

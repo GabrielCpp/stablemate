@@ -21,7 +21,7 @@ from ostler.behavior_go import GoEvidence
 from ostler.behavior_models import (
     AuditPacket as AuditPacket, AuditPreparation as AuditPreparation,
     AuditReport as AuditReport, AuditVerdicts as AuditVerdicts,
-    BehaviorEvidence as BehaviorEvidence, BookClaim as BookClaim,
+    BehaviorEvidence as BehaviorEvidence, BookClaim as BookClaim, BookClaims as BookClaims,
     CandidateVerdict as CandidateVerdict, ClaimVerdict as ClaimVerdict,
     EvidenceFile as EvidenceFile, EvidenceInventory as EvidenceInventory,
     BookContext as BookContext, BookEvidenceRef as BookEvidenceRef, SourceContext as SourceContext,
@@ -183,6 +183,25 @@ def extract_evidence(root: Path, paths: Sequence[str], *, context_paths: Sequenc
 
 
 def extract_claims(graph: Graph) -> tuple[BookClaim, ...]:
+    """The claims of `extract_book`, for callers that carry no limitations of their own."""
+    return extract_book(graph).claims
+
+
+def duplicate_node_ids(graph: Graph) -> tuple[str, ...]:
+    """Every node id the book spells more than once, in id order.
+
+    Two sections under one node with the same heading — two `## Effects`, say — parse to two
+    nodes with one id, and every claim minted under the second collides with the first.
+    `doctor` reports the collision as `duplicate-container-heading`; the audit only has to
+    survive it, so the book's other claims are still reviewed while that one is repaired.
+    """
+    counts: dict[str, int] = defaultdict(int)
+    for node in graph.ui_nodes:
+        counts[node.id] += 1
+    return tuple(sorted(node_id for node_id, count in counts.items() if count > 1))
+
+
+def extract_book(graph: Graph) -> BookClaims:
     """Use the real graph's normative bullets and existing QA obligation ID spelling.
 
     Titles and original same-node text are context, not synthetic semantic claims.
@@ -194,8 +213,16 @@ def extract_claims(graph: Graph) -> tuple[BookClaim, ...]:
     """
     claims: list[BookClaim] = []
     by_id = {node.id: node for node in graph.ui_nodes}
+    duplicates = set(duplicate_node_ids(graph))
+    limitations = tuple(
+        f"Skipped every claim under {node_id}: the book spells that node id more than once, so its "
+        f"claim ids would collide (doctor: duplicate-container-heading). Repair the book, then re-audit."
+        for node_id in sorted(duplicates)
+    )
     documents: dict[Path, tuple[markdown.MarkdownDoc, str]] = {}
     for node in sorted(graph.ui_nodes, key=lambda node: node.id):
+        if node.id in duplicates:
+            continue
         owner = node
         visited: set[str] = set()
         citations = tuple(refs.code_refs(owner.meta.get("code")))
@@ -228,14 +255,18 @@ def extract_claims(graph: Graph) -> tuple[BookClaim, ...]:
             claims.append(BookClaim(id=f"okf:{node.id}:{kind}:{counts[key]}", node=node.id,
                                     path=path, line=max(1, node.bullet_lines.get(position, node.line)), kind=kind, text=text,
                                     citations=citations, title=node.title, context=(context,)))
-    return tuple(claims)
+    return BookClaims(claims=tuple(claims), limitations=limitations)
 
 
 def build_audit_packets(
-    inventory: EvidenceInventory, claims: Sequence[BookClaim], *,
+    inventory: EvidenceInventory, claims: Sequence[BookClaim] | BookClaims, *,
     max_items: int = 80, max_chars: int = 60_000,
 ) -> AuditPreparation:
     """Prepare file-local review packets without an all-book Cartesian product.
+
+    A `BookClaims` carries the book side's own limitations — the nodes whose claims were
+    skipped — and every packet repeats them beside the inventory's, so a reviewer and a
+    receipt both know what the book did not put in front of them.
 
     All symbols in a source file share its citing claims, even when the cited symbol
     is incorrect. Claims without a matching local file go into explicit book-only
@@ -253,6 +284,10 @@ def build_audit_packets(
         raise ValueError("max_items must be at least 2")
     if max_chars < 1:
         raise ValueError("max_chars must be positive")
+    book_limitations: tuple[str, ...] = ()
+    if isinstance(claims, BookClaims):
+        book_limitations = claims.limitations
+        claims = claims.claims
     ordered_claims = tuple(sorted(claims, key=lambda claim: claim.id))
     _exact_ids([claim.id for claim in ordered_claims], {claim.id for claim in ordered_claims}, "input claims")
     _exact_ids([item.id for item in inventory.candidates], {item.id for item in inventory.candidates}, "input candidates")
@@ -281,7 +316,7 @@ def build_audit_packets(
     for module, evidence in sorted(grouped.items()):
         local_claims = tuple(claims_by_file[module])
         evidence.sort(key=lambda item: (item.start_line, item.start_column, item.id))
-        limitations = inventory.limitations
+        limitations = inventory.limitations + book_limitations
         if module in files_by_path:
             file = files_by_path[module]
             if file.status != "parsed":
