@@ -27,7 +27,11 @@ Workspace-volume awaiting-file reader is the Docker-volume sweep used by the [wo
 - process boundary: invokes Docker without a shell and mounts the target volume read-only at `/vol` inside the temporary container.
 - candidate boundary: proves only that the file matched the cheap status-line search at sweep time; it does not prove the file is still awaiting when a gate record is created.
 - trust boundary: does not validate or sanitize `volume` or `mount_subdir`; callers provide these values from Docker mount metadata or other already-bounded internal discovery state, and callers that reread returned paths own path safety for that later read.
-- persistence: does not write the workspace volume, answer gates, update workflow state, mutate the registry, broadcast UI fragments, or start or stop workflow containers.
+- persistence: workspace-volume — does not write the workspace volume, answer gates, update workflow state, mutate the registry, broadcast UI fragments, or start or stop workflow containers.
+- consistency: returns no candidate paths when the Docker process exits with a code other than `0` or `1` because fallback gate recovery is best-effort.
+- verify: count(subject="candidate paths after Docker exit code 2", equals=0)
+- consistency: returns no candidate paths when `grep` reports no matches with Docker process exit code `1`.
+- verify: count(subject="candidate paths after Docker exit code 1", equals=0)
 
 ## Fields
 
@@ -88,15 +92,12 @@ Workspace-volume awaiting-file reader is the Docker-volume sweep used by the [wo
 - step: Construct a `find` prune predicate that matches every skipped directory basename.
 - step: Run one read-only temporary container with the workspace volume mounted at `/vol`.
 - step: In that container, prune skipped directories and pass every remaining regular file to `grep -lE` with the awaiting-status pattern.
-- step: If the Docker process exits with a code other than `0` or `1`, return an empty list.
 - step: For each stdout line, strip whitespace and keep only `/vol/`-prefixed paths.
 - step: Remove the `/vol/` prefix from each retained path.
 - step: Return the retained relative paths in observed order.
 
 ## Failure behavior
 
-- Docker command failure: returns `[]` for non-`0`/`1` process return codes.
-- No awaiting files: returns `[]` when grep reports no matches with return code `1`.
 - Unexpected stdout line: ignores a line that is empty after stripping or does not begin with `/vol/`.
 - Process launch failure: not converted by this reader; launch exceptions from the subprocess runner propagate to the caller.
 - Timeout: not converted by this reader; timeout exceptions from the subprocess runner propagate to the caller.
@@ -107,10 +108,11 @@ Workspace-volume awaiting-file reader is the Docker-volume sweep used by the [wo
 
 - sig: `grep_awaiting_files(volume: str, mount_subdir: str = "") -> list[str]`
 - abstract: false
-- raises: propagates process launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md); converts Docker process return-code failures to an empty list.
+- raises: propagates process launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md).
+- raises: converts Docker process return-code failures to an empty list.
+- verify: count(subject="workspace-volume-relative candidate paths", equals=0)
 - returns: workspace-volume-relative candidate file paths in observed command-output order, with no sorting, deduplication, status parser validation, or question extraction.
 - verify: count(subject="workspace-volume-relative candidate paths", equals=2)
-- verify: count(subject="workspace-volume-relative candidate paths", equals=0)
 - code: groom/groom/docker_io.py::grep_awaiting_files
 - tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths
 - tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_empty_on_docker_failure
@@ -122,13 +124,14 @@ Returns the workspace-volume-relative paths of files that appear to carry an awa
 - input: accepts one Docker volume name and an optional volume-relative subdirectory string.
 - output: returns candidate paths relative to the mounted volume root, including the subdirectory prefix when the scan target is below the root.
 - caller contract: callers that need a live gate must reread each candidate and apply the shared [operator gate context file](../operator-gate-context-file.md) parser before creating state.
+- consistency: returns only Docker stdout lines whose stripped text begins with `/vol/`, removing that prefix from each retained path.
+- verify: count(subject="candidate paths after stdout contains two /vol/ paths and one non-/vol/ line", equals=2)
 
 #### Effects
 
 - Delegates: all process execution to the [Docker subprocess runner](docker-subprocess-runner.md).
 - Builds command: mounts the supplied volume at `/vol:ro`, runs the configured Alpine image, prunes skipped directories with `find`, and invokes `grep -lE` against regular files only.
 - Scans: regular files reachable from the normalized target path after skip-directory pruning.
-- Filters: returns only Docker stdout lines whose stripped text starts with `/vol/`.
 - Preserves order: appends each retained stdout line to the returned list in the order emitted by the command.
 
 #### Failure behavior

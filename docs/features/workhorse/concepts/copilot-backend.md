@@ -74,6 +74,22 @@ The implementation is covered by `workhorse/tests/test_backends.py::test_copilot
   `False`: Copilot has no in-place session compaction, so the resilience ladder reframes on
   context overflow instead.
 
+## Methods
+
+### run_turn
+- sig: `run_turn(prompt: str, node_id: str, session_id_path: Path | None, model: str | None = None, *, prompt_path: Path | None = None, timeout: float, resilience: AgentResilience, cwd: str | None = None, add_dirs: list[str] | None = None, effort: str | None = None) -> str`
+- does: runs Copilot's JSON stream, optionally attaches an oversized prompt and resumes a stored session
+- raises: `BackendInvocationError` after `finalize_turn` classifies the streamed state
+- verify: emitted(event="Copilot turn result", count=1)
+- code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend.run_turn`
+
+### compact
+- sig: `compact(session_id_path: Path | None, node_id: str, model: str | None = None, *, timeout: float, resilience: AgentResilience) -> bool`
+- does: declines in-place session compaction
+- returns: `false`
+- verify: json_path(path="$.compacted", equals=false)
+- code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend.compact`
+
 ## Related pieces
 
 - [`read_session_id`](read-session-id.md) — reads the persisted `.session_id` file, if any, shared

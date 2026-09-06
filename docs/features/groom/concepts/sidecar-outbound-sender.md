@@ -5,14 +5,13 @@ title: Sidecar outbound sender
 ---
 # Sidecar outbound sender
 
-Sidecar outbound sender is the queue-draining task owned by one [sidecar connected session](sidecar-connected-session.md). It consumes filesystem-derived outbound [sidecar websocket frame](../sidecar-websocket-frame.md) objects from the session's FIFO outbox, serializes each frame as JSON text, and sends that text on the already-connected websocket until the task is cancelled or the websocket send path fails. It is the sidecar-process counterpart to the host-side [sidecar connection](sidecar-connection.md): this sender writes sidecar-to-groom filesystem notifications, while the host-side connection writes groom-to-sidecar `rpc` and `reload` frames. It is the only sidecar layer that turns queued watch-derived `progress` and `blocked` frame objects into websocket text delivery; the connected session owns queue creation, event classification, task cancellation, and socket lifetime.
+Sidecar outbound sender is the queue-draining task owned by one [sidecar connected session](sidecar-connected-session.md). It consumes filesystem-derived outbound [sidecar websocket frame](../sidecar-websocket-frame.md) objects from the session's FIFO outbox, serializes each frame as JSON text, and sends that text on the already-connected websocket until the task is cancelled or the websocket send path fails. Its `ws` parameter is that session's connected websocket object, used through its `send(str)` operation. It is the sidecar-process counterpart to the host-side [sidecar connection](sidecar-connection.md): this sender writes sidecar-to-groom filesystem notifications, while the host-side connection writes groom-to-sidecar `rpc` and `reload` frames. It is the only sidecar layer that turns queued watch-derived `progress` and `blocked` frame objects into websocket text delivery; the connected session owns queue creation, event classification, task cancellation, and socket lifetime.
 
 - code: groom/groom/sidecar.py::_sender_loop
 
 ## Contract
 
 - sig: `async _sender_loop(ws, outbox: asyncio.Queue) -> None`
-- input: `ws` is the connected websocket object for the current [sidecar connected session](sidecar-connected-session.md), and must accept `send(str)` calls.
 - input: `outbox` is the session-owned FIFO queue containing JSON-compatible frame dictionaries produced from watched filesystem events.
 - output: no ordinary return while the task is allowed to run; the loop is intentionally open-ended and is stopped by task cancellation or by an exception from queue receive, JSON serialization, or websocket send.
 - effects: waits for the next queued frame, serializes that frame to a websocket text payload, and sends it on the connected websocket before waiting for the next frame.
@@ -41,7 +40,10 @@ Sidecar outbound sender is the queue-draining task owned by one [sidecar connect
 
 - sig: `async _sender_loop(ws, outbox: asyncio.Queue) -> None`
 - abstract: false
-- raises: no intentional domain exception; async cancellation, JSON serialization failures, websocket send failures, and queue failures can escape.
+- raises: async cancellation while waiting for a queued frame or sending a websocket payload can escape.
+- raises: JSON serialization failures can escape.
+- raises: websocket send failures can escape.
+- raises: queue receive failures can escape.
 - code: groom/groom/sidecar.py::_sender_loop
 - input: one connected websocket sender and the current session's outbound frame queue.
 - output: no normal result; task lifetime is governed by the owning session.

@@ -16,7 +16,71 @@ the deterministic nodes owned by this subflow.
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/_blueprint.py::blueprint`
 - tests: `workflows/tests/author/epic_edit/test_edit.py::test_plan_requires_force_for_removals_beyond_requested_story`
 
+## Fields
+
+### epic
+- type: string
+- default: empty string
+- required: false
+- semantics: direct invocation's epic identifier; ignored when `intent.epic` is already set
+- verify: json_path(path="$.epic", matches=".*")
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit`
+
+### change
+- type: string
+- default: empty string
+- required: false
+- semantics: direct invocation's requested scope change
+- verify: json_path(path="$.change", matches=".*")
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit`
+
+### intent
+- type: `EditIntent`
+- default: an empty `EditIntent`
+- required: false
+- semantics: validated edit binding supplied by a story-edit handoff or constructed from direct parameters
+- verify: json_path(path="$.intent", matches=".*")
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit`
+
+### force
+- type: boolean
+- default: false
+- required: false
+- semantics: permits explicitly requested collateral or frozen-scope removal according to plan validation
+- verify: json_path(path="$.force", equals=false)
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit`
+
+### operator_mode
+- type: string
+- default: auto
+- required: false
+- semantics: operator-routing mode carried by the workflow runtime
+- verify: json_path(path="$.operator_mode", equals="auto")
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit`
+
 ## Methods
+
+### setup
+- sig: `setup() -> RunContext`
+- does: loads author configuration in `epic-edit` mode
+- returns: returns a `RunContext` populated from the loaded configuration
+- verify: json_path(path="$.mode", equals="epic-edit")
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.setup`
+
+### labels
+- sig: `labels() -> dict[str, str]`
+- does: labels the run with the explicit epic or the handoff intent's epic
+- returns: returns matching `work_id` and `epic` labels
+- verify: count(subject="epic-edit labeled runs", equals=1)
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.labels`
+
+### state_labels
+- sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
+- does: combines epic labels with telemetry labels for the `epic_edit` machine
+- does: includes the `reworks` budget counter label when present in state parameters
+- returns: returns labels used for state telemetry
+- verify: count(subject="epic-edit state label sets", equals=1)
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.state_labels`
 
 ### blueprint
 - sig: `Blueprint("author-epic-edit") -> Blueprint`

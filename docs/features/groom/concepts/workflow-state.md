@@ -37,7 +37,9 @@ Workflow state is the lifecycle enum stored on each [workflow container](workflo
 - identity: each enum member's value is the exact lower-case string emitted into HTML `data-state`, CSS dot classes, status text, and command-palette hints.
 - member set: the groom-owned lifecycle vocabulary is exactly `RUNNING`, `BLOCKED`, `IDLE`, and `FINISHED`; there are no aliases, deprecated values, intermediate states, or first-party methods on the enum.
 - storage: stored only as `WorkflowContainer.state` in the process-local [workflow registry](workflow-registry.md); no first-party path persists workflow state independently of the workflow container snapshot.
-- default owner: new dataclass instances and registry upserts for previously unseen workflows default to `idle` unless the creating path supplies a more specific state.
+- consistency: a workflow container created without an explicit state starts at `idle`.
+- verify: created(subject="workflow container")
+- verify: json_path(path="$.state", equals="idle")
 - source precedence: terminal evidence wins over gates; gate evidence wins over running/idle; progress evidence sets running; an exited push sets finished and clears gates.
 - mutation: server, registry, and discovery layers assign enum members directly; no parser accepts arbitrary lifecycle strings as supported workflow states, and registry upserts ignore `None` state values rather than clearing the current state.
 - sorting: dashboard state order is `blocked`, then `running`, then `idle`, then `finished` for inbox rows and repository menu options.
@@ -63,7 +65,9 @@ Workflow state is the lifecycle enum stored on each [workflow container](workflo
 - from: [Docker inspect container object](../docker-inspect-container-object.md)
 - to: a baseline [workflow container](workflow-container.md) whose state is `running` when `State.Running` is truthy and `idle` otherwise.
 - code: groom/groom/discovery.py::container_from_inspect
-- meaning: creates the baseline workflow record before sidecar query, run-volume, or gate-volume evidence refines it; this conversion also supplies the push-first resolver with volume and workflow-type metadata.
+
+`container_from_inspect` constructs the baseline workflow record before the resolver applies sidecar-query, run-volume, or gate-volume evidence. The conversion also supplies the resolver with volume and workflow-type metadata.
+
 - reads: `Id`, `Name`, `State.Running`, `Config.Env`, `Config.Labels`, and `Mounts` from the inspect object; other Docker fields are ignored.
 - indexes: the `Mounts` list by each row's `Destination` before reading `/workflow`, `/runs`, and `/workspace`, so mount order does not affect workflow type or volume extraction.
 - parses: `Config.Env` through the [environment-map extractor](workflow-discovery-scan.md#method-extract-environment-map), accepting only `KEY=VALUE` strings, splitting at the first `=`, and retaining the later value when the same key appears more than once.
@@ -79,7 +83,10 @@ Workflow state is the lifecycle enum stored on each [workflow container](workflo
 - code: groom/groom/discovery.py::_apply_snapshot
 - verify: groom/tests/test_discovery.py::test_scan_uses_sidecar_query_for_running_container
 - verify: groom/tests/test_discovery.py::test_scan_query_terminal_wins_over_gates
-- meaning: lets a running container report its own current node, terminal marker, and gates without host-side volume reconstruction; terminal snapshots return before gates are applied.
+- consistency: a snapshot with a truthy terminal marker sets the workflow state to `finished` and returns before snapshot gates are applied.
+- verify: json_path(path="$.state", equals="finished")
+
+A running container can report its current node, terminal marker, and gates without host-side volume reconstruction.
 
 ### transition-volume-reconstruction
 

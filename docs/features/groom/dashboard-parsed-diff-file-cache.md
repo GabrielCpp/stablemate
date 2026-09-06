@@ -31,7 +31,9 @@ the array they address to come from different loads, because one render derives 
 
 ## Contract
 
-- producer: the Diff pane loader, after `GET /diff/{container_id}?repo={repo}` returns JSON whose `diff` member holds non-whitespace text and diff2html is present to parse it.
+The Diff pane loader starts with `GET /diff/{container_id}?repo={repo}` and decodes a
+fulfilled response as JSON before considering its `diff` member.
+
 - parser input: the loader hands the raw diff text to the parser exactly as the endpoint returned it. It does not pre-split, filter, normalize paths, redact content, or inspect the HTTP status of a fulfilled response.
 - storage: the parsed array is written to the client store's `diff` slice as `files`, alongside the selected index `idx` and a `status`. It is not serialized into markup, browser storage, URL state, server state, or any websocket frame.
 - consumer: the Diff tree island maps each entry to a `{path, idx, add, del}` builder entry and renders the resulting [dashboard path tree](dashboard-path-tree.md); the viewer island reads `files[idx]` and passes that one entry to diff2html's renderer.

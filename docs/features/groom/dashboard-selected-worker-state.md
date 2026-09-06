@@ -18,7 +18,7 @@ The id is the only selection state stored. Everything visible about selection â€
 ## Contract
 
 - producer: the run selector replaces the current value with the id read from a fleet row's `data-worker-id` or from a command-palette result. Nothing else writes it.
-- paired write: it is always written together with a `null` detail, so a render never pairs a new selection with the previous run's pane.
+- consistency: selecting a run writes its id and a `null` detail together, so a render never pairs a new selection with the previous run's pane.
 - consumers: the fleet list compares each row against it; the detail pane renders from it; the run selector fetches [GET /worker/{container_id}](http/groom.md#get-run-detail) with it and sends this tab's watch subscription for it; the keyboard row-movement handler uses it to find the current row index; the pushed-detail handler drops any `detail` frame whose id does not equal it.
 - lifetime: `null` when the dashboard module loads, then retained across fleet ticks, resyncs, connection-state changes, mode switches, repository-menu use, palette open/close cycles, pane loads, and answer broadcasts, until another selection overwrites it or the page unloads.
 - absent state: `null` means nothing is open in this tab. No row is marked current, the detail pane renders its own prompt to select a run, and keyboard row movement starts from the first rendered row.
@@ -36,7 +36,10 @@ The id is the only selection state stored. Everything visible about selection â€
 
 - type: `str | null`
 - default: `null`
-- required: false before a selection; required for every run-scoped request after one.
+- required: false before a selection.
+- verify: json_path(path="$.selected", equals=null)
+- required: true for every run-scoped request after one.
+- verify: json_path(path="$.selected", matches=".+")
 - wire-location: browser-internal; the store's `selected` field.
 - meaning: the workflow container id of the open run. It is compared against rendered rows, URL-encoded into `/worker/{container_id}`, sent as the watch command's target, and matched against the id on every pushed detail frame.
 - source: the chosen fleet row's `data-worker-id`, or the chosen palette result's id.
@@ -47,7 +50,10 @@ The id is the only selection state stored. Everything visible about selection â€
 
 - type: the `selected` class and `aria-current="true"`, derived from [field-selected-worker-id](#field-selected-worker-id)
 - default: absent on every row when nothing is selected or when no rendered row matches.
-- required: false; present on at most one row.
+- required: false
+- verify: count(subject="#runs-list .row.selected[aria-current=\"true\"]", equals=0)
+- required: present on at most one row
+- verify: count(subject="#runs-list .row.selected[aria-current=\"true\"]", equals=1)
 - meaning: the visible and announced marking of the open row. It is a render-time projection of the id, not stored state and not a second source of truth.
 - mutation rule: recomputed on every render of the fleet list. There is no reapplication step after a push, because a pushed fleet is rendered through the same component that reads the selection.
 - accessibility rule: `aria-current` is the semantic half and the class is the visual half. Neither moves focus; the row keeps focus where the operator left it.

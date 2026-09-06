@@ -76,7 +76,7 @@ in each repo's own `agents.yml` `workspace:` section. This is the primary lookup
   cannot answer to two names. For every folder, it resolves `ws_dir / folder["path"]` and, when
   an `agents.yml` can be loaded, adds its `template:` mapping and overlays its `workspace:` mapping
   onto the absolute `path`; unreadable, invalid, or absent files leave only the `path` entry.
-- consistency: without a workspace file, `resolve_workspace` uses `repo_dir` before `Path.cwd()`
+- consistency: workspace-repository-entry — without a workspace file, `resolve_workspace` uses `repo_dir` before `Path.cwd()`
   to produce the single repository entry.
 - verify: json_path(path="$.acme.path", matches=".*/acme")
 - **Raises:** nothing on a missing/invalid `agents.yml` (caught and degraded per folder); an invalid
@@ -104,7 +104,7 @@ exists by the time the first state runs. Neither coder nor author has a "setup" 
 - **`source_mode`:** `clone` (default) is a disposable copy reset to the remote on restart;
    `worktree` gives each concurrent run its own working tree of one host repo, sharing its objects
    and refs. A worktree is created **detached** because no workflow knows its branch yet.
-- consistency: re-running checkout leaves an existing `worktree` working tree unmodified.
+- consistency: worktree — re-running checkout leaves an existing `worktree` working tree unmodified.
 - verify: unchanged(subject="existing worktree contents")
 - **Output:** `None` (side effect: working trees under `workspace_root`); progress goes to stderr at
   `INFO` through a `"workhorse.checkout"` logger.
@@ -283,7 +283,7 @@ trailing commas before a closing `}`/`]`, neither valid in strict JSON.
   from `//` to end of line without knowing what a string literal is, so any workspace file holding a
   URL — `{"url": "https://example.com"}` — was truncated mid-string and then reported as invalid
   JSON. `.code-workspace` files routinely hold URLs and `//` paths.
-- consistency: invalid JSON5 input propagates the parser's `ValueError`.
+- consistency: json5-input — invalid JSON5 input propagates the parser's `ValueError`.
 - code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_jsonc`
 - verify: `workflows/tests/test_kit_jsonio.py::test_a_url_in_a_string_is_not_a_comment`
 
@@ -295,11 +295,13 @@ outright.
 
 - **Input:** `path: Path`, `label: str` (used only in the log message), `logger: logging.Logger`.
 - **Output:** the parsed `dict`, or `{}` on failure.
-- consistency: a missing, invalid, or unreadable JSON file returns an empty object after its warning.
+- consistency: json-file — a missing, invalid, or unreadable JSON file returns an empty object after its warning.
 - verify: count(subject="load_json result", equals=0)
 - emits: on `FileNotFoundError`, a single warning: `"<label> not found at <path>"`.
 - verify: emitted(event="<label> not found at <path>", count=1)
-- emits: on `json.JSONDecodeError` or `OSError`, a single warning that includes the exception text.
+- emits: on `json.JSONDecodeError`, a single warning that includes the exception text.
+- verify: emitted(event="<label> unreadable at <path>: <exception>", count=1)
+- emits: on `OSError`, a single warning that includes the exception text.
 - verify: emitted(event="<label> unreadable at <path>: <exception>", count=1)
 - code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_json`
 
@@ -313,7 +315,7 @@ have a richer in-process facade of their own; this is for the CLI that has none.
 - **Input:** `argv: list[str]`; `cwd: str | Path | None = None`; `check: bool = False` and
   `logger: logging.Logger | None = None` (keyword-only).
 - **Output:** the `subprocess.CompletedProcess` (`capture_output=True, text=True`).
-- consistency: with `check=True` and a non-zero exit, logs an error through `logger` (if given) and
+- consistency: subprocess-result — with `check=True` and a non-zero exit, logs an error through `logger` (if given) and
   raises `RuntimeError(f"{argv[0]} failed: {stderr}")`. With `check=False` (the default) a failed
   result is returned to the caller as-is.
 - code: `workflows/src/workhorse_workflows/kit/tools.py::run_tool`

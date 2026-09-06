@@ -15,7 +15,7 @@ It exists because the picker is shared. One repository menu serves both reposito
 ## Contract
 
 - purpose: route a newly selected checkout to the data loader for the currently active repository-backed pane.
-- caller contract: the repository-menu selection handler calls this loader synchronously, after copying the chosen entry's container, checkout directory, and label into [dashboard selected repository state](../dashboard-selected-repository-state.md) and after updating every picker label, and before the menu closes. The loader therefore always sees the new pair, never the previous one.
+- consistency: repository-menu selection writes the chosen entry's container, checkout directory, and label into [dashboard selected repository state](../dashboard-selected-repository-state.md), and updates every picker label, before synchronously calling this loader. The loader therefore sees the new pair rather than the previous one.
 - input: no parameters. The mode is read from the [dashboard client store](dashboard-client-store.md), and the delegated loaders read the selected pair from the same store.
 - mode source: the store's `mode` value, which is the same value the mode buttons write. It is store state rather than a DOM attribute read, so a mode change and a selection change cannot disagree about what is open.
 - output: no return value; completion means either one pane loader has been invoked or no repository-backed pane matched.

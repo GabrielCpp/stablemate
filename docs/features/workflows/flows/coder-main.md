@@ -27,7 +27,10 @@ title: Coder main flow
 - verify: count(subject="coder operator-gated blocking paths", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder`
 - detail: [coder workflow composition root](../concepts/coder-workflow-composition-root.md)
-- tests: `workflows/tests/coder/test_workflow.py`
+- detail: [coder main PR boundary](../concepts/coder-main-pr-boundary.md)
+- tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
+- tests: `workflows/tests/coder/test_workflow.py::test_the_pr_cluster_passes_through_offline_and_still_advances_the_queue`
+- tests: `workflows/tests/coder/test_workflow.py::test_story_mode_cuts_its_own_branch_and_ends_at_its_own_pr`
 
 ## Steps
 
@@ -52,6 +55,9 @@ pipeline state with its counters preserved. Documentation failure parks at the d
 operator gate. QA failure in the development environment documents the attempt and terminates
 without a commit; other exhausted QA paths remain operator-gated inside QA.
 
+The story's epic is resolved from the prepared story when story mode was handed a bare slug,
+otherwise from the queue selection or the explicit epic parameter.
+
 ### backlog-drain
 
 A passing QA result hands the backlog to the `fix` flow. That flow documents and commits each
@@ -66,9 +72,15 @@ stamps the story only after a clean reading, and returns to story selection. Sto
 selected story, tears down QA, and opens its story pull request. A second unchanged dirty reading
 parks at the dirty-worktree operator gate.
 
+The settle turn is chained to the story's implementation conversation, but `commit` reads the
+worktree again before stamping the story.
+
 ### pull-request-gates
 
-After an epic's queue is pruned, its pull request is opened when remote credentials and a PR exist.
+After an epic's queue is pruned, its pull request is opened when the branch is independently
+shippable. A branch carrying unmerged work from a set-aside epic is left without a PR so that the
+earlier gate cannot be bypassed.
 CI passes or is unavailable before merge; failed CI receives at most three automated repair laps
 before a human CI gate. Merge conflicts receive at most two automated resolution laps before a
-human merge gate. A successful or unavailable merge returns to epic selection.
+human merge gate. A successful or unavailable merge returns to epic selection, and a resumed run
+recognizes an already merged PR before deciding it is unavailable.

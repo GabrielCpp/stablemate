@@ -49,7 +49,7 @@ resolves any of them.
   read), `clock` (every `sleep` in this method and every `now` under it).
 - **Output:** `str` — the completed turn's result text, for
   [`extract_outputs`](extract-outputs.md) to parse.
-- consistency: `BackendInvocationError` propagates immediately for non-transient failures, after
+- consistency: backend-invocation-error — `BackendInvocationError` propagates immediately for non-transient failures, after
   `resilience.max_invoke_retries` short retries, or after `resilience.max_cap_waits` cap waits
   (default `48`, the backstop against a cap that never actually clears).
 

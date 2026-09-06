@@ -5,7 +5,7 @@ title: Sidecar connected session
 ---
 # Sidecar connected session
 
-Sidecar connected session is the per-websocket runtime owned by the [sidecar serving loop](sidecar-serving-loop.md). For one accepted [websocket-sidecar](../http/groom.md#websocket-sidecar) socket, it immediately advertises a `hello` [sidecar websocket frame](../sidecar-websocket-frame.md), delegates recursive workspace and runs watching to the [sidecar filesystem watch](sidecar-filesystem-watch.md), starts the [sidecar outbound sender](sidecar-outbound-sender.md) for filesystem-derived frames, serves host-issued data-plane RPC frames, and raises [ReloadRequested](groom-sidecar-module.md#concept-reloadrequested) so [sidecar live sessions](../sidecar-live-sessions.md) can restart the sidecar process.
+Sidecar connected session is the per-websocket runtime owned by the [sidecar serving loop](sidecar-serving-loop.md). For one accepted [websocket-sidecar](../http/groom.md#websocket-sidecar) socket, it immediately advertises a `hello` [sidecar websocket frame](../sidecar-websocket-frame.md), delegates recursive workspace and runs watching to the [sidecar filesystem watch](sidecar-filesystem-watch.md), starts the [sidecar outbound sender](sidecar-outbound-sender.md) for filesystem-derived frames, serves host-issued data-plane RPC frames, and raises [ReloadRequested](groom-sidecar-module.md#concept-reloadrequested) so [sidecar live sessions](../sidecar-live-sessions.md) can restart the sidecar process. The session ends normally when inbound iteration ends; a host `reload` frame instead transfers control to the serving loop through `ReloadRequested`.
 
 - code: groom/groom/sidecar.py::_run_session
 - tests: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises
@@ -15,7 +15,6 @@ Sidecar connected session is the per-websocket runtime owned by the [sidecar ser
 
 - sig: `async _run_session(ws) -> None`
 - input: `ws` is one already-connected websocket session object that supports `send(str)` and async iteration over inbound text frames.
-- output: returns `None` only when inbound iteration ends without a reload request; raises the sidecar reload control exception when the host sends a reload frame.
 - initial frame: sends exactly one `hello` [sidecar websocket frame](../sidecar-websocket-frame.md) before starting the watch task or consuming inbound frames.
 - watched roots: asks the [sidecar filesystem watch](sidecar-filesystem-watch.md) to watch the configured workspace mount and configured runs mount recursively; absent roots are dropped rather than treated as session failure.
 - outbound queue: creates one in-memory FIFO outbox for filesystem-derived `progress` and `blocked` frames and starts the [sidecar outbound sender](sidecar-outbound-sender.md) task that serializes each queued frame as websocket JSON text.
@@ -65,7 +64,9 @@ Sidecar connected session is the per-websocket runtime owned by the [sidecar ser
 
 - sig: `async _run_session(ws) -> None`
 - abstract: false
-- raises: [ReloadRequested](groom-sidecar-module.md#concept-reloadrequested) for a host `reload` frame; JSON parsing and expected sender cancellation cleanup are handled locally, while unexpected websocket, watch, classifier, RPC, or serialization failures can propagate.
+- raises: [ReloadRequested](groom-sidecar-module.md#concept-reloadrequested) for a host `reload` frame.
+- raises: JSON parsing and expected sender cancellation cleanup are handled locally.
+- raises: unexpected websocket, watch, classifier, RPC, or serialization failures can propagate.
 - verify: emitted(event="hello", count=1)
 - code: groom/groom/sidecar.py::_run_session
 - tests: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises

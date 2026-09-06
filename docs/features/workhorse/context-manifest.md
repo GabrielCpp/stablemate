@@ -19,6 +19,8 @@ them back at render time for the [farrier Jinja helpers](concepts/farrier-global
 
 - file: `.agents/agents-context.json` (or a per-backend override, `.agents/agents-context.<AGENT_CLI>.json`)
 - code: `workhorse/workhorse/manifest.py::load_context_manifest`
+- code: `workhorse/workhorse/manifest.py::ContextManifest`
+- code: `workhorse/workhorse/manifest.py::ManifestContext`
 
 The loader's explicit-missing-file error and empty auto-detected-manifest behaviour are covered by
 `workhorse/tests/test_context_manifest.py::test_explicit_missing_context_file_is_hard_error` and
@@ -52,15 +54,19 @@ either way, never a silent empty manifest.
 
 ## Fields
 
-### template
-- type: `map<string, any>` — required: no — default: `{}`
+### field: template
+- type: `map<string, any>`
+- default: `{}`
+- required: false
 
 Arbitrary key/value pairs from the repo's farrier `agents.yml` (`vars:`/`template:` blocks,
 merged). Copied into the run's starting context verbatim under the `template` key, so a library
 prompt reads `{{ template.<key> }}`.
 
-### repo
-- type: `map<string, any>` — required: no — default: `{}`
+### field: repo
+- type: `map<string, any>`
+- default: `{}`
+- required: false
 
 Repo identity/metadata from `agents.yml`'s `repo:` block, plus `name` (defaults to the repo dir
 name), `prefix` (the farrier install prefix), and `root` — pinned to the literal string `"."` in
@@ -68,16 +74,20 @@ the committed manifest (the install machine's absolute path is deliberately not 
 cross-machine drift; the agent's working directory is already the repo root at run time). Copied
 into context verbatim under the `repo` key (`{{ repo.<key> }}`).
 
-### vars
-- type: `map<string, any>` — required: no — default: `{}`
+### field: vars
+- type: `map<string, any>`
+- default: `{}`
+- required: false
 
-The same value as [`template`](#template) — farrier writes both keys so a prompt can use whichever
+The same value as [`template`](#field-template) — farrier writes both keys so a prompt can use whichever
 name it prefers. Copied into context verbatim under the `vars` key (`{{ vars.<key> }}`); distinct
 from — and unrelated to — a workflow's own `vars:` block or [`run`](workhorse.md#run)'s
 `--params`/`--params-file`.
 
-### instructions
-- type: `map<string, string>` — required: no — default: `{}`
+### field: instructions
+- type: `map<string, string>`
+- default: `{}`
+- required: false
 
 Selected-skill id → repo-root-relative path to that skill's **installed** file for the target
 backend (e.g. `.claude/skills/acme-coder-workflow/SKILL.md`). Stashed under the reserved context
@@ -85,34 +95,42 @@ key `_instructions`; read by the `instruction_ref`/`instruction_file`/`skill_fil
 which fall back to a `"generated <name> instruction file when installed"` placeholder for a name
 not in the map.
 
-### instruction_tags
-- type: `map<string, list<string>>` — required: no — default: `{}`
+### field: instruction_tags
+- type: `map<string, list<string>>`
+- default: `{}`
+- required: false
 
 Selected-skill id → the tags that skill's front matter declares (`tags: [web, tests]`), lowercased.
-Keyed by the same alias names as [`instructions`](#instructions), so a matched name resolves
+Keyed by the same alias names as [`instructions`](#field-instructions), so a matched name resolves
 through the same lookup an `instruction_ref` would; a skill declaring no tags is simply absent
 rather than written as `[]`. Stashed under the reserved context key `_instruction_tags`; read by
 the `find_by_tags(*tags)` Jinja helper, which renders the skills carrying **all** the queried tags
-and renders nothing when none do. Unlike [`instructions`](#instructions), it is **not**
+and renders nothing when none do. Unlike [`instructions`](#field-instructions), it is **not**
 path-rewritten per backend — a tag is a word, not a location. A manifest written by an older
 farrier has no such key, and every tag query on it matches nothing.
 
-### prompts
-- type: `map<string, string>` — required: no — default: `{}`
+### field: prompts
+- type: `map<string, string>`
+- default: `{}`
+- required: false
 
 Selected-prompt id → repo-root-relative path to that prompt's installed file. Stashed under the
 reserved context key `_prompts`; read by the `prompt_ref`/`prompt_file` Jinja helpers (same
-placeholder fallback as [`instructions`](#instructions)).
+placeholder fallback as [`instructions`](#field-instructions)).
 
-### used_skills
-- type: `list<string>` — required: no — default: `[]`
+### field: used_skills
+- type: `list<string>`
+- default: `[]`
+- required: false
 
 The sorted set of skill ids selected for this repo. Stashed under the reserved context key
 `_used_skills`; read by the `isUsingInstruction(name)` Jinja helper (`name in used_skills`), which
 lets a prompt conditionally include a section only when that skill was actually installed.
 
-### skill_dir
-- type: `string` — required: no — default: `""`
+### field: skill_dir
+- type: `string`
+- default: `""`
+- required: false
 
 Repo-root-relative directory the manifest's own skills were installed under (e.g.
 `.claude/skills`). Stashed under the reserved context key `_skill_dir`; read by the `skill_dir()`
@@ -137,7 +155,7 @@ starting context; that is the only difference the removal made, and it is why th
 part of either front end.)
 
 **Per-backend instruction rewrite.** When the active `$AGENT_CLI` differs from the backend the
-manifest's own `skill_dir` was generated for, every path in [`instructions`](#instructions) is
+manifest's own `skill_dir` was generated for, every path in [`instructions`](#field-instructions) is
 rewritten by substituting the manifest's `skill_dir` prefix for the active backend's own skills
 directory — all backends share the `{skill_dir}/{prefix}-{name}/SKILL.md` layout, so a prefix swap
 is sufficient. The active backend's directory comes from a fixed map: `claude` →
@@ -145,6 +163,49 @@ is sufficient. The active backend's directory comes from a fixed map: `claude` �
 map (`cline`, `opencode`) keeps the manifest's own paths unrewritten. This is what lets one
 manifest, generated for one backend, still resolve correctly when a run is launched with
 `--cli codex` against a repo installed for Claude.
+
+## Methods
+
+### method: ContextManifest.project
+- sig: `ContextManifest.project(*, backend: str, repo_root: Path) -> ManifestContext`
+- does: rewrite instruction paths from the manifest's skill directory to the active backend directory when they differ
+- does: carry template, repo, vars, prompts, tags, selected skills, target skill directory, and absolute repo root into the runtime context
+- returns: a `ManifestContext` marked present
+- verify: json_path(path="$.skill_dir", matches=".+")
+- code: `workhorse/workhorse/manifest.py::ContextManifest.project`
+
+### method: ManifestContext.as_context
+- sig: `ManifestContext.as_context() -> dict[str, Any]`
+- does: return an empty mapping for the manifest-free case
+- does: emit ordinary values and reserved underscore-prefixed manifest keys when present
+- returns: the context layer merged underneath every agent turn's arguments
+- verify: json_path(path="$.present", equals=true)
+- code: `workhorse/workhorse/manifest.py::ManifestContext.as_context`
+
+### method: ManifestContext.from_context
+- sig: `ManifestContext.from_context(context: Mapping[str, Any]) -> ManifestContext`
+- does: read reserved manifest keys from an already-merged render context
+- does: mark the manifest present when instruction or prompt maps are present
+- returns: a tolerant `ManifestContext` value
+- verify: json_path(path="$.present", equals=true)
+- code: `workhorse/workhorse/manifest.py::ManifestContext.from_context`
+
+### method: build_manifest_context
+- sig: `build_manifest_context(raw: dict[str, Any], *, backend: str | None = None, repo_root: str | None = None) -> ManifestContext`
+- does: validate raw manifest data with tolerant defaults and ignored unknown keys
+- does: resolve omitted backend and repo root from `AGENT_CLI`/config and `AGENT_REPO_DIR`/`.`
+- returns: a backend-projected `ManifestContext`
+- verify: json_path(path="$._repo_root", matches=".+")
+- code: `workhorse/workhorse/manifest.py::build_manifest_context`
+
+### method: load_context_manifest
+- sig: `load_context_manifest(context_file: str | None) -> ManifestContext`
+- does: load an explicit file or select the active-CLI-specific then generic auto-detected manifest
+- does: return an absent `ManifestContext` when no auto-detected manifest exists
+- raises: `SystemExit(1)` after reporting an explicit missing file, unreadable JSON, or non-object top level
+- returns: the projected context for a valid manifest
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/manifest.py::load_context_manifest`
 
 ## Sample
 

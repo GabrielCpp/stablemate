@@ -23,7 +23,10 @@ The fetch and the subscription are both issued because they answer different que
 - loading state: `detail: null` against a non-null `selected` is what the pane renders as `Loading…`. The two fields are written together precisely so that state cannot be mistaken for *nothing selected*.
 - subscription: sends this tab's watch command for the id over the dashboard websocket, replacing whatever it was watching. A tab watches at most one run — the pane shows one — and a refused send is not retried, because the next selection or reconnect re-sends it anyway.
 - detail fetch: requests [GET /worker/{container_id}](../http/groom.md#get-run-detail) and stores the parsed body as the pane's detail.
-- race rule: each selection takes the next sequence number, and a reply is stored only when it is still the newest selection **and** no pushed detail has landed in the meantime. A `detail` frame that arrives first is the fresher truth; the reply to a request issued before it must not overwrite it.
+- consistency: A detail response for a superseded selection must not replace the current selection's detail.
+- verify: unchanged(subject="dashboard detail for the current selection")
+- consistency: A fetched detail response must not overwrite a `detail` frame received after that fetch began. A frame that arrives first is the fresher truth.
+- verify: unchanged(subject="dashboard detail after a newer pushed detail")
 - fetch failure: a rejected fetch is swallowed. The pane stays in its loading state and is filled by the watch subscription's next push, so a transient failure costs a tick rather than an error message.
 - selection styling: rendered, not applied. The fleet row component receives whether it is selected and emits the `selected` class and `aria-current="true"` from that; no code walks the document toggling classes.
 - accessibility effect: the open row carries `aria-current="true"` and every other row carries no `aria-current` attribute at all — absent rather than `"false"`, so assistive technology announces exactly one current row.
@@ -37,7 +40,12 @@ The fetch and the subscription are both issued because they answer different que
 
 - sig: `async select(id: str) -> void`
 - abstract: false
-- raises: none intentionally; the detail fetch's rejection is caught.
+- does: leaves the pane in its loading state until the subscription fills it.
+- verify: unchanged(subject="dashboard detail after a rejected detail fetch")
+- raises: none intentionally.
+- verify: unchanged(subject="dashboard detail after a rejected detail fetch")
+- raises: a rejected detail fetch is caught.
+- verify: unchanged(subject="dashboard detail after a rejected detail fetch")
 - code: groom/groom/assets/dashboard.js::select
 - input: the workflow container id to open.
 - output: none; the effects are the store write, the watch command, and at most one detail store write.

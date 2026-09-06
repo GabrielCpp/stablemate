@@ -19,7 +19,6 @@ Workspace volume diff reader is the fallback implementation used by the [serve w
 - input: `volume` is the Docker workspace volume name mounted read-only at `/vol` for the duration of the read.
 - input: `repo_dir` is a volume-relative checkout directory; `""` asks the reader to select the first git checkout discovered in the workspace volume.
 - validation: this reader does not sanitize or normalize an explicit `repo_dir`; first-party callers supply values from repository discovery or the repository picker.
-- output: returns raw unified diff text for the selected checkout's working tree compared with `HEAD`, suitable for [workspace diff data](../workspace-diff-data.md).
 - output: returns `""` when no checkout is found, the Docker reader process exits non-zero, the git diff command exits non-zero, or no diff text is available.
 - repository selection: an explicit `repo_dir` is used unchanged as the checkout under `/vol`; an empty `repo_dir` is resolved through the first-repository lookup before attempting the diff.
 - command: runs a throwaway `alpine/git:2.43.0` container with the workspace volume mounted read-only at `/vol`, `safe.directory=*`, working directory `/vol/{repo_dir}`, and `git diff HEAD` as the only diff command.
@@ -37,7 +36,8 @@ Workspace volume diff reader is the fallback implementation used by the [serve w
 - does: return an empty diff without starting a git container when no checkout resolves.
 - does: run `git diff HEAD` in a throwaway read-only container mounted at `/vol` with `safe.directory=*`.
 - does: leave the selected checkout and its containing workspace volume unchanged.
-- raises: process-launch and timeout exceptions from the shared Docker subprocess runner are not caught by this reader.
+- raises: process-launch exceptions from the shared Docker subprocess runner are not caught by this reader.
+- raises: timeout exceptions from the shared Docker subprocess runner are not caught by this reader.
 - raises: missing repositories and non-zero Docker or git completion do not raise; they produce an empty result.
 - returns: raw unified diff stdout unchanged, including an empty string when the selected checkout has no working-tree changes.
 - verify: json_path(path="diff", matches="^diff --git")

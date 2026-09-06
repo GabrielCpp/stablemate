@@ -5,7 +5,7 @@ title: Docker ps container row
 ---
 # Docker ps container row
 
-Docker ps container row is one JSON-line value emitted by Docker's `docker ps -a --format "{{json .}}"` command and accepted by Groom's [Docker all-container listing reader](concepts/docker-all-container-listing-reader.md). The reader preserves each successfully decoded JSON value without validating it as an object. The [workflow discovery scan](concepts/workflow-discovery-scan.md) considers only decoded object rows with a truthy `ID` value as candidate containers; it ignores every other Docker-provided field.
+Docker ps container row is one JSON-line value emitted by Docker's `docker ps -a --format "{{json .}}"` command and accepted by Groom's [Docker all-container listing reader](concepts/docker-all-container-listing-reader.md). [`docker_ps_all`](../../../groom/groom/docker_io.py) preserves each successfully decoded JSON value without validating it as an object, and [`scan`](../../../groom/groom/discovery.py) calls `entry.get("ID", "")` to derive the container IDs it inspects. Docker's normal output therefore needs to decode to object rows for discovery to proceed; fields other than `ID` are not used by the scan.
 
 - file: not an on-disk Groom artifact; this is one stdout line from the Docker CLI `docker ps -a --format "{{json .}}"` stream.
 - code: `groom/groom/docker_io.py::docker_ps_all`
@@ -15,7 +15,6 @@ Docker ps container row is one JSON-line value emitted by Docker's `docker ps -a
 ## Contract
 
 - producer: Docker CLI emits one JSON value per container row when invoked with `docker ps -a --format "{{json .}}"`.
-- consumer: Groom's all-container listing reader parses each line independently and returns decoded values to discovery; discovery keeps decoded object rows with a truthy `ID` field and ignores rows without one.
 - framing: each row occupies one stdout line; blank lines are ignored before JSON parsing.
 - malformed row handling: a line that is not valid JSON is skipped by the listing reader and is not represented in the returned row list.
 - extra fields: Docker may include fields outside this contract; Groom passes them through from the listing reader and current discovery logic ignores them.

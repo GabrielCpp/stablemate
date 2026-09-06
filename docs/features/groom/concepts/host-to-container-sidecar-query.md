@@ -47,7 +47,8 @@ The query is read-only with respect to Docker metadata, named volumes, the workf
 ## Algorithm
 
 - step: Invoke the [Docker exec runner](docker-exec-runner.md) for the target container with the sidecar query command, `nobody` user, and sidecar home environment.
-- step: If Docker exec raises `OSError` or a subprocess exception, return `None`.
+- consistency: Docker exec `OSError` or `subprocess.SubprocessError` returns `None`, allowing discovery to fall back to volume reconstruction.
+- verify: absent(subject="sidecar query result")
 - step: If the completed process return code is non-zero, return `None`.
 - step: Decode the completed process stdout as JSON.
 - step: If decoding fails, return `None`.
@@ -60,10 +61,12 @@ The query is read-only with respect to Docker metadata, named volumes, the workf
 
 - sig: `sidecar_query(container_id: str) -> dict[str, Any] | None`
 - abstract: false
-- raises: no intentional exception for missing Docker, Docker exec timeout, non-zero Docker exit, malformed JSON stdout, or non-object JSON stdout; unexpected failures outside `OSError` and subprocess exceptions can propagate.
+- raises: no intentional exception for missing Docker, Docker exec timeout, non-zero Docker exit, malformed JSON stdout, or non-object JSON stdout.
+- verify: absent(subject="exception from a represented query-unavailable case")
+- raises: unexpected failures outside `OSError` and subprocess exceptions can propagate.
+- verify: absent(subject="unexpected failure converted to None")
 - returns: decoded [sidecar snapshot data](../sidecar-snapshot-data.md) as a dictionary when the in-container query command exits successfully and stdout is a JSON object; otherwise `None`.
 - verify: json_path(path="$.current_node", equals="n1")
-- verify: absent(subject="sidecar query result")
 - code: groom/groom/docker_io.py::sidecar_query
 - arg: `container_id`; type `str`; required; no default; identifies the running workflow container targeted by Docker exec.
 - calls: [Docker exec runner](docker-exec-runner.md#docker_exec) with `args=["uv", "run", "groom-sidecar", "--query"]`, `user="nobody"`, and `env={"HOME": "/claude-state"}`.
@@ -75,7 +78,9 @@ Runs exactly one host-to-container sidecar query for the supplied container id a
 ## Failure behavior
 
 - Container not running: the discovery resolver does not call this function; if an already-running target stops before or during exec, the Docker failure is returned as `None`.
-- Docker unavailable: represented as `None` when process launch raises a caught `OSError`.
+
+Docker unavailability is one launch failure represented by the caught `OSError` branch, which returns `None`.
+
 - Timeout: represented as `None` when the [Docker exec runner](docker-exec-runner.md) raises a caught subprocess timeout.
 - Legacy sidecar: represented as `None` when the command exits non-zero because `groom-sidecar --query` is unavailable or fails.
 - Non-JSON stdout: represented as `None` and does not propagate the parse error.

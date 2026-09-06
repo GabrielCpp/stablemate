@@ -20,8 +20,9 @@ Workspace volume file-content reader is the shared volume text-read operation us
 - command: runs `docker run --rm -v {volume}:/vol:ro alpine:3.20 cat /vol/{validated_rel_path}` as one tokenized argv list with captured text output and the shared Docker timeout through the [Docker subprocess runner](docker-subprocess-runner.md).
 - reader image: uses the shared Alpine image constant `alpine:3.20` for the temporary reader container.
 - timeout: uses the shared Docker I/O timeout of 20 seconds for the complete container create/read/remove subprocess.
-- output: returns the selected file's raw text exactly as emitted on stdout by the reader process when the process exits with code `0`; this may be an empty string for an empty file.
-- output: returns `None` when the reader process exits non-zero, including missing-file and unreadable-file cases.
+- consistency: A zero-exit reader process returns the selected file's raw stdout text unchanged, including an empty string for an empty file.
+- verify: json_path(path="$.content", equals="print(1)\n")
+- consistency: A non-zero reader process returns `None`, including missing-file and unreadable-file cases.
 - failure: raises `ValueError` when `rel_path` is empty, absolute, contains an empty path segment, or contains `..`; the HTTP invocation converts that failure to an empty `200 OK` response.
 - failure: subprocess launch failures and timeout failures are not converted by this reader; callers that need endpoint-specific empty responses must catch them outside this function.
 - side effects: creates only a throwaway read-only Docker container for the read; it does not write files, start or stop workflow containers, change workflow state, change sidecar registry state, broadcast websocket frames, or write logs.
@@ -75,7 +76,8 @@ Workspace volume file-content reader is the shared volume text-read operation us
 
 - sig: `read_file(volume: str, rel_path: str) -> str | None`
 - abstract: false
-- raises: `ValueError` for unsafe relative paths before any reader process is started; process launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate unchanged.
+- raises: `ValueError` for unsafe relative paths before any reader process is started.
+- raises: process launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate unchanged.
 - verify: http_status(code=200, path="/file/abc123")
 - returns: the [field-return-value](#field-return-value) contract: raw stdout text on reader exit `0`, otherwise `None`.
 - verify: json_path(path="$.content", equals="print(1)\n")
@@ -105,14 +107,15 @@ Reads one caller-selected file from one Docker volume and gives callers the raw 
 ## Algorithm
 
 - step: Receive a Docker volume name and caller-selected relative file path from an HTTP, discovery, or gate-answering caller.
-- step: Validate `rel_path` with the [workspace volume relative path guard](workspace-volume-relative-path-guard.md) before constructing the container destination path; stop with `ValueError` if the path is unsafe.
+- step: Validate `rel_path` with the [workspace volume relative path guard](workspace-volume-relative-path-guard.md) before constructing the container destination path.
 - step: Build a read-only Docker volume mount at `/vol` and a destination argument of `/vol/{validated_rel_path}`.
 - step: Run a short-lived Alpine container whose command is `cat` against that destination, capturing stdout, stderr, and the process exit code through the shared Docker subprocess runner and timeout.
 - step: Return `None` when the completed process exit code is not `0`; otherwise return stdout unchanged.
 
 ## Failure Behavior
 
-- unsafe path: raises `ValueError` before Docker is invoked.
+- consistency: An unsafe `rel_path` raises `ValueError` before a Docker reader process starts.
+- verify: absent(subject="Docker reader process for an unsafe relative path")
 - missing file: returns `None` when the reader process completes with a non-zero status.
 - unreadable file: returns `None` when the reader process completes with a non-zero status.
 - missing or unusable volume: returns `None` when Docker reports the failure as a completed non-zero process.
@@ -124,5 +127,6 @@ Reads one caller-selected file from one Docker volume and gives callers the raw 
 
 - uses: [serve workspace file content](../http/groom.md#serve-workspace-file-content) calls this reader only after the sidecar file-content request is unavailable or fails, then serializes the returned text as [workspace file content data](../workspace-file-content-data.md) or an empty body.
 - uses: [workflow discovery scan](workflow-discovery-scan.md) calls this reader for the latest run's `checkpoint.json` [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md), the latest run's `run.json` [sidecar run metadata](../sidecar-run-metadata.md), and candidate awaiting gate files after the sidecar query path is unavailable or impossible for a stopped container.
-- uses: [gate-answering layer](gate-answering-layer.md) calls this reader while holding the per-gate answer lock so it can reject answers whose [operator gate context file](../operator-gate-context-file.md) is no longer awaiting operator input.
+- consistency: While holding the per-gate answer lock, the [gate-answering layer](gate-answering-layer.md) rereads the [operator gate context file](../operator-gate-context-file.md) and rejects an answer when it is no longer awaiting operator input.
+- verify: unchanged(subject="operator gate context file")
 - not used by: the connected sidecar happy path for file content; [serve workspace file content](../http/groom.md#serve-workspace-file-content) skips this reader when a sidecar `getFile` call returns a result.

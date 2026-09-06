@@ -22,11 +22,12 @@ Dashboard client queue set is groom's process-local fan-out target for browser d
 - payload rule: the queue set accepts one already-projected `dict` and does not inspect its `type`, so a [dashboard state payload](../dashboard-state-payload.md), a `notify`, and an `answered` message travel the same path. Serialization to JSON text happens later, in the send loop.
 - addressing rule: this set is the fleet-wide fan-out only. A message addressed to the tabs watching one run is enqueued directly on the queues named by the [run watch registry](run-watch-registry.md) and never travels through a broadcast pass.
 - initial snapshot rule: the newly accepted browser websocket receives its first `state` snapshot by a direct websocket text send before the send and receive tasks are started; that first snapshot is not enqueued through this set, while any concurrent later broadcasts can enqueue to the already-registered queue.
-- persistence: no broker, database, cross-process coordination, replay buffer, or durable notification store participates.
+- persistence: dashboard-client-queue-set — no broker, database, cross-process coordination, replay buffer, or durable notification store participates.
 
 ## Callers
 
-- dashboard websocket registration: [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-session) creates one unbounded queue after accepting `/ws`, registers it with [register dashboard client](#method-register-dashboard-client), sends the first shell snapshot directly to the socket, starts the [dashboard websocket send loop](dashboard-websocket-send-loop.md), and unregisters the same queue in cleanup through [unregister dashboard client](#method-unregister-dashboard-client).
+The [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-session) accepts `/ws`, allocates and registers one unbounded queue, sends the first shell snapshot directly to the socket, starts the [dashboard websocket send loop](dashboard-websocket-send-loop.md), and unregisters that queue during cleanup through [unregister dashboard client](#method-unregister-dashboard-client).
+
 - state convergence broadcasts: [dashboard shell broadcaster](dashboard-shell-broadcaster.md) calls [broadcast dashboard message](#method-broadcast-dashboard-message) after projecting the current fleet for refresh, progress, blocked, exited, sidecar hello, sidecar progress, live-clock, and startup scan paths.
 - blocked notifications: [receive blocked push](../http/groom.md#receive-blocked-push) and [sidecar blocked applier](sidecar-blocked-applier.md) broadcast the fleet through the shell broadcaster and then call [broadcast dashboard message](#method-broadcast-dashboard-message) again with a one-shot `{"type": "notify", "message": …}` object, so the toast accompanies a real new block rather than every reconciliation re-push.
 - answered events: [send detail answer](../gui/screens/groom-dashboard.md#send-detail-answer) reaches the dashboard answer handler, which broadcasts the fleet and pushes the answered run's detail to its watchers, then — only on a successful gate answer — calls [broadcast dashboard message](#method-broadcast-dashboard-message) with a `{"type": "answered", "id": …, "file_path": …}` object.
@@ -78,7 +79,8 @@ Adds one websocket outbound queue to the process-local client set. Adding the sa
 
 #### Effects
 
-- Writes: inserts the supplied queue into `CLIENTS`.
+- consistency: registering the supplied queue creates its membership in `CLIENTS`.
+- verify: created(subject="the supplied queue's CLIENTS membership")
 - Preserves: workflow records, gate maps, sidecar connections, logs, queued messages already present on any queue, and websocket transport state.
 - Does not: project payloads, send websocket frames, validate queue ownership, create queues, or persist client membership outside process memory.
 - Bottoms out: the layer only calls the built-in set membership operation for `CLIENTS`; it calls no other first-party groom symbol.
@@ -90,14 +92,13 @@ Adds one websocket outbound queue to the process-local client set. Adding the sa
 - raises: none intentionally raised by the registry operation.
 - code: groom/groom/state.py::remove_client
 
-Removes one websocket outbound queue from the process-local client set. Removing an absent queue is a no-op.
+Removes one websocket outbound queue from the process-local client set. Removing an absent queue is a no-op. Unregistration affects only future broadcast membership; queue draining, task cancellation, and websocket close behavior remain owned by the dashboard websocket session and send loop. It also removes the queue's [run watch registry](run-watch-registry.md) entry so a disconnect cannot leave a subscription pointing at a queue nobody reads.
 
 #### Inputs
 
 - queue: an `asyncio.Queue` object previously created for one dashboard websocket session; required; default none.
 - identity: removal is by the queue object's hash/equality identity, the same identity used during registration. The registry does not derive removal identity from the websocket object, client address, workflow id, browser tab id, or queue contents.
 - absent queue: a queue that is not currently in `CLIENTS` is accepted and leaves the set unchanged.
-- cleanup scope: unregistering affects only future broadcast membership; queue draining, task cancellation, and websocket close behavior remain owned by the dashboard websocket session and send loop. Removing a client also drops its entry from the [run watch registry](run-watch-registry.md), so a disconnect can never leave a subscription pointing at a queue nobody reads.
 
 #### Algorithm
 
@@ -107,7 +108,10 @@ Removes one websocket outbound queue from the process-local client set. Removing
 
 #### Effects
 
-- Writes: removes at most the supplied queue object from `CLIENTS`, and pops that queue's entry from `WATCHING`.
+- consistency: unregistering a member queue removes its membership from `CLIENTS`.
+- verify: removed(subject="the member queue's CLIENTS membership")
+- consistency: unregistering a queue removes that queue's entry from `WATCHING`.
+- verify: removed(subject="the queue's WATCHING entry")
 - Broadcast consequence: future calls to [broadcast dashboard message](#method-broadcast-dashboard-message) no longer target this queue after successful removal; any broadcast snapshot taken before removal may still contain it.
 - Preserves: queued messages already held by that queue object, all other registered queues, workflow records, gate maps, sidecar connections, logs, and websocket transport state.
 - Does not: close the websocket, cancel the outbound loop, place a sentinel item, drain queued messages, project payloads, send websocket frames, validate queue ownership, or persist client membership outside process memory.
@@ -117,7 +121,8 @@ Removes one websocket outbound queue from the process-local client set. Removing
 
 - sig: `async broadcast(message: dict) -> None`
 - abstract: false
-- raises: propagates exceptions from a queued client's `put` operation; no domain-specific error value is returned.
+- raises: propagates exceptions from a queued client's `put` operation.
+- raises: no domain-specific error value is returned.
 - code: groom/groom/state.py::broadcast
 
 Enqueues one already-projected JSON message object for every dashboard websocket queue that is registered at the start of the broadcast pass.
@@ -133,7 +138,9 @@ Enqueues one already-projected JSON message object for every dashboard websocket
 
 - Reads: copies the current `CLIENTS` set into a list before enqueueing, so clients that connect or disconnect after that snapshot do not change the target set for this pass.
 - Enqueues: awaits `queue.put(message)` once for each queue in the snapshot, passing the exact object supplied by the caller without serializing, wrapping, filtering, or cloning it. Every tab therefore shares one object; nothing downstream may mutate it.
-- Emits: no return value; completion means every queue in the snapshot accepted the message.
+- Emits: no return value.
+- Emits: completion means every queue in the snapshot accepted the message.
+- verify: emitted(event="dashboard message", count=1)
 - Failure: if a queue put raises or cancellation interrupts the coroutine, the exception propagates to the caller after any earlier queues in the iteration may already have accepted the message; the method does not roll back those enqueues.
 - Empty set: when no dashboard clients are registered, the copied target list is empty and the method completes without enqueueing or raising a no-clients condition.
 - Does not: mutate `CLIENTS`, create or remove clients, inspect workflow state, serialize messages, call `task_done`, send websocket frames directly, contact sidecar sockets, write logs, retry failed clients, or persist broadcast data outside process memory.
@@ -143,15 +150,17 @@ Enqueues one already-projected JSON message object for every dashboard websocket
 
 ### algorithm-register-one-dashboard-client
 
+Registration produces no acknowledgement, queue snapshot, client count, or websocket frame.
+
 - step: Receive the outbound queue allocated for an accepted dashboard websocket session.
 - step: Add that exact queue object to the process-local client set.
-- step: Return without emitting a count, snapshot, websocket frame, or acknowledgement.
 
 ### algorithm-unregister-one-dashboard-client
 
+In `groom/groom/state.py::remove_client`, execution ends after discarding the queue from `CLIENTS` and removing its `WATCHING` entry; the function contains no websocket close, task cancellation, queue-draining, or count-emission operation.
+
 - step: Receive the outbound queue associated with a dashboard websocket session cleanup path.
 - step: Discard that exact queue object from the process-local client set, tolerating an already-absent queue.
-- step: Return without closing the websocket, cancelling tasks, draining the queue, or emitting a count.
 
 ### algorithm-broadcast-one-dashboard-message
 

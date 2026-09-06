@@ -16,7 +16,7 @@ or whether the turn is blocked or declines the requested rework.
 ### status
 - type: string; `blocked`, `standoff`, or any non-blocked completion status
 - default: empty string
-- required: true
+- required: false
 - semantics: selects coverage checking, the coverage gate, or the normal continuation
 - verify: json_path(path="$.status", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit`
@@ -24,7 +24,7 @@ or whether the turn is blocked or declines the requested rework.
 ### notes
 - type: string
 - default: empty string
-- required: true
+- required: false
 - semantics: agent findings passed to a gate or the next rework turn
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit`

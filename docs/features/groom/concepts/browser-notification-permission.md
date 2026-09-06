@@ -5,14 +5,13 @@ title: Browser notification permission
 ---
 # Browser notification permission
 
-Browser notification permission is browser-owned state requested by the dashboard's [enable browser notifications from settings](../gui/screens/groom-dashboard.md#enable-browser-notifications-from-settings) interaction and the dashboard's one-time first-click bootstrap, then consumed when a [dashboard notify message](../dashboard-notify-message.md) arrives on the socket after a [blocked push payload](../blocked-push-payload.md), a [sidecar blocked applier](sidecar-blocked-applier.md) delta, or a fired alert rule records the event. It gates only system-level browser notifications for the [groom dashboard](../gui/screens/groom-dashboard.md); the in-page [dashboard toast pusher](dashboard-toast-pusher.md) remains available without this permission.
+Browser notification permission is browser-owned state requested by the dashboard's [enable browser notifications from settings](../gui/screens/groom-dashboard.md#enable-browser-notifications-from-settings) interaction and the dashboard's one-time first-click bootstrap, then consumed when a [dashboard notify message](../dashboard-notify-message.md) arrives on the socket after a [blocked push payload](../blocked-push-payload.md), a [sidecar blocked applier](sidecar-blocked-applier.md) delta, or a fired alert rule records the event. The browser owns the permission prompt, stored permission value, repeat-request behavior, denied-state recovery, and persistence; the dashboard only calls the Notification API during click handling and reads its exposed permission value before creating a system notification. It gates only system-level browser notifications for the [groom dashboard](../gui/screens/groom-dashboard.md); the in-page [dashboard toast pusher](dashboard-toast-pusher.md) remains available without this permission.
 
 - code: groom/groom/assets/dashboard.js::wireEvents
 - code: groom/groom/assets/dashboard.js::onNotify
 
 ## Contract
 
-- owner: the browser owns the permission prompt, stored permission value, repeat-request behavior, denied-state recovery, and persistence; groom only calls the Notification API from dashboard click handling and later reads the exposed permission value before creating a system notification.
 - availability guard: every groom access to the Notification API first checks that `"Notification" in window`; browsers without the API never receive a permission request and never create a system notification.
 - first-click request path: when the dashboard script loads and the browser reports both Notification API availability and `Notification.permission === "default"`, groom registers one body click listener that calls `Notification.requestPermission()` on the first body click and then removes itself.
 - settings request path: the settings `Enable notifications` button asks for permission on activation when `window.Notification` exists; the delegated handler requires the event target itself to have `id="btn-notify"`.
@@ -36,7 +35,10 @@ Browser notification permission is browser-owned state requested by the dashboar
 ### permission-default
 
 - type: browser `Notification.permission` string value
-- default: browser-dependent; commonly the initial value before the operator has granted or denied permission for the origin
+- default: browser-dependent
+- verify: json_path(path="$.permission", matches="^(default|granted|denied)$")
+- default: commonly the initial value before the operator has granted or denied permission for the origin
+- verify: json_path(path="$.permission", equals="default")
 - required: false
 - meaning: permission has not been decided for the origin; the first body click and the settings button are allowed to request permission, and blocked events do not create system notifications until the browser reports `granted`.
 

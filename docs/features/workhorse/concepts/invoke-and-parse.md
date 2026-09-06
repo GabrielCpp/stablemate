@@ -35,13 +35,11 @@ backend or the clock, which reach the CLI through `turn`.
 - **From `self`:** `resilience.max_output_retries` (default `2`, env `AGENT_MAX_OUTPUT_RETRIES`) —
   additional same-session attempts after the first; total attempts = `max_output_retries + 1`.
 - **Output:** `dict[str, Any]` — the node's extracted outputs, as returned by `extract_outputs`.
-- **Raises:**
-  - `OutputParseError` — re-raised once `attempt >= max_output_retries` and parsing still fails;
-    the caller catches this in [the ladder](run-agent.md#the-ladder) as a signal to
-    reframe (or, on a `BackendInvocationError` with `overflow=True` from `turn` instead,
-    to try compaction first).
-  - `BackendInvocationError` — propagated unchanged from `turn` (this method adds no
-    handling for it; a failed turn aborts the loop immediately).
+
+After the final allowed parse attempt, the method re-raises `OutputParseError`; [the
+ladder](run-agent.md#the-ladder) catches it to reframe, while a `BackendInvocationError` with
+`overflow=True` instead reaches compaction first. Other `BackendInvocationError` instances pass
+through unchanged from `turn`, so a failed invocation ends this parse-retry loop immediately.
 
 ## Algorithm
 

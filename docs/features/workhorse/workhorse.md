@@ -12,6 +12,36 @@ days. The walk itself is [drive](concepts/pyflow-driver.md); the shape an author
 the [workflow format](workflow-format.md). The agent harness a run drives is an
 [AgentBackend](concepts/agent-backend.md), chosen per run via
 [get_backend](concepts/get-backend.md) from the `--cli` flag.
+The vendored shared runtime supplies the [clock](concepts/clock.md), [base-library
+discovery](concepts/base-library-discovery.md), [base-library cache](concepts/base-library-cache.md),
+and [library layout](concepts/library-layout.md) used by the engine.
+Run directory selection follows [run identity](concepts/run-identity.md), durable records use the
+[run record models](concepts/run-records.md), and agent visit archives use the [visit key](concepts/visit-key.md)
+and [session chains](concepts/session-chains.md). Repository metadata is an [observation](concepts/repository-observation.md);
+disposable machine state uses [machine scratch](concepts/machine-scratch.md), and run limits use
+[per-run configuration](concepts/run-configuration.md).
+The operator-facing live process channel is the [control channel](concepts/control-channel.md);
+operator notes use the [run inbox](concepts/run-inbox.md), and both commands share [run target
+resolution](concepts/run-target-resolution.md).
+Reload decisions follow the [reload policy](concepts/reload-policy.md); gate files use the
+[operator gate file](operator-gate-file.md) format and inbox persistence uses [run inbox JSONL]
+(inbox-jsonl.md).
+[Detached jobs](concepts/job-supervisor.md) measure long-running commands outside agent turns;
+[generic worklists](concepts/worklist.md) provide workflow-agnostic selection and progress
+summaries; and [packaged workflow directories](concepts/packaged-workflow.md) reject prompt
+packages that cannot be read from a real filesystem directory.
+CLI assembly and registry binding are specified by [CLI composition](concepts/cli-composition.md);
+workflow input merging is [parameter loading](concepts/workflow-parameter-loading.md), and the
+run boundary's library roots follow [CLI library resolution](concepts/cli-library-resolution.md).
+Run observation uses [OpenTelemetry instrumentation](concepts/telemetry-instrumentation.md),
+[console and OpenTelemetry logging](concepts/logging-setup.md), and
+[activity labels from flagged logs](concepts/activity-labels.md).
+The pyflow implementation contracts are [blueprints](concepts/pyflow-blueprints.md),
+[registry](concepts/pyflow-registry.md), [transitions](concepts/pyflow-transitions.md),
+[engine seams](concepts/pyflow-engine.md), [name indexes](concepts/pyflow-names.md),
+[errors](concepts/pyflow-errors.md), [run invocation](concepts/pyflow-run.md), and
+[activity tracking](concepts/pyflow-activity.md).
+The complete executable test-module inventory is [test evidence](concepts/test-evidence-inventory.md).
 
 **Workhorse ships no executable.** It is a library, and the only command line it owns is
 the one a *workflow* binds: a distribution declares `workhorse-<name> =
@@ -24,6 +54,8 @@ with its loader, and so is the entry-point group that replaced it.
 - binary: `workhorse-<name>` — one per installed workflow, e.g. `workhorse-coder`
 - code: `workhorse/workhorse/cli/__init__.py::console_script`,
   `workhorse/workhorse/cli/__init__.py::main`
+- detail: [live-source generation staging](concepts/live-source.md)
+- detail: [CLI composition](concepts/cli-composition.md)
 
 **Flows:** end-to-end journeys across these commands — [install a workflow and run
 it](flows/workhorse-setup-and-run.md), [author, visualize, and run a
@@ -210,6 +242,9 @@ still shows the subcommand listing.
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
 - code: `workhorse/workhorse/cli/run.py::run`
+- code: `workhorse/workhorse/cli/run.py::invocation`
+- detail: [workflow parameter loading](concepts/workflow-parameter-loading.md)
+- detail: [CLI library-directory resolution](concepts/cli-library-resolution.md)
 - tests: `workhorse/tests/test_run_options.py::test_profile_travels_to_the_run_and_carries_its_default_cli`,
   `workhorse/tests/test_run_options.py::test_cli_flag_still_wins_over_a_profiles_default`,
   `workhorse/tests/test_run_options.py::test_an_unknown_profile_is_refused_before_the_first_state`,
@@ -234,14 +269,16 @@ coder pipeline executes before QA and again before commit.
   - `-o, --output <path>` — type `str` (path), default: none (write to stdout). Writes the
     DOT text to `<path>` instead.
 - does:
-  - run: take the `Registry` off the namespace, exactly as `run` does — *which* workflow to
-    render is not a question this command asks, since it is whichever one's console script
-    started the process
+  - run: take the `Registry` off the namespace, exactly as `run` does
+  - verify: count(subject="flow graphs rendered from a namespace carrying a one-flow registry", equals=1)
+  - run: render whichever workflow's console script started the process, without accepting
+    a workflow selection argument
+  - verify: omits(subject="dot command usage after the dot token", matches="(?:<workflow>|--workflow)")
   - run: derive one graph per distinct flow class from the registry (`registry_graphs`)
   - verify: count(subject="graphs for a registry with two distinct flow classes", equals=2)
   - run: render each flow graph with `to_dot` as one `subgraph cluster_*`
   - verify: count(subject="subgraph clusters in DOT output for a two-flow registry", equals=3)
-  - run: read each flow graph off its states' own source; see [state graph](concepts/pyflow-state-graph.md)
+  - run: read each flow graph off its states' own source
   - verify: omits(subject="DOT output for a workflow state renamed with aliases=[…]", text="qa")
   - run: render live state names only, so an `aliases=[…]` rename never shows up as a second
     state
@@ -249,6 +286,7 @@ coder pipeline executes before QA and again before commit.
   - run: if `--output` is given, write the DOT text to that path
   - run: if `--output` is given, print `[workhorse] wrote <path>` to stderr
   - run: if `--output` is not given, write the DOT text to stdout
+The state-source rule is described in the [state graph](concepts/pyflow-state-graph.md).
 - verify: exit_status(code=0)
 - code: `workhorse/workhorse/cli/dot.py::run`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`
@@ -271,6 +309,230 @@ there is nothing declared to pin.
 - verify: exit_status(code=1)
 - code: `workhorse/workhorse/cli/version.py::run`
 
+### control
+- usage: `workhorse-<name> control {reload,status,questions,answer,switch-cli,switch-profile} [NAME] [options]`
+- flags:
+  - `--run ID|DIR` — select a run by run id, run-directory name, or path; default: the newest
+    unfinished run under `--runs-dir`
+  - `--runs-dir DIR` — run-directory root; default: `<cwd>/.agents/runs`
+  - `--gate PATH` — for `answer` only, target this absolute gate path; default: the gate the run
+    is currently waiting on
+  - `--text TXT` — for `answer` only, use this answer body; default: read all non-terminal stdin
+  - `--core` — for `reload` and `switch-cli`, also replace workhorse itself
+  - `--at-boundary` — for `reload` and `switch-cli`, defer re-entry until the current streaming
+    turn reaches a state boundary
+- args:
+  - `NAME` — for `switch-cli`, the agent CLI to use after re-entry; for `switch-profile`, the
+    profile used from the next turn; absent for every other action
+- does:
+  - parse exactly one of `reload`, `status`, `questions`, `answer`, `switch-cli`, or
+    `switch-profile`
+  - reject a target name on an action other than `switch-cli` or `switch-profile`
+  - reject either switch action when its target name is absent
+  - reject `--gate` or `--text` on an action other than `answer`
+  - reject `answer` when no `--text` is supplied and stdin is a terminal
+  - resolve the target locally, then ask groom for a named run that is not local
+  - send one request to the selected run and print action-specific evidence
+- errors: print the resolution or control-socket error to stderr when no target or listener can receive the request
+- exits: return `1` for invalid action arguments, target resolution failure, or socket delivery failure
+- exits: return `0` after a request is delivered, except `answer` and a refused `switch-profile`, which return `1` when the run does not confirm the action
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/control.py::add_arguments`
+- code: `workhorse/workhorse/cli/control.py::run`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_control_command.py::_control`
+
+### inbox
+- usage: `workhorse-<name> inbox {read,reply} [ID] [TEXT] [options]`
+- flags:
+  - `--all` — for `read`, include replied messages; default: outstanding messages only
+  - `--run ID|DIR` — select a run by id, directory name, or path; default: newest unfinished run
+  - `--runs-dir DIR` — run directory root; default: `<cwd>/.agents/runs`
+- args:
+  - `action` — required action, either `read` or `reply`
+  - `message_id` — optional message id, used by `reply`
+  - `text` — optional reply text, used by `reply`
+- does:
+  - select exactly one `read` or `reply` action
+  - dispatch the selected action against the resolved run inbox
+- errors: refuse an action other than `read` or `reply`
+- errors: report target-resolution failures before accessing an inbox
+- exits: return `2` when argparse rejects the action or another command-line shape
+- exits: return `1` when reply validation or target resolution fails
+- exits: return `0` after the selected action completes
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- verify: exit_status(code=2)
+- code: `workhorse/workhorse/cli/inbox.py::add_arguments`
+- code: `workhorse/workhorse/cli/inbox.py::run`
+- detail: [run inbox](concepts/run-inbox.md)
+- tests: `workhorse/tests/test_inbox_command.py::_inbox`
+
+### reload
+- usage: `workhorse-<name> control reload [--run ID|DIR] [--runs-dir DIR] [--core] [--at-boundary]`
+- parent: [control](#control)
+- flags:
+  - `--run ID|DIR` — select a run by id, directory name, or path; default: newest unfinished run
+  - `--runs-dir DIR` — run directory root; default: `<cwd>/.agents/runs`
+  - `--core` — reload workhorse and the workflow package
+  - `--at-boundary` — finish the current streaming turn before re-entry
+- does:
+  - send `action=reload` to the selected live run, preserving `--core` and `--at-boundary`
+- does:
+  - report the socket reply, process liveness, and last checkpoint position without waiting for re-entry
+- errors: report a missing target or a run with no listening control socket
+- exits: return `1` when target resolution or socket delivery fails
+- exits: return `0` after the request is delivered
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/control.py::run`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_control_command.py::test_reload_says_it_on_the_socket_the_run_is_listening_on`, `workhorse/tests/test_control_command.py::test_a_run_that_does_not_exist_is_an_error_not_a_new_directory`
+
+### status
+- usage: `workhorse-<name> control status [--run ID|DIR] [--runs-dir DIR]`
+- parent: [control](#control)
+- flags: `--run ID|DIR` and `--runs-dir DIR` — select the run as for [reload](#reload)
+- does:
+  - send a status query that the run answers without ending its current wait
+- does:
+  - print the run's self-reported fields when the socket replies
+- does:
+  - print process liveness and checkpoint position when the run does not answer before the control timeout
+- errors: report a missing target or a run with no listening control socket
+- exits: return `1` when target resolution or socket delivery fails
+- exits: return `0` for an answered or timed-out status query
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/control.py::run`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_control_command.py::test_status_is_answered_by_the_run_and_not_by_the_run_dir`, `workhorse/tests/test_control_command.py::test_a_run_that_never_answered_reports_from_disk_and_says_which_it_is`
+
+### questions
+- usage: `workhorse-<name> control questions [--run ID|DIR] [--runs-dir DIR]`
+- parent: [control](#control)
+- flags: `--run ID|DIR` and `--runs-dir DIR` — select the run as for [reload](#reload)
+- does:
+  - send a questions query that the run answers without ending its current wait
+- does:
+  - print each pending gate's path, kind, timestamp, and question text
+- does:
+  - report that the run is not blocked when the live reply contains an empty question list
+- does:
+  - report a timeout separately when the run does not answer
+- errors: report a missing target or a run with no listening control socket
+- exits: return `1` when target resolution or socket delivery fails
+- exits: return `0` for an answered or timed-out question query
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/control.py::run`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_control_command.py::test_questions_prints_the_gate_the_run_is_parked_on`, `workhorse/tests/test_control_command.py::test_questions_says_when_the_run_is_not_blocked`
+
+### answer
+- usage: `workhorse-<name> control answer [--run ID|DIR] [--runs-dir DIR] [--gate PATH] [--text TXT]`
+- parent: [control](#control)
+- flags:
+  - `--run ID|DIR` and `--runs-dir DIR` — select the run as for [reload](#reload)
+  - `--gate PATH` — absolute gate path; default: the gate currently awaited by the run
+  - `--text TXT` — answer text; default: read all text from non-terminal stdin
+- does:
+  - send `action=answer` with the selected gate path and answer body over the control channel
+- does:
+  - read all stdin text when `--text` is omitted and stdin is non-terminal
+- does:
+  - report the gate path only after the run confirms that it wrote the answer
+- errors: refuse an answer with no text source
+- errors: report the run's refusal when the gate is unavailable or already answered
+- errors: report missing acknowledgement as an error because no gate write was confirmed
+- exits: return `1` when validation, target resolution, delivery, or run confirmation fails
+- exits: return `0` after the run confirms the answer was written
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/control.py::run`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_control_command.py::test_an_answer_carries_the_gate_and_the_text_and_reports_the_landing`, `workhorse/tests/test_control_command.py::test_a_refused_answer_exits_nonzero`
+
+### switch-cli
+- usage: `workhorse-<name> control switch-cli CLI [--run ID|DIR] [--runs-dir DIR]`
+- parent: [control](#control)
+- flags: `--run ID|DIR` and `--runs-dir DIR` — select the run as for [reload](#reload)
+- args: `CLI` — required agent CLI name to use after re-entry
+- does:
+  - encode `switch-cli CLI` as `action=reload`, `core=true`, and `cli=CLI`
+- errors: refuse a missing CLI name or a name supplied to a non-switch action
+- exits: return `1` when validation, target resolution, or socket delivery fails
+- exits: return `0` after the switch request is delivered
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/control.py::run`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_control_command.py::test_a_cli_switch_travels_as_a_core_reload_naming_the_cli`, `workhorse/tests/test_control_command.py::test_a_switch_with_no_cli_and_a_reload_with_one_are_both_refused`
+
+### switch-profile
+- usage: `workhorse-<name> control switch-profile PROFILE [--run ID|DIR] [--runs-dir DIR]`
+- parent: [control](#control)
+- flags: `--run ID|DIR` and `--runs-dir DIR` — select the run as for [reload](#reload)
+- args: `PROFILE` — required profile name for subsequent model resolution
+- does:
+  - send `action=switch-profile` with the named profile and without a core reload
+- does:
+  - print that the profile applies from the next turn rather than waiting for the switch to complete
+- errors: refuse a missing profile name or report the run's profile-resolution refusal
+- exits: return `1` when validation, target resolution, socket delivery, or profile resolution fails
+- exits: return `0` after the run accepts the profile request
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/control.py::run`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_control_command.py::test_a_profile_switch_is_its_own_verb_carrying_the_name`, `workhorse/tests/test_control_command.py::test_a_refused_profile_switch_exits_nonzero`
+
+### read
+- usage: `workhorse-<name> inbox read [--all] [--run ID|DIR] [--runs-dir DIR]`
+- parent: [inbox](#inbox)
+- flags:
+  - `--all` — include replied messages; default: outstanding messages only
+  - `--run ID|DIR` and `--runs-dir DIR` — select the run using shared target resolution
+- args: no message id or text is consumed by this action
+- does:
+  - print each selected message id, timestamp, reply state, and body
+- does:
+  - print a no-messages notice when the selected set is empty
+- does:
+  - leave every message in the run inbox unchanged
+- errors: report a target-resolution failure before reading the inbox
+- exits: return `0` after reading the inbox
+- exits: return `1` when target resolution fails
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- verify: unchanged(subject="run inbox")
+- code: `workhorse/workhorse/cli/inbox.py::run`
+- detail: [run inbox](concepts/run-inbox.md)
+- tests: `workhorse/tests/test_inbox_command.py::test_read_prints_outstanding_messages_by_default`, `workhorse/tests/test_inbox_command.py::test_read_all_includes_replied_messages`
+
+### reply
+- usage: `workhorse-<name> inbox reply ID TEXT [--run ID|DIR] [--runs-dir DIR]`
+- parent: [inbox](#inbox)
+- flags: `--run ID|DIR` and `--runs-dir DIR` — select the run using shared target resolution
+- args:
+  - `ID` — required id of the message to answer
+  - `TEXT` — required reply text
+- does:
+  - attach the reply text and current UTC timestamp to the message with the selected id
+- does:
+  - atomically persist the updated inbox and report the replied message id
+- errors: refuse a missing id or text
+- errors: report a missing message id
+- errors: report a target-resolution failure before modifying the inbox
+- exits: return `1` when validation, target resolution, or message lookup fails
+- exits: return `0` after the reply is persisted
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/inbox.py::run`
+- detail: [run inbox](concepts/run-inbox.md)
+- tests: `workhorse/tests/test_inbox_command.py::test_reply_persists_and_is_read_back_as_answered`, `workhorse/tests/test_inbox_command.py::test_reply_to_a_missing_id_is_an_error`
+
 ## Flows
 
 End-to-end journeys across these commands:
@@ -289,3 +551,150 @@ End-to-end journeys across these commands:
 - [Crash and resume in place](flows/workhorse-crash-resume.md) — an unattended `run` dies
   mid-machine and is re-launched with the identical command to resume from its last
   checkpoint.
+
+## Invocations
+
+### control
+- on: [control](#control)
+- trigger: a human invokes the workflow console script with the `control` token
+- does:
+  - parse one live-run action and its action-specific arguments
+- does:
+  - resolve the target run before sending any request
+- does:
+  - construct and send the corresponding [control channel](concepts/control-channel.md) request
+- does:
+  - report the reply and on-disk liveness/checkpoint evidence for actions that do not have a dedicated report
+- auth: the operator who can access the run directory and its control socket
+- verify: exit_status(code=0)
+- code: `workhorse/workhorse/cli/control.py::run`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_control_command.py::_control`
+
+### inbox
+- on: [inbox](#inbox)
+- trigger: a human invokes the workflow console script with the `inbox` token
+- does:
+  - resolve the target run before reading or updating its inbox file
+- does:
+  - dispatch `read` to outstanding or all-message retrieval according to `--all`
+- does:
+  - dispatch `reply` to update the message selected by `ID` with `TEXT` and a UTC timestamp
+- errors: report invalid reply arguments or a missing message id on stderr and exit non-zero
+- errors: report a target-resolution failure on stderr and exit non-zero
+- auth: the operator who can access the run directory and its inbox file
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/inbox.py::run`
+- detail: [run inbox](concepts/run-inbox.md)
+- tests: `workhorse/tests/test_inbox_command.py::_inbox`
+
+### reload
+- on: [reload](#reload)
+- trigger: the operator invokes `control reload`
+- does:
+  - send `action=reload`, preserving `--core` and `--at-boundary`
+- does:
+  - print the run's reply, liveness, and checkpoint position without waiting for the reload to finish
+- auth: the operator who can connect to the run's 0600 control socket
+- verify: exit_status(code=0)
+- code: `workhorse/workhorse/cli/control.py::run`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_control_command.py::test_the_flags_that_were_typed_are_the_flags_that_are_sent`
+
+### status
+- on: [status](#status)
+- trigger: the operator invokes `control status`
+- does:
+  - obtain the run's status reply without ending its current wait
+- does:
+  - fall back to on-disk liveness and checkpoint evidence when the reply is empty
+- auth: the operator who can connect to the run's control socket
+- verify: exit_status(code=0)
+- code: `workhorse/workhorse/cli/control.py::run`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_control_command.py::test_status_is_answered_by_the_run_and_not_by_the_run_dir`
+
+### questions
+- on: [questions](#questions)
+- trigger: the operator invokes `control questions`
+- does:
+  - obtain the run's current operator-gate list without ending its current wait
+- does:
+  - print each gate entry or state that no operator gate is pending
+- auth: the operator who can connect to the run's control socket
+- verify: exit_status(code=0)
+- code: `workhorse/workhorse/cli/control.py::run`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_control_command.py::test_questions_prints_the_gate_the_run_is_parked_on`
+
+### answer
+- on: [answer](#answer)
+- trigger: the operator invokes `control answer`
+- does:
+  - send the selected gate path and answer body to the live run
+- does:
+  - report success only after the run confirms that it wrote the answer into the gate file
+- auth: the operator authorized to answer the run's gate
+- verify: exit_status(code=0)
+- code: `workhorse/workhorse/cli/control.py::run`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_control_command.py::test_an_answer_carries_the_gate_and_the_text_and_reports_the_landing`
+
+### switch-cli
+- on: [switch-cli](#switch-cli)
+- trigger: the operator invokes `control switch-cli CLI`
+- does:
+  - send a core reload request carrying the named CLI
+- does:
+  - print that the run will re-enter on the named CLI
+- auth: the operator who can connect to the run's control socket
+- verify: exit_status(code=0)
+- code: `workhorse/workhorse/cli/control.py::run`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_control_command.py::test_a_cli_switch_travels_as_a_core_reload_naming_the_cli`
+
+### switch-profile
+- on: [switch-profile](#switch-profile)
+- trigger: the operator invokes `control switch-profile PROFILE`
+- does:
+  - send the named profile for resolution on the next turn without a reload
+- does:
+  - return non-zero when the live run rejects the profile
+- auth: the operator who can connect to the run's control socket
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/control.py::run`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_control_command.py::test_a_profile_switch_is_its_own_verb_carrying_the_name`, `workhorse/tests/test_control_command.py::test_a_refused_profile_switch_exits_nonzero`
+
+### read
+- on: [read](#read)
+- trigger: the operator invokes `inbox read`
+- does:
+  - read outstanding messages by default or all messages with `--all`
+- does:
+  - print message bodies and any stored replies without modifying the inbox
+- errors: report a target-resolution failure before reading the inbox
+- auth: the operator who can read the run directory
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/inbox.py::run`
+- detail: [run inbox](concepts/run-inbox.md)
+- tests: `workhorse/tests/test_inbox_command.py::test_read_prints_outstanding_messages_by_default`
+
+### reply
+- on: [reply](#reply)
+- trigger: the operator invokes `inbox reply ID TEXT`
+- does:
+  - rewrite the identified inbox entry with the reply text and UTC reply timestamp
+- does:
+  - report the identified message after persistence
+- errors: report missing reply arguments or a missing message id on stderr
+- errors: report a target-resolution failure before modifying the inbox
+- auth: the operator who can write the run directory
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/inbox.py::run`
+- detail: [run inbox](concepts/run-inbox.md)
+- tests: `workhorse/tests/test_inbox_command.py::test_reply_persists_and_is_read_back_as_answered`

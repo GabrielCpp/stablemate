@@ -29,7 +29,8 @@ The rule is a pure function of observations, so it can be asserted against synth
 - input: an observation object `{now, socketOpen, lastMessageTs, closedSince}` — four numbers and a boolean, all supplied by the caller.
 - output: `{phase, resyncing}`; nothing else is returned and nothing is mutated.
 - purity: `deriveConnection` reads no clock, no socket, and no store. The evaluator that calls it every second is what supplies wall time.
-- recency, not readiness: an open socket is `live` only while its last frame is recent. `readyState` is consulted to know whether a socket is open at all, never to conclude that it is working.
+- consistency: an open socket whose last frame is older than `STALE_AFTER_MS` is `stale`, not `live`; socket openness alone never establishes that it is working.
+- verify: json_path(path="$.phase", equals="stale")
 - threshold derivation: `STALE_AFTER_MS` (15s) is three ticks of the server's 5s clock and `OFFLINE_AFTER_MS` (60s) is twelve. Both are generous multiples so one slow push or one dropped frame cannot flap the chip. Both are exported from the module, and the test harness extracts them from the source rather than restating them, so a change to the constants cannot leave the tests asserting the old policy.
 - resyncing semantics: anything but `live` sets `resyncing`. The flag means "the socket is not a trustworthy source of truth", not "the socket is closed" — which is why `stale`, whose socket is still open, resyncs too.
 - reconnect policy: on close, a reconnect is scheduled with exponential backoff — `500ms × 2^attempt`, capped at 30s — and the attempt counter resets to zero on a successful open.
@@ -115,15 +116,17 @@ The rule is a pure function of observations, so it can be asserted against synth
 
 ### algorithm-half-open-socket-detection
 
+When silence exceeds 15 seconds, `deriveConnection` returns `stale` with `resyncing: true`.
+`evaluateConnection` stores that state and invokes the dashboard resync poller, so HTTP carries the
+tab until the socket again delivers a recent frame.
+
 - step: The server pushes a `state` frame every 5 seconds regardless of whether anything changed.
 - step: Every inbound frame stamps `lastMessageTs`, whatever its type.
 - step: The evaluator runs once a second and compares that stamp to now.
 - step: A socket whose transport has died but whose `readyState` still reads `OPEN` stops stamping, crosses 15 seconds of silence, and is classified `stale`.
-- step: The chip changes to `stale` and HTTP resync starts carrying the tab, so the fleet keeps updating over a socket that will never deliver another frame.
 
 ## Failure Semantics
 
 - Unparseable frame: a frame that fails `JSON.parse` is dropped without stamping recency — a frame that cannot be acted on is not evidence the connection works.
-- Reconnect storm: guarded by the attempt counter and the 30s cap; a closed handler for a socket that is no longer the current one returns without scheduling a duplicate reconnect.
 - Server restart: the tab reconnects on backoff, receives a fresh full `state` snapshot as the first frame, and re-declares its watch, so it converges without a page reload.
 - Permanently dead server: the phase settles at `offline` and the resync poller's fetches fail; the chip keeps saying `offline` rather than any phase that would imply the view is current.

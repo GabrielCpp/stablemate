@@ -21,7 +21,6 @@ Docker exec runner is Groom's host-to-container command helper for executing one
 - input environment default: `None` and an empty mapping are equivalent and emit no environment flags.
 - input environment order: environment flags preserve the mapping iteration order supplied by the caller.
 - input timeout: integer seconds; defaults to Groom's shared Docker I/O timeout of 20 seconds and is forwarded unchanged to the [Docker subprocess runner](docker-subprocess-runner.md).
-- output: returns the completed process result from the [Docker subprocess runner](docker-subprocess-runner.md), including argv, return code, stdout text, and stderr text.
 - nonzero exit policy: does not convert non-zero Docker exits to `None`, booleans, or exceptions; callers interpret the returned process result according to their own fallback contract.
 - exception policy: does not catch process launch failures or timeout exceptions from the subprocess runner; callers that need fallback behavior catch them at the call site.
 - security: never invokes a shell and never concatenates the command into a shell string; shell expansion, command injection through token text, and host-side redirection are outside this helper's behavior.
@@ -36,7 +35,8 @@ Docker exec runner is Groom's host-to-container command helper for executing one
 - Adds: the in-container command tokens after the container id in their caller-provided order.
 - Calls: the [Docker subprocess runner](docker-subprocess-runner.md) once with the completed argv and the supplied timeout.
 - Returns: the subprocess runner's completed process result unchanged.
-- Preserves: stdout, stderr, return code, args, and subprocess metadata are not interpreted or rewritten by this helper.
+- consistency: Returns the completed process result from the [Docker subprocess runner](docker-subprocess-runner.md) unchanged, including argv, return code, stdout text, and stderr text.
+- verify: unchanged(subject="Docker subprocess runner completed process result")
 
 ## Algorithm
 
@@ -45,11 +45,14 @@ Docker exec runner is Groom's host-to-container command helper for executing one
 - step: For every supplied environment mapping entry, append the Docker exec environment flag and its `KEY=VALUE` payload.
 - step: Append the container id and every command argument token.
 - step: Invoke the Docker subprocess runner with the completed argv and timeout.
-- step: Return the completed process result exactly as supplied by the subprocess runner.
+
+The implementation returns the Docker subprocess runner result directly from
+`groom/groom/docker_io.py::docker_exec` after constructing the argv.
 
 ## Failure behavior
 
-- Docker non-zero exit: represented only by the returned process result's return code and stderr/stdout streams.
+- consistency: A Docker non-zero exit is returned unchanged in the completed process result's return code and stdout/stderr streams rather than converted to `None`, a boolean, or an exception.
+- verify: unchanged(subject="Docker subprocess runner completed process result")
 - Missing Docker binary: surfaces as the subprocess runner's launch exception unless the caller catches it.
 - Timeout: surfaces as the subprocess runner's timeout exception unless the caller catches it.
 - Invalid container id: represented by Docker's returned non-zero process result when Docker starts and rejects the request.

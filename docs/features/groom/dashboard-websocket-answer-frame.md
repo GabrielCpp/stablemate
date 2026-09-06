@@ -25,7 +25,10 @@ The socket is the only path for this. Answering is the one browser-to-server wri
 - producer — form: each open gate block in the run detail pane renders one `<form class="answer" data-answer>` carrying hidden `cmd`, hidden `workflow_id`, hidden `file_path`, and an `answer` textarea. The form is markup only; it has no submit action and no framework binding.
 - producer — serialization: one delegated `submit` listener on the document intercepts any `[data-answer]` form, reads its controls with `FormData`, builds a plain object from the control names, and hands it to the socket sender, which serializes it with `JSON.stringify`. No library performs this step; the wire shape is exactly the form's control names.
 - send guard: the sender writes only when the socket exists and its `readyState` is `OPEN`, and reports whether it wrote. A refused send raises the *not sent* toast and **leaves the typed answer in the textarea**, so a disconnected tab loses no work and the operator is told, rather than left with an answer that looks accepted and was dropped.
-- textarea ownership: the answer textarea is uncontrolled — the renderer never writes its `value` — and the gate block is keyed, so a push re-renders around the same DOM node and a half-typed answer survives it. Only a confirmed send clears the box.
+- persistence: A half-typed answer in a gate textarea persists across a dashboard push for the same gate.
+- verify: persists(subject="half-typed answer in the same gate textarea across a dashboard push")
+- persistence: A refused send preserves the typed answer in the gate textarea; it clears only after `sendCommand` reports that it wrote the frame.
+- verify: persists(subject="typed answer in a gate textarea after a refused send")
 - consumer: the receive loop passes each decoded JSON value to `_handle_command`; the handler's contract is an object with `.get(...)` lookup semantics, and this format defines no recovery payload for malformed JSON or non-object values.
 - command guard: only frames whose `cmd` value is exactly `"answer"` are handled by this format. Any other value — including the dashboard's own `watch` command, which the same socket carries — is handled elsewhere or ignored, with no gate write, log entry, state change, or acknowledgement frame from here.
 - acceptance boundary: a handled answer command performs no schema validation beyond the command guard; it string-normalizes the target and answer fields and delegates semantic validity to the gate-answering layer.
@@ -47,7 +50,10 @@ The socket is the only path for this. Answering is the one browser-to-server wri
 
 - type: string JSON value emitted by the first-party form; any JSON value is accepted by the handler for comparison.
 - default: absent
-- required: true for the first-party answer command; required for handling, because any value other than exact string `"answer"` — including an absent value — is not handled by this format.
+- required: true for the first-party answer command; its wire value is the exact string `"answer"`.
+- verify: json_path(path="$.cmd", equals="answer")
+- required: true for handling; any value other than exact string `"answer"` — including an absent value — is ignored before workflow lookup, gate answering, logging, or pushing.
+- verify: absent(subject="side effects from a frame whose cmd is not exactly answer")
 - wire-key: `cmd`
 - producer-control: hidden input `name="cmd" value="answer"`.
 - consumer-use: command discriminator checked before any workflow lookup, gate-answering call, log entry, or push.
@@ -57,7 +63,10 @@ The socket is the only path for this. Answering is the one browser-to-server wri
 
 - type: string-convertible JSON value
 - default: `""`
-- required: true for a successful gate answer; missing or blank values are still normalized and delegated to the gate-answering layer, which returns the failure result.
+- required: true for a successful gate answer
+- verify: json_path(path="$.workflow_id", matches=".+")
+- required: missing or blank values are still normalized and delegated to the gate-answering layer, which returns the failure result.
+- verify: absent(subject="gate write from a missing or blank workflow_id")
 - wire-key: `workflow_id`
 - producer-control: hidden input `name="workflow_id"`, rendered from the open run's container id.
 - consumer-use: converted with `str(value)`, used as the workflow registry key, passed to the gate-answering call as the container id, copied into the answer log entry, and echoed as `id` in the success-only answered message.
@@ -67,7 +76,10 @@ The socket is the only path for this. Answering is the one browser-to-server wri
 
 - type: string-convertible JSON value
 - default: `""`
-- required: true for a successful gate answer; missing or blank values are still normalized and delegated to the gate-answering layer, which returns the failure result.
+- required: true for a successful gate answer.
+- verify: json_path(path="$.file_path", matches=".+")
+- required: missing or blank values are still normalized and delegated to the gate-answering layer, which returns the failure result rather than writing a gate file.
+- verify: absent(subject="gate write from a missing or blank file_path")
 - wire-key: `file_path`
 - producer-control: hidden input `name="file_path"`, rendered from the open gate's context-file path.
 - consumer-use: converted with `str(value)`, passed as the target gate path, copied into the answer log entry, and echoed in the success-only answered message.

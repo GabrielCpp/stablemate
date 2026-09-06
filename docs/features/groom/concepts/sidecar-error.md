@@ -20,7 +20,6 @@ Sidecar error is the host-side failure signal for a data-plane RPC attempted thr
 - inheritance: derives directly from the standard exception type and adds no service-owned methods, class attributes, class-level constants, or instance fields.
 - purpose: separates expected sidecar data-plane unavailability from endpoint errors so callers can preserve successful HTTP responses and use slower Docker-volume fallbacks.
 - scope: applies only to host-issued RPCs over a live sidecar socket and pending RPCs owned by that socket; it is not used for browser dashboard websocket failures, Docker fallback failures, request parsing failures, or unexpected programmer errors.
-- consumer: caught by the [sidecar RPC helper](sidecar-rpc-helper.md), which treats it as a soft data-plane miss and returns `None` to the endpoint handler.
 - state: carries no structured data beyond the standard exception argument tuple; creating or catching it does not mutate the sidecar connection registry, pending futures, workflow state, or dashboard clients.
 - construction: every current producer creates the error with one human-readable message string; there is no stable error code, status code, correlation-id field, method field, container-id field, or retry hint on the exception object.
 - delivery: direct `rpc` failures raise to the awaiting caller, while [method-resolve](sidecar-connection.md#method-resolve) and [method-fail-all](sidecar-connection.md#method-fail-all) place the same exception type onto already-pending futures so in-flight callers observe the soft failure at their await point.
@@ -31,7 +30,11 @@ Sidecar error is the host-side failure signal for a data-plane RPC attempted thr
 
 ## Raising Conditions
 
-- send failure: when an RPC frame cannot be sent through the sidecar socket, the connection removes that request from its pending map and raises this error with a `send failed: ...` message while preserving the underlying exception as the cause.
+When an RPC frame cannot be sent through the sidecar socket, the resulting error has a
+`send failed: ...` message and preserves the underlying exception as its cause.
+
+- consistency: a socket-send failure removes the RPC's pending entry before the caller observes `SidecarError`.
+- verify: removed(subject="the sent RPC's pending entry")
 - timeout: when no matching `rpc_result` arrives before the call timeout, the connection raises this error with a message naming the method and timeout seconds; the pending request is then removed so late replies are ignored.
 - sidecar error result: when a sidecar returns `ok=false` for an RPC result, the connection completes the waiting request with this error, using the sidecar-provided error text or `sidecar reported an error` when the result has no text.
 - superseded connection: when a new connection registers for the same container, all unresolved requests on the previous connection are completed with this error and the message `superseded by a new sidecar connection`.
@@ -41,17 +44,22 @@ Sidecar error is the host-side failure signal for a data-plane RPC attempted thr
 ## Consumer Semantics
 
 - fallback: file-list, file-content, and diff endpoint handlers receive `None` from the RPC helper after this error and then use their Docker-volume read paths when the workflow has a workspace volume.
-- response preservation: endpoint handlers do not return this error text to browsers; sidecar failure keeps the request on the normal HTTP success path unless the fallback path itself cannot produce content.
+- consistency: the [sidecar RPC helper](sidecar-rpc-helper.md) catches `SidecarError` as a soft data-plane miss and returns `None` to the endpoint handler.
+- verify: http_status(code=200, path="/files/abc123")
+- consistency: after a `SidecarError`, the file-list handler returns its normal HTTP success response from the Docker-volume fallback rather than propagating the sidecar failure to the browser.
+- verify: http_status(code=200, path="/files/abc123")
 - cleanup: sidecar connection methods remove or clear affected pending RPC entries before callers observe completion, so duplicate or late `rpc_result` frames do not re-raise this error.
 - reload boundary: sidecar reload sends may fail, but reload handling treats any send exception as best-effort unavailability and does not require this specific exception type.
 - wire boundary: sidecar-side read failures remain `rpc_result` frames with `ok=false` and an error string until the host connection resolves them; only the host-side connection turns that wire error into this exception.
 
 ## Exception Shape
 
+`SidecarError` declares no custom fields. Its consumers use standard exception text and metadata
+rather than a service-defined structured error payload.
+
 - args: standard exception argument tuple; current service producers pass exactly one message string.
 - message: human-readable reason suitable for internal logs or tests, not a stable wire format.
 - cause: send-failure and timeout cases preserve the lower-level exception as the exception cause; sidecar-reported, superseded, and closed-connection cases have no required cause.
-- fields: no custom fields; consumers must not depend on structured attributes beyond standard exception text and standard exception metadata.
 - methods: no custom methods; behavior is defined by the raising and catching sites, not by instance operations on the error object.
 - equality: no service-owned equality semantics; tests and callers compare by type and, where needed, message text.
 

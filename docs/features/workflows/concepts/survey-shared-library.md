@@ -7,12 +7,19 @@ title: Author shared survey library
 
 The author and parity surveyors share this library's frozen-worklist protocol. Inventory
 materialization creates a durable list of units; traversal selects pending entries and records
-their status; the record gates make each assessment and the whole inventory auditable. The
-surveyor blueprint is separate from the author node blueprint, but the author registry merges it
-so both flows resolve the same shared nodes.
+their status; the record gates make each assessment and the whole inventory auditable. The module
+also declares the `surveyor` blueprint that owns registration for this shared node set. That
+blueprint is separate from the author node blueprint because the surveyor and author graphs are
+separate machines, while `author/workflow.py` merges both blueprints into one registry so either
+survey flow can resolve the shared nodes. The merged registry still requires node names to be
+globally unique, so survey-specific registrations use names such as `load_survey_config` rather
+than colliding with the author's `load_config`. The package exports this blueprint alongside the
+shared inventory, unit-walking, and record-validation operations.
 
 - code: `workflows/src/workhorse_workflows/author/shared/survey/blueprint.py::blueprint`
 - tests: `workflows/tests/author/shared/survey/test_inventory.py::test_an_existing_inventory_is_consumed_verbatim`
+- detail: [survey record check](../record-check.md)
+- detail: [survey verification result](../verify-result.md)
 
 The package exports inventory, unit-walking, and record-validation operations. It does not own
 the survey-specific planning, partitioning, parity expansion, or artifact emission nodes; those
@@ -52,6 +59,14 @@ remain in their respective flow packages and consume these results.
 - verify: count(subject="survey record status semantics", equals=1)
 - verify: count(subject="survey record status vocabularies", equals=1)
 - code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::RECORD_STATUSES`
+
+### PATTERN_SLUG_RE
+- type: compiled regular expression
+- default: `^[a-z0-9]+(-[a-z0-9]+)*$`
+- required: true
+- semantics: finding remediation patterns must be non-empty lowercase kebab-case slugs so partitioning can cluster them
+- verify: count(subject="kebab-case remediation pattern validation", equals=1)
+- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::PATTERN_SLUG_RE`
 
 ### EFFORTS
 - type: `set[str]`
@@ -121,10 +136,22 @@ remain in their respective flow packages and consume these results.
 
 ### select_next_unit
 - sig: `select_next_unit(logger: logging.Logger, inventory: str = "docs/survey/inventory.json", findings_dir: str = "docs/survey/findings", repo_dir: str = "") -> UnitPick`
+- does: uses `docs/survey/inventory.json` when the inventory argument is blank
+- verify: json_path(path="$.reason", matches=".*")
+- does: uses `docs/survey/findings` when the findings directory argument is blank
+- verify: json_path(path="$.record_path", matches=".*")
+- does: reports no selectable unit instead of raising when the inventory file is absent
+- verify: json_path(path="$.has_unit", equals=false)
+- does: reports no selectable unit instead of raising when the inventory is invalid JSON or lacks a usable unit list
+- verify: json_path(path="$.has_unit", equals=false)
 - does: loads the inventory and selects its first unit that is neither done nor blocked
 - verify: count(subject="selected pending survey units", equals=1)
+- does: treats `assessed` and `clean` as done statuses and `blocked` as set aside
+- verify: count(subject="survey done and blocked status handling", equals=1)
 - does: derives the finding-record path from the selected unit id with `record_slug`
 - verify: count(subject="derived survey finding paths", equals=1)
+- does: falls back to the unit id when the selected unit has no usable top-level path
+- verify: count(subject="survey unit path fallbacks", equals=1)
 - does: reports progress and unit-kind counts from the same worklist snapshot used for selection
 - verify: count(subject="survey selection snapshots", equals=1)
 - returns: a `UnitPick` containing unit identity, source path, kind, record path, and progress when a unit exists
@@ -137,12 +164,22 @@ remain in their respective flow packages and consume these results.
 
 ### mark_unit
 - sig: `mark_unit(logger: logging.Logger, inventory: str, unit_id: str, record_path: str, fallback: str = "", repo_dir: str = "") -> MarkResult`
+- does: refuses to access the repository when inventory, unit_id, or record_path is blank
+- verify: json_path(path="$.marked", equals=false)
 - does: stamps the matching inventory entry with the valid status read from its finding record
 - verify: count(subject="record-derived survey status marks", equals=1)
+- does: uses the fallback reason when a missing record has no supplied assessment reason
+- verify: count(subject="fallback survey gap reasons", equals=1)
 - does: marks the unit blocked when its record is absent or invalid and writes a blocked stub when no record exists
 - verify: count(subject="blocked survey status marks", equals=1)
+- does: leaves an existing invalid record unchanged while marking its inventory unit blocked
+- verify: unchanged(subject="invalid finding record")
 - does: keeps the blocked reason in `openGaps` so the coverage gate can resurface the unresolved unit
 - verify: count(subject="durable survey gap reasons", equals=1)
+- does: returns the record-derived status even when the inventory is absent, unreadable, or does not contain the unit
+- verify: json_path(path="$.unit_status", matches=".*")
+- does: reports `marked` false when the inventory cannot be read or the unit is not found
+- verify: json_path(path="$.marked", equals=false)
 - returns: a `MarkResult` identifying whether the inventory entry was marked and the resulting status or diagnostic note
 - verify: count(subject="survey unit mark results", equals=1)
 - verify: count(subject="survey-unit status marks", equals=1)
@@ -151,8 +188,12 @@ remain in their respective flow packages and consume these results.
 
 ### load_record
 - sig: `load_record(text: str) -> dict`
-- does: parses the leading YAML front-matter block with the shared markdown parser before loading its YAML mapping
+- does: requires the input to begin with a YAML front-matter fence
+- verify: count(subject="leading survey front-matter fences", equals=1)
+- does: locates the closed front-matter block through the shared markdown parser
 - verify: count(subject="parsed survey front-matter blocks", equals=1)
+- does: loads the raw front-matter as YAML
+- verify: count(subject="loaded survey front-matter YAML", equals=1)
 - raises: `ValueError` when the record has no leading fence, no closing fence, invalid YAML, or a non-mapping front-matter value
 - verify: count(subject="rejected survey record parses", equals=1)
 - returns: the parsed record mapping
@@ -163,9 +204,22 @@ remain in their respective flow packages and consume these results.
 
 ### check_record
 - sig: `check_record(record: dict, unit_id: str) -> list[str]`
-- does: checks record type, matching unit id, allowed status, finding shape, evidence, and status/findings consistency
+- does: requires the record type to be `survey-finding`
+- verify: count(subject="survey finding record types", equals=1)
+- does: requires the record unit to equal the selected inventory unit
+- verify: count(subject="survey finding record unit identities", equals=1)
+- does: requires the record status to be `assessed`, `clean`, or `blocked`
+- verify: count(subject="survey finding record statuses", equals=1)
+- does: requires every finding to be a mapping with non-empty description, kebab-case remediation pattern, allowed effort, and non-empty evidence
+- verify: count(subject="complete survey finding entries", equals=1)
+- does: rejects `assessed` records with no findings
+- verify: count(subject="assessed survey records with findings", equals=1)
+- does: rejects `clean` records that contain findings
+- verify: count(subject="clean survey records without findings", equals=1)
 - verify: count(subject="strict survey record structure checks", equals=1)
-- does: requires a non-empty `openGaps` list for blocked records and accepts only `accepted` dispositions on blocked records
+- does: requires a non-empty `openGaps` list when the record is blocked
+- verify: count(subject="blocked survey records with open gaps", equals=1)
+- does: accepts `disposition: accepted` only on blocked records and rejects every other disposition value
 - verify: count(subject="strict survey blocked-gap checks", equals=1)
 - returns: every structural error for the selected unit, or an empty list when the record is valid
 - verify: count(subject="strict survey record error lists", equals=1)
@@ -175,8 +229,12 @@ remain in their respective flow packages and consume these results.
 
 ### record_errors
 - sig: `record_errors(record: dict, unit_id: str) -> list[str]`
-- does: applies the record validation rules with compact messages suitable for a coverage report
+- does: applies the type, unit, status, finding-shape, evidence, and status/findings consistency rules with compact messages
 - verify: count(subject="compact survey record checks", equals=1)
+- does: reports a blocked record with empty `openGaps` as a coverage defect
+- verify: count(subject="compact blocked-gap checks", equals=1)
+- does: omits strict disposition validation because coverage rejects blocked records unless their disposition is `accepted`
+- verify: count(subject="coverage disposition handling", equals=1)
 - returns: every coverage-facing structural error, or an empty list when the record is valid
 - verify: count(subject="compact survey record error lists", equals=1)
 - verify: count(subject="compact survey-record validation results", equals=1)
@@ -185,9 +243,17 @@ remain in their respective flow packages and consume these results.
 
 ### validate_record
 - sig: `validate_record(logger: logging.Logger, record_path: str, unit_id: str, repo_dir: str = "") -> RecordCheck`
-- does: loads one finding record from the resolved repository and validates it against its selected unit
+- does: rejects missing `record_path` or `unit_id` before accessing the repository
+- verify: count(subject="required survey validation arguments", equals=1)
+- does: resolves the record path relative to the survey repository root
+- verify: count(subject="resolved survey finding paths", equals=1)
+- does: loads one finding record from the resolved repository
 - verify: count(subject="loaded per-unit finding records", equals=1)
-- does: reports missing, unparsable, or structurally invalid records without making an assessment judgment
+- does: reports a missing record without raising
+- verify: count(subject="missing per-unit finding records", equals=1)
+- does: reports unparsable records without raising
+- verify: count(subject="unparsable per-unit finding records", equals=1)
+- does: reports structurally invalid records without making an assessment judgment
 - verify: count(subject="per-unit finding record refusals", equals=1)
 - returns: `RecordCheck(record_ok=True)` only when the record is complete and internally consistent
 - verify: count(subject="valid per-unit finding records", equals=1)
@@ -197,13 +263,29 @@ remain in their respective flow packages and consume these results.
 
 ### verify_records
 - sig: `verify_records(logger: logging.Logger, inventory: str = "docs/survey/inventory.json", findings_dir: str = "docs/survey/findings", ref: str = "HEAD", repo_dir: str = "") -> VerifyResult`
-- does: requires every current inventory unit to be non-pending and backed by a matching valid finding record
+- does: treats a missing inventory as a successful no-survey result with `nothing_surveyed` true
+- verify: count(subject="missing survey inventory results", equals=1)
+- does: requires the inventory JSON to contain a `units` list when the inventory exists
+- verify: count(subject="parseable survey inventories", equals=1)
+- does: rejects every pending unit
+- verify: count(subject="pending survey units rejected", equals=1)
+- does: requires every non-pending current unit to have a matching valid finding record
 - verify: count(subject="complete survey unit coverage", equals=1)
-- does: rejects malformed units, missing records, status mismatches, unaccepted blocked gaps, and dropped units without split lineage
+- does: rejects malformed units, invalid statuses, missing records, malformed records, and inventory/record status mismatches
+- verify: count(subject="survey record and inventory mismatches", equals=1)
+- does: rejects blocked records without an accepted disposition
+- verify: count(subject="unaccepted blocked survey gaps", equals=1)
+- does: rejects a unit dropped from the committed inventory unless current paths show split lineage beneath the old path
+- verify: count(subject="dropped survey units", equals=1)
 - verify: count(subject="survey coverage defects", equals=1)
-- does: treats a missing inventory as an explicit no-survey result rather than an error
+- does: reports counts for assessed, clean, blocked, and pending units from the current inventory
+- verify: count(subject="survey coverage counts", equals=1)
+- returns: `VerifyResult(holds=True, nothing_surveyed=False)` with counts when coverage is complete
+- verify: count(subject="complete survey coverage result", equals=1)
+- returns: `VerifyResult(holds=True, nothing_surveyed=True)` when no inventory exists
 - verify: count(subject="empty survey coverage results", equals=1)
-- returns: `VerifyResult(holds=True)` with counts when coverage is complete, or diagnostic errors when it is not
+- returns: `VerifyResult(holds=False)` with diagnostic errors and a coverage report when coverage is defective
+- verify: count(subject="failed survey coverage result", equals=1)
 - verify: count(subject="survey coverage results", equals=1)
 - verify: count(subject="survey coverage gate results", equals=1)
 - code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::verify_records`

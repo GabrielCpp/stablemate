@@ -26,3 +26,6 @@ an answered decision for resolver turns, and the explicit `design-mockup` skippe
 - tests: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
 - detail: [author epic split subflow](author-epic-split-subflow.md)
 - detail: [author story-author subflow](author-story-author-subflow.md)
+- detail: [author shared paths](author-shared-paths.md)
+- detail: [author shared schemas](author-shared-schemas.md)
+- detail: [author main dry-run stubs](author-main-dry-run-stubs.md)

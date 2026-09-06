@@ -17,9 +17,9 @@ Workspace volume repository-directory reader is the fallback checkout discovery 
 
 - purpose: provide repository-picker checkout discovery for workflows whose workspace volume is known.
 - input: `volume` is the Docker workspace volume name mounted read-only at `/vol` for the duration of discovery.
-- output: returns `list[str]` containing volume-relative parent directories for every `.git` directory found one or two directory levels below the volume root.
-- output: returns `[]` when the Docker discovery process exits non-zero or when no matching `.git` directories are found.
-- output: the single-repository lookup returns the first sorted checkout directory, or `""` when the discovery result is empty.
+- consistency: repository discovery returns volume-relative parent directories for every `.git` directory found one or two directory levels below the volume root.
+- consistency: repository discovery returns `[]` when the Docker discovery process exits non-zero or when no matching `.git` directories are found.
+- consistency: single-repository lookup returns the first sorted checkout directory, or `""` when repository discovery is empty.
 - validation: this reader does not sanitize or normalize the Docker volume name; first-party callers supply the workspace-volume value from workflow discovery or workflow state.
 - ordering: returned checkout directories are sorted ascending for stable repository-menu option order.
 - ordering: the single-repository lookup therefore chooses the lexicographically first discovered checkout.
@@ -41,8 +41,10 @@ Workspace volume repository-directory reader is the fallback checkout discovery 
 - does: builds a shell-free `docker run` command using `alpine:3.20` and `find /vol -mindepth 1 -maxdepth 2 -name .git -type d`.
 - does: accepts only trimmed stdout paths beginning with `/vol/` and ending with `/.git`, then strips those sentinels.
 - does: sorts accepted volume-relative checkout directories ascending before returning them.
-- raises: process-launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) propagate; Docker non-zero completion is converted to an empty list.
-- returns: sorted volume-relative checkout directories, or `[]` when Docker fails, no matching checkout directories are found, or no stdout lines are accepted.
+- raises: process-launch exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) propagate.
+- raises: timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) propagate.
+- returns: Docker non-zero completion is converted to an empty list.
+- returns: sorted volume-relative checkout directories, or `[]` when no matching checkout directories are found or no stdout lines are accepted.
 - code: groom/groom/docker_io.py::list_repo_dirs
 - tests: groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git,
   groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_when_none_found,
@@ -58,7 +60,8 @@ Workspace volume repository-directory reader is the fallback checkout discovery 
 - does: delegates repository discovery and ordering to [list-repo-dirs](#list-repo-dirs).
 - does: returns the first discovered checkout directory when discovery is non-empty.
 - does: returns `""` when discovery returns no checkout directories.
-- raises: propagates process-launch and timeout exceptions inherited from [list-repo-dirs](#list-repo-dirs).
+- raises: propagates process-launch exceptions inherited from [list-repo-dirs](#list-repo-dirs).
+- raises: propagates timeout exceptions inherited from [list-repo-dirs](#list-repo-dirs).
 - returns: the first sorted volume-relative checkout directory, or `""` when none is available.
 - verify: json_path(path="$", equals="Acme")
 - verify: json_path(path="$", equals="")

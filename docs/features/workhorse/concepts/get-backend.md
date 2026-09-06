@@ -44,6 +44,23 @@ and `test_non_claude_backends_registered`.
   sorted order. Fail fast: a typo'd `--cli` is a configuration error, not something to fall back to
   the default for.
 
+## Methods
+
+### backend_names
+- sig: `backend_names() -> list[str]`
+- does: returns the selectable registry names in sorted order
+- returns: `['claude', 'cline', 'codex', 'copilot', 'opencode']`
+- verify: count(subject="selectable backend names", equals=5)
+- code: `workhorse/workhorse/runner/backends/registry.py::backend_names`
+
+### get_backend
+- sig: `get_backend(name: str | None = None) -> AgentBackend`
+- does: resolves the selected name, validates it, constructs the registered adapter once, and reuses the cached instance thereafter
+- raises: `ValueError` for an unknown resolved name
+- returns: the cached `AgentBackend` instance registered for the resolved name
+- verify: count(subject="backend instances returned for the same name", equals=1)
+- code: `workhorse/workhorse/runner/backends/registry.py::get_backend`
+
 ## The registry
 
 `_REGISTRY` maps five names to their classes, one import per adapter module:

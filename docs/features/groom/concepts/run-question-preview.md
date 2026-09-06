@@ -12,8 +12,8 @@ It is deliberately a server-side projection rather than a CSS truncation. What t
 Nothing here escapes anything, and nothing needs to: the value is JSON, the client assigns it through Preact's text interpolation, and it never reaches `innerHTML`. That is the difference from the fragment era, where the preview was interpolated into a server-rendered row and its safety depended on an escape helper being called at exactly the right place.
 
 - code: groom/groom/projection.py::question_preview
+- tests: groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup
 - refs: [gate info](gate-info.md), [groom projection module](groom-projection-module.md), [runs fleet view](../runs-fleet-view.md)
-- verify: groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup
 
 ## Contract
 
@@ -21,7 +21,8 @@ Nothing here escapes anything, and nothing needs to: the value is JSON, the clie
 - input: `question` is a string from [gate info](gate-info.md) `question`; callers pass an already string-normalized gate question.
 - output: plain text; the empty string when no line contains visible content after normalization.
 - line selection: scans source lines in their original order and selects the first line that remains non-empty after whitespace and marker trimming.
-- normalization: trims surrounding whitespace, removes any leading run made only of Markdown heading (`#`), quote (`>`), list (`*` or `-`), backtick, and space characters, then trims again. This is character trimming, not Markdown parsing.
+- consistency: normalization trims surrounding whitespace, removes any leading run made only of Markdown heading (`#`), quote (`>`), list (`*` or `-`), backtick, and space characters, then trims again before selecting a non-empty line. This is character trimming, not Markdown parsing.
+- verify: json_path(path="$.gates[0].preview", equals="Choose one")
 - marker stripping: every leading character in the marker set is removed until the first character outside it; a line that intentionally begins with those characters loses them the same way a Markdown marker does.
 - length cap: at most the first 140 code points of the selected line, with no ellipsis or other truncation marker.
 - no escaping: the return value is JSON data. There is no HTML escaping step anywhere on its path, because it never becomes markup — the client sets it as text.
@@ -102,7 +103,8 @@ Builds the text preview for one gate question. Each source line is treated indep
 
 ## Failure Semantics
 
-- Empty input: an empty, whitespace-only, marker-only, or blank multiline string succeeds and returns the empty string.
+- consistency: an empty, whitespace-only, marker-only, or blank multiline question produces an empty preview.
+- verify: json_path(path="$.gates[0].preview", equals="")
 - Long input: a useful line longer than the cap returns only its first 140 code points; there is no error, ellipsis, or length metadata.
 - Markup-like input: HTML- or markdown-like characters travel through unchanged. That is safe because the value is JSON the client renders as text, not markup — no escaping step has to be remembered for it to hold.
 - Unsupported input type: values without `splitlines()` are outside the contract and fail with ordinary Python attribute errors; the function coerces nothing.
@@ -111,6 +113,7 @@ Builds the text preview for one gate question. Each source line is treated indep
 ## Invariants
 
 - first-useful-line: at most one source line contributes to the preview.
-- plain-text-boundary: the returned preview is always plain text, never markup, rendered markdown, or a DOM fragment.
+- consistency: the returned preview is always plain text data, never server-rendered markup, rendered Markdown, or a DOM fragment.
+- verify: json_path(path="$.gates[0].preview", equals="<script>alert(1)</script>")
 - deterministic-preview: the same question string always returns the same preview and does not depend on workflow state, selection, registry membership, browser state, time, filesystem state, or network state.
 - consumer-owned-visibility: whether a preview is shown is decided by the client component; this concept only computes the text.

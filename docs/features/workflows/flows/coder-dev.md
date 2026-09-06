@@ -29,12 +29,18 @@ title: Coder development flow
 - verify: count(subject="epic-scoped development replans", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev`
 - detail: [coder main flow](coder-main.md)
+- detail: [coder development nodes](../concepts/coder-dev-nodes.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`
 - tests: `workflows/tests/coder/dev/test_an_epic_scoped_answer_leaves_the_flow_to_be_replanned`
 
 `setup` resolves workspace directories and the story slug, rejects an unauthored or unreadable
 story before any agent turn, and returns the shared `StoryPaths` context. It also establishes the
 story conversation identity used by later turns.
+
+Implementation and repair routing is delegated to the [development nodes](../concepts/coder-dev-nodes.md):
+plan and implementation blocks preserve resolver evidence, repair laps are bounded per layer,
+and an exhausted budget awaits an operator rather than producing a failed or apparently
+successful run.
 
 ## Steps
 

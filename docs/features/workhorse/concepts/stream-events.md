@@ -64,41 +64,40 @@ accumulator shaped for that call rather than for the shared one.
   - `env_extra: dict[str, str] | None` (keyword, default `None`) — the `[harness.claude].env`
     table, layered over the inherited environment inside `stream_subprocess`.
 - **Output:** a [`ClaudeTurnStream`](#claudeturnstream), fully populated.
-- consistency: A non-empty malformed stream line is retained in `ClaudeTurnStream.diagnostics`
+- consistency: claude-turn-stream.diagnostics — A non-empty malformed stream line is retained in `ClaudeTurnStream.diagnostics`
   after `json.JSONDecodeError`, rather than propagating the decoding error.
 - verify: json_path(path="$.diagnostics[0]", equals="not-json")
 
 Permanent CLI startup failures remain the `BackendInvocationError` raised by
-[`_spawn_streaming`](stream-subprocess.md#_spawn_streaming), rather than bare `OSError` values
+[`ProcessSupervisor.spawn`](stream-subprocess.md#processsupervisorspawn), rather than bare `OSError` values
 from the launcher.
 
 ## Algorithm
 
 1. **Construct the accumulator:** `stream = ClaudeTurnStream()`, closed over and mutated by the
    nested `on_line`.
-2. The nested `on_line(raw_line: str) -> None` callback handles each delivered line as follows:
-   - Strip the line; a blank line is a no-op.
-   - Parse it as JSON. **On `JSONDecodeError`** (e.g. merged stderr text, a non-JSON banner line):
-     print `[{node_id}] {line}` for live visibility and append the raw line to
-     `stream.diagnostics`, then return — this is the only path a non-JSON line takes.
-   - Dispatch on the parsed event's `type` (`etype`):
-     - **`"result"`** — set `stream.result_text = event.get("result", "") or stream.result_text`
-       (a falsy/missing `result` field keeps the prior value rather than clobbering it to empty).
-       Then call [`otel.turn_result`](#telemetry)`(usage.normalize(event))` — **unconditionally**.
-       If `event.get("is_error")` is truthy, or `event.get("subtype")` is neither `None` nor
-       `"success"`, append `f"{subtype} {result}"` to `stream.diagnostics` — an error result
-       carries its reason in `subtype`/`result`, and this is how that reason reaches
-       [`classify_turn`](classify-turn.md#ladder-first-match-wins).
-     - **`"rate_limit_event"`** — call
-       [`rate_limit_info`](classify-turn.md#rate_limit_info)`(event)` → `(blocked, reset_at)`. If
-       `reset_at is not None`, overwrite `stream.rate_reset_at` (last-seen window wins, used only
-       if the turn is later classified as a cap). If `blocked`, set `stream.rate_limited = True`
-       (sticky — once `True`, later non-blocked events don't clear it).
-     - **`"system"` with a `"session_id"` key present** — set
-       `stream.session_id = event["session_id"]`.
-     - any other `etype` — no state update, but still falls through to the next step.
-   - **Every successfully-parsed event**, regardless of type, is passed to
-     [`_emit_event`](emit-event.md)`(node_id, event)` for the live-progress echo.
+2. **Handle each delivered line:** processing follows the branches described below.
+
+The nested `on_line(raw_line: str) -> None` callback strips the line first, with a blank line
+producing no further work. It then parses the content as JSON. A `JSONDecodeError` (for example,
+from merged stderr text or a non-JSON banner line) leads to `[{node_id}] {line}` being printed for
+live visibility and the raw line being appended to `stream.diagnostics`; processing of that line
+then ends. This is the only path taken by a non-JSON line.
+
+For parsed events, the callback dispatches on the event's `type` (`etype`). A `"result"` event
+sets `stream.result_text = event.get("result", "") or stream.result_text`, so a falsy or missing
+`result` field keeps the prior value rather than clobbering it to empty. It then calls
+[`otel.turn_result`](#telemetry)`(usage.normalize(event))` unconditionally. When
+`event.get("is_error")` is truthy, or `event.get("subtype")` is neither `None` nor `"success"`, it
+appends `f"{subtype} {result}"` to `stream.diagnostics`; this is how an error result's reason
+reaches [`classify_turn`](classify-turn.md#ladder-first-match-wins).
+
+A `"rate_limit_event"` goes through
+[`rate_limit_info`](classify-turn.md#rate_limit_info)`(event)` to produce `(blocked, reset_at)`.
+A non-`None` reset time replaces `stream.rate_reset_at`, making the last-seen window win, and a
+blocked result makes `stream.rate_limited` sticky. A `"system"` event with a `"session_id"` key
+updates `stream.session_id`; other event types make no state update. Every successfully parsed
+event still reaches [`_emit_event`](emit-event.md)`(node_id, event)` for the live-progress echo.
 3. **Stream the turn:** `stream.timed_out, stream.returncode = stream_subprocess(cmd, node_id,
    timeout, on_line, resilience=resilience, stdin_data=stdin_data, cwd=cwd,
    env_extra=env_extra)` — this is the only place spawn/timeout/kill happens. `on_line` returns

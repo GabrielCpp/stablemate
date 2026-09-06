@@ -16,7 +16,8 @@ Workspace volume relative path guard is the validation layer used by the [worksp
 - input: `path` is a required `str` supplied by an HTTP query, gate file reference, or caller-composed repository/file path before it is used as a `/vol/...` Docker container path; callers own any conversion from external values to text before invoking the guard.
 - acceptance: accepts paths that are non-empty, do not begin with `/` or `\\`, and contain no empty segment and no `..` segment after `\\` characters are treated as `/` separators.
 - acceptance: accepts ordinary file names, nested relative paths such as `repo/src/file.py`, Windows-separator equivalents such as `repo\\src\\file.py`, `.` segments, `...` segments, spaces, colons, and shell metacharacters; those characters are not interpreted by this guard.
-- normalization: replaces every `\\` separator with `/` and returns the normalized `/`-joined segment list.
+- consistency: accepted backslash separators are replaced with `/` in the returned normalized path.
+- verify: omits(subject="accepted normalized path", text="\\")
 - output: returns the normalized relative path string; the returned value never starts with `/`, never starts with `\\`, never contains `//`, never contains an empty segment, and never contains `..` as a segment.
 - idempotence: any accepted output can be passed to the guard again and is returned unchanged.
 - failure: raises `ValueError` with an `unsafe path: ...` message when the input is empty, begins with `/`, begins with `\\`, contains adjacent separators, ends with a separator, or contains a parent traversal segment exactly equal to `..`.
@@ -69,7 +70,7 @@ Workspace volume relative path guard is the validation layer used by the [worksp
 
 #### Effects
 
-- validates: rejects unsafe [field-path](#field-path) values before a caller can build a Docker container path.
+- consistency: rejects unsafe [field-path](#field-path) values before a caller can build a Docker container path.
 - normalizes: converts accepted backslash separators to `/` and returns the joined segment list.
 - blocks: absolute-root escapes, parent-directory escapes, accidental path collapse through adjacent separators, and empty/trailing destination segments.
 - permits: literal current-directory segments, literal triple-dot segments, spaces, punctuation, colons, and shell metacharacters because Docker callers pass argv lists rather than shell command strings.
@@ -77,7 +78,8 @@ Workspace volume relative path guard is the validation layer used by the [worksp
 
 ## Algorithm
 
-- step: Reject the path immediately when it is empty, begins with `/`, or begins with `\\`.
+- consistency: `safe_relpath` rejects empty paths and paths beginning with `/` or `\\` rather than returning a normalized volume-relative path.
+- verify: omits(subject="accepted normalized path", matches="^(?:/|\\\\)")
 - step: Convert every `\\` character to `/` so later segment checks use one separator model.
 - step: Split the normalized path on `/`.
 - step: Reject the path when any segment is empty, which covers adjacent separators and a trailing separator.
@@ -86,9 +88,12 @@ Workspace volume relative path guard is the validation layer used by the [worksp
 
 ## Examples
 
-- accepts: `docs/gate.md` returns `docs/gate.md`.
-- accepts: `repo\\src\\file.py` returns `repo/src/file.py`.
-- accepts: `repo/./file.py` returns `repo/./file.py`; this guard blocks traversal but does not collapse current-directory markers.
+- consistency: `docs/gate.md` is returned unchanged.
+- verify: unchanged(subject="accepted docs/gate.md path")
+- consistency: `repo\\src\\file.py` is returned as `repo/src/file.py`.
+- verify: omits(subject="accepted normalized path", text="\\")
+- consistency: `repo/./file.py` is returned unchanged; this guard blocks traversal but does not collapse current-directory markers.
+- verify: unchanged(subject="accepted current-directory path")
 - rejects: the empty string raises `ValueError`.
 - rejects: `/etc/passwd` raises `ValueError`.
 - rejects: `\\etc\\passwd` raises `ValueError`.

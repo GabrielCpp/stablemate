@@ -28,7 +28,10 @@ The flag exists because an empty fleet is two different facts. *Not scanned yet*
 - startup completion effect: [startup background discovery scan](startup-background-discovery-scan.md) sets the flag false after its reconciliation attempt exits, including when reconciliation raises, then broadcasts one state payload carrying the cleared flag.
 - manual refresh start effect: [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) sets the flag true and broadcasts one state payload before Docker reconciliation starts, so connected tabs can see the loading state before scan results arrive.
 - manual refresh completion effect: [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) sets the flag false after the reconciliation attempt exits; a successful refresh then broadcasts a second state payload and returns `ok: true` with the discovered workflow count.
-- concurrency: no cross-process coordination, database, external broker, lock, reference count, or per-scan token participates; overlapping refreshes share the same process-local flag, so any refresh completion can clear the advertised loading state for the process.
+- concurrency: dashboard-discovery-scanning-flag — no cross-process coordination, database, external broker, lock, reference count, or per-scan token participates.
+- verify: count(subject="scanning coordination mechanisms", equals=0)
+- concurrency: dashboard-discovery-scanning-flag — overlapping refreshes share the same process-local flag, so any refresh completion can clear the advertised loading state for the process.
+- verify: json_path(path="$.scanning", equals=false)
 - lifetime: resets to the initial value on process start and is lost on process exit.
 - non-goal: the flag is presentation state only; it does not prove Docker is reachable, does not serialize scans, does not indicate that the workflow registry is complete, and does not change workflow, gate, sidecar, or browser selection data by itself.
 
@@ -53,7 +56,8 @@ The flag exists because an empty fleet is two different facts. *Not scanned yet*
 - startup scan failure: initial reconciliation exceptions do not strand the flag; the cleanup path still sets it to `False` before the exception leaves the background scan coroutine.
 - manual refresh start: [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) sets the flag to `True` before Docker reconciliation starts and before the pre-scan dashboard shell broadcast.
 - manual refresh completion: [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) clears the flag in the reconciliation `finally` path, so success and reconciliation errors both remove the advertised loading state.
-- failed pre-scan broadcast: if the pre-scan dashboard shell broadcast raises before reconciliation starts, the manual refresh path leaves the flag `True` because it never reaches the reconciliation `finally` path.
+- consistency: a failed pre-scan dashboard shell broadcast leaves the flag `True` because the broadcast occurs before the reconciliation cleanup path.
+- verify: json_path(path="$.scanning", equals=true)
 - failed post-scan broadcast: if the post-scan dashboard shell broadcast raises after successful reconciliation, the flag has already been cleared to `False`.
 - non-effects: reading the flag from renderers does not mutate workflow containers, gate records, websocket queues, Docker state, sidecar state, answer logs, answer files, or gate files.
 
@@ -61,7 +65,8 @@ The flag exists because an empty fleet is two different facts. *Not scanned yet*
 
 - [state message](groom-projection-module.md#method-state-message): the only direct server-side reader. It copies the flag into the payload's `scanning` field and makes no wording decision from it.
 - [dashboard state payload](../dashboard-state-payload.md#field-scanning): carries the boolean verbatim on the socket push and on the HTTP resync body alike.
-- [serve dashboard state](../http/groom.md#serve-dashboard-state): returns the same projection, so a polling client sees the same flag as a socket client.
+- consistency: [serve dashboard state](../http/groom.md#serve-dashboard-state) returns the projection's current `scanning` value on HTTP resync, so a polling client sees the same flag as a socket client.
+- verify: json_path(path="$.scanning", equals=true)
 - [dashboard shell broadcaster](dashboard-shell-broadcaster.md): observes the flag through the projection on every broadcast — after startup discovery, manual refresh start and completion, sidecar updates, push updates, answer handling, and every live-clock tick.
 - the browser's fleet island: the only reader that turns the boolean into words, and only when the fleet is empty and the filter box is too.
 
@@ -82,9 +87,11 @@ The flag exists because an empty fleet is two different facts. *Not scanned yet*
 
 ## Source Touchpoints
 
+On HTTP resync, `groom/groom/app.py::api_state` reaches the direct reader through
+`projection.state_message` and includes the flag in the response body without mutating it.
+
 - field: `groom/groom/state.py::SCANNING` stores the value and sets its import-time default to `True`.
 - reader: `groom/groom/projection.py::state_message` is the only direct source reader; it serializes the flag as `scanning` on every payload it builds.
-- HTTP reader: `groom/groom/app.py::api_state` reaches the reader through `projection.state_message` and returns the flag in the resync body without mutating it.
 - websocket reader: `groom/groom/app.py::_broadcast_shell` reaches the same projection before enqueueing the payload.
 - browser reader: `groom/groom/assets/dashboard.js::Fleet` is the only consumer that converts the boolean into visible text.
 - startup writer: `groom/groom/app.py::_background_scan` clears the flag to `False` in its cleanup path.

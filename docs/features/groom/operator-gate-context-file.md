@@ -116,8 +116,9 @@ then rereads and reclassifies each candidate before creating gate info.
 - sig: `status_of(text: str) -> str`
 - abstract: false
 - raises: none intentionally raised for any string input.
+- verify: json_path(path="return value", equals="AWAITING_OPERATOR")
 - code: groom/groom/gates.py::status_of
-- verify: groom/tests/test_gates.py::test_status_of_reads_the_status_line
+- tests: groom/tests/test_gates.py::test_status_of_reads_the_status_line
 
 Parses one operator gate context file text into the normalized lifecycle token that consumers use for discovery, stale-answer checks, and non-awaiting filtering.
 
@@ -141,8 +142,9 @@ Parses one operator gate context file text into the normalized lifecycle token t
 - sig: `is_awaiting(text: str) -> bool`
 - abstract: false
 - raises: none intentionally raised for any string input.
+- verify: json_path(path="return value", equals=true)
 - code: groom/groom/gates.py::is_awaiting
-- verify: groom/tests/test_gates.py::test_is_awaiting
+- tests: groom/tests/test_gates.py::test_is_awaiting
 
 Classifies whether one operator gate context file is currently answerable by comparing its normalized lifecycle token to the sole open-gate value.
 
@@ -162,9 +164,11 @@ Classifies whether one operator gate context file is currently answerable by com
 - sig: `extract_question(text: str) -> str`
 - abstract: false
 - raises: none intentionally raised for any string input.
+- verify: json_path(path="return value", equals="Should the fallback default to \"unknown\" or raise?")
+- verify: json_path(path="return value", equals="STATUS: AWAITING_OPERATOR\n\njust a blob, no section header")
 - code: groom/groom/gates.py::extract_question
-- verify: groom/tests/test_gates.py::test_extract_question_pulls_the_named_section
-- verify: groom/tests/test_gates.py::test_extract_question_falls_back_to_whole_text_when_no_header
+- tests: `groom/tests/test_gates.py::test_extract_question_pulls_the_named_section`
+- tests: `groom/tests/test_gates.py::test_extract_question_falls_back_to_whole_text_when_no_header`
 
 Extracts the operator-facing prompt text from one gate file for [gate info](concepts/gate-info.md), sidecar snapshot gate entries, inbox previews, and worker-detail answer forms.
 
@@ -192,9 +196,11 @@ Extracts the operator-facing prompt text from one gate file for [gate info](conc
 - sig: `apply_answer(text: str, answer: str) -> str`
 - abstract: false
 - raises: none intentionally raised for any string input; invalid or missing gate status content is preserved except that no status line can be flipped when the status pattern is absent.
+- verify: count(subject="STATUS: ANSWERED lines in returned gate text", equals=1)
+- verify: count(subject="answer paragraphs in returned gate text", equals=0)
 - code: groom/groom/gates.py::apply_answer
-- verify: groom/tests/test_gates.py::test_apply_answer_flips_status_and_appends_text
-- verify: groom/tests/test_gates.py::test_apply_answer_with_blank_answer_still_flips_status
+- tests: groom/tests/test_gates.py::test_apply_answer_flips_status_and_appends_text
+- tests: groom/tests/test_gates.py::test_apply_answer_with_blank_answer_still_flips_status
 
 Builds the answered form of one operator gate context file from the current file text and the submitted operator answer. The method is a pure text mutation: it does not read or write the workspace volume, does not check whether the gate is still awaiting, and does not clear in-memory dashboard state.
 

@@ -28,6 +28,24 @@ Its `baseline_inventory` input is required in practice; `survey_dir` defaults to
 `docs/survey/legacy-vs-new`. The run resolves the repository from the input or current working
 directory and keeps derived paths repository-relative.
 
+## Fields
+
+### baseline_inventory
+- type: string path
+- default: empty string
+- required: false
+- semantics: repository-relative JSON inventory of legacy surfaces to compare; an empty or unreadable path fails setup
+- verify: json_path(path="$.baseline_inventory", matches=".*")
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor`
+
+### survey_dir
+- type: string path
+- default: `docs/survey/legacy-vs-new`
+- required: false
+- semantics: repository-relative directory containing the frozen inventory, finding records, and emitted unit manifest
+- verify: json_path(path="$.survey_dir", equals="docs/survey/legacy-vs-new")
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor`
+
 ## Methods
 
 ### setup
@@ -65,7 +83,9 @@ directory and keeps derived paths repository-relative.
 ### assess
 - sig: `assess(unit_id: str, unit_path: str, unit_kind: str, record_path: str, progress: str = "") -> Continue`
 - does: asks one medium-power agent turn to compare the baseline surface with the target feature book, backlog, and epics
-- does: runs the turn in the resolved surveyed repository and supplies the record path and comparison paths as inputs
+- does: runs the turn in the resolved surveyed repository
+- does: supplies the unit identity, baseline path, baseline inventory, target feature path, backlog path, epics path, and record path to the turn
+- does: requires the turn to write one `survey-finding` record rather than feature nodes, epics, stories, or source code
 - returns: continues to `mark` with the agent assessment, unit id, and record path
 - verify: count(subject="parity unit assessments", equals=1)
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.assess`

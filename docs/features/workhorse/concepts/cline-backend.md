@@ -41,7 +41,7 @@ behaviors are covered by `workhorse/tests/test_backends.py::test_cline_run_turn_
 add_dirs=None, effort=None)` declares `timeout` and `resilience` after the keyword-only separator,
 matching [AgentBackend's abstract signature](agent-backend.md#run_turn-abstract). It builds the argv:
 
-- consistency: Calls to `ClineBackend.run_turn` must supply `timeout` and `resilience` by keyword.
+- consistency: cline-run-turn — Calls to `ClineBackend.run_turn` must supply `timeout` and `resilience` by keyword.
 - verify: exit_status(code=1)
 
 ```
@@ -90,6 +90,22 @@ The `frozenset` of levels cline's `--thinking` accepts — `none`, `low`, `mediu
 It is a membership test rather than a mapping table because cline's range coincides with the
 Claude-superset effort vocabulary everywhere except `max`, which is the one level that has to be
 dropped.
+
+## Methods
+
+### run_turn
+- sig: `run_turn(prompt: str, node_id: str, session_id_path: Path | None, model: str | None = None, *, prompt_path: Path | None = None, timeout: float, resilience: AgentResilience, cwd: str | None = None, add_dirs: list[str] | None = None, effort: str | None = None) -> str`
+- does: runs Cline's autonomous JSON stream with an optional model, recognized thinking level, working directory, and resumed task id
+- raises: `BackendInvocationError` after `finalize_turn` classifies the streamed state
+- verify: emitted(event="Cline turn result", count=1)
+- code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend.run_turn`
+
+### compact
+- sig: `compact(session_id_path: Path | None, node_id: str, model: str | None = None, *, timeout: float, resilience: AgentResilience) -> bool`
+- does: declines the runner's in-place compaction operation
+- returns: `false`
+- verify: json_path(path="$.compacted", equals=false)
+- code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend.compact`
 
 ## Related pieces
 

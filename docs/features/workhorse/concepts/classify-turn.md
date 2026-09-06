@@ -54,7 +54,9 @@ knowledge — the backends import it, never the reverse.
     cap.
 - **Output:** `str` — `result_text`, returned unchanged on success (after persisting
   `session_id`).
-- **Raises:** `BackendInvocationError` on every non-success path, flagged per the ladder below.
+- consistency: backend-invocation-error — Every non-success branch in
+  `workhorse/workhorse/runner/failure.py::classify_turn` raises `BackendInvocationError`.
+- consistency: backend-invocation-error — The ladder below specifies the flags carried by each non-success branch.
 
 ## Ladder (first match wins)
 
@@ -104,15 +106,15 @@ return result_text
    transient and carries `rate_reset_at` as `reset_at`; non-cap failures leave `reset_at` unset.
    - consistency: A cap signal is classified as a scheduled-reset cap before `timed_out`, so its failure message does not present it as a timeout.
    - verify: omits(subject="cap failure message", text="Timeout waiting for result")
-2. **`timed_out` *with* transient diagnostics → a transient provider failure, not a budget
-   overrun.** [`stream_jsonl`](stream-jsonl.md#early-abort) asks
-   `stream_subprocess` to stop the moment a provider error identifies a short transient — and that
-   intentional early abort travels on the same `timed_out` flag the wall-clock watchdog uses. This
-   branch separates the two: when the diagnostics carry a transient marker, the provider error is
-   preserved as the cause and the error is raised **without** `timed_out=True`, so the retry loop
-   does not warn the next attempt that it exhausted its node budget (it did not — it never got
-   that far). This is what turns e.g. OpenCode's `ProviderHeaderTimeoutError` into workhorse's own
-   bounded backoff instead of a wait on the CLI's internal retry loop.
+2. [`stream_jsonl`](stream-jsonl.md#early-abort) asks `stream_subprocess` to stop the moment a
+   provider error identifies a short transient. That intentional early abort travels on the same
+   `timed_out` flag the wall-clock watchdog uses, so this branch separates the two. When the
+   diagnostics carry a transient marker, the provider error remains the cause and the raised error
+   leaves `timed_out=False`; the retry loop consequently does not warn the next attempt that it
+   exhausted a node budget it never reached. OpenCode's `ProviderHeaderTimeoutError`, for example,
+   enters Workhorse's bounded backoff instead of waiting on the CLI's internal retry loop.
+   - consistency: A `timed_out` turn whose diagnostics contain `ProviderHeaderTimeoutError` is not presented as a wall-clock budget overrun.
+   - verify: omits(subject="transient provider failure message", text="Timeout waiting for result")
 3. **`timed_out` alone → a genuine wall-clock timeout.** The watchdog reaped the process group by
    this point; the message names the elapsed `timeout` budget. `transient=True`, `timed_out=True`
    — the flag that makes [`timeout_retry_prompt`](timeout-retry-prompt.md) warn the next attempt

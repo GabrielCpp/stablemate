@@ -26,7 +26,8 @@ Selection and menu contents live in one slice rather than two because they are r
 - stale state: if the selected workflow or checkout disappears after selection, the slice is unchanged until another entry is picked. Later requests use the stale pair and surface the panes' own empty or failure states rather than clearing the selection.
 - write ordering: selection assigns the three fields, updates the picker labels, and dispatches the active-pane load synchronously, before the menu closes — so the load already sees the new pair.
 - menu freshness: `groups` is discarded and re-fetched every time the menu opens rather than cached, because checkout discovery is a per-container process and a cached list would show checkouts that no longer exist without any signal that it was stale.
-- not persisted: the slice is never serialized to local storage, session storage, cookies, query parameters, the URL, hidden inputs, or any websocket frame. A reload starts with nothing selected.
+- persistence: the repository slice is browser-memory only: it is not serialized to browser storage, cookies, URL state, hidden inputs, or websocket frames, so a reload starts with nothing selected.
+- verify: visible(locator=".fd-empty", text="Pick a container / repo above.")
 - not pushed: no server message writes this slice. The socket carries fleet state; the selection is the tab's own.
 - server effect: none. It only scopes later HTTP GETs, and mutates no workflow record, sidecar session, gate, or socket state.
 - accessibility effect: selection replaces visible picker-label text and loads pane content. The menu's `active` index is separately published to the combobox as `aria-activedescendant` by the menu component, which is the one place that knows which entry ended up at which index after filtering.
@@ -37,7 +38,10 @@ Selection and menu contents live in one slice rather than two because they are r
 
 - type: `str | null`
 - default: `null`
-- required: false before selection; required by every repository-scoped request after it.
+- required: false before selection.
+- verify: json_path(path="$.repo.container", equals=null)
+- required: true for every repository-scoped request after selection.
+- verify: json_path(path="$.repo.container", matches=".+")
 - meaning: the workflow container id from the selected entry; it becomes the `{container_id}` route segment of the files, file-content, and diff requests.
 - source: [repository menu data](repository-menu-data.md#field-group-container).
 - normalization: copied exactly. No empty-string guard runs at selection time; the panes treat a falsey value as *nothing selected* and render the picker prompt instead of requesting data.

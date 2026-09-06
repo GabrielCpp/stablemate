@@ -17,7 +17,11 @@ The sidecar hello applier is the groom server layer that folds a connected sidec
 
 - sig: `async _apply_hello(container_id: str, data: dict) -> None`
 - input: `container_id` is the non-empty, already-normalized workflow container id established by the sidecar websocket handler from `identity.container_id`; this layer does not re-truncate or reject it.
-- input: `data` is the decoded sidecar `hello` frame object; missing or falsey `identity` and `snapshot` values are treated as empty objects.
+- input: `data` is the decoded sidecar `hello` frame object.
+- consistency: missing or falsey `identity` is treated as an empty object, preserving existing workflow identity fields.
+- verify: unchanged(subject="existing workflow identity fields")
+- consistency: missing or falsey `snapshot` is treated as an empty object, leaving the workflow running when no gates remain.
+- verify: json_path(path="$.state", equals="RUNNING")
 - nested-object rule: truthy `identity` and `snapshot` values must expose object-style `get` lookup; this layer tolerates absent or falsey nested objects but does not coerce truthy non-mapping values.
 - identity fields: `identity.name`, `identity.repo_name`, and `identity.repo_branch` are passed to workflow upsert as optional replacements; omitted or `None` values preserve the current workflow field through the registry upsert semantics.
 - current-node rule: a truthy `snapshot.current_node` replaces the workflow's current node; a falsey or absent value preserves the existing current node.
@@ -41,7 +45,8 @@ The sidecar hello applier is the groom server layer that folds a connected sidec
 
 - sig: `async _apply_hello(container_id: str, data: dict) -> None`
 - abstract: false
-- raises: propagates metadata-resolution, workflow-upsert, gate-record construction, renderer, broadcast, truthy non-mapping identity/snapshot, malformed non-iterable gate-list, or malformed iterated gate-entry exceptions; missing identity, missing snapshot, empty gate paths, and falsey snapshot fields are handled as ordinary inputs.
+- raises: propagates metadata-resolution, workflow-upsert, gate-record construction, renderer, broadcast, truthy non-mapping identity/snapshot, malformed non-iterable gate-list, or malformed iterated gate-entry exceptions.
+- raises: handles missing identity, missing snapshot, empty gate paths, and falsey snapshot fields as ordinary inputs.
 - verify: json_path(path="$.state", equals="BLOCKED")
 - verify: json_path(path="$.state", equals="RUNNING")
 - verify: json_path(path="$.state", equals="FINISHED")

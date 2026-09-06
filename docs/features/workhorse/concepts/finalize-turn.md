@@ -107,6 +107,81 @@ Two design rules hold this struct in place:
   struct they all share — opencode's per-turn text-part bookkeeping lives in its own
   `_OpenCodeEvents` rather than here.
 
+## Fields
+
+### result_text
+- type: `str`
+- default: `""`
+- required: false
+- semantics: final answer text selected by the backend event reader
+- verify: json_path(path="$.result_text", matches=".*")
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+
+### session_id
+- type: `str | None`
+- default: `None`
+- required: false
+- semantics: CLI session handle used for the next turn's resume operation
+- verify: json_path(path="$.session_id", absent=true)
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+
+### usage
+- type: `TurnUsage`
+- default: empty usage
+- required: false
+- semantics: normalized token and cost measurements accumulated during the turn
+- verify: absent(subject="usage attributes on a turn with no provider usage")
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+
+### diagnostics
+- type: `list[str]`
+- default: `[]`
+- required: false
+- semantics: non-JSON output and structured error descriptions retained for classification
+- verify: json_path(path="$.diagnostics", matches=".*")
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+
+### timed_out
+- type: `bool`
+- default: `False`
+- required: false
+- semantics: whether timeout/watchdog or early-abort handling ended the stream
+- verify: json_path(path="$.timed_out", equals=false)
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+
+### returncode
+- type: `int`
+- default: `0`
+- required: false
+- semantics: child process exit code copied from the supervised stream
+- verify: json_path(path="$.returncode", equals=0)
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+
+## Methods
+
+### finalize_turn
+- sig: `finalize_turn(backend_name, node_id, state: TurnState, session_id_path, timeout, rate_reset_at=None) -> str`
+- does: reports non-empty normalized usage to the open turn span
+- does: delegates the completed state to `classify_turn`
+- raises: `BackendInvocationError` when the classifier rejects the turn
+- verify: emitted(event="normalized token counts and cost to the open agent-turn span", count=1)
+- returns: the classified result text on success
+- code: `workhorse/workhorse/runner/backends/turn.py::finalize_turn`
+
+### diagnostics_text
+- sig: `diagnostics_text -> str`
+- does: joins diagnostics with newline separators for the shared classifier
+- returns: one diagnostic string, empty when no diagnostics were recorded
+- verify: json_path(path="$.diagnostics_text", equals="")
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState.diagnostics_text`
+
+### read_session_id
+- sig: `read_session_id(session_id_path: Path | None) -> str | None`
+- does: reads and strips an existing persisted session id
+- returns: the stripped id, or `None` for no path, absent file, or empty file
+- verify: json_path(path="$.session_id", absent=true)
+- code: `workhorse/workhorse/runner/backends/turn.py::read_session_id`
+
 ## Related pieces
 
 - [`classify_turn`](classify-turn.md) — the function this one delegates its verdict to; owns every

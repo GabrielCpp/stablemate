@@ -32,6 +32,8 @@ or an old run directory can tell what it was for.
 - `EVENTS_FILE` — `"events.jsonl"` — append-only, per-node event log; kept separate from
   `checkpoint.json` (which is overwritten every step) because it must preserve full node-visit
   history for spend/output attribution — see [`events.jsonl`](../run-artifacts.md#eventsjsonl).
+- `TURNS_DIR` — `"turns"` — the per-visit archive whose child names come from
+  [`VisitKey`](visit-key.md).
 
 ## Instance state
 
@@ -144,6 +146,18 @@ inside one, so its per-node `enter` events need an entry point that is not a che
 Called by the engine for each `self.call` (with `blueprint=`), each `self.agent` (with `prompt=`),
 and each `self.handoff` (with `flow=`); a dry run adds a stand-in marker.
 
+### `record_profile`
+`record_profile(profile, tables=None)` stores the selected profile name and its starting tables in
+`run.json`. The name is used on a flagless resume; the copied tables are informational and are not
+read back for turn resolution.
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.record_profile`
+
+### `record_launch`
+`record_launch(argv, resume_argv, cwd)` writes a `LaunchRecord` to `launch.json`, including the
+actual argv for forensics and a separately rebuilt resume argv. The actual argv must never be
+executed; a container-marked record is not safe for a host-side respawn.
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.record_launch`
+
 ### `write_step`
 `write_step(node_id, prompt, output, context_after, next_node=None)`
 Writes the artifact group for one node visit.
@@ -197,6 +211,16 @@ Ends the run.
 Writes `context.json` = `json.dumps(context, indent=2)`, called right before `finish()`. Under
 pyflow this is the run's **result**, not a context bag: `drive` writes `{"result": …}` carrying
 whatever the entry flow's `Done` returned.
+
+### `read_done`
+`read_done(node_id) -> dict | None` reads a node's completion marker and returns `None` when it is
+absent or malformed. It remains for the retired YAML engine; pyflow does not fast-forward from it.
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.read_done`
+
+### `read_context_after`
+`read_context_after(node_id) -> dict | None` reads the legacy context snapshot and returns `None`
+when absent or malformed. Pyflow writes `{}` and restores `ctx` through its checkpoint instead.
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.read_context_after`
 
 ### `_append_event`
 `_append_event(node_id, phase, **fields)` — private

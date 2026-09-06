@@ -14,7 +14,6 @@ Answer log entry is the process-local event record appended to the [answer event
 
 - producer: the dashboard websocket command handler builds exactly one entry after each `cmd="answer"` frame reaches the gate-answering layer and receives an [answer result](answer-result.md), then appends that same dictionary through [record answer log entry](concepts/answer-event-log.md#method-record-answer-log-entry).
 - skipped commands: frames whose `cmd` is absent or not exactly `"answer"` do not produce log entries.
-- construction point: the entry is created only after `answer_gate(container_id, file_path, answer, workspace_volume=workspace_volume)` returns; exceptions raised before that point are not represented by an answer log entry.
 - object shape: each entry is a plain dictionary with exactly the first-party keys `event`, `container_id`, `file_path`, `ok`, and `message` when produced by the dashboard websocket answer handler; there are no optional first-party keys.
 - key names: field names are the exact dictionary keys used inside the process-local entry; this format has no wire aliases, version key, request id, timestamp, or correlation id.
 - storage: entries are appended to the process-local [answer event log](concepts/answer-event-log.md); the same dictionary object is passed to the log without validation, cloning, redaction, timestamping, disk persistence, external sink, acknowledgement frame, or retry path.

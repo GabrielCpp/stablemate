@@ -26,6 +26,8 @@ The frame is deliberately kept **off** the [dashboard state payload](dashboard-s
 
 ## Contract
 
+The dashboard's `onNotify` handler pushes a blocked-variant toast with a seven-second lifetime and creates a browser `Notification` only when the API exists and `Notification.permission` is already `granted`.
+
 - producer: three server paths send this frame — [receive blocked push](http/groom.md#receive-blocked-push), the [sidecar blocked applier](concepts/sidecar-blocked-applier.md) handling a live `blocked` websocket delta, and the alert-rule dispatcher when a telemetry alert fires. All three go through the same one broadcast helper, so there is one wire shape rather than three.
 - media: a JSON object on the dashboard websocket. It is not an HTTP body, an inline `<script>`, a DOM `CustomEvent`, or a persisted record.
 - shape: exactly two keys — `type` and `message`. No workflow id, gate file path, rule name as its own member, severity, timestamp, toast variant, lifetime, or envelope is included.
@@ -35,7 +37,7 @@ The frame is deliberately kept **off** the [dashboard state payload](dashboard-s
 - ordering: the blocked paths send this frame *after* the [dashboard state payload](dashboard-state-payload.md) and the accompanying run-detail push, so a tab rendering frames in arrival order raises the alert against already-updated content.
 - delivery is best-effort and once: no acknowledgement, no retry, no replay for a tab that connects later, and no record of the alert anywhere in the state a resync would fetch.
 - state mutation: sending this frame mutates nothing. Any workflow state change has already happened, before the state broadcast that precedes it.
-- consumer: the client's `notify` handler pushes one blocked-variant toast with a seven-second lifetime, and additionally constructs a browser `Notification` when the API exists and permission is already `granted`. It never *requests* permission from this path — a prompt raised by an incoming socket frame arrives with no user gesture behind it, which is both hostile and, in current browsers, refused.
+- consumes: a `notify` frame never requests browser notification permission; it only creates a system notification when permission is already granted.
 
 ## Fields
 

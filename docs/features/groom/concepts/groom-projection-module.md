@@ -28,7 +28,9 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - output type: plain JSON-serializable `dict`/`list` built from `str`, `int`, `float`, `bool`, and `None`; no dataclass, enum, `datetime`, or set escapes into a payload.
 - no markup: the module emits data only. A gate's question travels as its text, and the client decides how to display it — which is what stopped operator-supplied question text from ever being interpolated into server-rendered HTML.
 - discriminator: every pushed message carries a `type` field — `state`, `run`, `detail` — and the client dispatches on it. Panel-endpoint payloads are bodies of a known request and carry no discriminator.
-- label + number: a projected value that a human reads as a judgement is accompanied by the raw input it was derived from, so re-formatting in the browser never requires re-deciding.
+- consistency: a projected value that a human reads as a judgement is accompanied by the raw input it was derived from, so re-formatting in the browser never requires re-deciding. For example, `run_row` emits `live_label` with its `silence_s` duration.
+- verify: json_path(path="$.runs[0].live_label", equals="silent 13m 00s")
+- verify: json_path(path="$.runs[0].silence_s", equals=780.0)
 - thresholds: liveness classification reads `store.LIVE_AFTER_S`; the log trail is capped at `LOG_TRAIL_LIMIT`; severity coloring comes from `SEVERITY_CLASS`. All three are server-side policy and are not duplicated in the client.
 - ordering: fleet order is blocked, then alive, then presumed-dead, then finished, with ties broken by name so the list does not shuffle on a tick.
 - filtering: `state_message` accepts a query that filters the run list; the fleet-wide counts in `status` stay fleet-wide regardless, because a filtered count would misreport the fleet.
@@ -37,7 +39,8 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 
 - fleet broadcast and resync: [dashboard shell broadcaster](dashboard-shell-broadcaster.md) and [get dashboard state](../http/groom.md#get-dashboard-state) both call `state_message`, which is what makes push and resync the same payload.
 - websocket handshake: the [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-session) sends `state_message` as its first frame, so a newly opened tab starts from the same snapshot a resync would have given it.
-- addressed detail: the detail push path projects `detail_message` for the runs named by the [run watch registry](run-watch-registry.md); the [get run detail](../http/groom.md#get-run-detail) endpoint returns the same `run_detail` body for a tab that fetched it directly.
+- consistency rule: `detail_message` embeds the complete `run_detail` body in its `detail` frame, so the [run watch registry](run-watch-registry.md) push and [get run detail](../http/groom.md#get-run-detail) fetch cannot project different detail payloads (`groom/groom/projection.py::detail_message`).
+- verify: json_path(path="$.detail.id", equals="blk")
 - panels: the repository picker, file viewer, and telemetry endpoints call `repo_entries`, `file_lang`, and `traces_view`.
 
 ## Fields
@@ -320,12 +323,14 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 ### algorithm-one-shape-two-paths
 
 - step: A state change or the live clock reaches the [dashboard shell broadcaster](dashboard-shell-broadcaster.md); it calls `state_message` and broadcasts the result.
-- step: A tab whose socket has gone quiet calls `GET /api/state`; the handler calls the same `state_message` and returns the result as the response body.
+- consistency rule: `GET /api/state` returns the `state_message` payload rather than a separately projected resync shape.
+- verify: json_path(path="$.type", equals="state")
 - step: Both payloads reach the client's single `applyState()`, so the resync path is not a second rendering path that can rot unobserved — it is the only path, reached a different way.
 
 ## Failure Semantics
 
 - Missing telemetry: a container with no cached `RunTelemetry` projects `unknown` liveness and empty metrics rather than raising or omitting the row.
 - Missing durable facts: `run_detail` accepts `facts=None` and `logs=None` and projects the run without them, which is what lets a detail be pushed before the two SQLite reads have happened.
-- Absent extension mapping: `file_lang` returns `""`, deferring to highlight.js auto-detection rather than guessing.
+- consistency: `file_lang` returns `""` for an unmapped extension, so the `/file/{container_id}` payload defers to highlight.js auto-detection rather than guessing.
+- verify: json_path(path="$.lang", equals="")
 - No error type of its own: the module raises nothing on groom's behalf. A malformed dataclass surfaces as an ordinary attribute or key error at the call site.

@@ -5,7 +5,7 @@ title: Dashboard websocket send loop
 ---
 # Dashboard websocket send loop
 
-Dashboard websocket send loop is groom's per-browser-tab outbound websocket pump and the detailed helper for the [Groom app module send-loop member](groom-app-module.md#method-send-loop). The [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-session) starts one loop with the accepted browser websocket and that tab's queue from the [dashboard client queue set](dashboard-client-queue-set.md). Broadcasts and per-run pushes enqueue projected messages such as a [dashboard state payload](../dashboard-state-payload.md), `detail`, `notify`, or `answered`; this loop is the single place the queued value becomes JSON text and then one websocket text frame for the [groom dashboard](../gui/screens/groom-dashboard.md). It is paired with the [dashboard websocket receive loop](dashboard-websocket-receive-loop.md), but owns server-to-browser delivery only.
+Dashboard websocket send loop is groom's per-browser-tab outbound websocket pump and the detailed helper for the [Groom app module send-loop member](groom-app-module.md#method-send-loop). The [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-session) accepts the browser websocket before it starts one loop with that socket and the tab's queue from the [dashboard client queue set](dashboard-client-queue-set.md). Broadcasts and per-run pushes enqueue projected messages such as a [dashboard state payload](../dashboard-state-payload.md), `detail`, `notify`, or `answered`; this loop is the single place the queued value becomes JSON text and then one websocket text frame for the [groom dashboard](../gui/screens/groom-dashboard.md). It is paired with the [dashboard websocket receive loop](dashboard-websocket-receive-loop.md), but owns server-to-browser delivery only.
 
 - code: groom/groom/app.py::_send_loop
 
@@ -13,7 +13,7 @@ Dashboard websocket send loop is groom's per-browser-tab outbound websocket pump
 
 - sig: `async _send_loop(socket: WebSocket, queue: asyncio.Queue) -> None`
 - purpose: forward every outbound dashboard message accepted by one registered client queue to that same client's websocket connection as a text frame.
-- owner: [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-session); the session accepts the socket, creates and registers the queue, starts this loop as a task, and removes the queue during cleanup.
+- consistency: A [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-session) registers its newly created queue before starting this loop as a task, then removes that same queue during session cleanup.
 - counterpart: [dashboard websocket receive loop](dashboard-websocket-receive-loop.md); receive-side completion or failure can cause the owning session to cancel this send loop.
 - input socket: accepted browser dashboard websocket; required; default none; not created, accepted, closed, or unregistered by this layer.
 - input queue: `asyncio.Queue`; required; default none; normally the [dashboard client queue](dashboard-client-queue-set.md#field-client-queue) registered for exactly one browser tab.
@@ -46,7 +46,6 @@ Dashboard websocket send loop is groom's per-browser-tab outbound websocket pump
 
 #### Inputs
 
-- socket: accepted dashboard `WebSocket`; required; default none; must already be ready for text sends because the session accepted it before starting the loop.
 - queue: `asyncio.Queue`; required; default none; contains already-projected outbound message objects for the same browser session.
 - queue membership: the queue may or may not still be present in the [dashboard client queue set](dashboard-client-queue-set.md) while the loop is waiting; registration affects future broadcasts, not this loop's ability to consume already queued items.
 - item value: each `queue.get()` result must be JSON-serializable for a send to succeed; no first-party validation, schema check, or `type` discrimination occurs before serialization.
@@ -57,7 +56,8 @@ Dashboard websocket send loop is groom's per-browser-tab outbound websocket pump
 - step: Await one item from the queue.
 - step: Serialize the item with `json.dumps` to produce the outbound websocket text payload.
 - step: Await one websocket text send of that payload.
-- step: Return to waiting for the next queue item only after the send operation completes.
+- consistency: Returns to waiting for the next queue item only after the current websocket send operation completes.
+- verify: emitted(event="dashboard websocket text frame", count=1)
 - step: End only when cancellation, queue access, websocket transport, or send operation raises to the owning dashboard websocket session.
 
 #### Effects

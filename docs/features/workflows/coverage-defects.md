@@ -16,7 +16,7 @@ coverage-specific doctor errors remain.
 ### ok
 - type: boolean
 - default: false
-- required: true
+- required: false
 - semantics: true when the selected epic has no relevant coverage defect
 - verify: json_path(path="$.ok", equals=True)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects`
@@ -24,7 +24,7 @@ coverage-specific doctor errors remain.
 ### errors
 - type: string
 - default: empty string
-- required: true
+- required: false
 - semantics: newline-separated coverage findings, empty on success
 - verify: json_path(path="$.errors", equals="")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects`

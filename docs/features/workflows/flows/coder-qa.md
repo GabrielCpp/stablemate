@@ -36,6 +36,7 @@ title: Coder QA flow
 - end: a product failure, rescope, development-target report, replan, or operator-gated block is returned without silently approving the story
 - verify: count(subject="non-passing QA flow results", equals=1)
 - detail: [coder main flow](coder-main.md)
+- detail: [coder QA subflow](../concepts/coder-qa-subflow.md)
 - code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_through_every_gate`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_an_unmappable_packet_is_repaired_and_rebuilt`

@@ -50,7 +50,10 @@ renderer answers. Flat paths are the narrow contract between them.
 - leaf shape: each entry produces exactly one leaf holding `name` — the final segment — and `entry`, the caller's object by reference.
 - duplicate handling: identical paths append independent leaves to the same node. Nothing is deduplicated, overwritten, or merged; a rename legitimately puts the same name on the wire twice.
 - ordering: insertion order is preserved inside each node's `files` array and in directory-key insertion order. Sorting is the renderer's, applied per level to a copy at render time.
-- escaping: none, and none is needed. Every name and path this function returns is written to the document as a Preact text child, never as a markup string.
+- consistency: every directory name returned by the builder is rendered as a Preact text child, never as a markup string.
+- verify: visible(locator=".tree-dir-head", text="<script>alert(1)</script>")
+- consistency: every file name returned by the builder is rendered as a Preact text child, never as a markup string.
+- verify: visible(locator=".tree-file", text="<script>alert(1)</script>")
 - validation: repeated slashes, dot segments, traversal-looking names, empty segments, and duplicate paths are all accepted as ordinary strings. The builder is not a path sanitizer; the server-side readers guard the filesystem.
 - failure boundary: `entries` must be array-like enough to provide `forEach`. Invalid caller input raises an ordinary JavaScript error rather than being reported through any domain-specific channel.
 

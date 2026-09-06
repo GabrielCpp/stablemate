@@ -7,13 +7,14 @@ title: Docker run-directory reader
 
 Docker run-directory reader, also described by Groom's run-artifact formats as the Docker volume run-directory reader, is the read-only Docker volume helper in the [Groom Docker I/O module](groom-docker-io-module.md) used by the [workflow discovery scan](workflow-discovery-scan.md#method-current-run-state) to choose the latest stopped-or-legacy run directory before reading [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md) and [sidecar run metadata](../sidecar-run-metadata.md). Its [list-run-dirs](#list-run-dirs) method mounts the workflow's runs volume through the shared [Docker subprocess runner](docker-subprocess-runner.md), lists only top-level directories under the volume root, strips the container-local `/vol/` prefix, and returns sorted volume-relative directory names.
 
+The `list_run_dirs` implementation in `groom/groom/docker_io.py` treats a non-zero Docker listing result as unusable rather than processing any output it carried.
+
 - code: groom/groom/docker_io.py::list_run_dirs
 - tests: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
 - tests: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
 - parent: [Groom Docker I/O module](groom-docker-io-module.md)
 - alias: Docker volume run-directory reader
 - refs: [Docker subprocess runner](docker-subprocess-runner.md), [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md), [sidecar run metadata](../sidecar-run-metadata.md), [workflow discovery scan](workflow-discovery-scan.md#method-current-run-state)
-- verify: count(subject="run directories returned by list_run_dirs", equals=1)
 
 ## Contract
 
@@ -24,7 +25,8 @@ Docker run-directory reader, also described by Groom's run-artifact formats as t
 - mount mode: mounts the supplied volume read-only at `/vol` inside the throwaway container.
 - container image: uses the shared Alpine helper image configured for Docker volume readers.
 - timeout: uses the shared Docker helper timeout for the whole throwaway container command.
-- output: returns `list[str]` containing volume-relative top-level directory names only; directory contents, full absolute container paths, and file entries are never returned.
+- consistency: returns `list[str]` containing volume-relative top-level directory names only; directory contents, full absolute container paths, and file entries are never returned.
+- verify: count(subject="run directories returned by list_run_dirs", equals=1)
 - path conversion: keeps only stdout lines that start with `/vol/` and removes that prefix from each retained line.
 - ordering: sorts the retained directory names lexicographically before returning them; run ids embed sortable timestamps, so callers can use the final item as the newest run when the volume follows Groom's run-id convention.
 - validation: does not parse, normalize, deduplicate, shell-expand, or schema-check the retained directory names; any top-level directory name produced by Docker `find` is eligible output after prefix stripping.
@@ -97,7 +99,8 @@ Docker run-directory reader, also described by Groom's run-artifact formats as t
 
 - step: Build one tokenized Docker command that mounts the supplied runs volume at `/vol` in read-only mode and runs `find` from the volume root with minimum and maximum depth both constrained to direct children.
 - step: Ask the shared Docker subprocess runner to execute the command with the shared Docker timeout.
-- step: If the process exits with any non-zero return code, return an empty list.
+- consistency: a non-zero Docker listing return code produces no returned run directories.
+- verify: count(subject="run directories returned after a non-zero Docker listing result", equals=0)
 - step: Split standard output into lines and trim surrounding whitespace from each line.
 - step: Retain only lines whose trimmed value begins with `/vol/`.
 - step: Remove the `/vol/` prefix from each retained path to make the value relative to the runs volume root.
@@ -106,8 +109,10 @@ Docker run-directory reader, also described by Groom's run-artifact formats as t
 
 ## Failure behavior
 
-- Empty volume: a successful command with no matching top-level directories returns `[]`.
-- Docker command failure: any non-zero process return code returns `[]`, including missing volume, missing Docker daemon, missing image, and `find` failure cases represented by Docker as a completed failed process.
+- consistency: a successful Docker listing with no matching top-level directories yields no returned run directories.
+- verify: count(subject="run directories returned from an empty Docker volume", equals=0)
+- consistency: a non-zero Docker listing return code yields no returned run directories, including missing volume, missing Docker daemon, missing image, and `find` failure cases represented by Docker as a completed failed process.
+- verify: count(subject="run directories returned after a non-zero Docker listing result", equals=0)
 - Process launch failure: not converted; operating-system launch exceptions from the shared subprocess runner propagate to the caller.
 - Timeout failure: not converted; subprocess timeout exceptions from the shared subprocess runner propagate to the caller.
 - Unexpected stdout: lines that do not use the `/vol/` prefix are ignored, and retained duplicate lines remain duplicates until the final sorted output.
@@ -126,13 +131,14 @@ Docker run-directory reader, also described by Groom's run-artifact formats as t
 - sig: `list_run_dirs(volume: str) -> list[str]`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the shared runner are intentionally surfaced rather than mapped to an empty listing.
-- returns: sorted list of direct-child run directory names relative to the mounted runs volume root; an empty list means the Docker process exited non-zero, the volume has no retained direct child directories, or stdout produced no retained `/vol/` paths.
+- returns: sorted list of direct-child run directory names relative to the mounted runs volume root.
 - verify: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
+- returns: an empty list when the Docker process exited non-zero, the volume has no retained direct child directories, or stdout produced no retained `/vol/` paths.
 - verify: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
+- returns: zero or more [field-returned-run-directory-name](#field-returned-run-directory-name) values sorted lexicographically.
 - code: groom/groom/docker_io.py::list_run_dirs
 - args:
   - `volume`: [field-runs-volume-name](#field-runs-volume-name), required, no default.
-- output: zero or more [field-returned-run-directory-name](#field-returned-run-directory-name) values sorted lexicographically.
 
 Returns sorted volume-relative names for the top-level directories in one workflow runs volume, or an empty list when the Docker listing command fails or yields no eligible directory paths.
 
@@ -146,7 +152,8 @@ Returns sorted volume-relative names for the top-level directories in one workfl
 
 #### Effects
 
-- Delegates: all process execution, text capture, timeout enforcement, and process-return reporting to the [Docker subprocess runner](docker-subprocess-runner.md).
+The shared [Docker subprocess runner](docker-subprocess-runner.md) supplies the process execution, text capture, timeout enforcement, and return reporting used by this method.
+
 - Scans: the mounted volume root for direct child directories only.
 - Filters: ignores stdout lines that do not begin with `/vol/` after whitespace trimming.
 

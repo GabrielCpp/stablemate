@@ -66,5 +66,5 @@ previous attempt's wording, only on the fixed `original_prompt`.
 - [`retry_prompt`](retry-prompt.md) / [`timeout_retry_prompt`](timeout-retry-prompt.md) — the
   other two prompt-mutation strategies in `runner/reframe.py`, used in different failure paths
   (same-session output-parse retry, and a wall-clock-timeout retry respectively).
-- consistency: once every configured reframe has failed, [`AgentRunner.run`](run-agent.md#the-ladder)
+- consistency: agent-run — once every configured reframe has failed, [`AgentRunner.run`](run-agent.md#the-ladder)
   re-raises so the run stops at its checkpoint rather than emitting an answer the agent never gave

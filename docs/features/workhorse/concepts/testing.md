@@ -31,6 +31,36 @@ def test_select_story(tmp_path):
 
 - code: `workhorse/workhorse/testing.py`
 
+## Methods
+
+### method: make_git_repo
+- sig: `make_git_repo(path: Path, *, name: str = "test") -> Path`
+- does: create the target directory and initialize a real Git repository on branch `main`
+- does: configure a local identity, create `README.md` only when absent, stage the tree, and create one initial commit
+- returns: the same repository path
+- verify: created(subject="initial Git repository")
+- code: `workhorse/workhorse/testing.py::make_git_repo`
+
+### method: assert_file
+- sig: `assert_file(sandbox: Path, rel: str) -> None`
+- does: assert that `sandbox / rel` exists
+- raises: `AssertionError` naming the relative path when it does not exist
+- code: `workhorse/workhorse/testing.py::assert_file`
+
+### method: assert_file_contains
+- sig: `assert_file_contains(sandbox: Path, rel: str, text: str) -> None`
+- does: assert that the relative file exists and its UTF-8 text contains the requested substring
+- raises: `AssertionError` with the actual file content when the file is absent or the substring is missing
+- code: `workhorse/workhorse/testing.py::assert_file_contains`
+
+### method: assert_json_file
+- sig: `assert_json_file(sandbox: Path, rel: str, subset: dict | list) -> None`
+- does: parse the relative file as JSON and raise an assertion naming the file on parse failure
+- does: require every key/value in a dict subset while ignoring extra file keys
+- does: require exact equality, including order and length, for a list subset
+- raises: `AssertionError` for missing files, invalid JSON, absent dict keys, unequal values, or unequal lists
+- code: `workhorse/workhorse/testing.py::assert_json_file`
+
 ## Why a real repo rather than a mocked `git`
 
 Git operations are tested against a **real (cheap) repo**, not a mocked `git` binary. A

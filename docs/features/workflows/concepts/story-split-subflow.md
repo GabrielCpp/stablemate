@@ -7,10 +7,11 @@ title: Author story-split subflow
 
 The `story_split` package is the standalone Author subflow for decomposing one explicitly named
 epic into stories and converging its seed coverage. It loads the configured repository paths,
-delegates story splitting and semantic coverage review to high-power agent turns, applies bounded
-coverage rework, and parks unresolved decisions at the epic context for operator input. A passing
-review is recorded as a digest-bound receipt before the flow returns its accepted result. It does
-not author epic prose, select another epic, or create a commit.
+delegates story splitting and semantic coverage review to high-power agent turns, applies at most
+three coverage reworks and two automatic split-resolution turns, and parks unresolved decisions
+at the epic context for operator input. A passing review is recorded as a digest-bound receipt
+before the flow returns its accepted result. It does not author epic prose, select another epic,
+or create a commit.
 
 The [author workflow composition root](author-workflow-composition-root.md) registers this flow
 alongside the other author stages. Configuration loading, coverage validation, path resolution,
@@ -25,6 +26,27 @@ only composes them for one story-split run.
 - detail: [story split agent result](../story-split-agent-result.md)
 - detail: [story split coverage review](../coverage-review.md)
 - detail: [story split coverage defects](../coverage-defects.md)
+
+## Fields
+
+### epic
+- type: `str`
+- default: `""` — no epic is selected until the caller supplies one
+- required: true
+- semantics: identifies the single epic whose story graph is split and reviewed
+- verify: json_path(path="$.epic", matches=".+")
+- verify: count(subject="story-split runs with one selected epic", equals=1)
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow`
+
+### operator_mode
+- type: literal `auto` or `human`
+- default: `"auto"` — blocked decisions first receive automatic resolution attempts
+- required: true
+- semantics: `human` sends blocked or exhausted work directly to the operator context
+- semantics: `auto` permits up to two automatic split-resolution turns before the operator context
+- verify: json_path(path="$.operator_mode", equals="auto")
+- verify: count(subject="human-mode story-split operator gates", equals=1)
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow`
 
 ## Methods
 
@@ -128,6 +150,51 @@ only composes them for one story-split run.
 - does: routes automatic unresolved coverage to `resolve_coverage` while its resolution budget remains
 - verify: count(subject="automatic story-split coverage resolutions", equals=1)
 - code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._gate_coverage`
+
+### _epic_dir
+- sig: `_epic_dir() -> str`
+- does: resolves the selected epic directory from the workflow repository root and epic name
+- verify: json_path(path="$.epic_dir", matches=".+")
+- returns: returns the repository-relative epic directory used by the split and coverage stages
+- verify: json_path(path="$.epic_dir", matches=".+")
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._epic_dir`
+
+### _context
+- sig: `_context() -> str`
+- does: derives `context.md` beneath the selected epic directory
+- verify: json_path(path="$.context_path", matches="context\\.md$")
+- returns: returns the operator context path used by blocked split and coverage decisions
+- verify: json_path(path="$.context_path", matches="context\\.md$")
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._context`
+
+### _abs
+- sig: `_abs(relative: str) -> Path`
+- does: joins a repository-relative path to the workflow repository root
+- verify: json_path(path="$.absolute_path", matches=".+")
+- returns: returns an absolute path for an operator-await context file
+- verify: json_path(path="$.absolute_path", matches=".+")
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._abs`
+
+### _resolve
+- sig: `_resolve(stage: str, notes: str) -> OperatorResolution`
+- does: invokes the shared operator resolver with the epic context, stage, and block notes
+- verify: count(subject="story-split operator resolver turns", equals=1)
+- does: gives the resolver high power and no time limit
+- verify: count(subject="unbounded story-split resolver turns", equals=1)
+- returns: returns the resolver's operator decision
+- verify: json_path(path="$.decision", matches=".+")
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._resolve`
+
+## Downstream Boundaries
+
+The flow delegates configuration loading and epic-scoped coverage validation to shared Author
+nodes. Those modules are separate source-layer contracts and are descended independently; path
+resolution, telemetry labels, receipt persistence, and the agent result formats are already
+documented by the linked shared concepts and formats.
+
+- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/coverage.py::validate_coverage`
+- detail: [author coverage validator](coverage-validator.md)
 
 ## Nodes
 

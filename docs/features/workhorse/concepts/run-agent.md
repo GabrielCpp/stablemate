@@ -33,6 +33,11 @@ supervised-spawn path [`stream_subprocess`](stream-subprocess.md) — directly f
 [`_stream_events`](stream-events.md)/[`_emit_event`](emit-event.md)/[`_tool_summary`](tool-summary.md)
 live-echo, or via the shared [`stream_jsonl`](stream-jsonl.md) loop for the JSONL backends — and
 session continuity between turns is read back by [`read_session_id`](read-session-id.md).
+The node input contract is [AgentNode](agent-node-spec.md); cumulative recovery sleeps use the
+[recovery wait budget](recovery-wait-budget.md), output evidence uses [transcript capture](transcript-capture.md),
+and backend usage is normalized by [TurnUsage](usage-normalization.md). The shared stream boundary
+also applies [secret redaction](secret-redaction.md), while [failure classification](failure-classification.md)
+is the single source of recovery flags.
 
 - code: `workhorse/workhorse/runner/ladder.py::AgentRunner.run`
 - tests: `workhorse/tests/test_agent_recovery.py::test_success_on_first_attempt_returns_outputs`,
@@ -85,11 +90,14 @@ a stand-in entirely via `RunEnv(agent_runner=...)` — see [testing](testing.md)
 - **Output:** `tuple[str, dict[str, Any]]` — `(rendered_prompt, outputs)`, the fully-rendered
   prompt text and the node's extracted output dict (for `output.json` and the context
   merge) — see [run artifacts](../run-artifacts.md#node-idpromptmd).
-- consistency: A non-recoverable backend failure is re-raised immediately as its
+- consistency: backend-invocation-error — A non-recoverable backend failure is re-raised immediately as its
   `BackendInvocationError`, without spending the reframe budget.
-- consistency: When every recovery layer is exhausted, the ladder re-raises the final
-  `BackendInvocationError` or `OutputParseError` instead of returning fallback outputs the agent
-  did not give.
+- consistency: backend-invocation-error — When every recovery layer is exhausted, the ladder re-raises the final
+  `BackendInvocationError` instead of returning fallback outputs the agent did not give.
+- verify: exit_status(code=1)
+- consistency: output-parse-error — When every recovery layer is exhausted, the ladder re-raises the final
+  `OutputParseError` instead of returning fallback outputs the agent did not give.
+- verify: exit_status(code=1)
 When every recovery layer is exhausted, the ladder records one otel `exhausted` error event.
 
 `BackendInvocationError` is a `RuntimeError`, not a `PyflowError`, so it propagates all the way out

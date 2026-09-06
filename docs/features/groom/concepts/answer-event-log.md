@@ -25,7 +25,7 @@ Answer event log is groom's process-local, bounded history of dashboard answer a
 - append semantics: each successful call to [record answer log entry](#method-record-answer-log-entry) appends exactly one supplied dictionary at the newest end of the log; there is no batching, replacement, deduplication, sort, or merge step.
 - object handling: the supplied dictionary is retained as the log member; the log layer does not clone, freeze, redact, or transform the object before storage.
 - synchronization: the log has no groom-specific lock, async queue, await point, or cross-task coordination mechanism; callers that need sequencing must establish it before calling the append API.
-- persistence: no disk file, database, external sink, replay protocol, acknowledgement frame, or cross-process coordination participates.
+- persistence: answer-event-log — no disk file, database, external sink, replay protocol, acknowledgement frame, or cross-process coordination participates.
 - visibility: the log is internal process state; the current dashboard surface records answer attempts into it but does not expose a route, websocket frame, or UI panel that reads it back.
 - command coverage: handled answer-command successes and handled answer-command failures are both logged; frames whose command is not exactly `answer`, and exceptions raised before an [answer result](../answer-result.md) is returned, produce no answer log entry.
 - failure behavior: the log has no domain-level validation or recovery path; if the underlying append operation raises, that ordinary runtime error propagates to the caller.
@@ -48,7 +48,8 @@ Answer event log is groom's process-local, bounded history of dashboard answer a
 
 - sig: `record_log(event: dict) -> None`
 - abstract: false
-- raises: no domain-specific errors; ordinary container append errors would propagate to the caller.
+- raises: no domain-specific errors.
+- raises: ordinary container append errors would propagate to the caller.
 - code: groom/groom/state.py::record_log
 
 Appends one already-built event dictionary to the process-local answer event log without validating, normalizing, cloning, broadcasting, or persisting it.
@@ -77,13 +78,16 @@ Appends one already-built event dictionary to the process-local answer event log
 
 ### algorithm-log-initialization
 
-- step: The groom state module is imported inside one groom process.
-- step: The module creates `LOG` as an empty bounded sequence whose maximum retained length is 200 entries.
-- step: The empty log is then available to first-party callers without opening files, connecting to a database, accepting websocket clients, inspecting workflow containers, or rendering dashboard HTML.
+When the groom state module is imported in a process, it constructs `LOG` as an empty bounded
+sequence with a maximum retained length of 200 entries. The resulting log is available to
+first-party callers without opening files, connecting to a database, accepting websocket clients,
+inspecting workflow containers, or rendering dashboard HTML.
 
 ### algorithm-answer-attempt-append
+
+The append call has no return payload; its caller remains responsible for client notification,
+dashboard rendering, workflow-state changes, and error handling.
 
 - step: A caller supplies one already-built event dictionary.
 - step: [record answer log entry](#method-record-answer-log-entry) appends that same dictionary object at the newest end of the process-local log.
 - step: If the append makes the bounded sequence exceed 200 entries, the oldest retained entry is evicted by the bounded container.
-- step: The method returns `None` and leaves client notification, dashboard rendering, workflow-state changes, and any error handling to its caller.

@@ -108,6 +108,22 @@ model on the default provider with no profile, lead with `@`.
   | `"@gpt-5.5"` | `(None, gpt-5.5)` — model only; profile falls back to `CODEX_PROFILE` |
   | `""` / `None` | `(None, None)` |
 
+## Methods
+
+### run_turn
+- sig: `run_turn(prompt: str, node_id: str, session_id_path: Path | None, model: str | None = None, *, prompt_path: Path | None = None, timeout: float, resilience: AgentResilience, cwd: str | None = None, add_dirs: list[str] | None = None, effort: str | None = None) -> str`
+- does: runs Codex JSON output with the prompt on stdin, using a configured profile or resumed thread when available
+- raises: `BackendInvocationError` after `finalize_turn` classifies the streamed state
+- verify: emitted(event="Codex turn result", count=1)
+- code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend.run_turn`
+
+### compact
+- sig: `compact(session_id_path: Path | None, node_id: str, model: str | None = None, *, timeout: float, resilience: AgentResilience) -> bool`
+- does: declines in-place session compaction
+- returns: `false`
+- verify: json_path(path="$.compacted", equals=false)
+- code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend.compact`
+
 ## Related pieces
 
 - [`read_session_id`](read-session-id.md) — reads the persisted `.session_id` file, if any, shared

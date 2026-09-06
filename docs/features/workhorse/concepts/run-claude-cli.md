@@ -56,7 +56,7 @@ Regression coverage includes `workhorse/tests/test_backends.py::test_claude_effo
   - The operator's `[harness.claude].env` table is obtained through
     [`ClaudeBackend.harness_env()`](agent-backend.md#harness_env-concrete) and layered over the
     inherited environment inside `stream_subprocess`.
-- consistency: returns the classified `str` result text exactly as
+- consistency: result-text — returns the classified `str` result text exactly as
   [`classify_turn`](classify-turn.md#ladder-first-match-wins) returns on a successful turn.
 - **Raises:** `BackendInvocationError` (via `classify_turn`), classified transient /
   scheduled-reset cap / context-overflow / non-recoverable per the shared ladder — this function

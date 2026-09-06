@@ -5,7 +5,7 @@ title: Workflow gate clearer
 ---
 # Workflow gate clearer
 
-Workflow gate clearer is the [Groom state module](groom-state-module.md) operation that removes one answered [gate info](gate-info.md) entry from one tracked [workflow container](workflow-container.md) in the [workflow registry](workflow-registry.md). The [gate-answering layer](gate-answering-layer.md) calls it only after the matching operator gate context file has been successfully rewritten to `STATUS: ANSWERED`, so failed, stale, or unwritable answer attempts leave the visible in-memory gate untouched. It is intentionally narrower than the [per-gate answer lock](per-gate-answer-lock.md): callers serialize and durably answer a gate first, then use this operation only to update groom's visible process-local state.
+Workflow gate clearer is the [Groom state module](groom-state-module.md) operation that removes one answered [gate info](gate-info.md) entry from one tracked [workflow container](workflow-container.md) in the [workflow registry](workflow-registry.md). The [gate-answering layer](gate-answering-layer.md) calls it only after the matching operator gate context file has been successfully rewritten to `STATUS: ANSWERED`, so failed, stale, or unwritable answer attempts leave the visible in-memory gate untouched. It is a synchronous helper with no return payload; completion means only that its local no-op-or-delete attempt finished. It is intentionally narrower than the [per-gate answer lock](per-gate-answer-lock.md): callers serialize and durably answer a gate first, then use this operation only to update groom's visible process-local state.
 
 - code: groom/groom/state.py::clear_gate
 - verify: groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running
@@ -14,7 +14,6 @@ Workflow gate clearer is the [Groom state module](groom-state-module.md) operati
 
 - purpose: remove exactly one open gate from groom's process-local workflow state after durable answer-file write success, so the dashboard no longer renders an answer form for that gate while waiting for the workflow's next push or shell refresh.
 - caller: [gate-answering layer](gate-answering-layer.md) invokes this operation with the submitted workflow container id and gate file path after a successful workspace-volume file write.
-- API: synchronous helper with no return payload; completion means only that the local no-op-or-delete attempt finished.
 - input: `container_id` identifies the workflow registry entry to mutate; it is used as supplied and is not normalized or validated by this operation.
 - input: `file_path` identifies the gate map entry to remove from the selected workflow container; it is used as supplied and is not path-normalized or validated by this operation.
 - storage shape: the selected workflow's gate map is a mutable `dict[str, GateInfo]` keyed by exact gate file path strings; this operation deletes at most one key from that map and never rewrites the stored [gate info](gate-info.md) value before deletion.
@@ -35,7 +34,8 @@ Workflow gate clearer is the [Groom state module](groom-state-module.md) operati
 
 - sig: `clear_gate(container_id: str, file_path: str) -> None`
 - abstract: false
-- raises: no domain-specific errors; ordinary mutation errors from an incompatible workflow object or gate map would propagate.
+- raises: no domain-specific errors
+- raises: ordinary mutation errors from an incompatible workflow object or gate map would propagate.
 - returns: `None`
 - verify: removed(subject="WORKFLOWS[container_id].gates[file_path]")
 - code: groom/groom/state.py::clear_gate
@@ -45,8 +45,11 @@ Removes the gate entry keyed by `file_path` from the workflow stored under `cont
 
 #### Parameters
 
-- `container_id`: required `str` opaque workflow-registry key with no default. The method uses exact string equality and does not trim, truncate, reject empty values, or inspect Docker for the container.
-- `file_path`: required `str` gate-map key with no default. The method uses exact string equality against the selected workflow container's `gates` map and does not normalize paths, reject absolute paths, or check the backing workspace file.
+Both parameters are required `str` values with no defaults. `container_id` is an opaque
+workflow-registry key, matched with exact string equality without trimming, truncation, or
+Docker inspection. `file_path` is the gate-map key, matched with exact string equality against
+the selected workflow container's `gates` map without path normalization or backing-workspace
+inspection.
 
 #### Return
 
@@ -60,13 +63,14 @@ Removes the gate entry keyed by `file_path` from the workflow stored under `cont
 - Deletes: at most one `file_path` entry from the selected workflow container's `gates` map when the workflow exists and the key is present.
 - Tolerates: absent workflow records and absent gate keys by completing without mutation or error.
 - Preserves: every other gate on the same workflow, every gate on other workflows, workflow identity and metadata fields, per-gate locks, log entries, dashboard websocket clients, and external Docker/container state.
-- Emits: no return value; success, missing workflow, and missing gate all complete as `None`.
+- Emits: no return value.
+- Emits: success, missing workflow, and missing gate all complete as `None`.
 - Does not: validate identifiers, normalize file paths, acquire locks, touch workspace files, update workflow lifecycle state, render HTML, broadcast websocket fragments, or remove stale registry entries.
 
 ## Algorithm
 
-- step: Look up the current workflow container in the process-local [workflow registry](workflow-registry.md) by the supplied `container_id`.
-- step: If the lookup returns no workflow, stop immediately with no mutation and no error.
-- step: If a workflow exists, inspect that workflow's mutable `gates` mapping and remove the exact `file_path` key when present.
-- step: If the workflow has no matching gate key, leave the gates map unchanged and still complete normally.
-- step: Return `None` for every path through the operation.
+The [`clear_gate` implementation](../../../../groom/groom/state.py#L64-L69) looks up the supplied
+`container_id` in the process-local [workflow registry](workflow-registry.md). A missing workflow
+ends the operation without mutation; otherwise, the implementation removes the exact `file_path`
+key from the workflow's mutable `gates` mapping when present. Missing gate keys leave that mapping
+unchanged, and every path completes with `None`.

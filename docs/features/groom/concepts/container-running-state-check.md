@@ -23,7 +23,10 @@ Container running-state check is the `is_running` public member of the [Groom Do
 - output: returns `False` when inspection metadata is absent, the `State` object is missing, the `Running` field is missing, or the `Running` value is falsey.
 - failure boundary: subprocess launch failures, Docker timeout failures, shape errors raised by the Docker inspection reader, and present-but-non-mapping `State` values are not caught here; callers that need domain-specific results must handle those exceptions outside the check.
 - side effects: performs only a Docker metadata read through the inspection reader; it does not start, stop, prune, exec into, or mutate the container, and it does not change Groom's in-memory workflow registry or dashboard clients.
-- concurrency: has no cache, lock, or retry state; each call observes the Docker inspection answer available at that instant.
+- concurrency: docker-inspection-result — has no cache, lock, or retry state.
+- verify: count(subject="Docker inspection calls for one is_running invocation", equals=1)
+- concurrency: docker-inspection-result — each call observes the Docker inspection answer available at that instant.
+- verify: json_path(path="return value", equals=true)
 
 ## Methods
 
@@ -31,8 +34,12 @@ Container running-state check is the `is_running` public member of the [Groom Do
 
 - sig: `is_running(container_id: str) -> bool`
 - abstract: false
-- raises: propagates subprocess launch and timeout exceptions from the Docker inspection reader path; propagates ordinary metadata-shape errors when present metadata contains a non-mapping `State` value.
-- returns: `True` only for present inspection metadata with truthy `State.Running`; otherwise `False` for absent metadata, absent `State`, absent `Running`, or falsey `Running`.
+- raises: propagates subprocess launch and timeout exceptions from the Docker inspection reader path.
+- raises: propagates ordinary metadata-shape errors when present metadata contains a non-mapping `State` value.
+- returns: `True` only for present inspection metadata with truthy `State.Running`.
+- verify: json_path(path="return value", equals=true)
+- returns: `False` for absent metadata, absent `State`, absent `Running`, or falsey `Running`.
+- verify: json_path(path="return value", equals=false)
 - code: groom/groom/docker_io.py::is_running
 
 ## Algorithm
@@ -41,12 +48,13 @@ Container running-state check is the `is_running` public member of the [Groom Do
 - step: If no inspection metadata is returned, return `False`.
 - step: Read the metadata's `State` mapping, using an empty mapping only when the `State` key is absent.
 - step: Read the `Running` value from that state mapping and convert it to a boolean; truthy non-boolean values are treated as running, falsey non-boolean values are treated as not running, and a present `State` value that does not expose mapping-style lookup propagates that shape error.
-- step: Return that boolean as the running-state answer.
+
+The function returns the resulting boolean as the running-state answer.
 
 ## Callers
 
 - used by: [Gate-answering layer](gate-answering-layer.md) calls this check after the answered gate file has been written and the in-memory gate has been cleared.
-- caller effect: when this check returns `True`, the gate-answering layer returns `ok=true` with message `answered` and does not call Docker start.
-- caller effect: when this check returns `False`, the gate-answering layer attempts the [stopped container start fallback](stopped-container-start-fallback.md).
+- consistency: after a successful answer-file write and gate clear, a `True` running-state answer makes the gate-answering layer return `ok=true` with message `answered` without calling Docker start.
+- consistency: after a successful answer-file write and gate clear, a `False` running-state answer makes the gate-answering layer attempt the [stopped container start fallback](stopped-container-start-fallback.md).
 - caller coverage: `groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running` verifies the no-restart branch when this check reports running.
 - caller coverage: `groom/tests/test_gates.py::test_answer_gate_restarts_when_container_stopped` verifies the fallback-start branch when this check reports not running.

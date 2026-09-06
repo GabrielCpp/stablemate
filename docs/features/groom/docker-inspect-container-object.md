@@ -18,7 +18,7 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 
 ## Contract
 
-- producer: Docker CLI `docker inspect <container_id>` emits a JSON array of container objects; Groom's inspection reader returns the first array item when the command succeeds and the JSON parses.
+- consistency: Docker CLI `docker inspect <container_id>` emits a JSON array of container objects, and Groom's inspection reader returns the first array item when the command succeeds and the JSON parses.
 - accepted top-level type: `dict[str, Any]` for every documented consumer; absent inspection metadata is represented before this format as `None`, not as a special object field.
 - consumers: discovery classifies workhorse containers, converts this object into a workflow-container record, and uses `State.Running` to choose live sidecar query versus volume reconstruction; the push-first resolver uses the conversion to fill volume and workflow-type metadata; running-state checks read only the nested `State.Running` value.
 - object identity: `Id` is the only Docker identity field Groom reads; all stored workflow-container ids derived from this object are the first twelve characters of `Id`.
@@ -246,7 +246,10 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 - verify: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
 - input: one Docker inspect container object returned for a candidate id during workflow discovery.
 - reads: `State.Running` after the object has passed workhorse-container classification and baseline workflow-container conversion.
-- emits: a control-flow choice only; running containers are queried through the [host-to-container sidecar query](concepts/host-to-container-sidecar-query.md) path, and stopped or non-running containers skip sidecar query and use [volume reconstruction](concepts/workflow-state.md#transition-volume-reconstruction).
+- emits: a control-flow choice in which running containers are queried through the [host-to-container sidecar query](concepts/host-to-container-sidecar-query.md) path.
+- verify: emitted(event="host-to-container sidecar query", count=1)
+- emits: a control-flow choice in which stopped or non-running containers skip sidecar query and use [volume reconstruction](concepts/workflow-state.md#transition-volume-reconstruction).
+- verify: emitted(event="volume reconstruction", count=1)
 - running-path: truthy `State.Running` calls the [host-to-container sidecar query](concepts/host-to-container-sidecar-query.md) with the normalized workflow container id produced from the same inspect object.
 - stopped-path: falsey or absent `State.Running` does not call the sidecar query and falls directly back to [volume reconstruction](concepts/workflow-state.md#transition-volume-reconstruction).
 - fallback: a running-path sidecar query that returns no snapshot also falls back to [volume reconstruction](concepts/workflow-state.md#transition-volume-reconstruction).
@@ -268,5 +271,8 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 - code: groom/groom/docker_io.py::is_running
 - input: one Docker inspect container object returned by the [Docker inspection reader](concepts/docker-inspection-reader.md), or no metadata.
 - reads: `State.Running` only.
-- emits: `True` only when inspection metadata exists and `State.Running` is truthy; otherwise emits `False` for absent metadata or absent/falsey running state.
+- emits: `True` only when inspection metadata exists and `State.Running` is truthy.
+- verify: json_path(path="return value", equals=true)
+- emits: `False` for absent metadata or absent/falsey running state.
+- verify: json_path(path="return value", equals=false)
 - side effects: performs the Docker inspection read through the reader but does not mutate the workflow registry or container.

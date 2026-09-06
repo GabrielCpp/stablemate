@@ -35,7 +35,7 @@ The inputs are `text: str`, the raw result text from a completed `AgentRunner.tu
 function is called. The node supplies `node.id` for error messages and
 `node.outputs: list[OutputSpec]` for the keys associated with the state's declared return model.
 The function returns a `dict[str, Any]` containing the declared keys found in the parsed JSON.
-- consistency: A node with no declared outputs yields an empty output mapping.
+- consistency: output-mapping — A node with no declared outputs yields an empty output mapping.
 - verify: count(subject="extracted outputs", equals=0)
 - **Raises:** `OutputParseError` (a `RuntimeError` subclass, distinct so the runner's ladder retries
   only this recoverable, re-promptable mistake and not e.g. a CLI crash) when:

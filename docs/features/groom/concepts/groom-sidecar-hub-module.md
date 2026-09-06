@@ -5,7 +5,7 @@ title: Groom sidecar hub module
 ---
 # Groom sidecar hub module
 
-The Groom sidecar hub module is the host-process side of persistent sidecar sessions. It defines the current [sidecar connection registry](sidecar-connection-registry.md), the per-socket [sidecar connection](sidecar-connection.md) object, and the [sidecar error](sidecar-error.md) failure signal used when host requests over [sidecar live sessions](../sidecar-live-sessions.md) cannot complete. The [websocket-sidecar](../http/groom.md#websocket-sidecar) endpoint owns socket acceptance and incoming [sidecar websocket frame](../sidecar-websocket-frame.md) dispatch; this module owns only the host-side connection state and outbound RPC/reload data plane.
+The Groom sidecar hub module is the host-process side of persistent sidecar sessions. It defines the current [sidecar connection registry](sidecar-connection-registry.md), the per-socket [sidecar connection](sidecar-connection.md) object, and the [sidecar error](sidecar-error.md) failure signal used when host requests over [sidecar live sessions](../sidecar-live-sessions.md) cannot complete. The [websocket-sidecar](../http/groom.md#websocket-sidecar) endpoint owns socket acceptance and incoming [sidecar websocket frame](../sidecar-websocket-frame.md) dispatch; this module owns only the host-side connection state and outbound RPC/reload data plane. When a sidecar connection is lost, its cleanup affects only that local connection state and pending RPCs; workflow containers, gates, operator answers, workflow state, and HTTP response bodies remain owned by their respective callers and surfaces.
 
 - code: groom/groom/sidecar_hub.py
 - tests: groom/tests/test_sidecar_hub.py::test_ask_questions_rides_the_registered_connections_rpc
@@ -23,10 +23,11 @@ The Groom sidecar hub module is the host-process side of persistent sidecar sess
 - fallback contract: socket absence, send failure, timeout, sidecar error result, unregister, or reconnect displacement is reported as [sidecar error](sidecar-error.md) or a missing registry entry so callers can use Docker volume fallback paths.
 - gate relay: `ask_questions` and `answer_gate` use the same correlated RPC path to relay operator-gate questions and answers to the run's own control socket through the connected sidecar; the run's reply is returned as a dictionary without being reinterpreted.
 - gate failure contract: a missing connection, failed RPC, or non-dictionary RPC result raises [sidecar error](sidecar-error.md); the module does not write gate files or decide whether the caller should use a file fallback.
-- authority boundary: losing a sidecar connection never deletes a [workflow container](workflow-container.md), removes a gate, answers an operator question, clears workflow state, or decides an HTTP response body by itself.
 - external boundary: `asyncio`, protocol typing, ASGI websocket senders, and exception base behavior are standard-library or framework boundaries and are not Groom-owned graph nodes to descend into.
 
 ## Public Member Index
+
+`SidecarError` represents expected sidecar data-plane unavailability or failed sidecar RPC results rather than endpoint-specific programmer errors. `SidecarConnection` binds one normalized container id to its accepted sidecar websocket sender, serializes outbound sends, tracks pending RPC futures, resolves sidecar replies, fails outstanding RPCs, and emits reload frames. `CONNECTIONS` maps normalized container ids to their currently registered sidecar connection objects.
 
 ### RPC_TIMEOUT
 
@@ -39,19 +40,16 @@ The Groom sidecar hub module is the host-process side of persistent sidecar sess
 
 - kind: exception class.
 - detail: [sidecar error](sidecar-error.md).
-- responsibility: represent expected sidecar data-plane unavailability or failed sidecar RPC results without treating them as endpoint-specific programmer errors.
 
 ### SidecarConnection
 
 - kind: class.
 - detail: [sidecar connection](sidecar-connection.md).
-- responsibility: bind one normalized container id to one accepted sidecar websocket sender, serialize outbound sends, track pending RPC futures, resolve sidecar replies, fail outstanding RPCs, and emit reload frames.
 
 ### CONNECTIONS
 
 - kind: module state.
 - detail: [sidecar connection registry](sidecar-connection-registry.md#field-connections).
-- responsibility: map normalized container ids to the currently registered sidecar connection object for that id.
 
 ## Folded Internal Member
 

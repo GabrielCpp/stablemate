@@ -5,7 +5,7 @@ title: Groom app module
 ---
 # Groom app module
 
-The Groom app module is the HTTP and websocket composition point for the [groom server](../http/groom.md): it owns the Litestar route table, loads the static dashboard entry document used by the [groom dashboard](../gui/screens/groom-dashboard.md), connects browser and sidecar transports to the process-local [workflow registry](workflow-registry.md) owned by the [Groom state module](groom-state-module.md), and schedules startup discovery through the [startup background discovery scan](startup-background-discovery-scan.md). Its public route handlers are the code anchors for the server's endpoints and invocations; its private helpers are folded into the module contract through linked helper concepts such as the [dashboard shell broadcaster](dashboard-shell-broadcaster.md), [sidecar RPC helper](sidecar-rpc-helper.md), [push-first volume metadata resolver](push-first-volume-metadata-resolver.md), [sidecar hello applier](sidecar-hello-applier.md), [sidecar progress applier](sidecar-progress-applier.md), and [sidecar blocked applier](sidecar-blocked-applier.md). The module consumes [progress push payload](../progress-push-payload.md), [blocked push payload](../blocked-push-payload.md), [exited push payload](../exited-push-payload.md), [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md), and [sidecar websocket frame](../sidecar-websocket-frame.md) formats while emitting HTML fragments, plain workspace data, JSON status objects, browser websocket frames, and sidecar websocket frames through the server surface.
+The Groom app module is the HTTP and websocket composition point for the [groom server](../http/groom.md): it owns the Litestar route table, loads the static dashboard entry document used by the [groom dashboard](../gui/screens/groom-dashboard.md), connects browser and sidecar transports to the process-local [workflow registry](workflow-registry.md) owned by the [Groom state module](groom-state-module.md), and schedules startup discovery through the [startup background discovery scan](startup-background-discovery-scan.md). At import, `groom/groom/app.py` resolves package-local paths and preloads the dashboard HTML; `groom/groom/app.py::create_app` configures route handlers plus discovery, alert-rule, and live-state startup routines, with discovery scheduling its scan task without delaying application startup. Its public route handlers are the code anchors for the server's endpoints and invocations; its private helpers are folded into the module contract through linked helper concepts such as the [dashboard shell broadcaster](dashboard-shell-broadcaster.md), [sidecar RPC helper](sidecar-rpc-helper.md), [push-first volume metadata resolver](push-first-volume-metadata-resolver.md), [sidecar hello applier](sidecar-hello-applier.md), [sidecar progress applier](sidecar-progress-applier.md), and [sidecar blocked applier](sidecar-blocked-applier.md). The module consumes [progress push payload](../progress-push-payload.md), [blocked push payload](../blocked-push-payload.md), [exited push payload](../exited-push-payload.md), [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md), and [sidecar websocket frame](../sidecar-websocket-frame.md) formats while emitting HTML fragments, plain workspace data, JSON status objects, browser websocket frames, and sidecar websocket frames through the server surface.
 
 - code: groom/groom/app.py
 - verify: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
@@ -21,7 +21,6 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 - role: application module for the `groom` web process; it defines the server factory, first-party HTTP handlers, first-party websocket handlers, and the startup discovery hook.
 - surface: [groom server](../http/groom.md), whose route table is fixed by [create app](#method-create-app).
 - state owner: mutable workflow, client, answer-log, and scanning state live in the [Groom state module](groom-state-module.md), while sidecar-connection state lives in a sibling sidecar module; this module reads and mutates them through documented state, sidecar, discovery, render, Docker, and gate-answering concepts rather than owning separate persistence.
-- startup behavior: importing the module resolves package-local paths and preloads the dashboard HTML bytes; constructing the application registers routes and one startup hook; running the application schedules the initial discovery pass without blocking startup completion.
 - transport scope: serves browser HTTP, browser websocket, sidecar websocket, and residual sidecar/backstop HTTP pushes; no handler in this module exposes authentication, external OpenAPI schema entries, or durable database writes.
 - failure model: endpoint-specific validation returns small success/failure JSON only where documented; unexpected render, Docker, sidecar, websocket, or discovery exceptions are not converted into module-wide error envelopes.
 - fallback model: workspace reads prefer a connected sidecar RPC response when one exists, then fall back to Docker-volume reads only for missing or failed sidecar RPCs and only when the selected workflow has a known workspace volume.
@@ -63,22 +62,27 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 
 ## Public Members
 
-### method-create-app
+### method: create-app
+
+The factory assembles application configuration only: it does not run discovery, mutate workflow state, open sockets, read Docker, render dynamic shell fragments, or broadcast dashboard updates while it executes. Its handlers cover dashboard and API reads, browser and sidecar websockets, sidecar pushes, OTLP ingestion, telemetry queries, reload, and static assets; the [groom server](../http/groom.md) documents their route contract.
 
 - sig: `create_app() -> Litestar`
 - abstract: false
 - raises: propagates framework application construction errors and static router setup errors.
 - code: groom/groom/app.py::create_app
-- verify: groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes
-- route-table: [groom server](../http/groom.md) with `GET /`, `GET /search`, `GET /repos`, `GET /files/{container_id}`, `GET /file/{container_id}`, `GET /worker/{container_id}`, `GET /diff/{container_id}`, `POST /refresh`, `POST /push/progress`, `POST /push/blocked`, `POST /push/exited`, `WS /ws`, `WS /sidecar`, `POST /reload`, and `/assets/*`.
-- startup-hooks: exactly one first-party hook, [schedule startup discovery scan](../http/groom.md#schedule-startup-discovery-scan).
-- does:
-  - Constructs the Litestar application for the [groom server](../http/groom.md).
-  - Registers every first-party route handler and the package-static `/assets` router in a fixed route-handler list.
-  - Registers `_spawn_scan` as the only startup hook so initial Docker discovery is scheduled after application startup begins.
-  - Does not run discovery, mutate workflow state, open sockets, read Docker, render dynamic shell fragments, or broadcast dashboard updates during factory execution.
+- does: Constructs the Litestar application for the [groom server](../http/groom.md).
+- verify: created(subject="Litestar application")
+- does: Registers 24 route handlers, including the package-static `/assets` router.
+- verify: count(subject="Litestar application's route handlers", equals=24)
+- does: Registers `_spawn_scan`, `_spawn_rules`, and `_spawn_live` as startup callbacks.
+- verify: count(subject="Litestar application's startup callbacks", equals=3)
+- does: Registers `_stop_rules` and `_stop_live` as shutdown callbacks.
+- verify: count(subject="Litestar application's shutdown callbacks", equals=2)
+- tests: groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes
 
 ### method-index
+
+The dashboard entry response leaves fleet, gate, file, diff, and websocket state to follow-up HTTP requests and websocket channels.
 
 - sig: `async index() -> Response`
 - abstract: false
@@ -86,9 +90,8 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 - code: groom/groom/app.py::index
 - endpoint: [get root dashboard html](../http/groom.md#get-root-dashboard-html)
 - invocation: [serve root dashboard html](../http/groom.md#serve-root-dashboard-html)
-- does:
-  - Returns [field-dashboard-html](#field-dashboard-html) as `text/html` for the dashboard entry page.
-  - Leaves all dynamic fleet, gate, file, diff, and websocket state to follow-up HTTP requests and websocket channels.
+- returns: [field-dashboard-html](#field-dashboard-html) as a `text/html` response for the dashboard entry page.
+- verify: visible(locator="#main")
 
 ### method-search
 
@@ -117,21 +120,23 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
   - Reads checkout directories for each eligible volume through the [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md), resolving eligible containers concurrently and skipping volume-less workflows entirely.
   - Renders [repository menu data](../repository-menu-data.md) into repository picker options.
 
-### method-files
+### method: files
 
 - sig: `async files(container_id: str, repo: str = "") -> Response`
 - abstract: false
 - raises: propagates unexpected sidecar-registry, Docker, or response-construction failures.
 - code: groom/groom/app.py::files
-- verify: groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
-  groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
-  groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors
 - endpoint: [get workspace file list](../http/groom.md#get-workspace-file-list)
 - invocation: [serve workspace file list](../http/groom.md#serve-workspace-file-list)
-- does:
-  - Requests `getTree` over the [sidecar RPC helper](sidecar-rpc-helper.md) for the selected container and repository.
-  - Falls back to the [workspace volume file-list reader](workspace-volume-file-list-reader.md) when the sidecar cannot serve the request and the workflow has a known workspace volume; skips the fallback and returns empty text when the workflow or volume is missing.
-  - Returns newline-separated [workspace file list data](../workspace-file-list-data.md), or an empty text body when no file list is available.
+
+For a connected sidecar, the method reads the selected repository through `getTree` on the [sidecar RPC helper](sidecar-rpc-helper.md). When that is unavailable, it reads through the [workspace volume file-list reader](workspace-volume-file-list-reader.md) if the workflow has a workspace volume; an unknown workflow or missing volume produces an empty list.
+
+- returns: a JSON object whose `paths` field contains the available repository-relative file paths.
+- verify: count(subject="fixture workspace file-list response paths", equals=2)
+- verify: json_path(path="$.paths[1]", equals="src/a.py")
+- tests: groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
+  groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
+  groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors
 
 ### method-file-content
 
@@ -147,7 +152,6 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 - does:
   - Requests `getFile` over the [sidecar RPC helper](sidecar-rpc-helper.md) for the selected repository and path.
   - Falls back to the [workspace volume file-content reader](workspace-volume-file-content-reader.md) with a combined repository-relative path when the sidecar path is unavailable; skips the fallback and returns empty text when the workflow, volume, or relative path is missing.
-  - Returns [workspace file content data](../workspace-file-content-data.md) as plain text, or an empty text body when no safe content can be read.
 
 ### method-worker-detail
 
@@ -157,12 +161,13 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 - code: groom/groom/app.py::worker_detail
 - endpoint: [get worker detail](../http/groom.md#get-run-detail)
 - invocation: [serve worker detail](../http/groom.md#serve-run-detail)
-- does:
-  - Looks up the selected [workflow container](workflow-container.md) by id in the [workflow registry](workflow-registry.md).
-  - Projects that run's detail through [detail message](groom-projection-module.md#method-detail-message) and returns it as JSON.
-  - Does not broadcast, mutate registry state, or overwrite typed answer text; it is a read of one run, addressed to the one tab that asked.
+- does: Looks up the selected [workflow container](workflow-container.md) by id in the [workflow registry](workflow-registry.md).
+- returns: The selected run's detail projected through [detail message](groom-projection-module.md#method-detail-message) as JSON with `found` set to `true`.
+- verify: json_path(path="$.found", equals=true)
+- does: Does not broadcast, mutate registry state, or overwrite typed answer text; it is a read of one run, addressed to the one tab that asked.
+- tests: groom/tests/test_app.py::test_worker_detail_and_pushed_slices
 
-### method-diff
+### method: diff
 
 - sig: `async diff(container_id: str, repo: str = "") -> Response`
 - abstract: false
@@ -177,21 +182,26 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
   - Falls back to the [workspace volume diff reader](workspace-volume-diff-reader.md) when the sidecar cannot serve the diff and the workflow has a known workspace volume.
   - Returns [workspace diff data](../workspace-diff-data.md) as plain text for client-side diff rendering.
 
-### method-refresh
+### method: refresh
 
 - sig: `async refresh() -> dict`
 - abstract: false
 - raises: propagates pre-scan broadcast, reconciliation, or post-scan broadcast failures after the documented scanning-flag effects.
 - code: groom/groom/app.py::refresh
-- verify: groom/tests/test_app.py::test_refresh_prunes_vanished_containers,
-  groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
 - endpoint: [post refresh](../http/groom.md#post-refresh)
 - invocation: [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet)
-- does:
-  - Sets the [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md) true and broadcasts the shell before the manual discovery pass.
-  - Runs [reconcile workflow fleet](workflow-registry.md#method-reconcile-workflow-fleet).
-  - Clears the scanning flag in all reconciliation outcomes, broadcasts the refreshed shell on success, and returns `ok` plus the discovered workflow count.
-  - Leaves the scanning flag true if the initial in-progress shell broadcast itself raises before reconciliation starts, because the guarded cleanup region has not been entered.
+- does: sets the [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md) true and broadcasts the shell before the manual discovery pass.
+- verify: emitted(event="dashboard shell broadcasts", count=2)
+- does: runs [reconcile workflow fleet](workflow-registry.md#method-reconcile-workflow-fleet).
+- does: clears the scanning flag after reconciliation, including when reconciliation raises.
+- does: broadcasts the refreshed shell after successful reconciliation.
+- does: leaves the scanning flag true if the initial in-progress shell broadcast raises before reconciliation starts, because the guarded cleanup region has not been entered.
+- returns: a JSON object with `ok` set to `true`.
+- verify: json_path(path="$.ok", equals=true)
+- returns: the discovered workflow count in the JSON object's `count` field.
+- verify: json_path(path="$.count", equals=0)
+- tests: groom/tests/test_app.py::test_refresh_prunes_vanished_containers,
+  groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
 
 ### method-push-progress
 
@@ -203,8 +213,11 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 - invocation: [receive progress push](../http/groom.md#receive-progress-push)
 - does:
   - Consumes [progress push payload](../progress-push-payload.md) and normalizes `container_id` to the first twelve string characters.
-  - Rejects empty container ids with `{"ok": false}` and no mutation.
   - Resolves missing Docker volume metadata through the [push-first volume metadata resolver](push-first-volume-metadata-resolver.md), upserts the worker as running, and broadcasts the dashboard shell.
+- does: Rejects an empty normalized container id with `{"ok": false}`.
+- verify: json_path(path="$.ok", equals=false)
+- does: Leaves the workflow registry unchanged when the normalized container id is empty.
+- verify: unchanged(subject="workflow registry")
 
 ### method-push-blocked
 
@@ -243,8 +256,9 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 - invocation: [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-session)
 - does:
   - Accepts one browser dashboard websocket connection.
-  - Registers an outbound queue in the [dashboard client queue set](dashboard-client-queue-set.md), sends an initial shell snapshot, and runs paired send/receive loops.
-  - Delegates inbound [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md) objects to the [dashboard websocket receive loop](dashboard-websocket-receive-loop.md) and command handler, and unregisters the queue when the websocket session ends.
+  - Sends an initial shell snapshot and runs paired send/receive loops.
+  - Delegates inbound [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md) objects to the [dashboard websocket receive loop](dashboard-websocket-receive-loop.md) and command handler.
+- consistency: Each accepted browser dashboard websocket session registers one outbound queue in the [dashboard client queue set](dashboard-client-queue-set.md) for the duration of the session and unregisters it when the session ends.
 
 ### method-dashboard-sidecar
 
@@ -260,10 +274,9 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
   groom/tests/test_sidecar_hub.py::test_unregister_only_removes_current_connection
 - endpoint: [websocket sidecar](../http/groom.md#websocket-sidecar)
 - invocation: [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session)
-- does:
-  - Accepts one sidecar websocket connection and waits for a `hello` [sidecar websocket frame](../sidecar-websocket-frame.md) with a non-empty container id before registering a [sidecar connection](sidecar-connection.md).
-  - Ignores non-object frames, ignores frames without a usable `hello` identity before registration, applies `hello`, `progress`, and `blocked` frames through sidecar applier concepts, and resolves `rpc_result` frames against pending host-to-sidecar RPC calls.
-  - Unregisters the current sidecar connection on disconnect or exit so pending RPC callers fail fast and future data-plane requests can fall back.
+- does: Accepts one sidecar websocket connection and waits for a `hello` [sidecar websocket frame](../sidecar-websocket-frame.md) with a non-empty container id before registering a [sidecar connection](sidecar-connection.md).
+- does: Ignores non-object frames, ignores frames without a usable `hello` identity before registration, applies `hello`, `progress`, and `blocked` frames through sidecar applier concepts, and resolves `rpc_result` frames against pending host-to-sidecar RPC calls.
+- does: Unregisters the current sidecar connection on disconnect or exit so pending RPC callers fail fast and future data-plane requests can fall back.
 
 ### method-reload
 
@@ -278,7 +291,7 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 - does:
   - Targets the requested connected sidecar id when `container_id` is non-empty, otherwise snapshots all current ids from the [sidecar connection registry](sidecar-connection-registry.md).
   - Sends one reload command to each live target [sidecar connection](sidecar-connection.md) and counts only accepted sends.
-  - Returns `{"ok": true, "reloaded": count}` without waiting for container restart or reconnection.
+- returns: `{"ok": true, "reloaded": count}` without waiting for container restart or reconnection.
 
 ## Folded Internal Members
 
@@ -401,8 +414,8 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 
 - step: Importing the module resolves [field-assets-dir](#field-assets-dir), reads [field-dashboard-html](#field-dashboard-html), and leaves mutable state in sibling state modules.
 - step: A caller invokes [create app](#method-create-app) to construct the [groom server](../http/groom.md) route table and register the startup hook.
-- step: Litestar startup calls [schedule startup discovery scan](../http/groom.md#schedule-startup-discovery-scan), which stores a background task in [field-scan-task](#field-scan-task) and returns before Docker discovery completes.
-- step: The background scan reconciles the [workflow registry](workflow-registry.md), clears the [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md), and broadcasts the [dashboard state payload](../dashboard-state-payload.md) to connected dashboard clients.
+
+When Litestar starts, [schedule startup discovery scan](../http/groom.md#schedule-startup-discovery-scan) creates the background task in [field-scan-task](#field-scan-task); Docker discovery proceeds after the startup hook has returned. The task's `_background_scan` implementation reconciles the [workflow registry](workflow-registry.md), then clears the [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md) and broadcasts the [dashboard state payload](../dashboard-state-payload.md) to connected dashboard clients when the discovery attempt ends, including after a reconciliation error (`groom/groom/app.py::_background_scan`).
 
 ### algorithm-live-update-convergence
 

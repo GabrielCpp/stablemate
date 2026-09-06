@@ -36,8 +36,11 @@ tool name (`[{node_id}] ⚙ {name} {summary}`).
    (`_emit_event`) then prints just `[{node_id}] ⚙ {name}` (right-stripped, no
    trailing space).
 
-- consistency rule: Use only the first truthy value in key-priority order; an input
-  with both `file_path` and `command` produces the `file_path` summary.
+- consistency rule: tool-use-input — Select only the first truthy value in key-priority order.
+- verify: json_path(path="$", equals="notes.md")
+- consistency rule: tool-use-input — An input with both `file_path="notes.md"` and
+  `command="cat notes.md"` produces the `file_path` summary `"notes.md"`.
+- verify: json_path(path="$", equals="notes.md")
 
 ## Related pieces
 

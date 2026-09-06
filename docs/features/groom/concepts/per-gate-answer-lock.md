@@ -9,13 +9,14 @@ Per-gate answer lock is groom's process-local serialization primitive for one op
 
 - code: groom/groom/state.py::_gate_locks
 - code: groom/groom/state.py::gate_lock
-- verify: groom/tests/test_state.py::test_prune_also_forgets_gate_locks_of_removed
+- tests: groom/tests/test_state.py::test_prune_also_forgets_gate_locks_of_removed
 
 ## Contract
 
 - scope: one in-memory lock registry per groom process; locks coordinate only concurrent asynchronous answer handlers inside that process and do not coordinate with another groom process, Docker, the container's own wait script, or direct file edits outside groom.
 - identity: a lock is scoped to exactly one `(container_id, file_path)` pair, so two submissions for the same gate serialize and submissions for different gates can proceed independently.
-- creation: the first request for a pair creates an unlocked `asyncio.Lock` and records it under the computed lock key before returning; later requests for the same pair return the same lock object until it is forgotten or the process exits.
+- concurrency: For a pair not yet requested in the current process, the first request creates an unlocked `asyncio.Lock`, records it under the computed lock key before returning, and later requests return that same lock object until it is forgotten or the process exits.
+- verify: created(subject="lock entry for a new container-and-gate pair")
 - creation atomicity: lookup and first-lock insertion contain no await point, so within groom's single running event loop two same-pair callers cannot interleave between the missing-lock check and storing the new lock.
 - acquisition owner: the caller owns `async with lock`; the lock factory only returns the lock and does not acquire, release, time out, inspect, or mutate any gate file.
 - scheduling contract: the registry exposes no priority, queue length, fairness, owner identity, wait timeout, or cancellation policy of its own; accepted answer ordering is determined by whichever same-gate caller enters the locked answer region first and by the gate file status re-read inside that region.
@@ -76,7 +77,8 @@ Per-gate answer lock is groom's process-local serialization primitive for one op
 
 - sig: `gate_lock(container_id: str, file_path: str) -> asyncio.Lock`
 - abstract: false
-- raises: no domain-specific errors; ordinary memory allocation errors while creating a new lock would propagate.
+- raises: no domain-specific errors.
+- raises: ordinary memory allocation errors while creating a new lock would propagate.
 - verify: created(subject="lock entry for a new container-and-gate pair")
 - code: groom/groom/state.py::gate_lock
 - tests: groom/tests/test_state.py::test_prune_also_forgets_gate_locks_of_removed
@@ -100,7 +102,7 @@ Returns the shared lock for one container-and-gate-file pair, creating it when t
 ### algorithm-answer-serialization
 
 - step: A dashboard answer request reaches the [gate-answering layer](gate-answering-layer.md) with a container id, gate file path, answer text, and workspace volume.
-- step: If the request has no workspace volume, the answer path returns an [answer result](../answer-result.md) failure before asking for a lock, reading files, mutating workflow state, or changing the lock registry.
+- concurrency: If the request has no workspace volume, the answer path returns an [answer result](../answer-result.md) failure before asking for a lock, reading files, mutating workflow state, or changing the lock registry.
 - step: The gate-answering layer asks for the per-gate answer lock for that container id and gate file path.
 - step: The answer path enters the returned lock before reading the current gate file from the workspace volume.
 - step: While still holding the lock, it rejects the submission if the gate file cannot be read or unless the freshly-read file status is `AWAITING_OPERATOR`.
@@ -112,5 +114,6 @@ Returns the shared lock for one container-and-gate-file pair, creating it when t
 
 - step: A discovery reconciliation pass determines the set of Docker container ids still present.
 - step: The [prune workflows](workflow-registry.md#method-prune-workflows) method removes registry entries for ids absent from that set.
-- step: For each removed id, pruning deletes every lock registry entry whose key starts with that id plus the `::` separator.
 - step: Locks for containers still present are preserved, including locks for gates that may already have been answered.
+- consistency: Pruning a removed workflow container removes every per-gate lock registry entry for that container; `groom/groom/state.py::prune_workflows` selects entries by the container id plus the `::` separator.
+- verify: removed(subject="lock registry entries for removed container aaa")

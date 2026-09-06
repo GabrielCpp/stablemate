@@ -15,12 +15,11 @@ Docker container-id listing reader is Groom's current-container existence lookup
 
 ## Contract
 
+On a successful Docker command, the reader returns a `set[str]` whose members are non-empty stdout lines stripped of surrounding whitespace and truncated to at most twelve characters. A successful command with no container ids returns an empty set. A non-zero Docker exit returns `None`, which lets callers distinguish a failed Docker lookup from a successful empty fleet.
+
 - purpose: report the set of Docker container ids that currently exist so stale workflow-registry entries can be pruned only when Docker was reachable.
 - input: no caller-supplied arguments; the local Docker CLI environment and daemon determine which containers are visible.
 - command: invokes the Docker CLI as `docker ps -aq` through the shared subprocess runner.
-- output: returns `set[str]` when the Docker command exits successfully; each member is a non-empty stdout line stripped of surrounding whitespace and truncated to at most twelve characters.
-- output: returns an empty set when Docker exits successfully but reports no container ids.
-- output: returns `None` when the Docker command exits non-zero, allowing callers to distinguish a failed Docker lookup from a successful empty fleet.
 - normalization: stores ids in a set, so duplicate lines collapse to one normalized id and result ordering is not part of the contract.
 - validation boundary: does not inspect containers, verify that an id belongs to a workhorse workflow container, or validate Docker's id characters beyond ignoring blank lines.
 - failure boundary: process launch failures and subprocess timeout errors from the shared runner are not converted to `None` by this layer.
@@ -28,9 +27,11 @@ Docker container-id listing reader is Groom's current-container existence lookup
 
 ## Effects
 
+The completed process supplies the return code used to select the failure signal and the stdout
+that is parsed into container ids.
+
 - Calls: the shared [Docker subprocess runner](docker-subprocess-runner.md) once with the tokenized `docker ps -aq` command and the default Docker timeout.
 - Short-circuits: returns `None` immediately when the completed Docker process has a non-zero return code.
-- Reads: the completed process stdout as newline-delimited Docker container ids.
 - Filters: ignores lines that become empty after trimming whitespace.
 - Normalizes: truncates each retained line to its first twelve characters, matching Docker's short-id display form used by the workflow registry.
 - Emits: a set containing every normalized id when the Docker listing succeeds, including the empty set for a successful listing with no retained lines.
@@ -45,11 +46,12 @@ Docker container-id listing reader is Groom's current-container existence lookup
 - step: Strip surrounding whitespace from each line.
 - step: Drop every stripped line that is empty.
 - step: Truncate each retained line to its first twelve characters.
-- step: Return the retained short ids as a set, collapsing duplicates and exposing no ordering contract.
+- consistency: returned ids are the retained short ids as a set, so duplicate values collapse and no ordering is exposed.
 
 ## Failure behavior
 
-- Docker command failure: returns `None` for any completed Docker process whose return code is non-zero.
+- consistency: a completed Docker listing with a non-zero return code returns `None` rather than a container-id set, preserving the distinction between a failed lookup and a reachable empty fleet.
+- verify: absent(subject="returned container-id set")
 - Empty Docker fleet: returns `set()` when Docker exits successfully and stdout contains no retained id lines.
 - Blank stdout lines: ignored without making the listing fail.
 - Duplicate ids: collapse to one set member after twelve-character normalization.
@@ -92,7 +94,6 @@ Returns the normalized short-id set for every Docker container currently known t
 - command: calls the shared Docker subprocess runner with `docker ps -aq` and the default Docker timeout.
 - success output: `set[str]` containing every non-empty stdout line stripped and truncated to twelve characters.
 - empty success output: `set()` when the Docker command succeeds and stdout has no retained id lines.
-- failure output: `None` when the Docker command completes with a non-zero return code.
 - ordering: no ordering is exposed because the output is a set.
 - id scope: includes every Docker container id reported by Docker, not only workhorse-backed containers and not only containers present in Groom's registry.
 - side effects: performs one Docker listing read and no Groom state mutation.

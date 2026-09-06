@@ -15,7 +15,7 @@ sidecar. Ordinary socket drops are not terminal; they cause a reconnect and a ne
 session advertisement for [sidecar live sessions](../sidecar-live-sessions.md).
 
 - code: groom/groom/sidecar.py::_serve
-- verify: groom/tests/test_sidecar_session.py::test_serve_returns_reload_code_when_session_requests_reload
+- tests: groom/tests/test_sidecar_session.py::test_serve_returns_reload_code_when_session_requests_reload
 
 ## Contract
 
@@ -25,9 +25,12 @@ session advertisement for [sidecar live sessions](../sidecar-live-sessions.md).
   `host.docker.internal` and `8787`.
 - uri: websocket URL `ws://{GROOM_HOST}:{GROOM_PORT}/sidecar`; no path, query,
   authentication header, or request body is added by this layer.
-- output: returns integer `3` only when the connected session reports a reload
-  request; returns `0` only if the websocket connector's async iterator ends
-  without yielding another socket.
+- consistency: a reload request from the connected session returns the reserved
+  exit code `3`.
+- verify: exit_status(code=3)
+- consistency: the serving loop returns exit code `0` only when the websocket
+  connector's async iterator ends without a reload request.
+- verify: exit_status(code=0)
 - effects: opens outbound websocket client connections to the host groom service,
   delegates each connected socket to the session layer, closes the current socket
   best-effort before returning on reload, and performs no filesystem reads,

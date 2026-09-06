@@ -7,6 +7,8 @@ title: Sidecar filesystem watch
 
 Sidecar filesystem watch is the delegated filesystem-observation layer used by the [sidecar connected session](sidecar-connected-session.md). It selects which of the configured sidecar mounts can be watched, subscribes to them recursively through the portable `watchfiles` backend, and feeds the classified [sidecar websocket frame](../sidecar-websocket-frame.md) objects into the session's outbound queue until the session asks it to stop.
 
+When a runs volume has not mounted yet, only filesystem observation degrades; the sidecar session remains available for data-plane RPCs.
+
 It replaces an earlier recursive inotify-watch installer that registered one watch descriptor per directory and maintained a caller-owned descriptor-to-path map. `watchfiles` selects the platform backend itself (inotify on Linux, FSEvents on macOS, `ReadDirectoryChangesW` on Windows) and recurses into newly created subdirectories on its own, so neither the descriptor map nor the create-a-watch-for-a-new-subtree step exists any more. The container keeps inotify; the sidecar and its tests stop being Linux-only.
 
 - code: groom/groom/sidecar.py::_watch_roots
@@ -17,7 +19,8 @@ It replaces an earlier recursive inotify-watch installer that registered one wat
 ## Contract
 
 - roots: the configured workspace mount and the configured runs mount, in that order, minus any that is not currently a directory.
-- absent-root rule: a mount that does not exist is dropped rather than raising; `watchfiles` raises `FileNotFoundError` for a missing path, and a sidecar started before its runs volume is mounted must still open its session and serve data-plane RPCs.
+- consistency: a configured mount that does not exist is excluded from the roots handed to `awatch`.
+- verify: absent(subject="missing configured mount from selected watch roots")
 - empty-root rule: with neither mount present no watch task work is performed and the loop returns immediately; the session continues without filesystem deltas.
 - prune rule: directory names equal to `.git`, `node_modules`, `__pycache__`, or `.venv` — the [sidecar skip directory names](groom-sidecar-module.md#field-skip-dir-names) — are excluded from the watch. The same set is used by the pull-side gate scan, so a gate the scan reports is a gate the watch can fire on.
 - change rule: additions and modifications are classified; deletions are dropped. A removed run file is not progress, and the inotify mask this replaced likewise asked for writes and creations only.
@@ -42,7 +45,10 @@ It replaces an earlier recursive inotify-watch installer that registered one wat
 
 - sig: `_watch_roots() -> list[Path]`
 - abstract: false
-- raises: nothing; a missing or non-directory mount is a dropped entry, not an error.
+- raises: nothing while selecting the watch roots.
+- verify: count(subject="exceptions raised while selecting watch roots", equals=0)
+- raises: a missing or non-directory mount is omitted from the returned roots, not raised as an error.
+- verify: absent(subject="missing configured mount from selected watch roots")
 - code: groom/groom/sidecar.py::_watch_roots
 - input: none; reads the module-level configured workspace and runs mount paths.
 - output: the subset of those mounts that are directories, workspace first.
@@ -53,7 +59,8 @@ It replaces an earlier recursive inotify-watch installer that registered one wat
 
 - sig: `_watch_loop(outbox: asyncio.Queue, stop: asyncio.Event) -> None`
 - abstract: false
-- raises: nothing intentionally; cancellation is the expected termination path and is handled by the caller.
+- raises: nothing intentionally.
+- raises: cancellation as the expected termination path, handled by the caller.
 - code: groom/groom/sidecar.py::_watch_loop
 - input: `outbox` is the caller-owned FIFO the [sidecar outbound sender](sidecar-outbound-sender.md) drains; `stop` is the shared event the session sets during cleanup.
 - output: `None`; all useful result data is the frames placed on `outbox`.

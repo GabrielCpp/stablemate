@@ -5,14 +5,13 @@ title: Sidecar progress applier
 ---
 # Sidecar progress applier
 
-The sidecar progress applier is the groom server layer that folds a connected sidecar's live `progress` [sidecar websocket frame](../sidecar-websocket-frame.md) into the process-local [workflow registry](workflow-registry.md) during the [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) invocation. It marks the connected [workflow container](workflow-container.md) as [workflow state](workflow-state.md) `running`, optionally updates its current-node field through [upsert workflow](workflow-registry.md#method-upsert-workflow), and finishes by calling the [dashboard shell broadcaster](dashboard-shell-broadcaster.md) so browser dashboard tabs converge on the latest running-state snapshot.
+The sidecar progress applier is the groom server layer that folds a connected sidecar's live `progress` [sidecar websocket frame](../sidecar-websocket-frame.md) into the process-local [workflow registry](workflow-registry.md) during the [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) invocation. It marks the connected [workflow container](workflow-container.md) as [workflow state](workflow-state.md) `running`, optionally updates its current-node field through [upsert workflow](workflow-registry.md#method-upsert-workflow), and finishes by calling the [dashboard shell broadcaster](dashboard-shell-broadcaster.md) so browser dashboard tabs converge on the latest running-state snapshot. The websocket session derives the non-empty, truncated container id from a useful `hello` frame before this layer receives it; the applier uses that supplied registry key without further identity handling.
 
 - code: groom/groom/app.py::_apply_socket_progress
 
 ## Contract
 
 - sig: `async _apply_socket_progress(container_id: str, data: dict) -> None`
-- input: `container_id` is the non-empty, already-normalized workflow container id established by the sidecar websocket handler from the latest useful `hello`; this layer does not re-truncate, authenticate, or reject it.
 - input: `data` is the decoded sidecar `progress` frame object; the layer reads only `data.get("current_node")` from it and ignores every other field.
 - current-node rule: an absent or JSON `null` `current_node` preserves the workflow's existing current-node field through registry upsert semantics; any non-`None` value, including an empty string or non-string JSON value, is assigned to the workflow's `current_node` field as supplied.
 - state rule: every call sets the workflow state to `RUNNING`, even when the progress frame omits `current_node` and even when the workflow previously had open gate records.
@@ -68,7 +67,8 @@ The sidecar progress applier is the groom server layer that folds a connected si
 ## Routing Boundaries
 
 - Caller: [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) invokes this applier only for object frames whose `type` is `progress` and only after a prior useful `hello` has registered a sidecar connection.
-- Precondition: a progress frame received before `hello` is ignored by the websocket session and never reaches this layer.
+- consistency: a progress frame received before `hello` is ignored by the websocket session and never reaches this layer; the session establishes the connection before it routes `progress` frames to the applier.
+- verify: count(subject="workflow registry entries", equals=0)
 - Frame validation boundary: the applier does not inspect `data["type"]`, require `current_node`, or validate the value type; its entire frame-specific read is `data.get("current_node")`.
 - Callee: the applier writes through [upsert workflow](workflow-registry.md#method-upsert-workflow), relying on registry partial-update semantics for placeholder creation and `None` preservation.
 - Callee: the applier then calls [dashboard shell broadcaster](dashboard-shell-broadcaster.md) exactly once to publish the current shell state.
@@ -87,7 +87,8 @@ The sidecar progress applier is the groom server layer that folds a connected si
 
 - sig: `async _apply_socket_progress(container_id: str, data: dict) -> None`
 - abstract: false
-- raises: propagates workflow-upsert, renderer, or broadcast exceptions; absent `current_node`, JSON `null` current nodes, empty strings, non-string current-node values, and extra frame fields are handled as ordinary inputs.
+- does: handles absent `current_node`, JSON `null` current nodes, empty strings, non-string current-node values, and extra frame fields as ordinary inputs.
+- raises: propagates workflow-upsert, renderer, or broadcast exceptions.
 - code: groom/groom/app.py::_apply_socket_progress
 
 Fold one connected sidecar `progress` frame for one already accepted sidecar websocket into the visible workflow fleet.

@@ -5,6 +5,9 @@ title: Coder standalone fix flow
 ---
 # Coder standalone fix flow
 
+- The `coder.fix` package exports `Fix` and the shared `BLOCKED_NOTE` marker. It is the directly
+  runnable copy of the drain; the main coder graph has a separate nested copy and does not hand
+  off to this package.
 - The standalone `Fix` machine drains only items filed in the coder backlog. Each selected
   bullet becomes a one-acceptance-criterion fix story, is implemented in one agent turn, judged
   against the repositories that actually changed, sent through one QA retry at most, documented,
@@ -16,8 +19,22 @@ title: Coder standalone fix flow
 - The selected backlog bullet is not mutated during selection. It remains available for a resumed
   run to seed the same story, and is removed only after QA passes or annotated as blocked after the
   single QA retry fails.
+- detail: [coder backlog contract](../concepts/coder-backlog-contract.md)
 - `docs_path` and `workspace_file` are optional checkpointed inputs. Empty values resolve from the
   repository context, and `target_env` defaults to `local` for the documentation handoff and QA.
+- The first implementation pass renders `fix-item.md`; a dirty gate renders `fix-item-repair.md`
+  with the exact failing command, working directory, and captured output. Both turns return an
+  `ImplResult`; a blocked result is an operator wait and never enters QA on an unchanged tree.
+- `check` and `recheck` render `qa-fix-item.md` and expect `QaRunResult` with `passed`, `failed`,
+  or `blocked`. A failed first verdict is passed verbatim as `qa_notes` to one
+  `apply-qa-fixes.md` turn; a blocked apply waits for the operator rather than running a false
+  recheck.
+- `render_gate` formats a `FailureReport` as the repair prompt's lap number, source gate, command,
+  working directory, and fenced output. The lap number is 1-based and the report is preserved
+  across an exhausted-budget operator wait.
+- A successful or flagged item is handed to `Docs`; only `passed` or `not_applicable` permits the
+  standalone flow to commit. The commit uses `kind="fix"`, the current branch, the changed
+  repositories only, and then returns to `start` for the next draw.
 - start: the configured documentation root resolves before a backlog item is drawn
 - verify: count(subject="resolved standalone fix workspace", equals=1)
 - start: the workspace directories resolve before a backlog item is drawn
@@ -56,6 +73,18 @@ title: Coder standalone fix flow
 - tests: `workflows/tests/coder/fix/test_flow.py::test_qa_gets_exactly_one_retry_and_the_fixer_is_handed_the_first_verdict`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_a_second_failing_check_flags_rather_than_retrying_again`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_a_run_killed_mid_check_resumes_at_the_check`
+- tests: `workflows/tests/coder/fix/test_flow.py::test_a_gate_still_red_when_the_laps_run_out_parks_rather_than_giving_up`
+- tests: `workflows/tests/coder/fix/test_flow.py::test_an_untouched_repo_is_neither_gated_nor_committed`
+- tests: `workflows/tests/coder/fix/test_flow.py::test_a_retry_that_says_it_cannot_parks_instead_of_rechecking_nothing`
+- tests: `workflows/tests/coder/fix/test_flow.py::test_an_implementation_turn_that_says_it_cannot_parks_instead_of_qa_ing_nothing`
+- tests: `workflows/tests/coder/fix/test_flow.py::test_a_blocked_item_is_flagged_and_the_next_draw_skips_it`
+- tests: `workflows/tests/coder/fix/test_flow.py::test_the_docs_sub_flow_runs_for_real_and_its_verdict_gates_the_commit`
+- tests: `workflows/tests/coder/fix/test_flow.py::test_documentation_that_cannot_converge_preserves_the_agent_commit`
+- tests: `workflows/tests/coder/fix/test_flow.py::test_the_commits_land_on_the_branch_the_repos_were_already_on`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::render_gate`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::BLOCKED_NOTE`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::MAX_FIX_LAPS`
+- code: `workflows/src/workhorse_workflows/coder/fix/__init__.py::__all__`
 
 The flow resolves its workspace once because no story exists at setup time. Each iteration then
 selects without mutating the backlog, creates the `fixes` story bucket when needed, and guards the

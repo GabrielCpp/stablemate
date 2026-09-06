@@ -113,8 +113,9 @@ The list stays flat on the wire. Nesting is a pure function of the paths and a d
 - sig: `_rpc_get_tree(params: dict) -> dict`
 - abstract: false
 - raises: no intentional exception for missing or falsey `repo`; exceptions from the delegated tree reader can propagate to the RPC wrapper, which converts them into a failed `rpc_result` frame.
+- verify: json_path(path="$.paths", equals=["README.md", "src/a.py"])
 - code: groom/groom/sidecar.py::_rpc_get_tree
-- verify: groom/tests/test_sidecar_session.py::test_rpc_get_tree_lists_files_skipping_vendor_dirs
+- tests: groom/tests/test_sidecar_session.py::test_rpc_get_tree_lists_files_skipping_vendor_dirs
 - input: decoded sidecar RPC params object for method `getTree`.
 - output: JSON-compatible object with exactly the first-party `paths` member for the requested selected root.
 - effects: reads the sidecar container's local workspace tree through the delegated tree reader; does not send websocket frames, serialize JSON, mutate files, mutate workflow state, inspect Docker, or broadcast dashboard updates.
@@ -129,8 +130,10 @@ The list stays flat on the wire. Nesting is a pure function of the paths and a d
 - sig: `_list_tree(repo: str) -> list[str]`
 - abstract: false
 - raises: no intentional exception for a missing selected root or paths that cannot be relativized to the selected base; unexpected filesystem walk errors can propagate.
+- verify: json_path(path="$[0]", equals="README.md")
+- verify: json_path(path="$[1]", equals="src/a.py")
 - code: groom/groom/sidecar.py::_list_tree
-- verify: groom/tests/test_sidecar_session.py::test_rpc_get_tree_lists_files_skipping_vendor_dirs
+- tests: groom/tests/test_sidecar_session.py::test_rpc_get_tree_lists_files_skipping_vendor_dirs
 - input: `repo` is the workspace-relative selected checkout directory; `""` means the sidecar workspace root.
 - output: sorted list of selected-root-relative file paths for all non-pruned files under the selected root.
 - effects: reads directory entries from the sidecar workspace only; does not read file contents, follow the websocket, call Docker, run Git, mutate files, mutate workflow state, or broadcast dashboard updates.

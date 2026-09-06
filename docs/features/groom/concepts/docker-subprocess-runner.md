@@ -5,7 +5,7 @@ title: Docker subprocess runner
 ---
 # Docker subprocess runner
 
-Docker subprocess runner is the shared process-execution layer used by Groom's Docker I/O helpers, including the [workspace volume file-content reader](workspace-volume-file-content-reader.md), [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md), [workspace volume file writer](workspace-volume-file-writer.md), [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md), [workspace volume diff reader](workspace-volume-diff-reader.md), [Docker inspection reader](docker-inspection-reader.md), [Docker all-container listing reader](docker-all-container-listing-reader.md), [Docker container-id listing reader](docker-container-id-listing-reader.md), [Docker run-directory reader](docker-run-directory-reader.md), [Docker exec runner](docker-exec-runner.md), [stopped container start fallback](stopped-container-start-fallback.md), and the [host-to-container sidecar query](host-to-container-sidecar-query.md). It accepts one already-tokenized command, starts exactly one local child process without a shell, captures stdout and stderr as text, enforces the caller's timeout, optionally streams text to standard input, and returns the completed process result without interpreting Docker-specific success or failure.
+Docker subprocess runner is the shared process-execution layer used by Groom's Docker I/O helpers, including the [workspace volume file-content reader](workspace-volume-file-content-reader.md), [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md), [workspace volume file writer](workspace-volume-file-writer.md), [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md), [workspace volume diff reader](workspace-volume-diff-reader.md), [Docker inspection reader](docker-inspection-reader.md), [Docker all-container listing reader](docker-all-container-listing-reader.md), [Docker container-id listing reader](docker-container-id-listing-reader.md), [Docker run-directory reader](docker-run-directory-reader.md), [Docker exec runner](docker-exec-runner.md), [stopped container start fallback](stopped-container-start-fallback.md), and the [host-to-container sidecar query](host-to-container-sidecar-query.md). It accepts one already-tokenized command, starts exactly one local child process without a shell, captures stdout and stderr as text, enforces the caller's timeout, optionally streams text to standard input, and passes through the completed process result for commands that launch and exit before that timeout, whether their exit code is zero or non-zero, without interpreting Docker-specific success or failure.
 
 - code: groom/groom/docker_io.py::_run
 - refs: [workspace volume file-content reader](workspace-volume-file-content-reader.md), [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md), [workspace volume file writer](workspace-volume-file-writer.md), [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md), [workspace volume diff reader](workspace-volume-diff-reader.md), [Docker inspection reader](docker-inspection-reader.md), [Docker all-container listing reader](docker-all-container-listing-reader.md), [Docker container-id listing reader](docker-container-id-listing-reader.md), [Docker run-directory reader](docker-run-directory-reader.md), [Docker exec runner](docker-exec-runner.md), [stopped container start fallback](stopped-container-start-fallback.md), [host-to-container sidecar query](host-to-container-sidecar-query.md)
@@ -19,7 +19,6 @@ Docker subprocess runner is the shared process-execution layer used by Groom's D
 - launch contract: starts the command directly from the argv list with no shell expansion, shell redirection, globbing, command-string parsing, retry, Docker-specific validation, or path normalization.
 - process context: uses Groom's current process environment and current working directory; callers cannot override `env`, `cwd`, file descriptors, or stream mode through this runner.
 - capture contract: captures both stdout and stderr and decodes both streams as text for the returned process result.
-- completion contract: returns a completed process result for every successfully launched command that exits before the timeout, including zero and non-zero exit codes.
 - check contract: performs no automatic return-code checking; non-zero exits are represented only by the returned process result's `returncode`.
 - nonzero contract: a non-zero return code is data, not an exception; callers decide whether a failed Docker command means empty state, `None`, `False`, fallback, or an endpoint failure.
 - failure contract: process launch failures are not converted by this layer and surface to the caller.
@@ -71,7 +70,7 @@ Docker subprocess runner is the shared process-execution layer used by Groom's D
 - Supplies: `input_text` to the child process standard input when it is not `None`.
 - Captures: child-process standard output and standard error as text.
 - Waits: until the child process completes or the caller's timeout expires.
-- Returns: the child process args, return code, stdout text, and stderr text as the standard completed-process result.
+- consistency: the standard completed-process result carries the child process args, return code, stdout text, and stderr text.
 - Delegates: every Docker-domain interpretation, JSON parsing, path validation, output filtering, fallback decision, and non-zero return-code policy to the caller.
 - Preserves: the supplied argv token sequence, timeout value, input text, inherited environment, and inherited working directory without shell parsing, token rewriting, Docker-specific normalization, or per-call process-context overrides.
 
@@ -81,13 +80,15 @@ Docker subprocess runner is the shared process-execution layer used by Groom's D
 
 - step: Receive the already-tokenized command vector, timeout value, and optional text stdin payload from the caller.
 - step: Start one local process directly from the argv vector with stdout capture, stderr capture, text-mode stream handling, the supplied timeout, inherited environment, inherited working directory, and the supplied stdin payload.
-- step: If the child process launches and exits before the timeout, return the completed-process result without checking the return code.
 - step: If process creation fails, surface the launch exception to the caller.
 - step: If the timeout expires before completion, surface the timeout exception to the caller.
 
+When the child process launches and exits before the timeout, `_run` returns the completed result from `subprocess.run` without checking its return code.
+
 ## Failure behavior
 
-- Successful process with zero return code: returns the completed-process result unchanged.
+- consistency: a child process that exits with return code zero returns its completed-process result unchanged.
+- verify: exit_status(0)
 - Successful process with non-zero return code: returns the completed-process result unchanged; no Docker-domain exception is raised here.
 - Missing executable or launch failure: surfaces the operating-system launch exception to the caller.
 - Timeout: surfaces the subprocess timeout exception to the caller.
@@ -110,7 +111,10 @@ Docker subprocess runner is the shared process-execution layer used by Groom's D
 - sig: `_run(args: list[str], timeout: int = DOCKER_TIMEOUT, input_text: str | None = None) -> subprocess.CompletedProcess`
 - abstract: false
 - raises: process launch exceptions from the operating system and timeout exceptions from the subprocess runtime are intentionally surfaced rather than mapped to Docker-domain return values.
-- returns: a text-mode process result containing args, return code, stdout, and stderr when the child process launches and finishes before the timeout.
+- returns: a text-mode process result containing the child-process args when the child process launches and finishes before the timeout.
+- returns: a text-mode process result containing the child-process return code when the child process launches and finishes before the timeout.
+- returns: a text-mode process result containing captured stdout text when the child process launches and finishes before the timeout.
+- returns: a text-mode process result containing captured stderr text when the child process launches and finishes before the timeout.
 - code: groom/groom/docker_io.py::_run
 - args: [field-command-argv](#field-command-argv); required; no default.
 - timeout: [field-timeout-seconds](#field-timeout-seconds); optional; default is `DOCKER_TIMEOUT`, currently 20 seconds.
@@ -124,6 +128,6 @@ Runs one caller-supplied command vector under the shared Groom subprocess contra
 - calls: the standard subprocess runtime exactly once for the supplied argv vector.
 - captures: stdout and stderr as text on the returned completed-process value.
 - sends: [field-input-text](#field-input-text) as child-process stdin when present.
-- returns: [field-completed-process](#field-completed-process) unchanged with no return-code interpretation.
+- consistency: returns [field-completed-process](#field-completed-process) unchanged with no return-code interpretation.
 - propagates: launch and timeout exceptions without wrapping them in a Groom-domain result.
 - bottoms out: calls only the standard-library subprocess runtime and no deeper first-party Groom symbol.

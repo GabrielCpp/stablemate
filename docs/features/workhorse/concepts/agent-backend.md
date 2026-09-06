@@ -113,3 +113,61 @@ Five, each in its own module, each overriding `name` plus `run_turn`/`compact`:
 
 Selected at runtime by [`get_backend`](get-backend.md), which
 [`workhorse-<name> run`](../workhorse.md#run)'s `--cli` flag and the `AGENT_CLI` env var drive.
+
+## Fields
+
+### name
+- type: `str`
+- default: `"agent"`
+- required: false
+- semantics: registry key for selecting the backend
+- verify: json_path(path="$.name", matches="^[a-z]+$")
+- semantics: harness name used in logs, errors, and harness configuration lookup
+- verify: json_path(path="$.name", matches="^[a-z]+$")
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend`
+
+### default_model
+- type: `str | None`
+- default: `None`
+- required: false
+- semantics: fallback model when the node and environment name no model
+- verify: json_path(path="$.default_model", absent=true)
+- semantics: `None` delegates model selection to the CLI
+- verify: json_path(path="$.default_model", absent=true)
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend`
+
+### supports_compaction
+- type: `bool`
+- default: `False`
+- required: false
+- semantics: whether the backend can compact the current session in place before a retry
+- verify: json_path(path="$.supports_compaction", equals=false)
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend`
+
+## Methods
+
+### run_turn
+- sig: `run_turn(prompt: str, node_id: str, session_id_path: Path | None, model: str | None = None, *, prompt_path: Path | None = None, timeout: float, resilience: AgentResilience, cwd: str | None = None, add_dirs: list[str] | None = None, effort: str | None = None) -> str`
+- abstract: true
+- does: runs one non-interactive agent turn with the caller's timeout, resilience, working directory, extra directories, and effort
+- raises: `BackendInvocationError` classified for transient, context-overflow, cap, or non-recoverable recovery decisions
+- verify: emitted(event="agent turn result text", count=1)
+- returns: the backend's final result text and persists a returned session identifier when a session path is supplied
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend.run_turn`
+
+### compact
+- sig: `compact(session_id_path: Path | None, node_id: str, model: str | None = None, *, timeout: float, resilience: AgentResilience) -> bool`
+- abstract: true
+- does: attempts to reduce the current session context without changing the prompt
+- returns: `true` only when in-place compaction ran
+- verify: json_path(path="$.compacted", equals=true)
+- returns: unsupported or failed compaction returns `false`
+- verify: json_path(path="$.compacted", equals=false)
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend.compact`
+
+### harness_env
+- sig: `harness_env() -> dict[str, str]`
+- does: resolves the active backend's configured extra environment for each turn
+- returns: the `[harness.<name>].env` mapping to layer over the inherited process environment
+- verify: emitted(event="backend-specific harness environment", count=1)
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend.harness_env`

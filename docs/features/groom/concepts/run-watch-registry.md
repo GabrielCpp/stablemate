@@ -12,6 +12,7 @@ The split exists because the two kinds of truth have different audiences. The fl
 The map is keyed by the tab's outbound queue, not by a session id or a socket object, because the queue is already the thing a push has to be addressed to. That is also why the [dashboard websocket receive loop](dashboard-websocket-receive-loop.md) is handed its session queue: `watch` is the one command whose effect depends on which client spoke.
 
 - code: groom/groom/state.py::WATCHING
+- code: groom/groom/app.py::_push_detail
 - refs: [dashboard client queue set](dashboard-client-queue-set.md), [dashboard websocket receive loop](dashboard-websocket-receive-loop.md), [dashboard shell broadcaster](dashboard-shell-broadcaster.md), [groom projection module](groom-projection-module.md), [dashboard client store](dashboard-client-store.md)
 
 ## Contract
@@ -24,13 +25,16 @@ The map is keyed by the tab's outbound queue, not by a session id or a socket ob
 - disconnect: [unregister dashboard client](dashboard-client-queue-set.md#method-unregister-dashboard-client) pops the queue's entry as part of removing the client. Forgetting the subscription there rather than in the caller is what makes it impossible for a disconnect to leave a subscription pointing at a queue nobody reads — an entry that would otherwise survive for the life of the process.
 - durability: purely process-local. A restarted server knows nothing about any tab's selection; the tab re-declares it on the next socket open, which is what makes reconnect self-healing.
 - lifetime: starts empty at import, is mutated only through [record watch](#method-record-watch) and client removal, and is lost on process exit.
-- concurrency: a plain dict mutated from one event loop; no lock, version, or transaction. Reads copy nothing beyond the comprehension each query builds.
+- concurrency: run-watch-registry — a plain dict mutated from one event loop; no lock, version, or transaction.
+- concurrency: run-watch-registry — reads return only the comprehension-built snapshot from each query.
+- consistency: An addressed detail update asks for its target watcher queues and, when none exist, returns before detail projection, performing none of the two SQLite-backed detail reads.
+- verify: count(subject="SQLite-backed detail reads for an addressed update with no watcher queues", equals=0)
 - excluded: the map holds no query string, mode, scroll position, repository selection, or any other per-tab UI state. Those stay in the browser's [dashboard client store](dashboard-client-store.md) and never round-trip to the server.
 
 ## Callers
 
 - subscription: the websocket command handler routes `{"cmd": "watch", "run_id": …}` to [record watch](#method-record-watch), then immediately projects and sends that run's detail back on the same queue — so a selection is answered without a fetch.
-- addressed push: [dashboard shell broadcaster](dashboard-shell-broadcaster.md)'s detail push asks [watchers of run](#method-watchers-of-run) for the target queues and returns early when the list is empty, which is what keeps a run nobody is looking at from costing two SQLite reads on every state change.
+- addressed push: [dashboard shell broadcaster](dashboard-shell-broadcaster.md)'s detail push uses [watchers of run](#method-watchers-of-run) to address a run's detail update.
 - live clock: the live ticker asks [watched run ids](#method-watched-run-ids) for the set of runs it has to refresh, so the periodic detail work is proportional to what operators actually have open rather than to the size of the fleet.
 - disconnect cleanup: [unregister dashboard client](dashboard-client-queue-set.md#method-unregister-dashboard-client).
 
@@ -53,13 +57,14 @@ The map is keyed by the tab's outbound queue, not by a session id or a socket ob
 - raises: none intentionally raised.
 - code: groom/groom/state.py::watch
 
-Record which run one tab has open, or forget its subscription entirely.
+Record which run one tab has open, or forget its subscription entirely. Run ids are not checked
+against the [workflow registry](workflow-registry.md): a subscription to an unknown run has no
+effect until a matching run is pushed, including when that run appears after the subscription.
 
 #### Inputs
 
 - queue: the outbound queue of the tab that sent the command; required; default none.
 - run_id: a container id, or the empty string to mean "this tab has nothing open"; required; default none.
-- validation: the id is not checked against the [workflow registry](workflow-registry.md). A subscription to a run that does not exist simply never matches a push, and a run that appears later starts matching without a second command.
 
 #### Effects
 
@@ -77,7 +82,8 @@ Record which run one tab has open, or forget its subscription entirely.
 
 #### Effects
 
-- Reads: scans the map once and returns every queue whose recorded id equals the argument exactly; there is no prefix, short-handle, or case-insensitive match.
+- consistency: watcher queries return only the queues whose recorded id exactly equals the requested run id; prefix, short-handle, and case-insensitive matches are excluded.
+- verify: count(subject="watcher queues returned for run id 'run-1' when one tab watches 'run-1', one watches 'run-10', and one watches 'RUN-1'", equals=1)
 - Returns: a new list, so the caller may enqueue to it while further watch commands mutate the map.
 - Empty result: an unwatched run yields an empty list, which callers treat as "skip the work entirely" rather than as an error.
 
@@ -99,7 +105,7 @@ Record which run one tab has open, or forget its subscription entirely.
 
 - step: A tab selects a run and sends `{"cmd": "watch", "run_id": …}` on its socket.
 - step: The command handler records the subscription against that tab's queue and pushes the run's current detail back on the same queue.
-- step: On any later state change to that run, the detail push asks for the run's watchers and returns immediately if there are none.
+- step: On any later state change to that run, the detail push asks for the run's watchers.
 - step: For each watcher queue, the projected `detail` message is enqueued directly — never through a fleet-wide broadcast pass.
 - step: On disconnect, removing the client also drops its subscription, so the next push for that run does not address a dead queue.
 

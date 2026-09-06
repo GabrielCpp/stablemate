@@ -24,6 +24,7 @@ title: Coder genesis flow
 - end: the target passes all repository, service, tooling-context, documentation-root, and backlog precondition checks
 - verify: exit_status(code=0)
 - detail: [coder workflow composition root](../concepts/coder-workflow-composition-root.md)
+- detail: [coder genesis bootstrap](../concepts/coder-genesis-bootstrap.md)
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_repo_skips_git_init_but_still_builds_the_new_service`

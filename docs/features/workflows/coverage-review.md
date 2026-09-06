@@ -16,7 +16,7 @@ validation.
 ### status
 - type: string; `ok`, `blocked`, or a rework status
 - default: empty string
-- required: true
+- required: false
 - semantics: selects receipt recording, operator resolution, or story rework
 - verify: json_path(path="$.status", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview`
@@ -24,7 +24,7 @@ validation.
 ### notes
 - type: string
 - default: empty string
-- required: true
+- required: false
 - semantics: review findings passed to story splitting or the operator context
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview`

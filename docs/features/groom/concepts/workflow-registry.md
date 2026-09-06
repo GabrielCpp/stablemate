@@ -25,7 +25,10 @@ The workflow registry is groom's process-local map of live [workflow containers]
 - value: mutable [workflow container](workflow-container.md) record for the keyed worker.
 - lifetime: starts empty on process start, is repopulated by discovery or sidecar/backstop pushes, is pruned when discovery confirms containers have vanished, and is lost on process exit.
 - ordering: readers must not treat registry order as semantic fleet order; renderers and handlers that need stable presentation order sort or filter the snapshot they receive.
-- concurrency: no cross-process coordination, database, or external broker participates; all registry reads and writes are local to the running groom process.
+- concurrency: workflow-registry — no cross-process coordination, database, or external broker participates in registry access.
+- verify: unchanged(subject="the first groom process's WORKFLOWS after a second groom process updates its own WORKFLOWS")
+- concurrency: workflow-registry — all registry reads and writes are local to the running groom process.
+- verify: unchanged(subject="the first groom process's WORKFLOWS after a second groom process reads and writes its own WORKFLOWS")
 - mutation channels: discovery reconciliation may replace whole workflow records; push and sidecar paths use partial upserts; gate answering mutates a selected workflow's gate map after file-write success; exited pushes clear all gates on the selected workflow; pruning deletes whole entries.
 - partial update rule: upserts preserve existing values when a field is omitted, supplied as `None`, or not a workflow-container attribute, allowing sparse push and sidecar events to converge without erasing data from earlier discovery.
 - direct replacement rule: reconciliation assigns each discovered workflow container directly into the map, so the discovered snapshot becomes authoritative for that container id before any stale-container pruning decision.
@@ -83,7 +86,8 @@ Returns a new list containing the current registry values. The snapshot freezes 
 
 - sig: `upsert_workflow(container_id: str, **fields: object) -> WorkflowContainer`
 - abstract: false
-- raises: no domain-specific errors; ordinary Python call-binding, workflow-container construction, or attribute-assignment errors propagate to the caller.
+- raises: no domain-specific errors.
+- raises: ordinary Python call-binding, workflow-container construction, or attribute-assignment errors propagate to the caller.
 - verify: count(subject="WORKFLOWS['abc123'].gates", equals=0)
 - verify: count(subject="WORKFLOWS['abc123def456'].gates", equals=1)
 - verify: count(subject="WORKFLOWS['abc123def456'].gates", equals=0)
@@ -124,7 +128,9 @@ Creates or updates one workflow registry entry and returns the exact mutable [wo
 
 - sig: `async _reconcile() -> int`
 - abstract: false
-- raises: propagates discovery-scan, present-id lookup, and registry-prune exceptions from the called first-party discovery and state helpers.
+- raises: propagates exceptions from the first-party discovery scan.
+- raises: propagates exceptions from the first-party present-id lookup.
+- raises: propagates exceptions from the first-party registry prune.
 - verify: removed(subject="WORKFLOWS['gone']")
 - verify: unchanged(subject="WORKFLOWS['keep']")
 - code: groom/groom/app.py::_reconcile
@@ -147,7 +153,8 @@ Refreshes the registry from one Docker discovery pass. The method is shared by t
 
 - sig: `prune_workflows(present_ids: set[str]) -> list[str]`
 - abstract: false
-- raises: no domain-specific errors; ordinary mapping mutation errors would propagate.
+- raises: no domain-specific errors.
+- raises: ordinary mapping mutation errors would propagate.
 - verify: removed(subject="WORKFLOWS['bbb']")
 - verify: removed(subject="WORKFLOWS['aaa']")
 - verify: removed(subject="_gate_locks entries scoped to 'aaa'")
@@ -177,7 +184,8 @@ Removes workflow registry entries whose container ids are absent from the caller
 ### algorithm-partial-event-upsert
 
 - step: A push or sidecar applier normalizes or chooses the workflow container id before calling [upsert workflow](#method-upsert-workflow).
-- step: If the id is absent, the registry creates a workflow container with that id and a display name from the supplied non-null `name` field or the first twelve id characters.
+- consistency: An absent container id creates and stores a workflow container under that id, with a supplied truthy `name` or the first twelve id characters as its display name.
+- verify: created(subject="WORKFLOWS entry for the supplied absent container id")
 - step: The registry stores the new workflow before applying remaining field updates, so the same object is returned to the caller for any immediate gate-map mutation.
 - step: For each supplied field, a non-`None` value whose name matches the workflow-container contract replaces the stored value.
 - step: Omitted values, explicit `None` values, and unrecognized field names leave the stored workflow untouched.
@@ -189,8 +197,12 @@ Removes workflow registry entries whose container ids are absent from the caller
 - step: Before the terminal upsert, the handler gives the push-first volume metadata resolver a chance to hydrate missing workspace, runs, and workflow-type metadata for the normalized id.
 - step: The handler calls [upsert workflow](#method-upsert-workflow) with optional identity fields, [workflow state](workflow-state.md) `finished`, and an `exit_code` value only when the payload's value is accepted as integer-like.
 - step: The registry preserves existing identity and exit-code fields for omitted, `None`, or ordinary non-numeric values and creates a placeholder workflow when the normalized id was not already present.
-- step: After upsert returns the stored workflow object, the exited-push handler clears that workflow's gate map in place because a terminal container cannot act on open gates.
+- consistency: An exited push clears every gate from the stored workflow because a terminal container cannot act on an open gate.
+- verify: count(subject="gates on workflow after exited push", equals=0)
 - step: The handler broadcasts the refreshed dashboard shell and returns success without deleting the workflow entry; only [prune workflows](#method-prune-workflows) removes vanished containers after Docker presence is known.
+
+The exited-push handler clears the stored workflow's gate map after terminal upsert
+(`groom/groom/app.py::push_exited`).
 
 ### algorithm-discovery-reconciliation
 
@@ -198,6 +210,14 @@ Removes workflow registry entries whose container ids are absent from the caller
 - step: The reconciliation method reads the current Docker-backed [workflow discovery scan](workflow-discovery-scan.md) result.
 - step: Each discovered workflow container replaces the registry value under its own container id.
 - step: The method asks discovery for the set of present Docker container ids after replacement.
-- step: When the present-id result is a set, [prune workflows](#method-prune-workflows) removes registry entries whose ids are absent and forgets their [per-gate answer lock](per-gate-answer-lock.md) entries.
+- step: When the present-id result is a set, the method calls [prune workflows](#method-prune-workflows).
+- consistency: When discovery reports a present-id set, every non-native registry entry whose id is absent from that set is removed.
+- verify: removed(subject="non-native WORKFLOWS entry absent from discovery present-id set")
+- consistency: Pruning a vanished workflow removes every scoped [per-gate answer lock](per-gate-answer-lock.md).
+- verify: removed(subject="per-gate answer locks scoped to a pruned workflow")
 - step: When the present-id result is `None`, pruning is skipped so a transient Docker outage cannot erase the visible fleet.
 - step: The method returns the number of workflow containers discovered before pruning, leaving scanning flags and broadcasts to its caller.
+
+`_reconcile` calls `prune_workflows` only after discovery returns a present-id set
+(`groom/groom/app.py::_reconcile`); `prune_workflows` applies both removals
+(`groom/groom/state.py::prune_workflows`).

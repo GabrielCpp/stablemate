@@ -17,7 +17,8 @@ Sidecar connection registry is the process-local map of normalized workflow cont
 - key: normalized workflow container id string.
 - value: current [sidecar connection](sidecar-connection.md) for that container id.
 - normalization owner: callers supply the exact key; the registry does not truncate, coerce, validate, or canonicalize container ids.
-- producer: a useful `/sidecar` `hello` frame creates a new host-side sidecar connection and registers it under `str(identity.container_id)[:12]`.
+- consistency: a useful `/sidecar` `hello` frame creates a new host-side sidecar connection and registers it under `str(identity.container_id)[:12]`.
+- verify: created(subject="sidecar connection for the hello frame's normalized container id")
 - consumers: the sidecar RPC helper performs one keyed lookup for file tree, file content, and diff reads; the [post-reload endpoint](../http/groom.md#post-reload) either looks up one requested id or snapshots all connected ids before sending reload frames.
 - displacement: registering a new connection for an existing id supersedes the prior connection and fails its pending RPCs.
 - cleanup: unregister removes only the connection object that is still current for its id, so a late close from a superseded socket cannot evict a newer reconnect.
@@ -43,14 +44,25 @@ Sidecar connection registry is the process-local map of normalized workflow cont
 
 - sig: `register(conn: SidecarConnection) -> None`
 - abstract: false
-- does:
-  - Reads the current registry entry keyed by the supplied connection's normalized `container_id`; it does not normalize or validate the id itself.
-  - When the current entry is a different [sidecar connection](sidecar-connection.md), calls that connection's [fail-all](sidecar-connection.md#method-fail-all) method with message `superseded by a new sidecar connection` before changing the registry entry, making any waiting RPC observe [sidecar error](sidecar-error.md).
-  - When the current entry is absent or is the same connection object, performs no prior-connection failure.
-  - Stores `conn` as the current registry value for `conn.container_id`, replacing any previous value for that key.
-  - Does not apply the `hello` frame, mutate workflow state, broadcast dashboard messages, or send a websocket frame; those effects belong to the endpoint after registration succeeds.
-- raises: none intentionally.
+- does: Reads the current registry entry keyed by the supplied connection's normalized `container_id`.
+- verify: unchanged(subject="sidecar connection registry")
+- does: Uses the supplied `container_id` as the key without normalizing or validating it.
+- verify: unchanged(subject="sidecar connection registry")
+- does: When the current entry is a different [sidecar connection](sidecar-connection.md), calls that connection's [fail-all](sidecar-connection.md#method-fail-all) method with message `superseded by a new sidecar connection` before changing the registry entry, making any waiting RPC observe [sidecar error](sidecar-error.md).
+- verify: count(subject="pending RPC failures on the displaced sidecar connection", equals=1)
+- does: When the current entry is absent or is the same connection object, performs no prior-connection failure.
+- verify: count(subject="prior-connection failures during registration", equals=0)
+- does: Stores `conn` as the current registry value for `conn.container_id`, replacing any previous value for that key.
 - verify: count(subject="current sidecar connections for container id abc123", equals=1)
+- does: Does not apply the `hello` frame; that effect belongs to the endpoint after registration succeeds.
+- verify: unchanged(subject="hello frame")
+- does: Does not mutate workflow state; that effect belongs to the endpoint after registration succeeds.
+- verify: unchanged(subject="workflow state")
+- does: Does not broadcast dashboard messages; that effect belongs to the endpoint after registration succeeds.
+- verify: unchanged(subject="dashboard messages")
+- does: Does not send a websocket frame; that effect belongs to the endpoint after registration succeeds.
+- verify: unchanged(subject="websocket frames")
+- raises: none intentionally.
 - code: groom/groom/sidecar_hub.py::register
 - tests: groom/tests/test_sidecar_hub.py::test_register_displaces_and_fails_prior_connection
 - input-conn: [sidecar connection](sidecar-connection.md) object whose `container_id` is already normalized for use as the registry key; the registry stores the same object and does not clone, wrap, validate, or close it.
@@ -90,13 +102,17 @@ Sidecar connection registry is the process-local map of normalized workflow cont
 
 - sig: `get(container_id: str) -> SidecarConnection | None`
 - abstract: false
-- does:
-  - Reads exactly the registry key supplied by the caller; it does not normalize, truncate, or coerce the id.
-  - Returns the current registered connection object for that key when present.
-  - Returns `None` when the key is absent, including after the current connection was unregistered or when a caller asks for a differently formatted id.
-  - Does not fail pending RPCs, create a connection, send a websocket frame, or trigger a fallback itself; callers decide what absence means for their endpoint.
-- raises: none intentionally.
+- does: Reads exactly the registry key supplied by the caller; it does not normalize, truncate, or coerce the id.
 - verify: unchanged(subject="sidecar connection registry")
+- does: Returns the current registered connection object for that key when present.
+- verify: count(subject="current sidecar connections for the requested container id", equals=1)
+- does: Returns `None` when the key is absent, including after the current connection was unregistered or when a caller asks for a differently formatted id.
+- verify: absent(subject="current sidecar connection for the requested container id")
+- does: Does not fail pending RPCs, create a connection, or send a websocket frame.
+- verify: unchanged(subject="sidecar connection registry")
+- does: Does not trigger a fallback itself; callers decide what absence means for their endpoint.
+- verify: unchanged(subject="sidecar connection registry")
+- raises: none intentionally.
 - code: groom/groom/sidecar_hub.py::get
 - tests: groom/tests/test_sidecar_hub.py::test_register_displaces_and_fails_prior_connection,
   groom/tests/test_sidecar_hub.py::test_unregister_only_removes_current_connection,
@@ -121,7 +137,8 @@ Sidecar connection registry is the process-local map of normalized workflow cont
   - Returns a new list containing the registry keys that currently have registered sidecar connections.
   - Preserves the registry's insertion order for the returned snapshot.
   - Does not keep the returned list live; later connects or disconnects do not change a previously returned target list.
-  - Does not validate connection liveness or send reload frames; reload performs a fresh [method-get](#method-get) for each target before sending.
+  - Does not validate connection liveness or send reload frames.
+  - Reload performs a fresh [method-get](#method-get) for each target before sending.
 - raises: none intentionally.
 - verify: count(subject="connected container-id keys", equals=2)
 - code: groom/groom/sidecar_hub.py::connected_ids

@@ -22,7 +22,7 @@ disagreed about `library_dir`/`stablemate_dir`/`base_dir` — the installer and 
 disagreeing about where the library is, silently. The legacy per-tool files are still **read** when
 the unified one is absent; the first write migrates them.
 
-- code: `core/stablemate_core/config.py`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py`
 
 ## Location
 
@@ -45,7 +45,62 @@ the unified one is absent; the first write migrates them.
 `legacy_config_paths()` returns the pre-unification per-tool paths (`workhorse` and `farrier`'s own
 `user_config_dir` files) that `load_config` falls back to.
 
-- code: `core/stablemate_core/config.py::config_path`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::config_path`
+
+## Additional API
+
+The vendored module also exposes the following persistence and path helpers used by the shared
+tooling.
+
+### legacy_config_paths
+- sig: `legacy_config_paths() -> list[Path]`
+- returns: the historical workhorse and farrier config paths in that order
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::legacy_config_paths`
+
+### config_version_of
+- sig: `config_version_of(cfg: dict[str, Any]) -> int`
+- returns: the declared positive integer schema version, or `1` for an absent, invalid, boolean, or non-positive value
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::config_version_of`
+
+### write_library_dir
+- sig: `write_library_dir(path: Path) -> None`
+- does: persist the string form of `path` under `library_dir`
+- returns: `None`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_library_dir`
+
+### write_stablemate_dir
+- sig: `write_stablemate_dir(path: Path) -> None`
+- does: persist the string form of `path` under `stablemate_dir`
+- returns: `None`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_stablemate_dir`
+
+### write_base_dir
+- sig: `write_base_dir(path: Path) -> None`
+- does: persist the string form of `path` under `base_dir`
+- returns: `None`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_base_dir`
+
+### write_worktree_dir
+- sig: `write_worktree_dir(path: Path) -> None`
+- does: persist the string form of `path` under `worktree_dir`
+- returns: `None`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_worktree_dir`
+
+### resolve_stablemate_dir
+- sig: `resolve_stablemate_dir() -> Path | None`
+- returns: the expanded, resolved configured `stablemate_dir`, or `None` when it is unset or not a string
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_stablemate_dir`
+
+### resolve_worktree_dir
+- sig: `resolve_worktree_dir() -> Path | None`
+- returns: the expanded, resolved configured `worktree_dir`, or `None` when it is unset or not a string
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_worktree_dir`
+
+### read_config
+- sig: `read_config() -> dict[str, Any]`
+- does: provide the `load_config` behavior under farrier's alias
+- returns: the effective config mapping
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::read_config`
 
 ## The file carries a schema version
 
@@ -66,7 +121,7 @@ misread a file a newer one wrote.
 - An unversioned file is treated as version 1.
 - Migrating forward backs the file up to `<name>.v<n>.bak` first — a migration is a one-way door.
 
-- code: `core/stablemate_core/config.py::check_config_version`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::check_config_version`
 
 ## load_config
 
@@ -81,7 +136,7 @@ When the unified file is absent, it merges the legacy per-tool files instead, in
 `read_config` is an alias of this function, farrier's spelling of the same call, aliased rather than
 renamed so neither caller had to change.
 
-- code: `core/stablemate_core/config.py::load_config`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_config`
 
 ## get_config_value
 
@@ -92,7 +147,7 @@ indexed — an unresolved path is silent, never an error. Used by
 `stablemate_core.discovery` to read `base_dir`/`stablemate_dir` without caring whether either is
 set.
 
-- code: `core/stablemate_core/config.py::get_config_value`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::get_config_value`
 
 ## write_config_key
 
@@ -112,7 +167,7 @@ newer than `CONFIG_VERSION`. Used by
 and by the typed helpers `write_library_dir`, `write_stablemate_dir`, `write_base_dir` and
 `write_worktree_dir` that wrap it.
 
-- code: `core/stablemate_core/config.py::write_config_key`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_config_key`
 - detail: [config write documentation contexts](../../farrier/concepts/config-write-context.md)
 
 ## profiles
@@ -171,15 +226,14 @@ There is **no writer**. A profile is a nested table and
 editing the file; [`farrier config show --profile <name>`](../../farrier/farrier.md#config)
 reads one back.
 
-- code: `core/stablemate_core/config.py::select_profile`
-- code: `core/stablemate_core/config.py::profile_names`
-- code: `core/stablemate_core/config.py::profile_backends`
-- code: `core/stablemate_core/config.py::profile_has_backend`
-- verify: `core/tests/test_config_profiles.py::test_selected_profile_replaces_the_top_level_tables`,
-  `core/tests/test_config_profiles.py::test_harness_env_is_not_part_of_a_profile`,
-  `core/tests/test_config_profiles.py::test_no_profile_leaves_the_config_untouched`,
-  `core/tests/test_config_profiles.py::test_an_unknown_profile_raises_and_names_the_alternatives`,
-  `core/tests/test_config_profiles.py::test_a_profile_with_no_entries_for_the_backend_is_visible`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::select_profile`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::profile_names`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::profile_backends`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::profile_has_backend`
+- tests: `workhorse/tests/test_model_resolution.py::test_a_profile_replaces_the_top_level_tables`
+- tests: `workhorse/tests/test_model_resolution.py::test_without_a_profile_nothing_is_narrowed`
+- tests: `workhorse/tests/test_run_options.py::test_an_unknown_profile_is_refused_before_the_first_state`
+- tests: `workhorse/tests/test_run_options.py::test_a_profile_with_nothing_for_the_chosen_backend_is_refused`
 
 ## resolve_power
 
@@ -196,7 +250,7 @@ own default applies.
   instead, which is why this function knows nothing about profiles).
 - **Output:** `PowerMapping(model, effort)` — each field `None` unless the config supplies a
   non-empty string.
-- code: `core/stablemate_core/config.py::resolve_power`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_power`
 
 ## resolve_backend_default
 
@@ -210,7 +264,7 @@ rather than an error.
 - **Input:** `backend: str`, `cfg: dict | None` (defaults to `load_config()`).
 - **Output:** `PowerMapping(model, effort)` — each field `None` unless the config supplies a
   non-empty string.
-- code: `core/stablemate_core/config.py::resolve_backend_default`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_backend_default`
 
 ## resolve_default_cli
 
@@ -236,14 +290,11 @@ to the same built-in it always used.
 - **Input:** `cfg: dict | None` (defaults to `load_config()`).
 - consistency: default-cli — `resolve_default_cli` always returns a non-empty backend name
   normalized with `strip().lower()`.
-- code: `core/stablemate_core/config.py::resolve_default_cli`
-- code: `core/stablemate_core/config.py::write_default_cli`
-- verify: `core/tests/test_config_unified.py::test_default_cli_is_the_builtin_when_unset`,
-  `core/tests/test_config_unified.py::test_default_cli_is_read_from_the_config`,
-  `core/tests/test_config_unified.py::test_default_cli_is_normalized`,
-  `core/tests/test_config_unified.py::test_a_malformed_default_cli_reads_as_unset`,
-  `core/tests/test_config_unified.py::test_writing_the_default_cli_preserves_the_rest`,
-  `core/tests/test_config_unified.py::test_default_cli_does_not_bump_the_schema`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_default_cli`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_default_cli`
+- tests: `workhorse/tests/test_backends.py::test_config_default_cli_selects_backend`
+- tests: `workhorse/tests/test_backends.py::test_env_var_beats_config_default_cli`
+- tests: `workhorse/tests/test_backends.py::test_unknown_config_default_cli_fails_like_any_typo`
 
 ## resolve_harness_env
 
@@ -255,7 +306,7 @@ an environment is strings, and quietly stringifying a bare TOML `1` would hide t
 
 - **Input:** `backend: str`, `cfg: dict | None` (defaults to `load_config()`).
 - **Output:** `dict[str, str]`.
-- code: `core/stablemate_core/config.py::resolve_harness_env`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_harness_env`
 
 ## PowerMapping
 
@@ -263,7 +314,7 @@ The frozen dataclass `resolve_power` and `resolve_backend_default` return: `mode
 None`, `effort: str | None = None`. Both fields default to unset so an unconfigured tier/backend
 combination is a no-op override, not an error.
 
-- code: `core/stablemate_core/config.py::PowerMapping`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::PowerMapping`
 
 ## Consumers
 

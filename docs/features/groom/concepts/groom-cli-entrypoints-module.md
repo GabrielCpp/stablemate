@@ -31,9 +31,9 @@ the server app itself is produced by the [Groom app module](groom-app-module.md)
 - defaults: `groom serve` binds to [field-default-host](#field-default-host) and
   [field-default-port](#field-default-port) unless the operator supplies command
   flags.
-- warning boundary: non-loopback host classification controls only the stderr
-  exposure warning for the host dashboard; it does not add authentication,
-  reject the bind address, rewrite the selected address, or limit server routes.
+- consistency: an unacknowledged non-loopback host emits the exposure warning
+  and remains eligible for server startup on the selected address.
+- verify: exit_status(code=0)
 - parser failure model: unknown flags, invalid integer values, missing required
   commands, and unexpected positional arguments exit through the parser before
   the selected command handler performs server or sidecar work.
@@ -89,7 +89,7 @@ the server app itself is produced by the [Groom app module](groom-app-module.md)
   - Performs no server construction, socket binding, sidecar import, or workflow
     state mutation unless the parser accepted `serve`.
 
-### method-serve
+### method: serve
 
 - sig: `serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, *, allow_non_loopback: bool = False) -> None`
 - abstract: false
@@ -131,28 +131,28 @@ the server app itself is produced by the [Groom app module](groom-app-module.md)
 - refs: [sidecar snapshot](sidecar-snapshot.md#method-snapshot)
 - refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-exited)
 - refs: [sidecar live session runner](sidecar-live-session-runner.md)
-- does:
-  - Builds the `groom-sidecar` parser with no subcommands and exactly two
-    root-level mode flags: `--query` and `--exit-code`.
-  - Parses the supplied `argv` list, or the process command line when `argv` is
-    absent, before importing the sidecar module.
-  - Imports the sidecar runtime module only after parsing succeeds.
-  - In query mode, reads [method-snapshot](sidecar-snapshot.md#method-snapshot),
-    serializes the returned [sidecar snapshot data](../sidecar-snapshot-data.md)
-    as compact JSON to stdout, and returns without attempting the exit-notice or
-    live-session paths.
-  - In exit-notice mode, calls
-    [method-push-exited](sidecar-residual-http-push-helper.md#method-push-exited)
-    with the parsed integer exit code and returns without starting the live
-    sidecar session.
-  - In default mode, calls the [sidecar live session runner](sidecar-live-session-runner.md)
-    and leaves process-exit behavior to that runner.
-  - Gives query mode precedence over exit-notice mode when both `--query` and
-    `--exit-code` are supplied.
+- does: builds the `groom-sidecar` parser with no subcommands and exactly two
+  root-level mode flags: `--query` and `--exit-code`.
+- does: parses the supplied `argv` list, or the process command line when `argv`
+  is absent, before importing the sidecar module.
+- does: imports the sidecar runtime module only after parsing succeeds.
+- does: in query mode, reads [method-snapshot](sidecar-snapshot.md#method-snapshot)
+  and serializes the returned [sidecar snapshot data](../sidecar-snapshot-data.md)
+  as compact JSON to stdout without attempting the exit-notice or live-session
+  paths.
+- does: in exit-notice mode, calls
+  [method-push-exited](sidecar-residual-http-push-helper.md#method-push-exited)
+  with the parsed integer exit code without starting the live sidecar session.
+- does: in default mode, calls the [sidecar live session runner](sidecar-live-session-runner.md)
+  and leaves process-exit behavior to that runner.
+- does: gives query mode precedence over exit-notice mode when both `--query`
+  and `--exit-code` are supplied.
 
 ## Private Members
 
 ### method-_is-loopback
+
+This private helper implements the public [loopback host classifier](loopback-host-classifier.md).
 
 - sig: `_is_loopback(host: str) -> bool`
 - abstract: false
@@ -160,9 +160,7 @@ the server app itself is produced by the [Groom app module](groom-app-module.md)
   non-loopback.
 - code: groom/groom/cli.py::_is_loopback
 - detail: [loopback host classifier](loopback-host-classifier.md)
-- does:
-  - Provides the private implementation behind the public [loopback host classifier](loopback-host-classifier.md).
-  - Returns `true` for the literal string `localhost` and for parseable loopback
-    IP address literals.
-  - Returns `false` for non-loopback IP address literals and host strings that
-    are not parseable as IP addresses.
+- does: returns `true` for the literal string `localhost` and for parseable
+  loopback IP address literals.
+- does: returns `false` for non-loopback IP address literals and host strings
+  that are not parseable as IP addresses.

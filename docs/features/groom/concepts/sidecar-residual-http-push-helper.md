@@ -12,6 +12,8 @@ exit-notice invocation and by the progress/blocked residual paths described in
 [sidecar protocol](../sidecar-protocol.md); it turns [sidecar identity data](../sidecar-identity-data.md)
 plus one event payload into a best-effort JSON POST for [progress push payload](../progress-push-payload.md),
 [blocked push payload](../blocked-push-payload.md), or [exited push payload](../exited-push-payload.md).
+After opening a response, it closes that response and completes without inspecting
+its status, headers, or body.
 
 - code: groom/groom/sidecar.py::_push
 - verify: groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape
@@ -49,9 +51,6 @@ plus one event payload into a best-effort JSON POST for [progress push payload](
 - timeout: passes the module's `PUSH_TIMEOUT` value to the HTTP call; that value
   comes from the `GROOM_PUSH_TIMEOUT` environment variable, defaults to `1.0`
   seconds, and is parsed as a float when the sidecar module is imported.
-- success-result: returns `None` after the HTTP response object has been opened
-  and closed; response body, response headers, and successful response status are
-  not inspected by this helper.
 - failure-result: exceptions raised while opening the URL or closing the response
   are swallowed, so an unreachable groom process, refused connection, HTTP-open
   failure, or close failure does not block or change workflow-side behavior.
@@ -82,9 +81,11 @@ plus one event payload into a best-effort JSON POST for [progress push payload](
 
 - sig: `_push(path: str, payload: dict) -> None`
 - abstract: false
-- raises: none intentionally raised for HTTP open or response-close failures;
-  JSON serialization, request construction, malformed imported configuration,
-  and other errors before the guarded HTTP open are not normalized by the helper.
+- raises: none intentionally raised for HTTP open or response-close failures.
+- raises: JSON serialization, request construction, and other errors before the
+  guarded HTTP open are not normalized by the helper.
+- raises: malformed imported configuration prevents the module from importing
+  before this helper can run.
 - input: an absolute host-side route path string and a JSON-serializable event
   payload dictionary.
 - output: always returns `None` on the normal path and on suppressed HTTP-open or

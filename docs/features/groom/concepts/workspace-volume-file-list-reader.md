@@ -20,13 +20,16 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 - base path: when `repo_dir` is non-empty, the reader searches `/vol/{repo_dir}` after stripping only a trailing slash from the assembled base; otherwise it searches `/vol`.
 - input trust boundary: `repo_dir` is not passed through the workspace-volume relative-path guard; the caller is responsible for supplying either `""` or a repository directory produced by Groom's repository selection flow.
 - command: runs `docker run --rm -v {volume}:/vol:ro alpine:3.20 find {base} ( -type d ( -name .git -o -name node_modules -o -name __pycache__ -o -name .venv ) -prune ) -o ( -type f -print )`.
-- output: returns `list[str]` containing file paths relative to the selected checkout root.
+- consistency: the `list_files` result for `repo_dir="Acme"` contains paths relative to the selected checkout root, never Docker mount paths.
+- verify: omits(subject="list_files result for repo_dir Acme", text="/vol/")
 - parsing: only stdout lines beginning with `{base}/` are retained, and the returned value drops that prefix so Docker mount paths are never exposed to the dashboard.
 - ignored output: blank lines and any `find` stdout line outside the selected base prefix are ignored.
 - ordering: returned paths are sorted ascending for a stable tree order.
 - pruning: directories named `.git`, `node_modules`, `__pycache__`, and `.venv` are excluded from traversal.
 - timeout: the Docker process uses the module default 20-second timeout.
 - failure: any non-zero Docker reader process returns an empty list rather than raising to the HTTP handler.
+- consistency: `list_files` returns `[]` whenever the Docker process exits with a non-zero return code.
+- verify: count(subject="returned file paths after Docker failure", equals=0)
 - exceptions: process-launch and timeout exceptions are not converted by this reader; callers that need to recover from those exceptions must do so outside this function.
 - side effects: creates only a throwaway read-only Docker container for the read; it does not change files, workflow state, sidecar registry state, or dashboard clients.
 
@@ -35,7 +38,10 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 ### field-selected-base-path
 
 - type: absolute path inside the temporary container
-- default: `/vol` when `repo_dir == ""`; otherwise `/vol/{repo_dir}` with a trailing slash stripped from the assembled path.
+- default: `/vol` when `repo_dir == ""`.
+- verify: count(subject="returned volume-root-relative file paths", equals=2)
+- default: `/vol/{repo_dir}` with a trailing slash stripped from the assembled path when `repo_dir` is non-empty.
+- verify: count(subject="returned repo-relative file paths", equals=2)
 - required: true
 - meaning: root whose descendant regular files become returned path entries.
 - constraints: this reader does not validate or normalize `repo_dir` beyond the trailing-slash removal; callers provide the value from Groom's repository selection flow or an empty root selection.
@@ -90,13 +96,15 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 
 ## Algorithms
 
+The read resolves the selected base, builds and runs the read-only `find` command, then parses
+and sorts accepted output paths. A non-zero Docker process exit produces an empty file list.
+
 ### algorithm-file-list-read
 
 - step: Resolve the selected base to `/vol` when `repo_dir` is empty, otherwise to `/vol/{repo_dir}` after trimming only trailing slash characters from the assembled base string.
 - step: Construct a `find` prune predicate that matches every skipped directory basename.
 - step: Run one temporary container with the workspace volume mounted read-only at `/vol` and the configured Alpine image as the command image.
 - step: In that container, prune skipped directories and print every remaining regular file path below the selected base.
-- step: If the Docker process exits non-zero, return an empty list.
 - step: For each stdout line, strip surrounding whitespace.
 - step: Keep only lines whose stripped text begins with the selected base plus `/`.
 - step: Remove the selected-base prefix from each retained line.
@@ -104,7 +112,6 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 
 ## Failure behavior
 
-- Docker command failure: returns `[]` for any non-zero process return code.
 - Empty selected tree: returns `[]` when the Docker command succeeds but prints no matching regular files.
 - Unexpected stdout line: ignores a line that is empty after stripping or does not begin with the selected base prefix.
 - Missing selected base: represented as the Docker command's non-zero return and converted to `[]`.
@@ -124,11 +131,18 @@ Workspace volume file-list reader is the fallback implementation used by the [se
   - Runs one read-only `alpine:3.20` container with `find` to print non-pruned regular files.
   - Converts only matching absolute mount paths into paths relative to the selected base.
   - Sorts the resulting list before returning it.
-- raises: propagates process launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md); converts Docker process return-code failures to an empty list.
-- returns: sorted list of selected-root-relative file paths; an empty list means the selected tree is empty, the Docker process exited non-zero, or no stdout paths matched the selected base prefix.
+- raises: propagates process launch exceptions from the [Docker subprocess runner](docker-subprocess-runner.md).
+- raises: propagates timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md).
+- raises: converts Docker process return-code failures to an empty list.
+- returns: sorted list of selected-root-relative file paths.
 - verify: count(subject="returned repo-relative file paths", equals=2)
 - verify: count(subject="returned volume-root-relative file paths", equals=2)
+- returns: an empty list when the selected tree is empty.
+- verify: count(subject="returned file paths for an empty selected tree", equals=0)
+- returns: an empty list when the Docker process exits non-zero.
 - verify: count(subject="returned file paths after Docker failure", equals=0)
+- returns: an empty list when no stdout paths match the selected base prefix.
+- verify: count(subject="returned file paths with no matching base prefix", equals=0)
 - code: groom/groom/docker_io.py::list_files
 - tests: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs,
   groom/tests/test_docker_io.py::test_list_files_volume_root_when_repo_dir_empty,

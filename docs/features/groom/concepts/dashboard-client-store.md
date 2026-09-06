@@ -25,13 +25,16 @@ The store is also the boundary that decides what is fleet-wide and what is per-t
 ## Contract
 
 - purpose: hold one snapshot of everything the dashboard displays, and be the only place any of it is written.
-- shape: a flat object of named slices. The top level is shallow-merged; nested slices are replaced wholesale through [set in slice](#method-set-in), so a panel updating its own key can never clobber another's.
+- consistency: Updating a panel slice through [set in slice](#method-set-in) preserves every other dashboard store slice.
+- verify: unchanged(subject="dashboard store slices other than the updated panel")
 - subscription: islands call [use store](#method-use-store), which subscribes on mount and unsubscribes on unmount; every `set` notifies every listener with the new snapshot.
 - immutability by convention: `set` builds a new top-level object rather than mutating in place, so a component comparing snapshots sees a new identity.
 - single fleet entry point: `applyState()` is the only writer of `runs`, `status`, and `scanning`, and both delivery paths call it. This is the invariant that keeps a resynced tab and a pushed tab identical.
 - delta merge: `applyRun()` merges one row in place by id and re-sorts by `(rank, name)` — the same order the server projected — so the other rows are not re-created and do not lose focus.
 - keyed reconciliation: rows are keyed by run id and gate blocks by gate file path. That is what preserves focus, scroll position, and — because Preact then reuses the same `<textarea>` DOM node — a half-typed answer across a 5-second push.
 - detail ownership: `detail` is written by a pushed `detail` frame and by the one fetch a selection issues; the pushed frame is ignored unless its id matches the current selection, so a stale push for a run the operator has moved off cannot overwrite the pane.
+- consistency: A pushed detail frame for an unselected run leaves the dashboard store unchanged, so a race between a selection change and an in-flight push cannot show the wrong run's gates.
+- verify: unchanged(subject="dashboard store when a detail push targets an unselected run")
 - selection race: `select()` stamps a sequence number and applies its fetch result only if it is still the newest selection *and* no push has already filled the pane. Whichever of the two arrives first wins and the other is dropped, so fast clicking cannot land the wrong run's detail.
 - markup boundary: the store holds data, never markup. The only strings that ever reach `innerHTML` anywhere in the client are the outputs of DOMPurify, diff2html, and highlight.js.
 - panel laziness: per-selection panels are fetched when their mode becomes active, not held current in the background — the server does not push files, diffs, or traces.
@@ -174,7 +177,8 @@ The store is also the boundary that decides what is fleet-wide and what is per-t
 
 - sig: `async select(id) -> void`
 - abstract: false
-- raises: none; a failed fetch is swallowed.
+- raises: none.
+- raises: a failed fetch is swallowed.
 - code: groom/groom/assets/dashboard.js::select
 - step: Bump the selection sequence and write `{selected: id, detail: null}` so the pane visibly changes immediately.
 - step: Send the `watch` subscription, which is what makes future changes to this run arrive without polling.
@@ -205,6 +209,5 @@ The store is also the boundary that decides what is fleet-wide and what is per-t
 
 - Unparseable frame: dropped before it reaches the store; nothing is written and connection recency is not stamped.
 - Missing keys in a payload: `applyState` falls back to the existing value for `status` and to an empty list for `runs`, so a partial payload degrades rather than blanking the page.
-- Push for an unselected run: `onDetail` returns without writing, so a race between a selection change and an in-flight push cannot show the wrong run's gates.
 - Panel fetch failure: each panel writes its own `status: "error"` into its own slice; the fleet, the connection phase, and the other panels are unaffected.
 - Store errors: the store has no error state of its own. Anything a listener throws surfaces as an ordinary render error rather than being caught and hidden.

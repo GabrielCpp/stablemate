@@ -125,7 +125,7 @@ Nothing in this format is markup. Every value is a string or an integer, and the
 - sig: `repo_entries(entries: list[tuple[WorkflowContainer, list[str]]]) -> list[dict[str, Any]]`
 - abstract: false
 - raises: none intentionally; a workflow state outside the known set would fail the sort's state lookup.
-- verify: count(subject="repository menu groups", equals=0)
+- verify: count(subject="repository menu groups", equals=2)
 - code: groom/groom/projection.py::repo_entries
 - tests: groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container,
   groom/tests/test_projection.py::test_repo_entries_empty_when_nothing_is_running
@@ -144,7 +144,7 @@ Nothing in this format is markup. Every value is a string or an integer, and the
 - sig: `async repos() -> list[dict]`
 - abstract: false
 - raises: no endpoint-specific exception for an empty fleet or a workflow with no discoverable checkout; discovery process-launch and timeout exceptions can propagate.
-- verify: count(subject="repository menu groups", equals=0)
+- verify: count(subject="repository menu groups", equals=1)
 - code: groom/groom/app.py::repos
 - tests: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
   groom/tests/test_app.py::test_repos_endpoint_reads_native_run_from_local_disk

@@ -6,12 +6,17 @@ title: Parity survey configuration
 # Parity survey configuration
 
 The `ParityConfig` value is the resolved comparison context passed from setup to every parity
-surveyor state. `repo_root` is absolute; all other paths are repository-relative. The baseline
-is the legacy inventory, while the remaining artifacts identify the frozen worklist, finding
-records, generated backlog section, manifest, target feature book, and epic search area.
+surveyor state. It inherits the author result model's input rules: each field has a default,
+unknown input keys are ignored, and null input values are discarded before validation. The
+configuration loader supplies the resolved values; the model itself does not resolve paths or
+check that files exist. `repo_root` is absolute; all other paths are repository-relative. The
+baseline is the legacy inventory, while the remaining artifacts identify the frozen worklist,
+finding records, generated backlog section, manifest, target feature book, and epic search area.
 
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/parity.py::ParityConfig`
 - detail: [author parity surveyor subflow](concepts/parity-surveyor-subflow.md)
+- tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_config_derives_every_path_under_the_survey_dir`
+- tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_config_honours_an_overridden_survey_dir`
 
 ## Fields
 

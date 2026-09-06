@@ -18,6 +18,11 @@ It is the only substantive implementation of Layer 2 in the tree. `compact` is
 other four backends each satisfy it with an unconditional `return False`, and their nodes always
 fall through to reframe on overflow.
 
+When compaction events omit `session_id`, the original session ID remains available for the next
+resume: the event state starts with that ID and persists it unless a later event replaces it. The
+harness test observes this by compacting from events without `session_id` and reading the retained
+session ID afterward.
+
 - code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.compact`
 - tests: `workhorse/tests/test_config_harness_env.py::test_compaction_runs_under_the_same_env`
 
@@ -58,26 +63,21 @@ keeps the `/compact` call under the same CLI configuration as the conversation i
    invocation shape as a normal turn ([`_run_cli`](run-claude-cli.md#algorithm)), but with no
    `--add-dir` or `--effort` flags (compaction doesn't need tool access or a reasoning-effort
    override). Print `[{node_id}] 🗜 compacting session {sid[:8]}… to free context`.
-3. Parse the compaction event stream:
-   - `event["session_id"]`, if present, updates `new_session_id` (starts seeded at the original
-     `sid`, so the persisted id is never lost even if no event repeats it).
-   - `event["status"] == "compacting"` sets `saw_compacting = True` — the CLI has acknowledged the
-     command started.
-   - `"compact_result" in event`:
-     - `"failed"` → `compact_failed = True`, `compact_error = event.get("compact_error", "")`.
-     - `"success"` → `saw_compacting = True` (also covers the case where a `"compacting"` status
-       event was never seen but a terminal success was).
-   - A blank line, or a line that isn't valid JSON, is silently skipped (best-effort parsing;
-     unlike [`classify_turn`](classify-turn.md), a stray non-JSON line here doesn't count as a
-     failure signal since compaction has no output-parsing step to fall back on).
-    This function does **not** use [`_stream_events`](stream-events.md) or
-    [`ClaudeTurnStream`](stream-events.md#claudeturnstream) — a `/compact` turn produces no result
-    text to classify, so it reads the three fields it cares about itself rather than filling a
-    turn accumulator it would then ignore.
+3. The callback parses the compaction event stream line by line. A present `event["session_id"]`
+   replaces `new_session_id`, which starts with the original `sid`; `event["status"] ==
+   "compacting"` records that the CLI acknowledged the command started. A `compact_result` of
+   `"failed"` records `compact_failed` and `compact_error`; `"success"` records the same
+   acknowledgement even when no earlier `"compacting"` status event arrived. Blank and invalid
+   JSON lines are silently skipped as best-effort parsing: unlike
+   [`classify_turn`](classify-turn.md), compaction has no output-parsing fallback for a stray
+   non-JSON line.
 
 The current implementation invokes [`stream_subprocess`](stream-subprocess.md#algorithm) with
 `/compact` as stdin, `resilience`, and the Claude harness environment; its `on_line` callback
-builds the event state described above. See
+builds the event state described above. It reads those three fields directly rather than using
+[`_stream_events`](stream-events.md) or
+[`ClaudeTurnStream`](stream-events.md#claudeturnstream), because a `/compact` turn produces no
+result text to classify and would otherwise fill an ignored turn accumulator. See
 `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.compact`.
 4. **Call failure → `False`.** If `stream_subprocess` itself raises (a broad `except Exception`,
    deliberate and marked `noqa: BLE001` — compaction is best-effort and must never propagate a

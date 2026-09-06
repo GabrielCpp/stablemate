@@ -12,10 +12,13 @@ Dashboard shell broadcaster is the shared groom server helper that turns the cur
 
 ## Contract
 
+The helper returns no value. After it completes, the projected payload has passed through the
+broadcast queueing layer for every dashboard client queue present in that pass, and any watcher
+push has been enqueued.
+
 - sig: `async _broadcast_shell(changed: str = "") -> None`
 - purpose: produce one current dashboard state payload, enqueue it for all browser dashboard websocket clients registered with the groom process, and — when a single run is what changed — enqueue that run's detail payload for the tabs watching it.
 - input: an optional container id naming the run that changed; the fleet half reads the process-local workflow registry through [all workflows snapshot](workflow-registry.md#method-all-workflows-snapshot) rather than accepting a caller-supplied workflow list, query string, client list, or transport object.
-- output: no return value; completion means the projected payload has been accepted by the broadcast queueing layer for every dashboard client queue present in that broadcast pass, and any watcher push has been enqueued.
 - fleet scope: the state payload carries the run list and the status-bar counts as a single JSON object; it does not carry selected run detail, files, diff, repository picker contents, traces, or toasts.
 - detail scope: the optional second half carries one run's detail slices — head, gates, metrics, log trail — addressed only to the queues watching that run.
 - client scope: the fleet half targets only browser dashboard websocket clients registered in the process-local [dashboard client queue set](dashboard-client-queue-set.md); it does not send to sidecar websockets and does not create a websocket connection for absent clients.
@@ -95,7 +98,8 @@ Dashboard shell broadcaster is the shared groom server helper that turns the cur
 
 - sig: `async _broadcast_shell(changed: str = "") -> None`
 - abstract: false
-- raises: propagates exceptions from workflow snapshot creation, projection, dashboard client queue snapshotting, or queue `put` calls; no helper-specific error value is returned.
+- raises: propagates exceptions from workflow snapshot creation, projection, dashboard client queue snapshotting, or queue `put` calls.
+- returns: no helper-specific error value to the caller.
 - code: groom/groom/app.py::_broadcast_shell
 
 Project and enqueue the current dashboard state for browser dashboard websocket clients after a caller has already changed, or is about to expose, workflow fleet state — and refresh the open pane for whoever is watching the run that changed.
@@ -139,8 +143,8 @@ Project and enqueue the current dashboard state for browser dashboard websocket 
 - step: Pass that list to [state message](groom-projection-module.md#method-state-message) with no query override.
 - step: Receive one [dashboard state payload](../dashboard-state-payload.md) carrying the ordered run list, the fleet-wide status counts, and the discovery scanning flag.
 - step: Offer the payload to [broadcast dashboard message](dashboard-client-queue-set.md#method-broadcast-dashboard-message), which snapshots the registered dashboard client queues and awaits one enqueue per queue.
-- step: If `changed` is empty, return.
-- step: Otherwise push that run's detail to its watchers, or return early when nobody is watching it.
+
+With no named changed run, the sequence ends after the fleet payload is offered. A named changed run continues by pushing its detail to its watchers; when nobody watches it, the detail push ends before reading telemetry or logs.
 
 ## Failure Semantics
 

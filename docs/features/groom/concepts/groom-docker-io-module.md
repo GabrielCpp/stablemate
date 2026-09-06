@@ -5,6 +5,8 @@ title: Groom Docker I/O module
 ---
 # Groom Docker I/O module
 
+Its public helpers present Docker and workspace-volume operations through small return values for callers to interpret.
+
 Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server](../http/groom.md) and [groom sidecar](../groom-sidecar.md) control plane: it centralizes shell-free local Docker subprocess execution, container fleet reads, live container commands, workspace-volume file and diff reads, gate-file writes, and repository discovery. Its public helpers are documented as sibling concepts, including the [Docker subprocess runner](docker-subprocess-runner.md), [Docker all-container listing reader](docker-all-container-listing-reader.md), [Docker container-id listing reader](docker-container-id-listing-reader.md), [Docker exec runner](docker-exec-runner.md), [host-to-container sidecar query](host-to-container-sidecar-query.md), [Docker inspection reader](docker-inspection-reader.md), [stopped container start fallback](stopped-container-start-fallback.md), [container running-state check](container-running-state-check.md), [workspace volume relative-path guard](workspace-volume-relative-path-guard.md), [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md), [workspace volume file-list reader](workspace-volume-file-list-reader.md), [Docker run-directory reader](docker-run-directory-reader.md), [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md), [workspace volume diff reader](workspace-volume-diff-reader.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), and [workspace volume file writer](workspace-volume-file-writer.md). It exchanges [Docker ps container row](../docker-ps-container-row.md), [Docker inspect container object](../docker-inspect-container-object.md), [sidecar snapshot data](../sidecar-snapshot-data.md), [workspace file list data](../workspace-file-list-data.md), [workspace file content data](../workspace-file-content-data.md), and [workspace diff data](../workspace-diff-data.md) without owning workflow registry state, dashboard rendering, sidecar websocket state, or gate-answer orchestration.
 
 - code: groom/groom/docker_io.py
@@ -32,7 +34,6 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 
 ## Contract
 
-- purpose: expose Groom's first-party Docker and Docker-volume access contract behind small return-value-oriented helpers.
 - public surface: the module exposes three Docker image/timeout constants and sixteen public helpers: [docker-ps-all](#docker-ps-all), [list-container-ids](#list-container-ids), [docker-exec](#docker-exec), [sidecar-query](#sidecar-query), [docker-inspect](#docker-inspect), [docker-start](#docker-start), [is-running](#is-running), [safe-relpath](#safe-relpath), [grep-awaiting-files](#grep-awaiting-files), [list-files](#list-files), [list-run-dirs](#list-run-dirs), [list-repo-dirs](#list-repo-dirs), [find-repo-dir](#find-repo-dir), [git-diff](#git-diff), [read-file](#read-file), and [write-file](#write-file).
 - execution invariant: every Docker process is launched from an argv list through the [Docker subprocess runner](docker-subprocess-runner.md), not through a shell command string.
 - timeout invariant: Docker calls default to [field-docker-timeout](#field-docker-timeout) unless a helper accepts and forwards an explicit timeout.
@@ -47,7 +48,8 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 
 ## Public Helper Matrix
 
-- container fleet reads: [docker-ps-all](#docker-ps-all) returns parsed all-container rows; [list-container-ids](#list-container-ids) returns short ids or Docker-unavailable `None`.
+Container fleet reads include [docker-ps-all](#docker-ps-all), which returns parsed all-container rows, and [list-container-ids](#list-container-ids), which returns short ids or Docker-unavailable `None`.
+
 - live container operations: [docker-exec](#docker-exec) runs a caller-selected command in a live container; [sidecar-query](#sidecar-query) uses that exec path to request sidecar state; [docker-inspect](#docker-inspect) reads one inspect object; [docker-start](#docker-start) starts one existing container; [is-running](#is-running) derives a boolean from inspect state.
 - workspace path validation: [safe-relpath](#safe-relpath) is the only exported validator for caller-selected workspace-relative file paths.
 - workspace-volume reads: [grep-awaiting-files](#grep-awaiting-files) finds awaiting gate files; [list-files](#list-files) lists repo-relative files; [list-run-dirs](#list-run-dirs) lists run directories; [list-repo-dirs](#list-repo-dirs) lists git checkout roots; [find-repo-dir](#find-repo-dir) selects the first checkout root; [git-diff](#git-diff) returns one checkout diff; [read-file](#read-file) returns file text.
@@ -63,12 +65,15 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 - volume: Docker volume name used by workspace read/write helpers as the left side of a Docker `-v` mount; it is not path-normalized by this module.
 - mount_subdir: optional volume-relative subdirectory for [grep-awaiting-files](#grep-awaiting-files); when empty the search target is `/vol`, otherwise `/vol/<mount_subdir>` with trailing slash removed.
 - repo_dir: optional volume-relative repository root for [list-files](#list-files) and [git-diff](#git-diff); empty means volume root for file listing and first discovered repository for diff extraction.
-- rel_path: caller-selected workspace-relative path for [read-file](#read-file) and [write-file](#write-file); [safe-relpath](#safe-relpath) must accept it before Docker sees it.
+- rel_path: caller-selected workspace-relative path for [read-file](#read-file) and [write-file](#write-file).
+- consistency: [read-file](#read-file) and [write-file](#write-file) accept a caller-selected `rel_path` only after [safe-relpath](#safe-relpath) accepts it, so an unsafe path never reaches a Docker argv.
+- verify: omits(subject="Docker argv for read-file and write-file with unsafe relative-path inputs", matches="/vol/.*\\.\\./")
 - content: text payload for [write-file](#write-file); passed as subprocess stdin and never as a command-line token.
 
 ## Return Conventions
 
-- list result: Docker discovery and volume-scan helpers return sorted or parsed lists and use `[]` for Docker command failure, no matches, or no applicable entries as documented by each method.
+- consistency: Docker discovery and volume-scan helpers return sorted or parsed lists and use `[]` for Docker command failure, no matches, or no applicable entries as documented by each method.
+- verify: count(subject="Docker discovery and volume-scan result after Docker failure or no matches", equals=0)
 - set result: [list-container-ids](#list-container-ids) returns `set()` for a successful no-container listing and `None` only when Docker cannot provide the listing.
 - optional dictionary result: [sidecar-query](#sidecar-query) and [docker-inspect](#docker-inspect) return dictionaries only for parseable object payloads; all expected unavailable or invalid states return `None`.
 - boolean result: [docker-start](#docker-start) and [write-file](#write-file) return `True` only for completed zero-status Docker processes; [is-running](#is-running) returns `True` only for truthy inspect `State.Running`.
@@ -145,7 +150,8 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 
 - sig: `sidecar_query(container_id: str) -> dict[str, Any] | None`
 - abstract: false
-- raises: no intentional exception for expected Docker missing, timeout, non-zero exit, non-JSON output, or non-dictionary JSON output; unexpected non-subprocess failures can propagate.
+- raises: no intentional exception for expected Docker missing, timeout, non-zero exit, non-JSON output, or non-dictionary JSON output.
+- raises: unexpected non-subprocess failures can propagate.
 - returns: parsed [sidecar snapshot data](../sidecar-snapshot-data.md) dictionary from `groom-sidecar --query`, or `None` when the live sidecar query path is unavailable.
 - verify: json_path(path="$.current_node", equals="n1")
 - verify: absent(subject="sidecar snapshot data after a non-zero sidecar query exit")
@@ -276,7 +282,8 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 
 - sig: `read_file(volume: str, rel_path: str) -> str | None`
 - abstract: false
-- raises: `ValueError` from [safe-relpath](#safe-relpath); subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
+- raises: `ValueError` from [safe-relpath](#safe-relpath).
+- raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
 - returns: text [workspace file content data](../workspace-file-content-data.md), or `None` when Docker cannot read the selected safe path.
 - code: groom/groom/docker_io.py::read_file
 - detail: [workspace volume file-content reader](workspace-volume-file-content-reader.md)
@@ -285,7 +292,8 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 
 - sig: `write_file(volume: str, rel_path: str, content: str) -> bool`
 - abstract: false
-- raises: `ValueError` from [safe-relpath](#safe-relpath); subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
+- raises: `ValueError` from [safe-relpath](#safe-relpath).
+- raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
 - returns: `true` only when the temporary container copies the supplied content to the selected safe path with return code `0`.
 - code: groom/groom/docker_io.py::write_file
 - detail: [workspace volume file writer](workspace-volume-file-writer.md)
@@ -312,11 +320,14 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 
 ### algorithm-docker-read-and-write-boundary
 
+Each helper converts its completed process and stdout into that method's documented return value;
+workflow-state mutation, UI rendering, websocket sending, and gate-answer decisions remain with
+the caller.
+
 - step: A caller selects a public helper for a container listing, container inspection, live exec, sidecar query, volume scan, repository discovery, file read, diff read, or file write.
 - step: The helper validates only the path inputs it owns, using [safe-relpath](#safe-relpath) for volume file paths that would otherwise become `/vol/...` destinations.
 - step: The helper builds a tokenized Docker argv list using [field-alpine-image](#field-alpine-image), [field-git-image](#field-git-image), or the host Docker CLI command needed for the requested operation.
 - step: The helper delegates process launch and output capture to the [Docker subprocess runner](docker-subprocess-runner.md).
-- step: The helper converts the completed process and stdout into the documented return value for that method, leaving workflow-state mutation, UI rendering, websocket sending, and gate-answer decisions to the caller.
 
 ### algorithm-helper-call-graph
 
@@ -329,7 +340,7 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 
 ## Failure Behavior
 
-- Docker CLI non-zero exits: converted by each public helper into its documented empty, false, or unavailable return value unless the helper intentionally returns the raw completed process.
+- consistency: Docker CLI non-zero exits are converted by each public helper into its documented empty, false, or unavailable return value unless the helper intentionally returns the raw completed process.
 - Docker CLI missing or timeout: propagates from most helpers, but [sidecar-query](#sidecar-query) catches expected operating-system and subprocess failures and returns `None` so discovery can fall back to volume reads.
 - Malformed JSON: ignored per line by [docker-ps-all](#docker-ps-all), converted to `None` by [docker-inspect](#docker-inspect), and converted to `None` by [sidecar-query](#sidecar-query).
 - Unsafe relative file path: [safe-relpath](#safe-relpath), [read-file](#read-file), and [write-file](#write-file) raise `ValueError` before Docker receives the path.

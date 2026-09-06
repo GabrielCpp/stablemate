@@ -25,8 +25,15 @@ Runs the single-machine greeting example registered by the [hello-world workflow
   - `--resume-run PATH`, `--resume-latest`, and `--no-cache` select resume or fresh-run behavior.
 - does:
   - starts the registered HelloWorld flow
+  - runs the measure state before the greet state
+  - returns the validated Greeting result when the flow completes
+- verify: exit_status(code=0)
+- verify: exit_status(code=0)
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main`
+- tests: `workflows/tests/test_hello_world.py::test_the_documented_command_is_declared`
+- tests: `workflows/tests/test_hello_world.py::test_the_documented_dry_run_walks_the_machine_green`
+- tests: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting`
 
 ### dot
 - usage: `workhorse-hello-world dot [--name ID] [-o out.dot]`

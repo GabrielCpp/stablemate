@@ -5,10 +5,11 @@ title: Answer result
 ---
 # Answer result
 
-Answer result is the in-memory return object from the [gate-answering layer](concepts/gate-answering-layer.md) consumed by the dashboard websocket answer handler. It reports whether a submitted [dashboard websocket answer frame](dashboard-websocket-answer-frame.md) changed the target [gate info](concepts/gate-info.md), supplies the operator-facing outcome text copied into an [answer log entry](answer-log-entry.md), and determines whether the [groom dashboard](gui/screens/groom-dashboard.md) receives a `groom:answered` success event after [WS /ws](http/groom.md#websocket-dashboard) handles the submission. The shape is the `AnswerResult` dataclass; the gate-answering call is the first-party producer of the currently defined success and failure messages, and the websocket command handler is the first-party consumer that turns the result into logging, state, and broadcast effects.
+Answer result is the in-memory return object from the [gate-answering layer](concepts/gate-answering-layer.md) consumed by the dashboard websocket answer handler. It reports whether a submitted [dashboard websocket answer frame](dashboard-websocket-answer-frame.md) changed the target [gate info](concepts/gate-info.md), supplies the operator-facing outcome text copied into an [answer log entry](answer-log-entry.md), and determines whether the [groom dashboard](gui/screens/groom-dashboard.md) receives a `groom:answered` success event after [WS /ws](http/groom.md#websocket-dashboard) handles the submission. The shape is the `AnswerResult` dataclass; its first-party producer, `groom/groom/gates.py::answer_gate`, returns one result for each explicit domain outcome, including success and failure messages, and the websocket command handler turns the result into logging, state, and broadcast effects.
 
 - file: not an on-disk artifact; this is a process-local dataclass value returned by the gate-answering call.
 - code: groom/groom/models.py::AnswerResult
+- consistency: `groom/groom/gates.py::answer_gate` returns an `AnswerResult` for every explicit gate-answering domain outcome.
 - verify: groom/tests/test_gates.py::test_answer_gate_rejects_when_already_answered
 - verify: groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running
 - verify: groom/tests/test_gates.py::test_answer_gate_restarts_when_container_stopped
@@ -18,7 +19,6 @@ Answer result is the in-memory return object from the [gate-answering layer](con
 
 ## Contract
 
-- producer: the [gate-answering layer](concepts/gate-answering-layer.md) returns exactly one result for every attempted answer command that reaches it.
 - consumer: the dashboard websocket command handler reads `ok` and `message` after the gate-answering call completes.
 - medium: process-local Python object; it is not a JSON frame, HTML fragment, persisted log record, or file format.
 - constructor: `AnswerResult(ok: bool, message: str = "")`.
@@ -53,7 +53,10 @@ Answer result is the in-memory return object from the [gate-answering layer](con
 
 - type: `str`
 - default: `""`
-- required: false for construction; the dataclass instance always exposes the attribute and uses the empty string when the caller omits it.
+- required: false for construction; callers may omit `message`.
+- verify: json_path(path="$.message", equals="")
+- required: an omitted `message` is exposed on the instance as `message=""`.
+- verify: json_path(path="$.message", equals="")
 - domain: first-party non-empty values are the success and failure strings listed in the contract; the shape itself also permits the empty default and arbitrary caller-supplied strings.
 - producer-use: set by the gate-answering layer to summarize the accepted write, duplicate/stale gate, missing file, missing workspace volume, write failure, or restart fallback outcome.
 - consumer-use: copied verbatim into the [answer log entry](answer-log-entry.md); not used to decide success, not sent in the `groom:answered` event detail, and not parsed by the websocket handler.

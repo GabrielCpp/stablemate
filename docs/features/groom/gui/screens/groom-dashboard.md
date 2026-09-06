@@ -56,13 +56,14 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#activitybar`
 - role: navigation
 - name: `Panels`
+- placement: width 0-20%, x 0-20%
 - keyboard: not focusable itself; Tab moves through the five mode buttons it contains, in DOM order.
 - parent: [groom dashboard](#groom-dashboard)
 - states: static. It is shell markup, never re-rendered; only the `active` class and `aria-pressed` on its buttons change.
 - verify: visible(locator="#activitybar", text="Panels")
 - code: groom/groom/templates/dashboard.html
 - tests: groom/tests/test_a11y_dynamic.py::test_the_activity_rail_is_reachable_and_operable_by_keyboard
-- dom: a `<nav>` rather than a `role="toolbar"` div — switching panes *is* this page's navigation, and a toolbar is not a landmark, so its contents would otherwise sit outside every region.
+- dom: a `<nav>` rather than a `role="toolbar"` div — switching panes *is* this page's navigation, and a toolbar is not a landmark, so its contents would otherwise sit outside every region. `groom/groom/assets/dashboard.css` assigns it to the left `act` grid area, whose first column is fixed at 48px.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-rail.png
 
 ### main-region
@@ -70,11 +71,12 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#main`
 - role: main
 - name: none
+- placement: width 60-100%, x 0-20%
 - keyboard: not focusable; a landmark, not a control.
 - parent: [groom dashboard](#groom-dashboard)
 - states: always present; its visible child is whichever pane `.app[data-mode]` selects.
 - code: groom/groom/templates/dashboard.html
-- dom: holds all five panes as siblings. The four inactive ones are `display:none`, so exactly one pane's controls are in the accessibility tree at a time.
+- dom: holds all five panes as siblings. The four inactive ones are `display:none`, so exactly one pane's controls are in the accessibility tree at a time. `groom/groom/assets/dashboard.css` gives `.app` a fixed 48px activity column and assigns `#main` the remaining `main` grid area.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-main-region.png
 
 ### page-heading
@@ -644,12 +646,13 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#palette`
 - role: dialog
 - name: `Command palette`
+- placement: width 95-100%, x 0-5%
 - keyboard: Escape closes it; while it is open Tab is trapped on its input, which is its only focusable element.
 - parent: [groom dashboard](#groom-dashboard)
 - states: closed by default; `open` on the wrapper while shown. Closing returns focus to whatever opened it rather than dropping it to `<body>`.
 - code: groom/groom/assets/dashboard.js::openPalette
 - code: groom/groom/assets/dashboard.js::closePalette
-- dom: `aria-modal="true"`. The trap is one element wide on purpose — there is nothing else in the dialog to reach.
+- dom: `aria-modal="true"`. The trap is one element wide on purpose — there is nothing else in the dialog to reach. `groom/groom/assets/dashboard.css` fixes the dialog wrapper to all viewport edges, so it spans the viewport rather than only the centered palette box inside it.
 - screenshot: docs/specs/groom-dashboard/vet/command-palette-command-palette-dialog.png
 
 ### command-palette-input

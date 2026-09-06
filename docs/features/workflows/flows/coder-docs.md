@@ -33,6 +33,8 @@ title: Coder documentation flow
 - end: an unresolved documentation block returns a blocked result
 - verify: count(subject="blocked documentation results", equals=1)
 - detail: [coder main flow](coder-main.md)
+- detail: [coder docs subflow package](../concepts/coder-docs-subflow.md)
+- detail: [coder shared documentation helpers](../concepts/coder-shared-documentation.md)
 - code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_inside_the_docs_worktree_take_the_local_route`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_outside_the_docs_worktree_take_the_semantic_route`

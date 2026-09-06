@@ -77,6 +77,24 @@ than its names — so a monkeypatched function resolved at call time, and so no 
 the split, and `claude.py` now imports [`AgentBackend`](agent-backend.md) at module scope like any
 other adapter.
 
+## Methods
+
+### run_turn
+- sig: `run_turn(prompt: str, node_id: str, session_id_path: Path | None, model: str | None = None, *, prompt_path: Path | None = None, timeout: float, resilience: AgentResilience, cwd: str | None = None, add_dirs: list[str] | None = None, effort: str | None = None) -> str`
+- does: runs Claude with stream-json output, optionally resumes the persisted session, and returns the classified result
+- raises: `BackendInvocationError` when the shared classifier finds a failed turn
+- verify: emitted(event="Claude turn result", count=1)
+- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.run_turn`
+
+### compact
+- sig: `compact(session_id_path: Path | None, node_id: str, model: str | None = None, *, timeout: float, resilience: AgentResilience) -> bool`
+- does: resumes the existing Claude session and sends `/compact`
+- returns: `true` when Claude reports compaction
+- verify: json_path(path="$.compacted", equals=true)
+- returns: `false` when no session exists or compaction fails
+- verify: json_path(path="$.compacted", equals=false)
+- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.compact`
+
 ## Related pieces
 
 - [`AgentBackend`](agent-backend.md) — the port this implements, and the only thing the ladder

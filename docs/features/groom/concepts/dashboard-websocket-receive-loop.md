@@ -23,7 +23,10 @@ The queue is threaded through because one of the two commands is per-tab. `watch
 - non-object frame: a decoded JSON value that is not mapping-like is passed unchanged to the command handler; because the handler expects `.get(...)`, this is outside the first-party contract and raises from the delegated handler rather than producing an error payload.
 - output: no normal return value; the coroutine is intentionally long-running and stops only when receiving, decoding, command handling, cancellation, or websocket closure raises or completes through the websocket abstraction.
 - ordering: preserves inbound receive order for this one websocket session because the next receive is not attempted until the current decoded value has been fully handled.
-- concurrency: serializes commands from one browser tab; separate dashboard websocket sessions each run their own receive loop and may handle inbound frames concurrently through shared process-local state.
+- concurrency: dashboard-websocket-command — serializes commands from one browser tab.
+- verify: count(subject="overlapping command-handler invocations for one browser tab", equals=0)
+- concurrency: dashboard-websocket-session — separate dashboard websocket sessions each run their own receive loop and may handle inbound frames concurrently through shared process-local state.
+- verify: count(subject="concurrently handled inbound frames across separate dashboard websocket sessions", equals=2)
 - task boundary: created by the surrounding websocket session as a sibling of the outbound send loop; this loop does not create, cancel, await, or inspect its sibling task.
 - errors: receive/decode exceptions, command-handler exceptions, websocket disconnects, and task cancellation propagate to the task owner; the loop does not convert them to acknowledgement frames, HTTP responses, browser events, or domain result values.
 

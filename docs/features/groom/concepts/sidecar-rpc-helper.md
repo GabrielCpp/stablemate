@@ -14,7 +14,7 @@ Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers a
 - purpose: perform one best-effort host-to-sidecar data-plane RPC for a workflow container and collapse socket-unavailable outcomes to `None` so the endpoint handler can choose its Docker-volume fallback.
 - callers: file-list, file-content, and diff endpoint invocations call this helper before their fallback readers.
 - scope: one container id, one method name, and one params object per call.
-- method contract: generic pass-through; the helper does not whitelist method names, reinterpret params, coerce return data, or require the selected method to be one of the current first-party `getTree`, `getFile`, or `getDiff` calls.
+- consistency: generic pass-through: the helper accepts method names beyond the current first-party `getTree`, `getFile`, and `getDiff` calls; it forwards the supplied method and params unchanged and returns successful connection data unchanged.
 - first-party method mapping: file-list handlers pass `getTree` with `{repo}` and expect a result object whose `paths` member feeds [workspace file list data](../workspace-file-list-data.md); file-content handlers pass `getFile` with `{repo, path}` and expect `content` for [workspace file content data](../workspace-file-content-data.md); diff handlers pass `getDiff` with `{repo}` and expect `diff` for [workspace diff data](../workspace-diff-data.md).
 - transport shape: the helper never serializes frames itself; it delegates to the connection RPC method, which emits a host-to-sidecar `rpc` frame with a connection-local id, the supplied method string, and the supplied params object, then resolves with the matching `rpc_result.data` value.
 - availability boundary: a missing connection and an expected sidecar RPC failure both mean "not served by the live socket"; they do not mean the workflow is gone or the endpoint should fail.
@@ -36,7 +36,9 @@ Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers a
 - verify: json_path(path="file-content response.content", matches=".+")
 - does: converts only expected sidecar socket failures reported as [sidecar error](sidecar-error.md) into `None` so callers can use their fallback readers
 - verify: omits(subject="HTTP response", text="sidecar transport error")
-- raises: no intentional exception for an absent sidecar connection or a sidecar RPC failure
+- raises: no intentional exception for an absent sidecar connection
+- verify: omits(subject="HTTP response", text="sidecar transport error")
+- raises: no intentional exception for a sidecar RPC failure
 - verify: omits(subject="HTTP response", text="sidecar transport error")
 - returns: `None` when no sidecar connection is registered for `container_id`
 - verify: json_path(path="fallback response", matches=".+")

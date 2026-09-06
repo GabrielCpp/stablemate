@@ -22,6 +22,8 @@ state, the substitution seam, telemetry labels — is
 to its replacement in
 [workhorse/docs/WORKFLOW.md](../../../workhorse/docs/WORKFLOW.md); the schema itself is
 gone, along with its loader, its node model and its `script`/`branch`/`call` runners.
+The runtime pieces behind this shape are [blueprint registration](concepts/pyflow-blueprints.md),
+[registry composition](concepts/pyflow-registry.md), and [transitions](concepts/pyflow-transitions.md).
 
 ## Package layout
 
@@ -71,9 +73,10 @@ main = console_script(workflow.entry_point(Build))
 - `override(**by_name)` — returns a **copy** of the index with those names rebound. Used by
   tests; non-mutating, so a substitution cannot outlive the run that asked for it.
 - semantics: `stub_agents({stem: reply})` maps each prompt stem to the reply returned for that
-  agent turn during `--dry-run`; `workhorse/pyflow/registry.py::Registry.stub_agents` stores
-  that mapping in `agent_stubs`.
+  agent turn during `--dry-run`.
 - verify: json_path(path="$.review.kind", equals="approved")
+- semantics: `stub_agents({stem: reply})` stores each prompt stem and reply in `agent_stubs`.
+- verify: json_path(path="$.agent_stubs.review.kind", equals="approved")
 - `entry_point(entry)` — declares the flow a bare `run` starts, and returns `self` so it
   composes with the binding below: `console_script(workflow.entry_point(Build))`.
 - `directory()` — the package directory prompts resolve against.
@@ -282,8 +285,11 @@ in [WORKFLOW.md](../../../workhorse/docs/WORKFLOW.md#what-has-no-counterpart):
 
 - **`requires:`**, the tool preflight — a workflow is an installed distribution now, so its
   dependencies are `[project.dependencies]` and are resolved at install time.
-- consistency: an `OutputSpec` has no `default`; when recovery exhausts without an answer, the
-  runner stops at its checkpoint instead of emitting a fallback output.
+- consistency: output-spec — an `OutputSpec` has no `default`.
+- verify: absent(subject="OutputSpec default")
+- consistency: agent-runner — when recovery exhausts without an answer, the runner stops at its checkpoint
+  instead of emitting a fallback output.
+- verify: absent(subject="fallback output after exhausted recovery")
 - **per-node `activity:`** — now a flagged log record
   (`logger.info(…, extra={"activity": True})`), so the rendered message *is* the activity.
 

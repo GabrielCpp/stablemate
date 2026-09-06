@@ -38,7 +38,8 @@ Workflow container is the in-memory record for one workhorse-backed container th
 - mutability: records are mutable while the groom process is alive; fields may be filled incrementally as sidecar state, residual pushes, answer handling, and Docker metadata arrive through different paths.
 - mutation rules: registry upsert mutates only attributes that exist on the dataclass and whose incoming value is not `None`; unknown field names and `None` values are ignored rather than recorded.
 - validation boundary: the dataclass itself performs no validation, normalization, locking, Docker I/O, websocket I/O, gate-file writes, HTML rendering, broadcasting, or persistence; callers own those behaviors.
-- persistence: no database or file persists this record; process restart rebuilds it from discovery and sidecar reconnects.
+- persistence: workflow-container — no database or file persists this record.
+- persistence: workflow-container — process restart rebuilds the record from discovery and sidecar reconnects.
 - construction: callers must provide `container_id` and `name`; every other field may be omitted and then uses the dataclass default documented below.
 - methods: no groom-owned methods are defined on the class; construction, representation, and equality behavior come from standard dataclass machinery and are not separate groom crawl targets.
 - reference types: `state` is a [workflow state](workflow-state.md) value and `gates` stores [gate info](gate-info.md) values; those sibling concepts own their allowed values and fields.

@@ -58,13 +58,6 @@ The method performs one best-effort read and does not decide whether any returne
 
 #### Algorithm
 
-- Invoke the subprocess runner with `docker ps -a --format "{{json .}}"` and the default Docker timeout.
-- Return `[]` immediately when the completed process has a non-zero return code.
-- Split successful stdout into lines and preserve their order.
-- Strip each line and skip it when empty.
-- Decode each remaining line as JSON.
-- Append each successfully decoded value to the result sequence.
-- Ignore only the current line when JSON decoding raises `JSONDecodeError`.
-- Return the accumulated sequence.
+The reader invokes the subprocess runner with `docker ps -a --format "{{json .}}"` and the default Docker timeout. A completed process with a non-zero return code yields `[]`. For successful output, the reader splits stdout into lines in their original order, strips each line, and skips empty lines. It decodes each remaining line as JSON, appends successfully decoded values to the result sequence, and ignores only the current line when decoding raises `JSONDecodeError`. After all lines are processed, it returns the accumulated sequence.
 
 The standard-library JSON parser and subprocess runtime are below this bounded Groom concept. The discovery consumer reads the returned `ID` fields and performs the next layer of inspection.

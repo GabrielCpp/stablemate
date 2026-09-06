@@ -36,7 +36,8 @@ in the browser, per render, for one pane.
 - leaf invariant: every leaf has exactly `name` and `entry`. It carries no children, no selected state, no file content, and no response metadata.
 - collapse state: not here. A directory's open/closed state is local to that directory's component in that tab, keyed by name so it survives re-renders, and is deliberately kept out of both this shape and the client store — nothing else reads it.
 - selection state: not here either. The Files pane holds the selected path and the Diff pane the selected index, both in the client store; a leaf renderer compares against that to mark itself current.
-- ordering: the shape preserves insertion order. The renderer sorts directory keys, and sorts a *copy* of each node's `files` by `name`, at render time — the node itself is never reordered in place.
+- consistency: the renderer displays directory names and leaf entries in name order without mutating the constructed path tree: it sorts directory keys and a copied `files` array by leaf `name` at render time.
+- verify: unchanged(subject="the constructed dashboard path tree")
 - duplicate rule: duplicate paths appear as separate leaves under the same node; nothing is merged.
 - escaping: raw strings are retained and no escaping is applied or needed, because every one of them reaches the document as a text child rather than as markup.
 

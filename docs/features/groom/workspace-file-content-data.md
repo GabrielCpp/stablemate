@@ -125,9 +125,9 @@ The HTTP body carries more than the sidecar result object does, and deliberately
 - type: `str`
 - default: `""`
 - required: true
+- code: groom/groom/projection.py::file_lang
 - wire-key: `lang`
 - wire-location: the `lang` member of the HTTP response body; not present in the sidecar `getFile` result object.
-- code: groom/groom/projection.py::file_lang
 - meaning: the highlight.js grammar name the file name implies. `""` means no mapping was found and the viewer should let highlight.js auto-detect.
 - derivation: lowercased basename; `dockerfile` and `makefile` map by whole name, everything else by extension through the projection module's extension table. Content is never inspected.
 - stability: computed before the read, so it is identical on the sidecar, fallback, empty, and guard-rejected paths for the same requested path.
@@ -148,9 +148,10 @@ The HTTP body carries more than the sidecar result object does, and deliberately
 - sig: `_rpc_get_file(params: dict) -> dict`
 - abstract: false
 - raises: `ValueError` for unsafe composed paths; unreadable, missing, or unavailable files are intentionally converted to empty content instead.
+- verify: json_path(path="$.content", equals="print(1)\n")
 - code: groom/groom/sidecar.py::_rpc_get_file
-- verify: groom/tests/test_sidecar_session.py::test_rpc_get_file_reads_local_file
-- verify: groom/tests/test_sidecar_session.py::test_rpc_get_file_rejects_traversal
+- tests: `groom/tests/test_sidecar_session.py::test_rpc_get_file_reads_local_file`
+- tests: `groom/tests/test_sidecar_session.py::test_rpc_get_file_rejects_traversal`
 - input: decoded sidecar RPC params object for method `getFile`; `repo` selects the workspace-relative checkout directory and `path` selects the repo-relative file.
 - output: JSON-compatible object with exactly the first-party `content` member for the selected file text.
 - effects: reads at most one text file from the sidecar container's local workspace; does not send websocket frames, serialize JSON, call Docker, run Git, mutate workspace files, mutate workflow state, register sidecars, or broadcast dashboard updates.
@@ -174,10 +175,13 @@ The HTTP body carries more than the sidecar result object does, and deliberately
 - sig: `async file_content(container_id: str, repo: str = "", path: str = "") -> dict`
 - abstract: false
 - raises: no intentional exception for absent workflow state, absent sidecar connection, sidecar RPC failure, empty selected path, unsafe fallback path, missing fallback file, unreadable fallback file, or falsey producer output; unexpected HTTP framework failures or fallback reader exceptions other than `ValueError` can propagate.
+- verify: json_path(path="$.content", equals="print(1)\n")
+- verify: json_path(path="$.content", equals="print(1)\n")
+- verify: http_status(code=200, path="/file/abc123")
 - code: groom/groom/app.py::file_content
-- verify: groom/tests/test_app.py::test_file_content_prefers_sidecar_socket
-- verify: groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content
-- verify: groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path
+- tests: `groom/tests/test_app.py::test_file_content_prefers_sidecar_socket`
+- tests: `groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content`
+- tests: `groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path`
 - input: `container_id` is the route-selected workflow container id; `repo` is the optional volume-relative checkout directory; `path` is the optional repo-relative file path.
 - output: one JSON object with `path`, `content`, and `lang`; `content` is empty when neither the connected sidecar nor the fallback reader supplies truthy text.
 - effects: may send one `getFile` RPC through the [sidecar RPC helper](concepts/sidecar-rpc-helper.md), may read one fallback file through the [workspace volume file-content reader](concepts/workspace-volume-file-content-reader.md) or its native equivalent, and never mutates workflow registry state, sidecar registrations, workspace files, dashboard clients, file trees, diffs, or viewer state.

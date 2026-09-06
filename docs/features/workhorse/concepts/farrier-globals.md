@@ -56,12 +56,12 @@ the graph-walk loop hasn't (yet) merged into the live context. Algorithm:
 
 ### `skill_dir()`
 Returns `context["_skill_dir"]` if set (the repo-root-relative skills directory recorded in the
-[context manifest](../context-manifest.md#skill_dir)), else `str(workflow_dir)` — the running
+[context manifest](../context-manifest.md#field-skill_dir)), else `str(workflow_dir)` — the running
 workflow's own directory, used as a sane default for a manifest-free run (e.g. `hello-world`).
 
 ### `instruction_ref(name="")` (aliased as `instruction_file`, `skill_file`)
 Resolves `name` against `context["_instructions"]`, the selected-skill-id → installed-path map from
-the [context manifest](../context-manifest.md#instructions), via the shared
+the [context manifest](../context-manifest.md#field-instructions), via the shared
 `references.resolve_instruction` (exact match, then a unique suffix match so a pack's namespaced
 `process-story-docs` still answers a prompt asking for `story-docs` — see [reference
 preflight](reference-preflight.md#resolution-rule)). A name that resolves to nothing degrades to
@@ -75,7 +75,7 @@ context (nothing was ever expected to resolve) and under `quiet=True`. All three
 ### `prompt_ref(name="")` (aliased as `prompt_file`)
 Same shape as [`instruction_ref`](#instruction_refname-aliased-as-instruction_file-skill_file),
 including the unresolved-reference warning, but reads `context["_prompts"]` (the [context
-manifest](../context-manifest.md#prompts) prompt-id → path map) with a plain exact-match lookup,
+manifest](../context-manifest.md#field-prompts) prompt-id → path map) with a plain exact-match lookup,
 and its placeholder reads `f"generated {name} prompt when installed"`.
 
 ### `instruction_refs(*names)` (aliased as `instruction_files`, `skill_files`) and `prompt_refs(*names)` (aliased as `prompt_files`)
@@ -90,7 +90,7 @@ preflight](reference-preflight.md).
 ### `find_by_tags(*tags)`
 The same rendering, asked for by **capability rather than by name**: returns the installed skills
 carrying **all** of `tags`, from `context["_instruction_tags"]` (the [context
-manifest](../context-manifest.md#instruction_tags) name → tags map farrier writes from each library
+manifest](../context-manifest.md#field-instruction_tags) name → tags map farrier writes from each library
 skill's `tags:` front matter). Algorithm:
 1. Lowercase and flatten the arguments into a `wanted` set; return `""` for an empty query, so
    asking for nothing renders nothing rather than the whole library.
@@ -111,7 +111,7 @@ findings](reference-preflight.md#what-is-not-reported).
 
 ### `is_using_instruction(name="", *_args, **_kwargs)` (Jinja name `isUsingInstruction`)
 Returns `name in used_skills`, `used_skills` being `set(context["_used_skills"] or [])` — the
-[context manifest](../context-manifest.md#used_skills) selected-skill-id set. Lets a prompt
+[context manifest](../context-manifest.md#field-used_skills) selected-skill-id set. Lets a prompt
 conditionally include a section only when that skill was actually installed for the repo. Accepts
 and ignores extra positional/keyword arguments so a call site that also passes gating context (e.g.
 a per-story layer list) doesn't raise a `TypeError`.

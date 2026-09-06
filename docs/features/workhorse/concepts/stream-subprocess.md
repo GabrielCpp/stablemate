@@ -15,15 +15,23 @@ it drives.
 
 It lives in `runner/process.py` — the module holding "spawning an agent CLI and streaming its
 output: the process group, the watchdog, and the one stream loop every backend goes through".
-Nothing in it knows any CLI's event vocabulary; that is each adapter's job.
+`ProcessSupervisor` owns the active-process registry, injected clock, spawn retries, and stream
+loop; the module-level functions delegate to its installed singleton. Nothing in it knows any
+CLI's event vocabulary; that is each adapter's job.
 
 - code: `workhorse/workhorse/runner/process.py::stream_subprocess`
+- code: `workhorse/workhorse/runner/process.py::ProcessSupervisor`
 - The implementation is covered by `workhorse/tests/test_stream_subprocess.py::test_clean_stream_completes_without_timeout`,
   `workhorse/tests/test_stream_subprocess.py::test_wedged_midline_is_killed_by_watchdog`, and
   `workhorse/tests/test_stream_subprocess.py::test_group_children_are_reaped`.
 
-A truthy `on_line` result terminates the child process group; the early-abort path is covered by
-the implementation tests above.
+A truthy `on_line` result terminates the child process group and reports `timed_out=True`.
+Reload is different: a default reload request terminates the group, raises `ReloadRequested`,
+and leaves `timed_out=False` so the recovery ladder does not treat it as a failed turn. An
+`--at-boundary` request is acknowledged and retained for the state boundary instead of cutting
+the stream. The live reload path is covered by
+`workhorse/tests/test_stream_subprocess.py::test_a_reload_request_cuts_the_streaming_turn_within_a_slice`
+and `workhorse/tests/test_stream_subprocess.py::test_an_at_boundary_request_does_not_touch_the_streaming_turn`.
 
 ## Contract
 
@@ -35,13 +43,12 @@ the implementation tests above.
   - `timeout: float` — wall-clock budget in seconds for the whole call; `float("inf")` disables
     both the in-loop check and the watchdog (see [Timeout enforcement](#timeout-enforcement)).
   - `on_line` — invoked once per raw line (newline included) read from the merged stdout/stderr
-    stream; the caller does its own parsing/accumulation. The parameter is annotated
-    `Callable[[str], None]`, which understates the callback's runtime result, and
-    [`stream_jsonl`](stream-jsonl.md#early-abort) depends on it.
+    stream; the caller does its own parsing/accumulation. A truthy callback result requests an
+    early abort, while a falsey result continues streaming.
   - `resilience: AgentResilience` (**keyword-only, required**) — the run's tuning knobs. Three are
     read here: `watchdog_grace_s` (the watchdog's headroom past `timeout`), `heartbeat_every_s`
     (the idle-telemetry interval), and the `exec_retry_max`/`exec_retry_base_s`/`exec_retry_cap_s`
-    trio [`_spawn_streaming`](#_spawn_streaming) uses.
+    trio [`ProcessSupervisor.spawn`](#processsupervisorspawn) uses.
   - `stdin_data: str | None` (keyword, default `None`) — when set, written to the child's stdin and
     closed immediately (a single-shot prompt, e.g. Claude's `/compact` trigger); when `None`, stdin
     is `subprocess.DEVNULL`.
@@ -51,6 +58,9 @@ the implementation tests above.
     [`harness_env()`](agent-backend.md#harness_env-concrete) table. It is applied **last**, over
     both `os.environ` and `WORKHORSE_NODE_ID`, so a harness knob configured for a run wins over
     the same variable inherited from the launching shell.
+  - `secrets: Iterable[str] | None` (keyword, default `None`) — known secret values redacted from
+    every line before the callback, transcript, checkpoint, or telemetry receives it; built-in
+    secret-prefix redaction also runs.
 - **Output:** `tuple[bool, int]` — `(timed_out, returncode)`. `timed_out` is `True` when the
   in-loop wall-clock check tripped, `on_line` requested an early abort, or the out-of-band
   watchdog fired (see below) — callers treat all three as "the turn didn't finish cleanly" and
@@ -59,17 +69,79 @@ the implementation tests above.
   timeout, not a hard crash). `returncode` is the child's exit code (negative when killed by a
   signal).
 - **Raises:** `BackendInvocationError` when the CLI cannot be launched at all — see
-  [`_spawn_streaming`](#_spawn_streaming).
-- consistency: Every exec failure surfaced by the process supervisor is a classified,
-  actionable `BackendInvocationError`, never a raw `OSError` or `FileNotFoundError`.
-- consistency: Every streamed turn receives its required `AgentResilience` from the run, rather
-  than using import-time supervision constants.
+  [`ProcessSupervisor.spawn`](#processsupervisorspawn).
+- consistency: exec-failure — Every exec failure surfaced by the process supervisor is a classified,
+   actionable `BackendInvocationError`.
+- verify: json_path(path="$.error.type", equals="BackendInvocationError")
+- consistency: exec-failure — A missing executable never escapes the process supervisor as a raw
+   `FileNotFoundError`.
+- verify: json_path(path="$.error.type", equals="BackendInvocationError")
+- consistency: exec-failure — Any other launch failure never escapes the process supervisor as a
+   raw `OSError`.
+- verify: json_path(path="$.error.type", equals="BackendInvocationError")
+- consistency: agent-resilience — Every streamed turn receives its required `AgentResilience` from the run, rather
+   than using import-time supervision constants.
+- verify: count(subject="streamed turns receiving the run's AgentResilience", equals=1)
+
+## Methods
+
+### ProcessSupervisor.stream
+- sig: `ProcessSupervisor.stream(cmd, node_id, timeout, on_line, *, resilience, stdin_data=None, cwd=None, env_extra=None, secrets=None) -> tuple[bool, int]`
+- does: spawns the command in a dedicated process group and streams merged output to `on_line`
+- verify: count(subject="lines delivered to on_line", equals=2)
+- does: cuts the active group on an accepted reload request and raises `ReloadRequested` instead of returning a turn verdict
+- verify: emitted(event="reload_kill", count=1)
+- does: terminates the group gracefully and then forcefully when the turn times out or the caller requests an early abort
+- verify: removed(subject="active process group and descendants")
+- raises: `BackendInvocationError` when the command cannot be launched
+- returns: `(timed_out, returncode)` after the child has been reaped
+- code: `workhorse/workhorse/runner/process.py::ProcessSupervisor.stream`
+- tests: `workhorse/tests/test_stream_subprocess.py::test_a_reload_request_cuts_the_streaming_turn_within_a_slice`, `workhorse/tests/test_stream_subprocess.py::test_wedged_midline_is_killed_by_watchdog`, `workhorse/tests/test_stream_subprocess.py::test_the_child_pwd_matches_the_cwd_it_was_spawned_in`
+
+### ProcessSupervisor.spawn
+- sig: `ProcessSupervisor.spawn(cmd, node_id, *, resilience, **popen_kwargs) -> subprocess.Popen`
+- does: aligns the child working directory environment before launching
+- verify: json_path(path="child.environment.PWD", equals="/requested/workdir")
+- does: retries executable replacement failures with bounded backoff
+- verify: emitted(event="exec_retry", count=1)
+- raises: `BackendInvocationError(transient=True)` when a retryable executable remains unavailable but resolves or was previously launched
+- verify: json_path(path="$.error.transient", equals=true)
+- raises: `BackendInvocationError(transient=False)` when the executable is absent or a non-retryable launch error occurs
+- verify: json_path(path="$.error.transient", equals=false)
+- returns: the launched subprocess handle and records its executable as successfully launched
+- verify: created(subject="launched subprocess handle and successful executable registry entry")
+- code: `workhorse/workhorse/runner/process.py::ProcessSupervisor.spawn`
+- tests: `workhorse/tests/test_agent_exec_retry.py::test_self_update_etxtbsy_is_retried_then_succeeds`, `workhorse/tests/test_agent_exec_retry.py::test_absent_cli_fails_nontransient_after_bounded_retries`, `workhorse/tests/test_agent_exec_retry.py::test_exhausted_retries_escalate_as_transient`
+
+### install
+- sig: `install(supervisor: ProcessSupervisor) -> ProcessSupervisor`
+- does: replaces the module-level supervisor used by the streaming and termination delegates
+- verify: count(subject="installed supervisors after one install", equals=1)
+- returns: the previous supervisor so callers can restore it
+- verify: count(subject="supervisors returned by one install", equals=1)
+- code: `workhorse/workhorse/runner/process.py::install`
+- tests: `workhorse/tests/test_agent_exec_retry.py::test_install_swaps_the_supervisor_and_hands_back_the_old_one`
+
+### stream_subprocess
+- sig: `stream_subprocess(cmd, node_id, timeout, on_line, *, resilience, stdin_data=None, cwd=None, env_extra=None, secrets=None) -> tuple[bool, int]`
+- does: delegates the complete streaming call to the installed `ProcessSupervisor`
+- raises: `ReloadRequested` when the active stream accepts a reload cut
+- returns: the supervisor's `(timed_out, returncode)` result
+- code: `workhorse/workhorse/runner/process.py::stream_subprocess`
+
+### terminate_active
+- sig: `terminate_active() -> None`
+- does: terminates the currently streaming child process group when one is registered
+- verify: removed(subject="currently streaming child process group and descendants")
+- returns: `None` without action when no active child exists or it has already exited
+- verify: count(subject="termination signals for an absent or exited active child", equals=0)
+- code: `workhorse/workhorse/runner/process.py::terminate_active`
 
 ## Algorithm
 
 1. **Build the environment.** `env = {**os.environ, "WORKHORSE_NODE_ID": node_id, **(env_extra or
    {})}` — inherited first, node id second, harness table last.
-2. **Spawn** via [`_spawn_streaming`](#_spawn_streaming) with stdout piped, stderr redirected into
+2. **Spawn** via [`ProcessSupervisor.spawn`](#processsupervisorspawn) with stdout piped, stderr redirected into
    stdout (`stderr=STDOUT` — a full stderr buffer can't deadlock the read since there's only one
    pipe to drain), `text=True`, `bufsize=1` (line-buffered), `cwd=cwd or None`, and
    `start_new_session=True` — the child becomes the leader of its own process group/session, which
@@ -90,18 +162,23 @@ the implementation tests above.
      since the last line arrived. This is emitted at the *top* of the loop body, before the read,
      so it keeps ticking while the stream is **silent** — the wedged case is exactly the one worth
      observing.
-   - `select.select([stdout], [], [], min(1.0, timeout - elapsed))` — bounds each wait to at most
-     1s so the wall-clock check re-runs at least once a second even on a quiet stream; if nothing
-     is ready and the process has already exited (`proc.poll() is not None`), break; otherwise loop
-     back to re-check elapsed.
-   - On a ready fd, `readline()` once; an empty read means EOF → break. A non-empty read stamps
-     `last_line_at`.
+    - `select.select([stdout], [], [], min(1.0, timeout - elapsed))` — bounds each wait to at most
+      1s so the wall-clock check re-runs at least once a second even on a quiet stream; if nothing
+      is ready and the process has already exited (`proc.poll() is not None`), break; otherwise loop
+      back to re-check elapsed.
+    - Read the armed control channel after each select slice. A request accepted by
+      `reload.cut_requested()` is recorded as `reload_kill` with `error=False`, then the loop
+      exits for a reload; a deferred or unrelated request is acknowledged without interrupting
+      the turn.
+    - On a ready fd, `readline()` once; an empty read means EOF → break. A non-empty read stamps
+      `last_line_at`.
    - Call `on_line(raw)`; a truthy result sets `timed_out = True` and breaks (early abort).
 6. **Reconcile the watchdog race.** After the loop, `timed_out = timed_out or fired.is_set()` — the
    watchdog runs on its own thread and may have fired concurrently with (or instead of) the in-loop
    detection; either signal counts.
-7. **Graceful-then-hard kill.** If `timed_out` and the process hasn't exited, `SIGTERM` the group,
-   wait up to 5s, then `SIGKILL` the group if it's still alive. Always `proc.wait()` afterward to
+7. **Graceful-then-hard kill.** If `timed_out` or a reload was requested and the process hasn't
+   exited, `SIGTERM` the group, wait up to 5s, then `SIGKILL` the group if it's still alive.
+   Always `proc.wait()` afterward to
    reap and set `proc.returncode`.
 8. **Cleanup (`finally`).** Cancel the watchdog timer (no-op if already fired/cancelled), clear the
    active-process registry, and as a last backstop, if the process is *still* alive at this point,
@@ -150,7 +227,7 @@ effect.
 - The caller (`stream_subprocess`) always cancels this timer in its `finally` block once the turn
   finishes normally, so it never fires spuriously after a clean exit.
 
-### `_spawn_streaming`
+### `ProcessSupervisor.spawn`
 
 The `Popen` call, wrapped in a bounded retry loop, and the only place an exec failure is
 interpreted.
@@ -167,15 +244,18 @@ would be a false negative on a run that is otherwise healthy.
 - **Terminal outcome:** the ambiguity in `ENOENT` — "mid-update" versus "not installed" — is
   resolved in **time**, not by a single probe: it is retried like a transient failure, and only
   once the budget is exhausted does `shutil.which(cmd[0])` decide which error to raise.
-- consistency: A retryable exec failure whose command still resolves, or which succeeded earlier
+- consistency: exec-failure — A retryable exec failure whose command still resolves, or which succeeded earlier
   in this process, raises `BackendInvocationError(..., transient=True)` so the ladder may retry the
   whole turn.
-- consistency: Any other terminal exec failure raises `BackendInvocationError(..., transient=False)`.
+- consistency: exec-failure — Any other terminal exec failure raises `BackendInvocationError(..., transient=False)`.
   When the command does not resolve, the message advises installing the CLI on a stable `PATH` or
   exporting it before launching workhorse, because a non-interactive shell does not load nvm.
 
 ## Process-group management
 
+- **`_align_pwd(popen_kwargs)`** — when a child `cwd` is supplied, materializes or updates the
+  environment so `PWD` is the resolved child directory and removes inherited `OLDPWD`; without
+  this, a CLI that trusts `PWD` can operate on the launcher's repository instead of the target.
 - **`_kill_process_group(proc, sig=SIGKILL)`** — signals the whole process group
   (`os.killpg(os.getpgid(proc.pid), sig)`), reaping any grandchildren (MCP servers, headless
   browsers, JVMs) the agent spawned; falls back to signaling just the process if the group is
@@ -185,7 +265,7 @@ would be a false negative on a run that is otherwise healthy.
 - **`ActiveProcess`** — the agent subprocess currently being streamed, *and* the lock guarding it,
   as one object rather than two module globals two functions happen to share. `set`/`clear` swap
   the handle under the lock; `terminate` performs the graceful-then-hard kill. The module holds one
-  instance, `_active`, because there is one interrupt handler per process — what is process-wide is
+  instance inside `_supervisor`, because there is one interrupt handler per process — what is process-wide is
   that *reference*, not the state itself, which is why the class is instantiable rather than a pile
   of module-level state. The lock matters because `terminate_active` may be called from a different
   execution context (a signal-driven `KeyboardInterrupt`) than the streaming loop itself.
@@ -193,7 +273,7 @@ would be a false negative on a run that is otherwise healthy.
 ### `terminate_active`
 
 Takes no input and returns no output. This module-level function delegates to
-`_active.terminate()`, which reads the handle under the lock. With no active handle or one whose
+`_supervisor.terminate_active()`, which reads the handle under the lock. With no active handle or one whose
 process has already exited (`proc.poll() is not None`), it returns immediately. For a live process,
 it sends `SIGTERM` to the group, waits up to five seconds, then sends `SIGKILL` if the group remains
 alive, following the graceful-then-hard pattern used for an in-`stream_subprocess` timeout kill.
@@ -211,7 +291,7 @@ telemetry adapter is active — a no-op one unless the run configured otherwise)
 | Call | Where | Why |
 |---|---|---|
 | `otel.turn_heartbeat(node_id, idle_s, elapsed_s)` | top of the stream loop | a silent turn still reports; a run that stops heartbeating is distinguishable from one that is merely slow |
-| `otel.turn_event("exec_retry", …)` | [`_spawn_streaming`](#_spawn_streaming) | a CLI that keeps self-updating mid-run is visible as a rate, not as folklore |
+| `otel.turn_event("exec_retry", …)` | [`ProcessSupervisor.spawn`](#processsupervisorspawn) | a CLI that keeps self-updating mid-run is visible as a rate, not as folklore |
 | `otel.turn_event("watchdog_kill", error=True, …)` | [`_arm_watchdog`](#_arm_watchdog)'s `_fire` | the wedge that the in-loop check structurally cannot see |
 
 `turn_event` is called from the watchdog's daemon thread — it is the one instrumentation call that

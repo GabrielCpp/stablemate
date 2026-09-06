@@ -18,7 +18,8 @@ Exited push payload is the JSON request body produced by the residual HTTP sidec
 ## Contract
 
 - shape: a JSON object; arrays, strings, numbers, booleans, and `null` are not valid semantic payloads for this endpoint because the consumer expects object-style key lookup. No envelope, nested object, ordered field layout, route parameter, query parameter, cookie, authentication token, or required request header participates in this payload contract beyond the JSON body being parsed for object-style key lookup.
-- producer: `groom-sidecar --exit-code EXIT_CODE` sends this shape once from the workflow container entrypoint after the workflow process returns, by calling the sidecar exit-push helper with the parsed integer exit code.
+- emits: `groom-sidecar --exit-code EXIT_CODE` sends one `POST /push/exited` request after the workflow process returns by calling `groom/groom/sidecar.py::push_exited` with the parsed integer exit code.
+- verify: emitted(event="POST /push/exited", count=1)
 - producer identity: first-party sidecar requests merge [sidecar identity data](sidecar-identity-data.md) fields `container_id`, `name`, `repo_name`, and `repo_branch` into the explicit `exit_code` payload before serialization; explicit payload keys would override same-named identity keys, but the current exit producer supplies only `exit_code`.
 - producer endpoint: the sidecar posts the serialized JSON object to `http://{GROOM_HOST}:{GROOM_PORT}/push/exited`, where `GROOM_HOST` defaults to `host.docker.internal` and `GROOM_PORT` defaults to `8787`.
 - producer transport: the sidecar serializes the merged object as UTF-8 JSON, declares `Content-Type: application/json`, performs exactly one HTTP `POST` attempt, closes the response object when a response is opened, ignores the response body, and performs no command-line output for this notice path.

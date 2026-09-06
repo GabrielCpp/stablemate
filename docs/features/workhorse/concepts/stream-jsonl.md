@@ -24,7 +24,7 @@ in any CLI adapter.
 - tests: `workhorse/tests/test_backends.py::test_opencode_cap_log_line_aborts_stream_early`,
   `workhorse/tests/test_backends.py::test_opencode_cap_structured_error_event_aborts_stream_early`,
   `workhorse/tests/test_backends.py::test_opencode_provider_header_timeout_aborts_into_short_retry`
-- consistency: A non-JSON input line is emitted as one node-prefixed diagnostic and retained verbatim for failure classification.
+- consistency: non-json-line — A non-JSON input line is emitted as one node-prefixed diagnostic and retained verbatim for failure classification.
 
 For a non-JSON input line, `stream_jsonl` emits one node-prefixed diagnostic and retains the raw
 line verbatim for failure classification.

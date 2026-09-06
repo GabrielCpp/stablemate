@@ -19,19 +19,16 @@ Finds a cap-reset clock time embedded in a CLI error message's text (e.g. `"rese
 
 ## Contract
 
-Public, and pure: a `str` and a `datetime` in, a `float | None` out. It reads no clock, no
-environment and no module state. Its current caller supplies `str(exc)` from a caught
-`BackendInvocationError` as the text to search.
+Public, and pure: `text: str` supplies the message to search and `now: datetime` supplies the
+current time to measure against. It reads no clock, environment, or module state. The required
+positional `now` parameter supplies the time instead of an internal `datetime.now()` default,
+keeping the parser independently exercisable. Its current caller supplies `str(exc)` from a caught
+`BackendInvocationError` as the text to search and obtains `now` from its injected
+[`Clock`](cap-delay-seconds.md#contract).
 
-- **Input:**
-  - `text: str` — the message to search.
-  - `now: datetime` — the current time to measure against. **Required and positional** — there is no
-    `datetime.now()` default inside. The shipped docstring states why: *"`now` is passed in, never
-    read here: this is a parser, and a parser that reads the clock cannot be exercised without
-    one."* The caller supplies it from its own injected [`Clock`](cap-delay-seconds.md#contract).
-- **Output:** `float | None` — seconds from `now` until the next future occurrence of the parsed
-  clock time, or `None` when no reset time could be found in `text`.
-- **Raises:** nothing — a parse miss or an out-of-range time returns `None` rather than raising.
+It returns `float | None`: seconds from `now` until the next future occurrence of the parsed clock
+time, or `None` when no reset time can be found in `text`. A parse miss or an out-of-range time
+also returns `None` rather than raising.
 
 ## Algorithm
 

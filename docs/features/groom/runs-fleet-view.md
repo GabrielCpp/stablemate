@@ -237,8 +237,9 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - sig: `exit_hint(wf: WorkflowContainer) -> str`
 - abstract: false
 - raises: none intentionally raised for live, code-less, or non-zero-code workflows.
-- verify: groom/tests/test_projection.py::test_exit_hint_only_on_finished_with_a_code
+- verify: json_path(path="$.exit_hint", matches="^exited -?[0-9]+$")
 - code: groom/groom/projection.py::exit_hint
+- tests: `groom/tests/test_projection.py::test_exit_hint_only_on_finished_with_a_code`
 - step: Return the empty string unless the workflow is finished and its exit code is known.
 - step: Otherwise return `exited {code}`. Classifying zero as success and non-zero as failure is the row component's styling decision, made from `exit_code`.
 

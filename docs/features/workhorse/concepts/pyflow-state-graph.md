@@ -32,12 +32,47 @@ explored.
 - code: `workhorse/workhorse/pyflow/dot.py::to_dot`
 - tests: [state graph tests](../../../../workhorse/tests/test_pyflow_graph.py)
 
+## Methods
+
+### FlowGraph.reachable
+- sig: `reachable() -> set[str]`
+- returns: states reachable from the start over non-dynamic, non-dangling edges
+- verify: count(subject="reachable states in a two-state flow", equals=2)
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.reachable`
+
+### FlowGraph.unreachable
+- sig: `unreachable() -> tuple[str, ...]`
+- returns: live states not reached by the static walk
+- verify: count(subject="unreachable states in a connected flow", equals=0)
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.unreachable`
+
+### state_graph
+- sig: `state_graph(cls: type[Workflow], names=(), workflow_dir=None) -> FlowGraph`
+- does: parses every live state source and records transitions and engine seams in source order
+- returns: one graph with live state names only
+- verify: count(subject="state graphs produced for one workflow class", equals=1)
+- code: `workhorse/workhorse/pyflow/graph.py::state_graph`
+
+### registry_graphs
+- sig: `registry_graphs(registry: Registry) -> list[FlowGraph]`
+- does: groups registry flow names by distinct workflow class with the entry class first
+- returns: one graph per distinct registered workflow class
+- verify: count(subject="graphs produced for one registry with one flow class", equals=1)
+- code: `workhorse/workhorse/pyflow/graph.py::registry_graphs`
+
+### preflight
+- sig: `preflight(graphs: Sequence[FlowGraph], workflow_dir=None) -> list[str]`
+- does: reports missing start states, terminal paths, opaque sources, dangling transitions, unreachable states, and missing prompts
+- returns: problem strings, empty when static checks pass
+- verify: count(subject="preflight problems for a valid workflow", equals=0)
+- code: `workhorse/workhorse/pyflow/graph.py::preflight`
+
 ## Contract
 
 `state_graph(cls, names=())` accepts a `Workflow` subclass and the flow names a
 [`Registry`](pyflow-driver.md) maps to it.
 
-- consistency: `registry_graphs(registry)` returns one `FlowGraph` per distinct workflow class,
+- consistency: flow-graph — `registry_graphs(registry)` returns one `FlowGraph` per distinct workflow class,
   with the entry flow first and all of the class's registered names collected on that graph.
 - verify: count(subject="FlowGraph entries for one workflow class registered under multiple names", equals=1)
 - **Output:** a `FlowGraph` — `workflow` (the class name), `names`, `start`, and one `StateNode`

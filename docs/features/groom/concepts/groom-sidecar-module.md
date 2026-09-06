@@ -44,8 +44,10 @@ exit result.
 - primary transport: opens an outbound websocket client connection to the host
   groom service at `WS /sidecar`, sends a full `hello` state advertisement on
   every connection, streams `progress` and `blocked` deltas from filesystem
-  events, handles host-issued `rpc` frames, and exits with the reload status only
-  after a host `reload` frame.
+  events, and handles host-issued `rpc` frames.
+- consistency: a host `reload` frame is the only live-session command that makes
+  the sidecar exit with the reserved reload status `3`.
+- verify: exit_status(3)
 - residual transport: exposes fire-and-forget HTTP push wrappers for progress,
   blocked, and exited notices; the live websocket is primary, while residual HTTP
   remains for the post-workflow exit notice and backstop paths described by the
@@ -181,7 +183,7 @@ exit result.
 - verify: groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape
 - refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-progress), [progress push payload](../progress-push-payload.md)
 - input: current workhorse graph-node id or `""` when no current node is known.
-- output: returns `None` after delegating the one-shot push attempt.
+- returns: `None` after delegating the one-shot push attempt.
 - does:
   - Builds a progress event payload with only the `current_node` key.
   - Delegates to the residual HTTP push helper with route path `/push/progress`.
@@ -189,6 +191,9 @@ exit result.
     workflow state, or report delivery success to the caller.
 
 ### method-push-blocked
+
+`push_blocked` delegates one residual HTTP push attempt and has no result for
+its caller.
 
 - sig: `push_blocked(file_path: str, question: str) -> None`
 - abstract: false
@@ -200,7 +205,6 @@ exit result.
   fallback supplied by an event classifier.
 - input-question: operator-facing question text extracted from the gate context
   file.
-- output: returns `None` after delegating the one-shot push attempt.
 - does:
   - Builds a blocked event payload with `file_path` and `question` keys.
   - Delegates to the residual HTTP push helper with route path `/push/blocked`.
@@ -208,6 +212,9 @@ exit result.
     state, or report delivery success to the caller.
 
 ### method-push-exited
+
+`push_exited` delegates one residual HTTP push attempt; its implicit result is
+`None`.
 
 - sig: `push_exited(exit_code: int) -> None`
 - abstract: false
@@ -217,21 +224,21 @@ exit result.
 - verify: groom/tests/test_sidecar.py::test_push_exited_is_silent_when_groom_is_unreachable
 - refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-exited), [exited push payload](../exited-push-payload.md)
 - input: integer exit code returned by the workflow process after workhorse exits.
-- output: returns `None` after delegating the one-shot push attempt.
 - does:
   - Builds an exited event payload with only the `exit_code` key.
   - Delegates to the residual HTTP push helper with route path `/push/exited`.
   - Does not inspect workhorse, alter the supplied exit code, open a websocket, or
     change the workflow process result.
 
-### method-scan-gates
+### method: scan_gates
 
 - sig: `scan_gates() -> list[dict]`
 - abstract: false
 - raises: none for a missing workspace mount or per-file read failures; those
   cases return an empty list or skip the unreadable file.
 - code: groom/groom/sidecar.py::scan_gates
-- verify: groom/tests/test_sidecar.py::test_scan_gates_finds_awaiting_and_skips_git_and_non_awaiting
+- verify: count(subject="gates reported for an absent workspace mount", equals=0)
+- tests: groom/tests/test_sidecar.py::test_scan_gates_finds_awaiting_and_skips_git_and_non_awaiting
 - detail: [sidecar snapshot](sidecar-snapshot.md#method-scan_gates)
 - refs: [operator gate context file](../operator-gate-context-file.md), [sidecar snapshot data](../sidecar-snapshot-data.md)
 - input: no call arguments; uses [field-workspace-dir](#field-workspace-dir).
@@ -277,6 +284,16 @@ host `reload` [sidecar websocket frame](../sidecar-websocket-frame.md). The
 socket best-effort, and converts it into the reserved reload exit code consumed
 by the container entrypoint.
 
+In `groom/groom/sidecar.py::_run_session`, raising the signal marks acceptance
+of the host command and unwinds through the session's cleanup block, which
+stops the watcher and cancels the watcher and outbound-sender tasks. In
+`groom/groom/sidecar.py::_serve`, the distinct signal prevents the normal
+websocket reconnect path, closes the current socket best-effort, and returns
+[field-reload-exit-code](#field-reload-exit-code) to the sidecar runner. The
+signal carries no success or failure data and does not acknowledge the host,
+perform a residual HTTP push, mutate workspace files, decide workflow status,
+or change the host registry.
+
 - sig: `class ReloadRequested(Exception)`
 - abstract: false
 - code: groom/groom/sidecar.py::ReloadRequested
@@ -297,27 +314,16 @@ by the container entrypoint.
   class without arguments, so no message is part of the sidecar reload contract.
 - catch boundary: handled by the sidecar serving loop; the connected-session
   cleanup block still runs before the exception reaches that boundary.
-- does:
-  - Marks the exact moment a connected sidecar session has accepted a host
-    `reload` command.
-  - Unwinds the connected session through normal exception propagation after the
-    session cleanup block sets the stop event, cancels the watch and outbound sender
-    tasks, and suppresses expected cancellation/socket-close cleanup errors.
-  - Lets the serving loop distinguish intentional reload from ordinary websocket
-    closure, so reload stops reconnecting while normal socket closure continues
-    the reconnect loop.
-  - Causes the serving loop to close the current websocket best-effort and return
-    [field-reload-exit-code](#field-reload-exit-code) to the sidecar runner.
-  - Does not encode success/failure data, mutate workspace files, send an
-    acknowledgement frame, perform residual HTTP push, decide workflow status, or
-    change the host registry directly.
 
 ### method-run
 
+`run()` does not intercept exceptions from the serving loop before they reach
+the caller.
+
 - sig: `run() -> None`
 - abstract: false
-- raises: `SystemExit(exit_code)` when the serving loop returns a truthy integer;
-  exceptions raised by the serving loop before it returns propagate unchanged.
+- consistency: a non-zero serving-loop return code raises `SystemExit` with the
+  same numeric code.
 - code: groom/groom/sidecar.py::run
 - verify: groom/tests/test_sidecar_session.py::test_run_maps_reload_code_to_systemexit
 - detail: [sidecar live session runner](sidecar-live-session-runner.md)

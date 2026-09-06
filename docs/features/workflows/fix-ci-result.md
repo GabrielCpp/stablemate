@@ -22,7 +22,11 @@ change. The flow acts only on `blocked`; the next poll judges `fixed` and `faile
 - type: `Literal["fixed", "failed", "blocked"]`
 - default: none; the agent must return it
 - required: true
-- semantics: `fixed` claims a local repair and commit; `failed` requests another attempt; `blocked` says another attempt cannot make CI green without an unavailable dependency or contract change
+- semantics: `fixed` claims that the failure was repaired locally and the repair was committed
+- verify: json_path(path="$.status", equals="fixed")
+- semantics: `failed` says the failure was understood but this attempt did not repair it, so the flow may retry
+- verify: json_path(path="$.status", equals="failed")
+- semantics: `blocked` says another attempt cannot make CI green without an unavailable dependency or a contract change
 - verify: json_path(path="$.status", equals="blocked")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::FixCiResult.status`
 
@@ -31,6 +35,10 @@ change. The flow acts only on `blocked`; the next poll judges `fixed` and `faile
 - type: `str`
 - default: empty string
 - required: false
-- semantics: changes made or the specific attempted dependency and reason for failure/blocking
+- semantics: for `fixed`, notes describe the changes made
+- verify: json_path(path="$.notes", matches="/.+/")
+- semantics: for `failed`, notes describe what was attempted and why it did not repair CI
+- verify: json_path(path="$.notes", matches="/.+/")
+- semantics: for `blocked`, notes identify the unavailable dependency or forbidden contract change
 - verify: json_path(path="$.notes", matches="/.+")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::FixCiResult.notes`

@@ -35,7 +35,10 @@ Gate info is the in-memory record for one live operator gate on a [workflow cont
 - visibility: a workflow with at least one gate appears in the operator inbox; inbox rows display the first gate after sorting by file path, and worker detail renders every open gate sorted by file path.
 - rendering safety: file paths and questions are escaped before insertion into HTML; worker detail places the question in a `data-md` text node for client-side sanitized markdown rendering, never as raw HTML.
 - state: the only first-party open status value is `AWAITING_OPERATOR`; the model records no answered timestamp, answer text, retry count, persistence handle, source transport, or last-seen timestamp.
-- persistence: no database or host-side file persists this record; process restart rebuilds open gates from discovery, sidecar query snapshots, sidecar `hello` snapshots, sidecar blocked deltas, or later residual pushes.
+- persistence: gate-info — no database or host-side file persists this record.
+- verify: absent(subject="database or host-side file containing this gate record")
+- persistence: gate-info — process restart rebuilds open gates from discovery, sidecar query snapshots, sidecar `hello` snapshots, sidecar blocked deltas, or later residual pushes.
+- verify: created(subject="open gate records rebuilt after process restart")
 - mutation boundary: the dataclass itself performs no validation, normalization, locking, I/O, answer application, rendering, broadcasting, sidecar registration, or workflow-state transition.
 
 ## Fields

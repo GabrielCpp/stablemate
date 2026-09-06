@@ -13,14 +13,16 @@ and converts any non-zero loop result into the process exit observed by the
 workflow-container entrypoint.
 
 - code: groom/groom/sidecar.py::run
-- verify: groom/tests/test_sidecar_session.py::test_run_maps_reload_code_to_systemexit
+- tests: groom/tests/test_sidecar_session.py::test_run_maps_reload_code_to_systemexit
 
 ## Contract
 
 - input: no call arguments; host, port, workspace, runs, and timeout settings are
   inherited from the sidecar process environment and consumed by the async serving
   layer it starts.
-- output: returns `None` only when the async serving layer returns exit code `0`.
+- consistency: the runner returns normally only when the async serving layer returns
+  exit code `0`.
+- verify: exit_status(code=0)
 - effects: starts and owns one blocking run of the async sidecar serving layer for
   the current process; performs no filesystem reads, network I/O, or websocket
   frame emission itself before delegating.
@@ -44,8 +46,9 @@ workflow-container entrypoint.
 
 ## Exit Codes
 
-- `0`: the serving layer ended without requesting a special process status; the
-  runner returns normally.
+An exit code of `0` means the serving layer ended without requesting a special
+process status, so the runner returns normally.
+
 - `3`: reserved sidecar reload status from [sidecar live sessions](../sidecar-live-sessions.md);
   the runner preserves it as `SystemExit(3)` so the entrypoint can restart the
   sidecar process.

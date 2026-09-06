@@ -19,7 +19,10 @@ title: Author story author
   - [write-story](#write-story)
   - [check-story](#check-story)
   - [audit-story](#audit-story)
+  - [rework-story](#rework-story)
+  - [resolve-story](#resolve-story)
   - [story-feedback](#story-feedback)
+  - [apply-feedback](#apply-feedback)
 - end: the selected story has passed structural, grounding, and independent audit checks
 - end: a passing audit receipt records the SHA-256 digest of the exact story bytes
 - end: blocked or exhausted work is parked in an operator-awaiting context or returns a blocked result
@@ -57,7 +60,25 @@ title: Author story author
 - run: invoke the independent story audit and route findings to bounded rework
 - verify: [audit_story](../concepts/author-story-author-subflow.md#audit_story)
 
+### rework-story
+- kind: run
+- run: record the failed attempt and ask the rework prompt to revise the story
+- verify: [rework_story](../concepts/author-story-author-subflow.md#rework_story)
+- optional: true
+
+### resolve-story
+- kind: run
+- run: ask the shared operator resolver for a blocked story decision, then park for resumption
+- verify: [resolve_story](../concepts/author-story-author-subflow.md#resolve_story)
+- optional: true
+
 ### story-feedback
 - kind: verify
 - run: poll feedback, rework when feedback exists, or record the passing audit receipt
 - verify: [story_feedback](../concepts/author-story-author-subflow.md#story_feedback)
+
+### apply-feedback
+- kind: run
+- run: send operator feedback through the rework prompt and return to story checks
+- verify: [apply_feedback](../concepts/author-story-author-subflow.md#apply_feedback)
+- optional: true

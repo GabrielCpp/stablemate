@@ -20,7 +20,10 @@ The Groom state module is groom's process-local mutable-state boundary: it owns 
 - import behavior: importing the module allocates empty in-memory containers for workflows, answer logs, dashboard clients, run-watch subscriptions, telemetry, and gate locks, sets discovery scanning to true, and binds helper functions; it does not inspect Docker, read or write files, open sockets, project payloads, create background tasks, or start the web server.
 - public data members: the public mutable containers are exactly `WORKFLOWS`, `LOG`, `CLIENTS`, `WATCHING`, `RUNS`, and `SCANNING`.
 - public function members: the public helper functions are exactly `gate_lock`, `upsert_workflow`, `clear_gate`, `prune_workflows`, `evict_runs`, `record_log`, `add_client`, `remove_client`, `watch`, `watchers_of`, `watched_ids`, `send`, and `broadcast`.
-- private storage: `_gate_locks` is private module state but part of the documented per-gate lock contract because public `gate_lock` creates entries and public `prune_workflows` deletes entries for vanished workflows.
+- consistency: public `gate_lock` creates a private `_gate_locks` entry for a previously unseen workflow and gate-path pair.
+- verify: created(subject="private gate lock for a workflow and gate path")
+- consistency: public `prune_workflows` deletes private `_gate_locks` entries for each vanished workflow it removes.
+- verify: removed(subject="private gate locks for a pruned workflow")
 - process scope: every value in this module is local to one Python process and one event loop; no Redis, database, broker, filesystem persistence, cross-process lock, or framework `app.state` participates.
 - mutation boundary: callers own validation, normalization, I/O, rendering, websocket acceptance/sending, sidecar communication, and durable gate-file writes before or after calling these helpers.
 - concurrency boundary: same-gate answer serialization is available only to callers that acquire a returned [per-gate answer lock](per-gate-answer-lock.md); other containers are plain in-memory objects without module-level locking.
@@ -230,7 +233,8 @@ Enqueues one already-projected JSON message object to every dashboard client que
 ### algorithm-module-initialization
 
 - step: Importing the module imports standard-library async and bounded-sequence helpers and the first-party [workflow container](workflow-container.md) model type.
-- step: The module creates an empty workflow registry, empty bounded answer log, empty dashboard client set, empty run-watch map, empty telemetry hot cache, true scanning flag, and empty private gate-lock registry.
+- consistency: a fresh `groom.state` import creates empty `WORKFLOWS`, bounded `LOG`, `CLIENTS`, `WATCHING`, `RUNS`, `_gate_locks`, and `SCANNING` set to `True`.
+- verify: created(subject="groom.state initialized state containers")
 - step: The module exposes helper functions that mutate only those in-memory objects and the workflow containers stored inside them.
 - step: The import completes without starting discovery, accepting clients, loading templates, inspecting containers, reading gate files, or broadcasting dashboard messages.
 
@@ -238,7 +242,7 @@ Enqueues one already-projected JSON message object to every dashboard client que
 
 - step: External callers decide which workflow id, gate path, queue object, log event, or projected JSON message should be passed to the state module.
 - step: The state module performs only the local lookup, insertion, deletion, append, or queue-put operation documented by the selected helper.
-- step: The state module returns the stored workflow, removed id list, lock object, or `None` according to the helper contract.
+- consistency: the state module returns the stored workflow, removed id list, lock object, or `None` according to the selected helper contract.
 - step: External callers retain responsibility for rendering, persistence, Docker and sidecar I/O, websocket frame transmission, user-visible errors, and any post-mutation broadcasts.
 
 ## Non-Responsibilities

@@ -7,6 +7,7 @@ title: workhorse-research
 
 - binary: `workhorse-research`
 - code: `workflows/src/workhorse_workflows/research/workflow.py::main`
+- detail: [research workflow schemas](concepts/research-schemas.md)
 
 Runs the research gate loop registered by the [research workflow composition root](concepts/research-workflow-composition-root.md). Workhorse provides the shared command parser; this package provides the default Research flow.
 

@@ -1,0 +1,90 @@
+---
+type: format
+slug: seed-change
+title: Epic seed change
+---
+# Epic seed change
+
+One projected seed mutation in an epic edit plan.
+
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange`
+- detail: [epic edit plan](epic-edit-plan.md)
+
+## Fields
+### action
+- type: `Literal["add", "update", "remove"]`
+- default: add
+- required: false
+- semantics: structural operation applied to the seed
+- verify: json_path(path="$.action", equals="add")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange`
+### id
+- type: string
+- default: empty string
+- required: false
+- semantics: seed identifier
+- verify: json_path(path="$.id", matches=".*")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange`
+### status
+- type: string
+- default: researched
+- required: false
+- semantics: resulting seed status
+- verify: json_path(path="$.status", equals="researched")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange`
+### summary
+- type: string
+- default: empty string
+- required: false
+- semantics: resulting seed summary
+- verify: json_path(path="$.summary", matches=".*")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange`
+### surface
+- type: string
+- default: empty string
+- required: false
+- semantics: resulting product surface
+- verify: json_path(path="$.surface", matches=".*")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange`
+### legacy_surface
+- type: string
+- default: empty string
+- required: false
+- semantics: resulting legacy surface metadata
+- verify: json_path(path="$.legacy_surface", matches=".*")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange`
+### backing
+- type: string
+- default: empty string
+- required: false
+- semantics: resulting backing system
+- verify: json_path(path="$.backing", matches=".*")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange`
+### prerequisites
+- type: string
+- default: empty string
+- required: false
+- semantics: resulting prerequisites
+- verify: json_path(path="$.prerequisites", matches=".*")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange`
+### source_bullet
+- type: string
+- default: empty string
+- required: false
+- semantics: source bullet text
+- verify: json_path(path="$.source_bullet", matches=".*")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange`
+### disposition
+- type: `Literal["retain", "drop"]`
+- default: retain
+- required: false
+- semantics: whether the source item remains in the resulting graph
+- verify: json_path(path="$.disposition", equals="retain")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange`
+### reason
+- type: string
+- default: empty string
+- required: false
+- semantics: rationale for the projected seed change
+- verify: json_path(path="$.reason", matches=".*")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange`

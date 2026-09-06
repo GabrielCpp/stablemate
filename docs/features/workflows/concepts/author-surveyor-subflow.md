@@ -14,10 +14,22 @@ deterministic nodes validate the artifacts and route failed gates. A blocked gat
 the operator context rather than allowing the resolver to decide for the operator.
 
 The flow's own nodes are in `surveyor/`; inventory expansion, unit walking, record validation, and
-the shared survey result models are intentionally shared with the parity surveyor and are returned
-as deeper crawl items.
+the shared survey result models are intentionally shared with the parity surveyor. The default
+rubric is `docs/survey/rubric.md`, the default artifact directory is `docs/survey`, and the default
+operator mode is `auto`; any other operator-mode value follows the autonomous branch. The plan,
+record-fix, and partition-rework loops allow 2, 2, and 3 local retries respectively. Each of the
+plan, partition, and coverage gates allows 2 diagnostic resolver turns before subsequent blocks go
+straight to the operator. The coverage resolver counter survives the per-unit loop and is not
+reset by an await. A resume consumes the frozen inventory and on-disk finding records rather than
+re-planning completed work.
 
 - code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor`
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_PLAN_REWORKS`
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_PLAN_RESOLVES`
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_RECORD_FIXES`
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_PARTITION_REWORKS`
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_PARTITION_RESOLVES`
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_VERIFY_RESOLVES`
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::load_survey_config`
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::check_inventory`
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::validate_partition`
@@ -26,6 +38,8 @@ as deeper crawl items.
 - tests: `workflows/tests/author/surveyor/test_config.py::test_the_config_derives_every_path_from_survey_dir`
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_one_bullet_per_cluster_lands_in_the_fenced_section`
 - detail: [shared survey library](survey-shared-library.md)
+- detail: [author shared paths](author-shared-paths.md)
+- detail: [author shared schemas](author-shared-schemas.md)
 
 ## Methods
 
@@ -45,6 +59,7 @@ as deeper crawl items.
 - returns: returns `work_id` and `progress` labels from the latest unit selection
 - verify: count(subject="surveyor work-label snapshots", equals=1)
 - code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.labels`
+- tests: `workflows/tests/author/surveyor/test_flow.py::test_the_labels_name_the_unit_and_the_progress`
 
 ### state_labels
 - sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
@@ -52,6 +67,7 @@ as deeper crawl items.
 - returns: returns labels for plan rework, plan resolution, record fixes, coverage resolution, partition rework, and partition resolution
 - verify: count(subject="surveyor state-label snapshots", equals=1)
 - code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.state_labels`
+- tests: `workflows/tests/author/surveyor/test_flow.py::test_the_labels_name_the_unit_and_the_progress`
 
 ### start
 - sig: `start() -> Continue`

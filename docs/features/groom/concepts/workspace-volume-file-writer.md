@@ -7,13 +7,15 @@ title: Workspace volume file writer
 
 Workspace volume file writer is the shared Docker-volume write operation used by the [gate-answering layer](gate-answering-layer.md) to persist an operator answer back into the selected [operator gate context file](../operator-gate-context-file.md) inside a workflow workspace volume. It is the write-side sibling of the [workspace volume file-content reader](workspace-volume-file-content-reader.md): it delegates destination validation to the [workspace volume relative path guard](workspace-volume-relative-path-guard.md), delegates process execution to the [Docker subprocess runner](docker-subprocess-runner.md), streams the complete replacement file text through standard input, and reports only whether the temporary writer process exited successfully.
 
+The `volume` argument is passed unchanged as a read-write `/vol` mount to the temporary Docker writer; Docker determines whether that named volume is usable.
+
 - code: groom/groom/docker_io.py::write_file
 - refs: [workspace volume relative path guard](workspace-volume-relative-path-guard.md), [Docker subprocess runner](docker-subprocess-runner.md), [gate-answering layer](gate-answering-layer.md), [operator gate context file](../operator-gate-context-file.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), [Groom Docker I/O module](groom-docker-io-module.md#write-file)
 
 ## Contract
 
 - purpose: provide one bounded write primitive for callers that already know the target Docker volume, safe volume-relative file path intent, and complete replacement text.
-- input volume: `volume` is a Docker volume name mounted read-write at `/vol` for the duration of the write; Groom does not pre-validate the volume name, and missing or unusable volumes are represented by the completed Docker process return code when Docker can start.
+- consistency: a completed non-zero Docker writer process, including one caused by a missing or unusable supplied volume, returns `false`.
 - input rel_path: `rel_path` is the single volume-relative destination path to replace or create; it is validated and normalized by the [workspace volume relative path guard](workspace-volume-relative-path-guard.md) before any writer process starts, then addressed as `/vol/{normalized_rel_path}` inside the throwaway container.
 - input content: `content` is the exact complete replacement text for the destination file; the writer allows empty text, supplies the full value on process standard input, and does not trim, append, parse status lines, redact secrets, or transform line endings.
 - path validation: accepted destination paths are relative, non-empty, contain no empty path segment, contain no parent traversal segment, and use `/` as the normalized separator before they are embedded below `/vol`.
@@ -65,14 +67,17 @@ Workspace volume file writer is the shared Docker-volume write operation used by
 
 - sig: `write_file(volume: str, rel_path: str, content: str) -> bool`
 - abstract: false
-- raises: `ValueError` for unsafe relative paths; process launch and timeout exceptions from the subprocess layer are intentionally surfaced.
+- raises: `ValueError` before any writer process starts when `rel_path` is unsafe.
+- verify: absent(subject="Docker subprocess invocation for an unsafe relative path")
+- raises: process-launch and timeout exceptions from the subprocess layer instead of a converted `false` result.
+- verify: absent(subject="false result for a process-launch or timeout failure")
 - returns: the [field-return-value](#field-return-value) contract: `true` only when the temporary writer process exits `0`, otherwise `false` for completed non-zero processes.
 - code: groom/groom/docker_io.py::write_file
 - args: `volume`; required; no default; Docker volume mounted read-write at `/vol` for this one write.
 - args: `rel_path`; required; no default; destination path validated by the [workspace volume relative path guard](workspace-volume-relative-path-guard.md) before becoming `/vol/{rel_path}`.
 - args: `content`; required; no default; complete replacement text streamed to the writer process standard input unchanged.
 
-Writes one caller-selected file inside one Docker volume and gives callers only the success boolean for the completed write process.
+Writes one caller-selected file inside one Docker volume and gives callers only the success boolean for the completed write process. At this layer, the supplied content is forwarded directly as the subprocess input; any status change, answer append, redaction, or normalization belongs in the caller-built text.
 
 #### Effects
 
@@ -83,20 +88,24 @@ Writes one caller-selected file inside one Docker volume and gives callers only 
 - timeout: uses the shared Docker I/O timeout of 20 seconds through the subprocess runner.
 - writes: asks the temporary container to copy standard input into exactly the validated destination path below `/vol`.
 - converts: completed non-zero process exits to `false` without inspecting stdout or stderr.
-- preserves: the supplied content exactly at this layer; any status change, answer append, redaction, or normalization must already be present in the caller-built text.
 - does not mutate: workflow containers, workflow registry state, gate records, sidecar connections, dashboard clients, logs, or host filesystem paths outside the mounted Docker volume.
 
 ## Algorithm
 
 - step: Receive a Docker volume name, caller-selected destination path, and complete replacement text from the caller.
-- step: Validate and normalize `rel_path` with the [workspace volume relative path guard](workspace-volume-relative-path-guard.md); stop with `ValueError` if the path is unsafe.
+- step: Validate and normalize `rel_path` with the [workspace volume relative path guard](workspace-volume-relative-path-guard.md).
+- consistency: an unsafe `rel_path` raises `ValueError` before `write_file` invokes the Docker subprocess.
+- verify: absent(subject="Docker subprocess invocation for an unsafe relative path")
 - step: Build a read-write Docker volume mount at `/vol` and a destination argument of `/vol/{validated_rel_path}`.
 - step: Run a short-lived Alpine container whose command copies `/dev/stdin` to that destination, supplying `content` as process input through the shared Docker subprocess runner and timeout.
 - step: Return `true` when the completed process return code is `0`; otherwise return `false`.
 
 ## Failure Behavior
 
-- unsafe path: raises `ValueError` before Docker is invoked.
+Unsafe paths are rejected by `safe_relpath` in `groom/groom/docker_io.py::write_file` before the
+Docker subprocess is invoked; the Algorithm's `consistency:` rule carries that observable
+contract.
+
 - missing parent directory: returns `false` when the copy process completes with a non-zero status.
 - unreadable or read-only volume: returns `false` when Docker reports the write failure as a completed non-zero process.
 - missing or unusable volume: returns `false` when Docker reports the failure as a completed non-zero process.

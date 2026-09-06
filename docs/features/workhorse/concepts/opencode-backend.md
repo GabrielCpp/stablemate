@@ -80,7 +80,7 @@ so importing [the port](agent-backend.md) drags in no adapter.
       [`BackendInvocationError`](classify-turn.md#backendinvocationerror) on failure, carrying
       `rate_reset_at` through to the runner's [cap wait](cap-delay-seconds.md) so it sleeps until
        the actual window reopens instead of a blind default wait.
-- consistency: every OpenCode `run_turn` command includes `--print-logs --log-level ERROR` before
+- consistency: opencode-command — every OpenCode `run_turn` command includes `--print-logs --log-level ERROR` before
   `run`, so quota and limit errors are available to the harness as diagnostics
 - **`compact(session_id_path, node_id, model=None, *, timeout, resilience)`** — always returns
   `False`: OpenCode manages its own context internally (no in-place session compaction), so the
@@ -100,6 +100,22 @@ variant levels don't line up one-to-one with the Claude-superset effort vocabula
 | `high` | `high` |
 | `xhigh` | `max` |
 | `max` | `max` |
+
+## Methods
+
+### run_turn
+- sig: `run_turn(prompt: str, node_id: str, session_id_path: Path | None, model: str | None = None, *, prompt_path: Path | None = None, timeout: float, resilience: AgentResilience, cwd: str | None = None, add_dirs: list[str] | None = None, effort: str | None = None) -> str`
+- does: runs OpenCode's JSON stream, optionally resumes a session, pins its small model when needed, and probes a Codex-provider cap reset
+- raises: `BackendInvocationError` after `finalize_turn` classifies the streamed state
+- verify: emitted(event="OpenCode turn result", count=1)
+- code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend.run_turn`
+
+### compact
+- sig: `compact(session_id_path: Path | None, node_id: str, model: str | None = None, *, timeout: float, resilience: AgentResilience) -> bool`
+- does: declines in-place session compaction
+- returns: `false`
+- verify: json_path(path="$.compacted", equals=false)
+- code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend.compact`
 
 ## Related pieces
 

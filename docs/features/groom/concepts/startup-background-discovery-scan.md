@@ -26,7 +26,10 @@ The coroutine has no input or task-management API: its startup hook owns schedul
 - does: awaits one dashboard-shell broadcast after clearing the discovery scanning flag.
 - verify: emitted(event="dashboard state payload", count=1)
 - raises: propagates a reconciliation failure after cleanup when the completion broadcast succeeds.
+- verify: json_path(path="scanning", equals=False)
+- verify: emitted(event="dashboard state payload", count=1)
 - raises: propagates a completion-broadcast failure after the discovery scanning flag has been cleared.
+- verify: json_path(path="scanning", equals=False)
 - returns: `None` after reconciliation and the completion broadcast both succeed.
 - code: groom/groom/app.py::_background_scan
 - tests: groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes

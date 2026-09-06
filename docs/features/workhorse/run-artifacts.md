@@ -11,6 +11,8 @@ state machine. It serves two purposes at once — **checkpointing** (so a killed
 state it stopped in) and **history** (every prompt, output and event survives the run, read back by
 a workflow's own tests and by a cost/spend scorecard). A child workflow entered via `self.handoff`
 gets its own nested instance of this same layout, rooted under the calling node's directory.
+Run directories follow [run identity](concepts/run-identity.md); their validated persisted shapes
+are the [run record models](concepts/run-records.md), and agent visits are named by the [visit key](concepts/visit-key.md).
 
 - file: `<runs-dir>/<workflow-name>-<run-id>/` (a directory tree, not a single file; `<runs-dir>`
   defaults to `<cwd>/.agents/runs`; `<run-id>` is the explicit `--run-id`, else a digest of
@@ -89,7 +91,7 @@ state changes:
 - verify: json_path(path="$.terminal", equals="fail")
 - semantics: `RunBudgetExceeded` records a stop with `terminal` still `null`, because a run cut
   off by the clock decided nothing and remains resumable.
-- verify: json_path(path="$.terminal", equals=None)
+- verify: json_path(path="$.terminal", equals="null")
 - `interrupted_at` — type `string | null` (ISO-8601 UTC) — default `null`; set by
   [`record_interrupt`](concepts/artifact-writer.md#record_interrupt) when the run **stopped
   without deciding** — an operator Ctrl-C, or `WORKHORSE_MAX_RUNTIME_S` running out between
@@ -283,10 +285,13 @@ tree is therefore the largest thing in the run dir.
 
 ### transcripts/
 - type: `directory` — required: no — default: absent until the first agent turn is captured
-- persistence: A capture from the backend's session store retains its attachments, queued
-  operations, and sibling subagent sidechain tree that never crosses stdout; the tree is filed as
-  `…__<session-id>.d/`.
-- verify: persists(subject="the captured backend-session transcript and sidechain tree")
+- persistence: backend-session-transcript — a capture from the backend's session store retains its attachments.
+- verify: persists(subject="the captured backend-session transcript attachments")
+- persistence: backend-session-transcript — a capture from the backend's session store retains its queued operations.
+- verify: persists(subject="the captured backend-session transcript queued operations")
+- persistence: backend-session-transcript — a capture from the backend's session store retains its sibling subagent sidechain
+  tree that never crosses stdout, filed as `…__<session-id>.d/`.
+- verify: persists(subject="the captured backend-session sibling subagent sidechain tree")
 - **a tee of the stream**, for a CLI whose store workhorse cannot resolve and for a container
   whose store is not on this host. It is opened at the one point every backend's output passes
   through *after* redaction, so a teed transcript is redacted by construction. The tee runs
@@ -335,10 +340,12 @@ Completion marker for the node, written by `_write_done` after its step files.
 - `seq` — type `int`, required — the checkpoint `seq` this node ran under (see
   [`checkpoint.json`](#checkpointjson)).
 - `next` — type `string | null`, required.
-- semantics: Always `null` under pyflow. There is no node graph and therefore no edge to name:
-  what runs next is whatever [`Continue`](workflow-format.md#transition) the enclosing state
-  returns, and that is recorded in the checkpoint, not here.
+- semantics: Always `null` under pyflow because there is no node graph and therefore no edge to
+  name.
 - verify: json_path(path="$.next", matches="^None$")
+- semantics: What runs next is whatever [`Continue`](workflow-format.md#transition) the enclosing
+  state returns, and that transition is recorded in the checkpoint, not here.
+- verify: persists(subject="the enclosing state's next transition in checkpoint.json")
 - tests: `workhorse/tests/test_idempotency.py::test_done_marker_records_current_seq_and_next`
 
 ### `<node-id>/_flow/`

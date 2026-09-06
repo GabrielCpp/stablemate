@@ -18,7 +18,10 @@ The Groom models module is the first-party in-memory data-shape boundary shared 
 - standard-library names: `dataclass`, `field`, and `Enum` are imported helper names from the Python standard library; they are not groom-owned domain concepts and do not get downstream OKF crawl items.
 - validation boundary: the model classes do not validate, normalize, coerce, serialize, lock, persist, or broadcast their values; callers supply already-normalized values and own every side effect.
 - mutability: dataclass instances are mutable process-local records; enum members are immutable string-valued lifecycle labels.
-- persistence: no model in this module persists itself to disk, a database, Docker metadata, or a websocket frame; persistence or reconstruction happens through documented discovery, sidecar, gate-file, and push payload paths.
+- persistence: groom-model — no model in this module persists itself to disk, a database, Docker metadata, or a websocket frame.
+- verify: absent(subject="model persistence output outside process memory")
+- persistence: groom-model — persistence or reconstruction happens through documented discovery, sidecar, gate-file, and push payload paths.
+- verify: created(subject="model state reconstructed from a documented discovery, sidecar, gate-file, or push payload path")
 - dependency boundary: the module depends only on standard-library dataclass and enum machinery and does not import other groom modules, preventing model import from starting application behavior.
 - ownership: the more specific member nodes own field-level contracts, state-transition rules, producers, consumers, and verification anchors; this module owns the folded membership and side-effect-free import contract.
 

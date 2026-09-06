@@ -5,15 +5,24 @@ title: Coder CI remediation flow
 ---
 # Coder CI remediation flow
 
-- The `FixCi` sub-flow checks the epic branch in each selected workspace repository. A failed
-  Actions verdict is handed to one fixer turn, then a verified push triggers another poll. The
-  outer `poll -> start` transition advances to the next repository; the inner `push -> poll`
-  transition rechecks the same repository. The [loop state](../ci-loop.md), [CI verdict](../ci-checks.md),
-  [fixer result](../fix-ci-result.md), and [workspace directories](../workspace-dirs.md) are the
-  data contracts carried by this flow.
-- start: the flow has a `CiLoop` with the next workspace repository selected, or no repository remains
+The `FixCi` sub-flow checks the configured epic branch in workspace repositories. It uses one
+`CiLoop` value across all states. The [loop state](../ci-loop.md), [CI verdict](../ci-checks.md),
+[fixer result](../fix-ci-result.md), and [workspace directories](../workspace-dirs.md) are the
+data contracts carried by this flow. Its repository selection, polling, branch conversion, and
+push behavior are defined by the [CI gating helpers](../concepts/ci-gating.md).
+
+`repo` defaults to empty and selects every workspace repository in manifest order; a non-empty
+value pins the run to that repository. `branch` defaults to empty and is the full branch ref,
+normally `feat/<epic>`. `pr_number` defaults to empty and makes polling resolve the open PR by
+branch; a supplied number selects that PR directly. `docs_path` and `workspace_file` default to
+empty and are resolved from the repository context. `MAX_ATTEMPTS` is three fix/push cycles for
+the complete run, shared across repositories.
+
+- start: a `CiLoop` contains the next unprocessed workspace repository
 - verify: count(subject="selected CI remediation repositories", equals=1)
-- start: the selected repository and branch are available before CI polling
+- start: no workspace repository remains unprocessed
+- verify: count(subject="processed CI remediation repositories", equals=2)
+- start: a selected repository is available to the CI poll
 - verify: count(subject="CI polls with selected repository and branch", equals=1)
 - steps:
   - [setup](#setup)
@@ -21,17 +30,22 @@ title: Coder CI remediation flow
   - [poll](#poll)
   - [fix](#fix)
   - [push](#push)
-- end: no workspace repository remains unprocessed and the flow returns an `unavailable` CI result
+- end: no workspace repository remains unprocessed and no CI poll has produced a verdict
 - verify: json_path(path="$.status", equals="unavailable")
-- end: a passed poll returns a `passed` CI result without invoking the fixer
+- end: an unavailable poll is recorded and the next repository is selected
+- verify: count(subject="unread CI repositories", equals=2)
+- end: a passed poll returns a `passed` CI result and does not invoke the fixer
 - verify: json_path(path="$.status", equals="passed")
-- end: an unreadable CI poll raises `WorkflowFailed` instead of treating the repository as passed
+- end: an unreadable CI poll raises `WorkflowFailed`
 - verify: exit_status(code=1)
-- end: a red branch whose fix budget is exhausted returns a `failed` CI result with the last poll summary
+- end: a red branch whose shared fix budget is exhausted returns a `failed` CI result
 - verify: json_path(path="$.status", equals="failed")
-- end: a fixer refusal or unlanded push returns a `failed` CI result without another poll
-- verify: count(subject="CI remediation terminal failures", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi`
+- end: the terminal failed result carries the last poll or terminal failure summary
+- verify: json_path(path="$.summary", matches="/.+/")
+- end: a blocked fixer result returns a `failed` CI result without pushing
+- verify: count(subject="CI remediation fixer terminal failures", equals=1)
+- end: a push that is not pushed or unavailable returns a `failed` CI result without another poll
+- verify: count(subject="CI remediation push terminal failures", equals=1)
 - detail: [coder main flow](coder-main.md)
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_every_workspace_repo_is_checked_once_and_the_loop_ends`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_red_branch_is_fixed_pushed_and_re_polled_until_it_is_green`
@@ -40,27 +54,31 @@ title: Coder CI remediation flow
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_push_that_does_not_land_ends_the_loop_instead_of_spending_an_attempt`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_the_attempt_budget_is_shared_across_repos_not_reset_per_repo`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_run_killed_in_the_fixer_resumes_on_that_turn_alone`
+- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi`
 
 The workflow inputs are `repo` (empty means every workspace repository), `branch` (the full epic
 branch name), `pr_number` (optional explicit pull request selector), `docs_path`, and
 `workspace_file`; the latter two are empty when the run derives them from its repository context.
-`MAX_ATTEMPTS` is three fix/push cycles for the whole run, not a per-repository reset.
+`MAX_ATTEMPTS` is three fix/push cycles for the whole run, not a per-repository reset. The flow
+uses one session key, `ci-fix:<branch>:<repo>`, per repository and resets that session whenever
+the repository settles or the flow exits without another fixer turn.
 
 ## Steps
 
 ### setup
 
 `setup` resolves the workspace and documentation directories once and returns a
-[workspace directory set](../workspace-dirs.md). A resumed run carries that result rather than
-re-deriving it.
+[workspace directory set](../workspace-dirs.md). The docs root is prepended when it is not already
+one of the existing directories. A resumed run carries that result rather than re-deriving it.
 
 ### start
 
 `start` calls `select_ci_repo` with the configured repository name and the loop's processed list.
 An explicit repository is selected once; an empty name selects each workspace repository in order.
 The selected repository is added to `processed` immediately, including when its later CI check
-exhausts the budget. When no repository is selected, `start` finishes with the last CI verdict or
-an `unavailable` result when no poll ran.
+exhausts the budget. A named repository absent from the workspace is skipped with an empty pick.
+When no repository is selected, `start` finishes with the last CI verdict or an `unavailable`
+result when no poll ran.
 
 ### poll
 
@@ -68,17 +86,30 @@ an `unavailable` result when no poll ran.
 `blocked` raises `WorkflowFailed` because CI existed but could not be read. `unavailable` is
 recorded in `unread` and follows the passed/advance path because there is no CI verdict to repair.
 `passed` advances to `start`. A `failed` verdict is handed to `fix` while the lifetime attempt
-budget remains; once it reaches three, the flow finishes with the last failed summary.
+budget is below three; once it reaches three, the flow finishes with the last failed summary.
 
 ### fix
 
 `fix` runs the `fix-ci` agent turn in the selected repository directory, adds the resolved docs and
 workspace directories, and supplies the branch, the epic derived by removing `feat/`, and the
-poll's failure summary. A `blocked` fixer result finishes as failed; `fixed` and `failed` both
+poll's failure summary. The turn uses medium power and the per-repository session key. A
+`blocked` fixer result finishes as failed and resets that session. `fixed` and `failed` both
 continue to `push`, because only the subsequent poll decides whether CI is green.
+
+The `fix-ci` prompt requires the agent to confirm the current branch without switching it, inspect
+the reported Actions run and job logs through the Actions API, reproduce the failure with bounded
+repository commands, repair only the CI cause, and rerun the same local gate. It forbids changes to
+user-facing contracts when no story context is available. The agent commits on the epic branch
+with an exact `Epic: <epic>` trailer and never pushes; the flow's `push` state owns that operation.
+Its final response must be the declared [CI fixer result](../fix-ci-result.md) JSON object.
 
 ### push
 
 `push` calls `push_ci_fix` for the selected repository and branch. `pushed` and `unavailable`
 continue to `poll` and increment the shared attempt count. Any other push status finishes as
-failed without polling an unmoved pull-request head.
+failed without polling an unmoved pull-request head, and resets the repository session.
+
+The terminal helper reads the most recent `poll_pr_checks` output. If no poll ran, it uses
+`unavailable`; otherwise it preserves that poll's status and replaces its summary with the
+terminal reason. Any `unread` repository reasons are appended to the final summary so a completed
+run distinguishes a passed repository from one whose CI was never gated.
