@@ -197,6 +197,7 @@ def record(
     max_attempts: int = MAX_TARGET_ATTEMPTS,
     unblock: bool = False,
     only: tuple[str, ...] = (),
+    settle_fix_items: bool = False,
 ) -> Recorded:
     """Mark the current item done, merge newly-discovered items, and count the re-tries.
 
@@ -230,6 +231,14 @@ def record(
     the targets named; the operator's answer reaches every blocked row, and it also drops
     the verdict an adjudication wrote, because the answer is a statement that something
     changed and the next block is judged afresh.
+
+    `settle_fix_items` says `discovered` is the *whole* standing doctor report — the
+    checkpoint's call, and only that call. A pending `fix:` row the report no longer names
+    is a finding that stopped firing: repaired by a neighbouring turn, or retired by a
+    doctor rule that changed under the run. It is closed as `stale` here rather than handed
+    out, because a repair turn on a finding doctor no longer raises is a turn spent
+    confirming there is nothing to do. Blocked rows are left alone: their story is the
+    operator's to read.
     """
     path = Path(worklist_path)
     data = json.loads(path.read_text())
@@ -305,6 +314,24 @@ def record(
         by_key[k] = items[-1]
         added += 1
 
+    settled = 0
+    if settle_fix_items:
+        standing = {
+            (_norm(d.get("kind")), _norm(d.get("target")))
+            for d in discovered or [] if isinstance(d, dict)
+        }
+        for i in items:
+            if i.get("status") != "pending" or not str(i.get("kind", "")).startswith("fix:"):
+                continue
+            if (_norm(i.get("kind")), _norm(i.get("target"))) in standing:
+                continue
+            i["status"] = "done"
+            i["doc_status"] = "stale"
+            i["note"] = "doctor no longer reports this finding; closed at the checkpoint"
+            settled += 1
+        if settled:
+            logger.info("closed %d pending repair item(s) whose finding stopped firing", settled)
+
     data["items"] = items
     path.write_text(json.dumps(data, indent=2))
     done = sum(1 for i in items if i.get("status") == "done")
@@ -333,6 +360,7 @@ def record(
         done_count=done,
         pending_count=pend,
         added=added,
+        settled=settled,
         blocked=blocked,
         blocked_count=len(blocked),
     )

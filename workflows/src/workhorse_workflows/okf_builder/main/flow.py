@@ -592,7 +592,9 @@ class OkfBuilder(Workflow):
             # is also where a survivor's `attempts` is incremented and where a target that
             # has spent them stops being handed back out — and the decision below reads
             # that outcome.
-            recorded = self.call(record, self.ctx.worklist_path, None, result.fixup_items)
+            recorded = self.call(
+                record, self.ctx.worklist_path, None, result.fixup_items, settle_fix_items=True,
+            )
             if recorded.blocked_count and not recorded.pending_count:
                 # Nothing left to hand out and something the book could not clear: the
                 # other side gets read before anyone is asked.

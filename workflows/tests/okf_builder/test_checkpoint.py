@@ -248,3 +248,35 @@ def test_a_book_with_warnings_and_no_errors_is_dirty(
     assert not result.checkpoint_clean, result.doctor_output
     assert "undeclared-obligation" in result.doctor_output
     assert result.fixup_items
+
+
+def test_a_pending_repair_whose_finding_stopped_firing_is_closed_at_the_checkpoint(tmp_path: Path) -> None:
+    # A doctor rule retired under the run (field nodes stopped owing `undeclared-obligation`)
+    # left hundreds of pending rows nothing would ever re-raise; each was a repair turn spent
+    # finding nothing to do. Only the checkpoint's write settles, only `fix:` rows, and only
+    # pending ones — a blocked row keeps the story the operator gate prints.
+    from workhorse_workflows.okf_builder.shared.worklist import record
+
+    worklist = tmp_path / "w.json"
+    rows = [
+        {"kind": "fix:undeclared-obligation", "target": "a.md#a.md#field-x#undeclared-obligation",
+         "status": "pending", "context": "", "attempts": 0},
+        {"kind": "fix:undeclared-obligation", "target": "a.md#a.md#publish#undeclared-obligation",
+         "status": "pending", "context": "", "attempts": 0},
+        {"kind": "fix:weak-check", "target": "a.md#a.md#publish#weak-check",
+         "status": "blocked", "blocked_reason": "code fix", "context": "", "attempts": 3},
+        {"kind": "change", "target": "docs/features/acme/a.md", "status": "pending", "context": ""},
+    ]
+    worklist.write_text(json.dumps({"items": rows}))
+    standing = [{"kind": "fix:undeclared-obligation",
+                 "target": "a.md#a.md#publish#undeclared-obligation", "context": "", "requeue": True}]
+    plain = record(logging.getLogger("t"), str(worklist), None, standing)
+    assert plain.settled == 0 and plain.pending_count == 3
+    settled = record(logging.getLogger("t"), str(worklist), None, standing, settle_fix_items=True)
+    assert settled.settled == 1 and settled.pending_count == 2 and settled.blocked_count == 1
+    by_target = {i["target"]: i for i in json.loads(worklist.read_text())["items"]}
+    field = by_target["a.md#a.md#field-x#undeclared-obligation"]
+    assert field["status"] == "done" and field["doc_status"] == "stale"
+    assert by_target["a.md#a.md#publish#undeclared-obligation"]["status"] == "pending"
+    assert by_target["a.md#a.md#publish#weak-check"]["status"] == "blocked"
+    assert by_target["docs/features/acme/a.md"]["status"] == "pending"

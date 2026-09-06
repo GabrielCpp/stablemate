@@ -175,6 +175,9 @@ class Recorded(OkfResult):
     done_count: int = 0
     pending_count: int = 0
     added: int = 0
+    #: Pending `fix:` rows closed as `stale` because the checkpoint's doctor report no
+    #: longer names them.
+    settled: int = 0
     #: Rows that reached `MAX_TARGET_ATTEMPTS` and were blocked instead of re-queued —
     #: `{target, kind, attempts, reason}` each, for the operator gate to name them.
     blocked: list[dict[str, Any]] = []
