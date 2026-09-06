@@ -87,3 +87,20 @@ def test_audit_human_output_has_no_semantic_success_and_leaves_inputs_unchanged(
     assert "No semantic verdicts inferred" in output and "api.py: parsed" in output
     after = {path.relative_to(behavior_repo): path.read_bytes() for path in behavior_repo.rglob("*") if path.is_file()}
     assert after == before
+
+
+def test_audit_tier_flag_defers_private_uncited_candidates(
+    behavior_repo: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    (behavior_repo / "api.py").write_text(
+        "def list_items(limit=20):\n    return _clip(limit)\n\ndef _clip(limit):\n    return items[:limit]\n",
+        encoding="utf-8",
+    )
+    assert main(["-C", str(behavior_repo), "audit", "api.py", "--json", "--no-index"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["tier"] == 1 and data["deferred_candidates"] == 1
+    assert main(["-C", str(behavior_repo), "audit", "api.py", "--no-index"]) == 0
+    assert "Deferred: 1 tier-2 candidates" in capsys.readouterr().out
+    assert main(["-C", str(behavior_repo), "audit", "api.py", "--json", "--no-index", "--tier", "all"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["tier"] == "all" and data["deferred_candidates"] == 0

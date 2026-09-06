@@ -122,6 +122,8 @@ def _build_parser() -> argparse.ArgumentParser:
     audit.add_argument("paths", nargs="+", help="explicit repo-relative source files or directories")
     audit.add_argument("--max-items", type=int, default=80, help="maximum claims plus candidates per packet")
     audit.add_argument("--max-chars", type=int, default=60000, help="maximum serialized characters per packet; never truncate")
+    audit.add_argument("--tier", choices=("1", "all"), default="1",
+                       help="1 (default): candidates the book cites or the language exports; all: every candidate")
     audit.add_argument("--json", action="store_true")
 
     t = sub.add_parser("trace", help="walk the graph from a node")

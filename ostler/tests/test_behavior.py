@@ -128,12 +128,15 @@ def test_normalized_file_binding_keeps_uncited_source_and_ungrounded_book(tmp_pa
     claims = [BookClaim(id=f"claim:{i}", node="node", path="docs/book.md", line=1,
                         kind="does", text=f"Promise {i}", citations=refs) for i, refs in enumerate(citations)]
     preparation = build_audit_packets(extract_evidence(tmp_path, ["src"]), claims)
-    assert len(preparation.packets) == 4
+    # A private, uncited candidate is tier 2: its file holds no review at tier 1.
+    assert len(preparation.packets) == 3 and preparation.deferred_candidates == 1
     by_module = {packet.module: packet for packet in preparation.packets if packet.module}
     assert {claim.id for claim in by_module["src/a.py"].claims} == {"claim:0"}
     assert {claim.id for claim in by_module["src/b.py"].claims} == {"claim:0"}
-    assert not by_module["src/uncited.py"].claims
-    assert len(by_module["src/uncited.py"].candidates) == 1
+    assert "src/uncited.py" not in by_module
+    everything = build_audit_packets(extract_evidence(tmp_path, ["src"]), claims, tier="all")
+    uncited = next(p for p in everything.packets if p.module == "src/uncited.py")
+    assert not uncited.claims and len(uncited.candidates) == 1
     assert not preparation.undocumented
     book_only = next(packet for packet in preparation.packets if not packet.module)
     assert book_only.model_dump()["group"] == "ungrounded_book"
@@ -605,12 +608,13 @@ def test_uncited_file_with_exported_symbols_is_a_finding_not_a_packet(tmp_path: 
         encoding="utf-8",
     )
     preparation = build_audit_packets(extract_evidence(tmp_path, ["src"]), [])
-    assert {packet.module for packet in preparation.packets} == {"src/private.py", "src/empty.py"}
+    assert {packet.module for packet in preparation.packets} == {"src/empty.py"}
+    assert preparation.deferred_candidates == 4, "_helper, _only and the unexported type's two on Do"
     found = {file.path: file for file in preparation.undocumented}
     assert set(found) == {"src/public.py", "src/exported.go"}
     assert found["src/public.py"].exported_symbols == ("Api.get",)
     assert found["src/public.py"].first_lines == (6,)
-    assert found["src/public.py"].candidate_count == 2
+    assert found["src/public.py"].candidate_count == 1, "the tier-1 candidates only; _helper is deferred"
     assert found["src/exported.go"].exported_symbols == ("Run",)
     # The finding is a fact about the book: one citation turns the file back into a packet.
     claim = BookClaim(id="claim:0", node="node", path="docs/book.md", line=1, kind="does",
@@ -637,3 +641,51 @@ def test_cited_claimless_file_keeps_its_packet(tmp_path: Path) -> None:
 ])
 def test_exported_symbol_rule_per_language(path: str, symbol: str, expected: bool) -> None:
     assert exported_symbol(path, symbol) is expected
+
+
+def test_tier_one_keeps_cited_and_exported_candidates_and_defers_the_rest(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/svc.py").write_text(
+        "def get():\n    return 1\n\ndef _helper():\n    return 2\n\ndef _cited():\n    return 3\n\n"
+        "class _Box:\n    def read(self):\n        return 4\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src/whole.py").write_text("def _all():\n    return 5\n", encoding="utf-8")
+    inventory = extract_evidence(tmp_path, ["src"])
+    claim = BookClaim(id="claim:0", node="node", path="docs/book.md", line=1, kind="does",
+                      text="Reads", citations=("src/svc.py::_cited",))
+    book = BookClaims(claims=(claim,), cited_paths=("src/svc.py", "src/whole.py"),
+                      cited_symbols=("src/svc.py::_cited", "src/whole.py"))
+    first = build_audit_packets(inventory, book)
+    by_module = {packet.module: packet for packet in first.packets}
+    assert {c.symbol for c in by_module["src/svc.py"].candidates} == {"get", "_cited"}
+    # A bare path citation keeps every candidate in that file, private or not.
+    assert {c.symbol for c in by_module["src/whole.py"].candidates} == {"_all"}
+    assert first.tier == 1 and first.deferred_candidates == 2
+    assert first.selected_candidates == len(inventory.candidates) - 2
+    assert by_module["src/svc.py"].omitted_candidates == first.selected_candidates - 2
+    assert any("2 tier-2 candidates" in limit and "--tier all" in limit
+               for limit in by_module["src/svc.py"].limitations)
+    assert not any("tier-2" in limit for limit in by_module["src/whole.py"].limitations)
+    everything = build_audit_packets(inventory, book, tier="all")
+    assert everything.tier == "all" and everything.deferred_candidates == 0
+    assert everything.selected_candidates == len(inventory.candidates)
+    assert {c.symbol for packet in everything.packets for c in packet.candidates} == {"get", "_cited", "_helper", "_Box.read", "_all"}
+    assert not any("tier-2" in limit for packet in everything.packets for limit in packet.limitations)
+
+
+def test_a_file_of_only_private_uncited_candidates_costs_no_packet_at_tier_one(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/private.py").write_text("def _only():\n    return 2\n", encoding="utf-8")
+    inventory = extract_evidence(tmp_path, ["src"])
+    prepared = build_audit_packets(inventory, BookClaims(claims=()))
+    assert not prepared.undocumented and prepared.deferred_candidates == 1
+    assert not prepared.packets
+    claim = BookClaim(id="claim:0", node="node", path="docs/book.md", line=1, kind="does",
+                      text="Counts", citations=("src/private.py::_only",))
+    (packet,) = build_audit_packets(inventory, BookClaims(claims=(claim,), cited_symbols=("src/private.py::_only",))).packets
+    assert [c.symbol for c in packet.candidates] == ["_only"]
+    # A module-level candidate has no private name: it is tier 1 wherever it sits.
+    (tmp_path / "src/top.py").write_text("LIMIT = 2\nif LIMIT < 0:\n    raise ValueError('no')\n", encoding="utf-8")
+    top = build_audit_packets(extract_evidence(tmp_path, ["src/top.py"]), BookClaims(claims=()))
+    assert [c.symbol for packet in top.packets for c in packet.candidates] == ["<module>"]

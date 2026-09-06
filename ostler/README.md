@@ -186,7 +186,7 @@ accepted as input either way).
 | `create` `update` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` | mutate it — scaffold identified intake/plans/specs, revise story graph metadata, record a seed, move the queue |
 | `edit` `freeze` `unfreeze` | repair a rename across the whole graph, or pin an approved story as ground truth |
 | `template` `new` `find` `set` `remove` | declare a repo's own Concept kinds and operate on their instances |
-| `graph` `reach` `locators` `coverage` `scaffold` `fmt` `vet` | the `docs/features/` node/edge book — see below |
+| `graph` `reach` `locators` `coverage` `scaffold` `fmt` `vet` `audit` | the `docs/features/` node/edge book — see below |
 | `qa` `artifact` | the verification control plane — see below |
 
 `edit` is **dry-run unless `--write`**, so a rename across a whole graph is reviewable before it
@@ -206,6 +206,15 @@ locator for every documented control, `coverage` joins the book's `code:` citati
 inventory, and `vet` checks a rendered screenshot against what the book claims. The visual-fidelity
 contract is in
 [docs/VET.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/VET.md).
+
+`audit` prepares the two-way behavior review a reviewer then judges: file-local packets of
+source candidates (returns, raises, routes, defaults) beside the book's normative claims. It
+prepares, it never decides. By default only **tier 1** candidates enter a packet — a symbol the
+book cites, one the language exports (Go: capitalized; Python: no leading underscore), or a
+module-level statement, which has no name to keep private. The rest is tier 2, counted as
+`deferred_candidates` and named in the file's packet limitations; `ostler audit --tier all`
+reviews it too. The okf-builder audits tier 1: a private symbol's behavior reaches a caller
+through some tier-1 symbol, and that is where a claim about it is checked.
 
 Code in the documentation repository keeps the existing `path::symbol` spelling. A book that cites
 a separate source repository qualifies the same reference with its stable workspace name:

@@ -126,6 +126,8 @@ class BookClaims(BehaviorModel):
     limitations: tuple[str, ...] = ()
     cited_paths: tuple[Nonblank, ...] = Field(
         default=(), description="Every repo-relative source path some node cites, claim or not")
+    cited_symbols: tuple[Nonblank, ...] = Field(
+        default=(), description="Every `path::symbol` some node cites; a bare `path` cites the whole file")
 
 
 class UndocumentedFile(BehaviorModel):
@@ -150,6 +152,9 @@ class AuditPreparation(BehaviorModel):
     selected_candidates: int
     selected_claims: int
     undocumented: tuple[UndocumentedFile, ...] = ()
+    tier: Literal[1, "all"] = 1
+    deferred_candidates: int = Field(
+        default=0, ge=0, description="Tier-2 candidates (private, uncited symbols) no packet carries at tier 1")
     omitted_candidates: Literal[0] = 0
     omitted_claims: Literal[0] = 0
 
