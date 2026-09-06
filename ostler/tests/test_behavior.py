@@ -689,3 +689,74 @@ def test_a_file_of_only_private_uncited_candidates_costs_no_packet_at_tier_one(t
     (tmp_path / "src/top.py").write_text("LIMIT = 2\nif LIMIT < 0:\n    raise ValueError('no')\n", encoding="utf-8")
     top = build_audit_packets(extract_evidence(tmp_path, ["src/top.py"]), BookClaims(claims=()))
     assert [c.symbol for packet in top.packets for c in packet.candidates] == ["<module>"]
+
+
+def test_claims_citing_only_existing_unselected_files_are_out_of_scope_with_a_root(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "a.py").write_text("def get():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "other.py").write_text("def other():\n    return 2\n", encoding="utf-8")
+    claims = [
+        BookClaim(id="claim:here", node="n", path="docs/book.md", line=1, kind="does", text="Here",
+                  citations=("src/a.py::get",)),
+        BookClaim(id="claim:elsewhere", node="n", path="docs/book.md", line=2, kind="does", text="Elsewhere",
+                  citations=("other.py::other",)),
+        BookClaim(id="claim:gone", node="n", path="docs/book.md", line=3, kind="does", text="Gone",
+                  citations=("missing.py::x",)),
+        BookClaim(id="claim:mixed", node="n", path="docs/book.md", line=4, kind="does", text="Mixed",
+                  citations=("other.py::other", "repo://malformed")),
+    ]
+    scoped = build_audit_packets(extract_evidence(tmp_path, ["src"]), claims, root=tmp_path)
+    assert scoped.out_of_scope_claims == 1 and scoped.selected_claims == 3
+    ids = {claim.id for packet in scoped.packets for claim in packet.claims}
+    assert ids == {"claim:here", "claim:gone", "claim:mixed"}, "a missing or malformed citation stays a reviewer's"
+    assert all(any(note.startswith("1 claims cite only files outside") for note in packet.limitations)
+               for packet in scoped.packets)
+    unrooted = build_audit_packets(extract_evidence(tmp_path, ["src"]), claims)
+    assert unrooted.out_of_scope_claims == 0 and unrooted.selected_claims == 4
+    assert not any("outside the selected source scope" in note for packet in unrooted.packets for note in packet.limitations)
+
+
+def test_a_packet_carries_its_own_file_limitations_not_another_files(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "a.py").write_text("def a():\n    return 1\n\ndef a_quiet():\n    pass\n", encoding="utf-8")
+    (src / "b.py").write_text("def b():\n    return 1\n\ndef b_quiet():\n    pass\n", encoding="utf-8")
+    preparation = build_audit_packets(extract_evidence(tmp_path, ["src"]), (), skip_undocumented=False)
+    assert any("src/a.py::a_quiet" in note for note in preparation.inventory.limitations)
+    by_module = {packet.module: packet for packet in preparation.packets}
+    assert any("src/a.py::a_quiet" in note for note in by_module["src/a.py"].limitations)
+    assert not any("src/b.py::" in note for note in by_module["src/a.py"].limitations)
+    assert any("src/b.py::b_quiet" in note for note in by_module["src/b.py"].limitations)
+    assert all(note in by_module["src/a.py"].limitations for note in preparation.inventory.limitations
+               if "::" not in note), "the generic extraction limitations stay on every packet"
+
+
+def test_book_context_is_windowed_around_the_packets_claims(tmp_path: Path) -> None:
+    path = tmp_path / "docs/features/api.md"
+    path.parent.mkdir(parents=True)
+    filler = "".join(f"Prose line {i}.\n" for i in range(120))
+    text = ("---\ntype: server\ntitle: API\n---\n# API\n\n## Endpoints\n\n### send\n"
+            "- does: Sends items.\n" + filler + "- does: Returns their count.\n" + filler.replace("Prose", "Tail")
+            + "- code: api.py::send\n")
+    path.write_text(text, encoding="utf-8")
+    claims = extract_claims(load(tmp_path))
+    assert len(claims) == 2
+    whole = claims[0].context[0]
+    packet = build_audit_packets(extract_evidence(tmp_path, []), claims, context_lines=10).packets[0]
+    assert len(packet.book_context) == 1
+    context = packet.book_context[0]
+    assert context.start_line == whole.start_line and context.end_line == claims[1].line + 10
+    assert context.end_line < whole.end_line, "the prose past the last claim is cut"
+    assert context.text == "".join(text.splitlines(keepends=True)[context.start_line - 1:context.end_line])
+    assert "Tail line 119." not in context.text
+    first_only = build_audit_packets(extract_evidence(tmp_path, []), claims[:1], context_lines=10).packets[0]
+    window = first_only.book_context[0]
+    assert (window.start_line, window.end_line) == (whole.start_line, claims[0].line + 10)
+    wide = build_audit_packets(extract_evidence(tmp_path, []), claims, context_lines=200).packets[0]
+    assert wide.book_context == (whole,), "a section inside the window is carried whole"
+    receipt = AuditVerdicts(candidates=(), claims=tuple(
+        ClaimVerdict(id=claim.id, status="unresolved", explanation="No source selected.") for claim in packet.claims))
+    validate_verdicts(packet, receipt)
+    with pytest.raises(ValueError, match="context_lines"):
+        build_audit_packets(extract_evidence(tmp_path, []), claims, context_lines=0)

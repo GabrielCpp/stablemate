@@ -12,7 +12,7 @@ def run(graph: Graph, args: argparse.Namespace) -> int:
     try:
         result = build_audit_packets(extract_evidence(graph.root, args.paths), extract_book(graph),
                                      max_items=args.max_items, max_chars=args.max_chars,
-                                     tier="all" if args.tier == "all" else 1)
+                                     tier="all" if args.tier == "all" else 1, root=graph.root)
     except (ValueError, OSError) as exc:
         print(f"ostler audit: {exc}", file=sys.stderr)
         return 2
@@ -28,6 +28,8 @@ def run(graph: Graph, args: argparse.Namespace) -> int:
         if result.deferred_candidates:
             print(f"Deferred: {result.deferred_candidates} tier-2 candidates on private, uncited symbols; "
                   "--tier all reviews them.")
+        if result.out_of_scope_claims:
+            print(f"Out of scope: {result.out_of_scope_claims} claims cite only files outside the selected paths.")
         for file in result.undocumented:
             print(f"Undocumented: {file.path}: {file.candidate_count} candidates on "
                   f"{', '.join(file.exported_symbols)}; no claim cites this file")

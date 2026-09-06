@@ -329,7 +329,7 @@ def undocumented_file(path: str, evidence: Sequence[BehaviorEvidence]) -> Undocu
 def build_audit_packets(
     inventory: EvidenceInventory, claims: Sequence[BookClaim] | BookClaims, *,
     max_items: int = 80, max_chars: int = 60_000, skip_undocumented: bool = True,
-    tier: Literal[1, "all"] = 1,
+    tier: Literal[1, "all"] = 1, root: Path | None = None, context_lines: int = 40,
 ) -> AuditPreparation:
     """Prepare file-local review packets without an all-book Cartesian product.
 
@@ -352,6 +352,14 @@ def build_audit_packets(
     by the language's rule (`candidate_tier`) — enter a packet; the rest are counted as
     ``deferred_candidates`` and named in the file's packet limitations (a file left with
     nothing to review builds no packet), and ``tier="all"`` reviews them too. Selected counts describe the tier, not the tree.
+    With ``root``, a claim whose every citation names a file that exists under it but is
+    outside the selected files is out of this audit's scope: counted as
+    ``out_of_scope_claims``, named in every packet's limitations, and sent to no reviewer.
+    Without ``root`` such claims stay ungrounded, since nothing can tell them from a
+    citation of a file that is gone (the doctor's finding either way).
+    A packet carries the generic extraction limitations and its own file's, never another
+    file's. Each node's book excerpt is windowed to ``context_lines`` lines on either
+    side of the packet's claims in it; a node whose section fits is carried whole.
     Oversized files cross only their own evidence/claim chunks, never other files.
     Per-packet omitted counts name context in sibling packets, not discarded work.
     The preparation's omitted counts are always zero. Item and serialized-character
@@ -364,6 +372,8 @@ def build_audit_packets(
         raise ValueError("max_items must be at least 2")
     if max_chars < 1:
         raise ValueError("max_chars must be positive")
+    if context_lines < 1:
+        raise ValueError("context_lines must be positive")
     book_limitations: tuple[str, ...] = ()
     cited_paths: frozenset[str] = frozenset()
     cited_symbols: frozenset[str] = frozenset()
@@ -384,19 +394,35 @@ def build_audit_packets(
         grouped.setdefault(candidate.path, []).append(candidate)
     selected = len(inventory.candidates) - sum(deferred.values())
     claims_by_file: dict[str, list[BookClaim]] = defaultdict(list)
+    out_of_scope = 0
     for claim in ordered_claims:
         matches: set[str] = set()
+        elsewhere: list[bool] = []
         for citation in refs.code_refs(list(claim.citations)):
             try:
                 ref = refs.parse_code_ref(citation)
             except ValueError:
                 # Malformed citations remain visible on the ungrounded claim.
+                elsewhere.append(False)
                 continue
             path = posixpath.normpath(ref.path)
             if not ref.repository and path in grouped:
                 matches.add(path)
+            elsewhere.append(not ref.repository and root is not None and (root / path).is_file())
+        if not matches and elsewhere and all(elsewhere):
+            out_of_scope += 1
+            continue
         for module in sorted(matches) if matches else [""]:
             claims_by_file[module].append(claim)
+    in_scope = {claim.id for claims_here in claims_by_file.values() for claim in claims_here}
+    ordered_claims = tuple(claim for claim in ordered_claims if claim.id in in_scope)
+    scope_limitations = ((f"{out_of_scope} claims cite only files outside the selected source scope and are not in "
+                          "this audit; select those files to review them.",) if out_of_scope else ())
+    file_limitations: dict[str, list[str]] = defaultdict(list)
+    generic_limitations: list[str] = []
+    for note in inventory.limitations:
+        owner = next((file.path for file in inventory.files if note.startswith(f"{file.path}::")), None)
+        (file_limitations[owner] if owner else generic_limitations).append(note)
     if "" in claims_by_file or not grouped:
         grouped[""] = []
     inventory_digest = _digest(inventory.model_dump(mode="json"))
@@ -415,7 +441,7 @@ def build_audit_packets(
         if deferred[module] and not evidence and not local_claims:
             # Every candidate is tier 2 and nothing cites the file: no review to hold.
             continue
-        limitations = inventory.limitations + book_limitations
+        limitations = (*generic_limitations, *file_limitations[module], *book_limitations, *scope_limitations)
         if module in files_by_path:
             file = files_by_path[module]
             if file.status != "parsed":
@@ -437,7 +463,7 @@ def build_audit_packets(
             source_context = tuple(context for context in inventory.source_context if context.path == module
                                    and any(context.symbol == "<module>" or candidate.symbol == context.symbol
                                            or candidate.symbol.startswith(context.symbol + ".") for candidate in candidates))
-            book_context = tuple(dict.fromkeys(context for claim in chunk for context in claim.context))
+            book_context = _windowed_book_context(chunk, context_lines)
             packet = AuditPacket(module=module, symbol="", scope=(module,) if module else (),
                                  group="source_file" if module else "ungrounded_book" if local_claims else "empty_scope",
                                  inventory_digest=inventory_digest, candidates=candidates,
@@ -458,8 +484,26 @@ def build_audit_packets(
             else:
                 raise ValueError(f"oversized packet for {module or 'ungrounded book'}: cannot fit max_chars={max_chars} without truncation")
     return AuditPreparation(inventory=inventory, packets=tuple(packets), undocumented=tuple(undocumented),
-                            tier=tier, deferred_candidates=sum(deferred.values()),
+                            tier=tier, deferred_candidates=sum(deferred.values()), out_of_scope_claims=out_of_scope,
                             selected_candidates=selected, selected_claims=len(ordered_claims))
+
+
+def _windowed_book_context(chunk: Sequence[BookClaim], context_lines: int) -> tuple[BookContext, ...]:
+    """One excerpt per node, bounded to ``context_lines`` around the chunk's claims in it."""
+    by_node: dict[str, tuple[BookContext, list[int]]] = {}
+    for claim in chunk:
+        for context in claim.context:
+            by_node.setdefault(context.node, (context, []))[1].append(claim.line)
+    windowed: list[BookContext] = []
+    for context, lines in by_node.values():
+        start = max(context.start_line, min(lines) - context_lines)
+        end = min(context.end_line, max(lines) + context_lines)
+        if (start, end) == (context.start_line, context.end_line):
+            windowed.append(context)
+            continue
+        text = "".join(context.text.splitlines(keepends=True)[start - context.start_line:end - context.start_line + 1])
+        windowed.append(context.model_copy(update={"start_line": start, "end_line": end, "text": text}))
+    return tuple(windowed)
 
 
 def _exact_ids(actual: Sequence[str], expected: set[str], label: str) -> None:

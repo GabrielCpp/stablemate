@@ -104,3 +104,19 @@ def test_audit_tier_flag_defers_private_uncited_candidates(
     assert main(["-C", str(behavior_repo), "audit", "api.py", "--json", "--no-index", "--tier", "all"]) == 0
     data = json.loads(capsys.readouterr().out)
     assert data["tier"] == "all" and data["deferred_candidates"] == 0
+
+
+def test_audit_counts_claims_that_cite_only_unselected_existing_files(
+    behavior_repo: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    (behavior_repo / "other.py").write_text("def other():\n    return 2\n", encoding="utf-8")
+    doc = behavior_repo / "docs/features/api/items.md"
+    doc.write_text(
+        doc.read_text(encoding="utf-8") + "\n### others\n\n- does: Elsewhere.\n- code: other.py::other\n",
+        encoding="utf-8",
+    )
+    assert main(["-C", str(behavior_repo), "audit", "api.py", "--json", "--no-index"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["out_of_scope_claims"] == 1
+    assert main(["-C", str(behavior_repo), "audit", "api.py", "--no-index"]) == 0
+    assert "Out of scope: 1 claims cite only files outside the selected paths." in capsys.readouterr().out

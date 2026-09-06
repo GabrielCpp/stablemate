@@ -214,7 +214,11 @@ book cites, one the language exports (Go: capitalized; Python: no leading unders
 module-level statement, which has no name to keep private. The rest is tier 2, counted as
 `deferred_candidates` and named in the file's packet limitations; `ostler audit --tier all`
 reviews it too. The okf-builder audits tier 1: a private symbol's behavior reaches a caller
-through some tier-1 symbol, and that is where a claim about it is checked.
+through some tier-1 symbol, and that is where a claim about it is checked. A claim whose
+citations all name files that exist but were not selected is counted as `out_of_scope_claims`
+and left for the audit that selects them; a citation to a file that does not exist stays a
+reviewer's question. Each packet carries the book section around its claims, windowed to
+forty lines either side, and only the extraction limitations of its own file.
 
 Code in the documentation repository keeps the existing `path::symbol` spelling. A book that cites
 a separate source repository qualifies the same reference with its stable workspace name:

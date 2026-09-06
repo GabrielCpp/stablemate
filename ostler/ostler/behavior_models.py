@@ -155,6 +155,8 @@ class AuditPreparation(BehaviorModel):
     tier: Literal[1, "all"] = 1
     deferred_candidates: int = Field(
         default=0, ge=0, description="Tier-2 candidates (private, uncited symbols) no packet carries at tier 1")
+    out_of_scope_claims: int = Field(
+        default=0, ge=0, description="Claims whose citations all name existing files outside the selected source")
     omitted_candidates: Literal[0] = 0
     omitted_claims: Literal[0] = 0
 
