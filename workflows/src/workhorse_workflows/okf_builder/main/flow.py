@@ -633,12 +633,18 @@ class OkfBuilder(Workflow):
             return Await(
                 paths.operator_context_path(Path(self.ctx.repo_root), self.service),
                 f"okf-builder's coverage re-scan did not converge in "
-                f"{MAX_RESCAN_ROUNDS} rounds — doctor is clean but the book is still "
-                f"short of its source inventory, so each re-scan keeps finding "
-                f"uncovered units. This is not a finished book. Look at the missing "
-                f"list beside the worklist under .agents/okf-build/ to see what keeps "
-                f"coming back, then flip this file's `STATUS:` line to `ANSWERED` to "
-                f"resume the re-scan with a fresh {MAX_RESCAN_ROUNDS}-round allowance.",
+                f"{MAX_RESCAN_ROUNDS} rounds — doctor is clean, but the coverage state "
+                f"kept coming back incomplete. Which half is incomplete is not something "
+                f"this gate can see, and the two want opposite work, so read it before "
+                f"answering: `covered`/`total` in the book's `coverage.json` says whether "
+                f"units are genuinely uncited (a book gap — author them, or waive them in "
+                f"`coverage-waivers.json` with a reason), while `missing_count` and "
+                f"`regrounding` on the run's latest `compute_coverage/output.json` "
+                f"separate that from cited symbols that were rewritten underneath their "
+                f"nodes (a re-grounding gap — re-read those bullets against the source). "
+                f"100% coverage with the scan still refusing to complete is the second "
+                f"one. Then flip this file's `STATUS:` line to `ANSWERED` to resume the "
+                f"re-scan with a fresh {MAX_RESCAN_ROUNDS}-round allowance.",
                 # The answer goes through `retry_blocked`, not straight back into the
                 # re-scan: a re-grounding row that spent its attempts is what most often
                 # keeps the inventory short, and a fresh round allowance on a worklist
@@ -647,7 +653,7 @@ class OkfBuilder(Workflow):
                 rnd=result.round,
                 rescan=0,
                 refuels=refuels,
-            ).because("re-scan cap hit, inventory still short: operator gate")
+            ).because("re-scan cap hit, coverage still incomplete: operator gate")
         return Continue(
             result, self.rescan_coverage, rnd=result.round, rescan=rescan, refuels=refuels
         ).because("doctor clean: check the inventory")
