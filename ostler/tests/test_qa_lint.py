@@ -236,6 +236,49 @@ def test_the_evidence_arguments_are_read_the_same_way_as_the_condition() -> None
     assert "subscript" in problems[0]
 
 
+HELPER_PLAN = SUBSCRIPT_PLAN.replace(
+    'def reads_a_field_by_subscript(qa: Qa) -> None:',
+    'def _name_of(payload: dict) -> str:\n'
+    '    return payload["item"]["name"]\n'
+    '\n'
+    '\n'
+    'def reads_a_field_by_subscript(qa: Qa) -> None:',
+).replace(
+    'body["item"]["name"] == "chair", covers=["ac:1"]',
+    '_name_of(body) == "chair", covers=["ac:1"]',
+)
+
+
+def test_a_helper_that_subscripts_for_the_assertion_is_rejected_too() -> None:
+    """The bypass that survived a benchmark round.
+
+    Scoped to the assertion call, the rule policed the last line of the read and left every
+    line leading to it open: a plan wrote its own field walker, handed the result to
+    `qa.check` as an ordinary value, and the `KeyError` it raises kills the scenario exactly
+    as the inline subscript would have. The raise does not care which line it happened on,
+    so neither does the rule.
+    """
+    problems = lint_source(HELPER_PLAN, filename="qa_plan.py")
+
+    assert len(problems) == 1
+    assert "subscript" in problems[0]
+    assert 'qa.field(obj, "a.b")' in problems[0]
+
+
+SLICE_PLAN = SUBSCRIPT_PLAN.replace(
+    'qa.check("the item is named", body["item"]["name"] == "chair", covers=["ac:1"])',
+    'rows = qa.field(body, "items") or []\n'
+    '    qa.check("the first row is a chair", qa.field(rows[0], "name") == "chair",\n'
+    '             actual=repr(rows)[:200], covers=["ac:1"])',
+)
+
+
+def test_list_indexing_and_slicing_outside_an_assertion_stay_allowed() -> None:
+    """The widening is to every line, not to every subscript. A position in a list the plan
+    itself just built is not a guess at how the product spells a field."""
+    assert lint_source(SLICE_PLAN, filename="qa_plan.py") == []
+
+
 def test_indexing_something_the_plan_already_shaped_is_left_alone() -> None:
     # A slice of a captured stream is not a claim about how the product spells a field,
     # and a rule that flagged it would push authors to route it through `qa.field` for
