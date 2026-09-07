@@ -21,6 +21,7 @@ the file, not on the code that reaches it — see :data:`CONFIG_VERSION`.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import shutil
 import tomllib
@@ -119,6 +120,12 @@ def legacy_config_paths() -> list[Path]:
 class PowerMapping:
     model: str | None = None
     effort: str | None = None
+    #: Multiplier on every per-node wall-clock budget resolved for this tier. The node
+    #: numbers state the *shape* of the work ("a QA plan is about twenty minutes"); this
+    #: states how fast this model executes a unit of it. ``None`` means "unset", so the
+    #: same "first non-None wins" fallthrough to ``[default.<backend>]`` applies as to
+    #: model and effort — a literal ``1.0`` here would stop that fallthrough.
+    timeout_scale: float | None = None
 
 
 def config_path() -> Path:
@@ -397,12 +404,29 @@ def profile_has_backend(profile: dict[str, Any], backend: str) -> bool:
     return isinstance(default_table, dict) and backend in default_table
 
 
+def _positive_finite(raw: Any) -> float | None:
+    """A strictly positive, finite float, or ``None`` for anything else.
+
+    Everything rejected here would be worse than the absence it degrades to: ``true``
+    reads as ``1.0`` because bool is an int subclass, ``0`` and a negative make every
+    node time out instantly, and ``inf`` silently unbounds every node in the run — a
+    typo must not buy an unattended run an infinite budget.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    value = float(raw)
+    if not math.isfinite(value) or value <= 0:
+        return None
+    return value
+
+
 def _mapping_from_table(table: dict[str, Any]) -> PowerMapping:
     model = table.get("model")
     effort = table.get("effort")
     return PowerMapping(
         model=model if isinstance(model, str) and model else None,
         effort=effort if isinstance(effort, str) and effort else None,
+        timeout_scale=_positive_finite(table.get("timeout_scale")),
     )
 
 

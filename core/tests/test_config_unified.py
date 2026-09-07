@@ -402,5 +402,66 @@ def test_a_malformed_worktree_dir_reads_as_unset(cfg_file):
     assert cfgmod.resolve_worktree_dir() is None
 
 
+# --- timeout_scale: the per-tier wall-clock multiplier -----------------------
+
+_SCALED = """\
+[power.high.claude]
+model = "opus"
+timeout_scale = 2.5
+
+[power.low.claude]
+model = "haiku"
+
+[default.claude]
+model = "sonnet"
+timeout_scale = 1.5
+"""
+
+
+def test_timeout_scale_parses_from_a_tier_table(cfg_file):
+    cfg_file.write_text(_SCALED)
+
+    assert cfgmod.resolve_power("high", "claude").timeout_scale == 2.5
+
+
+def test_timeout_scale_is_none_when_the_tier_omits_it(cfg_file):
+    """Unset, not 1.0 — so the caller can still fall through to [default.<backend>]."""
+    cfg_file.write_text(_SCALED)
+
+    assert cfgmod.resolve_power("low", "claude").timeout_scale is None
+
+
+def test_timeout_scale_falls_through_to_the_backend_default(cfg_file):
+    cfg_file.write_text(_SCALED)
+
+    assert cfgmod.resolve_backend_default("claude").timeout_scale == 1.5
+
+
+def test_timeout_scale_survives_a_write(cfg_file):
+    cfg_file.write_text(_SCALED)
+
+    cfgmod.write_config_key("base_dir", "/some/path")
+
+    assert cfgmod.resolve_power("high", "claude").timeout_scale == 2.5
+
+
+def test_an_integer_timeout_scale_reads_as_a_float(cfg_file):
+    cfg_file.write_text('[power.high.claude]\ntimeout_scale = 3\n')
+
+    assert cfgmod.resolve_power("high", "claude").timeout_scale == 3.0
+
+
+@pytest.mark.parametrize("raw", ["\"2.5\"", "true", "0", "-1", "inf", "nan"])
+def test_a_malformed_timeout_scale_reads_as_unset(cfg_file, raw):
+    """Every rejected value would be worse than the absence it degrades to.
+
+    `true` reads as 1.0 through the int subclass; 0 and a negative time every node
+    out instantly; `inf` silently unbounds the whole run.
+    """
+    cfg_file.write_text(f"[power.high.claude]\ntimeout_scale = {raw}\n")
+
+    assert cfgmod.resolve_power("high", "claude").timeout_scale is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

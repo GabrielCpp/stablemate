@@ -34,6 +34,7 @@ default_cli = "opencode"
 [profiles.local.power.high.opencode]
 model = "qwen/qwen3.6-27b"
 effort = "high"
+timeout_scale = 2.5
 
 [profiles.local.power.high.default]
 model = "big"
@@ -67,6 +68,14 @@ def test_selected_profile_replaces_the_top_level_tables(cfg):
     assert cfgmod.resolve_power("low", "claude", profile) == cfgmod.PowerMapping()
     assert cfgmod.resolve_backend_default("claude", profile) == cfgmod.PowerMapping()
     assert cfgmod.resolve_backend_default("opencode", profile).model == "qwen/qwen3.6-7b"
+
+
+def test_timeout_scale_is_resolved_per_profile(cfg):
+    """The scale rides the profile, so pinning a slow model pins its clock with it."""
+    profile = cfgmod.select_profile(cfg, "local")
+
+    assert cfgmod.resolve_power("high", "opencode", profile).timeout_scale == 2.5
+    assert cfgmod.resolve_power("high", "claude").timeout_scale is None
 
 
 def test_the_per_tier_default_fallback_survives_inside_a_profile(cfg):
