@@ -68,10 +68,13 @@ class Audit(Workflow):
                     "audit/prompts/behavior-audit.md", returns=AuditVerdicts,
                     # Three provider retries and one reframe: a 5xx storm ends here as a
                     # recorded failure and an operator gate, not a day of backoff. The
-                    # reframe is not politeness — this reviewer runs on a model that
-                    # returns an empty result on roughly a third of FRESH sessions, and a
-                    # reframe is the only rung that starts one, so the same-session
-                    # retries above cannot reach the case that actually fails here.
+                    # reframe earns its rung against a packet this reviewer cannot answer
+                    # inside its output budget — the empties measured here were the model
+                    # spending all 32k generation tokens reasoning about a 35-40k prompt
+                    # and having none left to answer with, which is a property of the
+                    # prompt, not of the session, so a fresh session alone does not clear
+                    # it. Compaction is the ladder's own answer to that (see
+                    # runner/failure.py); the reframe is what remains when it is not.
                     power="medium", retries=1, invoke_retries=3, timeout=300,
                     cwd=directory / "behavior-audit" / packet.digest,
                     args={"packet": packet.model_dump_json(indent=2), "feedback": feedback,
