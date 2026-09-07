@@ -1246,7 +1246,11 @@ def loop_convergence(
         " json_extract(attrs_json, '$.work_id') AS work_id,"
         f" {_cost} AS cost_usd, {_cost} = 0 AND COALESCE({_output}, 0) > 0 AS suspect_zero,"
         " est_cost_usd, start_ts"
-        f" FROM spans WHERE {' AND '.join(clauses)} ORDER BY start_ts",
+        # The tiebreaker is not decoration. Laps are ordered so `laps[1:]` is "every pass
+        # after the first", and `spans_start` is a DESC index: on equal `start_ts` sqlite
+        # walks it backwards and hands back the *last* arrival first, so the excess sums
+        # the wrong lap. `end_ts` then arrival order settles it.
+        f" FROM spans WHERE {' AND '.join(clauses)} ORDER BY start_ts, end_ts, rowid",
         params,
     ).fetchall()
 
