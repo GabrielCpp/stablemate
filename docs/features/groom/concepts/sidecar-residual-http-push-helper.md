@@ -82,6 +82,7 @@ its status, headers, or body.
 - sig: `_push(path: str, payload: dict) -> None`
 - abstract: false
 - raises: none intentionally raised for HTTP open or response-close failures.
+- verify: json_path(path="exception", absent=true)
 - raises: JSON serialization, request construction, and other errors before the
   guarded HTTP open are not normalized by the helper.
 - raises: malformed imported configuration prevents the module from importing
@@ -112,6 +113,7 @@ its status, headers, or body.
 - sig: `push_progress(current_node: str = "") -> None`
 - abstract: false
 - raises: same producer-side propagation boundary as [method-_push](#method-_push).
+- verify: json_path(path="exception", absent=true)
 - input: current workhorse node id or an empty string when no current node is
   known.
 - output: returns `None`; it does not report whether groom accepted, rejected, or
@@ -125,6 +127,7 @@ its status, headers, or body.
 - sig: `push_blocked(file_path: str, question: str) -> None`
 - abstract: false
 - raises: same producer-side propagation boundary as [method-_push](#method-_push).
+- verify: json_path(path="exception", absent=true)
 - input: workspace-relative awaiting gate file path and extracted operator
   question text.
 - output: returns `None`; it does not report whether groom accepted, rejected, or
@@ -138,6 +141,7 @@ its status, headers, or body.
 - sig: `push_exited(exit_code: int) -> None`
 - abstract: false
 - raises: same producer-side propagation boundary as [method-_push](#method-_push).
+- verify: json_path(path="exception", absent=true)
 - input: integer workflow process exit code supplied by the one-shot
   `groom-sidecar --exit-code` invocation after workhorse returns.
 - output: returns `None`; it does not report whether groom accepted, rejected, or

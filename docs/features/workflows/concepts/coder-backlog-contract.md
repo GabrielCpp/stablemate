@@ -50,8 +50,12 @@ story that covers that id is re-authored only in empty sections and reused.
 - type: string
 - required: true
 - verify: count(subject="backlog bullet text requirements", equals=1)
-- semantics: bullet description without its bracketed id; a blocked suffix is retained for visibility and removed from normalized identity comparisons
+- semantics: bullet description without its bracketed id
 - verify: count(subject="backlog bullet descriptions", equals=1)
+- semantics: retains a blocked suffix for visibility
+- verify: count(subject="visible blocked backlog suffixes", equals=1)
+- semantics: excludes a blocked suffix from normalized identity comparisons
+- verify: count(subject="normalized blocked backlog identities", equals=1)
 
 ## Methods
 
@@ -121,16 +125,32 @@ story that covers that id is re-authored only in empty sections and reused.
 ### file_backlog_items
 
 - sig: `file_backlog_items(logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = "") -> BacklogDrain`
-- does: resolves the docs root and reads `<spec_dir>/backlog-items.json`; an empty spec directory returns without changing the backlog
-- verify: count(subject="reconciled backlog item files", equals=1)
+- does: resolves the docs root from `docs_path` and `repo_dir`
+- verify: count(subject="resolved backlog docs roots", equals=1)
+- does: reads `<spec_dir>/backlog-items.json` from the resolved docs root
+- verify: count(subject="read backlog item files", equals=1)
+- does: leaves the configured backlog unchanged when `spec_dir` is empty
+- verify: unchanged(subject="configured backlog")
 - does: creates the configured backlog with `# Backlog` when it is absent and creation succeeds
-- verify: count(subject="created missing backlogs", equals=1)
+- verify: created(subject="configured backlog")
 - does: appends valid non-duplicate items under their requested section, or under `## Filed by coder` when no section is supplied
 - verify: count(subject="appended coder backlog bullets", equals=1)
-- does: skips invalid or duplicate records, then removes the items file after reconciliation; it keeps the file when the backlog cannot be created or the unlink fails
-- verify: count(subject="reconciled backlog item file outcomes", equals=1)
-- returns: `BacklogDrain` counts and notes describing appended, skipped, and file-removal outcomes
-- verify: count(subject="backlog drain results", equals=1)
+- does: skips invalid records
+- verify: count(subject="skipped invalid backlog records", equals=1)
+- does: skips duplicate records
+- verify: count(subject="skipped duplicate backlog records", equals=1)
+- does: removes the items file after reconciliation when the unlink succeeds
+- verify: removed(subject="reconciled backlog-items.json")
+- does: keeps the items file when the backlog cannot be created
+- verify: persists(subject="backlog-items.json after backlog creation failure")
+- does: keeps the items file when its unlink fails
+- verify: persists(subject="backlog-items.json after unlink failure")
+- returns: `BacklogDrain.appended` as the count of appended records
+- verify: json_path(path="$.appended", equals=1)
+- returns: `BacklogDrain.skipped` as the count of skipped records
+- verify: json_path(path="$.skipped", equals=1)
+- returns: `BacklogDrain.notes` reporting the appended count, skipped count, and items-file removal outcome
+- verify: json_path(path="$.notes", matches="^filed [0-9]+, skipped [0-9]+ \\(duplicate/invalid\\); (removed backlog-items\\.json|backlog-items\\.json left in place)$")
 - code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items`
 
 ### select_fix_item
@@ -155,7 +175,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - does: reuses an existing story covering the bullet id and fills only empty required sections
 - verify: count(subject="idempotent fix story reuses", equals=1)
 - does: otherwise registers a researched seed and creates one story whose acceptance criteria contains exactly the selected bullet text
-- verify: count(subject="new authored fix stories", equals=1)
+- verify: created(subject="a fix story covering the selected bullet id")
 - raises: `WorkflowFailed` when the bullet id or text is missing
 - verify: count(subject="invalid fix story seed failures", equals=1)
 - returns: `FixStorySeed` with the epic, story paths, bullet identity, and reuse/creation reason

@@ -14,6 +14,7 @@ The socket is the only path for this. Answering is the one browser-to-server wri
 - code: groom/groom/assets/dashboard.js::AnswerForm
 - code: groom/groom/assets/dashboard.js::wireAnswerForm
 - code: groom/groom/assets/dashboard.js::sendCommand
+- detail: [dashboard answer command artifacts](concepts/dashboard-answer-command-artifacts.md)
 - refs: [dashboard websocket receive loop](concepts/dashboard-websocket-receive-loop.md), [gate-answering layer](concepts/gate-answering-layer.md), [dashboard client store](concepts/dashboard-client-store.md), [run watch registry](concepts/run-watch-registry.md)
 - verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event
 - verify: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch

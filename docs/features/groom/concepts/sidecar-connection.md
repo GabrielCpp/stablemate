@@ -82,11 +82,17 @@ Sidecar connection is the host-side object for one live [workflow container](wor
 - abstract: false
 - does:
   - Binds the normalized container id and accepted websocket sender to the connection.
+  - verify: created(subject="SidecarConnection bound to the supplied container id and websocket sender")
   - Initializes the pending-RPC map empty.
+  - verify: count(subject="pending RPC entries after SidecarConnection construction", equals=0)
   - Initializes the per-connection correlation counter to `0`.
+  - verify: json_path(path="counter", equals=0)
   - Creates one unlocked send lock for serialized host-to-sidecar frames.
+  - verify: json_path(path="send_lock.locked", equals=false)
   - Does not register the connection, send a frame, inspect workflow state, or create any pending RPC.
+  - verify: absent(subject="registered SidecarConnection after construction")
 - raises: none intentionally.
+- verify: json_path(path="exception", absent=true)
 - code: groom/groom/sidecar_hub.py::SidecarConnection.__init__
 - input-container-id: normalized workflow container id; the constructor stores it unchanged and does not truncate, validate, or coerce it.
 - input-socket: accepted websocket sender implementing async `send_json(data)`; the constructor stores the sender unchanged and does not accept, close, or read from it.

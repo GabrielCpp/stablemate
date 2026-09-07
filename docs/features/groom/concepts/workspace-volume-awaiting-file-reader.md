@@ -41,6 +41,7 @@ Workspace-volume awaiting-file reader is the Docker-volume sweep used by the [wo
 - default: `(".git", "node_modules", "__pycache__", ".venv")`
 - required: true
 - code: groom/groom/docker_io.py::_SKIP_DIRS
+- detail: [workspace volume skip directory names](workspace-volume-skip-directory-names.md)
 - meaning: directory basenames pruned from the awaiting-file sweep before matching files.
 - constraints: the same skip set is intended to mirror the sidecar snapshot sweep so host fallback discovery and in-container sidecar discovery ignore the same heavy or non-domain directories.
 
@@ -59,6 +60,7 @@ Workspace-volume awaiting-file reader is the Docker-volume sweep used by the [wo
 - default: `alpine:3.20`
 - required: true
 - code: groom/groom/docker_io.py::ALPINE_IMAGE
+- detail: [Docker volume helper image](docker-volume-helper-image.md)
 - meaning: minimal image used for the throwaway read-only `find` and `grep` process.
 - constraints: the image must provide BusyBox-compatible `find` with `-prune` and `-exec ... +` support and `grep -lE`.
 
@@ -68,6 +70,7 @@ Workspace-volume awaiting-file reader is the Docker-volume sweep used by the [wo
 - default: `20`
 - required: true
 - code: groom/groom/docker_io.py::DOCKER_TIMEOUT
+- detail: [Docker command timeout](docker-command-timeout.md)
 - meaning: maximum seconds allowed for the Docker command unless the shared runner's default changes.
 - constraints: a timeout exception from the subprocess layer is not converted by this reader.
 
@@ -114,6 +117,7 @@ Workspace-volume awaiting-file reader is the Docker-volume sweep used by the [wo
 - returns: workspace-volume-relative candidate file paths in observed command-output order, with no sorting, deduplication, status parser validation, or question extraction.
 - verify: count(subject="workspace-volume-relative candidate paths", equals=2)
 - code: groom/groom/docker_io.py::grep_awaiting_files
+- detail: [Grep awaiting-files documentation views](grep-awaiting-files-documentation-views.md)
 - tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths
 - tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_empty_on_docker_failure
 

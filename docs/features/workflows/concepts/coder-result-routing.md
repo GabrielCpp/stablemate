@@ -60,7 +60,7 @@ normal parse-retry path.
 - does: keeps only findings that are Finding instances with actionable target and repair text
 - verify: json_path(path="$.actionable", matches=".*")
 - returns: an empty list when the result has no actionable finding
-- verify: json_path(path="$.actionable", equals=[])
+- verify: count(subject="actionable findings", equals=0)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::CoderResult.actionable`
 - tests: `workflows/tests/coder/shared/test_blocked_signal.py::test_actionable_keeps_only_the_findings_a_fixer_could_act_on`
 - tests: `workflows/tests/coder/shared/test_blocked_signal.py::test_a_block_with_no_evidence_is_a_block_with_nothing_to_route`

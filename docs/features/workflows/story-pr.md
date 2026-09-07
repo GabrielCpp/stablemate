@@ -32,5 +32,5 @@ order `opened`, `exists`, `skipped`, and retains every PR URL that exists after 
 - default: empty list
 - required: false
 - semantics: every pull-request URL currently associated with the affected repositories, whether opened during this run or already present
-- verify: json_path(path="$.pr_urls", equals=[])
+- verify: count(subject="StoryPr.pr_urls entries", equals=0)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::StoryPr.pr_urls`

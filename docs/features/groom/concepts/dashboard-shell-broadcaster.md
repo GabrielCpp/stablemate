@@ -100,6 +100,7 @@ push has been enqueued.
 - abstract: false
 - raises: propagates exceptions from workflow snapshot creation, projection, dashboard client queue snapshotting, or queue `put` calls.
 - returns: no helper-specific error value to the caller.
+- verify: json_path(path="return", equals=null)
 - code: groom/groom/app.py::_broadcast_shell
 
 Project and enqueue the current dashboard state for browser dashboard websocket clients after a caller has already changed, or is about to expose, workflow fleet state — and refresh the open pane for whoever is watching the run that changed.
@@ -119,6 +120,7 @@ Project and enqueue the current dashboard state for browser dashboard websocket 
 - sig: `async _push_detail(container_id: str) -> None`
 - abstract: false
 - raises: propagates exceptions from telemetry reads, projection, or queue `put` calls.
+- verify: json_path(path="exception.type", matches=".+")
 - code: groom/groom/app.py::_push_detail
 - step: Look up the queues watching `container_id` through [watchers of](run-watch-registry.md#method-watchers-of-run).
 - step: Return immediately when the list is empty, before any telemetry or log read.
@@ -131,6 +133,7 @@ Project and enqueue the current dashboard state for browser dashboard websocket 
 - sig: `async _push_watched() -> None`
 - abstract: false
 - raises: propagates exceptions from the per-run detail push.
+- verify: json_path(path="exception.type", equals="RuntimeError")
 - code: groom/groom/app.py::_push_watched
 - step: Read the set of run ids some tab currently has open through [watched ids](run-watch-registry.md#method-watched-run-ids).
 - step: Push each one's detail to its watchers, so clock-derived text in an open pane stays true for a run that emitted no state change.

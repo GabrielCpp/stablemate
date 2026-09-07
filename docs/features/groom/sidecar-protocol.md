@@ -26,10 +26,6 @@ up to groom, and groom queries the container's sidecar back down.
 
 ## Container → host (fire-and-forget push)
 
-- `groom-sidecar` watches `/workspace` + `/runs` with `watchfiles` and POSTs
-  `progress` / `blocked` events to the host groom at
-  `http://host.docker.internal:8787/push/*`. A one-shot `exited` push is fired
-  by the entrypoint after the workflow returns.
 - Every push is best-effort: a short (1.0s) timeout wrapped in a broad
   `except: pass`. It never retries and never raises — a container with no groom
   listening behaves exactly as it would without groom.
@@ -47,9 +43,16 @@ up to groom, and groom queries the container's sidecar back down.
 
 ## Invariants (load-bearing)
 
-- **Fire-and-forget discipline** on every push site: short timeout, silent on
-  failure, never blocks or changes the workflow's exit code. Preserve this in any
-  new push.
+The residual HTTP push behavior is implemented by
+`groom/groom/sidecar.py::_push` and exercised by
+`groom/tests/test_sidecar.py::test_push_is_silent_when_groom_is_unreachable`.
+
+- consistency: A residual HTTP push uses `PUSH_TIMEOUT`, which defaults to 1.0 seconds.
+- verify: json_path(path="$.timeout", equals=1.0)
+- consistency: A residual HTTP push makes exactly one request attempt when the host is unavailable.
+- verify: count(subject="HTTP request attempts", equals=1)
+- consistency: A failed residual HTTP push leaves the workflow exit status unchanged.
+- verify: exit_status(0)
 - **Linux networking gotcha:** the compose `host-gateway` maps to the docker
   bridge, not the host loopback. groom must therefore bind a bridge-reachable
   address, which is why `groom serve` now **defaults to `0.0.0.0`** (a

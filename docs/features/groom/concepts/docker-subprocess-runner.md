@@ -111,11 +111,14 @@ When the child process launches and exits before the timeout, `_run` returns the
 - sig: `_run(args: list[str], timeout: int = DOCKER_TIMEOUT, input_text: str | None = None) -> subprocess.CompletedProcess`
 - abstract: false
 - raises: process launch exceptions from the operating system and timeout exceptions from the subprocess runtime are intentionally surfaced rather than mapped to Docker-domain return values.
+- verify: json_path(path="exception.type", matches="^(FileNotFoundError|PermissionError|TimeoutExpired)$")
 - returns: a text-mode process result containing the child-process args when the child process launches and finishes before the timeout.
 - returns: a text-mode process result containing the child-process return code when the child process launches and finishes before the timeout.
 - returns: a text-mode process result containing captured stdout text when the child process launches and finishes before the timeout.
 - returns: a text-mode process result containing captured stderr text when the child process launches and finishes before the timeout.
+- verify: unchanged(subject="completed process result returned by _run")
 - code: groom/groom/docker_io.py::_run
+- detail: [Docker subprocess runner documentation](docker-subprocess-runner-documentation.md)
 - args: [field-command-argv](#field-command-argv); required; no default.
 - timeout: [field-timeout-seconds](#field-timeout-seconds); optional; default is `DOCKER_TIMEOUT`, currently 20 seconds.
 - input_text: [field-input-text](#field-input-text); optional; default is `None`.

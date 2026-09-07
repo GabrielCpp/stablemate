@@ -61,6 +61,7 @@ The `list_run_dirs` implementation in `groom/groom/docker_io.py` treats a non-ze
 - default: `alpine:3.20`
 - required: true
 - code: groom/groom/docker_io.py::ALPINE_IMAGE
+- detail: [Docker volume helper image](docker-volume-helper-image.md)
 - meaning: minimal image used for the throwaway read-only `find` process.
 - constraints: the image must provide `find` with `-mindepth`, `-maxdepth`, and `-type d` behavior for direct child directory discovery.
 
@@ -70,6 +71,7 @@ The `list_run_dirs` implementation in `groom/groom/docker_io.py` treats a non-ze
 - default: `20`
 - required: true
 - code: groom/groom/docker_io.py::DOCKER_TIMEOUT
+- detail: [Docker command timeout](docker-command-timeout.md)
 - meaning: maximum seconds allowed for the Docker command through the shared runner.
 - constraints: a timeout exception from the subprocess layer is not converted by this reader.
 
@@ -137,6 +139,7 @@ The `list_run_dirs` implementation in `groom/groom/docker_io.py` treats a non-ze
 - verify: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
 - returns: zero or more [field-returned-run-directory-name](#field-returned-run-directory-name) values sorted lexicographically.
 - code: groom/groom/docker_io.py::list_run_dirs
+- detail: [Docker run-directory listing documentation views](docker-run-directory-listing-documentation-views.md)
 - args:
   - `volume`: [field-runs-volume-name](#field-runs-volume-name), required, no default.
 

@@ -34,9 +34,12 @@ directory and keeps derived paths repository-relative.
 - type: string path
 - default: empty string
 - required: false
-- semantics: repository-relative JSON inventory of legacy surfaces to compare; an empty or unreadable path fails setup
+- semantics: repository-relative JSON inventory of legacy surfaces to compare
 - verify: json_path(path="$.baseline_inventory", matches=".*")
+- semantics: an empty or unreadable path fails setup with failure class `parity-baseline-missing`
+- verify: json_path(path="exception.failure_class", equals="parity-baseline-missing")
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor`
+- detail: [parity surveyor input roles](parity-surveyor-input-roles.md)
 
 ### survey_dir
 - type: string path
@@ -45,6 +48,7 @@ directory and keeps derived paths repository-relative.
 - semantics: repository-relative directory containing the frozen inventory, finding records, and emitted unit manifest
 - verify: json_path(path="$.survey_dir", equals="docs/survey/legacy-vs-new")
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor`
+- detail: [parity surveyor input roles](parity-surveyor-input-roles.md)
 
 ## Methods
 

@@ -54,12 +54,19 @@ Docker inspection reader is the [Groom Docker I/O module](groom-docker-io-module
 - sig: `docker_inspect(container_id: str) -> dict[str, Any] | None`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the shared runner.
+- verify: json_path(path="exception.type", matches="^(OSError|TimeoutExpired)$")
 - raises: indexing exceptions if a truthy valid JSON value is not compatible with first-item access.
+- verify: json_path(path="exception.type", matches="^(IndexError|KeyError|TypeError)$")
 - returns: the first decoded Docker inspect element for a zero-exit, valid-JSON, truthy response.
+- verify: json_path(path="result.Id", equals="container-123")
 - returns: `None` for non-zero Docker exit.
+- verify: json_path(path="result", equals=null)
 - returns: `None` for invalid JSON.
+- verify: json_path(path="result", equals=null)
 - returns: `None` for falsey decoded JSON.
+- verify: json_path(path="result", equals=null)
 - code: groom/groom/docker_io.py::docker_inspect
+- detail: [Docker inspect documentation scope](docker-inspect-documentation-scope.md)
 - args: `container_id`; required string; passed unchanged as the only Docker inspect selector token.
 
 The method is the only public Docker-inspection reader in Groom's Docker I/O layer; downstream readers and resolvers own every interpretation of the returned object.

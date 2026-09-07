@@ -26,9 +26,21 @@ context.
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story`
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.audit_story`
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story`
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/design-mockup.md`
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md`
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/audit-story.md`
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md`
 - tests: `workflows/tests/test_prompts_exist.py::test_the_prompt_file_is_there`
 - tests: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply`
 - tests: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`
+- tests: `workflows/tests/author/test_prompt_authority.py::test_writer_can_define_in_scope_behavior_without_prior_okf_authority`
+- tests: `workflows/tests/author/test_prompt_authority.py::test_writer_separates_build_scope_from_regression_invariants`
+- tests: `workflows/tests/author/test_prompt_authority.py::test_writer_records_concise_grounded_technical_notes`
+- tests: `workflows/tests/author/test_prompt_authority.py::test_auditor_does_not_demand_prior_citations_for_new_behavior`
+- tests: `workflows/tests/author/test_prompt_authority.py::test_auditor_respects_the_bare_minimum_story_boundary`
+- tests: `workflows/tests/author/test_prompt_authority.py::test_reworker_makes_in_scope_choices_instead_of_blocking`
+- tests: `workflows/tests/author/test_prompt_authority.py::test_mutating_turns_leave_validation_and_delivery_to_author`
+- tests: `workflows/tests/author/test_prompt_authority.py::test_mockup_inspection_does_not_leave_screenshot_collateral`
 - detail: [author story-author subflow](author-story-author-subflow.md)
 - detail: [workflow prompt static contracts](workflow-prompt-static-contracts.md)
 
@@ -40,8 +52,10 @@ The design turn runs only when the covered story has a frontend seed whose mocku
 design. It receives `epic`, `story_slug`, `story_dir`, `features_dir`, and `epics_dir`. It reads the
 feature book and prior story-local mockups for style and existing surface behavior, then writes
 only the current story's `mockup.html`; failure to produce a mockup is non-blocking. Its response
-is `MockupResult`: `status`, `surface`, `mockup`, and `notes`. The returned `mockup` path is passed
-to the writing turn, including an empty path when design failed.
+is [MockupResult](../mockup-result.md): `status`, `surface`, `mockup`, and `notes`. The returned
+`mockup` path is passed to the writing turn, including an empty path when design failed. Browser
+inspection is ephemeral: screenshots, evidence, and rendered exports are not written to the
+repository.
 
 ### write-story.md
 
@@ -52,7 +66,7 @@ Acceptance Criteria, Non-Functional Acceptance Criteria, Technical Notes, and th
 sections preserved. The focused contract is grounded in existing feature-book nodes where present;
 new in-scope behavior may be made explicit, but implementation plans and proposed component or
 library choices are excluded. A blocked product or scope decision returns `status: "blocked"` with
-the question in `notes`; a successful turn returns `status` and `notes` in `WriteStoryResult`.
+the question in `notes`; a successful turn returns `status` and `notes` in [WriteStoryResult](../write-story-result.md).
 
 ### audit-story.md
 
@@ -63,7 +77,8 @@ hidden decisions, changed-journey completeness, classification, and technical gr
 the independent audit section to the story-local audit artifact and returns `AuditResult`; the
 workflow uses `findings`, not free-text `status`, as the verdict. A finding has `id`, one of
 `journey`, `chrome`, `transient-feedback`, or `grounding` as `kind`, plus its `target`, `issue`, and
-`repair`. An empty findings list is a pass; non-empty findings are routed to bounded rework.
+`repair` as specified by [AuditFinding](../audit-finding.md). The response is [AuditResult](../audit-result.md);
+an empty `findings` list is a pass, while non-empty findings are routed to bounded rework.
 
 ### rework-story.md
 
@@ -74,4 +89,6 @@ addresses every supplied validation or audit finding without rewriting correct m
 dependencies and fixtures under their owning workflow stages, resolves open decisions when the
 existing epic or evidence settles them, and returns `status` and `notes` in the same
 `WriteStoryResult` shape as the writing turn. Operator feedback is applied within the existing epic
-scope; a request that requires a new product or scope decision returns `status: "blocked"`.
+scope; a request that requires a new product or scope decision returns `status: "blocked"`. It does
+not install dependencies, run repository-wide checks, stage, commit, push, or alter branches or
+remotes.

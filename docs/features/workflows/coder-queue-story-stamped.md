@@ -20,6 +20,7 @@ whether that write replaced a previous attempt outcome.
 - semantics: whether the story's `QA passed` status was written
 - verify: json_path(path="$.stamped", equals=false)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryStamped`
+- detail: [coder queue story stamped field roles](concepts/coder-queue-story-stamped-field-roles.md)
 
 ### superseded_outcome
 - type: boolean
@@ -28,3 +29,4 @@ whether that write replaced a previous attempt outcome.
 - semantics: whether the passing status replaced a prior non-default story outcome
 - verify: json_path(path="$.superseded_outcome", equals=false)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryStamped`
+- detail: [coder queue story stamped field roles](concepts/coder-queue-story-stamped-field-roles.md)

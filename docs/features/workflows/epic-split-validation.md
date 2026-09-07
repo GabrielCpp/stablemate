@@ -20,6 +20,7 @@ which milestone and epics were observed.
 - semantics: true only when every epic-split invariant passes
 - verify: json_path(path="$.ok", equals=False)
 - code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation`
+- detail: [epic split validation field roles](concepts/epic-split-validation-field-roles.md)
 
 ### milestone_path
 - type: string repository-relative path
@@ -28,14 +29,16 @@ which milestone and epics were observed.
 - semantics: validated roadmap-owned milestone path, or empty when no unique match exists
 - verify: json_path(path="$.milestone_path", equals="")
 - code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation`
+- detail: [epic split validation field roles](concepts/epic-split-validation-field-roles.md)
 
 ### ordered_epics
 - type: list of strings
 - default: empty list
 - required: true
 - semantics: non-empty milestone epic names in their authored order when a unique milestone exists
-- verify: json_path(path="$.ordered_epics", equals=[])
+- verify: json_path(path="$.ordered_epics", matches="^\\[\\]$")
 - code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation`
+- detail: [epic split validation field roles](concepts/epic-split-validation-field-roles.md)
 
 ### errors
 - type: string
@@ -44,3 +47,4 @@ which milestone and epics were observed.
 - semantics: newline-separated validation findings
 - verify: json_path(path="$.errors", equals="")
 - code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation`
+- detail: [epic split validation field roles](concepts/epic-split-validation-field-roles.md)

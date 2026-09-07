@@ -21,6 +21,7 @@ story and expose dependency-order progress.
 - semantics: whether a story was selected
 - verify: json_path(path="$.has_story", equals=False)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice`
+- detail: [story choice field roles](concepts/story-choice-field-roles.md)
 
 ### story_path
 - type: string path
@@ -29,6 +30,7 @@ story and expose dependency-order progress.
 - semantics: path to the selected story document
 - verify: json_path(path="$.story_path", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice`
+- detail: [story choice field roles](concepts/story-choice-field-roles.md)
 
 ### story_slug
 - type: string
@@ -37,6 +39,7 @@ story and expose dependency-order progress.
 - semantics: selected story identifier
 - verify: json_path(path="$.story_slug", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice`
+- detail: [story choice field roles](concepts/story-choice-field-roles.md)
 
 ### story_dir
 - type: string path
@@ -45,6 +48,7 @@ story and expose dependency-order progress.
 - semantics: directory containing the selected story
 - verify: json_path(path="$.story_dir", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice`
+- detail: [story choice field roles](concepts/story-choice-field-roles.md)
 
 ### reason
 - type: string
@@ -53,6 +57,7 @@ story and expose dependency-order progress.
 - semantics: selection or exhaustion explanation
 - verify: json_path(path="$.reason", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice`
+- detail: [story choice field roles](concepts/story-choice-field-roles.md)
 
 ### progress
 - type: string
@@ -61,6 +66,7 @@ story and expose dependency-order progress.
 - semantics: human-readable completed and remaining progress
 - verify: json_path(path="$.progress", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice`
+- detail: [story choice field roles](concepts/story-choice-field-roles.md)
 
 ### remaining_count
 - type: integer
@@ -69,3 +75,4 @@ story and expose dependency-order progress.
 - semantics: count of stories still needing authoring
 - verify: json_path(path="$.remaining_count", equals=0)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice`
+- detail: [story choice field roles](concepts/story-choice-field-roles.md)

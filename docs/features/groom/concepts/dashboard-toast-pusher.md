@@ -14,6 +14,7 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - code: groom/groom/assets/dashboard.js::onAnswered
 - code: groom/groom/assets/dashboard.css::#toasts
 - code: groom/groom/assets/dashboard.css::.toast
+- detail: [blocked notification delivery](blocked-notification-delivery.md)
 
 ## Contract
 
@@ -88,6 +89,7 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - sig: `pushToast(variant, titleText, bodyText, ttl) -> void`
 - abstract: false
 - raises: none intentionally caught or transformed by groom.
+- verify: absent(subject="a groom-transformed exception from pushToast")
 - code: groom/groom/assets/dashboard.js::pushToast
 - step: Create one `div` element for the toast root.
 - step: Set the root class string to `toast ` followed by the caller-supplied variant.
@@ -102,7 +104,9 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - sig: `onNotify(message) -> void`
 - abstract: false
 - raises: none intentionally caught or transformed by groom.
+- verify: absent(subject="a groom-transformed exception")
 - code: groom/groom/assets/dashboard.js::onNotify
+- detail: [blocked notification delivery](blocked-notification-delivery.md)
 - step: Receive the `message` string carried by a `{"type": "notify"}` frame, dispatched by the socket frame handler.
 - step: Compute the visible body as `message || "A workflow needs your input."`.
 - step: Call `pushToast("blocked", "⛔ worker blocked", body, 7000)` before any optional system-notification check.

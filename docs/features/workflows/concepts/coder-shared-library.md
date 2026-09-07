@@ -93,7 +93,7 @@ permissive result models that ignore unknown keys and drop null values before ap
 - does: accepts only string entries containing the first `=` separator
 - verify: count(subject="source-root entries accepted after parsing", equals=1)
 - does: groups the trimmed right-hand paths under each trimmed surface name, preserving input order
-- verify: json_path(path="$.api", equals=["src/api"])
+- verify: json_path(path="$.api[0]", equals="src/api")
 - returns: a surface-to-path-list mapping, with malformed entries ignored
 - verify: json_path(path="$.unknown", absent=true)
 - code: `workflows/src/workhorse_workflows/coder/shared/qa_support.py::parse_source_roots`
@@ -115,11 +115,11 @@ permissive result models that ignore unknown keys and drop null values before ap
 
 - sig: `failed_assertions(log_path: Path) -> dict[str, list[str]]`
 - does: considers only assertion records whose case-insensitive trimmed `result` is `FAIL`
-- verify: json_path(path="$.copy-link", equals=["copy-link-1"])
+- verify: json_path(path="$.copy-link", matches="^\\['copy-link-1'\\]$")
 - does: ignores failed records without a non-empty trimmed scenario name
 - verify: json_path(path="$.", absent=true)
 - returns: scenario names mapped to failed assertion ids in log order, using `?` when an id is absent
-- verify: json_path(path="$.copy-link", equals=["copy-link-1", "?"])
+- verify: json_path(path="$.copy-link", matches="^\\['copy-link-1', '\\?'\\]$")
 - code: `workflows/src/workhorse_workflows/coder/shared/qa_support.py::failed_assertions`
 
 ### scored_run_log
@@ -250,7 +250,10 @@ also `blocked`, never an implicit `done`.
 
 - sig: `check_repos_clean(logger: logging.Logger, story_slug: str = "", spec_dir: str = "", preexisting: list[str] | None = None, repo_dir: str = "", workspace_file: str = "") -> WorktreeCleanliness`
 - does: resolves repositories affected by the story plan, falling back to the repository root when none are named
-- does: reports staged, unstaged, and untracked paths after subtracting untouched pre-existing paths and gate context files
+- does: reports staged, unstaged, and untracked paths
+- verify: count(subject="story-owned staged, unstaged, and untracked paths", equals=3)
+- does: subtracts untouched pre-existing paths and gate context files from the reported paths
+- verify: count(subject="story-owned paths after pre-existing and gate context exclusions", equals=1)
 - returns: `clean=true` only when no story-owned uncommitted paths remain, with repository names and dirty paths
 - verify: json_path(path="$.clean", equals=true)
 - code: `workflows/src/workhorse_workflows/coder/shared/queue.py::check_repos_clean`

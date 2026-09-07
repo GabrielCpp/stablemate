@@ -19,6 +19,7 @@ falsey `terminal` values all mean no terminal marker is available.
 - file: `/runs/<latest-run-directory>/run.json`
 - code: groom/groom/sidecar.py::_terminal
 - code: groom/groom/discovery.py::_current_run_state
+- detail: [volume run-state evidence](concepts/volume-run-state-evidence.md)
 - verify: groom/tests/test_sidecar.py::test_terminal_reads_latest_run_json
 - verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
 - verify: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
@@ -73,8 +74,10 @@ falsey `terminal` values all mean no terminal marker is available.
   resolution marks the workflow finished before applying gate evidence, so stale
   or simultaneous awaiting gate files do not become actionable for that resolver
   pass.
-- persistence: Groom never writes, edits, deletes, repairs, or creates this file;
-  it derives transient state evidence and leaves the runs volume unchanged.
+- persistence: sidecar-run-metadata — Groom never writes, edits, deletes, repairs, or creates this file.
+- verify: unchanged(subject="the selected run.json file")
+- persistence: runs-volume — Groom leaves the runs volume unchanged after reading this file.
+- verify: unchanged(subject="the runs volume")
 
 ## Fields
 

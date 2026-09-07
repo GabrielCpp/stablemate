@@ -11,6 +11,8 @@ topology, while leaving unrelated epic findings to other gates. The caller may p
 stories during an intermediate split pass; the default authored requirement includes that finding.
 
 - code: `workflows/src/workhorse_workflows/author/main/nodes/coverage.py::validate_coverage`
+- tests: `workflows/tests/author/story_split/test_flow.py::test_coverage_findings_drive_a_bounded_resplit_worklist`
+- tests: `workflows/tests/author/story_split/test_flow.py::test_blocked_coverage_resolves_then_rechecks_the_same_epic`
 - detail: [story split subflow](story-split-subflow.md)
 - detail: [coverage defects](../coverage-defects.md)
 - detail: [author shared paths](author-shared-paths.md)

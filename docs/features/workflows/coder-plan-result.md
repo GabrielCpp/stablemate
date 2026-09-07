@@ -31,8 +31,10 @@ title: Coder plan result
 - type: `list[PlanService]`
 - default: empty list
 - required: false
-- semantics: services changed by the story; an empty list permits repository-root dispatch
+- semantics: services changed by the story
 - verify: json_path(path="$.services", matches=".*")
+- semantics: an empty list permits repository-root dispatch
+- verify: json_path(path="$.services", matches="^\\[\\]$")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.services`
 
 ### implementation_order

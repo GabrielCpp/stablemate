@@ -63,38 +63,57 @@ branch name), `pr_number` (optional explicit pull request selector), `docs_path`
 uses one session key, `ci-fix:<branch>:<repo>`, per repository and resets that session whenever
 the repository settles or the flow exits without another fixer turn.
 
+The flow's terminal result is always a `Done` carrying the last `CiChecks` status, except when a poll
+cannot read an existing CI surface and raises `WorkflowFailed`. A terminal reason replaces the last
+poll summary, while each repository recorded in `unread` is appended to that summary. If no poll ran,
+the status is `unavailable`.
+
 ## Steps
 
 ### setup
 
+- kind: prepare
+
 `setup` resolves the workspace and documentation directories once and returns a
 [workspace directory set](../workspace-dirs.md). The docs root is prepended when it is not already
-one of the existing directories. A resumed run carries that result rather than re-deriving it.
+one of the existing directories. It calls `resolve_workspace_dirs` through the workflow context,
+and a resumed run carries that result rather than re-deriving it.
 
 ### start
+
+- kind: drive
 
 `start` calls `select_ci_repo` with the configured repository name and the loop's processed list.
 An explicit repository is selected once; an empty name selects each workspace repository in order.
 The selected repository is added to `processed` immediately, including when its later CI check
 exhausts the budget. A named repository absent from the workspace is skipped with an empty pick.
 When no repository is selected, `start` finishes with the last CI verdict or an `unavailable`
-result when no poll ran.
+result when no poll ran. The selected repository name, checkout path, and updated processed list
+are copied into the next `CiLoop` value before `poll` runs.
 
 ### poll
+
+- kind: health
 
 `poll` calls `poll_pr_checks` for the selected repository directory, branch, and optional PR number.
 `blocked` raises `WorkflowFailed` because CI existed but could not be read. `unavailable` is
 recorded in `unread` and follows the passed/advance path because there is no CI verdict to repair.
 `passed` advances to `start`. A `failed` verdict is handed to `fix` while the lifetime attempt
-budget is below three; once it reaches three, the flow finishes with the last failed summary.
+budget is below three; once it reaches three, the flow finishes with the last failed summary. A
+repository session is reset when `passed` or `unavailable` advances the outer loop, and when the
+attempt budget ends.
 
 ### fix
+
+- kind: drive
 
 `fix` runs the `fix-ci` agent turn in the selected repository directory, adds the resolved docs and
 workspace directories, and supplies the branch, the epic derived by removing `feat/`, and the
 poll's failure summary. The turn uses medium power and the per-repository session key. A
 `blocked` fixer result finishes as failed and resets that session. `fixed` and `failed` both
-continue to `push`, because only the subsequent poll decides whether CI is green.
+continue to `push`, because only the subsequent poll decides whether CI is green. The agent turn
+is the only work in this state, so a checkpointed interruption resumes at `fix` with the same
+repository, summary, and session rather than repeating the preceding poll.
 
 The `fix-ci` prompt requires the agent to confirm the current branch without switching it, inspect
 the reported Actions run and job logs through the Actions API, reproduce the failure with bounded
@@ -104,6 +123,8 @@ with an exact `Epic: <epic>` trailer and never pushes; the flow's `push` state o
 Its final response must be the declared [CI fixer result](../fix-ci-result.md) JSON object.
 
 ### push
+
+- kind: run
 
 `push` calls `push_ci_fix` for the selected repository and branch. `pushed` and `unavailable`
 continue to `poll` and increment the shared attempt count. Any other push status finishes as

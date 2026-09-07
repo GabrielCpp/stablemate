@@ -20,6 +20,7 @@ preserves the agent's notes.
 - semantics: whether the epic rewrite completed
 - verify: json_path(path="$.status", equals="blocked")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult`
+- detail: [epic rewrite result field roles](concepts/epic-rewrite-result-field-roles.md)
 
 ### notes
 - type: string
@@ -28,3 +29,4 @@ preserves the agent's notes.
 - semantics: agent notes accompanying the rewrite outcome
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult`
+- detail: [epic rewrite result field roles](concepts/epic-rewrite-result-field-roles.md)

@@ -23,11 +23,18 @@ what lets the confirmation carry nothing but the toast: the detail push that tra
 with the same command has already replaced the pane's gate list, so no tab re-fetches.
 
 - start: a workflow container has an operator gate whose context file still
-  reads `STATUS: AWAITING_OPERATOR`. The groom process is running, at least one
-  dashboard tab has loaded the dashboard and opened [WS /ws](../http/groom.md#websocket-dashboard),
-  and the workflow is either about to be marked blocked by a push, discovered
+  reads `STATUS: AWAITING_OPERATOR`.
+- verify: json_path(path="gate.status", equals="AWAITING_OPERATOR")
+- start: the groom process is running.
+- verify: json_path(path="process.status", equals="running")
+- start: at least one dashboard tab has loaded the dashboard.
+- verify: visible(locator="#runs-list")
+- start: at least one dashboard tab has opened [WS /ws](../http/groom.md#websocket-dashboard).
+- verify: visible(locator="[data-conn]", text="live")
+- start: the workflow is either about to be marked blocked by a push, discovered
   from existing Docker/run state, or already present with an open [gate info](../concepts/gate-info.md)
   record.
+- verify: json_path(path="workflow.entry", matches="push|discovery|gate-info")
 - steps:
   1. A blocked gate reaches groom through one of the supported sources. A valid
      [blocked push payload](../blocked-push-payload.md) sent to [receive blocked push](../http/groom.md#receive-blocked-push)
@@ -146,6 +153,9 @@ with the same command has already replaced the pane's gate list, so no tab re-fe
 - end: after any failed answer attempt, the gate remains visible in both the
   runs list and every open pane for that run.
 - verify: emitted(event="answered", count=1)
+- detail: [dashboard websocket flow contexts](../concepts/dashboard-websocket-flow-contexts.md)
+- detail: [blocked push flow contexts](../concepts/blocked-push-flow-contexts.md)
+- detail: [workflow discovery scan](../concepts/workflow-discovery-scan.md)
 - tests: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event,
   groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch,
   groom/tests/test_app.py::test_watch_registers_the_tab_and_pushes_that_run_immediately,

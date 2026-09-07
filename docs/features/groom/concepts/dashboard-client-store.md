@@ -140,6 +140,7 @@ The store is also the boundary that decides what is fleet-wide and what is per-t
 - sig: `applyState(msg) -> void`
 - abstract: false
 - raises: none.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/assets/dashboard.js::applyState
 - step: Write `runs`, `status`, and `scanning` from the payload, defaulting each to what is already held rather than to nothing.
 - step: Notify every subscriber once, with one new snapshot.
@@ -149,17 +150,23 @@ The store is also the boundary that decides what is fleet-wide and what is per-t
 
 - sig: `applyRun(msg) -> void`
 - abstract: false
+- does: Ignore a message with no `run` body.
+- verify: unchanged(subject="dashboard store after an applyRun message without a run body")
+- does: Copy the current list and replace the row with the same id.
+- verify: unchanged(subject="dashboard run rows other than the matching id")
+- does: Append the row when the run is new.
+- verify: created(subject="new dashboard run row")
+- does: Re-sort by `(rank, name)` — the server's own order — and write the list back.
+- verify: json_path(path="runs.0.id", equals="run-a")
 - raises: none.
 - code: groom/groom/assets/dashboard.js::applyRun
-- step: Ignore a message with no `run` body.
-- step: Copy the current list, replace the row with the same id, or append it when the run is new.
-- step: Re-sort by `(rank, name)` — the server's own order — and write the list back.
 
 ### method-set-in
 
 - sig: `setIn(key, patch) -> void`
 - abstract: false
 - raises: none.
+- verify: unchanged(subject="dashboard store slices other than the updated panel")
 - code: groom/groom/assets/dashboard.js::setIn
 - step: Shallow-merge `patch` into the named slice and write the merged slice back as a new object, leaving every other slice untouched.
 
@@ -168,6 +175,7 @@ The store is also the boundary that decides what is fleet-wide and what is per-t
 - sig: `useStore() -> snapshot`
 - abstract: false
 - raises: none.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/assets/dashboard.js::useStore
 - step: Seed component state with the current snapshot.
 - step: Subscribe on mount and return the unsubscribe function as the effect's cleanup.
@@ -179,7 +187,9 @@ The store is also the boundary that decides what is fleet-wide and what is per-t
 - abstract: false
 - raises: none.
 - raises: a failed fetch is swallowed.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/assets/dashboard.js::select
+- detail: [dashboard run selection](dashboard-run-selection.md)
 - step: Bump the selection sequence and write `{selected: id, detail: null}` so the pane visibly changes immediately.
 - step: Send the `watch` subscription, which is what makes future changes to this run arrive without polling.
 - step: Fetch this run's detail once, for the case where nothing changes soon enough to push.
@@ -191,6 +201,7 @@ The store is also the boundary that decides what is fleet-wide and what is per-t
 - sig: `onDetail(msg) -> void`
 - abstract: false
 - raises: none.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/assets/dashboard.js::onDetail
 - step: Ignore the frame unless its id is the currently selected run.
 - step: Replace `detail` with the whole pushed body — gates included — because the keyed component tree makes a full replacement non-destructive.

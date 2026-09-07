@@ -18,7 +18,9 @@ JSON matching the [greeting](hello-world-greeting.md) shape without reading or w
 ### name
 
 - type: `str`
-- default: none; the workflow always renders a configured name
+- default: none
+- verify: json_path(path="$.name", equals="globex")
+- default: the workflow always renders a configured name
 - verify: json_path(path="$.name", equals="globex")
 - required: true
 - verify: json_path(path="$.name", equals="globex")
@@ -29,7 +31,9 @@ JSON matching the [greeting](hello-world-greeting.md) shape without reading or w
 ### letters
 
 - type: `int`
-- default: none; the workflow always renders its measured count
+- default: none
+- verify: json_path(path="$.letters", equals=6)
+- default: the workflow always renders its measured count
 - verify: json_path(path="$.letters", equals=6)
 - required: true
 - verify: json_path(path="$.letters", equals=6)
@@ -40,7 +44,9 @@ JSON matching the [greeting](hello-world-greeting.md) shape without reading or w
 ### greeting
 
 - type: `str`
-- default: none; the agent must return the JSON key
+- default: none
+- verify: json_path(path="$.greeting", equals="Hello, globex.")
+- default: the agent must return the JSON key
 - verify: json_path(path="$.greeting", equals="Hello, globex.")
 - required: true
 - verify: json_path(path="$.greeting", equals="Hello, globex.")

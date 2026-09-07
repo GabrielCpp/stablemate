@@ -14,6 +14,8 @@ and Docker discovery paths to rebuild a [workflow container](concepts/workflow-c
 current node, finished/running/blocked state, and open [gate info](concepts/gate-info.md)
 records from local run metadata and [operator gate context files](operator-gate-context-file.md).
 
+- file: not an on-disk artifact; this is an in-memory object serialized as JSON
+  for sidecar query stdout and websocket `hello` frames.
 - code: groom/groom/sidecar.py::snapshot
 - verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
 - verify: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch
@@ -23,8 +25,6 @@ records from local run metadata and [operator gate context files](operator-gate-
 - verify: groom/tests/test_app.py::test_apply_hello_running_when_no_gates
 - verify: groom/tests/test_app.py::test_apply_hello_finished_when_terminal
 - verify: groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively
-- file: not an on-disk artifact; this is an in-memory object serialized as JSON
-  for sidecar query stdout and websocket `hello` frames.
 
 ## Contract
 
@@ -55,8 +55,10 @@ records from local run metadata and [operator gate context files](operator-gate-
   workflow type, run id, timestamp, exit code, sequence number, or cursor; those
   values come from sidecar identity, Docker inspect, residual push payloads, or
   the existing workflow record.
-- consistency rule: each field reflects its own read path; the format is not a
-  transactionally locked view across the runs and workspace mounts.
+- consistency rule: sidecar-snapshot-data — each field reflects its own read
+  path.
+- consistency rule: sidecar-snapshot-data — the format is not a transactionally locked view across the
+  runs and workspace mounts.
 - serialization rule: query mode and websocket hello delivery use ordinary JSON
   serialization with no custom encoder; values inside this object must therefore
   be JSON-serializable as produced by the local file readers and gate scanner.

@@ -26,6 +26,7 @@ loading does not create a surface inventory.
 - semantics: absolute repository root selected from the explicit input or repository markers and used for graph and artifact operations
 - verify: json_path(path="$.repo_root", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### backlog_path
 - type: repository-relative string path
@@ -34,6 +35,7 @@ loading does not create a surface inventory.
 - semantics: configured backlog path used for story, story-edit, and epic-edit intake checks
 - verify: json_path(path="$.backlog_path", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### roadmap_path
 - type: repository-relative string path
@@ -42,6 +44,7 @@ loading does not create a surface inventory.
 - semantics: the sole approved roadmap path in epic mode, or an empty path in other modes
 - verify: json_path(path="$.roadmap_path", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### epics_dir
 - type: repository-relative string path
@@ -50,6 +53,7 @@ loading does not create a surface inventory.
 - semantics: configured epic directory used to resolve the selected epic
 - verify: json_path(path="$.epics_dir", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### features_dir
 - type: string path
@@ -58,14 +62,16 @@ loading does not create a surface inventory.
 - semantics: configured feature-book directory exposed as read-only grounding to author prompts
 - verify: json_path(path="$.features_dir", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### layers
 - type: list of strings
 - default: empty list
 - required: false
 - semantics: best-effort local-instruction skill paths used as prompt layer hints
-- verify: json_path(path="$.layers", equals=[])
+- verify: json_path(path="$.layers", matches="^\\[\\]$")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ## Methods
 
@@ -97,7 +103,7 @@ loading does not create a surface inventory.
 - does: reads `agents.yml` from the resolved repository when it is a regular file
 - verify: count(subject="author template reads", equals=1)
 - does: returns an empty mapping when the file is missing, unreadable, invalid YAML, or contains a non-mapping value
-- verify: json_path(path="$.template", equals={})
+- verify: json_path(path="$.template", matches="^\\{\\}$")
 - returns: the parsed YAML mapping or an empty mapping
 - verify: json_path(path="$.template", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::_template`

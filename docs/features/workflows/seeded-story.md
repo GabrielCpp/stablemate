@@ -20,6 +20,7 @@ reused story paths, the source bullet identity, provenance, and the reason for t
 - semantics: epic directory receiving the seeded story
 - verify: json_path(path="$.epic_dir", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory`
+- detail: [seeded story field roles](concepts/seeded-story-field-roles.md)
 
 ### story_slug
 - type: string
@@ -28,6 +29,7 @@ reused story paths, the source bullet identity, provenance, and the reason for t
 - semantics: created or reused story identifier
 - verify: json_path(path="$.story_slug", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory`
+- detail: [seeded story field roles](concepts/seeded-story-field-roles.md)
 
 ### story_dir
 - type: string path
@@ -36,6 +38,7 @@ reused story paths, the source bullet identity, provenance, and the reason for t
 - semantics: directory of the created or reused story
 - verify: json_path(path="$.story_dir", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory`
+- detail: [seeded story field roles](concepts/seeded-story-field-roles.md)
 
 ### story_path
 - type: string path
@@ -44,6 +47,7 @@ reused story paths, the source bullet identity, provenance, and the reason for t
 - semantics: story document path
 - verify: json_path(path="$.story_path", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory`
+- detail: [seeded story field roles](concepts/seeded-story-field-roles.md)
 
 ### bullet_id
 - type: string
@@ -52,6 +56,7 @@ reused story paths, the source bullet identity, provenance, and the reason for t
 - semantics: source backlog or literal bullet identifier
 - verify: json_path(path="$.bullet_id", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory`
+- detail: [seeded story field roles](concepts/seeded-story-field-roles.md)
 
 ### from_backlog
 - type: boolean
@@ -60,6 +65,7 @@ reused story paths, the source bullet identity, provenance, and the reason for t
 - semantics: whether the source bullet came from the configured backlog
 - verify: json_path(path="$.from_backlog", equals=False)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory`
+- detail: [seeded story field roles](concepts/seeded-story-field-roles.md)
 
 ### reason
 - type: string
@@ -68,3 +74,4 @@ reused story paths, the source bullet identity, provenance, and the reason for t
 - semantics: explanation of creation or reuse
 - verify: json_path(path="$.reason", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory`
+- detail: [seeded story field roles](concepts/seeded-story-field-roles.md)

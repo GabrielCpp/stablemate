@@ -20,6 +20,7 @@ work whose ownership or recording is unclear.
 - semantics: whether the shown worktree state is safely recorded or needs an operator decision
 - verify: json_path(path="$.status", equals="blocked")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeSettled`
+- detail: [coder queue worktree settled field roles](concepts/coder-queue-worktree-settled-field-roles.md)
 
 ### notes
 - type: string
@@ -28,3 +29,4 @@ work whose ownership or recording is unclear.
 - semantics: per-package record of committed paths or reasons paths were deliberately left
 - verify: json_path(path="$.notes", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeSettled`
+- detail: [coder queue worktree settled field roles](concepts/coder-queue-worktree-settled-field-roles.md)

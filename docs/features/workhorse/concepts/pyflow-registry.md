@@ -21,6 +21,7 @@ the entry class's import package supplies the root.
 ### Registry.__init__
 - sig: `Registry(name: str = "", package: str | None = None)`
 - does: creates an empty registry
+- verify: created(subject="the workflow registry")
 - verify: count(subject="blueprints in a newly constructed registry", equals=0)
 - does: records the module that constructed it in `module`
 - verify: json_path(path="$.registry.module", matches="^test_pyflow$")

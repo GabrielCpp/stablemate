@@ -25,6 +25,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - semantics: persistent HOME containing Claude state, credentials, and onboarding data
 - verify: json_path(path="Layout.claude_home.semantics", equals="persistent HOME containing Claude state, credentials, and onboarding data")
 - code: `workhorse/supervisor.py::Layout`
+- detail: [Layout storage locations](layout-storage-locations.md)
 
 ### workspace
 - type: `Path`
@@ -35,6 +36,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - semantics: writable root where checked-out repositories are materialized
 - verify: json_path(path="Layout.workspace.semantics", equals="writable root where checked-out repositories are materialized")
 - code: `workhorse/supervisor.py::Layout`
+- detail: [Layout storage locations](layout-storage-locations.md)
 
 ### runs
 - type: `Path`
@@ -45,6 +47,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - semantics: writable root for run artifacts
 - verify: json_path(path="Layout.runs.semantics", equals="writable root for run artifacts")
 - code: `workhorse/supervisor.py::Layout`
+- detail: [Layout storage locations](layout-storage-locations.md)
 
 ### settings_src
 - type: `Path`
@@ -55,6 +58,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - semantics: optional read-only host settings seed copied on every start
 - verify: json_path(path="Layout.settings_src.semantics", equals="optional read-only host settings seed copied on every start")
 - code: `workhorse/supervisor.py::Layout`
+- detail: [Layout storage locations](layout-storage-locations.md)
 
 ### credentials_src
 - type: `Path`
@@ -65,6 +69,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - semantics: optional read-only host credentials seed used only when the persistent volume has no credentials
 - verify: json_path(path="Layout.credentials_src.semantics", equals="optional read-only host credentials seed used only when the persistent volume has no credentials")
 - code: `workhorse/supervisor.py::Layout`
+- detail: [Layout storage locations](layout-storage-locations.md)
 
 ### observer_src
 - type: `Path`
@@ -75,6 +80,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - semantics: optional host bind containing the observer source
 - verify: json_path(path="Layout.observer_src.semantics", equals="optional host bind containing the observer source")
 - code: `workhorse/supervisor.py::Layout`
+- detail: [Layout storage locations](layout-storage-locations.md)
 
 ### live_root
 - type: `Path`
@@ -85,6 +91,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - semantics: container-local root for complete per-generation source copies
 - verify: json_path(path="Layout.live_root.semantics", equals="container-local root for complete per-generation source copies")
 - code: `workhorse/supervisor.py::Layout`
+- detail: [Layout storage locations](layout-storage-locations.md)
 
 ### image_workhorse
 - type: `Path`
@@ -95,6 +102,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - semantics: in-image workhorse checkout supplied to the observer's editable environment
 - verify: json_path(path="Layout.image_workhorse.semantics", equals="in-image workhorse checkout supplied to the observer's editable environment")
 - code: `workhorse/supervisor.py::Layout`
+- detail: [Layout storage locations](layout-storage-locations.md)
 
 ## Methods
 
@@ -240,8 +248,12 @@ reaping. The observer is optional and never changes the run's outcome.
 
 ### Child
 - sig: `Child(cmd: Sequence[str], env: Mapping[str, str] = {}, proc: Process | None = None, stopping: bool = False)`
-- does: stores one subprocess command and the environment used to launch it
+- does: stores the configured subprocess command for a later launch
+- verify: json_path(path="$.child.cmd[0]", equals="workhorse-demo")
+- does: stores the environment used to launch the configured subprocess
+- verify: json_path(path="$.child.env.WORKFLOW", equals="demo")
 - does: records a stop request so a signal arriving during spawn is honored after a process exists
+- verify: emitted(event="SIGTERM forwarded to subprocess after spawn", count=1)
 - code: `workhorse/supervisor.py::Child`
 
 ### start
@@ -261,7 +273,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - does: sends the signal to a live child and ignores a process that has already disappeared
 - verify: emitted(event="signal delivered to live child", count=1)
 - returns: `None`
-- verify: json_path(path="return value", equals=null)
+- verify: json_path(path="return value", equals="None")
 - code: `workhorse/supervisor.py::Child.signal`
 - tests: `workhorse/tests/test_supervisor.py::test_sigterm_reaches_the_run_so_docker_stop_stays_graceful`
 
@@ -291,8 +303,14 @@ reaping. The observer is optional and never changes the run's outcome.
 ### main
 - sig: `main(argv: Sequence[str] | None = None) -> int`
 - does: configures logging, registers SIGUSR1 fault dumps, and sets a group-writable umask
+- verify: created(subject="SIGUSR1 fault-dump handler")
+- verify: json_path(path="$.umask", equals=2)
 - does: pins HOME to the persistent Claude state directory and snapshots the process environment
+- verify: json_path(path="$.child.environment.HOME", equals="/claude-state")
 - does: checks writable mounts, seeds Claude state, configures Git, translates parameters, checks out repositories, and writes the boundary parameter file before spawning children
+- verify: json_path(path="$.preflight.call_order", equals="require_writable,seed_claude_home,configure_git,run_params,checkout,write_boundary_params")
 - does: installs the optional observer and supervises the workflow with a reload refresh callback
+- verify: json_path(path="$.reload.source.name", equals="groom")
 - returns: the workflow's final exit code
+- verify: exit_status(code=7)
 - code: `workhorse/supervisor.py::main`

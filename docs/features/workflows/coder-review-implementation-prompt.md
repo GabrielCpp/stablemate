@@ -26,6 +26,7 @@ available repository and story context.
 - semantics: story document defining the implementation scope and acceptance criteria
 - verify: json_path(path="$.story_path", matches=".+")
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review`
+- detail: [coder review implementation inputs](concepts/coder-review-implementation-inputs.md)
 
 ### spec_dir
 - type: `str path`
@@ -33,6 +34,7 @@ available repository and story context.
 - semantics: directory containing the implementation plan and receiving review artifacts
 - verify: json_path(path="$.spec_dir", matches=".+")
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review`
+- detail: [coder review implementation inputs](concepts/coder-review-implementation-inputs.md)
 
 ### affected_repo_paths
 - type: `list[str path]`
@@ -40,6 +42,7 @@ available repository and story context.
 - semantics: repositories whose implementation and tests are compared with the story
 - verify: json_path(path="$.affected_repo_paths", matches=".+")
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review`
+- detail: [coder review implementation inputs](concepts/coder-review-implementation-inputs.md)
 
 ### must_fix_findings
 - type: `str markdown`
@@ -47,13 +50,17 @@ available repository and story context.
 - semantics: rendered findings scored at least 80, including their category, target, issue, and required repair
 - verify: json_path(path="$.must_fix_findings", matches=".+")
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::findings_block`
+- detail: [review finding priority](concepts/review-finding-priority.md)
 
 ### advisory_findings
 - type: `str markdown`
 - required: true
-- semantics: rendered findings scored below 80; they inform judgement but cannot by themselves require changes
+- semantics: rendered findings scored below 80
+- verify: json_path(path="$.advisory_findings", matches=".+")
+- semantics: advisory findings inform judgement but cannot by themselves require changes
 - verify: json_path(path="$.advisory_findings", matches=".+")
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::findings_block`
+- detail: [review finding priority](concepts/review-finding-priority.md)
 
 ### status
 - type: `Literal[approved, needs_changes, blocked]`

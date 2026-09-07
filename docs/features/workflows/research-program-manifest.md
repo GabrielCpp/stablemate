@@ -47,7 +47,9 @@ from the program directory and slug.
 - type: non-negative integer
 - default: `0`
 - required: true
-- semantics: usable RAM bound for experiments; zero declares no RAM bound
+- semantics: usable RAM bound for experiments
+- verify: json_path(path="$.envelope_ram_gb", equals=0)
+- semantics: zero declares no RAM bound
 - verify: json_path(path="$.envelope_ram_gb", equals=0)
 - code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
 
@@ -56,7 +58,9 @@ from the program directory and slug.
 - type: non-negative integer
 - default: `0`
 - required: true
-- semantics: usable CPU-core bound for experiments; zero declares no CPU bound
+- semantics: usable CPU-core bound for experiments
+- verify: json_path(path="$.envelope_cpus", equals=0)
+- semantics: zero declares no CPU bound
 - verify: json_path(path="$.envelope_cpus", equals=0)
 - code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
 
@@ -65,7 +69,9 @@ from the program directory and slug.
 - type: GPU description string
 - default: `none`
 - required: true
-- semantics: usable GPU resource bound; `none` declares no GPU
+- semantics: usable GPU resource bound
+- verify: json_path(path="$.envelope_gpu", equals="none")
+- semantics: `none` declares no GPU
 - verify: json_path(path="$.envelope_gpu", equals="none")
 - code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
 
@@ -74,7 +80,9 @@ from the program directory and slug.
 - type: non-negative integer
 - default: `0`
 - required: true
-- semantics: usable scratch-disk bound for experiments; zero declares no disk bound
+- semantics: usable scratch-disk bound for experiments
+- verify: json_path(path="$.envelope_disk_gb", equals=0)
+- semantics: zero declares no disk bound
 - verify: json_path(path="$.envelope_disk_gb", equals=0)
 - code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
 

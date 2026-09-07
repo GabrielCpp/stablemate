@@ -151,7 +151,11 @@ service feature directory. No web surface makes the walkthrough a no-op.
 ### adjudicate
 
 - sig: `adjudicate(rnd: int = 0, rescan: int = 0, signature: str = "", refuels: int = 0) -> Continue | Await`
-- does: reads one blocked row, gathers its book, source, and story evidence, and asks the medium-power adjudication prompt for a verdict
+- does: reads one blocked row awaiting adjudication
+- verify: count(subject="OKF-builder blocked rows read for adjudication", equals=1)
+- does: gathers the blocked row's book, source, and story evidence
+- verify: count(subject="OKF-builder adjudication evidence bundles", equals=1)
+- does: asks the medium-power adjudication prompt for a verdict
 - verify: count(subject="OKF-builder adjudication turns", equals=1)
 - does: applies each verdict before moving to the next blocked row
 - verify: count(subject="OKF-builder applied adjudication verdicts", equals=1)
@@ -267,7 +271,7 @@ of blocked correspondence and routes verdicts; `finalize` performs the scoped co
 - code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py::advance_watermark`
 - tests: `workflows/tests/okf_builder/test_regrounding.py::test_a_partial_turn_advances_nothing`
 
-### blocked_rows
+### method: blocked_rows
 
 - sig: `blocked_rows(logger, worklist_path: str = "") -> BlockedRows`
 - does: returns blocked rows that have not already received an adjudication verdict
@@ -286,8 +290,8 @@ of blocked correspondence and routes verdicts; `finalize` performs the scoped co
 ### apply_verdict
 
 - sig: `apply_verdict(logger, repo_root: str = "", worklist_path: str = "", row_json: str = "", verdict: str = "", chain: str = "", seed_summary: str = "", story_slug: str = "", story_epic: str = "") -> Applied`
-- raises: raises `ValueError` when the adjudication result is not `book`, `code`, or `story`
-- verify: count(subject="invalid OKF-builder verdict errors", equals=0)
+- consistency: raises `ValueError` when the adjudication verdict is not `book`, `code`, or `story`
+- verify: json_path(path="$.exception.type", equals="ValueError")
 - does: requeues a `book` verdict with its adjudication chain and fresh attempts
 - verify: count(subject="book-side OKF-builder requeues", equals=1)
 - does: files a seed and records `known-defect:` for every affected node on a `code` verdict

@@ -32,7 +32,8 @@ The sidecar websocket frame is the JSON message format exchanged on the [websock
 - shape: one top-level object whose `type` discriminator selects all other meaningful keys; the protocol has no version, timestamp, sequence number, auth token, global container id, or standalone acknowledgement envelope.
 - discriminator: top-level `type` string selects the variant.
 - direction: `hello`, `progress`, `blocked`, and `rpc_result` are sidecar-to-groom frames; `rpc` and `reload` are groom-to-sidecar frames.
-- variants: `hello` is a full-state advertise sent immediately on every sidecar connect or reconnect; `progress` is a current-node liveness delta; `blocked` is a single open-gate delta; `rpc` is a host request for sidecar-local file tree, file content, or diff data; `rpc_result` is the sidecar reply to one `rpc`; `reload` asks the sidecar process to exit with the reload code.
+- variants: `hello` is a full-state advertise sent immediately on every sidecar connect or reconnect; `progress` is a current-node liveness delta; `blocked` is a single open-gate delta; `rpc` is a host request for sidecar-local file tree, file content, or diff data; `rpc_result` is the sidecar reply to one `rpc`; `reload` is a host request to reload the sidecar process.
+- consistency rule: receiving a `reload` frame makes the sidecar end its websocket session and exit with reload status `3`, as implemented by `groom/groom/sidecar.py::_serve`.
 - serialization: the sidecar serializes outbound frames with ordinary JSON text and parses inbound host frames from JSON text; the host endpoint accepts decoded websocket JSON values and sends host-originated `rpc` and `reload` frames as JSON objects through the accepted socket.
 - message object rule: every first-party frame is a JSON object; the host endpoint explicitly ignores non-object decoded sidecar frames, while the sidecar session defines only object-shaped host frames as valid input after JSON parsing.
 - ordering: frames are processed in socket receive order; a useful `hello` must establish the connection before non-hello sidecar-to-groom frames have effects.
@@ -287,8 +288,10 @@ The sidecar websocket frame is the JSON message format exchanged on the [websock
 
 - sig: `_hello_frame() -> dict`
 - abstract: false
-- raises: none intentionally raised by the wrapper itself; exceptions outside the delegated [sidecar identity data](sidecar-identity-data.md) or [sidecar snapshot](concepts/sidecar-snapshot.md) contracts can propagate to the caller.
-- verify: json_path(path="$.type", equals="hello")
+- raises: none intentionally raised by the wrapper itself.
+- verify: json_path(path="exception.type", absent=true)
+- raises: exceptions outside the delegated [sidecar identity data](sidecar-identity-data.md) or [sidecar snapshot](concepts/sidecar-snapshot.md) contracts can propagate to the caller.
+- verify: json_path(path="exception.type", matches=".+")
 - code: groom/groom/sidecar.py::_hello_frame
 - tests: groom/tests/test_sidecar_session.py::test_hello_frame_carries_identity_and_snapshot
 - input: no call arguments; uses the sidecar process's current hostname, repository environment, runs mount, and workspace mount through delegated readers.
@@ -308,7 +311,10 @@ The sidecar websocket frame is the JSON message format exchanged on the [websock
 
 - sig: `_classify_event(path: Path) -> dict | None`
 - abstract: false
-- raises: no intentional exception for directories, unreadable or already-deleted files, non-awaiting workspace files, or paths outside configured mounts; unexpected exceptions from the current-node reader or gate text parser can propagate.
+- raises: no intentional exception for directories, unreadable or already-deleted files, non-awaiting workspace files, or paths outside configured mounts.
+- verify: json_path(path="exception.type", absent=true)
+- raises: unexpected exceptions from the current-node reader or gate text parser can propagate.
+- verify: json_path(path="exception.type", matches=".+")
 - code: groom/groom/sidecar.py::_classify_event
 - input: one absolute changed path, as reported by the [sidecar filesystem watch](concepts/sidecar-filesystem-watch.md).
 - output: one outbound sidecar websocket frame object for an interesting file event, or `None` when the path should not emit a frame.
@@ -339,7 +345,8 @@ The sidecar websocket frame is the JSON message format exchanged on the [websock
 
 - sig: `async _handle_rpc(ws, msg: dict) -> None`
 - abstract: false
-- raises: no intentional exception for unknown methods or delegated read failures; websocket send failures, JSON serialization failures, cancellation, or non-mapping `msg` values can propagate to the connected session.
+- raises: no intentional exception for unknown methods or delegated read failures.
+- raises: websocket send failures, JSON serialization failures, cancellation, or non-mapping `msg` values can propagate to the connected session.
 - code: groom/groom/sidecar.py::_handle_rpc
 - input: `ws` is the connected sidecar websocket used for the reply send; `msg` is one decoded host-originated `rpc` [sidecar websocket frame](sidecar-websocket-frame.md) object.
 - output: returns `None` after sending exactly one `rpc_result` frame for the request.

@@ -47,10 +47,11 @@ the first place.
    cadence and dependency footprint. `groom` depends on `workhorse` (`workhorse-agent` on PyPI) as
    an ordinary library dependency — never the reverse. `workhorse`'s own `pyproject.toml` gains
    nothing from this feature.
-2. **Run mode: manual launch, not an auto-starting daemon.** No systemd unit, no auto-start on
-   login/boot, no docker-compose service for `groom` itself. The user runs it themselves (e.g.
-   `uv run groom serve` in a terminal or tmux pane) for the duration of a work session — "always
-   watching" comes from the process being long-lived while active, not from being auto-started.
+Groom is launched manually through the `serve` subcommand
+(`groom/groom/cli.py::main`), rather than as an auto-starting daemon. There is no systemd unit,
+login/boot startup, or Docker Compose service for `groom` itself. A user runs `uv run groom serve`
+in a terminal or tmux pane for the duration of a work session; it watches only while that
+long-lived process is active.
 
 `groom` needs zero repo-specific knowledge to work: workflow containers are identified generically
 (bind mount at `/workflow` + volume mounts at `/runs`/`/workspace` — workhorse's own compose
@@ -106,10 +107,15 @@ container itself** (installed into the agent image via `stablemate`'s shared Doc
   (relative path + extracted question) to `/push/blocked`;
 - targets the host's `groom` process at a fixed address (`http://host.docker.internal:8787/...`,
   `GROOM_HOST`/`GROOM_PORT` overridable via env);
-- is **fire-and-forget and silent when unreachable**: every push wraps a short-timeout (1.0s by
-  default) `urllib.request` call in a broad `except: pass`, never retries, never raises. This is
-  the core safety property — a container running with no `groom` listening anywhere behaves
-  identically to one with `groom` attached.
+- consistency: A residual HTTP push returns normally when the configured `groom` host is
+  unreachable.
+- verify: json_path(path="exception", absent=true)
+
+Residual HTTP pushes are fire-and-forget: each uses one short-timeout `urllib.request` call (1.0s
+by default), catches request and response-close failures, and does not retry. The persistent
+sidecar session is the primary channel; these residual pushes cover the one-shot exited notice and
+the wait script's blocked backstop, so a container with no `groom` listening continues its
+workflow without an HTTP failure changing its behavior.
 
 **Backstop push, not a teardown race.** The design originally assumed the container tears down
 right after the wait script writes its halt file, racing the sidecar's own watch callback. That
@@ -200,8 +206,7 @@ order:
 3. Under the lock, re-read the gate file (`docker_io.read_file`, a throwaway read-only container);
    reject if it no longer reads `AWAITING_OPERATOR` (a second tab already answered it).
 4. Flip its `STATUS:` line to `ANSWERED`, append the given text, and write it back
-   (`docker_io.write_file`, a throwaway read-write container piping content via stdin — never raw
-   shell interpolation of user-typed text).
+   (`docker_io.write_file`, a throwaway read-write container piping content via stdin).
 5. Clear the gate from in-memory state so the UI stops showing a form for it.
 6. **If the container is still running** (`docker_io.is_running`, a `docker inspect` check) —
    return `ok=True, "answered"`. This is the common case: the in-container wait script is parked
@@ -211,6 +216,14 @@ order:
    manually stopped. There is no `docker compose up -d` / compose-label / cached-env fallback
    anywhere in the code; if `docker start` itself fails, the message tells the operator to start
    the container manually.
+
+### method: write_file
+
+- sig: `write_file(volume: str, /, rel_path: str, content: str) -> bool`
+- consistency: The Docker write command omits `sh -c`, so operator-provided content is never
+  interpolated into a shell command.
+- code: `groom/groom/docker_io.py::write_file`
+- verify: omits(subject="Docker write command", text="sh -c")
 
 **Notifications**: a `blocked` event (from either the sidecar push or the `await_operator.py`
 backstop push) triggers a websocket OOB swap carrying a `<script>` that dispatches a client-side

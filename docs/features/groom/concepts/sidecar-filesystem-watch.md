@@ -61,6 +61,7 @@ It replaces an earlier recursive inotify-watch installer that registered one wat
 - abstract: false
 - raises: nothing intentionally.
 - raises: cancellation as the expected termination path, handled by the caller.
+- verify: json_path(path="exception.type", equals="CancelledError")
 - code: groom/groom/sidecar.py::_watch_loop
 - input: `outbox` is the caller-owned FIFO the [sidecar outbound sender](sidecar-outbound-sender.md) drains; `stop` is the shared event the session sets during cleanup.
 - output: `None`; all useful result data is the frames placed on `outbox`.

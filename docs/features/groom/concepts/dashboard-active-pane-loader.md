@@ -35,6 +35,7 @@ It exists because the picker is shared. One repository menu serves both reposito
 - sig: `loadActivePane() -> void`
 - abstract: false
 - raises: none intentionally.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/assets/dashboard.js::loadActivePane
 - input: none; reads the store's `mode`.
 - output: none; the side effect is invoking zero or one delegated pane loader.

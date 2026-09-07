@@ -20,6 +20,7 @@ title: Story author target
 - semantics: trimmed parent epic slug used to resolve the story
 - verify: json_path(path="$.epic", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget`
+- detail: [story author target field roles](concepts/story-author-target-field-roles.md)
 
 ### story
 - type: string
@@ -28,6 +29,7 @@ title: Story author target
 - semantics: trimmed story slug resolved under `epic`
 - verify: json_path(path="$.story", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget`
+- detail: [story author target field roles](concepts/story-author-target-field-roles.md)
 
 ### epic_dir
 - type: repository-relative string path
@@ -36,6 +38,7 @@ title: Story author target
 - semantics: canonical directory containing the selected epic
 - verify: json_path(path="$.epic_dir", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget`
+- detail: [story author target field roles](concepts/story-author-target-field-roles.md)
 
 ### story_dir
 - type: repository-relative string path
@@ -44,6 +47,7 @@ title: Story author target
 - semantics: canonical directory containing the selected story document
 - verify: json_path(path="$.story_dir", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget`
+- detail: [story author target field roles](concepts/story-author-target-field-roles.md)
 
 ### story_path
 - type: repository-relative string path
@@ -52,6 +56,7 @@ title: Story author target
 - semantics: canonical path to the selected `story.md`
 - verify: json_path(path="$.story_path", matches="/story\\.md$")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget`
+- detail: [story author target field roles](concepts/story-author-target-field-roles.md)
 
 ### scaffolded
 - type: boolean
@@ -60,6 +65,7 @@ title: Story author target
 - semantics: indicates that the preparation operation completed the required scaffold pass
 - verify: json_path(path="$.scaffolded", equals=true)
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget`
+- detail: [story author target field roles](concepts/story-author-target-field-roles.md)
 
 ### scaffold_message
 - type: string
@@ -68,3 +74,4 @@ title: Story author target
 - semantics: Ostler's scaffold result message
 - verify: json_path(path="$.scaffold_message", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget`
+- detail: [story author target field roles](concepts/story-author-target-field-roles.md)

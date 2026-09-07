@@ -6,7 +6,7 @@ title: Make-target drivers
 # Make-target drivers
 
 - driver: cli
-- code: [`Makefile::install`](../../../../Makefile)
+- code: `Makefile::install`
 - working-directory: .
 
 This runbook documents the repository's Make-driven operational interface. The workspace

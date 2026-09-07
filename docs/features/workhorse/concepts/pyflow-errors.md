@@ -24,32 +24,37 @@ failure remains resumable unless the outer run policy explicitly marks it termin
 ### field: AgentTimeout
 - type: `PyflowError`
 - semantics: an agent turn exhausted its recovery ladder after a timeout
+- verify: json_path(path="exception.type", equals="AgentTimeout")
 - code: `workhorse/workhorse/pyflow/errors.py::AgentTimeout`
 
 ### field: RunBudgetExceeded
 - type: `PyflowError`
 - semantics: the run-wide wall-clock budget expired and the checkpoint must remain resumable
-- verify: json_path(path="$.terminal", equals=null)
+- verify: json_path(path="$.terminal", absent=true)
 - code: `workhorse/workhorse/pyflow/errors.py::RunBudgetExceeded`
 
 ### field: WorkflowDefinitionError
 - type: `PyflowError`
 - semantics: a registry, state, node, alias, or package declaration is invalid at import or setup time
+- verify: json_path(path="exception.type", equals="WorkflowDefinitionError")
 - code: `workhorse/workhorse/pyflow/errors.py::WorkflowDefinitionError`
 
 ### field: UnknownStateError
 - type: `PyflowError`
 - semantics: a transition or checkpoint names neither a live state nor an alias
+- verify: json_path(path="exception.type", equals="UnknownStateError")
 - code: `workhorse/workhorse/pyflow/errors.py::UnknownStateError`
 
 ### field: UnknownNodeError
 - type: `PyflowError`
 - semantics: a function is used as a node without blueprint registration or is absent from the run index
+- verify: json_path(path="exception.type", equals="UnknownNodeError")
 - code: `workhorse/workhorse/pyflow/errors.py::UnknownNodeError`
 
 ### field: NodeNotRunError
 - type: `PyflowError`
 - semantics: `self.output` requested an artifact with no recorded invocation in the current scope
+- verify: json_path(path="exception.type", equals="NodeNotRunError")
 - code: `workhorse/workhorse/pyflow/errors.py::NodeNotRunError`
 
 ### field: WorkflowFrozenError

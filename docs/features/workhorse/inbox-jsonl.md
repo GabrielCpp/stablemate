@@ -23,6 +23,7 @@ retained for workflow-specific classifications and failure diagnostics.
 - semantics: stable caller-supplied message identity
 - verify: json_path(path="$.id", matches=".+")
 - code: `workhorse/workhorse/inbox.py::Message`
+- detail: [Message representations](concepts/message-representations.md)
 
 ### body
 - type: string
@@ -30,6 +31,7 @@ retained for workflow-specific classifications and failure diagnostics.
 - semantics: message or failure-handoff text
 - verify: json_path(path="$.body", matches=".*")
 - code: `workhorse/workhorse/inbox.py::Message`
+- detail: [Message representations](concepts/message-representations.md)
 
 ### at
 - type: string
@@ -37,6 +39,7 @@ retained for workflow-specific classifications and failure diagnostics.
 - semantics: message creation timestamp
 - verify: json_path(path="$.at", matches=".+")
 - code: `workhorse/workhorse/inbox.py::Message`
+- detail: [Message representations](concepts/message-representations.md)
 
 ### reply
 - type: string
@@ -47,6 +50,7 @@ retained for workflow-specific classifications and failure diagnostics.
 - semantics: an empty reply identifies an outstanding message
 - verify: json_path(path="$.reply", equals="")
 - code: `workhorse/workhorse/inbox.py::Message`
+- detail: [Message representations](concepts/message-representations.md)
 
 ### replied_at
 - type: string
@@ -55,6 +59,7 @@ retained for workflow-specific classifications and failure diagnostics.
 - semantics: timestamp paired with a stored reply
 - verify: json_path(path="$.replied_at", equals="")
 - code: `workhorse/workhorse/inbox.py::Message`
+- detail: [Message representations](concepts/message-representations.md)
 
 ### extra
 - type: arbitrary JSON fields
@@ -62,3 +67,4 @@ retained for workflow-specific classifications and failure diagnostics.
 - semantics: workflow-defined data carried through validation and round trips
 - verify: json_path(path="$.kind", equals="failure")
 - code: `workhorse/workhorse/inbox.py::Message`
+- detail: [Message representations](concepts/message-representations.md)

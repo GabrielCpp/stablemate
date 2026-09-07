@@ -28,6 +28,7 @@ title: workhorse-coder
   - starts the selected registered coder flow
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/coder/workflow.py::main`
+- detail: [Coder command selection](concepts/coder-command-selection.md)
 
 ### dot
 - usage: `workhorse-coder dot [--name ID] [-o out.dot]`
@@ -38,6 +39,7 @@ title: workhorse-coder
   - renders the registered Coder and selectable-flow state graphs
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/coder/workflow.py::main`
+- detail: [Coder command selection](concepts/coder-command-selection.md)
 
 ### version
 - usage: `workhorse-coder version`
@@ -45,3 +47,4 @@ title: workhorse-coder
   - prints the installed Workhorse engine version
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/coder/workflow.py::main`
+- detail: [Coder command selection](concepts/coder-command-selection.md)

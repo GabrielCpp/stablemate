@@ -19,6 +19,7 @@ The planner's structured response. `status` is either `complete` or `blocked`.
 - semantics: planner outcome, `complete` or `blocked`
 - verify: json_path(path="$.status", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PlanResult`
+- detail: [plan result fields](concepts/plan-result-fields.md)
 
 ### notes
 - type: string
@@ -27,3 +28,4 @@ The planner's structured response. `status` is either `complete` or `blocked`.
 - semantics: planner explanation, rules, or blocking information
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PlanResult`
+- detail: [plan result fields](concepts/plan-result-fields.md)

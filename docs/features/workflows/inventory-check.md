@@ -19,6 +19,7 @@ The decision returned before expansion: whether the planner must define unit rul
 - semantics: true only when neither a frozen inventory nor pinned rules exist
 - verify: json_path(path="$.needs_plan", equals=false)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::InventoryCheck`
+- detail: [inventory check decision](concepts/inventory-check-decision.md)
 
 ### check_note
 - type: string
@@ -27,3 +28,4 @@ The decision returned before expansion: whether the planner must define unit rul
 - semantics: human-readable explanation of the selected inventory precedence branch
 - verify: json_path(path="$.check_note", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::InventoryCheck`
+- detail: [inventory check decision](concepts/inventory-check-decision.md)

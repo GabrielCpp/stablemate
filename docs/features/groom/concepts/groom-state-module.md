@@ -56,6 +56,7 @@ The Groom state module is groom's process-local mutable-state boundary: it owns 
 - required: true
 - code: groom/groom/state.py::CLIENTS
 - detail: [dashboard client queue set](dashboard-client-queue-set.md)
+- detail: [clients field documentation views](clients-field-documentation-views.md)
 - meaning: registered outbound queues for accepted browser dashboard websocket sessions.
 
 ### field-watching
@@ -65,6 +66,7 @@ The Groom state module is groom's process-local mutable-state boundary: it owns 
 - required: true
 - code: groom/groom/state.py::WATCHING
 - detail: [run watch registry](run-watch-registry.md)
+- detail: [WATCHING field documentation views](watching-field-documentation-views.md)
 - meaning: which run's detail pane each connected tab currently has open, keyed by that tab's outbound queue — the addressing map for pushes that are a consequence of one operator's selection rather than a fleet-wide fact.
 
 ### field-runs
@@ -81,7 +83,7 @@ The Groom state module is groom's process-local mutable-state boundary: it owns 
 - default: `True` at module import
 - required: true
 - code: groom/groom/state.py::SCANNING
-- detail: [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md)
+- detail: [scanning flag documentation views](scanning-flag-documentation-views.md)
 - meaning: process-local flag indicating that startup or manual container discovery is still in flight, so the dashboard renders loading state instead of a final empty state.
 
 ### field-gate-locks

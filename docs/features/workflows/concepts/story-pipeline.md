@@ -46,8 +46,14 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="unauthored story preparation failures", equals=1)
 - does: resolves the story spec directory through Ostler, falling back to the configured story layout when necessary
 - verify: json_path(path="$.spec_dir", matches=".+")
-- does: returns canonical absolute story, spec, and QA paths together with the slug, epic, and minted story id
+- does: returns canonical absolute story, spec, and QA paths
 - verify: count(subject="resolved story path results", equals=1)
+- does: returns the story slug alongside the resolved paths
+- verify: count(subject="resolved story slug results", equals=1)
+- does: returns the story epic alongside the resolved paths
+- verify: count(subject="resolved story epic results", equals=1)
+- does: returns the minted story id alongside the resolved paths
+- verify: count(subject="resolved story id results", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/story.py::prepare_story`
 - detail: [Story paths](../story-paths.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`

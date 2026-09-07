@@ -20,6 +20,7 @@ that requires a surface sketch.
 - semantics: agent-reported outcome of designing the mockup
 - verify: json_path(path="$.status", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult`
+- detail: [mockup result field roles](concepts/mockup-result-field-roles.md)
 
 ### surface
 - type: string
@@ -28,6 +29,7 @@ that requires a surface sketch.
 - semantics: product surface represented by the mockup
 - verify: json_path(path="$.surface", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult`
+- detail: [mockup result field roles](concepts/mockup-result-field-roles.md)
 
 ### mockup
 - type: string
@@ -36,6 +38,7 @@ that requires a surface sketch.
 - semantics: surface sketch returned for story authoring
 - verify: json_path(path="$.mockup", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult`
+- detail: [mockup result field roles](concepts/mockup-result-field-roles.md)
 
 ### notes
 - type: string
@@ -44,3 +47,4 @@ that requires a surface sketch.
 - semantics: design notes accompanying the mockup
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult`
+- detail: [mockup result field roles](concepts/mockup-result-field-roles.md)

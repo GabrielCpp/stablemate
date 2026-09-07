@@ -61,20 +61,24 @@ exit through argparse's standard usage/error path.
   [`groom-sidecar-root`](#groom-sidecar-root) for the accepted command line.
   - Invokes [`groom-sidecar-root`](#groom-sidecar-root) after parsing the root
     flags.
-- errors: parser errors happen before sidecar work; runtime errors follow the
-  selected sidecar mode's own contract.
-  - Unknown flags, unexpected positional arguments, and non-integer
-    `--exit-code` values are parser errors and prevent any sidecar module work
-    from starting.
-  - Runtime errors from query, exit notification, or the live session are not
-    handled by the command dispatcher except for normal returns from those
-    handlers.
-- exits: query and exit-notice modes return after one action; default mode keeps
-  the process in the live sidecar session until that handler returns or exits.
-  - Query mode returns after writing one JSON snapshot to stdout.
-  - Exit-notice mode returns after attempting one exited push.
-  - Default live-session mode normally keeps running until the session handler
-    returns or raises its own process exit.
+- errors: unknown flags make argparse exit before sidecar module work starts.
+- verify: exit_status(code=2)
+- errors: unexpected positional arguments make argparse exit before sidecar
+  module work starts.
+- verify: exit_status(code=2)
+- errors: a non-integer `--exit-code` value makes argparse exit before sidecar
+  module work starts.
+- verify: exit_status(code=2)
+- errors: a runtime error from the selected sidecar mode propagates through the
+  command dispatcher.
+- verify: json_path(path="exception.type", equals="RuntimeError")
+- exits: query mode returns after writing one JSON snapshot to stdout.
+- verify: exit_status(code=0)
+- exits: exit-notice mode returns after attempting one exited push.
+- verify: exit_status(code=0)
+- exits: default live-session mode keeps running until its session handler
+  returns or raises its own process exit.
+- verify: json_path(path="sidecar.run.call_count", equals=1)
 - code: groom/groom/cli.py::sidecar_main
 - detail: [sidecar live sessions](sidecar-live-sessions.md)
 
@@ -90,54 +94,71 @@ exit through argparse's standard usage/error path.
   - `--exit-code` is either absent/null or an integer supplied by the
     entrypoint after the workflow process exits.
 - does:
-  - Parses the root flags before importing the sidecar module, so parser errors
-    do not load the sidecar runtime dependency set.
-  - Imports the sidecar module only after parsing succeeds; this keeps the
-    default argument-error path free of the sidecar runtime dependency set.
+  - Parses the root flags before importing the sidecar module.
+  - Parser errors do not load the sidecar runtime dependency set.
+  - Imports the sidecar module only after parsing succeeds.
+  - The default argument-error path is free of the sidecar runtime dependency
+    set.
   - If importing the sidecar runtime module fails after successful parsing, the
-    selected mode is never entered and that import-time failure propagates out of
-    the command.
-  - If `--query` is true, calls `groom/groom/sidecar.py::snapshot`, serializes
-    the returned [sidecar snapshot data](sidecar-snapshot-data.md) as JSON to
-    stdout, and returns without starting either the exit-notice path or the live
-    watch/session loop. Query mode wins when `--query` and `--exit-code` are both
-    supplied.
-  - The query snapshot is a pure local read: it obtains the current node from the
-    latest checkpoint, the terminal state from the latest run metadata, and the
-    open-gate list from a workspace scan, then returns exactly the three keys
-    `current_node`, `terminal`, and `gates`.
-  - If `--query` is false and `--exit-code` is present, sends one best-effort
-    workflow-exited notice by calling `groom/groom/sidecar.py::push_exited` with
-    that integer exit code and returns without starting the live watch/session
-    loop.
-  - The exited notice path builds the [exited push payload](exited-push-payload.md)
-    by merging sidecar identity (`container_id`, `name`, `repo_name`, and
-    `repo_branch`) with the supplied `exit_code` integer, then posts that JSON
-    body to `POST /push/exited` on the host groom service.
-  - The JSON POST is performed by the [sidecar residual HTTP push helper](concepts/sidecar-residual-http-push-helper.md):
-    it serializes the merged object as UTF-8 JSON, declares
-    `Content-Type: application/json`, targets the configured `GROOM_HOST` and
-    `GROOM_PORT`, and makes exactly one `POST` attempt.
-  - The host address comes from `GROOM_HOST` and `GROOM_PORT`, defaulting to
-    `host.docker.internal` and `8787`; the request declares a JSON content type
-    and uses the `GROOM_PUSH_TIMEOUT` value, defaulting to one second.
-  - The exited notice is fire-and-forget: connection failures, HTTP client
-    errors raised by the HTTP open, and response-close errors are swallowed so
-    the sidecar command returns normally and never changes the workflow process
-    exit result.
-  - If neither mode flag is selected, starts the default long-running sidecar
-    session by calling the [sidecar live session runner](concepts/sidecar-live-session-runner.md),
-    which owns the handoff from synchronous command execution into the async
+    selected mode is never entered.
+  - An import-time sidecar runtime failure propagates out of the command.
+  - When `--query` is true, calls `groom/groom/sidecar.py::snapshot`.
+  - Query mode serializes the returned [sidecar snapshot data](sidecar-snapshot-data.md)
+    as JSON to stdout.
+  - Query mode returns after writing its JSON snapshot.
+  - Query mode does not start the exit-notice path.
+  - Query mode does not start the live watch/session loop.
+  - Query mode wins when `--query` and `--exit-code` are both supplied.
+  - The query snapshot obtains the current node from the latest checkpoint.
+  - The query snapshot obtains the terminal state from the latest run metadata.
+  - The query snapshot obtains the open-gate list from a workspace scan.
+  - The query snapshot returns exactly the keys `current_node`, `terminal`, and
+    `gates`.
+  - When `--query` is false and `--exit-code` is present, calls
+    `groom/groom/sidecar.py::push_exited` with that integer exit code.
+  - The exited notice path is best-effort.
+  - Exit-notice mode returns after calling `groom/groom/sidecar.py::push_exited`.
+  - Exit-notice mode does not start the live watch/session loop.
+  - The exited notice path merges sidecar identity into the
+    [exited push payload](exited-push-payload.md).
+  - The exited push payload carries the supplied `exit_code` integer.
+  - The exited notice posts its JSON body to `POST /push/exited` on the host
+    groom service.
+  - The [sidecar residual HTTP push helper](concepts/sidecar-residual-http-push-helper.md)
+    serializes the merged object as UTF-8 JSON.
+  - The residual HTTP push helper declares `Content-Type: application/json`.
+  - The residual HTTP push helper targets the configured `GROOM_HOST` and
+    `GROOM_PORT`.
+  - The residual HTTP push helper makes exactly one `POST` attempt.
+  - `GROOM_HOST` defaults to `host.docker.internal`.
+  - `GROOM_PORT` defaults to `8787`.
+  - The request declares a JSON content type.
+  - The request uses `GROOM_PUSH_TIMEOUT` as its timeout.
+  - `GROOM_PUSH_TIMEOUT` defaults to one second.
+  - Connection failures are swallowed by the exited-notice path.
+  - HTTP client errors raised by the HTTP open are swallowed by the exited-notice
+    path.
+  - Response-close errors are swallowed by the exited-notice path.
+  - The exited-notice path returns normally after a swallowed push error.
+  - A swallowed push error does not change the workflow process exit result.
+  - When neither mode flag is selected, calls the
+    [sidecar live session runner](concepts/sidecar-live-session-runner.md).
+  - The live session runner hands synchronous command execution to the async
     websocket serving loop.
-  - The live-session runner starts the async sidecar serving loop and waits for
-    it to complete; the serving loop connects to the host [groom server](http/groom.md),
-    advertises current state, watches the container's workspace/run mounts, and
-    serves the live sidecar data plane described by [sidecar live sessions](sidecar-live-sessions.md).
-  - When the serving loop returns zero, the runner returns normally and leaves
-    the sidecar command with its normal success exit status.
+  - The live-session runner starts the async sidecar serving loop.
+  - The live-session runner waits for the serving loop to complete.
+  - The serving loop connects to the host [groom server](http/groom.md).
+  - The serving loop advertises current state.
+  - The serving loop watches the container's workspace/run mounts.
+  - The serving loop serves the live sidecar data plane described by
+    [sidecar live sessions](sidecar-live-sessions.md).
+  - When the serving loop returns zero, the runner returns normally.
+  - A zero return from the serving loop leaves the sidecar command with its
+    normal success exit status.
   - When the serving loop returns a non-zero code, the runner raises a process
-    exit with exactly that code; the reserved reload code is therefore surfaced
-    to the container entrypoint without being translated by the CLI dispatcher.
+    exit with exactly that code.
+  - The reserved reload code reaches the container entrypoint without CLI
+    dispatcher translation.
 - emits:
   - Query mode writes exactly one JSON object followed by stdout's normal print
     newline.

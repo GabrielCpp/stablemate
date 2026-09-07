@@ -84,6 +84,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `state_message(workflows: list[WorkflowContainer], query: str = "", now: float | None = None) -> dict`
 - abstract: false
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::state_message
 - step: Resolve the clock, defaulting to wall time.
 - step: Project the filtered fleet through `fleet_rows` in display order.
@@ -95,6 +96,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `run_message(wf: WorkflowContainer, tel: RunTelemetry | None = None, now: float | None = None) -> dict`
 - abstract: false
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::run_message
 - step: Project one run through the same `run_row` used for an entry in `state.runs`.
 - step: Return `{"type": "run", "ts", "run"}`, which the client merges into its existing list in place rather than replacing the whole fleet — so the other rows keep their DOM nodes, and their focus.
@@ -104,6 +106,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `detail_message(wf, tel=None, facts=None, logs=None, now=None) -> dict`
 - abstract: false
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::detail_message
 - step: Project the full `run_detail` body — gates, head, metrics, log trail — not a reduced slice.
 - step: Return `{"type": "detail", "ts", "id", "detail"}`, addressed to the tabs in the [run watch registry](run-watch-registry.md).
@@ -114,6 +117,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `run_detail(wf, tel=None, facts=None, logs=None, now=None) -> dict`
 - abstract: false
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::run_detail
 - step: Project identity (`id`, `run_id`, `state`, `node`), every open gate through `gate_dict`, and the live slice (`head`, `metrics`, `logs`).
 - step: Return the same body both the pushed `detail` message and the detail fetch carry, so a subscription and a fetch cannot disagree.
@@ -123,6 +127,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `fleet_rows(workflows: list[WorkflowContainer], query: str = "", now: float | None = None) -> list[dict]`
 - abstract: false
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::fleet_rows
 - step: Project each matching container through `run_row`, attaching its telemetry from the hot cache.
 - step: Sort by `(rank, name)` so the order is stable across ticks.
@@ -132,14 +137,26 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `status_bar(workflows: list[WorkflowContainer]) -> dict`
 - abstract: false
 - raises: none intentionally raised.
+- verify: json_path(path="$.counts.blocked", equals=1)
+- verify: json_path(path="$.counts.running", equals=2)
+- verify: json_path(path="$.counts.idle", equals=1)
+- verify: json_path(path="$.counts.finished", equals=0)
+- verify: json_path(path="$.repos", equals=3)
+- verify: json_path(path="$.workers", equals=4)
 - code: groom/groom/projection.py::status_bar
-- step: Count containers per state, count distinct repositories, and count workers; return all three as fleet-wide totals that no query narrows.
+- step: Count blocked containers in the fleet-wide state totals.
+- step: Count running containers in the fleet-wide state totals.
+- step: Count idle containers in the fleet-wide state totals.
+- step: Count finished containers in the fleet-wide state totals.
+- step: Count distinct repository labels across the fleet.
+- step: Count workers across the fleet, without query narrowing.
 
 ### method-repo-entries
 
 - sig: `repo_entries(entries: list[tuple[WorkflowContainer, list[str]]]) -> list[dict]`
 - abstract: false
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::repo_entries
 - step: Emit one group per container carrying the checkouts found on its volume — grouped rather than flat because that is the shape the server actually has, and because a picker row's label is derived from both halves.
 - step: Give a workflow with no discoverable repository a single volume-root entry so it can still be browsed.
@@ -149,6 +166,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `traces_view(summaries: list[dict], spans: list[dict], runs: dict[str, RunTelemetry], live_ids: set[str] = frozenset(), now: float | None = None, connected_only: bool = True) -> dict`
 - abstract: false
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::traces_view
 - step: Project a per-run summary strip (with any fired alert rules) above the filtered span table.
 - step: Pass `live_ids` — the runs the durable store sees beating now — through to every card, so a run absent from the hot cache (a groom that just restarted) is still reported as running.
@@ -161,6 +179,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `run_card(summary: dict, tel: RunTelemetry | None, live_ids: set[str] = frozenset(), now: float | None = None) -> dict`
 - abstract: false
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::run_card
 - step: Derive `live` from the hot cache when this run is in it, and from `live_ids` otherwise — never from the span history in `summary`, which can only say what a run has already done.
 - step: Report `doing` as the activity the run stamped, else its live node, so the pane reads as work in progress rather than a list of opaque run ids.
@@ -170,6 +189,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `is_live(tel: RunTelemetry | None, now: float) -> bool`
 - abstract: false
 - raises: none.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::is_live
 - step: Answer the one liveness question — is this run emitting right now — from telemetry recency alone.
 - step: Report not-running when this session's terminal has landed, or when nothing has been heard inside the liveness window; an earlier session's terminal does not count, because it is cleared as soon as a newer signal arrives.
@@ -179,6 +199,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `file_lang(path: str) -> str`
 - abstract: false
 - raises: none intentionally raised.
+- verify: json_path(path="$.lang", equals="dockerfile")
 - code: groom/groom/projection.py::file_lang
 - step: Match the whole filename first for the extensionless files that still have a grammar (`Dockerfile`, `Makefile`), then the extension against `EXT_LANG`, else return `""`.
 

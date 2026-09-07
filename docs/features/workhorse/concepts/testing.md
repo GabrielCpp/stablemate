@@ -44,22 +44,46 @@ def test_select_story(tmp_path):
 ### method: assert_file
 - sig: `assert_file(sandbox: Path, rel: str) -> None`
 - does: assert that `sandbox / rel` exists
+- verify: json_path(path="exception.type", equals="AssertionError")
 - raises: `AssertionError` naming the relative path when it does not exist
+- verify: json_path(path="exception.message", matches="Expected file 'missing\.txt' to exist in sandbox, but it does not")
 - code: `workhorse/workhorse/testing.py::assert_file`
+
+A QA scenario calls `assert_file` for an absent `missing.txt` relative to its prepared sandbox
+and captures the expected exception's type and message for these comparisons.
 
 ### method: assert_file_contains
 - sig: `assert_file_contains(sandbox: Path, rel: str, text: str) -> None`
 - does: assert that the relative file exists and its UTF-8 text contains the requested substring
-- raises: `AssertionError` with the actual file content when the file is absent or the substring is missing
+- verify: json_path(path="exception.type", equals="AssertionError")
+- raises: `AssertionError` naming the relative path when the file is absent
+- verify: json_path(path="exception.message", matches="Expected file 'missing\.txt' to exist in sandbox, but it does not")
+- raises: `AssertionError` with the actual file content when the substring is missing
+- verify: json_path(path="exception.message", matches="Actual content:\\nactual content")
 - code: `workhorse/workhorse/testing.py::assert_file_contains`
+
+A QA scenario calls `assert_file_contains` first for an absent `missing.txt`, then for a present
+file containing `actual content` but not the requested substring. It captures the expected
+`AssertionError` type and message after each call for these comparisons.
 
 ### method: assert_json_file
 - sig: `assert_json_file(sandbox: Path, rel: str, subset: dict | list) -> None`
 - does: parse the relative file as JSON and raise an assertion naming the file on parse failure
+- verify: json_path(path="exception.message", matches="File 'invalid\.json' is not valid JSON:")
 - does: require every key/value in a dict subset while ignoring extra file keys
+- verify: absent(subject="exception from a matching dict subset with extra file keys")
 - does: require exact equality, including order and length, for a list subset
+- verify: count(subject="AssertionErrors from reversed-order and longer-list JSON comparisons", equals=2)
 - raises: `AssertionError` for missing files, invalid JSON, absent dict keys, unequal values, or unequal lists
+- verify: count(subject="AssertionErrors from missing-file, invalid-JSON, missing-key, unequal-value, and unequal-list cases", equals=5)
 - code: `workhorse/workhorse/testing.py::assert_json_file`
+
+A QA scenario calls `assert_json_file` with `invalid.json` containing malformed JSON and captures
+the expected exception message. It then calls the helper with a dict subset that matches a JSON
+object containing an additional key, recording whether an exception was raised. For list
+comparisons it captures `AssertionError`s from a reversed-order list and a longer list, and
+separately captures errors from missing-file, invalid-JSON, missing-key, unequal-value, and
+unequal-list inputs.
 
 ## Why a real repo rather than a mocked `git`
 

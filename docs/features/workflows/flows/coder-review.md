@@ -30,6 +30,19 @@ title: Coder review flow
 - verify: count(subject="review operator-gated paths", equals=1)
 - detail: [coder main flow](coder-main.md)
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.setup`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.start`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.resolve_review`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.read_operator`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply_resolved`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.poll_feedback`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply_feedback`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.labels`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.state_labels`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::MUST_FIX_CONFIDENCE`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::MAX_SESSION_TURNS`
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::split_on_confidence`
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::findings_block`
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::require_story_file`
@@ -52,16 +65,24 @@ findings while lower scores remain advisory context.
 
 ### setup
 
+- kind: prepare
+
 Workspace directories, the story path, and review context are resolved once. The story must exist
 as a file or the flow raises a workflow failure before any agent turn. The resolved docs repository
 is the cwd for all judging turns, and the affected code repositories come from `plan-context.json`
 and the workspace manifest, or from the explicit `repo` input in standalone mode.
+
+`Review.setup` performs this resolution and validates the story before returning the shared
+`StoryPaths` context. `Review.labels` exposes the story slug as the run activity identifier, while
+`Review.state_labels` adds the three `ReviewLoop` counters only after a loop exists.
 
 The optional `branch` and `pr_number` inputs are preserved for the feeder review. `operator_mode`,
 `epic`, and `inherited_turns` control later routing and session accounting. A missing or
 non-file story path is rejected before any agent turn.
 
 ### feeder-review
+
+- kind: run
 
 The flow clears the previous cycle's `review-resolution.json` and `review-settlement.json`, resets
 the feeder conversation, and dispatches one medium-power `code-review` turn. It passes the story
@@ -82,6 +103,8 @@ required.
 
 ### implementation-verdict
 
+- kind: verify
+
 The high-power `review-implementation` turn receives the story, plan identity, affected paths,
 and two rendered finding lists. The mandatory list contains findings with confidence greater than
 or equal to 80; the advisory list contains findings below 80. An `approved` verdict proceeds to
@@ -98,6 +121,8 @@ status. Only Critical or Major findings require changes; informational or Minor 
 block approval.
 
 ### settlement
+
+- kind: verify
 
 Each apply pass dispatches the shared `apply-review` turn with review notes or operator feedback,
 using the story's implementation conversation when available. The turn must write a structured
@@ -122,6 +147,8 @@ replanning, unavailable verification, and out-of-scope work are reported as bloc
 
 ### operator-resolution
 
+- kind: drive
+
 `human` and `operator` modes await an answer in the story context file immediately. In `auto`
 mode, the resolver may write an answer only when it can cite an existing decision, convention, or
 acceptance criterion; otherwise the flow awaits the operator. The answer is consumed from the
@@ -133,6 +160,8 @@ cumulative block count remains on the `ReviewLoop`. Resolver turns are limited t
 subsequent blocks go directly to a human; the underlying review is never abandoned.
 
 ### feedback
+
+- kind: run
 
 After approval or verified settlement, the run inbox is polled once. No outstanding message ends
 the flow with `ReviewResult` so the caller can continue to QA. An outstanding message is consumed,
@@ -148,3 +177,10 @@ The feeder session resets whenever `start` begins a review round. Apply turns us
 implementation session when one exists and otherwise run cold. The block counter survives operator
 answers, the local rework counter resets only after an operator resolution returns to `start`, and
 the session counter recycles at eight turns.
+
+The state methods are deliberately split by responsibility: `Review.start` feeds findings,
+`Review.review` makes the implementation verdict, `Review.apply` settles review findings,
+`Review.resolve_review` and `Review.read_operator` handle the operator path, `Review.apply_resolved`
+re-enters a fresh review round, and `Review.poll_feedback` plus `Review.apply_feedback` handle the
+single non-blocking inbox rework pass. `MUST_FIX_CONFIDENCE` is 80 and `MAX_SESSION_TURNS` is 8;
+the local rework and cumulative block ceilings are class-level routing controls on `Review`.

@@ -31,6 +31,7 @@ Runs the author registry described by the [author workflow composition root](con
 - code: `workflows/src/workhorse_workflows/author/workflow.py::main`
 - detail: [author epic edit flow](flows/author-epic-edit.md)
 - detail: [author story edit flow](flows/author-story-edit.md)
+- detail: [workhorse-author command selection](concepts/workhorse-author-command-selection.md)
 
 ### dot
 - usage: `workhorse-author dot [--name ID] [-o out.dot]`
@@ -41,6 +42,7 @@ Runs the author registry described by the [author workflow composition root](con
   - renders the registered Author and selectable-flow state graphs
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/author/workflow.py::main`
+- detail: [workhorse-author command selection](concepts/workhorse-author-command-selection.md)
 
 ### version
 - usage: `workhorse-author version`
@@ -48,3 +50,4 @@ Runs the author registry described by the [author workflow composition root](con
   - prints the installed Workhorse engine version
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/author/workflow.py::main`
+- detail: [workhorse-author command selection](concepts/workhorse-author-command-selection.md)

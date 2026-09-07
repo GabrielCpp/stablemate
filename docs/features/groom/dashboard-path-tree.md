@@ -22,6 +22,7 @@ in the browser, per render, for one pane.
 
 - file: not an on-disk artifact; this is an in-memory browser object derived per render.
 - code: groom/groom/assets/dashboard.js::buildTree
+- detail: [Dashboard tree input selection](concepts/dashboard-tree-input-selection.md)
 - verify: groom/tests/test_tree_builder.py::test_flat_paths_become_directory_nodes_and_file_leaves
 - verify: groom/tests/test_tree_builder.py::test_an_empty_entry_list_yields_an_empty_root
 

@@ -38,7 +38,16 @@ both sides must share the host path.
 
 - sig: `_repo_name_from_dir(path: Path) -> str`
 - does: derives the repository key from the directory basename
-- does: replaces periods and underscores with hyphens, replaces other non-alphanumeric or non-slash characters with hyphens, collapses repeated hyphens, strips edge hyphens, and lowercases the result
+- verify: json_path(path="$.repo_name", matches="^[^._]*$")
+- does: replaces periods and underscores with hyphens
+- verify: json_path(path="$.repo_name", matches="^[^._]*$")
+- does: replaces other non-alphanumeric or non-slash characters with hyphens
+- verify: json_path(path="$.repo_name", matches="^[a-zA-Z0-9/-]+$")
+- does: collapses repeated hyphens
+- verify: json_path(path="$.repo_name", matches="^(?!.*--).*$")
+- does: strips edge hyphens
+- verify: json_path(path="$.repo_name", matches="^[^-].*[^-]$|^[^-]$")
+- does: lowercases the result
 - returns: the normalized directory-derived repository key
 - verify: json_path(path="$.repo_name", matches="^[a-z0-9][a-z0-9/-]*$")
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::_repo_name_from_dir`
@@ -68,6 +77,7 @@ both sides must share the host path.
 - does: uses the normalized checkout directory name for the single-repository fallback key
 - verify: json_path(path="$.repo", equals="normalized directory name")
 - does: adds each folder's absolute `path` to the result
+- verify: created(subject="each workspace folder path entry")
 - verify: json_path(path="$.repo.path", matches="^/")
 - does: merges a valid `agents.yml` `template` mapping and `workspace` mapping into that folder's record
 - verify: json_path(path="$.repo.workspace_value", equals="configured value")
@@ -106,8 +116,10 @@ both sides must share the host path.
 - sig: `_set_origin_url(dest: Path, url: str) -> None`
 - does: leaves an existing `origin` unchanged when its URL already equals the configured URL
 - verify: count(subject="origin URL changes for an already matching remote", equals=0)
-- does: updates an existing `origin` or adds it when the destination has no `origin`
+- does: ensures an existing `origin` has the configured URL
 - verify: json_path(path="$.origin.url", equals="configured URL")
+- does: adds the destination's `origin` when it has no `origin`
+- verify: created(subject="the destination's origin remote")
 - returns: `None` after the remote has the configured URL
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::_set_origin_url`
 
@@ -121,6 +133,7 @@ both sides must share the host path.
 - does: prunes registrations for deleted worktrees before adding a new one
 - verify: absent(subject="stale deleted worktree registration")
 - does: creates a detached worktree at `dest` from `ref`, sharing the source repository's objects and refs
+- verify: created(subject="detached worktree at the destination")
 - verify: json_path(path="$.worktree.head", equals="detached")
 - raises: raises `ValueError` when the source is not a Git repository
 - verify: count(subject="invalid worktree source errors", equals=1)

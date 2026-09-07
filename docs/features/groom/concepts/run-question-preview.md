@@ -79,6 +79,7 @@ Nothing here escapes anything, and nothing needs to: the value is JSON, the clie
 - sig: `question_preview(question: str) -> str`
 - abstract: false
 - raises: none intentionally raised for empty, whitespace-only, marker-only, multiline, or long question text.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::question_preview
 
 Builds the text preview for one gate question. Each source line is treated independently: leading empty or marker-only lines are skipped, common Markdown prompt/list/code decoration is stripped from the first useful line, and the result is truncated to the cap without a marker.

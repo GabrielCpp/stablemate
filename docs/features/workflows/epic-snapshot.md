@@ -21,6 +21,7 @@ reject plans based on stale or changed graph state.
 - semantics: selected epic identifier
 - verify: json_path(path="$.epic", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot`
+- detail: [epic snapshot field roles](concepts/epic-snapshot-field-roles.md)
 
 ### epic_dir
 - type: string path
@@ -29,6 +30,7 @@ reject plans based on stale or changed graph state.
 - semantics: resolved directory containing the epic document
 - verify: json_path(path="$.epic_dir", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot`
+- detail: [epic snapshot field roles](concepts/epic-snapshot-field-roles.md)
 
 ### epics_dir
 - type: string path
@@ -37,6 +39,7 @@ reject plans based on stale or changed graph state.
 - semantics: configured root used to resolve the epic
 - verify: json_path(path="$.epics_dir", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot`
+- detail: [epic snapshot field roles](concepts/epic-snapshot-field-roles.md)
 
 ### title
 - type: string
@@ -45,6 +48,7 @@ reject plans based on stale or changed graph state.
 - semantics: current epic title
 - verify: json_path(path="$.title", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot`
+- detail: [epic snapshot field roles](concepts/epic-snapshot-field-roles.md)
 
 ### epic_hash
 - type: string
@@ -53,27 +57,31 @@ reject plans based on stale or changed graph state.
 - semantics: content hash used to detect changes to the epic document
 - verify: json_path(path="$.epic_hash", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot`
+- detail: [epic snapshot field roles](concepts/epic-snapshot-field-roles.md)
 
 ### seeds
 - type: list of [seed snapshots](seed-snapshot.md)
 - default: empty list
 - required: false
 - semantics: ordered seed state at snapshot time
-- verify: json_path(path="$.seeds", equals=[])
+- verify: json_path(path="$.seeds", matches="^\\[\\]$")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot`
+- detail: [epic snapshot field roles](concepts/epic-snapshot-field-roles.md)
 
 ### stories
 - type: list of [story snapshots](story-snapshot.md)
 - default: empty list
 - required: false
 - semantics: ordered story state at snapshot time
-- verify: json_path(path="$.stories", equals=[])
+- verify: json_path(path="$.stories", matches="^\\[\\]$")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot`
+- detail: [epic snapshot field roles](concepts/epic-snapshot-field-roles.md)
 
 ### milestones
 - type: list of [milestone snapshots](milestone-snapshot.md)
 - default: empty list
 - required: false
 - semantics: milestones referencing the epic's source items
-- verify: json_path(path="$.milestones", equals=[])
+- verify: json_path(path="$.milestones", matches="^\\[\\]$")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot`
+- detail: [epic snapshot field roles](concepts/epic-snapshot-field-roles.md)

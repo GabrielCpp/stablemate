@@ -29,8 +29,13 @@ to count unchanged stalls.
 - verify: count(subject="reloaded OKF-builder checkpoint graphs", equals=1)
 - does: reports every scoped doctor finding, including warnings, as standing convergence work
 - verify: count(subject="standing OKF-builder doctor findings", equals=1)
-- does: creates repair items grouped by file, node, and doctor code, carrying grounded status and bounded findings
+- does: creates repair items grouped by file, node, and doctor code
+- verify: created(subject="OKF-builder checkpoint repair items")
 - verify: count(subject="OKF-builder checkpoint repair batches", equals=1)
+- does: carries grounded status in each repair item
+- verify: count(subject="grounded OKF-builder repair items", equals=1)
+- does: bounds the findings carried by each repair item
+- verify: count(subject="bounded OKF-builder repair item findings", equals=1)
 - does: increments the stall count only when the finding signature is unchanged from the prior round
 - verify: count(subject="unchanged OKF-builder finding signatures", equals=1)
 - returns: checkpoint status, doctor output, round counters, repair items, and stall signature

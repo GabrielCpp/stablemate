@@ -22,9 +22,12 @@ the deterministic nodes owned by this subflow.
 - type: string
 - default: empty string
 - required: false
-- semantics: direct invocation's epic identifier; ignored when `intent.epic` is already set
+- semantics: direct invocation's epic identifier
+- verify: json_path(path="$.epic", matches=".*")
+- semantics: ignored when `intent.epic` is already set
 - verify: json_path(path="$.epic", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit`
+- detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ### change
 - type: string
@@ -33,6 +36,7 @@ the deterministic nodes owned by this subflow.
 - semantics: direct invocation's requested scope change
 - verify: json_path(path="$.change", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit`
+- detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ### intent
 - type: `EditIntent`
@@ -41,6 +45,7 @@ the deterministic nodes owned by this subflow.
 - semantics: validated edit binding supplied by a story-edit handoff or constructed from direct parameters
 - verify: json_path(path="$.intent", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit`
+- detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ### force
 - type: boolean
@@ -49,6 +54,7 @@ the deterministic nodes owned by this subflow.
 - semantics: permits explicitly requested collateral or frozen-scope removal according to plan validation
 - verify: json_path(path="$.force", equals=false)
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit`
+- detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ### operator_mode
 - type: string
@@ -57,6 +63,7 @@ the deterministic nodes owned by this subflow.
 - semantics: operator-routing mode carried by the workflow runtime
 - verify: json_path(path="$.operator_mode", equals="auto")
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit`
+- detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ## Methods
 
@@ -218,7 +225,7 @@ the deterministic nodes owned by this subflow.
 
 ## Edit Nodes
 
-### snapshot_epic
+### method: snapshot_epic
 - sig: `snapshot_epic(logger: logging.Logger, epic: str = "", repo_dir: str = "") -> EpicSnapshot`
 - does: captures epic metadata, seed metadata, story metadata and body hashes, frozen identities, and referencing milestones
 - raises: raises `WorkflowFailed` when the epic does not exist
@@ -226,14 +233,14 @@ the deterministic nodes owned by this subflow.
 - verify: created(subject="an epic edit snapshot")
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::snapshot_epic`
 
-### validate_edit_plan
+### method: validate_edit_plan
 - sig: `validate_edit_plan(logger: logging.Logger, intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, repo_dir: str = "") -> Defects`
 - does: rejects incomplete, wrong-epic, duplicate, missing-id, dangling-cover, dangling-dependency, orphan-seed, cyclic, unsatisfied, frozen, unforced, deletion, and omitted-rewrite plans
 - returns: returns `Defects(ok=True)` only when the projected graph satisfies all edit constraints
 - verify: json_path(path="$.ok", equals=True)
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_edit_plan`
 
-### apply_edit_plan
+### method: apply_edit_plan
 - sig: `apply_edit_plan(logger: logging.Logger, intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, repo_dir: str = "") -> AppliedEpicEdit`
 - does: removes, adds, or updates stories and seeds through Ostler
 - does: updates milestone source-item ownership for removed or added source bullets
@@ -244,14 +251,15 @@ the deterministic nodes owned by this subflow.
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::apply_edit_plan`
 
 ### validate_applied_edit
+This validation returns `Defects(ok=True)` when the on-disk graph matches the approved delta.
+
 - sig: `validate_applied_edit(logger: logging.Logger, snapshot: EpicSnapshot, plan: EpicEditPlan, applied: AppliedEpicEdit, repo_dir: str = "") -> Defects`
 - does: compares resulting seed and story identities and metadata with the approved projection
 - does: requires every unaffected story body to remain byte-stable
-- returns: returns `Defects(ok=True)` only when disk matches the approved delta
 - verify: unchanged(subject="unaffected story bodies")
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_applied_edit`
 
-### validate_epic_document
+### method: validate_epic_document
 - sig: `validate_epic_document(logger: logging.Logger, epic_dir: str = "", repo_dir: str = "") -> Defects`
 - does: requires all seven epic sections to exist and contain content
 - does: requires at least one child journey under `User Journeys`
@@ -262,7 +270,8 @@ the deterministic nodes owned by this subflow.
 ### select_affected_story
 - sig: `select_affected_story(logger: logging.Logger, epic: str, affected_stories: list[str], index: int, repo_dir: str = "") -> StoryChoice`
 - does: resolves the indexed affected story through Ostler
-- does: returns an empty choice when the approved list is exhausted
+- consistency: when the index reaches the approved affected-story list length, returns `StoryChoice(has_story=False, reason="every affected story is authored")`
+- verify: json_path(path="$.has_story", equals=False)
 - raises: raises `WorkflowFailed` when an approved affected story no longer exists
 - returns: returns the story path, slug, directory, progress, and remaining count
 - verify: count(subject="selected affected stories", equals=1)

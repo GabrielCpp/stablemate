@@ -46,11 +46,15 @@ successful run.
 
 ### setup
 
+- kind: prepare
+
 The flow calls workspace and story path preparation, then guards that the resolved story file is
 readable. A missing story, an empty story slug, or an authored story with incomplete sections is
 rejected before planning begins.
 
 ### plan
+
+- kind: run
 
 The high-power `plan-story` turn receives the story, epic, spec directory, workspace markers, and
 story-derived conversation. It snapshots code worktrees first, writes the plan artifacts in the
@@ -59,6 +63,8 @@ operator gate. Plan mutations in code repositories are removed while pre-existin
 
 ### path-validation
 
+- kind: verify
+
 The recorded plan is projected and checked against the workspace. A valid or silent validator
 result advances to dispatch. An invalid service or plan-file path receives at most three low-power
 path-repair turns; an unresolved result then enters the plan operator gate. A successful repair
@@ -66,17 +72,23 @@ resets the repair conversation before validation resumes.
 
 ### dispatch
 
+- kind: run
+
 The approved plan is read back, implementation context is resolved for the target environment,
 and every code repository named by the plan is moved to the story branch. The dispatch list keeps
 the plan's declared implementation order.
 
 ### layer-selection
 
+- kind: run
+
 The cursor selects the next unimplemented service layer from the recorded plan. When no layer
 remains, the flow returns a ready `DevResult`; otherwise it passes the selected layer and cursor to
 implementation.
 
 ### implementation
+
+- kind: run
 
 Each selected layer starts a fresh story implementation conversation on the first entry, spends a
 session turn, and runs one high-power `implement-plan` turn with the layer plan, service path and
@@ -85,6 +97,8 @@ sent to the implementation operator gate rather than being treated as an empty s
 
 ### gates
 
+- kind: verify
+
 The story status is checked before service gates on every lap; a status that says the story is
 finished before QA becomes a repair finding. Otherwise the flow runs the service's configured gates
 in `GATE_ORDER` and stops at the first dirty result. Skipped or silent gates do not fail the layer.
@@ -92,12 +106,16 @@ The clean result advances the cursor to the next layer.
 
 ### repair
 
+- kind: run
+
 A dirty status or gate is converted into a `FailureReport`. While the shared three-lap repair
 budget remains, a `dev-fix` turn receives the report, changed files, service identity, and story
 trailers, then the flow reruns the gates. Repeated report digests raise the turn power; an exhausted
 budget enters the implementation operator gate rather than ending the run.
 
 ### operator-resolution
+
+- kind: run
 
 In `auto` mode, a resolver may apply an answer only when it can cite an existing decision, rule, or
 acceptance criterion; otherwise the flow awaits the operator on the story `context.md`. `human` and

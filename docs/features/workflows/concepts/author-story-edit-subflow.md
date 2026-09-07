@@ -53,7 +53,8 @@ on one package-local blueprint, which the author composition root imports into i
 ### resolve_story_intent
 - sig: `resolve_story_intent(logger: logging.Logger, action: str, epic: str = "", story: str = "", bullet: str = "", reason: str = "", force: bool = False, repo_dir: str = "") -> EditIntent`
 - does: for `add`, strips the epic input before storing it
-- does: for `add`, rejects a blank epic
+- consistency: for `add`, rejects a blank epic with `WorkflowFailed`
+- verify: json_path(path="exception.type", equals="WorkflowFailed")
 - does: for `add`, strips the bullet input before resolving it
 - does: for `add`, rejects a blank bullet
 - does: for `add`, resolves a backlog id, backlog text, or literal bullet through `resolve_bullet`

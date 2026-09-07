@@ -43,7 +43,7 @@ the arguments that shaped the build. Validation independently checks the packet 
 - does: excludes every repository-relative path listed in `ignore` from the tracked and untracked inputs
 - verify: count(subject="ignored worktree paths", equals=1)
 - does: returns a SHA-256 signature for a readable Git worktree
-- verify: matches(subject="worktree signature", pattern="^[0-9a-f]{64}$")
+- verify: json_path(path="$.signature", matches="^[0-9a-f]{64}$")
 - returns: `None` when Git cannot answer the requested repository query
 - verify: absent(subject="worktree signature after Git query failure")
 - code: `workflows/src/workhorse_workflows/coder/shared/okf.py::worktree_signature`
@@ -56,7 +56,7 @@ the arguments that shaped the build. Validation independently checks the packet 
 - does: combines the worktree signature and sorted packet-shaping arguments into a JSON payload
 - verify: count(subject="memo fingerprint inputs", equals=2)
 - returns: a SHA-256 key for a non-None signature and its arguments
-- verify: matches(subject="memo fingerprint", pattern="^[0-9a-f]{64}$")
+- verify: json_path(path="$.fingerprint", matches="^[0-9a-f]{64}$")
 - code: `workflows/src/workhorse_workflows/coder/shared/okf.py::fingerprint`
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_the_stamp_records_the_key_the_next_visit_recomputes`
 

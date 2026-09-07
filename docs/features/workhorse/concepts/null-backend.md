@@ -15,6 +15,7 @@ the recovery ladder.
 - tests: `workhorse/tests/test_backends.py::test_null_backend_is_not_selectable`,
   `workhorse/tests/test_backends.py::test_run_config_without_a_cli_holds_the_null_backend`,
   `workhorse/tests/test_backends.py::test_agentless_run_fails_its_first_agent_node_with_a_sentence`
+- detail: [Agent backend selection](agent-backend-selection.md)
 
 ## Fields
 
@@ -27,6 +28,7 @@ the recovery ladder.
 - semantics: is not a backend registry key
 - verify: absent(subject="NullBackend in the backend registry")
 - code: `workhorse/workhorse/runner/backends/null.py::NullBackend`
+- detail: [NullBackend selection](null-backend-selection.md)
 
 ### default_model
 - type: `str | None`
@@ -35,6 +37,7 @@ the recovery ladder.
 - semantics: no model exists when no CLI is configured
 - verify: json_path(path="$.default_model", absent=true)
 - code: `workhorse/workhorse/runner/backends/null.py::NullBackend`
+- detail: [NullBackend selection](null-backend-selection.md)
 
 ### supports_compaction
 - type: `bool`
@@ -43,6 +46,7 @@ the recovery ladder.
 - semantics: the absent adapter cannot compact a session
 - verify: json_path(path="$.supports_compaction", equals=false)
 - code: `workhorse/workhorse/runner/backends/null.py::NullBackend`
+- detail: [NullBackend selection](null-backend-selection.md)
 
 ## Methods
 

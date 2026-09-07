@@ -21,6 +21,7 @@ planner notes before any graph mutation occurs.
 - semantics: whether the plan is ready for validation or is blocked
 - verify: json_path(path="$.status", equals="complete")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan`
+- detail: [epic edit plan field roles](concepts/epic-edit-plan-field-roles.md)
 
 ### epic
 - type: string
@@ -29,6 +30,7 @@ planner notes before any graph mutation occurs.
 - semantics: epic the replacement plan addresses
 - verify: json_path(path="$.epic", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan`
+- detail: [epic edit plan field roles](concepts/epic-edit-plan-field-roles.md)
 
 ### delete_epic
 - type: boolean
@@ -37,6 +39,7 @@ planner notes before any graph mutation occurs.
 - semantics: whether the resulting empty seed and story sets delete the epic
 - verify: json_path(path="$.delete_epic", equals=False)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan`
+- detail: [epic edit plan field roles](concepts/epic-edit-plan-field-roles.md)
 
 ### summary
 - type: string
@@ -45,38 +48,43 @@ planner notes before any graph mutation occurs.
 - semantics: planner summary of the replacement
 - verify: json_path(path="$.summary", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan`
+- detail: [epic edit plan field roles](concepts/epic-edit-plan-field-roles.md)
 
 ### journey_changes
 - type: list of strings
 - default: empty list
 - required: false
 - semantics: user-journey changes that the epic rewrite must reflect
-- verify: json_path(path="$.journey_changes", equals=[])
+- verify: count(subject="journey_changes", equals=0)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan`
+- detail: [epic edit plan field roles](concepts/epic-edit-plan-field-roles.md)
 
 ### seed_changes
 - type: list of [seed changes](seed-change.md)
 - default: empty list
 - required: false
 - semantics: ordered seed additions, updates, and removals
-- verify: json_path(path="$.seed_changes", equals=[])
+- verify: count(subject="seed_changes", equals=0)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan`
+- detail: [epic edit plan field roles](concepts/epic-edit-plan-field-roles.md)
 
 ### story_changes
 - type: list of [story changes](story-change.md)
 - default: empty list
 - required: false
 - semantics: ordered story additions, updates, and removals
-- verify: json_path(path="$.story_changes", equals=[])
+- verify: count(subject="story_changes", equals=0)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan`
+- detail: [epic edit plan field roles](concepts/epic-edit-plan-field-roles.md)
 
 ### affected_stories
 - type: list of strings
 - default: empty list
 - required: false
 - semantics: story slugs requiring prose or coverage work after application
-- verify: json_path(path="$.affected_stories", equals=[])
+- verify: count(subject="affected_stories", equals=0)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan`
+- detail: [epic edit plan field roles](concepts/epic-edit-plan-field-roles.md)
 
 ### notes
 - type: string
@@ -85,3 +93,4 @@ planner notes before any graph mutation occurs.
 - semantics: planner notes passed to validation or review
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan`
+- detail: [epic edit plan field roles](concepts/epic-edit-plan-field-roles.md)

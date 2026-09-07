@@ -111,6 +111,18 @@ elapsed-time overruns only touch `wake` at doubled estimate multiples and never 
 - verify: exit_status(code=0)
 - code: `workhorse/workhorse/job.py::supervise`
 
+### method: main
+- sig: `main(argv: list[str] | None = None) -> int`
+- does: use the supplied argument list, or the process arguments after the module name when `argv` is absent
+- does: require exactly `supervise <job_dir>` as the detached supervisor invocation
+- does: write the usage line to standard error when the invocation shape is invalid
+- does: delegate the requested job directory to `supervise`
+- returns: `2` when the invocation shape is invalid
+- returns: the supervisor's integer result for a valid invocation
+- verify: exit_status(code=2)
+- verify: exit_status(code=0)
+- code: `workhorse/workhorse/job.py::main`
+
 ## Types
 
 ### field: Handle
@@ -118,186 +130,213 @@ elapsed-time overruns only touch `wake` at doubled estimate multiples and never 
 - semantics: identifies the supervisor and its job directory before and during execution
 - verify: persists(subject="job handle identifying the supervisor and job directory")
 - code: `workhorse/workhorse/job.py::Handle`
+- detail: [Handle record fields](handle-record-fields.md)
 
 #### field: job_dir
 - type: `str`
 - required: true
-- verify: json_path(path="$.job_dir", absent=false)
+- verify: json_path(path="$.job_dir", matches="^.+$")
 - semantics: filesystem directory containing the job artifacts
 - verify: persists(subject="job directory containing the job artifacts")
 - code: `workhorse/workhorse/job.py::Handle`
+- detail: [Handle record fields](handle-record-fields.md)
 
 #### field: pid
 - type: `int`
 - required: true
-- verify: json_path(path="$.pid", absent=false)
+- verify: json_path(path="$.pid", matches="^[1-9][0-9]*$")
 - semantics: supervisor process id
 - verify: json_path(path="$.pid", matches="^[1-9][0-9]*$")
 - code: `workhorse/workhorse/job.py::Handle`
+- detail: [Handle record fields](handle-record-fields.md)
 
 #### field: pgid
 - type: `int`
 - required: true
-- verify: json_path(path="$.pgid", absent=false)
+- verify: json_path(path="$.pgid", matches="^[1-9][0-9]*$")
 - semantics: supervisor process-group id
 - verify: json_path(path="$.pgid", matches="^[1-9][0-9]*$")
 - code: `workhorse/workhorse/job.py::Handle`
+- detail: [Handle record fields](handle-record-fields.md)
 
 #### field: started_at
 - type: `float`
 - required: true
-- verify: json_path(path="$.started_at", absent=false)
+- verify: json_path(path="$.started_at", matches="^[1-9][0-9]*(\\.[0-9]+)?$")
 - semantics: wall-clock start timestamp used for liveness and elapsed time
 - verify: persists(subject="started_at timestamp in the persisted job handle")
 - code: `workhorse/workhorse/job.py::Handle`
+- detail: [Handle record fields](handle-record-fields.md)
 
 #### field: tier
 - type: `str`
 - required: true
-- verify: json_path(path="$.tier", absent=false)
+- verify: json_path(path="$.tier", matches="^(advisory|best_effort|premium)$")
 - semantics: containment tier selected for this job
 - verify: json_path(path="$.tier", equals="premium")
 - code: `workhorse/workhorse/job.py::Handle`
+- detail: [Handle record fields](handle-record-fields.md)
 
 #### field: labels
 - type: `dict`
 - default: `{}`
 - verify: count(subject="labels in a handle created without manifest labels", equals=0)
 - required: false
-- verify: json_path(path="$.labels", absent=false)
+- verify: json_path(path="$.labels.workflow", equals="nightly")
 - semantics: opaque workflow labels copied into the handle
 - verify: persists(subject="workflow labels copied into handle.json")
 - code: `workhorse/workhorse/job.py::Handle`
+- detail: [Handle record fields](handle-record-fields.md)
 
 ### field: JobStatus
 - type: frozen record
 - semantics: filesystem-observable running/finished/lost state and result readiness
 - verify: json_path(path="$.state", equals="finished")
 - code: `workhorse/workhorse/job.py::JobStatus`
+- detail: [Job status field selection](job-status-field-selection.md)
 
 #### field: state
 - type: `str`
 - required: true
-- verify: json_path(path="$.state", absent=false)
+- verify: json_path(path="$.state", matches="^(running|finished|lost|missing)$")
 - semantics: `running`, `finished`, `lost`, or `missing`
 - verify: json_path(path="$.state", matches="^(running|finished|lost|missing)$")
 - code: `workhorse/workhorse/job.py::JobStatus`
+- detail: [Job status field selection](job-status-field-selection.md)
 
 #### field: alive
 - type: `bool`
 - required: true
-- verify: json_path(path="$.alive", absent=false)
+- verify: json_path(path="$.alive", equals=true)
 - semantics: process group and heartbeat both indicate a live supervisor
 - verify: json_path(path="$.alive", equals=true)
 - code: `workhorse/workhorse/job.py::JobStatus`
+- detail: [Job status field selection](job-status-field-selection.md)
 
 #### field: elapsed_s
 - type: `float`
 - required: true
-- verify: json_path(path="$.elapsed_s", absent=false)
+- verify: json_path(path="$.elapsed_s", matches="^(0|[1-9][0-9]*)(\\.[0-9]+)?$")
 - semantics: elapsed wall time observed for the job
 - verify: json_path(path="$.elapsed_s", matches="^[0-9]+(\\.[0-9]+)?$")
 - code: `workhorse/workhorse/job.py::JobStatus`
+- detail: [Job status field selection](job-status-field-selection.md)
 
 #### field: estimate_s
 - type: `float`
 - required: true
-- verify: json_path(path="$.estimate_s", absent=false)
+- verify: json_path(path="$.estimate_s", equals=10.0)
 - semantics: submitter's predicted duration
 - verify: json_path(path="$.estimate_s", equals=10.0)
 - code: `workhorse/workhorse/job.py::JobStatus`
+- detail: [Job status field selection](job-status-field-selection.md)
 
 #### field: overrun_multiple
 - type: `float`
 - required: true
-- verify: json_path(path="$.overrun_multiple", absent=false)
+- verify: json_path(path="$.overrun_multiple", equals=20.0)
 - semantics: largest doubled estimate threshold crossed while running, or `0.0`
 - verify: json_path(path="$.overrun_multiple", equals=20.0)
 - code: `workhorse/workhorse/job.py::JobStatus`
+- detail: [Job status field selection](job-status-field-selection.md)
 
 #### field: result_ready
 - type: `bool`
 - required: true
-- verify: json_path(path="$.result_ready", absent=false)
+- verify: json_path(path="$.result_ready", equals=true)
 - semantics: the manifest-selected result file exists
 - verify: json_path(path="$.result_ready", equals=true)
 - code: `workhorse/workhorse/job.py::JobStatus`
+- detail: [Job status field selection](job-status-field-selection.md)
 
 #### field: tier
 - type: `str`
 - required: true
-- verify: json_path(path="$.tier", absent=false)
+- verify: json_path(path="$.tier", matches="^(advisory|best_effort|premium)$")
 - semantics: containment tier recorded in the handle
 - verify: json_path(path="$.tier", equals="premium")
 - code: `workhorse/workhorse/job.py::JobStatus`
+- detail: [Job status field selection](job-status-field-selection.md)
 
 ### field: RunnerResult
 - type: frozen record
 - semantics: supervisor-owned cost and termination record
 - verify: persists(subject="runner.json final run record")
 - code: `workhorse/workhorse/job.py::RunnerResult`
+- detail: [Runner result field selection](runner-result-field-selection.md)
 
 #### field: exit_code
 - type: `int | None`
 - required: true
-- verify: json_path(path="$.exit_code", absent=false)
+- verify: json_path(path="$.exit_code", matches="^(None|-?[0-9]+)$")
 - semantics: command exit code for a completed command
 - verify: json_path(path="$.exit_code", equals=3)
 - semantics: `null` when the supervisor lost the command
-- verify: json_path(path="$.exit_code", equals=null)
+- verify: json_path(path="$.exit_code", matches="^null$")
 - code: `workhorse/workhorse/job.py::RunnerResult`
+- detail: [Runner result field selection](runner-result-field-selection.md)
 
 #### field: peak_rss_mb
 - type: `float`
 - required: true
-- verify: json_path(path="$.peak_rss_mb", absent=false)
+- verify: json_path(path="$.peak_rss_mb", matches="^(6[5-9]|[7-9][0-9]|[1-9][0-9]{2,})(\\.[0-9])?$")
 - semantics: highest resident memory observed for the command tree
 - code: `workhorse/workhorse/job.py::RunnerResult`
+- detail: [Runner result field selection](runner-result-field-selection.md)
 
 #### field: wall_s
 - type: `float`
 - required: true
-- verify: json_path(path="$.wall_s", absent=false)
+- verify: json_path(path="$.wall_s", matches="^(0|[1-9][0-9]*)(\\.[0-9]{1,3})?$")
 - semantics: total observed wall time
 - verify: json_path(path="$.wall_s", matches="^[0-9]+(\\.[0-9]{1,3})?$")
 - code: `workhorse/workhorse/job.py::RunnerResult`
+- detail: [Runner result field selection](runner-result-field-selection.md)
 
 #### field: kill_reason
 - type: `str`
 - required: true
-- verify: json_path(path="$.kill_reason", absent=false)
+- verify: json_path(path="$.kill_reason", equals="")
 - semantics: empty for ordinary completion, otherwise `memory`, `operator`, or `lost`
 - verify: json_path(path="$.kill_reason", matches="^(|memory|operator|lost)$")
 - code: `workhorse/workhorse/job.py::RunnerResult`
+- detail: [Runner result field selection](runner-result-field-selection.md)
 
 #### field: tier
 - type: `str`
 - required: true
-- verify: json_path(path="$.tier", absent=false)
+- verify: json_path(path="$.tier", matches="^(advisory|best_effort|premium)$")
 - semantics: containment tier under which the measurement was made
 - verify: json_path(path="$.tier", equals="premium")
 - code: `workhorse/workhorse/job.py::RunnerResult`
+- detail: [Runner result field selection](runner-result-field-selection.md)
 
 #### field: started_at
 - type: `float`
 - required: true
+- verify: json_path(path="$.started_at", matches="^(?!0(?:\\.0+)?$)[0-9]+(\\.[0-9]+)?$")
 - semantics: start timestamp
+- verify: json_path(path="$.started_at", equals=1700000000.0)
 - code: `workhorse/workhorse/job.py::RunnerResult`
+- detail: [Runner result field selection](runner-result-field-selection.md)
 
 #### field: finished_at
 - type: `float`
 - required: true
-- verify: json_path(path="$.finished_at", absent=false)
+- verify: json_path(path="$.finished_at", matches="^(?!0(?:\\.0+)?$)[0-9]+(\\.[0-9]+)?$")
 - semantics: completion or loss timestamp
 - verify: json_path(path="$.finished_at", matches="^[0-9]+(\\.[0-9]+)?$")
 - code: `workhorse/workhorse/job.py::RunnerResult`
+- detail: [Runner result field selection](runner-result-field-selection.md)
 
 ### field: JobError
 - type: `RuntimeError` subclass
 - semantics: submission or inspection failed and the caller must decide the workflow response
+- verify: json_path(path="$.exception.type", equals="JobError")
 - code: `workhorse/workhorse/job.py::JobError`
 
 ### field: ContainmentUnavailable
 - type: `JobError` subclass
 - semantics: the machine cannot satisfy the manifest's minimum containment floor
+- verify: json_path(path="$.exception.type", equals="ContainmentUnavailable")
 - code: `workhorse/workhorse/job.py::ContainmentUnavailable`

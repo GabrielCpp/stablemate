@@ -46,6 +46,7 @@ Workspace volume repository-directory reader is the fallback checkout discovery 
 - returns: Docker non-zero completion is converted to an empty list.
 - returns: sorted volume-relative checkout directories, or `[]` when no matching checkout directories are found or no stdout lines are accepted.
 - code: groom/groom/docker_io.py::list_repo_dirs
+- detail: [Repository-directory listing documentation scope](repository-directory-listing-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git,
   groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_when_none_found,
   groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_on_docker_failure,
@@ -66,6 +67,7 @@ Workspace volume repository-directory reader is the fallback checkout discovery 
 - verify: json_path(path="$", equals="Acme")
 - verify: json_path(path="$", equals="")
 - code: groom/groom/docker_io.py::find_repo_dir
+- detail: [Repository-directory lookup documentation scope](repository-directory-lookup-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git,
   groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_when_none_found,
   groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_on_docker_failure

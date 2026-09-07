@@ -79,7 +79,8 @@ and [merge fix](../merge-fix-result.md).
 - sig: `open_story_pr(logger, story_slug="", base_branch="main", story_path="", spec_dir="", story_branch="", repo_dir="", workspace_file="") -> StoryPr`
 - does: returns an empty result when no story or affected code repository is available
 - verify: count(subject="empty story PR result records", equals=1)
-- does: creates or reuses one review-only PR for each affected code repository, committing pending story work on its story branch first
+- does: creates one review-only PR for each affected code repository when no matching PR exists, or reuses the matching PR, committing pending story work on its story branch first
+- verify: created(subject="one review-only PR for the affected code repository")
 - verify: count(subject="affected repository story PR results", equals=1)
 - does: builds each PR from the story description, plan summary, and at most six QA screenshots
 - verify: count(subject="story PR bodies", equals=1)

@@ -64,6 +64,7 @@ allowing an unloadable graph to be explicitly skipped.
 - verify: count(subject="integrity reports", equals=1)
 - code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_integrity`
 - tests: `workflows/tests/author/finalize/test_flow.py::test_finalizes_with_one_commit_on_the_current_branch`
+- tests: `workflows/tests/author/finalize/test_flow.py::test_terminal_validation_commits_incomplete_then_fails`
 
 ### validate_artifacts
 
@@ -74,6 +75,7 @@ one selectable story.
 - does: loads the todo queue through Ostler, falling back to milestone epics and then all graph epics when earlier sources are empty
 - verify: count(subject="artifact queue fallback checks", equals=1)
 - does: canonicalizes queued epic names through Ostler and removes duplicate epic entries
+- verify: removed(subject="duplicate entries for the same canonical epic")
 - verify: count(subject="canonical artifact epic queues", equals=1)
 - does: reports an error for every queued epic Ostler cannot load
 - verify: count(subject="unloadable artifact epics", equals=1)
@@ -98,7 +100,9 @@ Commits the author-owned documentation and Ostler ID registry on the current bra
 distinct incomplete message on the final-gate failure edge.
 
 - sig: `commit_author(logger: logging.Logger, mode: str = "epic", epic: str = "", bullet: str = "", roadmap: str = "", repo_dir: str = "", docs_dir: str = "docs", id_registry: str = ".agents/ids.json") -> Committed`
-- does: resolves the repository root and returns without committing when no git directory exists
+- does: resolves the repository root
+- verify: count(subject="author commit repository resolutions", equals=1)
+- does: returns without committing when no git directory exists
 - verify: count(subject="non-git author commits", equals=0)
 - does: scopes the commit to existing `docs_dir` and `id_registry` paths, omitting missing scopes
 - verify: count(subject="author commit scopes", equals=1)
@@ -110,3 +114,4 @@ distinct incomplete message on the final-gate failure edge.
 - verify: count(subject="author commit results", equals=1)
 - code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::commit_author`
 - tests: `workflows/tests/author/finalize/test_flow.py::test_finalizes_with_one_commit_on_the_current_branch`
+- tests: `workflows/tests/author/finalize/test_flow.py::test_terminal_validation_commits_incomplete_then_fails`

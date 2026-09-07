@@ -25,6 +25,7 @@ re-applied or blocked according to the flow.
 - semantics: the only story document the turn may modify
 - verify: json_path(path="$.story_path", matches=".+")
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply`
+- detail: [review apply turn inputs](concepts/review-apply-turn-inputs.md)
 
 ### spec_dir
 - type: `str path`
@@ -32,13 +33,17 @@ re-applied or blocked according to the flow.
 - semantics: directory containing review.md and the required review-resolution.json sidecar
 - verify: json_path(path="$.spec_dir", matches=".+")
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply`
+- detail: [review apply turn inputs](concepts/review-apply-turn-inputs.md)
 
 ### review_notes
 - type: `str`
 - required: true
-- semantics: implementation-review findings to resolve; empty when operator feedback is the work
+- semantics: implementation-review findings to resolve when findings are supplied
 - verify: json_path(path="$.review_notes", matches=".*")
+- semantics: empty when operator feedback is the work
+- verify: json_path(path="$.review_notes", equals="")
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply`
+- detail: [review apply turn inputs](concepts/review-apply-turn-inputs.md)
 
 ### operator_feedback
 - type: `str`
@@ -51,9 +56,12 @@ re-applied or blocked according to the flow.
 ### status
 - type: `Literal[done, applied, no_changes_needed, needs_changes, blocked]`
 - required: true
-- semantics: turn-reported application result; the review flow does not trust it until settlement verifies the sidecar
+- semantics: turn-reported application result
+- verify: json_path(path="$.status", matches="^(done|applied|no_changes_needed|needs_changes|blocked)$")
+- semantics: review flow accepts the application result only after settlement verifies the sidecar
 - verify: json_path(path="$.status", matches="^(done|applied|no_changes_needed|needs_changes|blocked)$")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.status`
+- detail: [implementation result status](concepts/implementation-result-status.md)
 
 ### notes
 - type: `str`
@@ -62,6 +70,7 @@ re-applied or blocked according to the flow.
 - semantics: brief describing what the apply turn changed or why it could not act
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.notes`
+- detail: [implementation result notes](concepts/impl-result-notes.md)
 
 ## Fields: review-resolution.json finding
 

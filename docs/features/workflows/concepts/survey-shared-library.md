@@ -44,8 +44,9 @@ remain in their respective flow packages and consume these results.
 - verify: count(subject="survey inventory status defaults", equals=1)
 - required: true
 - verify: count(subject="survey inventory status presence", equals=1)
-- semantics: inventory status vocabulary; only `pending` is selectable and `assessed` or `clean` are completed
+- semantics: inventory status vocabulary
 - verify: count(subject="survey inventory status semantics", equals=1)
+- semantics: only `pending` is selectable and `assessed` or `clean` are completed
 - verify: count(subject="survey inventory status vocabularies", equals=1)
 - code: `workflows/src/workhorse_workflows/author/shared/survey/inventory.py::UNIT_STATUSES`
 
@@ -106,33 +107,109 @@ remain in their respective flow packages and consume these results.
 
 ### expand_inventory
 - sig: `expand_inventory(logger: logging.Logger, rules: str = "docs/survey/units.yml", inventory: str = "docs/survey/inventory.json", repo_dir: str = "") -> Expansion`
-- does: consumes an existing parseable inventory unchanged, including its pending statuses
+- does: uses `docs/survey/units.yml` when the rules argument is blank
+- verify: json_path(path="$.inventory_note", matches=".*")
+- does: uses `docs/survey/inventory.json` when the inventory argument is blank
+- verify: json_path(path="$.inventory_note", matches=".*")
+- does: resolves the consuming repository from `repo_dir`, or from the survey repository-root search when it is blank
+- verify: count(subject="survey repository-root resolution for expansion", equals=1)
+- does: consumes an existing inventory unchanged when it is valid JSON with a `units` list
 - verify: count(subject="reused frozen inventories", equals=1)
-- does: validates non-empty rules and expands folder, file, or command rules while applying exclusions
+- does: preserves the existing inventory's unit entries and statuses when reusing it
+- verify: unchanged(subject="frozen survey inventory")
+- does: rejects an existing inventory that is invalid JSON or lacks a `units` list without re-expanding rules
+- verify: json_path(path="$.expand_ok", equals=false)
+- does: rejects expansion when the rules file is absent
+- verify: json_path(path="$.expand_errors", matches=".*rules file.*")
+- does: rejects expansion when the rules document is not a mapping
+- verify: json_path(path="$.expand_errors", matches=".*rules file root.*")
+- does: rejects expansion when `rules` is absent, empty, or not a list
+- verify: json_path(path="$.expand_errors", matches=".*rules.*non-empty list.*")
+- does: reports every structural rule error before attempting expansion
+- verify: count(subject="aggregated survey rule validation errors", equals=1)
+- does: accepts `folder`, `file`, and `command` as rule kinds only
+- verify: count(subject="survey enumeration rule kinds", equals=3)
+- does: requires a non-empty `glob` for folder and file rules
+- verify: count(subject="survey glob rule requirements", equals=1)
+- does: requires a non-empty command and `unit_kind` for command rules
+- verify: count(subject="survey command rule requirements", equals=1)
+- does: expands folder and file rules in sorted repository-relative path order
+- verify: count(subject="sorted survey glob expansions", equals=1)
+- does: excludes glob matches whose repository-relative paths match any configured fnmatch exclusion
+- verify: count(subject="excluded survey glob matches", equals=1)
+- does: runs command rules from the resolved repository root with a five-minute timeout
+- verify: count(subject="survey enumeration commands", equals=1)
+- does: rejects command rules that fail to start or exit non-zero
+- verify: json_path(path="$.expand_ok", equals=false)
+- does: rejects command rules that emit no non-empty lines
+- verify: json_path(path="$.expand_errors", matches=".*emitted no units.*")
+- does: emits one pending unit for each non-empty command output line using the declared `unit_kind`
+- verify: count(subject="command-enumerated survey units", equals=1)
+- does: de-duplicates a unit id matched by more than one rule while retaining its first kind
+- verify: count(subject="deduplicated survey units", equals=1)
+- does: rejects distinct unit ids that normalize to the same finding-record slug
+- verify: json_path(path="$.expand_errors", matches=".*collide on record slug.*")
+- does: rejects a successful expansion that produces no units
+- verify: json_path(path="$.expand_ok", equals=false)
+- does: writes a version-one inventory containing the rules path and pending units only after all validation and expansion checks pass
+- verify: created(subject="materialized survey inventory")
+- does: applies the configured rules path and inventory path relative to the resolved repository root
+- verify: count(subject="repository-relative survey inventory paths", equals=1)
 - verify: count(subject="expanded survey rules", equals=1)
-- does: rejects empty matches, command failures, invalid rule structure, and record-slug collisions
-- verify: count(subject="rejected survey expansions", equals=1)
-- does: writes a version-one JSON inventory only after successful non-empty expansion
-- verify: count(subject="written survey inventories", equals=1)
-- returns: an `Expansion` reporting success, unit count, and the materialization or frozen-inventory note
+- returns: an `Expansion` whose `expand_ok` identifies whether the inventory is usable
+- verify: json_path(path="$.expand_ok", equals=true)
+- returns: an `Expansion` whose `unit_count` reports the number of frozen or materialized units
+- verify: json_path(path="$.unit_count", equals=1)
+- returns: an `Expansion` whose `inventory_note` describes reuse or materialization
 - verify: count(subject="inventory expansion results", equals=1)
 - verify: count(subject="frozen survey inventories", equals=1)
 - code: `workflows/src/workhorse_workflows/author/shared/survey/inventory.py::expand_inventory`
+- tests: `workflows/tests/author/shared/survey/test_inventory.py::test_folder_rules_materialize_the_unit_list`
 - tests: `workflows/tests/author/shared/survey/test_inventory.py::test_an_existing_inventory_is_consumed_verbatim`
+- tests: `workflows/tests/author/shared/survey/test_inventory.py::test_structural_rule_errors_are_reported_together`
+- tests: `workflows/tests/author/shared/survey/test_inventory.py::test_units_colliding_on_a_record_slug_are_rejected`
 
 ### split_unit
 - sig: `split_unit(logger: logging.Logger, inventory: str, unit_id: str, repo_dir: str = "") -> SplitResult`
+- does: refuses to access the repository when `inventory` or `unit_id` is blank
+- verify: json_path(path="$.split_ok", equals=false)
+- does: resolves the inventory relative to the survey repository root
+- verify: count(subject="resolved survey split inventories", equals=1)
+- does: rejects an unreadable or invalid inventory without modifying it
+- verify: unchanged(subject="unreadable survey inventory")
+- does: rejects a unit id that is absent from the inventory
+- verify: json_path(path="$.split_errors", matches=".*not found.*")
+- does: rejects a unit whose kind is not `folder`
+- verify: json_path(path="$.split_errors", matches=".*only folder units can split.*")
+- does: rejects a folder unit whose path is not a directory
+- verify: json_path(path="$.split_errors", matches=".*not a directory.*")
 - does: replaces one folder unit with its immediate non-hidden, non-excluded children
 - verify: count(subject="replaced folder survey units", equals=1)
-- does: preserves the rest of the inventory and leaves child statuses pending
+- does: classifies each child as `folder` when it is a directory and `file` otherwise
+- verify: count(subject="classified survey split children", equals=1)
+- does: ignores hidden children and children matching the exclusions recorded by the inventory's rules
+- verify: count(subject="filtered survey split children", equals=1)
+- does: ignores a child whose id is already present elsewhere in the inventory
+- verify: count(subject="deduplicated survey split children", equals=1)
+- does: rejects a folder with no eligible children without modifying the inventory
+- verify: json_path(path="$.split_errors", matches=".*no splittable children.*")
+- does: preserves the rest of the inventory and leaves every inserted child status pending
 - verify: count(subject="preserved split inventories", equals=1)
-- does: rejects missing inputs, unreadable inventories, non-folder units, absent directories, and folders with no eligible children
-- verify: count(subject="rejected survey unit splits", equals=1)
-- returns: a `SplitResult` with the child count on success or a diagnostic error on rejection
+- does: writes the updated inventory only after eligible children have been found
+- verify: persists(subject="split survey inventory")
+- returns: a `SplitResult` whose `split_ok` identifies whether replacement succeeded
+- verify: json_path(path="$.split_ok", equals=true)
+- returns: a `SplitResult` whose `children_count` reports the number of inserted children
+- verify: json_path(path="$.children_count", equals=2)
+- returns: a `SplitResult` whose `split_errors` contains the diagnostic reason on rejection
 - verify: count(subject="survey unit split results", equals=1)
 - verify: count(subject="survey unit splits", equals=1)
 - code: `workflows/src/workhorse_workflows/author/shared/survey/inventory.py::split_unit`
 - tests: `workflows/tests/author/shared/survey/test_inventory.py::test_a_split_replaces_the_unit_in_place`
+- tests: `workflows/tests/author/shared/survey/test_inventory.py::test_split_children_honor_the_rules_excludes`
+- tests: `workflows/tests/author/shared/survey/test_inventory.py::test_only_folder_units_can_split`
+- tests: `workflows/tests/author/shared/survey/test_inventory.py::test_a_folder_with_no_splittable_children_says_so`
+- tests: `workflows/tests/author/shared/survey/test_inventory.py::test_splitting_an_unknown_unit_is_reported_not_raised`
 
 ### select_next_unit
 - sig: `select_next_unit(logger: logging.Logger, inventory: str = "docs/survey/inventory.json", findings_dir: str = "docs/survey/findings", repo_dir: str = "") -> UnitPick`

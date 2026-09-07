@@ -18,6 +18,7 @@ than embedding implementation instructions. They do not run experiments in an ag
 re-grade an artifact, or choose a path outside the decision assigned to their persona.
 
 - code: `workflows/src/workhorse_workflows/research/workflow.py::Research`
+- detail: [research workflow documentation boundaries](research-workflow-documentation-boundaries.md)
 - detail: [research workflow composition root](research-workflow-composition-root.md)
 - detail: [workflow prompt static contracts](workflow-prompt-static-contracts.md)
 

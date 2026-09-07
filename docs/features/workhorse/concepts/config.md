@@ -86,6 +86,13 @@ tooling.
 - returns: `None`
 - code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_worktree_dir`
 
+### write_default_cli
+- sig: `write_default_cli(name: str) -> None`
+- does: strip and lowercase `name`, then persist it under `default_cli`
+- returns: `None`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_default_cli`
+- detail: [default CLI configuration](default-cli-configuration.md)
+
 ### resolve_stablemate_dir
 - sig: `resolve_stablemate_dir() -> Path | None`
 - returns: the expanded, resolved configured `stablemate_dir`, or `None` when it is unset or not a string
@@ -292,6 +299,7 @@ to the same built-in it always used.
   normalized with `strip().lower()`.
 - code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_default_cli`
 - code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_default_cli`
+- detail: [default CLI configuration](default-cli-configuration.md)
 - tests: `workhorse/tests/test_backends.py::test_config_default_cli_selects_backend`
 - tests: `workhorse/tests/test_backends.py::test_env_var_beats_config_default_cli`
 - tests: `workhorse/tests/test_backends.py::test_unknown_config_default_cli_fails_like_any_typo`

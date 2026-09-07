@@ -21,8 +21,14 @@ unavailable, or blocked, with a summary forwarded to the fixer or terminal resul
 - type: `Literal["passed", "failed", "unavailable", "blocked"]`
 - default: `failed`
 - required: false
-- semantics: `passed` means all settled Actions runs succeeded; `failed` means a settled run failed or polling timed out; `unavailable` means there was no CI to read; `blocked` means CI existed but could not be read
+- semantics: `passed` means at least one Actions run existed and every run succeeded
 - verify: json_path(path="$.status", equals="passed")
+- semantics: `failed` means a settled run failed or the watch timed out before runs settled
+- verify: json_path(path="$.status", equals="failed")
+- semantics: `unavailable` means there was no CI surface to read
+- verify: json_path(path="$.status", equals="unavailable")
+- semantics: `blocked` means CI existed but GitHub refused or could not provide the required data
+- verify: json_path(path="$.status", equals="blocked")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiChecks.status`
 
 ### summary
@@ -30,6 +36,12 @@ unavailable, or blocked, with a summary forwarded to the fixer or terminal resul
 - type: `str`
 - default: empty string
 - required: false
-- semantics: failing workflow names and run ids, or the reason CI was passed through or blocked
+- semantics: on `failed`, names failing workflows and includes their run ids when available
+- verify: json_path(path="$.summary", matches="/.+#\\d+/")
+- semantics: on `unavailable`, states that no CI surface was available to read
+- verify: json_path(path="$.summary", matches="/.+/")
+- semantics: on `blocked`, states why the available CI surface was not readable
+- verify: json_path(path="$.summary", matches="/.+/")
+- semantics: on `passed`, states that all observed Actions runs succeeded
 - verify: json_path(path="$.summary", matches="/.+")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiChecks.summary`

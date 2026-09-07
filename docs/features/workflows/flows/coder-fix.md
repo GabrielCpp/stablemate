@@ -32,6 +32,24 @@ title: Coder standalone fix flow
 - `render_gate` formats a `FailureReport` as the repair prompt's lap number, source gate, command,
   working directory, and fenced output. The lap number is 1-based and the report is preserved
   across an exhausted-budget operator wait.
+- `setup` resolves the workspace before selection because this lane has no story context until
+  `start` seeds the first item. `start` records the selected `StoryPaths` as the iteration's
+  source of truth, so resumed states read the same story rather than drawing a replacement.
+- `item` chooses `fix-item` when no gate report exists and `fix-item-repair` otherwise. Both
+  turns use the same story conversation and return `ImplResult`; a blocked implementation is
+  written to that story's operator context and never reaches `gates` on an unchanged tree.
+- `gates` iterates `GATE_ORDER` for each repository with changed paths. The first dirty gate is
+  converted to a `FailureReport` and re-enters `item` while repair laps remain; after the third
+  dirty lap, `_gate_red` awaits an operator with the final report instead of failing the run.
+- `check` and `recheck` are the only QA states. `apply_once` receives the first verdict's notes,
+  gets one attempt, and parks if that attempt is blocked; `recheck` prunes only a passing verdict
+  and otherwise marks the backlog item with `BLOCKED_NOTE`.
+- `document` hands off to `Docs` after pruning or flagging. The handoff result is accepted only
+  for `passed` or `not_applicable`; any other result raises `WorkflowFailed`, leaving the agent's
+  implementation commit intact but preventing the standalone drain from continuing.
+- `commit` calls `commit_story` with `kind="fix"` and the repositories reported by
+  `_changed_dirs`, then returns to `start`. It does not create a branch, push, open a pull request,
+  or include an untouched workspace repository.
 - A successful or flagged item is handed to `Docs`; only `passed` or `not_applicable` permits the
   standalone flow to commit. The commit uses `kind="fix"`, the current branch, the changed
   repositories only, and then returns to `start` for the next draw.
@@ -68,6 +86,22 @@ title: Coder standalone fix flow
 - verify: count(subject="operator-gated standalone fixes", equals=1)
 - detail: [coder main flow](coder-main.md)
 - code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.setup`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.start`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.item`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.gates`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.read_operator_impl`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.check`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.apply_once`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.recheck`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.document`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.commit`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix._changed_dirs`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix._prune`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix._flag`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix._gate_impl`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix._gate_red`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix._qa`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_pruned_and_committed`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_a_red_gate_buys_a_repair_lap_and_hands_the_turn_its_output`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_qa_gets_exactly_one_retry_and_the_fixer_is_handed_the_first_verdict`
@@ -81,6 +115,8 @@ title: Coder standalone fix flow
 - tests: `workflows/tests/coder/fix/test_flow.py::test_the_docs_sub_flow_runs_for_real_and_its_verdict_gates_the_commit`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_documentation_that_cannot_converge_preserves_the_agent_commit`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_the_commits_land_on_the_branch_the_repos_were_already_on`
+- tests: `workflows/tests/coder/fix/test_flow.py::test_the_first_pass_is_handed_the_item_and_no_gate_report_at_all`
+- tests: `workflows/tests/coder/fix/test_flow.py::test_the_drain_keeps_going_until_the_section_is_empty`
 - code: `workflows/src/workhorse_workflows/coder/fix/flow.py::render_gate`
 - code: `workflows/src/workhorse_workflows/coder/fix/flow.py::BLOCKED_NOTE`
 - code: `workflows/src/workhorse_workflows/coder/fix/flow.py::MAX_FIX_LAPS`
@@ -95,11 +131,15 @@ are gated and committed; repositories merely listed in the workspace manifest ar
 
 ### draw-and-seed
 
+- kind: seed
+
 `setup` resolves the workspace directories. `start` selects the next non-blocked `Filed by coder`
 bullet. A dry selection returns `Done`; otherwise the bullet is seeded as a one-AC story, its story
 paths are prepared, and the story file must be readable before `item` begins.
 
 ### implement
+
+- kind: run
 
 The first `item` turn uses `fix-item` and receives the selected bullet, story paths, epic identity,
 and operator context. It plans and writes the repair in one high-power session. A blocked result is
@@ -107,6 +147,8 @@ sent to the implementation operator gate. A gate repair re-enters the same story
 the rendered failing command, working directory, and output through `fix-item-repair`.
 
 ### gates
+
+- kind: verify
 
 `gates` asks every changed repository to run each gate in `GATE_ORDER`, using the repository's own
 `make <gate>` fallback when no service-specific command is configured. Clean or skipped gates pass.
@@ -118,11 +160,15 @@ workspace manifest. A repository with no paths for this item is neither gated no
 
 ### operator-block
 
+- kind: drive
+
 Implementation refusals and exhausted red gates are written to the drained story's `context.md`
 and returned as `Await`. The operator answer is read back into `operator_context` and the item turn
 is resumed. The standalone flow does not use an automatic resolver or an epic-scoped answer.
 
 ### qa-and-retry
+
+- kind: verify
 
 `check` runs `qa-fix-item` against the changed item. A passed verdict proceeds to pruning. A failed
 verdict supplies its notes to exactly one `apply-qa-fixes` turn. A blocked retry awaits the operator
@@ -130,10 +176,14 @@ instead of rechecking an unchanged worktree; a successful retry enters `recheck`
 
 ### settle-backlog
 
+- kind: verify
+
 `recheck` runs the same QA turn again. A pass prunes the selected bullet. Any other verdict calls
 `mark_fix_blocked` with `BLOCKED_NOTE`, preserving the bullet and allowing the next draw to skip it.
 
 ### document
+
+- kind: run
 
 After pruning or flagging, the flow hands the seeded story to `Docs` with the selected documentation
 root, epic, and target environment. `passed` and `not_applicable` permit continuation. Any other
@@ -141,6 +191,8 @@ documentation result raises `WorkflowFailed`, so a pruned item cannot be committ
 entry had succeeded.
 
 ### commit-and-redraw
+
+- kind: run
 
 `commit` commits the changed repositories with `kind="fix"`, the story identity, and no push or
 pull request. It then returns to `start`, so each drained item receives its own commit and the next

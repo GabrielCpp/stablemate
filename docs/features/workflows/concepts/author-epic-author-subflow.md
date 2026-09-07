@@ -34,7 +34,22 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - sig: `setup() -> EpicAuthorContext`
 - does: loads author configuration in `epic` mode
 - does: resolves the one caller-selected epic and merges its paths into the workflow context
-- returns: returns context containing configured paths and the resolved epic, epic directory, and epic document path
+- returns: returns context containing the configured repository root
+- verify: json_path(path="$.repo_root", matches=".+")
+- returns: returns context containing the configured backlog path
+- verify: json_path(path="$.backlog_path", matches=".+")
+- returns: returns context containing the configured roadmap path
+- verify: json_path(path="$.roadmap_path", matches=".+")
+- returns: returns context containing the configured epics directory
+- verify: json_path(path="$.epics_dir", matches=".+")
+- returns: returns context containing the configured feature-book directory
+- verify: json_path(path="$.features_dir", matches=".+")
+- returns: returns context containing the resolved epic
+- verify: json_path(path="$.epic", matches=".+")
+- returns: returns context containing the resolved epic directory
+- verify: json_path(path="$.epic_dir", matches=".+")
+- returns: returns context containing the resolved epic document path
+- verify: json_path(path="$.epic_path", matches=".+")
 - verify: count(subject="prepared explicit epic-author contexts", equals=1)
 - code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.setup`
 
@@ -118,9 +133,9 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - sig: `prepare_epic_target(logger: logging.Logger, epic: str, repo_dir: str = "") -> EpicTarget`
 - does: resolves the repository root from `repo_dir`
 - verify: count(subject="epic-author repository resolutions", equals=1)
-- does: rejects a blank epic name
-- raises: raises `WorkflowFailed` with `an explicit epic is required`
+- consistency: rejects a blank epic name by raising `WorkflowFailed` with `an explicit epic is required`
 - verify: count(subject="blank epic target failures", equals=1)
+- verify: json_path(path="$.exception.message", equals="an explicit epic is required")
 - does: rejects a name that is absent from the Ostler epic graph
 - raises: raises `WorkflowFailed` naming the missing epic
 - verify: count(subject="missing epic target failures", equals=1)
@@ -130,7 +145,7 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - verify: json_path(path="$.epic", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::prepare_epic_target`
 
-### validate_authored_epic
+### method: validate_authored_epic
 - sig: `validate_authored_epic(logger: logging.Logger, epic: str, repo_dir: str = "") -> EpicEvidence`
 - does: resolves the requested epic from the Ostler graph
 - verify: count(subject="epic-author document validations", equals=1)

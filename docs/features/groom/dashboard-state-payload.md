@@ -76,6 +76,7 @@ It replaced an HTML fragment pair that was swapped into the page out-of-band. No
 - default: process-local initial value is `True`
 - required: true
 - code: groom/groom/state.py::SCANNING
+- detail: [scanning flag documentation views](concepts/scanning-flag-documentation-views.md)
 - consumer-use: read from module state rather than passed as an argument, and copied into the payload's `scanning` field.
 - meaning: whether startup or manual discovery is still in flight.
 

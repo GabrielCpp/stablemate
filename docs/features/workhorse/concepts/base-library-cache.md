@@ -51,7 +51,7 @@ explicit refresh is the only operation that updates an existing cache.
 - does: query `BASE_REPO_REF` with `git ls-remote`
 - verify: json_path(path="$.remote_commit", matches="^[0-9a-f]{40}$")
 - returns: the remote commit hash, or `None` when git, the network, or the ref is unavailable
-- verify: json_path(path="$.remote_commit", equals=None)
+- verify: json_path(path="$.remote_commit", matches="^None$")
 - code: `workhorse/workhorse/_vendor/stablemate_core/base_cache.py::remote_commit`
 
 ### cached_base

@@ -13,6 +13,7 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - code: `workhorse/workhorse/runner/failure.py::error_kind`
 - code: `workhorse/workhorse/runner/failure.py::BackendInvocationError`
 - code: `workhorse/workhorse/runner/failure.py::OutputParseError`
+- detail: [Failure classification documentation views](failure-classification-views.md)
 - detail: [AgentRunner.run](run-agent.md)
 - detail: [AgentRunner.turn](agent-turn.md)
 
@@ -92,19 +93,22 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 ### record_session_map
 - sig: `record_session_map(session_id_path: Path | None, node_id: str, session_id: str | None, backend: str = "") -> None`
 - does: records the node-to-session mapping with visit key, timestamp, backend, and observed git head
-- verify: persists(subject="the node-to-session mapping manifest row")
+- verify: persists(subject="the run's sessions.jsonl manifest")
 - does: stamps the active turn span with the session id
 - verify: emitted(event="session id attribute on active agent-turn span", count=1)
 - does: requests transcript capture for the recorded session
 - verify: emitted(event="session transcript capture", count=1)
 - returns: `None`, including when persistence or capture fails
-- verify: json_path(path="$.result", equals=null)
+- verify: json_path(path="$.result", absent=true)
 - code: `workhorse/workhorse/runner/failure.py::record_session_map`
+- tests: `workhorse/tests/test_turnkey.py::test_each_turn_of_a_revisited_node_gets_its_own_addressable_row`
 
 ### BackendInvocationError
 - sig: `BackendInvocationError(message: str, *, transient: bool = False, overflow: bool = False, timed_out: bool = False, reset_at: float | None = None)`
 - does: carries the classification consumed by the recovery ladder
+- verify: json_path(path="$.error.overflow", equals=true)
 - returns: a runtime error value with the supplied flags
+- verify: json_path(path="$.error.timed_out", equals=true)
 - code: `workhorse/workhorse/runner/failure.py::BackendInvocationError`
 
 ### OutputParseError

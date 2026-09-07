@@ -45,9 +45,13 @@ re-planning completed work.
 
 ### setup
 - sig: `setup() -> SurveyConfig`
-- does: resolves the rubric, survey directory, repository root, and all derived artifact paths
+- does: calls `load_survey_config` with the workflow's rubric and survey-directory parameters
+- verify: count(subject="survey configuration node calls", equals=1)
+- does: carries the returned repository root and repository-relative artifact paths into the workflow context
+- verify: count(subject="survey configuration contexts", equals=1)
 - raises: raises `WorkflowFailed` when the resolved rubric file does not exist
-- returns: returns a `SurveyConfig` containing repo-relative survey paths and the resolved repository root
+- verify: count(subject="missing survey rubric failures", equals=1)
+- returns: returns a `SurveyConfig` containing the resolved repository root and all survey artifact paths
 - verify: count(subject="survey configuration results", equals=1)
 - code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.setup`
 - tests: `workflows/tests/author/surveyor/test_config.py::test_the_config_derives_every_path_from_survey_dir`
@@ -71,10 +75,13 @@ re-planning completed work.
 
 ### start
 - sig: `start() -> Continue`
-- does: checks whether a frozen inventory or pinned rules file already determines the survey units
-- does: routes to planning only when neither inventory nor rules exists
-- does: routes to inventory expansion when planning is unnecessary
-- returns: returns a continuation for `plan` or `expand` with the inventory decision
+- does: calls `check_inventory` with the configured inventory and rules paths
+- verify: count(subject="surveyor inventory checks at start", equals=1)
+- does: routes to `plan` when neither the inventory nor rules file exists
+- verify: count(subject="surveyor starts routed to planning", equals=1)
+- does: routes to `expand` when an existing inventory or rules file makes planning unnecessary
+- verify: count(subject="surveyor starts routed to expansion", equals=1)
+- returns: returns a `Continue` carrying the `InventoryCheck` decision and the selected next state
 - verify: count(subject="surveyor start routing decisions", equals=1)
 - code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.start`
 - tests: `workflows/tests/author/surveyor/test_config.py::test_an_existing_inventory_freezes_the_enumeration`
@@ -198,45 +205,109 @@ re-planning completed work.
 - code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.emit`
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_the_manifest_carries_every_unit_and_what_covers_it`
 
-## Methods
-
 ### load_survey_config
 - sig: `load_survey_config(logger: logging.Logger, rubric: str = "docs/survey/rubric.md", survey_dir: str = "docs/survey", repo_dir: str = "") -> SurveyConfig`
 - does: strips blank rubric and survey-directory parameters back to their defaults
-- does: derives rules, inventory, findings, partition, backlog, manifest, and context paths from the survey directory
+- verify: count(subject="survey configuration default normalizations", equals=1)
+- does: resolves the consuming repository root using the survey root policy
+- verify: count(subject="survey configuration repository roots", equals=1)
+- does: resolves the configured backlog path through the shared document-path policy
+- verify: count(subject="survey configuration backlog paths", equals=1)
+- does: derives rules, inventory, findings, partition, manifest, and context paths beneath the selected survey directory
+- verify: count(subject="survey configuration derived artifact paths", equals=1)
 - raises: raises `WorkflowFailed` with the resolved rubric path and parameter guidance when the rubric is absent
-- returns: returns a `SurveyConfig` whose survey paths are repository-relative
+- verify: count(subject="missing survey rubric failures", equals=1)
+- returns: returns a `SurveyConfig` whose survey artifact paths are repository-relative and whose repository root is resolved
 - verify: count(subject="loaded survey configurations", equals=1)
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::load_survey_config`
 - tests: `workflows/tests/author/surveyor/test_config.py::test_a_missing_rubric_halts_the_run`
 
 ### check_inventory
 - sig: `check_inventory(logger: logging.Logger, inventory: str = "docs/survey/inventory.json", rules: str = "docs/survey/units.yml", repo_dir: str = "") -> InventoryCheck`
+- does: strips blank inventory and rules parameters back to their defaults
+- verify: count(subject="inventory check default normalizations", equals=1)
 - does: prefers an existing inventory over all other choices
+- verify: count(subject="frozen inventory precedence decisions", equals=1)
 - does: skips planning when rules exist without an inventory
+- verify: count(subject="pinned rules precedence decisions", equals=1)
 - does: requests planning only when neither inventory nor rules exists
-- returns: returns the decision and a human-readable reason for the selected precedence branch
+- verify: count(subject="inventory planning requests", equals=1)
+- returns: returns `InventoryCheck` with the selected planning decision and a human-readable branch reason
 - verify: count(subject="inventory planning decisions", equals=1)
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::check_inventory`
 - tests: `workflows/tests/author/surveyor/test_config.py::test_with_neither_the_planner_gets_its_one_judgment`
 
 ### validate_partition
 - sig: `validate_partition(logger: logging.Logger, partition: str = "docs/survey/partition.yaml", inventory: str = "docs/survey/inventory.json", repo_dir: str = "") -> PartitionCheck`
-- does: rejects missing or unparsable partition and inventory artifacts
+- does: uses the configured repository root and restores blank partition and inventory paths to their defaults
+- verify: count(subject="partition validation path resolutions", equals=1)
+- does: rejects a missing partition file or a partition file that is not valid YAML
+- verify: count(subject="partition artifact read failures", equals=1)
+- does: rejects an unreadable or invalid JSON inventory
+- verify: count(subject="partition inventory read failures", equals=1)
+- does: rejects a partition without a non-empty `clusters` list
+- verify: count(subject="empty partition cluster-list failures", equals=1)
 - does: rejects duplicate or malformed cluster ids, empty titles, unknown strategies, invalid remediation patterns, and empty cluster unit lists
+- verify: count(subject="partition cluster structure failures", equals=1)
 - does: rejects clusters that name unknown or non-assessed units
-- does: rejects any assessed inventory unit absent from every cluster
-- returns: returns a valid result only when every assessed unit is covered and no cluster invents work
-- verify: count(subject="validated survey partitions", equals=1)
+- verify: count(subject="partition invented-or-ineligible unit failures", equals=1)
+- does: rejects any assessed inventory unit absent from every cluster and includes each orphan id in the errors
+- verify: count(subject="partition orphan failures", equals=1)
+- returns: returns `PartitionCheck(partition_ok=true)` only when every assessed unit is covered and no cluster invents work
+- verify: json_path(path="$.partition_ok", equals=true)
+- returns: returns `PartitionCheck(partition_ok=false, partition_errors=...)` containing all detected validation errors when any check fails
+- verify: json_path(path="$.partition_ok", equals=false)
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::validate_partition`
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_an_assessed_unit_in_no_cluster_is_the_gate`
 
 ### emit_artifacts
 - sig: `emit_artifacts(logger: logging.Logger, partition: str = "docs/survey/partition.yaml", inventory: str = "docs/survey/inventory.json", unit_manifest: str = "docs/survey/unit-manifest.json", repo_dir: str = "") -> EmitResult`
-- does: sorts clusters by explicit order and id before rendering backlog bullets
-- does: replaces only the generated survey section in the backlog and preserves content outside its markers
-- does: writes a versioned manifest containing each unit's path, kind, status, bullets, and clusters
-- returns: returns the number of emitted bullets and manifest units after successful writes
-- verify: count(subject="survey artifact emissions", equals=1)
+- does: uses the configured repository root and restores blank artifact paths to their defaults
+- verify: count(subject="survey emission path resolutions", equals=1)
+- does: refuses to write artifacts when the partition cannot be read as a non-empty cluster list
+- verify: count(subject="survey emission partition failures", equals=1)
+- does: refuses to write artifacts when the inventory cannot be read as JSON
+- verify: count(subject="survey emission inventory failures", equals=1)
+- does: sorts valid cluster mappings by numeric `order`, then by cluster id, before rendering
+- verify: count(subject="ordered survey cluster emissions", equals=1)
+- does: writes one generated `survey-<id>` backlog bullet per ordered cluster inside the survey begin/end markers
+- verify: count(subject="generated survey backlog bullets", equals=1)
+- does: replaces an existing marker-fenced survey section without changing backlog content outside the markers
+- verify: unchanged(subject="backlog outside the survey markers")
+- does: creates a missing backlog with a `# Backlog` heading and `## Survey findings` section before the generated markers
+- verify: created(subject="the survey backlog")
+- verify: visible(locator="backlog survey findings", text="## Survey findings")
+- does: writes a version-one unit manifest containing every inventory unit's id, path, kind, status, covering bullet ids, and cluster ids
+- verify: count(subject="survey manifest units", equals=1)
+- returns: returns `EmitResult(emit_ok=true)` with the emitted bullet count and manifest-unit count after both writes succeed
+- verify: json_path(path="$.emit_ok", equals=true)
+- returns: returns `EmitResult(emit_ok=false, emit_errors=...)` and writes neither generated artifact when an input artifact cannot be read
+- verify: json_path(path="$.emit_ok", equals=false)
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::emit_artifacts`
+- tests: `workflows/tests/author/surveyor/test_partition.py::test_re_emitting_replaces_the_section_and_nothing_else`
+
+### bullet_for
+- sig: `bullet_for(cluster: dict) -> str`
+- does: renders the cluster id as the `survey-<id>` backlog handle and the cluster title as the bullet text
+- verify: visible(locator="generated cluster bullet", text="survey-")
+- does: includes the remediation pattern, unit count, and strategy in the bullet hints
+- verify: visible(locator="cluster bullet hints", text="pattern:")
+- does: adds non-empty cluster notes as a single-line hint with embedded newlines flattened to spaces
+- verify: created(subject="the cluster notes hint")
+- verify: visible(locator="cluster notes hint", text=" ")
+- returns: returns one markdown list item string for the supplied cluster
+- verify: count(subject="rendered cluster bullets", equals=1)
+- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::bullet_for`
+- tests: `workflows/tests/author/surveyor/test_partition.py::test_one_bullet_per_cluster_lands_in_the_fenced_section`
+
+### replace_section
+- sig: `replace_section(text: str, section: str) -> str`
+- does: replaces the content from the first survey begin marker through the following end marker
+- verify: unchanged(subject="backlog content outside survey markers")
+- does: appends a generated survey section beneath an existing document, or creates the backlog heading when the document is empty
+- verify: created(subject="the survey backlog")
+- verify: visible(locator="appended survey section", text="## Survey findings")
+- returns: returns text containing exactly the supplied generated section and preserving unrelated text
+- verify: count(subject="survey section replacements", equals=1)
+- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::replace_section`
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_re_emitting_replaces_the_section_and_nothing_else`

@@ -20,6 +20,7 @@ routes to diagnosis or the operator.
 - semantics: partition outcome: `complete` or `blocked`
 - verify: json_path(path="$.status", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionProposal`
+- detail: [partition proposal field roles](concepts/partition-proposal-field-roles.md)
 
 ### notes
 - type: string
@@ -28,3 +29,4 @@ routes to diagnosis or the operator.
 - semantics: partition explanation or blocking information
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionProposal`
+- detail: [partition proposal field roles](concepts/partition-proposal-field-roles.md)

@@ -75,6 +75,7 @@ separate source-layer groups.
 ### _drop_nulls
 - sig: `_drop_nulls(data: Any) -> Any`
 - does: removes dictionary entries whose values are null before model validation
+- verify: removed(subject="null-valued entries in the author schema input mapping")
 - verify: count(subject="author schema null filtering", equals=1)
 - returns: the filtered mapping or the original non-mapping input
 - verify: count(subject="author schema validator inputs", equals=1)

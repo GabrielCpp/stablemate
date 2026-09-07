@@ -22,6 +22,7 @@ root `plan.md`, and does not merge a partially parsed layer plan with the root c
 - semantics: the non-empty text after the scenario heading's colon
 - verify: count(subject="scenario titles", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/scenarios.py::Scenario`
+- detail: [scenario field roles](scenario-field-roles.md)
 
 ### ac
 - type: `str`
@@ -30,6 +31,7 @@ root `plan.md`, and does not merge a partially parsed layer plan with the root c
 - semantics: the trimmed value of the scenario's AC bullet, or an empty string when that bullet is absent
 - verify: count(subject="scenario acceptance-criterion values", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/scenarios.py::Scenario`
+- detail: [scenario field roles](scenario-field-roles.md)
 
 ### level
 - type: `str`
@@ -38,6 +40,7 @@ root `plan.md`, and does not merge a partially parsed layer plan with the root c
 - semantics: the trimmed value of the scenario's Level bullet, or an empty string when that bullet is absent
 - verify: count(subject="scenario levels", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/scenarios.py::Scenario`
+- detail: [scenario field roles](scenario-field-roles.md)
 
 ## Methods
 

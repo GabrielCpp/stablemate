@@ -31,7 +31,15 @@ title: Coder QA flow
   - [verdict-routing](#verdict-routing)
   - [feedback-and-regression](#feedback-and-regression)
   - [operator-resolution](#operator-resolution)
-- end: a local story passes evidence, audit, sentinel, and regression gates and returns `status="passed"`
+- end: a local story passes the evidence gate
+- verify: count(subject="QA evidence gate passes", equals=1)
+- end: a local story passes the audit gate
+- verify: count(subject="QA audit gate passes", equals=1)
+- end: a local story passes the sentinel gate
+- verify: count(subject="QA sentinel gate passes", equals=1)
+- end: a local story passes the regression gate
+- verify: count(subject="QA regression gate passes", equals=1)
+- end: a local story returns `status="passed"`
 - verify: count(subject="passed QA flow results", equals=1)
 - end: a product failure, rescope, development-target report, replan, or operator-gated block is returned without silently approving the story
 - verify: count(subject="non-passing QA flow results", equals=1)
@@ -55,12 +63,16 @@ refusal detection, and operator gates decide whether work continues.
 
 ### setup
 
+- kind: prepare
+
 The flow resolves the story slug, story path, spec directory, QA directory, and inherited
 conversation. An empty or unresolved story raises `WorkflowFailed` before an agent turn rather
 than producing an exhausted verdict. The flow resets its QA-specific session chains when it
 starts and again when it ends.
 
 ### context
+
+- kind: prepare
 
 The flow clears prior QA evidence, resolves implementation context and affected repository paths,
 optionally resolves story-source provenance, detects the OKF book, and builds an obligation packet
@@ -70,6 +82,8 @@ packet is rebuilt and revalidated. An exhausted or refused repair enters the ope
 
 ### stack
 
+- kind: service
+
 `ensure_stack` runs before plan authoring. A ready stack or a book that serves no surface advances
 to planning. A served surface with no declared stack, or a stack that fails to boot, enters the
 bounded setup-fix loop; an identical blocked requirement bundle escalates instead of repeating.
@@ -77,6 +91,8 @@ Setup repair receives the verification setup, declared fixtures, QA run plan, ru
 and the current block notes. `MAX_SETUP_REWORKS` bounds setup repairs.
 
 ### plan
+
+- kind: run
 
 The flow adopts an existing `qa_plan.py` only when its lint and obligation validation pass against
 the rebuilt packet. Otherwise the first draft is authored by the QA planner and later laps edit
@@ -88,6 +104,8 @@ plan that can still be validated.
 
 ### run-and-assess
 
+- kind: run
+
 The validated plan runs once through `run_qa_plan`; a killed run resumes at assessment rather than
 rerunning the suite. A passed run advances to evidence verification. A failed run is assessed
 unless first-verdict mode reports it immediately as `inconclusive`. A blocked run is classified
@@ -97,6 +115,8 @@ routed by closed scope (`product-test`, `plan`, or `stack`).
 
 ### evidence-and-audit
 
+- kind: verify
+
 The evidence gate fails closed when the runner's required artifacts or evidence map are missing or
 invalid. A valid pass is then audited adversarially unless first-verdict mode skips repair-only
 auditing. A standing audit requires verdict `stands` with refutation class `none`. A product
@@ -105,6 +125,8 @@ stack owner, while plan-only audit blocking stops after `MAX_BLOCKING_AUDITS` an
 backlog work.
 
 ### verdict-routing
+
+- kind: drive
 
 Backlog filing is best-effort and runs for both pass and failure. A confirmed pass proceeds to
 feedback. A failed result enters triage, where in-AC defects use the QA fix loop and scope changes
@@ -116,6 +138,8 @@ Budget exhaustion always enters the operator gate rather than silently ending th
 
 ### feedback-and-regression
 
+- kind: run
+
 After a pass the inbox is polled once. An operator note is applied as one low-power QA fix and
 rebuilds context; no note advances to regression detection. Declared regression suites run after
 the primary pass. A green or skipped regression finalizes unless a preceding regression fix
@@ -124,6 +148,8 @@ regression setup uses the setup loop; failed regression suites receive up to
 `MAX_REGRESSION_FIXES`, then fall into the ordinary QA fix loop.
 
 ### operator-resolution
+
+- kind: drive
 
 QA blocks are counted at the common gate. In `auto` mode, at most `MAX_QA_BLOCKS` resolver turns
 may apply an answer grounded in an existing decision, convention, or acceptance criterion; human

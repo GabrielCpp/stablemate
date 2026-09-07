@@ -11,6 +11,7 @@ Blocked push payload is the JSON request body accepted by the [receive blocked p
 - code: groom/groom/app.py::push_blocked
 - code: groom/groom/sidecar.py::push_blocked
 - code: groom/groom/state.py::upsert_workflow
+- detail: [blocked push flow contexts](concepts/blocked-push-flow-contexts.md)
 - verify: groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape
 - verify: groom/tests/test_sidecar.py::test_handle_event_on_awaiting_gate_triggers_blocked_push
 - verify: groom/tests/test_sidecar.py::test_push_is_silent_when_groom_is_unreachable
@@ -46,7 +47,9 @@ Blocked push payload is the JSON request body accepted by the [receive blocked p
 
 - type: string-convertible JSON value
 - default: `""`
+- verify: json_path(path="$.ok", equals=false)
 - required: true
+- verify: json_path(path="$.ok", equals=false)
 - producer: sidecar identity uses the first 12 characters of the sidecar process hostname.
 - consumer: the handler converts it with `str(value)[:12]`, rejects the request when the result is empty, and uses the normalized value as the workflow registry key and stored gate workflow id.
 - meaning: workflow container id that associates the gate with one in-memory workflow container.
@@ -56,7 +59,9 @@ Blocked push payload is the JSON request body accepted by the [receive blocked p
 
 - type: string-convertible JSON value
 - default: `""`
+- verify: json_path(path="$.ok", equals=false)
 - required: true
+- verify: json_path(path="$.ok", equals=false)
 - producer: sidecar gate-event handling supplies the workspace-relative [operator gate context file](operator-gate-context-file.md) path; compatible clients may supply any string-convertible path token.
 - consumer: the handler converts it with `str(value)`, rejects the request when the result is empty, and uses the normalized value as both the open-gates map key and the stored gate file path.
 - meaning: [operator gate context file](operator-gate-context-file.md) path that identifies the operator prompt and scopes the later answer command.
@@ -66,7 +71,9 @@ Blocked push payload is the JSON request body accepted by the [receive blocked p
 
 - type: string-convertible JSON value
 - default: `""`
+- verify: json_path(path="$.gates[0].question", equals="")
 - required: false
+- verify: json_path(path="$.ok", equals=true)
 - producer: sidecar gate-event handling supplies the extracted operator question text from the awaiting [operator gate context file](operator-gate-context-file.md).
 - consumer: the handler converts it with `str(value)`, stores the full normalized text on the gate record, and truncates only the browser notification message to the first 200 characters.
 - meaning: operator-facing gate question shown in the inbox preview, worker detail, and notification preview.
@@ -76,7 +83,9 @@ Blocked push payload is the JSON request body accepted by the [receive blocked p
 
 - type: JSON string expected; any non-null JSON value is accepted by assignment
 - default: omitted
+- verify: json_path(path="$.runs[0].name", equals="abc123")
 - required: false
+- verify: json_path(path="$.runs[0].name", equals="existing-name")
 - producer: sidecar identity uses the `REPO_NAME` environment variable when present, including when it is an empty string; only an absent `REPO_NAME` falls back to the sidecar process hostname.
 - consumer: when present and non-null, the value is passed to workflow upsert as `name`; omitted or `null` preserves the existing name, and a newly created workflow without a non-empty name defaults to the normalized container id.
 - meaning: human-facing workflow/container label used in dashboard rows, notification messages, and repository picker labels.
@@ -86,7 +95,9 @@ Blocked push payload is the JSON request body accepted by the [receive blocked p
 
 - type: JSON string expected; any non-null JSON value is accepted by assignment
 - default: omitted
+- verify: unchanged(subject="workflow container", except_fields=["state", "gates"])
 - required: false
+- verify: json_path(path="$.ok", equals=true)
 - producer: sidecar identity uses `REPO_NAME` when set, otherwise `""`.
 - consumer: when present and non-null, replaces the workflow's current `repo_name`; omitted or `null` preserves the existing repository name.
 - meaning: repository name shown in dashboard identity text.
@@ -96,7 +107,9 @@ Blocked push payload is the JSON request body accepted by the [receive blocked p
 
 - type: JSON string expected; any non-null JSON value is accepted by assignment
 - default: omitted
+- verify: unchanged(subject="workflow container", except_fields=["state", "gates"])
 - required: false
+- verify: json_path(path="$.ok", equals=true)
 - producer: sidecar identity uses `REPO_BRANCH` when set, otherwise `""`.
 - consumer: when present and non-null, replaces the workflow's current `repo_branch`; omitted or `null` preserves the existing repository branch.
 - meaning: repository branch shown with the repository name.
@@ -106,7 +119,9 @@ Blocked push payload is the JSON request body accepted by the [receive blocked p
 
 - type: any JSON value
 - default: omitted
+- verify: json_path(path="$.ok", equals=true)
 - required: false
+- verify: unchanged(subject="workflow container", except_fields=["state", "gates"])
 - meaning: all keys outside `container_id`, `file_path`, `question`, `name`, `repo_name`, and `repo_branch` are ignored by the current consumer and are not copied into the workflow container or gate record.
 - producer: first-party residual HTTP blocked pushes do not add ignored fields; compatible clients may include them without changing current handler behavior.
 - consumer: the endpoint never passes ignored keys to the workflow registry, gate record constructor, Docker metadata resolver, shell renderer, notification renderer, dashboard broadcaster, or response object.

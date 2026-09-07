@@ -13,6 +13,9 @@ than a failure.
 - config: none — selection is derived from workflow inputs and the workspace manifest
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick`
 - detail: [coder CI remediation flow](flows/fix-ci-remediation.md)
+- tests: `workflows/tests/coder/fix_ci/test_flow.py::test_every_workspace_repo_is_checked_once_and_the_loop_ends`
+- tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_named_repo_pins_the_loop_to_that_one`
+- tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_repo_absent_from_the_workspace_is_a_warning_not_a_failure`
 
 ## Fields
 
@@ -21,9 +24,14 @@ than a failure.
 - type: `bool`
 - default: `false`
 - required: false
-- semantics: whether `start` has a repository to process
+- semantics: `true` means the selection has a repository for `start` to process
 - verify: json_path(path="$.has_repo", equals=true)
+- semantics: `false` means the named repository was absent when a name was requested
+- verify: json_path(path="$.has_repo", equals=false)
+- semantics: `false` means every workspace repository was already processed when no pick remained
+- verify: json_path(path="$.has_repo", equals=false)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick`
+- detail: [CI repository selection field roles](concepts/ci-repo-pick-field-roles.md)
 
 ### repo
 
@@ -33,6 +41,7 @@ than a failure.
 - semantics: selected workspace repository key
 - verify: json_path(path="$.repo", matches="/.+")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick`
+- detail: [CI repository selection field roles](concepts/ci-repo-pick-field-roles.md)
 
 ### repo_cwd
 
@@ -42,12 +51,16 @@ than a failure.
 - semantics: selected repository checkout passed to CI polling and the fixer
 - verify: json_path(path="$.repo_cwd", matches="/.+")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick`
+- detail: [CI repository selection field roles](concepts/ci-repo-pick-field-roles.md)
 
 ### processed
 
 - type: `list[str]`
 - default: empty list
 - required: false
-- semantics: processed repository keys including the newly selected repository
-- verify: count(subject="selected repository processing list", equals=1)
+- semantics: contains the repository keys already selected by earlier passes
+- verify: json_path(path="$.processed", matches="/.*/")
+- semantics: when `has_repo` is true, includes the newly selected repository
+- verify: json_path(path="$.processed", matches="/.*/")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick`
+- detail: [CI repository selection field roles](concepts/ci-repo-pick-field-roles.md)

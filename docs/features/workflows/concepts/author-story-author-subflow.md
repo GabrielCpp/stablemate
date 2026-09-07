@@ -222,7 +222,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 
 ### prepare_story
 - sig: `prepare_story(logger: logging.Logger, epic: str = "", story: str = "", repo_dir: str = "") -> StoryTarget`
-- does: rejects blank epic or story inputs
+- consistency: rejects blank epic or story inputs
 - raises: raises `WorkflowFailed` stating that explicit non-empty `epic` and `story` inputs are required
 - verify: count(subject="blank story-author target failures", equals=1)
 - does: resolves the named story only within the requested epic through Ostler
@@ -240,6 +240,6 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: json_path(path="$.story_digest", matches="^[0-9a-f]{64}$")
 - does: writes a passing `audit-receipt.json` beside the story document containing the digest
 - verify: created(subject="audit-receipt.json")
-- returns: returns the digest and repository-relative receipt path
+- consistency: returns an `AuditReceipt` containing the SHA-256 digest and repository-relative receipt path
 - verify: json_path(path="$.path", matches="audit-receipt\\.json$")
 - code: `workflows/src/workhorse_workflows/author/story_author/nodes/story.py::record_story_audit`

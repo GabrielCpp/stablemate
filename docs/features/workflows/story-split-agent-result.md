@@ -20,6 +20,7 @@ or whether the turn is blocked or declines the requested rework.
 - semantics: selects coverage checking, the coverage gate, or the normal continuation
 - verify: json_path(path="$.status", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit`
+- detail: [story split result field roles](concepts/story-split-result-field-roles.md)
 
 ### notes
 - type: string
@@ -28,3 +29,4 @@ or whether the turn is blocked or declines the requested rework.
 - semantics: agent findings passed to a gate or the next rework turn
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit`
+- detail: [story split result field roles](concepts/story-split-result-field-roles.md)

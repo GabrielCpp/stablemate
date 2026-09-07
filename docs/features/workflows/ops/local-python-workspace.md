@@ -13,9 +13,9 @@ title: Local Python workspace
   - uv-lock-resolution: `uv.lock` supplies the pinned dependency graph for the workspace members
   - package-index: PyPI is consulted by `uv sync --all-packages` when a dependency is not already cached
 - local-only: true
-- code: [workspace manifest](../../../../pyproject.toml)
-- code: [workspace lockfile](../../../../uv.lock)
-- code: [workflow package manifest](../../../../workflows/pyproject.toml)
+- code: `pyproject.toml`
+- code: `uv.lock`
+- code: `workflows/pyproject.toml`
 - tests: `workflows/tests/test_hello_world.py::test_the_documented_command_is_declared`
 - verify: exit_status(code=0)
 

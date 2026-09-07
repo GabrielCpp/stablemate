@@ -25,7 +25,7 @@ the session id stored there. The chain key is not itself a backend session id.
 
 ### read_chain
 - sig: `read_chain(run_dir: Path, key: str) -> str`
-- consistency: returns an empty string without reading chain storage when the key is empty
+- consistency: chain-storage — returns an empty string without reading it when the key is empty
 - does: reads and strips the chain file when it exists
 - returns: the opaque backend session id, or an empty string when unavailable
 - code: `workhorse/workhorse/sessions.py::read_chain`

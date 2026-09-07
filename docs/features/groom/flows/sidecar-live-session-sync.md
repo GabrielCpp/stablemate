@@ -17,12 +17,18 @@ the host-side live socket is the [sidecar connection](../concepts/sidecar-connec
 and the visible workflow row state is stored as a [workflow container](../concepts/workflow-container.md).
 
 - start: the host [groom server](../http/groom.md) is running and can accept `WS
-  /sidecar`; a workflow container has launched `groom-sidecar` without `--query`
-  or `--exit-code`; the sidecar process can read its configured workspace and
-  runs mounts, even if the host is temporarily unreachable; the process-local
-  [workflow registry](../concepts/workflow-registry.md) may be empty, stale,
-  hydrated from residual push endpoints, or already carrying a previous sidecar
-  connection for the same container id.
+  /sidecar`
+- verify: http_status(code=101, path="/sidecar")
+- start: a workflow container has launched `groom-sidecar` without `--query` or
+  `--exit-code`
+- verify: json_path(path="sidecar.mode", equals="live")
+- start: the sidecar process can read its configured workspace and runs mounts,
+  even if the host is temporarily unreachable
+- verify: json_path(path="sidecar.workspace_access", equals=true)
+- start: the process-local [workflow registry](../concepts/workflow-registry.md)
+  may be empty, stale, hydrated from residual push endpoints, or already
+  carrying a previous sidecar connection for the same container id
+- verify: json_path(path="workflow_registry.initial_state", matches="empty|stale|hydrated|connected")
 - steps:
   1. The container entrypoint invokes [groom-sidecar root](../groom-sidecar.md#groom-sidecar-root)
      with neither mode flag. The CLI parses successfully, imports the sidecar
@@ -140,22 +146,38 @@ and the visible workflow row state is stored as a [workflow container](../concep
       reconnecting. The runner maps that non-zero result to `SystemExit(3)`, which
       lets the container entrypoint recopy edited sidecar code and relaunch the
       default `groom-sidecar` session.
-- end: while connected, each useful `hello`, `progress`, and non-empty-path
-  `blocked` frame converges the host workflow registry — and the JSON state every
-  browser renders from — toward the sidecar's observed container state, and
-  file/diff reads prefer the live socket data plane. A dropped socket is not authoritative: it fails pending RPCs
-  to the documented fallback readers and waits for reconnect rather than deleting
-  workflow state. A reload request intentionally terminates only the sidecar
-  process with exit code `3`; the workflow process's own status remains outside
-  the live session and is reported separately by the `--exit-code` residual path.
+- end: each useful `hello` frame converges the host workflow registry toward the
+  sidecar's observed container state.
 - verify: json_path(path="hello.identity.repo_name", equals="Acme")
+- end: the JSON state every browser renders converges from the authoritative
+  `hello` snapshot.
 - verify: json_path(path="hello.snapshot.current_node", equals="n1")
+- end: a useful `progress` frame converges the host workflow registry on the
+  sidecar's current node.
 - verify: json_path(path="progress.current_node", equals="resolve")
+- end: a non-empty-path `blocked` frame converges the host workflow registry on
+  the sidecar's gate path.
 - verify: json_path(path="blocked.file_path", equals="docs/gate.md")
+- end: file reads prefer data returned by the live socket.
 - verify: json_path(path="rpc_result.data.paths", matches="README.md")
+- end: file-content reads prefer data returned by the live socket.
 - verify: json_path(path="rpc_result.data.content", equals="print(1)\n")
+- end: diff reads prefer data returned by the live socket.
 - verify: json_path(path="rpc_result.data.diff", matches="diff --git")
+- end: a dropped socket fails pending RPCs with the documented sidecar error.
+- verify: json_path(path="rpc_result.error", equals="sidecar connection closed")
+- end: a dropped socket lets file reads use the documented volume fallback.
+- verify: json_path(path="response.paths", matches="README.md")
+- end: a dropped socket leaves workflow state in the registry while the sidecar
+  waits for reconnect.
+- verify: unchanged(subject="workflow row after sidecar disconnect")
+- end: a reload request intentionally terminates only the sidecar process with
+  exit code `3`.
 - verify: exit_status(code=3)
+- end: the workflow process's own status remains outside the live session and is
+  reported separately by the `--exit-code` residual path.
+- verify: unchanged(subject="workflow process status during sidecar reload")
+- detail: [live sidecar RPC and volume fallback selection](../concepts/live-sidecar-rpc-and-volume-fallback-selection.md)
 - tests: groom/tests/test_sidecar_session.py::test_cli_sidecar_default_runs_session
 - tests: groom/tests/test_sidecar_session.py::test_hello_frame_carries_identity_and_snapshot
 - tests: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises

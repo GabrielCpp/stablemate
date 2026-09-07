@@ -20,6 +20,7 @@ it.
 - semantics: roadmap document whose lifecycle was transitioned
 - verify: json_path(path="$.path", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RoadmapStatus`
+- detail: [roadmap status field roles](concepts/roadmap-status-field-roles.md)
 
 ### status
 - type: string
@@ -28,3 +29,4 @@ it.
 - semantics: lifecycle status recorded on the roadmap
 - verify: json_path(path="$.status", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RoadmapStatus`
+- detail: [roadmap status field roles](concepts/roadmap-status-field-roles.md)

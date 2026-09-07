@@ -22,6 +22,7 @@ title: Story author audit receipt
 - semantics: digest of the exact current story document bytes at audit completion
 - verify: json_path(path="$.story_digest", matches="^[0-9a-f]{64}$")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::AuditReceipt`
+- detail: [audit receipt field roles](concepts/audit-receipt-field-roles.md)
 
 ### path
 - type: repository-relative string path
@@ -30,3 +31,4 @@ title: Story author audit receipt
 - semantics: path returned for the written `audit-receipt.json`
 - verify: json_path(path="$.path", matches="audit-receipt\\.json$")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::AuditReceipt`
+- detail: [audit receipt field roles](concepts/audit-receipt-field-roles.md)

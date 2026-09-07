@@ -17,9 +17,9 @@ as the workflow result.
 ### greeting
 
 - type: `str`
-- default: none; the agent reply must provide a greeting
+- default: none
 - verify: json_path(path="$.greeting", equals="Hello, globex.")
-- required: true
+- required: true because the agent reply must provide a greeting
 - verify: json_path(path="$.greeting", equals="Hello, globex.")
 - semantics: the validated friendly sentence returned by the agent turn
 - verify: json_path(path="$.greeting", equals="Hello, globex.")

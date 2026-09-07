@@ -20,6 +20,7 @@ assessable outcomes.
 - semantics: assessment outcome: `assessed`, `clean`, `blocked`, or `split`
 - verify: json_path(path="$.status", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitAssessment`
+- detail: [unit assessment reply fields](concepts/unit-assessment-reply-fields.md)
 
 ### notes
 - type: string
@@ -28,3 +29,4 @@ assessable outcomes.
 - semantics: assessment explanation or split/blocked context
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitAssessment`
+- detail: [unit assessment reply fields](concepts/unit-assessment-reply-fields.md)

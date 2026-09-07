@@ -14,16 +14,18 @@ the same run-level allowance by calling one another.
 - code: `workhorse/workhorse/runner/waits.py::active_recovery_wait_budget`
 - code: `workhorse/workhorse/runner/waits.py::RecoveryWaitBudgetExceeded`
 - detail: [AgentRunner.run](run-agent.md)
+- detail: [Recovery wait budget documentation](recovery-wait-budget-documentation.md)
 
 ## Fields
 
 ### limits
 - type: `dict[WaitKind, float]`
 - required: true
-- verify: json_path(path="$.limits", absent=false)
+- verify: json_path(path="$.limits.cap", matches="^[0-9]+(?:\\.[0-9]+)?$")
 - semantics: immutable-by-convention configured maximum seconds for `cap`, `retry`, `reframe`, and `exec-retry`
 - verify: count(subject="recovery ledger category limits", equals=4)
 - code: `workhorse/workhorse/runner/waits.py::RecoveryWaitBudget`
+- detail: [Recovery wait budget ledgers](recovery-wait-budget-ledgers.md)
 
 ### spent
 - type: `dict[WaitKind, float]`
@@ -33,6 +35,7 @@ the same run-level allowance by calling one another.
 - semantics: seconds already reserved in each category
 - verify: json_path(path="$.spent.retry", equals=1.0)
 - code: `workhorse/workhorse/runner/waits.py::RecoveryWaitBudget`
+- detail: [Recovery wait budget ledgers](recovery-wait-budget-ledgers.md)
 
 ## Methods
 
@@ -63,7 +66,9 @@ the same run-level allowance by calling one another.
 ### active_recovery_wait_budget
 - sig: `active_recovery_wait_budget() -> RecoveryWaitBudget | None`
 - does: reads the current context-local ledger
+- verify: json_path(path="$.active_is_scope_budget", equals=True)
 - returns: the active ledger or `None` outside a recovery scope
+- verify: json_path(path="$.outside_scope.type", equals="NoneType")
 - code: `workhorse/workhorse/runner/waits.py::active_recovery_wait_budget`
 
 ### RecoveryWaitBudgetExceeded

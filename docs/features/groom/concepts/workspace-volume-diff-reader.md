@@ -43,6 +43,7 @@ Workspace volume diff reader is the fallback implementation used by the [serve w
 - verify: json_path(path="diff", matches="^diff --git")
 - verify: json_path(path="diff", equals="")
 - code: groom/groom/docker_io.py::git_diff
+- detail: [Docker git diff documentation scope](docker-git-diff-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_git_diff_returns_empty_when_no_repo_found,
   groom/tests/test_docker_io.py::test_git_diff_returns_stdout_on_success,
   groom/tests/test_docker_io.py::test_git_diff_returns_empty_on_git_failure

@@ -60,6 +60,7 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 - default: `(".git", "node_modules", "__pycache__", ".venv")`
 - required: true
 - code: groom/groom/docker_io.py::_SKIP_DIRS
+- detail: [workspace volume skip directory names](workspace-volume-skip-directory-names.md)
 - meaning: directory basenames pruned from traversal before file output is collected.
 - constraints: this is the same skip set exposed by the [Groom Docker I/O module skip dirs field](groom-docker-io-module.md#field-skip-dirs) and keeps fallback file-list data aligned with the sidecar tree reader's vendor and VCS exclusions.
 
@@ -69,6 +70,7 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 - default: `alpine:3.20`
 - required: true
 - code: groom/groom/docker_io.py::ALPINE_IMAGE
+- detail: [Docker volume helper image](docker-volume-helper-image.md)
 - meaning: minimal image used for the throwaway read-only `find` process.
 - constraints: the image must provide BusyBox-compatible `find` with `-prune` and `-print` behavior.
 
@@ -78,6 +80,7 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 - default: `20`
 - required: true
 - code: groom/groom/docker_io.py::DOCKER_TIMEOUT
+- detail: [Docker command timeout](docker-command-timeout.md)
 - meaning: maximum seconds allowed for the Docker command through the shared runner.
 - constraints: a timeout exception from the subprocess layer is not converted by this reader.
 
@@ -144,6 +147,7 @@ and sorts accepted output paths. A non-zero Docker process exit produces an empt
 - returns: an empty list when no stdout paths match the selected base prefix.
 - verify: count(subject="returned file paths with no matching base prefix", equals=0)
 - code: groom/groom/docker_io.py::list_files
+- detail: [List-files documentation views](list-files-documentation-views.md)
 - tests: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs,
   groom/tests/test_docker_io.py::test_list_files_volume_root_when_repo_dir_empty,
   groom/tests/test_docker_io.py::test_list_files_empty_on_docker_failure

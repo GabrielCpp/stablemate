@@ -15983,7 +15983,7 @@
         },
         {
           "path": "workhorse/workhorse/_vendor/stablemate_core/config.py",
-          "content_sha256": "084fb8b81089cc8666f305b6e6adb8461f724709068bac029f624c744c9ed5b7",
+          "content_sha256": "ed6e531b60436aca65b273ea3210ba3ead69e13bbcf4be7ac508a0ddaaf94579",
           "symbols": [
             "BACKEND_FALLBACK_KEY",
             "BUILTIN_DEFAULT_CLI",
@@ -16003,6 +16003,7 @@
             "_mapping_from_table",
             "_migrate_forward",
             "_path_is_explicit",
+            "_positive_finite",
             "_profiles_table",
             "_read",
             "_too_new_message",
@@ -16048,6 +16049,7 @@
             "select_profile",
             "step",
             "table",
+            "timeout_scale",
             "value",
             "write_base_dir",
             "write_config_key",
@@ -16063,7 +16065,7 @@
             },
             {
               "name": "PowerMapping",
-              "content_sha256": "257c37fc27a60c3bb401d4593b6f96c4d39f15af7d79cce4b2d90236c2baa2e0"
+              "content_sha256": "528b5ab1ba0d8b70c6c47b0c9408636d9e2ca8f472324bc63134248b3263d66e"
             },
             {
               "name": "UnknownProfileError",
@@ -16079,7 +16081,7 @@
             },
             {
               "name": "_mapping_from_table",
-              "content_sha256": "59996dcf3d43b79276b29ad5d5e87d5436afde028186859f5d5bbe03b5671659"
+              "content_sha256": "8bf511ba1eb8f949fc7a3c50b45ba61990cc09d6b4ec10ecd28f5b54bca72bd7"
             },
             {
               "name": "_migrate_forward",
@@ -16088,6 +16090,10 @@
             {
               "name": "_path_is_explicit",
               "content_sha256": "2f22c0bdd9540c85f36eb7b1c188bea02fb2bcec123c0721c9b149d8530c9ee9"
+            },
+            {
+              "name": "_positive_finite",
+              "content_sha256": "e9fdf91c328496af9ea49c4d0195cc94c64cc03581adc3a612ae5c9211bb65c7"
             },
             {
               "name": "_profiles_table",

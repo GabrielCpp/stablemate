@@ -43,7 +43,9 @@ Answer result is the in-memory return object from the [gate-answering layer](con
 
 - type: `bool`
 - default: none
+- verify: json_path(path="$.constructor.ok.default", absent=true)
 - required: true
+- verify: json_path(path="$.constructor.ok.required", equals=true)
 - domain: first-party values are `true` or `false`.
 - producer-use: set by the gate-answering layer after the answer attempt reaches a terminal domain outcome.
 - consumer-use: copied into the [answer log entry](answer-log-entry.md), checked before sending the [dashboard answered message](dashboard-answered-message.md), and checked before changing a blocked workflow with no remaining visible gates to running.
@@ -53,9 +55,8 @@ Answer result is the in-memory return object from the [gate-answering layer](con
 
 - type: `str`
 - default: `""`
-- required: false for construction; callers may omit `message`.
 - verify: json_path(path="$.message", equals="")
-- required: an omitted `message` is exposed on the instance as `message=""`.
+- required: false for construction; callers may omit `message`, and the instance exposes `message=""`.
 - verify: json_path(path="$.message", equals="")
 - domain: first-party non-empty values are the success and failure strings listed in the contract; the shape itself also permits the empty default and arbitrary caller-supplied strings.
 - producer-use: set by the gate-answering layer to summarize the accepted write, duplicate/stale gate, missing file, missing workspace volume, write failure, or restart fallback outcome.

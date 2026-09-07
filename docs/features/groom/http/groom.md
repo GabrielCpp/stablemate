@@ -20,10 +20,21 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 
 - does:
   - Serves the browser entry document for the [groom dashboard](../gui/screens/groom-dashboard.md).
-  - Returns the preloaded dashboard template bytes unchanged for the browser to bootstrap the vendored assets and the dashboard ES module, which then opens the websocket and renders every panel from JSON; the template is read into `_DASHBOARD_HTML` when `groom/groom/app.py` is imported, not read from disk for each request.
-  - Ships no fleet data in the document. The shell carries the landmarks, the static pane scaffolding, the pickers, the palette, and the module `<script>` tag — but not one run, gate, repository, or count — so the first paint and every later one come from the same state payload rather than from a server-rendered snapshot the client would have to reconcile against.
+  - Returns the preloaded dashboard template bytes unchanged for the browser to bootstrap the vendored assets and the dashboard ES module, which then opens the websocket and renders every panel from JSON.
+  - Reads the template into `_DASHBOARD_HTML` when `groom/groom/app.py` is imported, not from disk for each request.
+  - Ships no fleet data in the document.
+  - The shell carries the landmarks, the static pane scaffolding, the pickers, the palette, and the module `<script>` tag, but not one run, gate, repository, or count.
+  - The first paint and every later one come from the same state payload rather than from a server-rendered snapshot the client would have to reconcile against.
   - Does not read query parameters, request body, cookies, in-memory workflow state, or Docker state.
   - Does not mutate server state, schedule discovery, or push websocket updates.
+- verify: http_status(code=200, path="/")
+- verify: json_path(path="response.media_type", equals="text/html")
+- verify: unchanged(subject="the dashboard HTML shell bytes across repeated GET / requests")
+- verify: omits(subject="GET / response", matches="run|gate|repository|count")
+- verify: visible(locator="groom dashboard", text="Runs")
+- verify: unchanged(subject="the dashboard HTML shell returned by GET /")
+- verify: unchanged(subject="groom server state after GET /")
+- verify: unchanged(subject="websocket clients and discovery state after GET /")
 - code: groom/groom/app.py::index
 - route: `GET /`
 - parent: [groom server](#groom-server)
@@ -78,7 +89,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - does:
   - Reads the current in-memory workflow list and keeps only workflows whose workspace volume is known.
   - Lists checkout directories for each eligible workflow concurrently through the [workspace volume repository-directory reader](../concepts/workspace-volume-repository-directory-reader.md).
-  - Returns [repository menu data](../repository-menu-data.md) as JSON — one group per workflow container, each carrying one entry per checkout directory — which the browser renders as the shared repository picker used by the dashboard Files and Changes panes.
+  - Returns [repository menu data](../repository-menu-data.md) as JSON — one group per workflow container.
+  - Each group carries one entry per checkout directory, which the browser renders as the shared repository picker used by the dashboard Files and Changes panes.
   - Excludes this route from the application OpenAPI schema; it is an internal dashboard data endpoint rather than a public API contract.
   - Does not accept a repository search query; the dashboard filters the returned entries client-side after the menu data is loaded.
 - verify: count(subject="repository menu entries", equals=2)
@@ -198,12 +210,14 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - does:
   - Looks up the requested workflow container id in the groom process's in-memory workflow registry, yielding either one [workflow container](../concepts/workflow-container.md) or no run state.
   - Returns one run's detail slices as JSON: identity and current node, the open gates, and the time-derived head, metrics, and log trail read from the hot telemetry cache and the durable store.
-  - Fills the detail pane *now*. The same payload arrives later — and keeps arriving — as the `detail` frames pushed to whichever tabs registered for this run in the [run watch registry](../concepts/run-watch-registry.md); this endpoint exists so the pane is not blank until the run next changes, which for an idle run could be never.
+  - Fills the detail pane *now* with the current run's detail payload, so the pane is not blank until the run next changes, even when it could otherwise remain idle forever.
   - Represents an unknown id as `{"found": false, "id": …}` rather than as a `404`, because a selection that outlived its run is an ordinary dashboard state and not a request error.
   - Carries gate question text as data, never as markup: the browser renders the markdown, so nothing about this response depends on the server having escaped it.
   - Does not mutate workflow state, run discovery, contact Docker, contact sidecars, broadcast websocket updates, answer gate files, or compute diffs.
+- emits: the same payload later as `detail` frames to tabs registered for this run in the [run watch registry](../concepts/run-watch-registry.md) when the run changes.
 - verify: http_status(code=200, path="/worker/{container_id}")
 - verify: json_path(path="$.found", equals=true)
+- verify: emitted(event="detail", count=1)
 - code: groom/groom/app.py::worker_detail
 - tests: groom/tests/test_app.py::test_worker_detail_and_pushed_slices,
   groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs,
@@ -232,7 +246,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Runs one on-demand reconciliation pass through the same path used by startup discovery only after the pre-scan broadcast succeeds.
   - During the reconciliation attempt, clears the scanning flag in all reconciliation outcomes.
   - On a successful reconciliation pass, sends a post-scan dashboard shell broadcast with the refreshed fleet state, then returns the number of workflows discovered by the scan.
-  - Does not serialize concurrent refresh requests; overlapping requests share the same process-local scanning flag and workflow registry.
+  - Does not serialize concurrent refresh requests.
+  - Overlapping refresh requests share the same process-local scanning flag and workflow registry.
 - verify: removed(subject="the vanished workflow registry entry")
 - verify: unchanged(subject="the existing workflow registry when Docker is unavailable")
 - code: groom/groom/app.py::refresh
@@ -260,11 +275,17 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 
 - does:
   - Receives a best-effort [progress push payload](../progress-push-payload.md) from the container-side sidecar or backstop path described by [sidecar protocol](../sidecar-protocol.md).
+  - verify: http_status(code=200, path="/push/progress")
   - Normalizes the payload `container_id` to a string and truncates it to the first 12 characters.
+  - verify: json_path(path="$.workflow.container_id", equals="abcdefghijkl")
   - Rejects an empty normalized container id with `{"ok": false}` and no state mutation or broadcast.
+  - verify: unchanged(subject="workflow registry after an invalid progress push")
   - Ensures Docker volume metadata has been resolved for the workflow through the [push-first volume metadata resolver](../concepts/push-first-volume-metadata-resolver.md) when possible before updating the visible fleet row.
+  - verify: persists(subject="workspace and runs volume metadata after a valid progress push")
   - Upserts the workflow as `RUNNING`, applying non-null identity and current-node fields from the payload while preserving fields the payload omits.
+  - verify: unchanged(subject="workflow fields omitted from a progress push", except_fields=["state", "name", "repo_name", "repo_branch", "current_node"])
   - Broadcasts the dashboard shell after a successful upsert and returns `{"ok": true}`.
+  - verify: emitted(event="state", count=1)
 - code: groom/groom/app.py::push_progress
 - route: `POST /push/progress`
 - parent: [groom server](#groom-server)
@@ -291,13 +312,23 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 
 - does:
   - Receives a best-effort [blocked push payload](../blocked-push-payload.md) from the workflow container sidecar or the await-operator backstop path described by [sidecar protocol](../sidecar-protocol.md).
+  - verify: persists(subject="workflow state after a valid blocked push payload")
   - Normalizes the payload `container_id` to a string and truncates it to the first 12 characters.
+  - verify: json_path(path="$.workflow.container_id", equals="abcdefghijkl")
   - Normalizes `file_path` to a string and treats an empty value as invalid.
+  - verify: json_path(path="$.gate.file_path", equals="docs/gate.md")
   - Rejects a missing normalized container id or missing gate file path with `{"ok": false}` and no state mutation, Docker metadata lookup, dashboard broadcast, or browser notification.
+  - verify: unchanged(subject="workflow registry after an invalid blocked push")
   - Ensures Docker volume metadata has been resolved for the workflow when possible before updating the visible fleet row.
+  - verify: persists(subject="workspace and runs volume metadata after a valid blocked push")
   - Upserts the workflow as `BLOCKED`, applying non-null identity fields from the payload while preserving fields the payload omits.
+  - verify: unchanged(subject="workflow fields omitted from a blocked push", except_fields=["state", "gates"])
   - Stores one open [gate info](../concepts/gate-info.md) record keyed by the normalized gate file path, with `workflow_id` equal to the normalized container id, `file_path` equal to the payload path, `question` equal to the string-normalized payload question or `""`, and status left at the gate model default `AWAITING_OPERATOR`.
-  - Broadcasts the [dashboard state payload](../dashboard-state-payload.md) to every connected tab, plus a one-shot `{"type": "notify", "message": …}` frame whose message is the workflow display name, a colon separator, and the first 200 characters of the gate question. The notify frame is separate from the state frame precisely so it accompanies an actual new block rather than every reconciliation re-push.
+  - verify: created(subject="open gate record for the normalized gate file path")
+  - Broadcasts the [dashboard state payload](../dashboard-state-payload.md) to every connected tab.
+  - verify: emitted(event="state", count=1)
+  - Broadcasts a one-shot `{"type": "notify", "message": …}` frame whose message is the workflow display name, a colon separator, and the first 200 characters of the gate question. The notify frame is separate from the state frame precisely so it accompanies an actual new block rather than every reconciliation re-push.
+  - verify: emitted(event="notify", count=1)
 - code: groom/groom/app.py::push_blocked
 - route: `POST /push/blocked`
 - parent: [groom server](#groom-server)
@@ -363,7 +394,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 ### websocket-dashboard
 
 - does:
-  - Provides the [groom dashboard](../gui/screens/groom-dashboard.md) browser websocket, carrying JSON in both directions: fleet-wide `state`, `notify`, and `answered` frames plus this tab's own `detail` frames down, and `watch`/`answer` commands up.
+  - Provides the [groom dashboard](../gui/screens/groom-dashboard.md) browser websocket, carrying fleet-wide `state`, `notify`, and `answered` JSON frames plus this tab's own `detail` frames down.
+  - Accepts `watch` and `answer` commands from the browser up.
   - Accepts the websocket upgrade, creates one unbounded process-local outbound queue for the connected browser tab, registers that queue in the [dashboard client queue set](../concepts/dashboard-client-queue-set.md) before the initial snapshot is sent, and unregisters it in the session cleanup path — which also drops the tab's watch subscription.
   - Sends an initial [dashboard state payload](../dashboard-state-payload.md) immediately after registration — **byte-identical to what [GET /api/state](#get-dashboard-state) would have returned** — so a freshly opened tab and a tab that just resynced after a dead socket converge through the same client code.
   - Runs one [dashboard websocket send loop](../concepts/dashboard-websocket-send-loop.md) that waits for queued messages and JSON-encodes each into a websocket text frame.
@@ -371,6 +403,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Answers a `watch` command by recording this tab against that run id in the [run watch registry](../concepts/run-watch-registry.md) and immediately pushing that run's `detail` frame back, which is what makes a reconnect self-healing: the tab re-sends `watch` on every socket open and gets its slices without an HTTP fetch.
   - Emits a heartbeat by construction. The [live clock](#schedule-live-clock) re-pushes `state` every tick whether or not anything changed, so a browser can read silence as a dead connection rather than as a quiet fleet — which is the whole basis of the [dashboard connection state machine](../concepts/dashboard-connection-state-machine.md).
   - Ends the websocket session when either loop completes, then cancels the still-pending loop, propagates non-disconnect exceptions from the completed loop, and removes the client queue even when startup, sending, receiving, or command handling fails.
+- verify: emitted(event="detail", count=1)
 - verify: emitted(event="answered", count=1)
 - code: groom/groom/app.py::dashboard_ws
 - tests: `groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event`,
@@ -402,9 +435,15 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 
 - does:
   - Provides the persistent sidecar socket for [sidecar live sessions](../sidecar-live-sessions.md), distinct from the browser dashboard websocket, using [sidecar websocket frame](../sidecar-websocket-frame.md) JSON messages.
-  - Accepts a websocket upgrade from a workflow-container sidecar; the sidecar is always the dialing client, so groom never needs inbound reachability into the container.
+  - Accepts a websocket upgrade from a workflow-container sidecar.
+  - verify: created(subject="the sidecar websocket connection")
+  - The sidecar is always the dialing client, so groom never needs inbound reachability into the container.
+  - verify: json_path(path="connection.client", equals="sidecar")
   - Ignores non-object JSON frames and ignores any frame other than a valid `hello` before sidecar identity has been established.
-  - Requires the first useful `hello` frame to carry a non-empty `identity.container_id`; the handler string-normalizes and truncates that id to 12 characters.
+  - Requires the first useful `hello` frame to carry a non-empty `identity.container_id`.
+  - verify: json_path(path="hello.identity.container_id", matches=".+")
+  - The handler string-normalizes and truncates that id to 12 characters.
+  - verify: json_path(path="hello.identity.container_id", matches="^.{1,12}$")
   - Registers one [sidecar connection](../concepts/sidecar-connection.md) for the normalized container id in the [sidecar connection registry](../concepts/sidecar-connection-registry.md), displacing any previous sidecar socket for the same container.
   - Folds the `hello` frame's identity and snapshot into the visible workflow fleet through the [sidecar hello applier](../concepts/sidecar-hello-applier.md), rebuilding gates from the snapshot and broadcasting the resulting shell.
   - Resolves `rpc_result` frames against pending host-to-sidecar RPCs so `/files`, `/file`, `/diff`, and `/reload` can use the same connected socket.
@@ -465,7 +504,16 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - When `container_id` is empty, snapshots every currently connected sidecar id from the [sidecar connection registry](../concepts/sidecar-connection-registry.md) before the first reload send, so later connects or disconnects are outside this request's target set.
   - Looks up each target in the [sidecar connection registry](../concepts/sidecar-connection-registry.md) and sends one websocket reload command through the target's [sidecar connection](../concepts/sidecar-connection.md) only when that lookup still returns a live connection.
   - Counts only sidecars whose connection accepted the reload command.
-  - Treats missing connections and send failures as per-sidecar no-ops; failed sends are not counted, do not remove registry entries, and do not stop later targets from being attempted.
+  - Treats missing connections as per-sidecar no-ops.
+  - verify: json_path(path="$.reloaded", equals=0)
+  - Treats send failures as per-sidecar no-ops.
+  - verify: json_path(path="$.reloaded", equals=0)
+  - Does not count failed sends.
+  - verify: json_path(path="$.reloaded", equals=0)
+  - Leaves a failed-send connection in the sidecar connection registry.
+  - verify: persists(subject="sidecar connection for the failed target")
+  - Continues attempting later targets after a send failure.
+  - verify: json_path(path="$.reloaded", equals=1)
   - Returns only the count of reload commands accepted by sidecars; it does not wait for container restart or reconnection.
 - verify: http_status(code=200, path="/reload")
 - verify: json_path(path="$.ok", equals=true)
@@ -495,12 +543,25 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 
 - does:
   - Serves vendored dashboard assets from the package asset directory mounted at `/assets` by `create_app`.
+  - verify: http_status(code=200, path="/assets/dashboard.js")
   - Resolves every requested asset path relative to the [Groom app module](../concepts/groom-app-module.md#field-assets-dir) package path `groom/groom/assets`, not the process working directory.
+  - verify: http_status(code=200, path="/assets/htm-preact.js")
   - Exists because `create_app` includes one static-files router in the application route handlers alongside the first-party HTTP and websocket handlers.
-  - Keeps the dashboard independent of runtime CDN access for the Preact + htm rendering runtime, the dashboard ES module, diff2html, marked, DOMPurify, highlight.js, diff CSS, highlight CSS, and dashboard CSS. Nothing on this page is fetched from a third-party host at runtime; there is no build step and no `node_modules`.
+  - verify: count(subject="static-files routers mounted at /assets", equals=1)
+  - Keeps the dashboard independent of runtime CDN access for the Preact + htm rendering runtime, the dashboard ES module, diff2html, marked, DOMPurify, highlight.js, diff CSS, highlight CSS, and dashboard CSS.
+  - verify: count(subject="runtime dashboard asset requests to third-party hosts", equals=0)
+  - Makes no runtime requests to third-party hosts for dashboard assets.
+  - verify: count(subject="third-party dashboard asset requests", equals=0)
+  - Requires no asset build step.
+  - verify: count(subject="dashboard asset build steps", equals=0)
+  - Includes no `node_modules` directory in the packaged dashboard assets.
+  - verify: absent(subject="groom/groom/assets/node_modules directory")
   - Runs no first-party per-request handler for an individual asset request; after route matching, validation, lookup, response metadata, and not-found handling belong to the mounted static-file router.
+  - verify: count(subject="first-party per-request handlers invoked for a static asset request", equals=0)
   - Does not read query parameters, request body, cookies, workflow state, Docker state, or sidecar connection state.
+  - verify: count(subject="request context inputs read by the static asset route", equals=0)
   - Does not mutate server state, schedule discovery, broadcast websocket updates, or proxy asset requests to any remote host.
+  - verify: unchanged(subject="Groom process-local state")
 - code: groom/groom/app.py::create_app
 - route: `GET /assets/*`
 - parent: [groom server](#groom-server)
@@ -532,16 +593,26 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - No request, connected dashboard websocket, sidecar websocket, Docker availability, workflow registry entry, or operator action is required.
 - does:
   - Enters `groom/groom/app.py::_spawn_scan` as an async startup hook with no parameters.
+  - verify: count(subject="_spawn_scan startup hook entries", equals=1)
   - Creates one background task for `groom/groom/app.py::_background_scan()` on the current event loop, so the initial Docker discovery pass can run after startup begins without blocking the server application on the whole scan.
-  - Stores the created task in the module-level `_scan_task` slot, keeping a strong reference to the scheduled background work while it runs; later startups in the same process would replace that slot with the latest task handle.
-  - Returns `None` immediately after task creation; it does not await the discovery pass, inspect Docker containers, mutate the workflow registry, clear `state.SCANNING`, broadcast websocket updates, or handle scan failures in the startup hook itself.
+  - verify: count(subject="background discovery tasks scheduled by _spawn_scan", equals=1)
+  - Stores the created task in the module-level `_scan_task` slot, keeping a strong reference to the scheduled background work while it runs.
+  - verify: json_path(path="$._scan_task.present", equals=true)
+  - Later startups in the same process replace `_scan_task` with the latest task handle.
+  - verify: json_path(path="$.scan_task_is_latest", equals=true)
+  - Returns `None` immediately after task creation.
+  - verify: json_path(path="$.return", equals=null)
+  - Before returning, does not await the discovery pass, inspect Docker containers, mutate the workflow registry, clear `state.SCANNING`, broadcast websocket updates, or handle scan failures.
+  - verify: count(subject="discovery passes awaited or discovery side effects completed before _spawn_scan returns", equals=0)
   - The scheduled [startup background discovery scan](../concepts/startup-background-discovery-scan.md) then runs one [reconcile workflow fleet](../concepts/workflow-registry.md#method-reconcile-workflow-fleet) pass, allowing discovered workflow containers to replace registry entries and allowing vanished containers to be pruned when Docker presence can be read.
   - The scheduled scan always clears the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md) after the reconciliation attempt exits, so successful scans and reconciliation errors both stop advertising startup discovery as in flight.
   - After clearing the scanning flag, the scheduled scan calls the [dashboard shell broadcaster](../concepts/dashboard-shell-broadcaster.md) so connected dashboard websocket clients receive a [dashboard state payload](../dashboard-state-payload.md) carrying the current workflow registry and a false `scanning` flag, which is what swaps the spinner for real rows.
   - If reconciliation or completion broadcast raises, the exception belongs to the background task rather than the startup hook; the startup hook has already returned after scheduling the task.
-- emits: one scheduled in-process background task for the startup discovery scan; no HTTP response, websocket frame, sidecar frame, browser event, log entry, or persisted artifact.
-- consumes: the current asyncio event loop, the startup lifecycle call from the Litestar application, the first-party [startup background discovery scan](../concepts/startup-background-discovery-scan.md) coroutine, the [workflow registry](../concepts/workflow-registry.md), the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md), and the [dashboard shell broadcaster](../concepts/dashboard-shell-broadcaster.md).
+- emits: one scheduled in-process background task for the startup discovery scan.
 - verify: count(subject="background discovery tasks scheduled by _spawn_scan", equals=1)
+- emits: no HTTP response, websocket frame, sidecar frame, browser event, log entry, or persisted artifact before the startup hook returns.
+- verify: count(subject="external effects emitted by _spawn_scan before it returns", equals=0)
+- consumes: the current asyncio event loop, the startup lifecycle call from the Litestar application, the first-party [startup background discovery scan](../concepts/startup-background-discovery-scan.md) coroutine, the [workflow registry](../concepts/workflow-registry.md), the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md), and the [dashboard shell broadcaster](../concepts/dashboard-shell-broadcaster.md).
 - code: groom/groom/app.py::_spawn_scan
 - tests: groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes
 - request:
@@ -563,12 +634,30 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - trigger: Litestar runs the server application's startup hooks for the app returned by `create_app`; the matching shutdown hook cancels the task.
 - when:
   - The groom process has constructed the Litestar application and the event loop is running startup lifecycle hooks.
-  - `create_app` registered `_spawn_live` in `on_startup` after the discovery scan and the alert-rule ticker, and `_stop_live` in `on_shutdown`.
+  - verify: count(subject="live-clock startup hook invocations", equals=1)
+  - `create_app` registered `_spawn_live` in `on_startup` after the discovery scan and the alert-rule ticker.
+  - verify: json_path(path="$.on_startup", equals="_spawn_scan,_spawn_rules,_spawn_live")
+  - `create_app` registered `_stop_live` in `on_shutdown`.
+  - verify: count(subject="live-clock shutdown hook registrations", equals=1)
   - No request, connected dashboard websocket, sidecar websocket, Docker availability, or workflow registry entry is required.
+  - verify: count(subject="live-clock tasks scheduled without requests, sockets, Docker, or workflows", equals=1)
 - does:
-  - Enters `groom/groom/app.py::_spawn_live` as an async startup hook, creates the `_live_loop()` task on the current event loop, keeps a strong reference in the module-level `_live_task` slot, and returns without awaiting a tick.
-  - The loop sleeps `LIVE_TICK_S` seconds — `GROOM_LIVE_TICK_S`, default `5` — then, if any dashboard client is connected, broadcasts the [dashboard state payload](../dashboard-state-payload.md) and pushes each watched run's detail to the tabs watching it.
+  - Enters `groom/groom/app.py::_spawn_live` as an async startup hook.
+  - verify: count(subject="_spawn_live startup hook entries", equals=1)
+  - Creates the `_live_loop()` task on the current event loop.
+  - verify: count(subject="_live_loop tasks scheduled by _spawn_live", equals=1)
+  - Keeps a strong reference in the module-level `_live_task` slot.
+  - verify: json_path(path="$._live_task.present", equals=true)
+  - Returns without awaiting a tick.
+  - verify: count(subject="live-clock ticks awaited before _spawn_live returns", equals=0)
+  - The loop sleeps `LIVE_TICK_S` seconds — `GROOM_LIVE_TICK_S`, default `5` — before each tick.
+  - verify: json_path(path="$.live_tick_seconds", equals=5)
+  - If any dashboard client is connected, broadcasts the [dashboard state payload](../dashboard-state-payload.md).
+  - verify: emitted(event="dashboard state payload", count=1)
+  - If any dashboard client is connected, pushes each watched run's detail to the tabs watching it.
+  - verify: emitted(event="watched run detail", count=1)
   - Skips the whole tick when no client is connected, so an idle server does no projection work.
+  - verify: count(subject="live-clock projections with no connected client", equals=0)
   - Runs the clock because parts of a row are derived from `now` rather than from an event: elapsed time in the current node, and liveness computed from the last telemetry timestamp. Between edges those freeze — a run that has since died goes on claiming it is alive, and the event that would correct it is an *absence*, which cannot be pushed. The clock is the mechanism, not a fallback.
   - Serves as the socket's heartbeat as a second consequence: the tick fires whether or not anything changed, which is what lets the [dashboard connection state machine](../concepts/dashboard-connection-state-machine.md) read silence as a dead connection rather than as a quiet fleet.
   - Wraps each tick in a bare `except` so one failing broadcast cannot kill the loop and strand every open tab on a socket that is technically alive and permanently silent.
@@ -597,19 +686,91 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 ### schedule-alert-rule-ticker
 
 - on: [groom server](#groom-server)
-- trigger: Litestar runs the server application's startup hooks for the app returned by `create_app`; the matching shutdown hook cancels the task.
+- trigger: Litestar runs the server application's startup hooks for the app returned by `create_app`.
 - when:
   - The groom process has constructed the Litestar application and the event loop is running startup lifecycle hooks.
+  - verify: count(subject="alert-rule ticker startup hook invocations", equals=1)
   - `create_app` registered `_spawn_rules` in `on_startup` between the discovery scan and the [live clock](#schedule-live-clock), and `_stop_rules` in `on_shutdown`.
-  - No request, connected websocket, Docker availability, or configured alert rule is required; a server with no rules still runs the loop and its housekeeping passes.
+  - verify: json_path(path="$.on_startup", equals="_spawn_scan,_spawn_rules,_spawn_live")
+  - No request, connected websocket, Docker availability, or configured alert rule is required.
+  - verify: count(subject="rules-loop tasks scheduled for a server without alert rules", equals=1)
+  - A server with no rules still runs the loop and its housekeeping passes.
+  - verify: count(subject="rules-loop tasks scheduled for a server without alert rules", equals=1)
 - does:
-  - Enters `groom/groom/app.py::_spawn_rules` as an async startup hook, prunes the durable store once so a long-lived database is bounded from the first tick rather than after the first hour, then creates the `_rules_loop()` task and keeps a strong reference in the module-level `_rules_task` slot.
-  - The loop sleeps `RULES_TICK_S` seconds — `GROOM_RULES_TICK_S`, default `60` — then evaluates the time-based alert rules and dispatches whatever fired.
-  - Evicts finished and dead runs from the hot cache on the same tick, and re-prunes the durable store on its own slower clock of `PRUNE_EVERY_S` seconds (`GROOM_PRUNE_EVERY_S`, default `3600`), running that prune on a worker thread so the event loop is not blocked by SQLite.
-  - Wraps each tick so one bad evaluation, or an unreachable notifier, cannot kill the loop — the stall watch itself must not be able to stall.
-  - Does not push to dashboard tabs directly, run discovery, inspect Docker, or answer gates; a fired rule reaches operators through the alert dispatcher.
-- emits: alert dispatches for rules that fired; no HTTP response, websocket frame from the hook itself, or persisted artifact beyond the store prune.
-- consumes: the current asyncio event loop, the alert-rule set, the process-local workflow registry and its hot telemetry cache, and the durable store.
+  - Enters `groom/groom/app.py::_spawn_rules` as an async startup hook.
+  - verify: count(subject="_rules_loop tasks scheduled by _spawn_rules", equals=1)
+- does:
+  - Creates the `_rules_loop()` task on the current event loop.
+  - verify: count(subject="_rules_loop tasks scheduled by _spawn_rules", equals=1)
+- does:
+  - Stores the created task in the module-level `_rules_task` slot to retain a strong reference while it runs.
+  - verify: json_path(path="$._rules_task.present", equals=true)
+- does:
+  - Defers durable-store pruning until the first rules-loop tick, so startup can return before database work begins.
+  - verify: count(subject="durable-store prunes before the first rules-loop tick", equals=0)
+- does:
+  - Sleeps `RULES_TICK_S` seconds before each rules-loop tick.
+  - verify: json_path(path="$.rules_tick_seconds", equals=60)
+- does:
+  - Evaluates time-based alert rules on each rules-loop tick.
+  - verify: emitted(event="alert dispatch", count=1)
+- does:
+  - Dispatches every alert that time-based rule evaluation fires.
+  - verify: emitted(event="alert dispatch", count=1)
+- does:
+  - Evicts finished runs from the hot cache on each rules-loop tick.
+  - verify: removed(subject="a finished run from the hot cache")
+- does:
+  - Evicts dead runs from the hot cache on each rules-loop tick.
+  - verify: removed(subject="a dead run from the hot cache")
+- does:
+  - Harvests turn records on the `HARVEST_EVERY_S` clock.
+  - verify: persists(subject="harvested turn records")
+- does:
+  - Re-prunes the durable store on the `PRUNE_EVERY_S` clock.
+  - verify: removed(subject="a durable-store record eligible for pruning")
+- does:
+  - Runs the harvest pass on a worker thread.
+  - verify: count(subject="event-loop-blocking harvest calls", equals=0)
+- does:
+  - Runs the durable-store prune pass on a worker thread.
+  - verify: count(subject="event-loop-blocking durable-store prune calls", equals=0)
+- does:
+  - Continues with the next tick after an alert evaluation failure.
+  - verify: count(subject="rules-loop ticks completed after an alert evaluation failure", equals=2)
+- does:
+  - Continues with the next tick after a notifier failure.
+  - verify: count(subject="rules-loop ticks completed after a notifier failure", equals=2)
+- does:
+  - Does not push directly to dashboard tabs.
+  - verify: count(subject="direct dashboard-tab pushes by the rules loop", equals=0)
+- does:
+  - Does not run discovery.
+  - verify: count(subject="discovery passes run by the rules loop", equals=0)
+- does:
+  - Does not inspect Docker.
+  - verify: count(subject="Docker inspections run by the rules loop", equals=0)
+- does:
+  - Does not answer gates.
+  - verify: count(subject="gate answers written by the rules loop", equals=0)
+- emits: alert dispatches for rules that fired.
+  - verify: emitted(event="alert dispatch", count=1)
+- emits: no HTTP response from the startup hook.
+  - verify: count(subject="HTTP responses from _spawn_rules", equals=0)
+- emits: no websocket frame from the startup hook.
+  - verify: count(subject="websocket frames from _spawn_rules", equals=0)
+- emits: no persisted artifact from the startup hook.
+  - verify: count(subject="persisted artifacts written by _spawn_rules", equals=0)
+- consumes: the current asyncio event loop.
+  - verify: count(subject="event loops used to schedule _rules_loop", equals=1)
+- consumes: the alert-rule set.
+  - verify: count(subject="time-based alert-rule sets evaluated per tick", equals=1)
+- consumes: the process-local workflow registry.
+  - verify: count(subject="workflow registries used for stale-run eviction", equals=1)
+- consumes: the hot telemetry cache.
+  - verify: count(subject="hot telemetry caches used for stale-run eviction", equals=1)
+- consumes: the durable store.
+  - verify: count(subject="durable stores used for rules-loop pruning", equals=1)
 - code: groom/groom/app.py::_spawn_rules
 - request:
   - method: none; this is a server startup lifecycle invocation, not an HTTP route or websocket message.
@@ -634,13 +795,32 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - No request query, path, header, cookie, or body data is required.
 - does:
   - Enters `groom/groom/app.py::index` for the root route.
-  - Reads no request-derived inputs; path matching is complete before this handler runs, and there are no handler parameters for path variables, query values, headers, cookies, or request body data.
+  - Reads no request-derived inputs.
+  - verify: count(subject="request-derived inputs read by the root route", equals=0)
+  - Runs after route matching is complete.
+  - verify: count(subject="root-route matches selected before index runs", equals=1)
+  - Declares no handler parameters for path variables, query values, headers, cookies, or request body data.
+  - verify: count(subject="request-derived handler parameters declared by index", equals=0)
   - Builds a `200 OK` HTML response whose content is the module-level `_DASHBOARD_HTML` byte string loaded from `groom/groom/templates/dashboard.html` when `groom/groom/app.py` was imported.
   - Sets the response media type to `text/html` through Litestar's HTML media type, so the client receives the packaged dashboard shell as an HTML document rather than as an HTML fragment or JSON payload.
   - Leaves the returned HTML document unchanged: no workflow rows, status counts, gate details, repository options, file data, diff data, websocket messages, or sidecar state appear in it. The shell is landmarks and a module `<script>` tag, so the first paint comes from the same state payload every later one does.
   - Leaves dashboard liveness, workflow discovery state, websocket registration, and all run/status rendering to the dashboard module once it loads.
-  - Calls no first-party helper function and reads no mutable first-party state during the request; the only first-party artifact consumed by this layer is the already documented dashboard template.
-- emits: exactly one HTTP response; this invocation does not broadcast websocket frames, enqueue sidecar messages, dispatch browser events, or write logs.
+  - Calls no first-party helper function during the request.
+  - verify: count(subject="first-party helper calls made by the root route", equals=0)
+  - Reads no mutable first-party state during the request.
+  - verify: count(subject="mutable first-party state reads made by the root route", equals=0)
+  - Consumes only the already documented dashboard template as its first-party artifact.
+  - verify: count(subject="first-party artifacts consumed by the root route", equals=1)
+- emits: exactly one HTTP response.
+- verify: emitted(event="root dashboard HTTP response", count=1)
+- emits: no websocket frames.
+- verify: emitted(event="root route websocket frame", count=0)
+- emits: no sidecar messages.
+- verify: emitted(event="root route sidecar message", count=0)
+- emits: no browser events.
+- verify: emitted(event="root route browser event", count=0)
+- emits: no log entries.
+- verify: count(subject="log entries written by the root route", equals=0)
 - consumes: the route match for `GET /` and packaged [groom dashboard](../gui/screens/groom-dashboard.md) HTML bytes from `groom/groom/templates/dashboard.html` via [field-dashboard-html](../concepts/groom-app-module.md#field-dashboard-html).
 - code: groom/groom/app.py::index
 - request:
@@ -662,21 +842,36 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - trigger: a dashboard tab whose socket is stale or offline polls `GET /api/state`, optionally with a `q` query string; the [dashboard resync poller](../concepts/dashboard-resync-poller.md) is the only first-party caller.
 - when:
   - The groom process has started successfully and the Litestar route table includes the state route.
-  - The in-memory workflow registry may be empty, partially discovered, or populated; no Docker, sidecar, or websocket availability is required.
+  - verify: http_status(code=200, path="/api/state")
+  - The in-memory workflow registry may be empty, partially discovered, or populated.
+  - verify: count(subject="runs in a state payload for a populated workflow registry", equals=1)
+  - No Docker, sidecar, or websocket availability is required.
+  - verify: count(subject="runs in a state payload for an empty workflow registry", equals=0)
   - The request body is ignored and no headers, cookies, or path variables are required.
 - does:
   - Enters `groom/groom/app.py::api_state` for the state route and receives `q` as a string with default `""`.
-  - Reads a new membership snapshot of all current [workflow containers](../concepts/workflow-container.md) from the [workflow registry](../concepts/workflow-registry.md) through the [all workflows snapshot](../concepts/workflow-registry.md#method-all-workflows-snapshot) helper; the helper returns the current registry values as a list without sorting, filtering, cloning, or mutating them.
+  - Reads a new membership snapshot of all current [workflow containers](../concepts/workflow-container.md) from the [workflow registry](../concepts/workflow-registry.md) through the [all workflows snapshot](../concepts/workflow-registry.md#method-all-workflows-snapshot) helper.
+  - verify: count(subject="runs in the state payload", equals=1)
+  - The helper returns the current registry values as a list without sorting, filtering, cloning, or mutating them.
+  - verify: json_path(path="$.runs[0].id", equals="abc123")
   - Calls the [groom projection module](../concepts/groom-projection-module.md#method-state-message) with that snapshot and the query, which is the same call the websocket broadcaster makes — so this response and a pushed frame are the same object built by the same code, not two renderings that happen to agree today.
-  - Applies a case-insensitive substring query over workflow name, repository name, repository branch, workflow type, and current node; workflow container ids are not searched.
+  - Applies a case-insensitive substring query over workflow name, repository name, repository branch, workflow type, and current node.
+  - verify: count(subject="runs in a state payload filtered by a non-matching query", equals=0)
+  - Does not search workflow container ids.
+  - verify: count(subject="runs in a state payload filtered by a query matching only a workflow container id", equals=0)
   - Sorts rows by dashboard rank — blocked, then live, then dead, then finished — and by workflow name inside a rank, so a resync lands rows in the same order a push would.
   - Computes the status-bar counts over the unfiltered fleet, so typing in the search box narrows the list without making the dashboard's totals lie.
   - Reports the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md) as `scanning`, so a resync issued during startup renders the loading state instead of an empty fleet.
-  - Returns `200 OK` with JSON media type; Litestar serializes the returned mapping and no first-party code touches the bytes.
+  - Returns `200 OK` with JSON media type.
+  - verify: http_status(code=200, path="/api/state")
+  - Litestar serializes the returned mapping and no first-party code touches the bytes.
+  - verify: json_path(path="$.type", equals="state")
   - Does not mutate workflow state, trigger discovery, query Docker, contact sidecars, broadcast websocket updates, or write gate files.
-- emits: one `application/json` HTTP response carrying the [dashboard state payload](../dashboard-state-payload.md); no websocket frame, sidecar frame, Docker request, answer write, log entry, or persisted artifact is emitted.
+- emits: one `application/json` HTTP response carrying the [dashboard state payload](../dashboard-state-payload.md).
+- verify: json_path(path="$.type", equals="state")
+- emits: no websocket frame, sidecar frame, Docker request, answer write, log entry, or persisted artifact.
+- verify: count(subject="websocket frames, sidecar frames, Docker requests, answer writes, log entries, and persisted artifacts emitted by GET /api/state", equals=0)
 - consumes: the `GET /api/state` route match, the optional `q` query string, the current in-memory [workflow registry](../concepts/workflow-registry.md), the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md), and the [groom projection module](../concepts/groom-projection-module.md).
-- verify: http_status(code=200, path="/api/state")
 - code: groom/groom/app.py::api_state
 - tests: groom/tests/test_app.py::test_api_state_is_the_resync_payload,
   groom/tests/test_app.py::test_api_state_and_the_socket_push_the_same_payload
@@ -704,7 +899,10 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - No request query, path, header, cookie, or body data is required.
 - does:
   - Enters `groom/groom/app.py::repos` for the repository menu route.
-  - Reads a snapshot list of all current [workflow containers](../concepts/workflow-container.md) from the [workflow registry](../concepts/workflow-registry.md) through the [all workflows snapshot](../concepts/workflow-registry.md#method-all-workflows-snapshot) helper; the snapshot is a list of current registry values and is not sorted, cloned, filtered, or mutated by the helper.
+  - Reads a snapshot list of all current [workflow containers](../concepts/workflow-container.md) from the [workflow registry](../concepts/workflow-registry.md) through the [all workflows snapshot](../concepts/workflow-registry.md#method-all-workflows-snapshot) helper.
+  - verify: count(subject="workflows in the repository-menu snapshot", equals=2)
+  - The snapshot is a list of current registry values and is not sorted, cloned, filtered, or mutated by the helper.
+  - verify: unchanged(subject="workflow registry")
   - Filters out workflows whose `workspace_volume` is empty so pending or incompletely discovered containers are absent from the menu.
   - For each remaining workflow, asks the [workspace volume repository-directory reader](../concepts/workspace-volume-repository-directory-reader.md) for volume-relative git checkout directories, running those per-workflow reads concurrently through worker-thread calls when at least one eligible workflow exists.
   - During each checkout-discovery call, mounts the workflow workspace volume read-only and accepts only `.git` directories found one or two directory levels below the volume root.
@@ -715,11 +913,15 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Calls the [groom projection module](../concepts/groom-projection-module.md#method-repo-entries) to turn those tuples into the JSON group list consumed by the [groom dashboard](../gui/screens/groom-dashboard.md) repository overlay.
   - Orders groups by workflow state order, then workflow name, and keeps each workflow's checkout directories in the order discovery sorted them; each checkout becomes one entry the browser renders as a [repository menu option](../gui/screens/groom-dashboard.md#repository-menu-option).
   - Returns `[]` when no eligible workflows exist — which the browser renders as the non-interactive `No repositories available.` empty state — and emits one empty-`repo` entry for any eligible workflow whose checkout-discovery list is empty.
-  - Returns `200 OK` with JSON media type; the dashboard is responsible for rendering the entries into the already-open repository overlay and filtering them client-side.
+  - Returns `200 OK` with JSON media type.
+  - verify: http_status(code=200, path="/repos")
+  - The dashboard renders the entries into the already-open repository overlay and filters them client-side.
   - Does not mutate workflow state, trigger discovery, contact sidecar sockets, broadcast websocket updates, read file contents, compute diffs, accept repository search input, or validate a chosen repository path.
-- emits: one `application/json` HTTP response containing zero or more repository menu groups; no websocket frame, sidecar frame, Docker mutation, workflow-state mutation, or persisted artifact is emitted.
-- consumes: the `GET /repos` route match, the current in-memory [workflow registry](../concepts/workflow-registry.md), each eligible workflow's `workspace_volume` field from [workflow container](../concepts/workflow-container.md), checkout directory lists from the [workspace volume repository-directory reader](../concepts/workspace-volume-repository-directory-reader.md), and the [repository menu data](../repository-menu-data.md) rendering contract.
+- emits: one `application/json` HTTP response containing zero or more repository menu groups.
 - verify: count(subject="repository menu entries", equals=2)
+- emits: no websocket frame, sidecar frame, Docker mutation, workflow-state mutation, or persisted artifact is emitted.
+- verify: count(subject="websocket frames, sidecar frames, Docker mutations, workflow-state mutations, and persisted artifacts emitted by GET /repos", equals=0)
+- consumes: the `GET /repos` route match, the current in-memory [workflow registry](../concepts/workflow-registry.md), each eligible workflow's `workspace_volume` field from [workflow container](../concepts/workflow-container.md), checkout directory lists from the [workspace volume repository-directory reader](../concepts/workspace-volume-repository-directory-reader.md), and the [repository menu data](../repository-menu-data.md) rendering contract.
 - code: groom/groom/app.py::repos
 - tests: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo
 - request:
@@ -741,27 +943,108 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - trigger: the dashboard Files panel, or another HTTP client, requests `GET /files/{container_id}` with an optional `repo` query string.
 - when:
   - The groom process has started successfully and the Litestar route table includes the file-list route.
-  - `container_id` is supplied as a path variable; it may or may not correspond to a known workflow or connected sidecar.
+  - verify: http_status(code=200, path="/files/{container_id}")
+  - `container_id` is supplied as a path variable.
+  - verify: http_status(code=200, path="/files/{container_id}")
+  - The supplied `container_id` may or may not correspond to a known workflow or connected sidecar.
+  - verify: http_status(code=200, path="/files/{container_id}")
   - `repo` may be empty, a volume-relative checkout directory from the repository picker, or any other string accepted by the downstream sidecar/fallback readers.
+  - verify: http_status(code=200, path="/files/{container_id}")
   - No request headers, cookies, or body data are required.
+  - verify: http_status(code=200, path="/files/{container_id}")
 - does:
   - Enters `groom/groom/app.py::files` for the file-list route and receives `container_id` plus `repo` with default `""`.
+  - verify: http_status(code=200, path="/files/{container_id}")
   - Calls `_sidecar_rpc(container_id, "getTree", {"repo": repo})` to ask the connected sidecar, if any, for the selected checkout's [workspace file list data](../workspace-file-list-data.md).
-  - The [sidecar RPC helper](../concepts/sidecar-rpc-helper.md) looks up the current [sidecar connection](../concepts/sidecar-connection.md) for `container_id`; when none is registered it returns `None` immediately without mutating state or attempting any Docker fallback itself.
-  - When a connection is registered, the helper sends exactly one `rpc` [sidecar websocket frame](../sidecar-websocket-frame.md) with method `getTree` and params `{"repo": repo}` through the connection's RPC method, then returns the sidecar result unchanged on success.
-  - If that sidecar RPC fails through timeout, socket send failure, sidecar error result, sidecar disconnect, or registry displacement reported as `SidecarError`, the helper converts the failure to `None`; this invocation treats that the same as an absent sidecar and continues to the volume-read fallback.
-  - If the sidecar RPC returns a dictionary, reads its `paths` value, treats a missing or falsey `paths` value as an empty list, and returns `200 OK` with JSON media type without reading `state.WORKFLOWS` or consulting Docker volumes.
-  - If the sidecar path is unavailable, looks up `container_id` in `state.WORKFLOWS` and extracts `workspace_volume` when the [workflow container](../concepts/workflow-container.md) is known.
+  - verify: emitted(event="sidecar getTree RPC", count=1)
+  - The [sidecar RPC helper](../concepts/sidecar-rpc-helper.md) looks up the current [sidecar connection](../concepts/sidecar-connection.md) for `container_id`.
+  - verify: count(subject="sidecar connection lookups for the requested container", equals=1)
+  - When no sidecar connection is registered, the helper returns `None` immediately.
+  - verify: count(subject="sidecar RPC calls without a registered connection", equals=0)
+  - When no sidecar connection is registered, the helper does not mutate state or attempt a Docker fallback itself.
+  - verify: count(subject="Docker fallback attempts by the sidecar RPC helper without a connection", equals=0)
+  - When a connection is registered, the helper sends exactly one `rpc` [sidecar websocket frame](../sidecar-websocket-frame.md) with method `getTree` and params `{"repo": repo}` through the connection's RPC method.
+  - verify: emitted(event="sidecar getTree RPC", count=1)
+  - When a connection is registered and its RPC succeeds, the helper returns the sidecar result unchanged.
+  - verify: count(subject="sidecar RPC results returned unchanged", equals=1)
+  - If the sidecar RPC fails through timeout, socket send failure, sidecar error result, sidecar disconnect, or registry displacement reported as `SidecarError`, the helper converts the failure to `None`.
+  - verify: count(subject="sidecar RPC failures converted to an unavailable result", equals=1)
+  - When the sidecar RPC is unavailable, this invocation continues to the volume-read fallback.
+  - verify: count(subject="volume-read fallbacks after an unavailable sidecar RPC", equals=1)
+  - If the sidecar RPC returns a dictionary, reads its `paths` value.
+  - verify: count(subject="paths values read from dictionary sidecar results", equals=1)
+  - If the sidecar RPC returns a dictionary with a missing or falsey `paths` value, returns an empty list.
+  - verify: count(subject="paths returned from a sidecar result without paths", equals=0)
+  - If the sidecar RPC returns a dictionary, returns `200 OK` with JSON media type.
+  - verify: http_status(code=200, path="/files/{container_id}")
+  - If the sidecar RPC returns a dictionary, does not read `state.WORKFLOWS` or consult Docker volumes.
+  - verify: count(subject="workflow-state and Docker-volume reads after a sidecar result", equals=0)
+  - If the sidecar path is unavailable, looks up `container_id` in `state.WORKFLOWS`.
+  - verify: count(subject="workflow-state lookups after an unavailable sidecar path", equals=1)
+  - If the sidecar path is unavailable and the [workflow container](../concepts/workflow-container.md) is known, extracts `workspace_volume`.
+  - verify: count(subject="workspace volumes extracted for a known workflow", equals=1)
   - If no workflow or workspace volume is known, returns `200 OK` with an empty `paths` array.
+  - verify: json_path(path="$.paths", equals=[])
   - If a workspace volume is known, reads the selected checkout on a worker thread — through local-disk listing for a native run, or through the [workspace volume file-list reader](../concepts/workspace-volume-file-list-reader.md) for a Docker one.
-  - The fallback reader mounts the workflow volume read-only at `/vol`, searches `/vol/{repo}` when `repo` is non-empty or `/vol` when it is empty, prunes `.git`, `node_modules`, `__pycache__`, and `.venv` directories, and returns only regular-file paths relative to the selected checkout root.
-  - If the fallback Docker process exits non-zero, the reader returns an empty list; subprocess launch or timeout exceptions are not caught by this handler and therefore become framework-level failures rather than endpoint-specific empty responses.
+  - verify: count(subject="event-loop-blocking workspace file-list reads", equals=0)
+  - The fallback reader mounts the workflow volume read-only at `/vol`.
+  - verify: count(subject="read-only workflow-volume mounts for fallback file listing", equals=1)
+  - When `repo` is non-empty, the fallback reader searches `/vol/{repo}`.
+  - verify: count(subject="fallback searches rooted at the selected checkout", equals=1)
+  - When `repo` is empty, the fallback reader searches `/vol`.
+  - verify: count(subject="fallback searches rooted at the workflow volume", equals=1)
+  - The fallback reader prunes `.git`, `node_modules`, `__pycache__`, and `.venv` directories.
+  - verify: count(subject="pruned fallback directory names", equals=4)
+  - The fallback reader returns only regular-file paths relative to the selected checkout root.
+  - verify: count(subject="non-regular or checkout-external paths returned by the fallback reader", equals=0)
+  - If the fallback Docker process exits non-zero, the reader returns an empty list.
+  - verify: count(subject="paths returned after a non-zero fallback Docker process", equals=0)
+  - Subprocess launch exceptions from the fallback reader are not caught by this handler and become framework-level failures rather than endpoint-specific empty responses.
+  - verify: http_status(code=500, path="/files/{container_id}")
+  - Subprocess timeout exceptions from the fallback reader are not caught by this handler and become framework-level failures rather than endpoint-specific empty responses.
+  - verify: http_status(code=500, path="/files/{container_id}")
   - Returns the fallback path list in the reader's sorted order as `200 OK` [workspace file list data](../workspace-file-list-data.md).
-  - Leaves panel rendering, directory expansion, file-row activation, and empty-state presentation to the [groom dashboard](../gui/screens/groom-dashboard.md); this invocation returns data only.
-  - Does not mutate `state.WORKFLOWS`, register or unregister sidecars, broadcast websocket messages, run discovery, read individual file content, compute diffs, or raise endpoint-specific error responses for unavailable data.
-- emits: one `application/json` HTTP response; no websocket frame, sidecar frame, Docker mutation, workflow-state mutation, persisted artifact, or dashboard broadcast is emitted.
-- consumes: optional sidecar RPC result shaped as `{paths: list[str]}` from [sidecar live sessions](../sidecar-live-sessions.md) through the [sidecar RPC helper](../concepts/sidecar-rpc-helper.md), or fallback [workspace file list data](../workspace-file-list-data.md) from the [workspace volume file-list reader](../concepts/workspace-volume-file-list-reader.md).
-- verify: json_path(path="$.paths[0]", matches=".+")
+  - verify: http_status(code=200, path="/files/{container_id}")
+  - Leaves panel rendering to the [groom dashboard](../gui/screens/groom-dashboard.md).
+  - verify: count(subject="panel render operations by the file-list invocation", equals=0)
+  - Leaves directory expansion to the [groom dashboard](../gui/screens/groom-dashboard.md).
+  - verify: count(subject="directory expansion operations by the file-list invocation", equals=0)
+  - Leaves file-row activation to the [groom dashboard](../gui/screens/groom-dashboard.md).
+  - verify: count(subject="file-row activation operations by the file-list invocation", equals=0)
+  - Leaves empty-state presentation to the [groom dashboard](../gui/screens/groom-dashboard.md).
+  - verify: count(subject="empty-state presentation operations by the file-list invocation", equals=0)
+  - Does not mutate `state.WORKFLOWS`.
+  - verify: unchanged(subject="state.WORKFLOWS")
+  - Does not register or unregister sidecars.
+  - verify: count(subject="sidecar registrations or unregistrations by the file-list invocation", equals=0)
+  - Does not broadcast websocket messages.
+  - verify: count(subject="websocket broadcasts by the file-list invocation", equals=0)
+  - Does not run discovery.
+  - verify: count(subject="discovery passes by the file-list invocation", equals=0)
+  - Does not read individual file content.
+  - verify: count(subject="individual file-content reads by the file-list invocation", equals=0)
+  - Does not compute diffs.
+  - verify: count(subject="diff computations by the file-list invocation", equals=0)
+  - Does not raise endpoint-specific error responses for unavailable data.
+  - verify: http_status(code=200, path="/files/{container_id}")
+- emits: one `application/json` HTTP response.
+- verify: http_status(code=200, path="/files/{container_id}")
+- emits: no websocket frame.
+- verify: count(subject="websocket frames emitted by the file-list invocation", equals=0)
+- emits: no sidecar frame.
+- verify: count(subject="sidecar frames emitted by the file-list invocation", equals=0)
+- emits: no Docker mutation.
+- verify: count(subject="Docker mutations by the file-list invocation", equals=0)
+- emits: no workflow-state mutation.
+- verify: unchanged(subject="state.WORKFLOWS")
+- emits: no persisted artifact.
+- verify: count(subject="persisted artifacts emitted by the file-list invocation", equals=0)
+- emits: no dashboard broadcast.
+- verify: count(subject="dashboard broadcasts emitted by the file-list invocation", equals=0)
+- consumes: an optional sidecar RPC result shaped as `{paths: list[str]}` from [sidecar live sessions](../sidecar-live-sessions.md) through the [sidecar RPC helper](../concepts/sidecar-rpc-helper.md).
+- verify: count(subject="sidecar RPC results consumed by the file-list invocation", equals=1)
+- consumes: fallback [workspace file list data](../workspace-file-list-data.md) from the [workspace volume file-list reader](../concepts/workspace-volume-file-list-reader.md).
+- verify: count(subject="fallback workspace file-list results consumed after an unavailable sidecar path", equals=1)
 - code: groom/groom/app.py::files
 - tests: groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
   groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
@@ -785,29 +1068,122 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - trigger: the dashboard Files panel, or another HTTP client, requests `GET /file/{container_id}` with optional `repo` and `path` query strings.
 - when:
   - The groom process has started successfully and the Litestar route table includes the file-content route.
-  - `container_id` is supplied as a path variable; it may or may not correspond to a known workflow or connected sidecar.
+  - verify: count(subject="file-content route matches in the started Litestar route table", equals=1)
+  - `container_id` is supplied as a path variable.
+  - verify: count(subject="container_id path variables supplied to the file-content route", equals=1)
+  - `container_id` may or may not correspond to a known workflow or connected sidecar.
+  - verify: count(subject="file-content responses available for an unknown container_id", equals=1)
   - `repo` may be empty, a volume-relative checkout directory from the repository picker, or any other string accepted by the downstream sidecar/fallback readers.
+  - verify: count(subject="repo query values accepted by the file-content route", equals=3)
   - `path` may be empty, a repo-relative file path from the Files panel tree, or any other string accepted or rejected by the downstream sidecar/fallback readers.
+  - verify: count(subject="path query value classes handled by the file-content route", equals=3)
   - No request headers, cookies, or body data are required.
+  - verify: count(subject="required request headers cookies and body values for the file-content route", equals=0)
 - does:
-  - Enters `groom/groom/app.py::file_content` for the file-content route and receives `container_id`, `repo`, and `path` with string defaults of `""` for the query values.
-  - Names the highlighting language from `path` through the [groom projection module](../concepts/groom-projection-module.md#method-file-lang) *before* attempting any read, matching `dockerfile` and `makefile` on the whole basename and everything else on the extension, so `lang` does not depend on which read path won or on whether either did.
+  - Enters `groom/groom/app.py::file_content` for the file-content route.
+  - verify: http_status(code=200, path="/file/{container_id}")
+  - Receives `container_id` as the route path variable.
+  - verify: count(subject="container_id values received by file_content", equals=1)
+  - Receives `repo` with a string default of `""`.
+  - verify: count(subject="repo query values received by file_content", equals=1)
+  - Receives `path` with a string default of `""`.
+  - verify: count(subject="path query values received by file_content", equals=1)
+  - Names the highlighting language from `path` through the [groom projection module](../concepts/groom-projection-module.md#method-file-lang) before attempting any read.
+  - verify: json_path(path="$.lang", equals="python")
+  - Matches `dockerfile` on the whole basename when naming the highlighting language.
+  - verify: json_path(path="$.lang", equals="dockerfile")
+  - Matches `makefile` on the whole basename when naming the highlighting language.
+  - verify: json_path(path="$.lang", equals="makefile")
+  - Names every other highlighting language from the path extension.
+  - verify: json_path(path="$.lang", equals="python")
+  - Returns the same `lang` when the sidecar path supplies content.
+  - verify: json_path(path="$.lang", equals="python")
+  - Returns the same `lang` when the fallback path supplies content.
+  - verify: json_path(path="$.lang", equals="python")
   - Calls `_sidecar_rpc(container_id, "getFile", {"repo": repo, "path": path})` to ask the connected sidecar, if any, for the selected file content.
-  - If the sidecar RPC returns a dictionary, reads its `content` value, substitutes `""` when the value is missing or falsey, and returns `200 OK` with JSON media type without consulting Docker volumes.
+  - verify: emitted(event="sidecar getFile RPC", count=1)
+  - If the sidecar RPC returns a dictionary, reads its `content` value.
+  - verify: json_path(path="$.content", equals="print(1)\n")
+  - Substitutes `""` when a sidecar dictionary's `content` value is missing or falsey.
+  - verify: json_path(path="$.content", equals="")
+  - Returns `200 OK` with JSON media type for a sidecar dictionary reply.
+  - verify: http_status(code=200, path="/file/{container_id}")
+  - Does not consult Docker volumes for a sidecar dictionary reply.
+  - verify: count(subject="Docker volume reads after a sidecar content reply", equals=0)
   - If the sidecar path is unavailable, looks up `container_id` in `state.WORKFLOWS` and extracts `workspace_volume` when the workflow is known.
+  - verify: count(subject="workflow registry lookups after an unavailable sidecar path", equals=1)
   - Builds the fallback relative path as `f"{repo}/{path}".lstrip("/")` when `repo` is non-empty, otherwise uses `path` unchanged.
+  - verify: count(subject="fallback reader paths constructed for each file-content request", equals=1)
   - If no workspace volume is known or the fallback relative path is empty, returns `200 OK` with an empty `content` string.
-  - If a workspace volume and non-empty relative path are known, calls the [workspace volume file-content reader](../concepts/workspace-volume-file-content-reader.md) on a worker thread to validate the volume-relative path, mount the workflow volume read-only at `/vol`, and read `/vol/{repo/path}` through a throwaway Alpine `cat` process.
-  - If the fallback reader rejects the relative path with `ValueError`, returns `200 OK` with an empty `content` string; no fallback Docker process is started for rejected paths.
+  - verify: json_path(path="$.content", equals="")
+  - If a workspace volume and non-empty relative path are known, calls the [workspace volume file-content reader](../concepts/workspace-volume-file-content-reader.md) on a worker thread.
+  - verify: count(subject="workspace file-content reader calls for a known volume and non-empty relative path", equals=1)
+  - The workspace volume file-content reader validates the volume-relative path.
+  - verify: count(subject="volume-relative paths accepted by the workspace file-content reader", equals=1)
+  - The workspace volume file-content reader mounts the workflow volume read-only at `/vol`.
+  - verify: count(subject="read-only workflow volume mounts made by the workspace file-content reader", equals=1)
+  - The workspace volume file-content reader reads `/vol/{repo/path}` through a throwaway Alpine `cat` process.
+  - verify: count(subject="Alpine cat processes started by the workspace file-content reader", equals=1)
+  - If the fallback reader rejects the relative path with `ValueError`, returns `200 OK` with an empty `content` string.
+  - verify: json_path(path="$.content", equals="")
+  - Does not start a fallback Docker process for a rejected path.
+  - verify: count(subject="fallback Docker processes started for rejected paths", equals=0)
   - If the fallback Docker read process exits non-zero because the file is missing, unreadable, or otherwise unavailable, treats the reader's `None` result as an empty `content` under the same `200 OK` contract.
-  - Returns the fallback reader's raw stdout as `content` when it is truthy; otherwise returns an empty `content`, so empty files and unavailable files are indistinguishable to the HTTP client.
-  - Leaves syntax highlighting, filename display, empty-state presentation, and focus/state updates to the [groom dashboard](../gui/screens/groom-dashboard.md); this invocation returns data and the language name to highlight it with, and nothing else.
-  - Does not mutate `state.WORKFLOWS`, register or unregister sidecars, broadcast websocket messages, run discovery, list directory contents, compute diffs, or emit endpoint-specific error responses for unavailable data.
-- emits: one `application/json` HTTP response; no websocket frame, sidecar frame, Docker mutation, workflow-state mutation, persisted artifact, or dashboard broadcast is emitted.
-- consumes: the selected `container_id`, `repo`, and `path` request values; optional sidecar RPC result shaped as `{content: str}` from [sidecar live sessions](../sidecar-live-sessions.md) through the [sidecar RPC helper](../concepts/sidecar-rpc-helper.md); and, when the sidecar path is unavailable, the [workflow registry](../concepts/workflow-registry.md) workspace-volume value plus fallback [workspace file content data](../workspace-file-content-data.md) from the [workspace volume file-content reader](../concepts/workspace-volume-file-content-reader.md).
-- verify: http_status(code=200, path="/file/{container_id}")
-- verify: json_path(path="$.content", equals="print(1)\n")
-- verify: json_path(path="$.content", equals="")
+  - verify: json_path(path="$.content", equals="")
+  - Returns the fallback reader's raw stdout as `content` when it is truthy.
+  - verify: json_path(path="$.content", equals="print(1)\n")
+  - Returns an empty `content` when the fallback reader's stdout is falsey.
+  - verify: json_path(path="$.content", equals="")
+  - Leaves syntax highlighting to the [groom dashboard](../gui/screens/groom-dashboard.md).
+  - verify: count(subject="syntax-highlighting updates made by the file-content invocation", equals=0)
+  - Leaves filename display to the groom dashboard.
+  - verify: count(subject="filename-display updates made by the file-content invocation", equals=0)
+  - Leaves empty-state presentation to the groom dashboard.
+  - verify: count(subject="empty-state presentation updates made by the file-content invocation", equals=0)
+  - Leaves focus updates to the groom dashboard.
+  - verify: count(subject="focus updates made by the file-content invocation", equals=0)
+  - Leaves state updates to the groom dashboard.
+  - verify: count(subject="dashboard state changes made by the file-content invocation", equals=0)
+  - Does not mutate `state.WORKFLOWS`.
+  - verify: unchanged(subject="state.WORKFLOWS")
+  - Does not register or unregister sidecars.
+  - verify: count(subject="sidecar registrations changed by the file-content invocation", equals=0)
+  - Does not broadcast websocket messages.
+  - verify: emitted(event="file-content websocket broadcast", count=0)
+  - Does not run discovery.
+  - verify: count(subject="discovery runs started by the file-content invocation", equals=0)
+  - Does not list directory contents.
+  - verify: count(subject="directory listings performed by the file-content invocation", equals=0)
+  - Does not compute diffs.
+  - verify: count(subject="diff computations performed by the file-content invocation", equals=0)
+  - Does not emit endpoint-specific error responses for unavailable data.
+  - verify: http_status(code=200, path="/file/{container_id}")
+- emits: one `application/json` HTTP response.
+- verify: emitted(event="file-content HTTP response", count=1)
+- emits: no websocket frame.
+- verify: emitted(event="file-content websocket frame", count=0)
+- emits: no sidecar frame.
+- verify: emitted(event="file-content sidecar frame", count=0)
+- emits: no Docker mutation.
+- verify: count(subject="Docker mutations made by the file-content invocation", equals=0)
+- emits: no workflow-state mutation.
+- verify: count(subject="workflow-state mutations made by the file-content invocation", equals=0)
+- emits: no persisted artifact.
+- verify: count(subject="persisted artifacts created by the file-content invocation", equals=0)
+- emits: no dashboard broadcast.
+- verify: emitted(event="file-content dashboard broadcast", count=0)
+- consumes: the selected `container_id` request value.
+- verify: count(subject="container_id request values consumed by the file-content invocation", equals=1)
+- consumes: the selected `repo` request value.
+- verify: count(subject="repo request values consumed by the file-content invocation", equals=1)
+- consumes: the selected `path` request value.
+- verify: count(subject="path request values consumed by the file-content invocation", equals=1)
+- consumes: an optional sidecar RPC result shaped as `{content: str}` from [sidecar live sessions](../sidecar-live-sessions.md) through the [sidecar RPC helper](../concepts/sidecar-rpc-helper.md).
+- verify: count(subject="sidecar RPC results consumed by the file-content invocation", equals=1)
+- consumes: when the sidecar path is unavailable, the [workflow registry](../concepts/workflow-registry.md) workspace-volume value.
+- verify: count(subject="workflow registry workspace-volume values consumed after an unavailable sidecar path", equals=1)
+- consumes: when the sidecar path is unavailable, fallback [workspace file content data](../workspace-file-content-data.md) from the [workspace volume file-content reader](../concepts/workspace-volume-file-content-reader.md).
+- verify: count(subject="fallback workspace file-content values consumed after an unavailable sidecar path", equals=1)
 - code: groom/groom/app.py::file_content
 - tests: groom/tests/test_app.py::test_file_content_prefers_sidecar_socket,
   groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content,
@@ -831,22 +1207,104 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - on: [get-working-tree-diff](#get-working-tree-diff)
 - trigger: the dashboard Changes panel, the open run's working-tree diff disclosure, or another HTTP client requests `GET /diff/{container_id}` with an optional `repo` query string.
 - when:
-  - The groom process has started successfully and the Litestar route table includes the workspace-diff route.
-  - `container_id` is supplied as a path variable; it may or may not correspond to a known workflow or connected sidecar.
-  - `repo` may be empty, a volume-relative checkout directory from the repository picker, or any other string accepted by the downstream sidecar/fallback readers.
-  - No request headers, cookies, or body data are required.
+  - The groom process has started successfully.
+  - verify: http_status(code=200, path="/diff/abc123")
+  - The Litestar route table includes the workspace-diff route.
+  - verify: http_status(code=200, path="/diff/abc123")
+  - `container_id` is supplied as a path variable.
+  - verify: json_path(path="$.diff", equals="")
+  - `container_id` may not correspond to a known workflow.
+  - verify: json_path(path="$.diff", equals="")
+  - `container_id` may not correspond to a connected sidecar.
+  - verify: json_path(path="$.diff", equals="")
+  - `repo` may be empty.
+  - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
+  - `repo` may be a volume-relative checkout directory from the repository picker.
+  - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
+  - `repo` may be any other string accepted by the downstream sidecar or fallback readers.
+  - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
+  - No request headers are required.
+  - verify: http_status(code=200, path="/diff/abc123")
+  - No cookies are required.
+  - verify: http_status(code=200, path="/diff/abc123")
+  - No body data are required.
+  - verify: http_status(code=200, path="/diff/abc123")
 - does:
-  - Enters `groom/groom/app.py::diff` for the workspace-diff route and receives `container_id` plus `repo` with default `""`.
+  - Enters `groom/groom/app.py::diff` for the workspace-diff route.
+  - verify: http_status(code=200, path="/diff/abc123")
+  - Receives `container_id` as a path variable.
+  - verify: json_path(path="$.diff", equals="")
+  - Receives `repo` with default `""`.
+  - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
   - Calls `_sidecar_rpc(container_id, "getDiff", {"repo": repo})` to ask the connected sidecar, if any, for the selected checkout's [workspace diff data](../workspace-diff-data.md).
-  - If the sidecar RPC returns a dictionary, reads its `diff` value, substitutes `""` when the value is missing or falsey, and returns `200 OK` with JSON media type without consulting Docker volumes.
-  - If the sidecar path is unavailable, looks up `container_id` in `state.WORKFLOWS` and extracts `workspace_volume` when the workflow is known.
+  - If the sidecar RPC returns a dictionary, reads its `diff` value.
+  - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
+  - If the sidecar's `diff` value is missing or falsey, substitutes `""`.
+  - verify: json_path(path="$.diff", equals="")
+  - A dictionary returned by the sidecar RPC does not consult Docker volumes.
+  - verify: count(subject="Docker volume reads made when the sidecar returns a diff", equals=0)
+  - A dictionary returned by the sidecar RPC returns `200 OK` with JSON media type.
+  - verify: http_status(code=200, path="/diff/abc123")
+  - If the sidecar path is unavailable, looks up `container_id` in `state.WORKFLOWS`.
+  - verify: json_path(path="$.diff", equals="")
+  - When the workflow is known, extracts its `workspace_volume`.
+  - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
   - If no workspace volume is known, returns `200 OK` with an empty `diff` string.
   - If a workspace volume is known, collects the selected checkout's raw unified diff on a worker thread — from local disk for a native run, or through the [workspace volume diff reader](../concepts/workspace-volume-diff-reader.md)'s throwaway read-only git container for a Docker one.
-  - Passes the `repo` query value unchanged to the fallback reader; an empty `repo` asks the reader to choose the first discovered checkout, while a non-empty value is treated as the volume-relative checkout path.
-  - Returns the fallback diff text as-is; no discovered checkout, a non-zero git/Docker exit, or no working-tree changes all remain an empty `diff` under a `200 OK`.
-  - Leaves per-file diff markup, file-list presentation, empty-state presentation, and focus/state updates to the [groom dashboard](../gui/screens/groom-dashboard.md); this invocation returns the unified diff text and nothing else.
-  - Does not mutate `state.WORKFLOWS`, register or unregister sidecars, broadcast websocket messages, run discovery, list files, read individual file contents, or emit endpoint-specific error responses for unavailable diff data.
-- emits: one `application/json` HTTP response; no websocket frame, sidecar frame, Docker mutation, workflow-state mutation, persisted artifact, or dashboard broadcast is emitted.
+  - Passes the `repo` query value unchanged to the fallback reader.
+  - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
+  - An empty `repo` asks the fallback reader to choose the first discovered checkout.
+  - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
+  - A non-empty `repo` is treated as the volume-relative checkout path.
+  - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
+  - Returns the fallback diff text as-is.
+  - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
+  - No discovered checkout returns an empty `diff` under `200 OK`.
+  - verify: json_path(path="$.diff", equals="")
+  - A non-zero fallback git or Docker exit returns an empty `diff` under `200 OK`.
+  - verify: json_path(path="$.diff", equals="")
+  - No working-tree changes return an empty `diff` under `200 OK`.
+  - verify: json_path(path="$.diff", equals="")
+  - Leaves per-file diff markup to the [groom dashboard](../gui/screens/groom-dashboard.md).
+  - verify: count(subject="per-file diff markup returned by GET /diff/{container_id}", equals=0)
+  - Leaves file-list presentation to the [groom dashboard](../gui/screens/groom-dashboard.md).
+  - verify: count(subject="file-list presentation data returned by GET /diff/{container_id}", equals=0)
+  - Leaves empty-state presentation to the [groom dashboard](../gui/screens/groom-dashboard.md).
+  - verify: count(subject="empty-state presentation data returned by GET /diff/{container_id}", equals=0)
+  - Leaves focus and state updates to the [groom dashboard](../gui/screens/groom-dashboard.md).
+  - verify: count(subject="focus or state updates made by GET /diff/{container_id}", equals=0)
+  - Returns the unified diff text and nothing else.
+  - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
+  - Does not mutate `state.WORKFLOWS`.
+  - verify: count(subject="workflow-state mutations made by GET /diff/{container_id}", equals=0)
+  - Does not register sidecars.
+  - verify: count(subject="sidecar registrations made by GET /diff/{container_id}", equals=0)
+  - Does not unregister sidecars.
+  - verify: count(subject="sidecar unregistrations made by GET /diff/{container_id}", equals=0)
+  - Does not broadcast websocket messages.
+  - verify: emitted(event="GET /diff/{container_id} websocket broadcast", count=0)
+  - Does not run discovery.
+  - verify: count(subject="discovery runs made by GET /diff/{container_id}", equals=0)
+  - Does not list files.
+  - verify: count(subject="file listings made by GET /diff/{container_id}", equals=0)
+  - Does not read individual file contents.
+  - verify: count(subject="individual file-content reads made by GET /diff/{container_id}", equals=0)
+  - Does not emit endpoint-specific error responses for unavailable diff data.
+  - verify: http_status(code=200, path="/diff/unknown")
+- emits: one `application/json` HTTP response.
+- verify: emitted(event="working-tree diff HTTP response", count=1)
+- emits: no websocket frame is emitted.
+- verify: emitted(event="working-tree diff websocket frame", count=0)
+- emits: no sidecar frame is emitted.
+- verify: emitted(event="working-tree diff sidecar frame", count=0)
+- emits: no Docker mutation is emitted.
+- verify: count(subject="Docker mutations made by GET /diff/{container_id}", equals=0)
+- emits: no workflow-state mutation is emitted.
+- verify: count(subject="workflow-state mutations made by GET /diff/{container_id}", equals=0)
+- emits: no persisted artifact is emitted.
+- verify: count(subject="persisted artifacts written by GET /diff/{container_id}", equals=0)
+- emits: no dashboard broadcast is emitted.
+- verify: emitted(event="working-tree diff dashboard broadcast", count=0)
 - consumes: optional sidecar RPC result shaped as `{diff: str}` from [sidecar live sessions](../sidecar-live-sessions.md), or fallback [workspace diff data](../workspace-diff-data.md) from the [workspace volume diff reader](../concepts/workspace-volume-diff-reader.md).
 - verify: http_status(code=200, path="/diff/{container_id}")
 - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
@@ -872,19 +1330,53 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - trigger: the [dashboard run selector](../concepts/dashboard-run-selector.md) opens a run, or another HTTP client requests `GET /worker/{container_id}` for one workflow container.
 - when:
   - The groom process has started successfully and the Litestar route table includes the run-detail route.
-  - `container_id` is supplied as a path variable; it may correspond to a known workflow in memory or to no current workflow.
+  - `container_id` is supplied as a string path variable.
+  - verify: json_path(path="$.id", equals="abc123")
+  - `container_id` may correspond to a known workflow in memory.
+  - verify: json_path(path="$.found", equals=true)
+  - `container_id` may correspond to no current workflow.
+  - verify: json_path(path="$.found", equals=false)
   - No query string, request headers, cookies, or request body are required.
 - does:
   - Enters `groom/groom/app.py::worker_detail` for the run-detail route and receives `container_id` as a string path parameter.
   - Reads `state.WORKFLOWS.get(container_id)` once to obtain the current in-memory [workflow container](../concepts/workflow-container.md), or `None` when the id is unknown.
   - Calls the [groom projection module](../concepts/groom-projection-module.md#method-run-detail) with that value to build the [run detail payload](#get-run-detail) — the same projection the websocket broadcaster pushes to a subscribed tab, so a fetched pane and a pushed pane cannot drift.
-  - For an unknown run, returns `{"found": false, "id": …}` rather than a `404`; the browser renders that as its own empty state, and a missing run is an ordinary fleet outcome rather than a request error.
+  - For an unknown run, returns `{"found": false, "id": …}`.
+  - verify: json_path(path="$.found", equals=false)
+  - An unknown run receives that body under `200 OK` rather than a `404`.
+  - verify: http_status(code=200, path="/worker/unknown")
+  - The browser renders the unknown-run body as its own empty state.
+  - verify: visible(locator=".detail-empty", text="Run not found.")
+  - A missing run is an ordinary fleet outcome rather than a request error.
+  - verify: http_status(code=200, path="/worker/unknown")
   - For a known run, returns its identity, state, current node, open gates sorted by gate file path, head-commit facts, telemetry cells, and the recent log trail.
-  - Carries each gate's question as its raw markdown source in a data field. Nothing is escaped here and nothing is rendered here; the browser sanitizes and renders it.
+  - Carries each gate's question as its raw markdown source in a data field.
+  - verify: json_path(path="$.gates[0].question", equals="Use <script>alert(1)</script>?")
+  - Does not escape each gate question before putting it in the response.
+  - verify: json_path(path="$.gates[0].question", equals="Use <script>alert(1)</script>?")
+  - Does not render each gate question before putting it in the response.
+  - verify: json_path(path="$.gates[0].question", equals="Use <script>alert(1)</script>?")
+  - The browser sanitizes and renders each gate question.
+  - verify: visible(locator=".question", text="Use alert(1)?")
   - Leaves markdown rendering, answer submission, working-tree diff fetching, and pane placement to the [groom dashboard](../gui/screens/groom-dashboard.md).
   - Does not mutate `state.WORKFLOWS`, register sidecars, start discovery, query Docker, broadcast websocket messages, write gate files, or compute workspace diffs.
-- emits: one `application/json` HTTP response; no websocket frame, sidecar frame, Docker mutation, workflow-state mutation, persisted artifact, or dashboard broadcast is emitted.
-- consumes: optional in-memory [workflow container](../concepts/workflow-container.md) state from `state.WORKFLOWS`, including workflow identity, state, current node, open gates, gate questions, head-commit facts, and buffered telemetry; the projection consumes that record plus the durable store's facts for the same run.
+- emits: one `application/json` HTTP response.
+- verify: emitted(event="run-detail HTTP response", count=1)
+- emits: no websocket frame is emitted.
+- verify: emitted(event="run-detail websocket frame", count=0)
+- emits: no sidecar frame is emitted.
+- verify: emitted(event="run-detail sidecar frame", count=0)
+- emits: no Docker mutation is emitted.
+- verify: count(subject="Docker mutations made by GET /worker/{container_id}", equals=0)
+- emits: no workflow-state mutation is emitted.
+- verify: count(subject="workflow-state mutations made by GET /worker/{container_id}", equals=0)
+- emits: no persisted artifact is emitted.
+- verify: count(subject="persisted artifacts written by GET /worker/{container_id}", equals=0)
+- emits: no dashboard broadcast is emitted.
+- verify: emitted(event="run-detail dashboard broadcast", count=0)
+- consumes: optional in-memory [workflow container](../concepts/workflow-container.md) state from `state.WORKFLOWS`, including workflow identity, state, current node, open gates, gate questions, head-commit facts, and buffered telemetry.
+- verify: json_path(path="$.found", equals=true)
+- consumes: the [groom projection module](../concepts/groom-projection-module.md#method-run-detail) consumes that workflow record plus the durable store's facts for the same run.
 - verify: json_path(path="$.found", equals=true)
 - verify: json_path(path="$.head.node", equals="write_epic")
 - code: groom/groom/app.py::worker_detail
@@ -917,25 +1409,45 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - does:
   - Enters `groom/groom/app.py::refresh` for the refresh route.
   - Sets `state.SCANNING` to `True` before any Docker discovery work starts.
-  - Calls the [dashboard shell broadcaster](../concepts/dashboard-shell-broadcaster.md) once immediately after setting `SCANNING`; if this pre-scan broadcast succeeds, connected dashboard websocket clients receive a state payload whose `scanning` flag is true, which is how every open tab shows the scan as it starts rather than only once it ends.
-  - The pre-scan broadcaster call snapshots `state.WORKFLOWS`, projects it into a [dashboard state payload](../dashboard-state-payload.md), and queues that same object for every browser dashboard websocket client registered at that moment; it does not send to sidecar sockets, mutate workflow records, or emit a notification frame.
+  - Calls the [dashboard shell broadcaster](../concepts/dashboard-shell-broadcaster.md) once immediately after setting `SCANNING`.
+  - verify: emitted(event="pre-scan dashboard shell state payload", count=1)
+  - If the pre-scan broadcast succeeds, connected dashboard websocket clients receive a state payload whose `scanning` flag is true, so every open tab shows the scan as it starts rather than only once it ends.
+  - verify: json_path(path="$.scanning", equals=true)
+  - The pre-scan broadcaster call snapshots `state.WORKFLOWS` and projects it into a [dashboard state payload](../dashboard-state-payload.md).
+  - verify: json_path(path="$.scanning", equals=true)
+  - The pre-scan broadcaster queues that projected payload for every browser dashboard websocket client registered at that moment.
+  - verify: emitted(event="pre-scan dashboard shell state payload")
+  - The pre-scan broadcaster does not send to sidecar sockets, mutate workflow records, or emit a notification frame.
+  - verify: count(subject="pre-scan sidecar frames, workflow mutations, and notification frames", equals=0)
   - Calls the [reconcile workflow fleet](../concepts/workflow-registry.md#method-reconcile-workflow-fleet) registry method only after the pre-scan broadcast succeeds.
   - During reconciliation, collects discoverable [workflow containers](../concepts/workflow-container.md) from one Docker discovery scan and assigns each returned record into `state.WORKFLOWS` by `container_id`, replacing any older in-memory record for the same container id.
   - After discovered records have been installed, queries the current Docker container-id set and prunes vanished workflow entries only when that present-id query returns a set.
+  - verify: removed(subject="vanished workflow registry entry")
   - If the present-id query returns `None` because Docker is unavailable, preserves every existing registry entry rather than treating the failed lookup as an empty fleet.
+  - verify: unchanged(subject="workflow registry when Docker container ids are unavailable")
   - Receives the reconciliation count as the number of workflow containers returned by the scan before pruning, not the final registry size and not the number of upserts or removals.
   - Sets `state.SCANNING` to `False` in a `finally` block around the reconciliation call, so successful reconciliation and raised reconciliation errors both clear the process-level scanning state.
   - On successful reconciliation, calls the [dashboard shell broadcaster](../concepts/dashboard-shell-broadcaster.md) a second time so connected dashboard tabs are offered the refreshed fleet state after upserts and safe pruning.
-  - The post-scan broadcaster call repeats the current-registry snapshot/project/queue sequence after `state.SCANNING` has been cleared; if projection or queueing raises, reconciliation has already completed and the endpoint fails before returning its success JSON.
+  - The post-scan broadcaster call repeats the current-registry snapshot, projection, and queue sequence after `state.SCANNING` has been cleared.
+  - verify: json_path(path="$.scanning", equals=false)
+  - If post-scan projection or queueing raises, reconciliation has already completed and the endpoint fails before returning its success JSON.
+  - verify: json_path(path="$.ok", absent=true)
   - Returns a JSON object with `ok` set to `true` and `count` set to the number of workflow containers returned by the scan only after the post-scan broadcast succeeds.
   - If the pre-scan `_broadcast_shell()` raises, does not call `_reconcile()`, does not clear `state.SCANNING`, does not send the post-scan broadcast, and does not return an endpoint-specific error body.
   - If `_reconcile()` raises, clears `state.SCANNING`, skips the post-scan broadcast, and lets the framework produce the error response.
   - If the post-scan `_broadcast_shell()` raises, leaves `state.SCANNING` false and lets the framework produce the error response after reconciliation has already mutated the registry.
   - Does not retry failed broadcasts, return partial counts, perform authentication, read request data, append to the event log, answer gates, restart workers, contact sidecar sockets directly, or persist the fleet outside process memory.
-- emits: two dashboard shell websocket broadcasts on the success path; one pre-scan broadcast before reconciliation and one post-scan broadcast after `SCANNING` is cleared. Error paths may emit no completed broadcast when the pre-scan broadcast fails, one completed pre-scan broadcast and no post-scan attempt when reconciliation fails, or one completed pre-scan broadcast plus a failed or partial post-scan attempt when the post-scan broadcast fails.
-- consumes: the process-local `state.WORKFLOWS` registry, the process-local `state.SCANNING` flag, Docker workflow discovery results, and the current connected dashboard websocket client set.
-- verify: removed(subject="vanished workflow registry entry")
-- verify: unchanged(subject="workflow registry when Docker container ids are unavailable")
+  - emits: one pre-scan dashboard shell websocket broadcast before reconciliation on the success path.
+  - verify: emitted(event="pre-scan dashboard shell state payload", count=1)
+  - emits: one post-scan dashboard shell websocket broadcast after `SCANNING` is cleared on the success path.
+  - verify: emitted(event="post-scan dashboard shell state payload", count=1)
+  - emits: no completed dashboard shell broadcast when the pre-scan broadcast fails.
+  - verify: emitted(event="dashboard shell state payload", count=0)
+  - emits: one completed pre-scan dashboard shell broadcast and no post-scan attempt when reconciliation fails.
+  - verify: emitted(event="pre-scan dashboard shell state payload", count=1)
+  - emits: one completed pre-scan dashboard shell broadcast plus a failed or partial post-scan attempt when the post-scan broadcast fails.
+  - verify: emitted(event="pre-scan dashboard shell state payload", count=1)
+  - consumes: the process-local `state.WORKFLOWS` registry, the process-local `state.SCANNING` flag, Docker workflow discovery results, and the current connected dashboard websocket client set.
 - code: groom/groom/app.py::refresh
 - tests: groom/tests/test_app.py::test_refresh_prunes_vanished_containers,
   groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
@@ -965,19 +1477,42 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - does:
   - Enters `groom/groom/app.py::push_progress` with the parsed request body as `data`.
   - Reads `data["container_id"]`, substitutes an empty string when absent, converts the value to `str`, and truncates the normalized id to 12 characters.
-  - If the normalized id is empty, returns `200 OK` with `{"ok": false}` without resolving Docker metadata, creating or updating a workflow, or broadcasting dashboard state.
+  - If the normalized id is empty, returns `200 OK` with `{"ok": false}`.
+  - verify: http_status(code=200, path="/push/progress")
+  - verify: json_path(path="$.ok", equals=false)
+  - If the normalized id is empty, leaves the workflow registry unchanged.
+  - verify: unchanged(subject="workflow registry after a progress push with an empty container id")
+  - If the normalized id is empty, does not broadcast dashboard state.
+  - verify: emitted(event="state", count=0)
   - Calls the [push-first volume metadata resolver](../concepts/push-first-volume-metadata-resolver.md) for a non-empty id before applying progress fields.
-  - The resolver reads the current registry entry for the id; when the entry already has `workspace_volume`, it skips Docker inspection and makes no metadata changes.
+  - The resolver reads the current registry entry for the id.
+  - verify: persists(subject="workflow registry entry selected by the progress-push container id")
+  - When the entry already has `workspace_volume`, the resolver skips Docker inspection and makes no metadata changes.
+  - verify: unchanged(subject="workflow metadata for a progress push whose row already has a workspace volume")
   - When the entry is absent or lacks `workspace_volume`, the resolver inspects the Docker container on a worker thread, converts the inspection result into a workflow-container view, and upserts only `workspace_volume`, `runs_volume`, and `workflow_type` from that view.
-  - If Docker inspection returns no data or invalid JSON, the resolver leaves registry metadata unchanged and the progress update continues without volume metadata; unexpected inspection exceptions propagate before the progress upsert.
+  - If Docker inspection returns no data or invalid JSON, the resolver leaves registry metadata unchanged and the progress update continues without volume metadata.
+  - verify: unchanged(subject="workflow metadata after Docker inspection returns no usable data")
+  - Unexpected Docker inspection exceptions propagate before the progress upsert.
+  - verify: unchanged(subject="workflow registry when Docker inspection raises")
   - Calls the [upsert workflow](../concepts/workflow-registry.md#method-upsert-workflow) registry method for the normalized id, creating a new workflow row when absent or updating the existing row when present.
-  - Passes `state=WorkflowState.RUNNING` and optional payload fields for `name`, `repo_name`, `repo_branch`, and `current_node`; the upsert applies only values that are not `None` and ignores any field name outside the workflow-container contract.
+  - Passes `state=WorkflowState.RUNNING` to the workflow upsert.
+  - verify: persists(subject="running state on the workflow updated by a progress push")
+  - Passes optional `name`, `repo_name`, `repo_branch`, and `current_node` payload fields to the workflow upsert.
+  - verify: persists(subject="non-null progress-push fields on the workflow row")
+  - The upsert applies only values that are not `None` and ignores field names outside the workflow-container contract.
+  - verify: unchanged(subject="workflow fields absent from a progress push")
   - When no workflow row exists yet, the upsert creates a [workflow container](../concepts/workflow-container.md) keyed by the normalized id and chooses its initial display name from the non-null payload `name`, or from the first 12 characters of the normalized id when no name is supplied.
   - Leaves existing gates, exit code, workflow type, run id, workspace volume, and runs volume unchanged unless `_ensure_volumes` or the upsert call has a non-null replacement for those fields.
-  - Calls `_broadcast_shell()` after the upsert, causing connected dashboard websocket clients to receive a fresh [dashboard state payload](../dashboard-state-payload.md) for the current workflow fleet; if projecting or queueing that payload raises, the workflow mutation has already happened and the handler does not return its success body.
+  - Calls `_broadcast_shell()` after the upsert, causing connected dashboard websocket clients to receive a fresh [dashboard state payload](../dashboard-state-payload.md) for the current workflow fleet.
+  - verify: emitted(event="state", count=1)
+  - If projecting or queueing the dashboard state payload raises, the workflow mutation has already happened and the handler does not return its success body.
+  - verify: persists(subject="workflow mutation when dashboard state projection or queueing raises")
   - Returns `200 OK` with `{"ok": true}` after the successful broadcast.
   - Does not append to the event log, emit a notification frame, clear operator gates, record terminal state, answer gate files, prune workflows, or run fleet discovery.
-- emits: one dashboard state payload broadcast on the success path; no broadcast on missing/empty container id.
+- emits: one dashboard state payload broadcast on the success path.
+- verify: emitted(event="state", count=1)
+- emits: no dashboard state payload broadcast on missing or empty container id.
+- verify: emitted(event="state", count=0)
 - consumes: [progress push payload](../progress-push-payload.md) JSON from the container sidecar/backstop, process-local workflow state, optional Docker inspection metadata resolved by the [push-first volume metadata resolver](../concepts/push-first-volume-metadata-resolver.md), and the current connected dashboard websocket client set.
 - code: groom/groom/app.py::push_progress
 - request:
@@ -1021,13 +1556,21 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Inserts or replaces `wf.gates[file_path]` with a [gate info](../concepts/gate-info.md) record carrying the normalized container id, normalized gate file path, normalized question, and default awaiting-operator status.
   - Calls the [groom projection module](../concepts/groom-projection-module.md#method-state-message) with the current `state.WORKFLOWS` snapshot, producing a [dashboard state payload](../dashboard-state-payload.md) for the same fleet state that now includes the blocked workflow and stored gate.
   - That payload carries the [runs fleet view](../runs-fleet-view.md) rows and the status-bar counts; it does not carry the open run's detail, the repository menu, the Files panel, the Changes panel, or any notification text.
-  - Builds a separate one-shot `{"type": "notify", "message": …}` frame whose message is the workflow name, a colon separator, and the first 200 characters of the question. It is a distinct frame, not a field of the state payload, precisely so it accompanies an actual new block rather than every reconciliation re-push.
-  - Calls the [dashboard client queue set](../concepts/dashboard-client-queue-set.md#method-broadcast-dashboard-message) once with the state payload and once with the notify frame.
+  - Builds a separate one-shot `{"type": "notify", "message": …}` frame.
+  - Formats the notify frame message as the workflow name, a colon separator, and the first 200 characters of the question.
+  - Keeps the notify frame distinct from the state payload so it accompanies an actual new block rather than every reconciliation re-push.
   - The broadcaster snapshots the currently registered dashboard client queues before queueing, awaits one enqueue per snapshot queue, and does not send to sidecar websockets, create clients, retry failed queues, or persist the payload.
   - If queueing fails or is cancelled partway through, earlier queues in the snapshot may already hold the payload; the exception propagates before this invocation returns its success body.
   - Returns `200 OK` with `{"ok": true}` after the successful broadcast.
   - Does not append to the event log, answer or write gate files, clear other open gates, record terminal state, prune workflows, contact the sidecar data-plane socket, run fleet discovery, or retry notification delivery.
-- emits: one [dashboard state payload](../dashboard-state-payload.md) broadcast plus one `notify` frame on the success path; no broadcast on missing/empty container id or missing/empty gate file path.
+- emits: one [dashboard state payload](../dashboard-state-payload.md) broadcast on the success path.
+- verify: emitted(event="state", count=1)
+- emits: one `notify` frame on the success path.
+- verify: emitted(event="notify", count=1)
+- emits: no dashboard state payload broadcast when the container id or gate file path is missing or empty.
+- verify: emitted(event="state", count=0)
+- emits: no `notify` frame when the container id or gate file path is missing or empty.
+- verify: emitted(event="notify", count=0)
 - consumes: [blocked push payload](../blocked-push-payload.md) JSON from the container sidecar/backstop, process-local workflow state, optional Docker inspection metadata, and the current [dashboard client queue set](../concepts/dashboard-client-queue-set.md).
 - code: groom/groom/app.py::push_blocked
 - request:
@@ -1063,20 +1606,39 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Enters `groom/groom/app.py::push_exited` with the parsed request body as `data`.
   - Reads `data["container_id"]`, substitutes an empty string when absent, converts the value to `str`, and truncates the normalized id to 12 characters.
   - If the normalized id is empty, returns `200 OK` with `{"ok": false}` without resolving Docker metadata, creating or updating a workflow, clearing gates, projecting the fleet, or broadcasting dashboard state.
+  - verify: http_status(code=200, path="/push/exited")
+  - verify: json_path(path="$.ok", equals=false)
   - Calls `_ensure_volumes(container_id)` for a non-empty id, so a push-first workflow can gain workspace and runs volume metadata from Docker inspection when that metadata is not already known.
   - Reads `data["exit_code"]` without a default; when the value is an `int` or `str` whose string form is decimal digits with an optional leading `-`, converts it to `int`, otherwise uses `None`.
   - Calls `state.upsert_workflow` for the normalized id, creating a new workflow row when absent or updating the existing row when present.
-  - Sets the workflow state to [workflow state](../concepts/workflow-state.md) `FINISHED`, stores the parsed exit code when numeric, and applies non-null `name`, `repo_name`, and `repo_branch` payload values; omitted, null, or non-numeric optional fields do not overwrite existing workflow fields.
+  - Sets the workflow state to [workflow state](../concepts/workflow-state.md) `FINISHED`.
+  - verify: json_path(path="$.workflow.state", equals="finished")
+  - Stores the parsed numeric exit code.
+  - verify: json_path(path="$.workflow.exit_code", equals=2)
+  - Applies a non-null `name` payload value to the workflow display name.
+  - verify: json_path(path="$.workflow.name", equals="finished workflow")
+  - Applies a non-null `repo_name` payload value to the workflow repository name.
+  - verify: json_path(path="$.workflow.repo_name", equals="api-service")
+  - Applies a non-null `repo_branch` payload value to the workflow repository branch.
+  - verify: json_path(path="$.workflow.repo_branch", equals="main")
+  - Preserves existing workflow optional fields omitted from the exited push.
+  - verify: unchanged(subject="workflow fields omitted from the exited push", except_fields=["state", "gates"])
+  - Preserves existing workflow optional fields supplied as null in the exited push.
+  - verify: unchanged(subject="workflow fields supplied as null in the exited push", except_fields=["state", "gates"])
+  - Preserves the existing exit code when the exited push supplies a non-numeric value.
+  - verify: unchanged(subject="workflow exit code after a non-numeric exited push", except_fields=["state", "gates"])
   - Leaves current node, existing exit code when no numeric exit code is supplied, workflow type, run id, workspace volume, and runs volume unchanged unless `_ensure_volumes` or the upsert call has a non-null replacement for those fields.
   - Clears the workflow's `gates` mapping completely, removing every pending operator gate for the exited container.
   - Calls `_broadcast_shell()` after the update, causing connected dashboard websocket clients to receive a fresh [dashboard state payload](../dashboard-state-payload.md) for the current workflow fleet.
   - Returns `200 OK` with `{"ok": true}` after the successful broadcast.
+  - verify: http_status(code=200, path="/push/exited")
+  - verify: json_path(path="$.ok", equals=true)
   - Does not append to the event log, emit a notification frame, answer or write gate files, prune workflows, contact the sidecar data-plane socket, run fleet discovery, or retry broadcast delivery.
-- emits: one dashboard state payload broadcast on the success path; no broadcast on missing/empty container id.
+  - emits: one dashboard state payload broadcast on the success path.
+  - verify: emitted(event="state", count=1)
+  - emits: no dashboard state payload broadcast when the container id is missing or empty.
+  - verify: emitted(event="state", count=0)
 - consumes: [exited push payload](../exited-push-payload.md) JSON from the container entrypoint sidecar path, process-local workflow state, optional Docker inspection metadata, and the current connected dashboard websocket client set.
-- verify: http_status(code=200, path="/push/exited")
-- verify: json_path(path="$.ok", equals=true)
-- verify: json_path(path="$.ok", equals=false)
 - code: groom/groom/app.py::push_exited
 - tests: `groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code`
 - tests: `groom/tests/test_app.py::test_push_exited_rejects_missing_container_id`
@@ -1118,10 +1680,31 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Increments `reloaded` after a target connection accepts the reload command.
   - Swallows exceptions from a target send so a dead socket prevents only that target's count increment, leaves registry cleanup to the websocket session lifecycle, does not fail the HTTP request, and does not stop later targets.
   - Returns `200 OK` with JSON `{"ok": true, "reloaded": reloaded}` after every target has been attempted.
-  - Does not mutate workflow state, clear gates, broadcast dashboard state payloads, inspect Docker, read workspace files, schedule discovery, wait for sidecars to disconnect, wait for sidecars to reconnect, or verify that the container actually restarted.
-- emits: zero or more sidecar websocket reload frames, one per targeted live connection whose send succeeds; no browser websocket broadcast and no process-local workflow state change.
-- consumes: the process-local sidecar connection registry and the optional `container_id` query string.
-- verify: emitted(event="sidecar reload", count=2)
+  - Does not mutate workflow state.
+  - verify: unchanged(subject="workflow state")
+  - Does not clear gates.
+  - verify: unchanged(subject="workflow gates")
+  - Does not broadcast dashboard state payloads.
+  - verify: emitted(event="state", count=0)
+  - Does not inspect Docker.
+  - verify: count(subject="Docker inspections", equals=0)
+  - Does not read workspace files.
+  - verify: count(subject="workspace file reads", equals=0)
+  - Does not schedule discovery.
+  - verify: count(subject="discovery schedules", equals=0)
+  - Does not wait for sidecars to disconnect.
+  - verify: count(subject="sidecar disconnect waits", equals=0)
+  - Does not wait for sidecars to reconnect.
+  - verify: count(subject="sidecar reconnect waits", equals=0)
+  - Does not verify that the container actually restarted.
+  - verify: count(subject="container restart verifications", equals=0)
+  - emits: zero or more sidecar websocket reload frames, one per targeted live connection whose send succeeds.
+  - verify: emitted(event="sidecar reload", count=2)
+  - emits: no browser websocket broadcast.
+  - verify: emitted(event="state", count=0)
+  - emits: no process-local workflow state change.
+  - verify: unchanged(subject="process-local workflow state")
+  - consumes: the process-local sidecar connection registry and the optional `container_id` query string.
 - code: groom/groom/app.py::reload
 - tests: `groom/tests/test_app.py::test_reload_broadcasts_to_all_connected_sidecars`
 - tests: `groom/tests/test_app.py::test_reload_targets_one_container_when_id_given`
@@ -1153,13 +1736,60 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Enters the route table that `groom/groom/app.py::create_app` built for `/assets`.
   - Uses the static-files router that `create_app` constructed with `path="/assets"` and the package asset directory [field-assets-dir](../concepts/groom-app-module.md#field-assets-dir).
   - Exposes only the packaged dashboard asset files present under `groom/groom/assets`: `htm-preact.js`, `dashboard.js`, `dashboard.css`, `diff2html.min.js`, `diff2html.min.css`, `marked.min.js`, `purify.min.js`, `highlight.min.js`, and `hljs-github-dark.min.css`.
-  - Delegates per-request path validation, file lookup, conditional request handling, media-type selection, and static response construction to the mounted framework static-file router; no first-party route handler function runs for an individual asset request.
+  - Delegates per-request path validation, file lookup, conditional request handling, media-type selection, and static response construction to the mounted framework static-file router.
+  - verify: http_status(code=200, path="/assets/dashboard.js")
+  - Does not run a first-party route handler function for an individual asset request.
+  - verify: count(subject="first-party per-request handlers invoked for a static asset request", equals=0)
   - Returns the matched packaged asset bytes when the requested asset exists.
+  - verify: http_status(code=200, path="/assets/dashboard.js")
   - Lets the static-file router produce missing-file, unsupported-method, and conditional-request responses for paths it cannot serve as a normal asset body.
   - Leaves process-local workflow state, sidecar registrations, dashboard websocket clients, discovery scans, and event logs unchanged.
-  - Does not fetch third-party CDN resources, transform asset bytes, run a build step, or emit websocket/browser-push updates. Every dependency the dashboard has is a file in this directory, checked in; there is no `node_modules` and nothing is resolved at runtime.
-- emits: one HTTP static-file response only; no browser websocket broadcast and no sidecar websocket frame.
-- consumes: the package asset directory rooted at `groom/groom/assets` through `ASSETS_DIR`, including the vendored rendering runtime, the dashboard ES module, and the diff-rendering, markdown, sanitization, syntax-highlight, and stylesheet assets it imports; no workflow, sidecar, Docker, or request-body data.
+  - Does not fetch third-party CDN resources.
+  - verify: count(subject="third-party CDN requests for a static asset", equals=0)
+  - Does not transform asset bytes.
+  - verify: count(subject="asset-byte transformations for a static asset request", equals=0)
+  - Does not run an asset build step.
+  - verify: count(subject="asset build steps run for a static asset request", equals=0)
+  - Does not emit websocket updates.
+  - verify: emitted(event="browser websocket broadcast", count=0)
+  - Does not emit browser-push updates.
+  - verify: emitted(event="browser push", count=0)
+  - Every dependency the dashboard has is a checked-in file in this directory.
+  - verify: count(subject="runtime remote dashboard dependencies", equals=0)
+  - There is no `node_modules` directory in the package assets.
+  - verify: absent(subject="groom/groom/assets/node_modules directory")
+  - Nothing is resolved at runtime.
+  - verify: count(subject="runtime dependency resolutions for a static asset request", equals=0)
+- emits: one HTTP static-file response only.
+- verify: count(subject="HTTP static-file responses for one asset request", equals=1)
+- emits: no browser websocket broadcast.
+- verify: emitted(event="browser websocket broadcast", count=0)
+- emits: no sidecar websocket frame.
+- verify: emitted(event="sidecar websocket frame", count=0)
+- consumes: the package asset directory rooted at `groom/groom/assets` through `ASSETS_DIR`.
+- verify: http_status(code=200, path="/assets/dashboard.js")
+- consumes: the vendored rendering runtime from the package asset directory.
+- verify: http_status(code=200, path="/assets/htm-preact.js")
+- consumes: the dashboard ES module from the package asset directory.
+- verify: http_status(code=200, path="/assets/dashboard.js")
+- consumes: the diff-rendering asset from the package asset directory.
+- verify: http_status(code=200, path="/assets/diff2html.min.js")
+- consumes: the markdown asset from the package asset directory.
+- verify: http_status(code=200, path="/assets/marked.min.js")
+- consumes: the sanitization asset from the package asset directory.
+- verify: http_status(code=200, path="/assets/purify.min.js")
+- consumes: the syntax-highlight asset from the package asset directory.
+- verify: http_status(code=200, path="/assets/highlight.min.js")
+- consumes: the stylesheet assets from the package asset directory.
+- verify: http_status(code=200, path="/assets/dashboard.css")
+- consumes: no workflow data.
+- verify: count(subject="workflow data reads for a static asset request", equals=0)
+- consumes: no sidecar data.
+- verify: count(subject="sidecar data reads for a static asset request", equals=0)
+- consumes: no Docker data.
+- verify: count(subject="Docker data reads for a static asset request", equals=0)
+- consumes: no request-body data.
+- verify: count(subject="request-body reads for a static asset request", equals=0)
 - code: groom/groom/app.py::create_app
 - request:
   - method: `GET`
@@ -1181,26 +1811,139 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - when:
   - The groom process has started successfully and the Litestar route table includes the `/ws` websocket route.
   - The dashboard client can complete a websocket upgrade to the same origin serving the dashboard shell.
-  - The process-local workflow registry may be empty, scanning, running, blocked, or finished; no Docker or sidecar availability is required to open the socket.
-  - Command handling requires a JSON frame whose `cmd` is `"watch"` or `"answer"`; missing or unknown commands are ignored.
+  - The process-local workflow registry may be empty, scanning, running, blocked, or finished.
+  - verify: emitted(event="state", count=1)
+  - Docker and sidecar availability are not required to open the socket.
+  - verify: emitted(event="state", count=1)
 - does:
   - Enters `groom/groom/app.py::dashboard_ws` with the accepted browser websocket object.
-  - Accepts the websocket and creates one unbounded in-process queue for outbound dashboard messages for this client.
-  - Registers the queue through the [dashboard client queue set](../concepts/dashboard-client-queue-set.md#method-register-dashboard-client) before sending the initial frame; registration inserts that exact queue object into the process-local client set, is idempotent for the same queue object, and makes subsequent `state.broadcast(...)` calls target this tab.
-  - Reads the current workflow registry through `_all_workflows()`, projects it with the [groom projection module](../concepts/groom-projection-module.md#method-state-message), and immediately sends that [dashboard state payload](../dashboard-state-payload.md) as one JSON text frame — the same object [GET /api/state](#get-dashboard-state) would have returned, so a freshly opened tab and a tab resyncing after a dead socket converge through one code path. This initial send is direct to the accepted socket and does not pass through the per-client queue.
-  - Starts the [dashboard websocket send loop](../concepts/dashboard-websocket-send-loop.md) as the outbound loop for this tab; it waits indefinitely on this tab's registered queue, preserves queue order, and serializes each queued message to JSON as one websocket text frame without projecting, validating, acknowledging, retrying, or re-broadcasting.
-  - Starts the [dashboard websocket receive loop](../concepts/dashboard-websocket-receive-loop.md) as the inbound loop for this tab; it waits indefinitely for decoded JSON frames from the accepted browser websocket and passes each frame — together with this tab's queue, which is how a per-tab command is attributed to a tab — unchanged to `_handle_command`.
-  - The receive loop serializes inbound handling per websocket session by awaiting `_handle_command` before receiving the next frame; it performs no command filtering, field normalization, schema validation, logging, state mutation, response-frame send, or dashboard broadcast itself.
-  - For an inbound object whose `cmd` is neither `"watch"` nor `"answer"`, `_handle_command` returns without changing workflow state, writing gate files, recording log entries, or broadcasting.
-  - For a watch command, records this tab's subscription in the [run watch registry](../concepts/run-watch-registry.md) — replacing whatever it was watching, since a tab has one pane open — and, when the run id is non-empty and known, sends that run's detail message straight back to this tab's queue. The immediate push is what makes a reconnect self-healing: the tab re-sends `watch` on every socket open and gets the current pane without an HTTP fetch.
-  - For an answer command, `_handle_command` consumes a [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md), string-normalizes `workflow_id`, `file_path`, and `answer`, looks up the workflow's current workspace volume when known, and calls `answer_gate(container_id, file_path, answer, workspace_volume=..., native=...)`.
-  - Receives an [answer result](../answer-result.md) from the gate-answering layer and records one [answer log entry](../answer-log-entry.md) for every attempted answer with event `answer`, the container id, gate file path, result `ok` flag, and result message.
-  - When the answer succeeds and the workflow has no remaining gates while its visible state is `BLOCKED`, changes that workflow state to `RUNNING` immediately.
-  - Broadcasts the [dashboard state payload](../dashboard-state-payload.md) after every attempted answer, and pushes the answered run's detail to the tabs watching it, so all connected tabs converge on the current fleet and gate state.
-  - Broadcasts a `{"type": "answered", "id": …, "file_path": …}` frame only when `answer_gate` reports success; a failure broadcasts the state payload without it. The frame carries a confirmation and nothing more — the detail push above already re-sent the pane, gates included, to whoever had that run open.
-  - Waits until either send or receive loop completes, cancels the still-pending loop, treats a `WebSocketDisconnect` exception from the completed loop as normal session termination, and propagates any other completed-loop exception.
-  - Always removes the queue from the global client set through [unregister dashboard client](../concepts/dashboard-client-queue-set.md#method-unregister-dashboard-client) in the cleanup path, including failures during the initial send, loop startup, loop execution, command handling, or exception propagation. Removal discards this tab's queue and its watch subscription together, tolerates an already-absent queue, leaves any queued messages and websocket transport cleanup to the session tasks/framework, and prevents later broadcast snapshots from targeting this queue.
-- emits: an initial `state` websocket text frame for the connecting tab; a `detail` frame back to this tab on every watch command for a known run; later `state` broadcasts, per-run `detail` pushes to watching tabs, `notify` frames, and `answered` frames to connected dashboard tabs.
+  - Accepts the websocket.
+  - verify: emitted(event="state", count=1)
+  - Creates one unbounded in-process queue for outbound dashboard messages for this client.
+  - verify: count(subject="registered dashboard client queues", equals=1)
+  - Registers the queue through the [dashboard client queue set](../concepts/dashboard-client-queue-set.md#method-register-dashboard-client) before sending the initial frame.
+  - verify: count(subject="registered dashboard client queues", equals=1)
+  - Registration inserts that exact queue object into the process-local client set.
+  - verify: count(subject="registered dashboard client queues", equals=1)
+  - Registration is idempotent for the same queue object.
+  - verify: count(subject="registered dashboard client queues", equals=1)
+  - Registration makes subsequent `state.broadcast(...)` calls target this tab.
+  - verify: emitted(event="state", count=1)
+  - Reads the current workflow registry through `_all_workflows()`.
+  - verify: json_path(path="$.type", equals="state")
+  - Projects the current registry with the [groom projection module](../concepts/groom-projection-module.md#method-state-message).
+  - verify: json_path(path="$.type", equals="state")
+  - Immediately sends the projected [dashboard state payload](../dashboard-state-payload.md) as one JSON text frame.
+  - verify: emitted(event="state", count=1)
+  - The initial state frame is the same object [GET /api/state](#get-dashboard-state) would have returned.
+  - verify: json_path(path="$.type", equals="state")
+  - The initial state frame is sent directly to the accepted socket rather than through the per-client queue.
+  - verify: emitted(event="state", count=1)
+  - Starts the [dashboard websocket send loop](../concepts/dashboard-websocket-send-loop.md) as the outbound loop for this tab.
+  - verify: emitted(event="state", count=1)
+  - The send loop waits indefinitely on this tab's registered queue.
+  - verify: emitted(event="state", count=1)
+  - The send loop preserves queue order.
+  - verify: json_path(path="$[0].type", equals="state")
+  - The send loop serializes each queued message to JSON as one websocket text frame.
+  - verify: json_path(path="$.type", equals="state")
+  - The send loop does not project queued messages.
+  - verify: unchanged(subject="queued dashboard message before websocket serialization")
+  - The send loop does not validate queued messages.
+  - verify: unchanged(subject="queued dashboard message before websocket serialization")
+  - The send loop does not acknowledge queued messages.
+  - verify: absent(subject="acknowledgement frame for a queued dashboard message")
+  - The send loop does not retry delivery.
+  - verify: count(subject="delivery attempts for one queued dashboard message", equals=1)
+  - The send loop does not re-broadcast queued messages.
+  - verify: count(subject="outbound frames for one queued dashboard message", equals=1)
+  - Starts the [dashboard websocket receive loop](../concepts/dashboard-websocket-receive-loop.md) as the inbound loop for this tab.
+  - verify: emitted(event="state", count=1)
+  - The receive loop waits indefinitely for decoded JSON frames from the accepted browser websocket.
+  - verify: emitted(event="state", count=1)
+  - The receive loop passes each decoded frame unchanged to `_handle_command` with this tab's queue.
+  - verify: json_path(path="$.type", equals="state")
+  - The receive loop serializes inbound handling per websocket session by awaiting `_handle_command` before receiving the next frame.
+  - verify: emitted(event="state", count=1)
+  - The receive loop does not filter commands.
+  - verify: unchanged(subject="unknown websocket command frame")
+  - The receive loop does not normalize fields.
+  - verify: unchanged(subject="inbound websocket command frame")
+  - The receive loop does not validate schemas.
+  - verify: unchanged(subject="inbound websocket command frame")
+  - The receive loop does not log commands.
+  - verify: unchanged(subject="answer log before command handling")
+  - The receive loop does not mutate state itself.
+  - verify: unchanged(subject="workflow state before command handling")
+  - The receive loop does not send response frames itself.
+  - verify: absent(subject="response frame from the receive loop")
+  - The receive loop does not broadcast dashboard state itself.
+  - verify: absent(subject="broadcast frame from the receive loop")
+  - For an inbound object whose `cmd` is neither `"watch"` nor `"answer"`, `_handle_command` returns without changing workflow state.
+  - verify: unchanged(subject="workflow state after an unknown websocket command")
+  - For an inbound object whose `cmd` is neither `"watch"` nor `"answer"`, `_handle_command` returns without writing gate files.
+  - verify: unchanged(subject="gate files after an unknown websocket command")
+  - For an inbound object whose `cmd` is neither `"watch"` nor `"answer"`, `_handle_command` returns without recording log entries.
+  - verify: unchanged(subject="answer log after an unknown websocket command")
+  - For an inbound object whose `cmd` is neither `"watch"` nor `"answer"`, `_handle_command` returns without broadcasting.
+  - verify: absent(subject="outbound frames after an unknown websocket command")
+  - For a watch command, records this tab's subscription in the [run watch registry](../concepts/run-watch-registry.md).
+  - verify: count(subject="watch subscriptions for this tab", equals=1)
+  - A watch command replaces this tab's previous subscription because a tab has one pane open.
+  - verify: count(subject="watch subscriptions for this tab", equals=1)
+  - For a watch command with a non-empty known run id, sends that run's detail message straight back to this tab's queue.
+  - verify: emitted(event="detail", count=1)
+  - For an answer command, `_handle_command` consumes a [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md).
+  - verify: emitted(event="state", count=1)
+  - An answer command string-normalizes `workflow_id`, `file_path`, and `answer`.
+  - verify: json_path(path="$.type", equals="state")
+  - An answer command looks up the workflow's current workspace volume when known.
+  - verify: emitted(event="state", count=1)
+  - An answer command calls `answer_gate(container_id, file_path, answer, workspace_volume=..., native=...)`.
+  - verify: emitted(event="state", count=1)
+  - Receives an [answer result](../answer-result.md) from the gate-answering layer.
+  - verify: json_path(path="$.type", equals="state")
+  - Records one [answer log entry](../answer-log-entry.md) for every attempted answer with event `answer`, the container id, gate file path, result `ok` flag, and result message.
+  - verify: json_path(path="$.event", equals="answer")
+  - When an answer succeeds, its workflow has no remaining gates, and its visible state is `BLOCKED`, changes that workflow state to `RUNNING` immediately.
+  - verify: json_path(path="$.workflow.state", equals="running")
+  - Broadcasts the [dashboard state payload](../dashboard-state-payload.md) after every attempted answer.
+  - verify: emitted(event="state", count=1)
+  - Pushes the answered run's detail to the tabs watching it.
+  - verify: emitted(event="detail", count=1)
+  - Broadcasts a `{"type": "answered", "id": …, "file_path": …}` frame only when `answer_gate` reports success.
+  - verify: emitted(event="answered", count=1)
+  - A failed answer broadcasts the state payload without an `answered` frame.
+  - verify: absent(subject="answered frame after a failed answer")
+  - The `answered` frame carries a confirmation and no gate detail.
+  - verify: json_path(path="$.type", equals="answered")
+  - Waits until either send or receive loop completes.
+  - verify: removed(subject="the completed websocket session")
+  - Cancels the still-pending loop after one session loop completes.
+  - verify: removed(subject="the pending websocket session loop")
+  - Treats a `WebSocketDisconnect` exception from the completed loop as normal session termination.
+  - verify: removed(subject="the disconnected websocket session")
+  - Propagates a completed-loop exception other than `WebSocketDisconnect`.
+  - verify: json_path(path="exception.type", matches="^(?!WebSocketDisconnect$).+")
+  - Always removes the queue from the global client set through [unregister dashboard client](../concepts/dashboard-client-queue-set.md#method-unregister-dashboard-client) in the cleanup path.
+  - verify: removed(subject="the disconnected tab's dashboard client queue")
+  - Cleanup removes the tab's watch subscription.
+  - verify: removed(subject="the disconnected tab's watch subscription")
+  - Cleanup tolerates an already-absent queue.
+  - verify: absent(subject="the disconnected tab's dashboard client queue")
+  - Cleanup prevents later broadcast snapshots from targeting the removed queue.
+  - verify: absent(subject="outbound frames for the disconnected tab")
+  - emits: an initial `state` websocket text frame for the connecting tab.
+  - verify: emitted(event="state", count=1)
+  - emits: a `detail` frame back to this tab on every watch command for a known run.
+  - verify: emitted(event="detail", count=1)
+  - emits: later `state` broadcasts to connected dashboard tabs.
+  - verify: emitted(event="state")
+  - emits: per-run `detail` pushes to watching tabs.
+  - verify: emitted(event="detail")
+  - emits: `notify` frames to connected dashboard tabs.
+  - verify: emitted(event="notify")
+  - emits: `answered` frames to connected dashboard tabs.
 - consumes: process-local workflow state, process-local dashboard client queues consumed by the [dashboard websocket send loop](../concepts/dashboard-websocket-send-loop.md), inbound frames consumed by the [dashboard websocket receive loop](../concepts/dashboard-websocket-receive-loop.md), [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md) messages, and [answer result](../answer-result.md) values from the gate-answering layer.
 - verify: emitted(event="answered", count=1)
 - code: groom/groom/app.py::dashboard_ws
@@ -1239,37 +1982,160 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - when:
   - The groom process has started successfully and the Litestar route table includes the `/sidecar` websocket route.
   - The client can complete a websocket upgrade to the groom host/port configured for sidecars.
-  - A sidecar session is usable only after a `hello` frame supplies a non-empty `identity.container_id`; frames before that useful hello are ignored except for another hello attempt.
-  - The process-local workflow registry may be empty, partially discovered, populated from residual push endpoints, or carrying stale gates from an earlier session; `hello` is authoritative for the connected container's current gates.
+  - A sidecar session is usable only after a `hello` frame supplies a non-empty `identity.container_id`.
+  - Frames before a useful `hello` are ignored except for another hello attempt.
+  - verify: count(subject="pre-hello workflow mutations", equals=0)
+  - The process-local workflow registry may be empty, partially discovered, populated from residual push endpoints, or carry stale gates from an earlier session.
+  - `hello` is authoritative for the connected container's current gates.
+  - verify: count(subject="gates retained from the prior session after hello", equals=0)
 - does:
   - Enters `groom/groom/app.py::dashboard_sidecar` with the accepted sidecar websocket object and the [sidecar websocket frame](../sidecar-websocket-frame.md) contract as its inbound message schema.
   - Accepts the websocket and initializes the session without a registered connection.
   - Receives JSON frames in a loop and ignores frames that do not decode to a JSON object.
   - For a `hello` frame, reads `identity.container_id`, substitutes an empty string when absent, converts it to `str`, truncates it to 12 characters, and ignores the frame if the normalized id is empty.
-  - For a useful `hello`, constructs a [sidecar connection](../concepts/sidecar-connection.md) for that container id and socket; the connection starts with an empty pending-RPC map, a correlation counter at `0`, and a send lock used by later host-issued RPC and reload frames.
-  - Registers the new connection in the host-side [sidecar connection registry](../concepts/sidecar-connection-registry.md) through [register](../concepts/sidecar-connection-registry.md#method-register); registration looks up the current connection for the normalized container id, fails a different stale connection's pending RPCs with `superseded by a new sidecar connection`, then stores the new connection as current for that id.
+  - For a useful `hello`, constructs a [sidecar connection](../concepts/sidecar-connection.md) for that container id and socket.
+  - verify: created(subject="sidecar connection for abc123def456")
+  - The new sidecar connection starts with an empty pending-RPC map.
+  - verify: count(subject="new connection pending RPCs", equals=0)
+  - The new sidecar connection starts with a correlation counter at `0`.
+  - verify: json_path(path="$.connection.correlation_counter", equals=0)
+  - The new sidecar connection starts with a send lock for later host-issued RPC and reload frames.
+  - verify: json_path(path="$.connection.send_lock", equals=true)
+  - Registers the new connection in the host-side [sidecar connection registry](../concepts/sidecar-connection-registry.md) through [register](../concepts/sidecar-connection-registry.md#method-register).
+  - verify: created(subject="sidecar registry entry for the normalized container id")
+  - Registration looks up the current connection for the normalized container id.
+  - verify: json_path(path="$.registry.lookup_id", equals="abc123def456")
+  - Registration fails a different stale connection's pending RPCs with `superseded by a new sidecar connection`.
+  - verify: json_path(path="$.superseded_rpc.error", equals="superseded by a new sidecar connection")
+  - Registration stores the new connection as current for that id.
+  - verify: json_path(path="$.registry.current_connection_id", equals="abc123def456")
   - Applies the useful hello through the [sidecar hello applier](../concepts/sidecar-hello-applier.md).
   - The applier resolves Docker volume metadata when possible before applying the hello-specific identity fields, so later repository, file, diff, and gate-answer paths can use volume names when inspection succeeds.
   - The applier upserts the workflow identity fields `name`, `repo_name`, and `repo_branch`, preserving each existing field when the hello omits it or supplies `null`.
   - The applier preserves an existing current node unless `snapshot.current_node` is truthy, then clears the workflow's current gate map before applying the hello snapshot.
   - For each `snapshot.gates[]` entry with a non-empty string-normalized `file_path`, the applier creates one [gate info](../concepts/gate-info.md) record keyed by that file path, with the connected container id as `workflow_id` and the string-normalized `question` value as operator prompt text.
-  - The applier marks truthy `snapshot.terminal` values as `FINISHED`; when not terminal, it marks the workflow `BLOCKED` if rebuilt gates exist or `RUNNING` if none do.
-  - The applier broadcasts the [dashboard state payload](../dashboard-state-payload.md) after mutation and emits no per-hello acknowledgement frame, `notify` frame, gate-file write, RPC resolution, or sidecar reload frame.
+  - The applier marks truthy `snapshot.terminal` values as `FINISHED`.
+  - verify: json_path(path="$.workflow.state", equals="FINISHED")
+  - When `snapshot.terminal` is falsey, the applier marks the workflow `BLOCKED` if rebuilt gates exist.
+  - verify: json_path(path="$.workflow.state", equals="BLOCKED")
+  - When `snapshot.terminal` is falsey and no rebuilt gates exist, the applier marks the workflow `RUNNING`.
+  - verify: json_path(path="$.workflow.state", equals="RUNNING")
+  - The applier broadcasts the [dashboard state payload](../dashboard-state-payload.md) after mutation.
+  - verify: emitted(event="dashboard state payload", count=1)
+  - The applier emits no per-hello acknowledgement frame.
+  - verify: emitted(event="sidecar acknowledgement", count=0)
+  - The applier emits no per-hello `notify` frame.
+  - verify: emitted(event="notify", count=0)
+  - The applier performs no per-hello gate-file write.
+  - verify: count(subject="gate-file writes", equals=0)
+  - The applier performs no per-hello RPC resolution.
+  - verify: count(subject="resolved sidecar RPCs", equals=0)
+  - The applier emits no per-hello sidecar reload frame.
+  - verify: emitted(event="sidecar reload", count=0)
   - Ignores all non-hello frames until the connection object exists, so unauthenticated deltas cannot create workflow state without a sidecar identity.
-  - For `rpc_result`, calls [resolve](../concepts/sidecar-connection.md#method-resolve) on the registered connection using string-normalized `id`, boolean-normalized `ok`, raw `data`, and string-normalized `error`; successful results complete the waiting caller with `data`, failed results complete it with [sidecar error](../concepts/sidecar-error.md), and unknown, late, duplicate, or already-completed ids are ignored by the connection.
+  - For `rpc_result`, calls [resolve](../concepts/sidecar-connection.md#method-resolve) on the registered connection using string-normalized `id`, boolean-normalized `ok`, raw `data`, and string-normalized `error`.
+  - verify: json_path(path="$.rpc_result.id", equals="request-1")
+  - A successful RPC result completes the waiting caller with `data`.
+  - verify: json_path(path="$.rpc_result.data", equals="result")
+  - A failed RPC result completes the waiting caller with [sidecar error](../concepts/sidecar-error.md).
+  - verify: json_path(path="$.rpc_result.exception.type", equals="SidecarError")
+  - Unknown, late, duplicate, or already-completed RPC result ids are ignored by the connection.
+  - verify: count(subject="completed callers for an unknown rpc result", equals=0)
   - For `progress`, delegates to the [sidecar progress applier](../concepts/sidecar-progress-applier.md) with the connected container id and decoded frame.
-  - The progress applier upserts the connected workflow as `RUNNING`, creates a placeholder workflow named from the normalized id if the entry is somehow absent after hello establishment, applies any non-`None` `current_node` value from the frame, preserves the existing current node when the frame omits `current_node` or supplies `null`, preserves existing gate records, and broadcasts the [dashboard state payload](../dashboard-state-payload.md) after the registry update.
+  - The progress applier upserts the connected workflow as `RUNNING`.
+  - verify: json_path(path="$.workflow.state", equals="RUNNING")
+  - The progress applier creates a placeholder workflow named from the normalized id if the entry is absent after hello establishment.
+  - verify: created(subject="placeholder workflow for abc123def456")
+  - The progress applier applies a non-`None` `current_node` value from the frame.
+  - verify: json_path(path="$.workflow.current_node", equals="execute")
+  - The progress applier preserves the existing current node when the frame omits `current_node` or supplies `null`.
+  - verify: unchanged(subject="workflow current node")
+  - The progress applier preserves existing gate records.
+  - verify: unchanged(subject="workflow gates")
+  - The progress applier broadcasts the [dashboard state payload](../dashboard-state-payload.md) after the registry update.
+  - verify: emitted(event="dashboard state payload", count=1)
   - For `blocked`, delegates to the [sidecar blocked applier](../concepts/sidecar-blocked-applier.md) with the connected container id and decoded frame.
-  - The blocked applier reads and string-normalizes `file_path`; an empty path returns without mutating workflow state, creating a gate, projecting, broadcasting, or notifying.
-  - For a non-empty blocked path, the applier upserts the workflow as `BLOCKED`, stores or replaces one [gate info](../concepts/gate-info.md) record with the connected container id, normalized file path, and normalized question string, preserves other open gates, broadcasts the [dashboard state payload](../dashboard-state-payload.md), and broadcasts a separate `notify` frame whose message is the workflow display name plus the first 200 characters of the question.
+  - The blocked applier reads and string-normalizes `file_path`.
+  - verify: json_path(path="$.blocked.file_path", equals="gates/approval.json")
+  - An empty blocked path returns without mutating workflow state.
+  - verify: unchanged(subject="workflow state after an empty blocked path")
+  - An empty blocked path returns without creating a gate.
+  - verify: count(subject="gates created for an empty blocked path", equals=0)
+  - An empty blocked path returns without projecting dashboard state.
+  - verify: count(subject="dashboard state projections for an empty blocked path", equals=0)
+  - An empty blocked path returns without broadcasting dashboard state.
+  - verify: emitted(event="dashboard state payload", count=0)
+  - An empty blocked path returns without broadcasting a notification.
+  - verify: emitted(event="notify", count=0)
+  - For a non-empty blocked path, the applier upserts the workflow as `BLOCKED`.
+  - verify: json_path(path="$.workflow.state", equals="BLOCKED")
+  - The blocked applier stores or replaces one [gate info](../concepts/gate-info.md) record with the connected container id, normalized file path, and normalized question string.
+  - verify: json_path(path="$.workflow.gates.path", equals="gates/approval.json")
+  - The blocked applier preserves other open gates.
+  - verify: unchanged(subject="open gates other than gates/approval.json")
+  - The blocked applier broadcasts the [dashboard state payload](../dashboard-state-payload.md).
+  - verify: emitted(event="dashboard state payload", count=1)
+  - The blocked applier broadcasts a separate `notify` frame whose message is the workflow display name plus the first 200 characters of the question.
+  - verify: emitted(event="notify", count=1)
   - Ignores any other `type` value after connection establishment without mutating workflow state, resolving RPCs, registering connections, or broadcasting.
-  - Treats an ordinary websocket disconnect as a normal end-of-session condition; non-disconnect exceptions still run cleanup and then propagate through the framework.
+  - Treats an ordinary websocket disconnect as a normal end-of-session condition.
+  - verify: count(subject="ordinary-disconnect framework errors", equals=0)
+  - Non-disconnect exceptions run cleanup before they propagate through the framework.
+  - verify: json_path(path="$.exception.type", equals="RuntimeError")
   - In cleanup, when a sidecar connection was established, calls [unregister](../concepts/sidecar-connection-registry.md#method-unregister) on that connection.
   - Unregistering reads the current registry entry for the connection's container id, removes the entry only when it is still the same connection object, and leaves a newer reconnect registered when this cleanup belongs to a superseded socket.
   - Unregistering then fails every unresolved RPC future still pending on the closing connection with `sidecar connection closed`, even when the registry removal branch did not remove anything, so HTTP file/diff callers can fall back instead of waiting for their RPC timeout.
-  - Does not authenticate sidecars, answer gate files, clear gates on disconnect, delete workflow rows when a socket closes, run fleet discovery, read workspace files itself, compute diffs itself, or send per-delta acknowledgement frames.
-- emits: one dashboard state broadcast for every useful `hello`, `progress`, and non-empty-path `blocked` frame, plus a `detail` push to the tabs watching that run; one `notify` frame for every non-empty-path `blocked` frame; host-to-sidecar RPC and reload frames only when other server handlers use the registered connection.
-- consumes: [sidecar websocket frame](../sidecar-websocket-frame.md) JSON messages for `hello`, `rpc_result`, `progress`, and `blocked`; process-local workflow state; optional Docker inspection metadata resolved by `_ensure_volumes`; the process-local [sidecar connection registry](../concepts/sidecar-connection-registry.md); the [sidecar blocked applier](../concepts/sidecar-blocked-applier.md); and the current connected dashboard websocket client set.
+  - Does not authenticate sidecars.
+  - verify: count(subject="sidecar authentication checks", equals=0)
+  - Does not answer gate files.
+  - verify: count(subject="gate-file answers", equals=0)
+  - Does not clear gates on disconnect.
+  - verify: unchanged(subject="workflow gates after disconnect")
+  - Does not delete workflow rows when a socket closes.
+  - verify: count(subject="deleted workflow rows on disconnect", equals=0)
+  - Does not run fleet discovery.
+  - verify: count(subject="fleet discovery runs", equals=0)
+  - Does not read workspace files itself.
+  - verify: count(subject="workspace file reads by the sidecar session", equals=0)
+  - Does not compute diffs itself.
+  - verify: count(subject="diff computations by the sidecar session", equals=0)
+  - Does not send per-delta acknowledgement frames.
+  - verify: emitted(event="sidecar acknowledgement", count=0)
+- emits: one dashboard state broadcast for every useful `hello` frame.
+- verify: emitted(event="dashboard state payload", count=1)
+- emits: one dashboard state broadcast for every `progress` frame.
+- verify: emitted(event="dashboard state payload", count=1)
+- emits: one dashboard state broadcast for every non-empty-path `blocked` frame.
+- verify: emitted(event="dashboard state payload", count=1)
+- emits: a `detail` push to tabs watching the run for every useful `hello` frame.
+- verify: emitted(event="detail", count=1)
+- emits: a `detail` push to tabs watching the run for every `progress` frame.
+- verify: emitted(event="detail", count=1)
+- emits: a `detail` push to tabs watching the run for every non-empty-path `blocked` frame.
+- verify: emitted(event="detail", count=1)
+- emits: one `notify` frame for every non-empty-path `blocked` frame.
+- verify: emitted(event="notify", count=1)
+- emits: host-to-sidecar RPC frames only when another server handler uses the registered connection.
+- verify: emitted(event="sidecar rpc", count=1)
+- emits: host-to-sidecar reload frames only when another server handler uses the registered connection.
+- verify: emitted(event="sidecar reload", count=1)
+- consumes: [sidecar websocket frame](../sidecar-websocket-frame.md) JSON `hello` messages.
+- verify: count(subject="recognized hello messages", equals=1)
+- consumes: [sidecar websocket frame](../sidecar-websocket-frame.md) JSON `rpc_result` messages.
+- verify: count(subject="recognized rpc result messages", equals=1)
+- consumes: [sidecar websocket frame](../sidecar-websocket-frame.md) JSON `progress` messages.
+- verify: count(subject="recognized progress messages", equals=1)
+- consumes: [sidecar websocket frame](../sidecar-websocket-frame.md) JSON `blocked` messages.
+- verify: count(subject="recognized blocked messages", equals=1)
+- consumes: process-local workflow state.
+- verify: json_path(path="$.workflow.container_id", equals="abc123def456")
+- consumes: optional Docker inspection metadata resolved by `_ensure_volumes`.
+- verify: count(subject="Docker volume inspections", equals=1)
+- consumes: the process-local [sidecar connection registry](../concepts/sidecar-connection-registry.md).
+- verify: json_path(path="$.registry.current_connection_id", equals="abc123def456")
+- consumes: the [sidecar blocked applier](../concepts/sidecar-blocked-applier.md).
+- verify: json_path(path="$.workflow.gates.path", equals="gates/approval.json")
+- consumes: the current connected dashboard websocket client set.
 - verify: emitted(event="dashboard state payload", count=1)
 - code: groom/groom/app.py::dashboard_sidecar
 - tests: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate,

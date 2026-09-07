@@ -39,7 +39,7 @@ so an omitted decision is retried rather than silently routed.
 ### method: QaPlanRun
 - sig: `QaPlanRun(status: QaStatus | Literal[""] = "", notes: str = "", ostler: dict[str, Any] = {}) -> QaPlanRun`
 - does: carries a `QaResult` verdict together with the raw Ostler runner payload
-- verify: json_path(path="$.ostler", absent=false)
+- verify: json_path(path="$.ostler.overall", matches="^(Pass|Fail|Blocked|Invalid)$")
 - returns: a result whose runner-only payload is not required of agent-turn `QaResult` values
 - verify: json_path(path="$.status", matches="^(|passed|failed|blocked|invalid)$")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaPlanRun`
@@ -57,13 +57,13 @@ so an omitted decision is retried rather than silently routed.
 - does: records whether `ostler qa validate` found the authored QA plan executable
 - verify: json_path(path="$.status", equals="invalid")
 - returns: a validation result with notes and the validator payload, defaulting conservatively to invalid
-- verify: json_path(path="$.ostler", absent=false)
+- verify: json_path(path="$.ostler", equals="{}")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaPlanValidation`
 
 ### method: DryRunGate
 - sig: `DryRunGate(status: Literal["passed", "failed"] = "failed", notes: str = "", scenarios: list[str] = [], verified: list[str] = []) -> DryRunGate`
 - does: records the scenarios demanded by a plan repair or draft and the scenarios proved by scratch evidence
-- verify: json_path(path="$.scenarios", absent=false)
+- verify: json_path(path="$.scenarios", matches="^\\['[^']+'")
 - returns: a failed-by-default gate unless every demanded dry-run condition is later established
 - verify: json_path(path="$.status", equals="failed")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::DryRunGate`
@@ -71,9 +71,9 @@ so an omitted decision is retried rather than silently routed.
 ### method: QaToolCatalog
 - sig: `QaToolCatalog(tools: list[dict[str, Any]] = [], errors: list[str] = []) -> QaToolCatalog`
 - does: checkpoints the configured QA tools and their host-resolution errors
-- verify: json_path(path="$.tools", absent=false)
+- verify: json_path(path="$.tools", equals="[]")
 - returns: a catalog that is not re-derived from the host on resume
-- verify: json_path(path="$.errors", absent=false)
+- verify: json_path(path="$.errors", equals="[]")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaToolCatalog`
 
 ### method: QaCleared
@@ -143,7 +143,7 @@ so an omitted decision is retried rather than silently routed.
 - does: reports an authored or repaired plan and names scenarios changed or dry-run proved by that turn
 - verify: json_path(path="$.status", matches="^(done|blocked)$")
 - returns: a plan result whose scenario lists are claims consumed by the dry-run gate
-- verify: json_path(path="$.repaired_scenarios", absent=false)
+- verify: json_path(path="$.repaired_scenarios", matches="^\\[(?:'[^']+'(?:, )?)*\\]$")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaPlanResult`
 
 ### method: QaFinding
@@ -159,7 +159,7 @@ so an omitted decision is retried rather than silently routed.
 - does: classifies a readable QA run as confirmed, repairable, or blocked and routes findings by owner
 - verify: json_path(path="$.status", matches="^(assessed|blocked)$")
 - returns: an assessed result with disposition, failure class, objective outcome, findings, and notes, or null classification on block
-- verify: json_path(path="$.findings", absent=false)
+- verify: json_path(path="$.findings", equals="[]")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAssessment`
 
 ### method: QaAudit
@@ -167,7 +167,7 @@ so an omitted decision is retried rather than silently routed.
 - does: records the adversarial audit verdict and routes any refutation to its repair owner
 - verify: json_path(path="$.status", matches="^(audited|blocked)$")
 - returns: an audited result with `stands` or `refuted`, with no verdict classification on block
-- verify: json_path(path="$.findings", absent=false)
+- verify: json_path(path="$.findings", equals="[]")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit`
 
 ### method: QaTriage
@@ -211,7 +211,7 @@ so an omitted decision is retried rather than silently routed.
 ### method: FixWorklist
 - sig: `FixWorklist(items: tuple[str, ...] = (), rework: int = 0, problems: tuple[str, ...] = ()) -> FixWorklist`
 - does: checkpoints the remaining scenario ids, head rework count, and ordered dry-run refusals
-- verify: json_path(path="$.items", absent=false)
+- verify: json_path(path="$.items", equals="[]")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::FixWorklist`
 
 ### method: LaneClock
@@ -259,12 +259,13 @@ so an omitted decision is retried rather than silently routed.
 ### FixWorklist.popped
 - sig: `FixWorklist.popped(self) -> FixWorklist`
 - does: removes the proved head scenario and resets the remaining worklist's per-head rework and problem state
-- verify: json_path(path="$.items", absent=false)
+- verify: json_path(path="$.items", equals=[])
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::FixWorklist.popped`
 
 ### LaneClock.charged
 - sig: `LaneClock.charged(self, seconds: float, *, plan: bool, overran: bool = False) -> LaneClock`
-- does: adds one turn's elapsed delta to total seconds, optionally to plan seconds, and optionally to overrun count
+- does: returns a new `LaneClock` with one turn's elapsed delta added to total seconds, optionally to plan seconds, and optionally to overrun count
+- verify: created(subject="a new charged LaneClock")
 - verify: json_path(path="$.seconds", matches="^[0-9.]+$")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::LaneClock.charged`
 
@@ -289,19 +290,19 @@ so an omitted decision is retried rather than silently routed.
 ### QaLoop.with_qa
 - sig: `QaLoop.with_qa(self, qa: QaResult) -> QaLoop`
 - does: returns a copy carrying a new rolling QA verdict
-- verify: json_path(path="$.qa", absent=false)
+- verify: json_path(path="$.qa.status", equals="failed")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.with_qa`
 
 ### QaLoop.with_lap
 - sig: `QaLoop.with_lap(self, lap: str, **changes: object) -> QaLoop`
 - does: records the latest repair class and adds it once to the tried-lap fingerprint
-- verify: json_path(path="$.tried_laps", absent=false)
+- verify: json_path(path="$.tried_laps", equals=["code fix"])
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.with_lap`
 
 ### QaLoop.charged
 - sig: `QaLoop.charged(self, seconds: float, *, plan: bool = False, overran: bool = False) -> QaLoop`
 - does: returns a copy whose lane clock includes one turn's charged delta and optional overrun
-- verify: json_path(path="$.clock", absent=false)
+- verify: json_path(path="$.clock.seconds", equals=1.5)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.charged`
 
 ### QaLoop.require_docs_recheck

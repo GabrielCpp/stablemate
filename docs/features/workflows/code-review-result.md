@@ -22,6 +22,7 @@ or why a blocked review could not inspect the diff.
 - semantics: whether the review found issues, checked a clean diff, had no affected changes, or could not read the diff
 - verify: json_path(path="$.status", matches="findings|clean|skipped|blocked")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::CodeReviewResult.status`
+- detail: [code review status documentation](concepts/code-review-status-documentation.md)
 
 ### findings
 - type: `list[ReviewFinding]`
@@ -30,6 +31,7 @@ or why a blocked review could not inspect the diff.
 - semantics: every review finding, empty unless status is `findings`
 - verify: json_path(path="$.findings", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::CodeReviewResult.findings`
+- detail: [coder code review findings field roles](concepts/coder-code-review-findings-field-roles.md)
 
 ### findings_summary
 - type: `str`
@@ -39,3 +41,4 @@ or why a blocked review could not inspect the diff.
 - verify: json_path(path="$.findings_summary", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::CodeReviewResult.findings_summary`
 - tests: `workflows/tests/coder/shared/test_blocked_signal.py::test_the_review_lane_parses_the_loose_findings_it_used_to_declare`
+- detail: [coder code-review findings summary context](concepts/coder-code-review-findings-summary-context.md)

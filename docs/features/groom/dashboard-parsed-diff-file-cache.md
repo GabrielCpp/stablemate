@@ -27,6 +27,7 @@ the array they address to come from different loads, because one render derives 
 - code: groom/groom/assets/dashboard.js::loadDiff
 - code: groom/groom/assets/dashboard.js::DiffTree
 - code: groom/groom/assets/dashboard.js::DiffView
+- detail: [dashboard diff representation selection](concepts/dashboard-diff-representation-selection.md)
 - refs: [workspace diff data](workspace-diff-data.md), [dashboard path tree](dashboard-path-tree.md)
 
 ## Contract

@@ -41,9 +41,13 @@ resolves any of them.
     passed through to the backend, which persists the resulting id so the next call can `--resume`.
   - `model: str | None` (default `None`) — the concrete model, already resolved from the node's
     [`power:`](../workflow-format.md#power) tier by the caller.
-  - `timeout: float` (keyword-only) — the per-turn wall-clock budget in seconds.
-  - `cwd: str | None`, `add_dirs: list[str] | None`, `effort: str | None` (keyword-only) — passed
-    straight through to `backend.run_turn`.
+    - `timeout: float` (keyword-only) — the per-turn wall-clock budget in seconds.
+    - `prompt_path: Path | None` (keyword-only) — the already-persisted rendered prompt, passed to
+      the backend for invocation diagnostics.
+    - `cwd: str | None`, `add_dirs: list[str] | None`, `effort: str | None` (keyword-only) — passed
+      straight through to `backend.run_turn`.
+    - `invoke_retries: int | None` (keyword-only) — when set, replaces
+      `resilience.max_invoke_retries` for this turn's short-transient retry budget.
 - **From `self`:** `backend` (the injected adapter), `resilience` (`max_invoke_retries`,
   `max_cap_waits`, `invoke_backoff_base_s`, `invoke_backoff_cap_s`, and the cap knobs the helpers
   read), `clock` (every `sleep` in this method and every `now` under it).
@@ -61,7 +65,7 @@ loop:
     try:
         otel.turn_start(...)
         result = self.backend.run_turn(attempt_prompt, node_id, session_id_path, model,
-                                       timeout=timeout, resilience=self.resilience,
+                                       prompt_path=prompt_path, timeout=timeout, resilience=self.resilience,
                                        cwd=cwd, add_dirs=add_dirs, effort=effort)
         otel.turn_end(); return result
     except BackendInvocationError as exc:
@@ -74,40 +78,55 @@ loop:
             if cap_waits >= resilience.max_cap_waits: raise
             cap_waits += 1
             delay, when = cap_delay_seconds(exc, resilience=..., clock=self.clock)
-            sleep_with_notice(delay, node_id, "cap reset", resilience=..., clock=self.clock)
+            sleep_s = min(delay, resilience.cap_probe_s) when cap probing is enabled
+            consume recovery budget; sleep_with_notice(sleep_s, node_id, "cap probe" or "cap reset",
+                                                       ... reload-aware channel ...)
+            re-enter on a reload cut
             continue                                       # NOT counted against short retries
-        if short_attempt >= resilience.max_invoke_retries: raise
+        if short_attempt >= (resilience.max_invoke_retries if invoke_retries is None else invoke_retries): raise
         delay = min(resilience.invoke_backoff_base_s * 2**short_attempt,
                     resilience.invoke_backoff_cap_s)
         short_attempt += 1
-        self.clock.sleep(delay)
+        consume recovery budget; sleep_with_notice(delay, node_id, "transient failure",
+                                                   ... reload-aware channel ...)
+        re-enter on a reload cut
 ```
 
 1. **Invoke.** One `backend.run_turn`, bracketed by an otel agent-turn span. A clean return is the
-   only exit that isn't an exception.
-2. **Non-transient → re-raise now.** A crashed CLI or a hard server error goes straight to
+    only exit that isn't an exception.
+2. **Reload interruption → re-enter immediately.** A `ReloadRequested` raised during an invocation
+   closes its otel turn span cleanly and escapes without consuming a short retry, cap wait, backoff,
+   or recovery-wait budget. The partially completed turn's recorded cost and duration remain part of
+   that clean span; the operator deliberately cut it rather than the turn failing.
+3. **Non-transient → re-raise now.** A crashed CLI or a hard server error goes straight to
    [the ladder's non-recoverable fast path](run-agent.md#the-ladder); nothing here can help it.
-3. **Classify the transient as cap or not.** `is_cap_hit` is true when the error carries a
+4. **Classify the transient as cap or not.** `is_cap_hit` is true when the error carries a
    structured `reset_at` epoch **or** [`is_cap`](classify-turn.md#is_cap) recognises the message
    text. This one boolean decides both of the next two steps.
-4. **Budget-overrun warning — only for a real overrun.** When `exc.timed_out` and it is *not* a cap
+5. **Budget-overrun warning — only for a real overrun.** When `exc.timed_out` and it is *not* a cap
    hit, the next attempt's prompt becomes
    [`timeout_retry_prompt(prompt, timeout)`](timeout-retry-prompt.md), telling the retry it overran
    and how long it has. A cap-triggered early abort also carries `timed_out=True` (the stream loop
    breaks the same way) but must **not** get the warning — the model never ran, so no budget was
    spent. Every other transient retries the prompt unchanged.
 - consistency: attempt-prompt — each budget-timeout retry derives its prompt from the original `prompt`, so the
-  timeout warning appears only once rather than stacking across retries
-5. **Cap → wait it out.** [`cap_delay_seconds`](cap-delay-seconds.md) computes how long and a
-   human "resuming around" label; [`sleep_with_notice`](sleep-with-notice.md) sleeps it in
-   `resilience.cap_tick_s` chunks, printing proof of life. Then `continue` with the same session and
-   prompt. `cap_waits`, bounded by `resilience.max_cap_waits`, records each pass through this branch.
+   timeout warning appears only once rather than stacking across retries
+6. **Cap → wait or probe.** [`cap_delay_seconds`](cap-delay-seconds.md) computes the scheduled
+   reopening and a human label. When `resilience.cap_probe_s` is positive and shorter than that
+   delay, [`sleep_with_notice`](sleep-with-notice.md) waits only one probe interval before retrying:
+   an operator can clear a cap early by changing the plan, adding credit, or resetting the limit.
+   Otherwise it waits to the scheduled reset. Both waits consume the active recovery-wait budget,
+   print proof of life, and can be cut by a reload; a reload re-enters the ladder without spending a
+   retry or cap-wait counter. Then `continue` with the same session and prompt. `cap_waits`, bounded
+   by `resilience.max_cap_waits`, records each pass through this branch.
 - consistency: short-attempt — a cap wait leaves `short_attempt` unchanged, so it consumes none of
-  `resilience.max_invoke_retries`
-6. **Short transient → bounded backoff.** `min(invoke_backoff_base_s * 2**short_attempt,
-   invoke_backoff_cap_s)` (defaults `15s` doubling to a `300s` ceiling), slept on `self.clock`,
-   up to `resilience.max_invoke_retries` times (default `4`) before re-raising to the ladder's
-   compact/reframe layers.
+   `resilience.max_invoke_retries`
+7. **Short transient → bounded backoff.** `min(invoke_backoff_base_s * 2**short_attempt,
+   invoke_backoff_cap_s)` (defaults `15s` doubling to a `300s` ceiling) is consumed from the active
+   recovery-wait budget and slept through [`sleep_with_notice`](sleep-with-notice.md), which can be
+   cut by a reload. It retries up to `invoke_retries` when the node sets it, otherwise
+   `resilience.max_invoke_retries` (default `4`), before re-raising to the ladder's compact/reframe
+   layers.
 
 Every wait in this method goes through the injected clock, which is why a test can exercise a cap
 that reopens eight hours out by stating the hour rather than patching `time`.

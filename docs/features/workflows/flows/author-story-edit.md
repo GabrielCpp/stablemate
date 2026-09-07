@@ -11,7 +11,9 @@ title: Author story edit
   registers the flow.
 - The [author story edit subflow](../concepts/author-story-edit-subflow.md) owns the named machine
   and its `author-story-edit` deterministic-node blueprint; the [edit intent](../edit-intent.md)
-  is the handoff format.
+  is the handoff format. Its entry points are `StoryEdit.setup`, `StoryEdit.start`, and
+  `resolve_story_intent` in `workflows/src/workhorse_workflows/author/story_edit/flow.py` and
+  `workflows/src/workhorse_workflows/author/story_edit/nodes.py`.
 
 - start: an operator invokes `workhorse-author run story-edit` with an `action` of `add` or `remove`
 - start: an add request supplies an existing epic and a non-empty bullet reference
@@ -39,9 +41,6 @@ title: Author story edit
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_remove_reconciles_remaining_epic_scope_and_journey`
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_remove_deletes_an_unstarted_story_and_commits`
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_follows_the_configured_epics_root`
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.setup`
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.start`
-- code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::resolve_story_intent`
 - detail: [workhorse-author run command](../workhorse-author.md#run)
 
 ## Phase Details
@@ -49,10 +48,8 @@ title: Author story edit
 ### Setup
 `StoryEdit.setup` resolves the repository root, backlog, epics root, and feature-book path through
 the configured document roots. In `story-edit` mode it refuses to start when the resolved backlog
-file is absent.
-
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.setup`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`
+file is absent. This setup delegates to `load_config` in
+`workflows/src/workhorse_workflows/author/main/nodes/config.py`.
 
 ### Resolve the story intent
 For an add, the flow first adopts every unnamed backlog bullet through
@@ -73,9 +70,7 @@ ID, source text, and provenance to construct the edit intent. It returns an
 reason, and force flag. A blank epic or bullet fails before resolution. For a remove, it trims the
 story slug, looks it up through Ostler, derives the parent epic and current status, and returns a
 `remove-story` intent. An unknown or blank story fails, and started work is refused unless force is
-explicit. Any action other than `add` or `remove` fails. This phase performs no graph mutation.
-
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.start`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::adopt_backlog`
-- code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::resolve_story_intent`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::resolve_bullet`
+ explicit. Any action other than `add` or `remove` fails. This phase performs no graph mutation.
+The entry point is `StoryEdit.start` in
+`workflows/src/workhorse_workflows/author/story_edit/flow.py`; it calls `adopt_backlog` and
+`resolve_story_intent`, which in turn calls `resolve_bullet`.

@@ -41,6 +41,7 @@ Sidecar outbound sender is the queue-draining task owned by one [sidecar connect
 - sig: `async _sender_loop(ws, outbox: asyncio.Queue) -> None`
 - abstract: false
 - raises: async cancellation while waiting for a queued frame or sending a websocket payload can escape.
+- verify: json_path(path="exception.type", matches="CancelledError|ConnectionClosed")
 - raises: JSON serialization failures can escape.
 - raises: websocket send failures can escape.
 - raises: queue receive failures can escape.

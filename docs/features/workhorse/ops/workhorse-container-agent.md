@@ -5,6 +5,13 @@ title: workhorse container agent
 ---
 # workhorse container agent
 
+This runbook operates the `agent` Compose job in the
+[workhorse container environment](workhorse-container.md). It runs the installed
+[workhorse CLI surface](../workhorse.md) through the container supervisor at
+`workhorse/supervisor.py::main`; the environment node owns the Compose and image definitions.
+The job is intentionally one-shot rather than an HTTP service: its workflow exit status and the
+supervisor log are its completion signal.
+
 - driver: cli
 - environment: [workhorse container environment](workhorse-container.md)
 - cli: [workhorse](../workhorse.md)
@@ -15,27 +22,27 @@ title: workhorse container agent
 - boot-timeout: 120
 - stop: `docker compose -f workhorse/compose.yaml down`
 - working-directory: .
+- tests: `workhorse/tests/test_supervisor.py::test_run_exit_code_is_the_containers_with_no_observer`
 
-This runbook operates the repository's isolated `agent` Compose job. The image is built from the
-workspace root so its `pyproject.toml` and `uv.lock` are available; the Dockerfile copies the
-workhorse, workflows, core, and ostler workspace members into the image. The supervisor performs
-credential and git setup, materializes the requested checkout, runs the selected workflow's
-`workhorse-<name> run` command, and returns that command's exit status as the container status.
+The image is built from the workspace root, where its `pyproject.toml` and `uv.lock` are available.
+Before starting a workflow, the supervisor validates writable persistent mounts, prepares Claude
+authentication and Git configuration, materializes the requested checkout, writes environment-derived
+workflow parameters, and then starts the selected `workhorse-<name> run` command. Its final exit code
+is the container exit code; an unavailable or failed optional groom observer never changes that result.
 
-The workflow is selected by `WORKFLOW` (default `coder`). `AGENT_RUN_ID` must be unique per fresh
-launch so concurrent containers do not share a run directory; restarting the same container keeps
-the baked-in id and resumes its checkpoint. `AGENT_SOURCE_MODE=worktree` uses the read-write repo
-bind at its identical host/container path, while the default `clone` mode uses `/workspace`.
-Credential input is either the read-only `AGENT_CREDENTIALS_FILE` bind or
-`CLAUDE_CODE_OAUTH_TOKEN`; the supervisor seeds the persistent Claude state only when the volume
-does not already contain credentials.
+Select an installed workflow with `WORKFLOW` (default `coder`). Supply a distinct `AGENT_RUN_ID` for
+each concurrent fresh launch so their run directories do not collide; Docker restart preserves the
+container's configured id and resumes its checkpoint. `AGENT_SOURCE_MODE=worktree` uses the read-write
+repository bind at the identical host and container path; the default `clone` mode materializes a
+checkout below `/workspace`. Authentication comes from the read-only `AGENT_CREDENTIALS_FILE` bind or
+`CLAUDE_CODE_OAUTH_TOKEN`; existing persistent Claude credentials take precedence over a new file seed.
 
-The container has no HTTP health endpoint. Completion is observable through the supervisor log and
-the container exit status; run artifacts are written under `/runs`. Engine or image dependency
-changes require `--build`. A mounted groom source is optional: its observer is staged into a
-generation directory and a reload request restarts only the observer; a core reload re-stages the
-engine before the workflow is re-entered, while a failed refresh leaves the prior generation in
-place.
+The container has no HTTP health endpoint. Completion is observable through the
+`[supervisor] workflow exited with 0` log line and a zero container exit status; run artifacts persist
+under `/runs`. Rebuild the image after changes to copied engine code or image dependencies. When the
+optional groom source mount exists, the supervisor stages it into a complete generation before starting
+the observer; reload requests refresh that generation, while a failed refresh leaves the prior installed
+generation available.
 
 ## Steps
 
@@ -52,11 +59,11 @@ place.
 ### serve
 
 - kind: service
-- run: `docker compose -f workhorse/compose.yaml up --abort-on-container-exit agent`
+- run: `WORKFLOW=hello-world docker compose -f workhorse/compose.yaml up --abort-on-container-exit agent`
 - working-directory: .
 - timeout: 120
 - health: `log:[supervisor] workflow exited with 0` confirms successful observable completion for this non-network job
-- produces: the selected workflow's run artifacts in the `runs` volume and its exit status
+- produces: the `hello-world` workflow's run artifacts in the `runs` volume and its container exit status
 - verify: [supervisor](../../../../workhorse/supervisor.py)
 - provenance: derived
 

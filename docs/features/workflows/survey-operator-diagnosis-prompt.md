@@ -21,8 +21,10 @@ only a human answer can resume it.
 ### node_timeout_min
 - type: number or `unbounded`
 - required: true
-- semantics: investigation time budget; survey resolver turns use an unbounded timeout
+- semantics: investigation time budget
 - verify: json_path(path="$.node_timeout_min", matches=".+")
+- semantics: survey resolver turns use an unbounded timeout
+- verify: json_path(path="$.node_timeout_min", equals="unbounded")
 
 ### block_stage
 - type: string
@@ -52,8 +54,10 @@ only a human answer can resume it.
 - type: string
 - default: empty string
 - required: false
-- semantics: compatibility reply field; the resolver emits `escalated` and the flow does not branch on it
+- semantics: compatibility reply field retained for the response shape
 - verify: json_path(path="$.decision", matches=".*")
+- semantics: resolver emits `escalated` as an advisory value that the flow ignores for branching
+- verify: json_path(path="$.decision", equals="escalated")
 
 ### notes
 - type: string

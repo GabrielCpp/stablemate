@@ -60,6 +60,7 @@ Workspace volume file-content reader is the shared volume text-read operation us
 - default: `alpine:3.20`
 - required: true
 - code: groom/groom/docker_io.py::ALPINE_IMAGE
+- detail: [Docker volume helper image](docker-volume-helper-image.md)
 - meaning: supplies the image used for the throwaway read-only container that executes `cat` against the mounted volume path.
 
 ### field-timeout
@@ -68,6 +69,7 @@ Workspace volume file-content reader is the shared volume text-read operation us
 - default: `20`
 - required: true
 - code: groom/groom/docker_io.py::DOCKER_TIMEOUT
+- detail: [Docker command timeout](docker-command-timeout.md)
 - meaning: bounds the subprocess that starts the reader container and captures its output.
 
 ## Methods
@@ -84,6 +86,7 @@ Workspace volume file-content reader is the shared volume text-read operation us
 - verify: count(subject="discovered awaiting gate files", equals=1)
 - verify: absent(subject="gate answer write")
 - code: groom/groom/docker_io.py::read_file
+- detail: [read-file documentation scope](read-file-documentation-scope.md)
 - tests: groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content
 - tests: groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path
 - tests: groom/tests/test_discovery.py::test_find_gates_only_keeps_files_still_awaiting

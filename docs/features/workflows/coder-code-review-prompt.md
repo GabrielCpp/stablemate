@@ -24,6 +24,7 @@ The flow later separates scores at 80; the prompt does not discard low-confidenc
 - semantics: story document whose scope the review uses
 - verify: json_path(path="$.story_path", matches=".+")
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.start`
+- detail: [coder review input selection](concepts/coder-review-input-selection.md)
 
 ### affected_repo_paths
 - type: `list[str path]`
@@ -31,14 +32,18 @@ The flow later separates scores at 80; the prompt does not discard low-confidenc
 - semantics: repositories whose local changes are reviewed
 - verify: json_path(path="$.affected_repo_paths", matches=".+")
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.start`
+- detail: [coder review input selection](concepts/coder-review-input-selection.md)
 
 ### branch
 - type: `str`
 - default: empty string
 - required: false
-- semantics: branch to inspect when the review is branch-scoped; omitted means use the current branch
+- semantics: branch to inspect when the review is branch-scoped
+- verify: json_path(path="$.branch", matches=".*")
+- semantics: omitted means use the current branch
 - verify: json_path(path="$.branch", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.start`
+- detail: [coder review input selection](concepts/coder-review-input-selection.md)
 
 ### pr_number
 - type: `str`
@@ -47,6 +52,7 @@ The flow later separates scores at 80; the prompt does not discard low-confidenc
 - semantics: optional pull request number whose state is checked and to which findings may be posted
 - verify: json_path(path="$.pr_number", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.start`
+- detail: [coder review input selection](concepts/coder-review-input-selection.md)
 
 ### status
 - type: `Literal[findings, clean, skipped, blocked]`
@@ -54,6 +60,7 @@ The flow later separates scores at 80; the prompt does not discard low-confidenc
 - semantics: whether findings were found, the reviewed diff was clean, no changes existed, or the diff could not be read
 - verify: json_path(path="$.status", matches="^(findings|clean|skipped|blocked)$")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::CodeReviewResult.status`
+- detail: [code review status documentation](concepts/code-review-status-documentation.md)
 
 ### findings
 - type: `list[ReviewFinding]`
@@ -62,6 +69,7 @@ The flow later separates scores at 80; the prompt does not discard low-confidenc
 - semantics: every reported issue, including advisory findings, each with target, issue, repair, category, and score
 - verify: json_path(path="$.findings", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::CodeReviewResult.findings`
+- detail: [coder code review findings field roles](concepts/coder-code-review-findings-field-roles.md)
 
 ### findings_summary
 - type: `str`
@@ -70,6 +78,7 @@ The flow later separates scores at 80; the prompt does not discard low-confidenc
 - semantics: one-sentence summary of findings or the reason a blocked diff could not be reviewed
 - verify: json_path(path="$.findings_summary", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::CodeReviewResult.findings_summary`
+- detail: [coder code-review findings summary context](concepts/coder-code-review-findings-summary-context.md)
 
 ## Fields: ReviewFinding
 

@@ -12,6 +12,7 @@ own instrumentation failures so observability cannot stop a run.
 
 - code: `workhorse/workhorse/pyflow/activity.py::ActivityLog`
 - tests: [activity tests](../../../../workhorse/tests/test_activity.py)
+- detail: [Pyflow activity label documentation](pyflow-activity-label-selection.md)
 
 ## Fields
 
@@ -34,6 +35,7 @@ own instrumentation failures so observability cannot stop a run.
 - does: replaces base workflow labels and republishes the current activity if one exists
 - verify: emitted(event="activity labels", count=1)
 - code: `workhorse/workhorse/pyflow/activity.py::ActivityLog.rebase`
+- detail: [ActivityLog rebase documentation](activitylog-rebase-documentation.md)
 
 ### ActivityLog.filter
 - sig: `filter(record: logging.LogRecord) -> bool`
@@ -41,6 +43,7 @@ own instrumentation failures so observability cannot stop a run.
 - returns: `True` for every record, including records without the activity flag
 - verify: emitted(event="activity labels", count=1)
 - code: `workhorse/workhorse/pyflow/activity.py::ActivityLog.filter`
+- detail: [Pyflow activity label documentation](pyflow-activity-label-selection.md)
 
 ### install
 - sig: `install(log: logging.Logger) -> ActivityLog`
@@ -48,3 +51,4 @@ own instrumentation failures so observability cannot stop a run.
 - returns: the tracker shared by parent and handed-off sub-workflows
 - verify: count(subject="activity trackers attached to one logger", equals=1)
 - code: `workhorse/workhorse/pyflow/activity.py::install`
+- detail: [Pyflow activity label documentation](pyflow-activity-label-selection.md)

@@ -47,7 +47,7 @@ The flag exists because an empty fleet is two different facts. *Not scanned yet*
 - producer: module initialization creates the value before the server starts accepting requests; startup background discovery and manual refresh later assign boolean values directly.
 - consumer: the state projection reads the value on every payload it builds; the browser's fleet island then reads the serialized field only after client-side filtering leaves no matching rows.
 - visibility: serialized as the `scanning` boolean on every state payload, so it is visible verbatim to any client of `GET /api/state` as well as to the dashboard.
-- detail: [groom state module field](groom-state-module.md#field-scanning)
+- detail: [scanning flag documentation views](scanning-flag-documentation-views.md)
 
 ## State Changes
 

@@ -9,6 +9,7 @@ Answer log entry is the process-local event record appended to the [answer event
 
 - file: not an on-disk artifact; this is one dictionary stored in the in-memory [answer event log](concepts/answer-event-log.md).
 - code: groom/groom/app.py::_handle_command
+- detail: [dashboard answer command artifacts](concepts/dashboard-answer-command-artifacts.md)
 
 ## Contract
 
@@ -30,7 +31,9 @@ Answer log entry is the process-local event record appended to the [answer event
 
 - type: `str`
 - default: none
+- verify: json_path(path="$.event", equals="answer")
 - required: true
+- verify: json_path(path="$.event", equals="answer")
 - key: `event`
 - source: fixed literal set by the dashboard websocket command handler.
 - domain: exactly `"answer"` for all first-party entries of this format.
@@ -42,6 +45,8 @@ Answer log entry is the process-local event record appended to the [answer event
 - type: `str`
 - default: `""`
 - required: true
+- verify: json_path(path="$.container_id", equals="")
+- verify: json_path(path="$.container_id", absent=false)
 - key: `container_id`
 - source: submitted `workflow_id` value from the handled [dashboard websocket answer frame](dashboard-websocket-answer-frame.md) after `str(value)` normalization.
 - domain: any string produced by normalization; missing values become the empty string and the handler does not truncate the id for this log entry.
@@ -52,7 +57,9 @@ Answer log entry is the process-local event record appended to the [answer event
 
 - type: `str`
 - default: `""`
+- verify: json_path(path="$.file_path", equals="")
 - required: true
+- verify: json_path(path="$.file_path", absent=false)
 - key: `file_path`
 - source: submitted gate context-file path from the handled [dashboard websocket answer frame](dashboard-websocket-answer-frame.md) after `str(value)` normalization.
 - domain: any string produced by normalization; missing values become the empty string and this format does not enforce path safety or existence.
@@ -63,7 +70,9 @@ Answer log entry is the process-local event record appended to the [answer event
 
 - type: `bool`
 - default: none
+- verify: json_path(path="$.ok", matches="^(true|false)$")
 - required: true
+- verify: json_path(path="$.ok", absent=false)
 - key: `ok`
 - source: copied from `AnswerResult.ok` in the gate-answering [answer result](answer-result.md).
 - domain: first-party values are `true` or `false`.
@@ -74,7 +83,9 @@ Answer log entry is the process-local event record appended to the [answer event
 
 - type: `str`
 - default: `""`
+- verify: json_path(path="$.message", equals="")
 - required: true
+- verify: json_path(path="$.message", absent=false)
 - key: `message`
 - source: copied from `AnswerResult.message` in the gate-answering [answer result](answer-result.md).
 - domain: first-party values are the success and failure messages defined by [answer result](answer-result.md); the log entry also accepts the empty string or any arbitrary string already present on the result.

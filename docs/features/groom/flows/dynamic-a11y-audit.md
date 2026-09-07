@@ -26,12 +26,15 @@ applies to the test that measures it. It lives under `tests/vendor/` rather than
 `groom/groom/assets/` precisely because it is not shipped: it is a measuring
 instrument, not part of the product surface.
 
-- start: a checkout of groom with its test dependencies installed, Playwright's
-  Chromium present (`uv run playwright install chromium`), and axe-core vendored
-  under `groom/tests/vendor/`. No Docker daemon, no running workflow container,
-  and no network access is required. When the browser or the vendored axe bundle
-  is missing the audit skips loudly rather than failing, so a machine without a
-  browser does not report an accessibility result it never measured.
+- start: a checkout of groom with its test dependencies installed
+- start: Playwright's Chromium is present (`uv run playwright install chromium`)
+- start: axe-core is vendored under `groom/tests/vendor/`
+- start: no Docker daemon or running workflow container is required
+- start: no network access is required
+- start: when the browser or the vendored axe bundle is missing, the audit skips
+  loudly rather than failing
+- start: a machine without the browser or the vendored axe bundle does not report
+  an accessibility result it never measured
 - steps:
   1. The harness builds a workspace the way a native run leaves one: a checkout
      under a temporary directory, committed, then dirtied. That is what gives the
@@ -96,13 +99,15 @@ instrument, not part of the product surface.
       and the server's shutdown spawns one, which ends in a traceback printed after
       the results.
 - end: every reachable dashboard pane has been scanned by axe-core against the DOM
-  an operator would actually receive, with zero violations, and the two paths with
-  no mouse-free alternative — choosing a pane and answering a gate — have been
-  exercised by keyboard. On a machine without Chromium or the vendored axe bundle,
-  every check skips with a printed reason and the suite passes without claiming an
-  accessibility result. The temporary workspace, the seeded fleet, the server
-  thread, and the browser are all gone; nothing persists between runs.
+  an operator would actually receive, with zero violations.
 - verify: visible(locator="#runs-list .row.blocked", text="waiting on the operator")
+- end: choosing a pane and answering a gate, the two paths with no mouse-free
+  alternative, have been exercised by keyboard.
+- end: on a machine without Chromium or the vendored axe bundle, every check skips
+  with a printed reason and the suite passes without claiming an accessibility result.
+- end: the temporary workspace, the seeded fleet, the server thread, and the browser
+  are all gone; nothing persists between runs.
+- detail: [application factory usage](../concepts/application-factory-usage.md)
 - tests: groom/tests/test_a11y_dynamic.py::test_runs_pane_with_an_open_gate_is_accessible,
   groom/tests/test_a11y_dynamic.py::test_files_pane_is_accessible,
   groom/tests/test_a11y_dynamic.py::test_diff_pane_is_accessible,

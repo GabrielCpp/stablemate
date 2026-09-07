@@ -130,8 +130,16 @@ relative roots.
 
 ### method: WebApp
 - sig: `WebApp(...) -> WebApp`
-- does: carries whether a web surface exists and its documented launch, health, identity, and scratch paths
-- verify: count(subject="OKF-builder web application schema results", equals=1)
+- does: carries whether a web surface exists
+- verify: count(subject="OKF-builder web application surface schema results", equals=1)
+- does: carries its documented launch path
+- verify: count(subject="OKF-builder web application launch schema results", equals=1)
+- does: carries its documented health path
+- verify: count(subject="OKF-builder web application health schema results", equals=1)
+- does: carries its documented application identity
+- verify: count(subject="OKF-builder web application identity schema results", equals=1)
+- does: carries its documented scratch paths
+- verify: count(subject="OKF-builder web application scratch schema results", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::WebApp`
 
 ### method: AppBoot

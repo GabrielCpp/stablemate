@@ -46,6 +46,7 @@ The map is keyed by the tab's outbound queue, not by a session id or a socket ob
 - default: empty dict at module import
 - required: true
 - code: groom/groom/state.py::WATCHING
+- detail: [WATCHING field documentation views](watching-field-documentation-views.md)
 - meaning: the current process-local subscription set — each connected tab that has a run open, mapped to that run's container id.
 
 ## Methods
@@ -55,6 +56,7 @@ The map is keyed by the tab's outbound queue, not by a session id or a socket ob
 - sig: `watch(queue: asyncio.Queue, run_id: str) -> None`
 - abstract: false
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/state.py::watch
 
 Record which run one tab has open, or forget its subscription entirely. Run ids are not checked
@@ -78,6 +80,7 @@ effect until a matching run is pushed, including when that run appears after the
 - sig: `watchers_of(run_id: str) -> list[asyncio.Queue]`
 - abstract: false
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/state.py::watchers_of
 
 #### Effects
@@ -98,6 +101,7 @@ effect until a matching run is pushed, including when that run appears after the
 
 - Reads: collapses the map's values to a set, so a run five tabs have open is refreshed once and pushed to five queues.
 - Returns: a new set; membership reflects the moment of the call.
+- verify: count(subject="watched run ids when five tabs watch the same run", equals=1)
 
 ## Algorithms
 

@@ -46,6 +46,7 @@ formats.
 - does: collapses all whitespace runs to single spaces and removes surrounding whitespace
 - verify: json_path(path="$.description", equals="spaced out")
 - does: removes one trailing period from the normalized text
+- verify: removed(subject="the input description's trailing period")
 - verify: json_path(path="$.description", equals="add password reset")
 - does: lowercases the first character when the remainder of the first word is lowercase or empty
 - verify: json_path(path="$.description", equals="add password reset")
@@ -76,6 +77,7 @@ formats.
 - does: places the generated subject on the first line
 - verify: json_path(path="$.lines[0]", equals="feat(api-service): add guest cart")
 - does: adds a blank line followed by an `Epic:` trailer when epic is non-empty
+- verify: created(subject="the message's Epic trailer")
 - verify: json_path(path="$.lines[2]", equals="Epic: checkout")
 - does: adds a `Story:` trailer after the epic trailer when story is non-empty
 - verify: json_path(path="$.lines[3]", equals="Story: guest-cart")
@@ -91,6 +93,7 @@ formats.
 - does: reads the first level-one Markdown heading from the file at `root / story_path` when that path is a regular file
 - verify: json_path(path="$.description", equals="paginate the widget list")
 - does: removes a leading `Story:` or `Epic` heading label before normalizing the heading
+- verify: removed(subject="the leading Story: or Epic heading label")
 - verify: json_path(path="$.description", equals="record an expense against a group")
 - does: uses the supplied fallback when the file is absent, unreadable, has no level-one heading, or the stripped heading is empty
 - verify: json_path(path="$.description", equals="expense-record")

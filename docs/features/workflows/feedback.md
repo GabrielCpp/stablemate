@@ -20,6 +20,7 @@ outstanding message and gives the author flow one rework pass.
 - semantics: whether an outstanding feedback message was found
 - verify: json_path(path="$.present", equals=False)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback`
+- detail: [feedback field roles](concepts/feedback-field-roles.md)
 
 ### scope
 - type: string
@@ -28,6 +29,7 @@ outstanding message and gives the author flow one rework pass.
 - semantics: authoring scope named by the feedback message
 - verify: json_path(path="$.scope", equals="story")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback`
+- detail: [feedback field roles](concepts/feedback-field-roles.md)
 
 ### content
 - type: string
@@ -36,3 +38,4 @@ outstanding message and gives the author flow one rework pass.
 - semantics: operator note supplied to the rework prompt
 - verify: json_path(path="$.content", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback`
+- detail: [feedback field roles](concepts/feedback-field-roles.md)

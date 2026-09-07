@@ -18,6 +18,7 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 - code: groom/groom/sidecar.py::_rpc_get_diff
 - code: groom/groom/sidecar.py::_git_diff
 - code: groom/groom/sidecar.py::_repo_base
+- detail: [dashboard diff representation selection](concepts/dashboard-diff-representation-selection.md)
 - verify: groom/tests/test_app.py::test_diff_prefers_sidecar_socket,
   groom/tests/test_app.py::test_diff_endpoint_passes_repo_through,
   groom/tests/test_docker_io.py::test_git_diff_returns_stdout_on_success,
@@ -28,7 +29,9 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 
 ## Contract
 
-- endpoint producer: `GET /diff/{container_id}` returns [field-json-body](#field-json-body) as `application/json`; it prefers sidecar RPC data and otherwise reads from the workflow container's known workspace volume when available.
+- consistency: `GET /diff/{container_id}` returns [field-json-body](#field-json-body) as `application/json`.
+- consistency: when sidecar RPC returns data, `GET /diff/{container_id}` uses that data for its response.
+- consistency: when sidecar RPC returns no data, `GET /diff/{container_id}` reads from the workflow container's known workspace volume when available.
 - sidecar producer: a live sidecar handling `rpc` method `getDiff` returns `{"diff": text}` as the `data` object in a successful `rpc_result` frame after running a working-tree-versus-`HEAD` diff against its local `/workspace` checkout.
 - fallback producer: the Docker-volume fallback runs a read-only throwaway git container against one checkout in the selected workflow's workspace volume and returns its stdout as the same raw diff text; a native workflow instead runs git locally against the checkout root through the local-filesystem reader. Both return the same shape, so the endpoint's caller cannot tell which ran.
 - sidecar request: the sidecar data-plane request uses [sidecar websocket frame](sidecar-websocket-frame.md) method `getDiff` with `params.repo` as the only meaningful parameter; missing `repo` defaults to `""`.
@@ -109,8 +112,10 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 
 - sig: `async diff(container_id: str, repo: str = "") -> dict`
 - abstract: false
-- raises: no endpoint-specific exception for unknown workflow id, missing workspace volume, unavailable sidecar connection, sidecar RPC error, falsey sidecar diff, missing checkout, non-zero fallback git exit, or empty diff output; unexpected sidecar-registry, Docker subprocess launch/timeout, or response-construction failures can propagate.
-- verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
+- raises: no endpoint-specific exception for unknown workflow id, missing workspace volume, unavailable sidecar connection, sidecar RPC error, falsey sidecar diff, missing checkout, non-zero fallback git exit, or empty diff output.
+- verify: json_path(path="exception.type", absent=true)
+- raises: unexpected sidecar-registry, Docker subprocess launch/timeout, or response-construction failures can propagate.
+- verify: json_path(path="exception.type", matches="Error$")
 - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
 - code: groom/groom/app.py::diff
 - tests: groom/tests/test_app.py::test_diff_prefers_sidecar_socket
@@ -131,8 +136,13 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 
 - sig: `_rpc_get_diff(params: dict) -> dict`
 - abstract: false
-- raises: no intentional exception when `params` is a mapping and local diff production fails; non-mapping `params` values can fail before the sidecar RPC wrapper converts the failure into an error frame.
+- raises: no intentional exception when `params` is a mapping and local diff production fails.
+- verify: json_path(path="exception.type", absent=true)
+- raises: non-mapping `params` values can fail before the sidecar RPC wrapper converts the failure into an error frame.
+- verify: json_path(path="exception.type", equals="AttributeError")
+- returns: a `diff` value containing the local working-tree changes when the selected checkout has changes.
 - verify: json_path(path="$.diff", matches="\\+two")
+- returns: an empty `diff` value when no checkout is available.
 - verify: json_path(path="$.diff", equals="")
 - code: groom/groom/sidecar.py::_rpc_get_diff
 - tests: groom/tests/test_sidecar_session.py::test_git_diff_reports_working_tree_changes
@@ -151,9 +161,12 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 
 - sig: `_git_diff(repo: str) -> str`
 - abstract: false
-- raises: no intentional exception for no checkout, subprocess launch failure, subprocess timeout, subprocess failure, or non-zero git exit; unexpected workspace directory iteration failures can propagate.
+- raises: no intentional exception for no checkout, subprocess launch failure, subprocess timeout, subprocess failure, or non-zero git exit.
+- verify: json_path(path="exception.type", absent=true)
 - verify: count(subject="lines in the returned working-tree diff", equals=2)
 - verify: count(subject="diff lines when no checkout is available", equals=0)
+- raises: unexpected workspace directory iteration failures can propagate.
+- verify: json_path(path="exception.type", matches="Error$")
 - code: groom/groom/sidecar.py::_git_diff
 - tests: groom/tests/test_sidecar_session.py::test_git_diff_reports_working_tree_changes
 - tests: groom/tests/test_sidecar_session.py::test_git_diff_empty_when_no_repo
@@ -177,11 +190,14 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 
 - sig: `git_diff(volume: str, repo_dir: str = "") -> str`
 - abstract: false
-- raises: no intentional exception for no selected checkout or non-zero git/Docker completion; process-launch and timeout exceptions from the shared Docker subprocess runner can propagate.
+- raises: no intentional exception for no selected checkout or non-zero git/Docker completion.
 - verify: count(subject="diff lines when no checkout is available", equals=0)
 - verify: count(subject="changed lines in the returned working-tree diff", equals=2)
 - verify: count(subject="diff lines when the git container exits non-zero", equals=0)
+- raises: process-launch and timeout exceptions from the shared Docker subprocess runner can propagate.
+- verify: json_path(path="exception.type", matches="(OSError|TimeoutExpired)")
 - code: groom/groom/docker_io.py::git_diff
+- detail: [Docker git diff documentation scope](concepts/docker-git-diff-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_git_diff_returns_empty_when_no_repo_found
 - tests: groom/tests/test_docker_io.py::test_git_diff_returns_stdout_on_success
 - tests: groom/tests/test_docker_io.py::test_git_diff_returns_empty_on_git_failure
@@ -202,7 +218,14 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 
 - sig: `git_diff(base: str, repo_dir: str = "") -> str`
 - abstract: false
-- raises: none intentionally; process-launch failures, subprocess errors, and the shared timeout are all caught and become `""`.
+- raises: no intentional exception when no checkout resolves.
+- verify: count(subject="diff lines when no checkout is available", equals=0)
+- raises: process-launch failures become `""`.
+- verify: count(subject="diff lines when the git process cannot launch", equals=0)
+- raises: subprocess errors become `""`.
+- verify: count(subject="diff lines when git raises a subprocess error", equals=0)
+- raises: the shared timeout becomes `""`.
+- verify: count(subject="diff lines when git exceeds the shared timeout", equals=0)
 - code: groom/groom/localfs.py::git_diff
 - input: `base` is the native run's checkout root on the groom host; `repo_dir` is the optional base-relative checkout directory from the repository picker.
 - output: raw unified working-tree-versus-`HEAD` diff stdout for the selected checkout, or `""` when no checkout resolves or git exits non-zero.
@@ -215,8 +238,10 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 
 - sig: `_repo_base(repo: str) -> Path`
 - abstract: false
-- raises: no intentional exception for string input; it does not check whether the returned path exists or is a repository.
-- verify: json_path(path="$.diff", matches="\\+two")
+- raises: no intentional exception for string input.
+- verify: json_path(path="exception.type", absent=true)
+- raises: does not check whether the returned path exists or is a repository.
+- verify: json_path(path="returned_path", equals="/workspace/missing")
 - code: groom/groom/sidecar.py::_repo_base
 - tests: groom/tests/test_sidecar_session.py::test_git_diff_reports_working_tree_changes
 - input: `repo` is the sidecar-local workspace-relative repository selector already chosen by the caller; `""` means the configured sidecar workspace root.
@@ -234,7 +259,10 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 
 - sig: `_find_repo_dirs() -> list[str]`
 - abstract: false
-- raises: no intentional exception for a missing workspace directory; unexpected directory iteration failures can propagate.
+- raises: no intentional exception for a missing workspace directory.
+- verify: json_path(path="exception.type", absent=true)
+- raises: unexpected directory iteration failures can propagate.
+- verify: json_path(path="exception.type", matches=".+")
 - verify: count(subject="discovered checkout directory choices", equals=0)
 - code: groom/groom/sidecar.py::_find_repo_dirs
 - tests: groom/tests/test_sidecar_session.py::test_git_diff_empty_when_no_repo

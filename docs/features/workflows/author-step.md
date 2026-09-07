@@ -21,6 +21,7 @@ operation.
 - semantics: phase of the next author operation
 - verify: json_path(path="$.kind", equals="milestone")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep`
+- detail: [author step field roles](concepts/author-step-field-roles.md)
 
 ### roadmap
 - type: string
@@ -29,6 +30,7 @@ operation.
 - semantics: roadmap associated with the planned operation
 - verify: json_path(path="$.roadmap", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep`
+- detail: [author step field roles](concepts/author-step-field-roles.md)
 
 ### epic
 - type: string
@@ -37,6 +39,7 @@ operation.
 - semantics: epic associated with the planned operation
 - verify: json_path(path="$.epic", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep`
+- detail: [author step field roles](concepts/author-step-field-roles.md)
 
 ### story
 - type: string
@@ -45,6 +48,7 @@ operation.
 - semantics: story associated with the planned operation
 - verify: json_path(path="$.story", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep`
+- detail: [author step field roles](concepts/author-step-field-roles.md)
 
 ### reason
 - type: string
@@ -53,3 +57,4 @@ operation.
 - semantics: planner reason for selecting the operation
 - verify: json_path(path="$.reason", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep`
+- detail: [author step field roles](concepts/author-step-field-roles.md)

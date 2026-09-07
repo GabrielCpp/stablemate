@@ -146,16 +146,17 @@ Two subtleties, both handled:
   `--no-sources` is uv's equivalent — it installs groom **standalone**, pulling
   `workhorse-agent` and groom's deps from PyPI. (So groom *can* be a standalone
   editable install; it is only `uv`'s workspace-aware resolvers that couple it.)
-- **Running off a read-only bind.** No copy is needed: the bind is world-readable,
-  `PYTHONDONTWRITEBYTECODE=1` stops `.pyc` writes into it, and a reload is done
-  manually after a save (no partial files). The editable install writes only into
-  its own tool venv, never back to the host checkout.
 
-Because it is editable, a reload just **restarts** the process — the live bind
-source is re-imported, no reinstall. Without the bind, nothing is installed and
-the container simply runs without a sidecar (the sidecar is best-effort). When
-groom eventually ships to PyPI this becomes a literal `pipx install --editable` /
-`uv tool install` from the index instead of a bind.
+At installation and on each reload, `workhorse/livesource.py::stage` copies the
+read-only bind into a fresh `/opt/live/groom/<generation>` directory. The
+supervisor installs that staged directory as an editable tool, leaving the bind
+as the source of generations rather than an import location.
+
+On reload, the supervisor stages and installs the next generation before
+**restarting** the process. Without the bind, nothing is installed and the
+container simply runs without a sidecar (the sidecar is best-effort). When groom
+eventually ships to PyPI this becomes a literal `pipx install --editable` / `uv
+tool install` from the index instead of a bind.
 
 ## Sidecar reload
 
@@ -190,10 +191,16 @@ run_sidecar &                             # workhorse stays the foreground/PID-f
   compile-guarding that automatic detection would need. (`PYTHONDONTWRITEBYTECODE=1`
   above also keeps the read-only bind free of `.pyc` churn.)
 - **Fleet-wide by construction.** Because groom holds a socket to every sidecar,
-  one edit + one broadcast reloads the whole fleet — or a single container, since
-  the operator picks the blast radius. Reloading does **not** perturb running
-  workflows: the sidecar is a background helper; workhorse in the foreground never
-  notices.
+  an edited source can be followed by either a broadcast reload or a reload scoped
+  to one container. `groom/groom/app.py::reload` selects the connected sockets, and
+  `groom/groom/sidecar.py::_serve` turns each received command into the sidecar's
+  intentional exit.
+- consistency: An unscoped reload sends one `reload` frame to every connected sidecar.
+- verify: emitted(event="reload frame", count=2)
+- consistency: A reload scoped to one container reloads only that container's connected sidecar.
+- verify: count(subject="sidecars reloaded by a container-scoped request", equals=1)
+- consistency: Reloading a sidecar leaves its foreground workhorse process running.
+- verify: unchanged(subject="foreground workhorse process for the reloaded sidecar")
 - **Manual timing removes the race.** The operator reloads *after* saving, so the
   restart never re-imports a half-written file.
 - **Bad-code recovery.** If a reload lands on code that fails to import, the
@@ -207,9 +214,15 @@ run_sidecar &                             # workhorse stays the foreground/PID-f
 - **Non-authoritative sidecar, ephemeral state, resync on connect.** Never make a
   connection or in-memory datum the only copy of something that matters; a
   reconnect must be able to rebuild it. This is what makes every restart cheap.
-- **Fire-and-forget discipline** on any residual best-effort push: short timeout,
-  silent on failure, never blocks the workflow or changes its exit code (see
-  [sidecar-protocol](sidecar-protocol.md)).
+- consistency: Residual best-effort pushes time out after the bounded
+  `GROOM_PUSH_TIMEOUT`.
+- consistency: Failures of residual best-effort pushes remain silent.
+- consistency: Residual best-effort pushes neither block a workflow nor change
+  its exit code.
+
+The residual-push [`_push` implementation](../../../groom/groom/sidecar.py#L108)
+enforces these guarantees; see [sidecar-protocol](sidecar-protocol.md) for the
+best-effort channel it retains.
 - **Recopy while down.** The sidecar reload path never copies over its own running
   source; the supervising shell recopies *between* runs. `exit(3)` is the
   handoff and is reserved for intentional reload (outside 0/1/2, 126/127,
@@ -274,11 +287,10 @@ groom's `dashboard_sidecar` handler accepts it. All frames are JSON with a
 
 **Decisions on the former open questions**
 
-- **Volume-read fallback is kept** (a strictly-better superset of the
-  "retire it" non-goal): `/files` `/file` `/diff` prefer the socket and fall
-  back to the throwaway-container read when no sidecar is connected, so a
-  stopped/finished/legacy container is still browsable. `_sidecar_rpc` returns
-  `None` on no-connection-or-error and the handler drops through.
+- consistency: `/files`, `/file`, and `/diff` prefer the connected sidecar result and, when `groom/groom/app.py::_sidecar_rpc` returns `None` for an absent connection or `SidecarError`, use their volume readers so stopped, finished, and legacy containers remain browsable.
+- verify: json_path(path="$.paths[0]", equals="README.md")
+- verify: json_path(path="$.content", equals="print(1)\n")
+- verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
 - **Liveness is soft.** A socket close unregisters the RPC connection (and fails
   its in-flight RPCs) but does **not** delete the workflow row — the reconcile
   scan still owns removal, so a transient drop or a groom restart doesn't flap

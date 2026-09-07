@@ -19,6 +19,7 @@ The result of consuming or materializing the survey unit inventory.
 - semantics: whether the inventory is usable
 - verify: json_path(path="$.expand_ok", equals=false)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion`
+- detail: [expansion result field roles](concepts/expansion-result-field-roles.md)
 
 ### expand_errors
 - type: string
@@ -27,6 +28,7 @@ The result of consuming or materializing the survey unit inventory.
 - semantics: diagnostic expansion failure text
 - verify: json_path(path="$.expand_errors", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion`
+- detail: [expansion result field roles](concepts/expansion-result-field-roles.md)
 
 ### unit_count
 - type: integer
@@ -35,6 +37,7 @@ The result of consuming or materializing the survey unit inventory.
 - semantics: number of units in the resulting inventory
 - verify: json_path(path="$.unit_count", equals=0)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion`
+- detail: [expansion result field roles](concepts/expansion-result-field-roles.md)
 
 ### inventory_note
 - type: string
@@ -43,3 +46,4 @@ The result of consuming or materializing the survey unit inventory.
 - semantics: explanation of whether the inventory was reused or expanded
 - verify: json_path(path="$.inventory_note", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion`
+- detail: [expansion result field roles](concepts/expansion-result-field-roles.md)

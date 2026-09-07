@@ -37,6 +37,8 @@ title: Coder genesis flow
 
 ### classify
 
+- kind: prepare
+
 `start` calls `resolve_genesis_target` before any mutation. A missing or empty target fails the
 flow immediately. Otherwise the node resolves the absolute target directory, classifies repository
 state as `absent`, `partial` (content without `agents.yml`), or `existing` (an `agents.yml` is
@@ -46,11 +48,15 @@ An existing repository skips only `git-init`; an existing service skips only `sk
 
 ### git-init
 
+- kind: prepare
+
 For a non-existing repository, `genesis_git_init` creates the target, initializes local Git, creates
 `README.md` when absent, and lands an initial commit. A repository with an existing committed HEAD
 is left unchanged, while an unborn repository receives the initial commit. No remote is configured.
 
 ### config
+
+- kind: prepare
 
 `write_agents_yml` round-trip-merges the service into `agents.yml`, preserving existing values and
 comments. It ensures the repository name, assistant map, requested pack/workflow/scaffold ids,
@@ -60,6 +66,8 @@ reported in the result rather than interpreted.
 
 ### skeleton
 
+- kind: seed
+
 For an absent service, `init_skeleton` creates the service directory and runs the supplied native
 init command there. The command must leave the supplied marker file in place; a non-zero command or
 a missing marker is reported for terminal validation. If the marker already exists, initialization
@@ -67,12 +75,16 @@ is skipped so a re-run cannot clobber a live service.
 
 ### farrier
 
+- kind: seed
+
 `install_farrier` runs Farrier install unless no packs were requested, then renders each supplied
 `<scaffold-id>[:<directory>]` in order. Install produces the agent context and each scaffold seeds
 its requested directory. A failed install or scaffold is recorded and later validation reports the
 missing precondition; the flow does not call an agent to repair deterministic tooling failures.
 
 ### verify
+
+- kind: verify
 
 `validate_genesis` checks that the target is a committed Git repository bound as the current Ostler
 root, that the service marker exists, that the agent context has a non-empty instructions map, and

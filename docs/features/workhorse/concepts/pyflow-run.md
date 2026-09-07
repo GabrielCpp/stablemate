@@ -18,20 +18,25 @@ while budget, interrupt, and unavailable-backend stops retain a resumable checkp
 
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
 - tests: [run terminal tests](../../../../workhorse/tests/test_run_terminal.py)
+- detail: [run invocation reading guide](run-invocation-reading-guide.md)
+- detail: [run invocation views](run-invocation-views.md)
+- detail: [run invocation documentation](run-invocation-documentation.md)
 
 ## Fields
 
 ### field: RunInvocation
 - type: frozen dataclass with registry, runs_dir, flow, run_id, params, resume_run_dir, no_cache, dry_run, context_manifest, config, and telemetry
 - semantics: complete run boundary selected by the command invocation
+- verify: json_path(path="$.flow", equals="selected-flow")
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
+- detail: [run invocation fields](run-invocation-fields.md)
 
 ### field: params
 - type: `dict[str, Any]`
 - default: `{}`
-- verify: json_path(path="$.params", equals={})
+- verify: count(subject="workflow params", equals=0)
 - required: false
-- verify: json_path(path="$.params", absent=false)
+- verify: json_path(path="$.params.attempt", equals=2)
 - semantics: workflow inputs for a fresh run
 - verify: persists(subject="fresh-run workflow inputs in the checkpoint")
 - semantics: checkpoint inputs win during resume
@@ -40,101 +45,111 @@ while budget, interrupt, and unavailable-backend stops retain a resumable checkp
 ### field: registry
 - type: `Registry`
 - required: true
-- verify: json_path(path="$.registry", absent=false)
+- verify: json_path(path="$.registry.name", equals="demo")
 - semantics: workflow registry supplying the name, entry flow, classes, nodes, and package directory
 - verify: persists(subject="registry composition root used by the run")
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
+- detail: [run invocation fields](run-invocation-fields.md)
 
 ### field: runs_dir
 - type: `Path`
 - required: true
-- verify: json_path(path="$.runs_dir", absent=false)
+- verify: json_path(path="$.runs_dir", matches="^/.+")
 - semantics: parent directory in which the stable run directory is resolved or created
 - verify: persists(subject="stable run directory under runs_dir")
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
+- detail: [run invocation fields](run-invocation-fields.md)
 
 ### field: flow
 - type: `str | None`
 - default: `None`
-- verify: json_path(path="$.flow", equals=null)
+- verify: json_path(path="$.flow", equals="null")
 - required: false
-- verify: json_path(path="$.flow", absent=false)
+- verify: json_path(path="$.flow", equals="null")
 - semantics: explicitly requested flow for a fresh run
 - verify: persists(subject="requested flow in the run checkpoint")
 - semantics: a resume keeps the checkpoint's flow
 - verify: persists(subject="checkpoint flow across resume")
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
+- detail: [run invocation fields](run-invocation-fields.md)
 
 ### field: run_id
 - type: `str | None`
 - default: `None`
-- verify: json_path(path="$.run_id", equals=null)
+- verify: json_path(path="$.run_id", absent=true)
 - required: false
-- verify: json_path(path="$.run_id", absent=false)
+- verify: json_path(path="$.run_id", equals="given")
 - semantics: operator-selected stable run identity, otherwise derived from workflow parameters
 - verify: persists(subject="resolved run identity across resume")
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
+- detail: [run invocation fields](run-invocation-fields.md)
 
 ### field: resume_run_dir
 - type: `Path | None`
 - default: `None`
-- verify: json_path(path="$.resume_run_dir", equals=null)
+- verify: json_path(path="$.resume_run_dir", equals="null")
 - required: false
-- verify: json_path(path="$.resume_run_dir", absent=false)
+- verify: json_path(path="$.resume_run_dir", equals="/runs/demo/resume")
 - semantics: explicit checkpoint directory that takes precedence over automatic run resolution
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
+- detail: [run invocation fields](run-invocation-fields.md)
 
 ### field: no_cache
 - type: boolean
 - default: `false`
 - verify: json_path(path="$.no_cache", equals=false)
 - required: true
-- verify: json_path(path="$.no_cache", absent=false)
+- verify: json_path(path="$.no_cache", equals=false)
 - semantics: discard an automatically resolved existing run before starting fresh
 - verify: removed(subject="automatically resolved existing run")
 - semantics: no_cache never discards an explicit resume directory
 - verify: unchanged(subject="explicit resume run directory")
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
+- detail: [run invocation fields](run-invocation-fields.md)
 
 ### field: dry_run
 - type: boolean
 - default: `false`
 - verify: json_path(path="$.dry_run", equals=false)
 - required: true
-- verify: json_path(path="$.dry_run", absent=false)
+- verify: json_path(path="$.dry_run", equals=false)
 - semantics: preflight the graph and drive substituted nodes in a dedicated cleared run directory without arming control
 - verify: absent(subject="control socket after dry-run")
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
+- detail: [run invocation fields](run-invocation-fields.md)
 
 ### field: context_manifest
 - type: `ManifestContext`
 - default: empty manifest context
 - verify: json_path(path="$.context_manifest.present", equals=false)
 - required: true
-- verify: json_path(path="$.context_manifest", absent=false)
+- verify: json_path(path="$.context_manifest.present", equals=false)
 - semantics: manifest supplied to reference preflight and carried into the run environment
 - verify: json_path(path="$.run_environment.manifest.present", equals=true)
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
+- detail: [run invocation fields](run-invocation-fields.md)
 
 ### field: config
 - type: `RunConfig`
 - default: shipped run configuration
 - verify: json_path(path="$.config.capture_transcripts", equals=true)
 - required: true
-- verify: json_path(path="$.config", absent=false)
+- verify: json_path(path="$.config.capture_transcripts", equals=true)
 - semantics: runtime settings used to build the environment, record profile and launch resume arguments
 - verify: persists(subject="RunConfig settings in the run launch record")
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
+- detail: [run invocation fields](run-invocation-fields.md)
 
 ### field: telemetry
 - type: `TelemetryHost`
 - default: shipped telemetry host
 - verify: created(subject="default shipped telemetry host")
 - required: true
-- verify: json_path(path="$.telemetry", absent=false)
+- verify: json_path(path="$.telemetry.settings.endpoint", equals="http://127.0.0.1:8787")
 - semantics: telemetry host installed and started for this run at the run boundary
 - verify: emitted(event="run root span", count=1)
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
+- detail: [run invocation fields](run-invocation-fields.md)
 
 ## Methods
 
@@ -153,7 +168,10 @@ while budget, interrupt, and unavailable-backend stops retain a resumable checkp
 - does: keeps interrupt, budget, and backend stops resumable instead of stamping a terminal checkpoint
 - does: executes a core reload only after telemetry is flushed and the control channel is disarmed
 - does: drives the selected workflow and returns success after a terminal `Done`
-- does: leaves interrupt, budget, backend, and workflow failures recorded and resumable where policy requires
+- does: records interruption, budget-stop, backend-failure, and workflow-failure outcomes in run artifacts
+- verify: persists(subject="run artifact outcome")
+- does: leaves policy-resumable outcomes without a terminal checkpoint
+- verify: json_path(path="$.terminal", absent=true)
 - returns: process exit code `0` for completion, `1` for a reported failure, and `130` for keyboard interruption
 - verify: exit_status(code=0)
 - code: `workhorse/workhorse/pyflow/run.py::run_pyflow`

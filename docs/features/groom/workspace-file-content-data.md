@@ -24,7 +24,8 @@ The HTTP body carries more than the sidecar result object does, and deliberately
 
 ## Contract
 
-- sidecar producer: a live sidecar handling `rpc` method `getFile` returns `{"content": text}` as the `data` object in a successful `rpc_result` frame after reading the selected file from its local `/workspace` mount.
+- consistency rule: a live sidecar handling `rpc` method `getFile` returns `{"content": text}` as the `data` object in a successful `rpc_result` frame after reading the selected file from its local `/workspace` mount.
+- verify: json_path(path="$.content", equals="print(1)\n")
 - endpoint producer: the `/file/{container_id}` endpoint first asks the live sidecar for a `getFile` result and otherwise asks the fallback volume reader for the selected path's text.
 - sidecar request boundary: the host request is a [sidecar websocket frame](sidecar-websocket-frame.md) with method `getFile` and `params` containing `repo` plus `path`; the returned `data` object is this format's object envelope, not the final HTTP body.
 - fallback boundary: the fallback reader — the local-filesystem one for a native run, the Docker-volume one otherwise — returns raw text or `None`; the endpoint serializes falsey fallback output as the same empty `content` member used for missing sidecar content.
@@ -147,8 +148,12 @@ The HTTP body carries more than the sidecar result object does, and deliberately
 
 - sig: `_rpc_get_file(params: dict) -> dict`
 - abstract: false
-- raises: `ValueError` for unsafe composed paths; unreadable, missing, or unavailable files are intentionally converted to empty content instead.
+- raises: `ValueError` for unsafe composed paths.
+- verify: json_path(path="exception.type", equals="ValueError")
+- returns: selected file content as text.
 - verify: json_path(path="$.content", equals="print(1)\n")
+- returns: empty content for unreadable, missing, or unavailable files.
+- verify: json_path(path="$.content", equals="")
 - code: groom/groom/sidecar.py::_rpc_get_file
 - tests: `groom/tests/test_sidecar_session.py::test_rpc_get_file_reads_local_file`
 - tests: `groom/tests/test_sidecar_session.py::test_rpc_get_file_rejects_traversal`
@@ -174,10 +179,12 @@ The HTTP body carries more than the sidecar result object does, and deliberately
 
 - sig: `async file_content(container_id: str, repo: str = "", path: str = "") -> dict`
 - abstract: false
-- raises: no intentional exception for absent workflow state, absent sidecar connection, sidecar RPC failure, empty selected path, unsafe fallback path, missing fallback file, unreadable fallback file, or falsey producer output; unexpected HTTP framework failures or fallback reader exceptions other than `ValueError` can propagate.
+- raises: no intentional exception for absent workflow state, absent sidecar connection, sidecar RPC failure, empty selected path, unsafe fallback path, missing fallback file, unreadable fallback file, or falsey producer output.
 - verify: json_path(path="$.content", equals="print(1)\n")
 - verify: json_path(path="$.content", equals="print(1)\n")
 - verify: http_status(code=200, path="/file/abc123")
+- raises: unexpected HTTP framework failures or fallback reader exceptions other than `ValueError` can propagate.
+- verify: json_path(path="exception.type", matches="^(?!ValueError$).+")
 - code: groom/groom/app.py::file_content
 - tests: `groom/tests/test_app.py::test_file_content_prefers_sidecar_socket`
 - tests: `groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content`

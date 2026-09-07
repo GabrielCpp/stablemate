@@ -22,14 +22,18 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - semantics: identifies the edit operation consumed by epic reconciliation
 - verify: json_path(path="$.kind", equals="add-story")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent`
+- detail: [edit intent field roles](concepts/edit-intent-field-roles.md)
 
 ### epic
 - type: string
 - default: empty string
 - required: false
-- semantics: names the parent epic; story removal obtains it from the existing story
+- semantics: names the parent epic
 - verify: json_path(path="$.epic", matches=".+")
+- semantics: story removal obtains the parent epic from the existing story
+- verify: json_path(path="$.kind", equals="remove-story")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent`
+- detail: [edit intent field roles](concepts/edit-intent-field-roles.md)
 
 ### story
 - type: string
@@ -38,6 +42,7 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - semantics: names the story selected for removal
 - verify: json_path(path="$.story", equals="")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent`
+- detail: [edit intent field roles](concepts/edit-intent-field-roles.md)
 
 ### bullet_id
 - type: string
@@ -46,6 +51,7 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - semantics: identifies the backlog or literal source item covered by an added story
 - verify: json_path(path="$.bullet_id", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent`
+- detail: [edit intent field roles](concepts/edit-intent-field-roles.md)
 
 ### source_bullet
 - type: string
@@ -54,6 +60,7 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - semantics: preserves the resolved source bullet text for the added story
 - verify: json_path(path="$.source_bullet", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent`
+- detail: [edit intent field roles](concepts/edit-intent-field-roles.md)
 
 ### from_backlog
 - type: boolean
@@ -62,6 +69,7 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - semantics: records whether the source bullet came from the configured backlog
 - verify: json_path(path="$.from_backlog", equals=True)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent`
+- detail: [edit intent field roles](concepts/edit-intent-field-roles.md)
 
 ### change
 - type: string
@@ -70,6 +78,7 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - semantics: carries the supplied reason, or the operation-specific generated reason
 - verify: json_path(path="$.change", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent`
+- detail: [edit intent field roles](concepts/edit-intent-field-roles.md)
 
 ### force
 - type: boolean
@@ -78,3 +87,4 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - semantics: authorizes destructive reconciliation that the normal safety checks reject
 - verify: json_path(path="$.force", equals=False)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent`
+- detail: [edit intent field roles](concepts/edit-intent-field-roles.md)

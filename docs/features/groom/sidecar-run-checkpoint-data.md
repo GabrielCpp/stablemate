@@ -21,6 +21,7 @@ available from this source.
 - file: `/runs/<latest-run-directory>/checkpoint.json`
 - code: groom/groom/sidecar.py::_current_node
 - code: groom/groom/discovery.py::_current_run_state
+- detail: [volume run-state evidence](concepts/volume-run-state-evidence.md)
 - verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
 - verify: groom/tests/test_sidecar_session.py::test_classify_event_runs_write_is_progress
 - verify: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
@@ -84,8 +85,10 @@ available from this source.
   does not by itself mark a workflow running, blocked, idle, or finished; those
   lifecycle decisions come from sidecar snapshot, live progress-frame handling,
   discovery, terminal metadata, and gate evidence consumers.
-- persistence: Groom never writes, edits, deletes, repairs, or creates this file;
-  it derives transient state evidence and leaves the runs volume unchanged.
+- persistence: checkpoint-file — Groom never writes, edits, deletes, repairs, or creates this file.
+- verify: unchanged(subject="the checkpoint file")
+- persistence: runs-volume — Groom derives transient state evidence and leaves the runs volume unchanged.
+- verify: unchanged(subject="the runs volume")
 
 ## Fields
 

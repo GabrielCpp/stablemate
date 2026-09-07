@@ -24,11 +24,12 @@ return the same JSON bodies whether a live sidecar RPC or a workspace-volume rea
 answered. That is what makes the fallback invisible to the browser: it renders one
 shape, and nothing in it records which side of the fallback produced it.
 
-- start: the host `groom` process is running or starting with access to Docker;
-  one or more workhorse workflow containers may be running, stopped, legacy, or
-  already connected over the primary [sidecar live session](../flows/sidecar-live-session-sync.md);
-  and the sidecar process may be invoked in one-shot `--query` or `--exit-code`
-  mode by Docker discovery or the workflow container entrypoint.
+- start: the host `groom` process is running or starting with access to Docker
+- verify: json_path(path="start.host_groom_process", matches="^(running|starting)$")
+- start: one or more workhorse workflow containers may be running, stopped, legacy, or already connected over the primary [sidecar live session](../flows/sidecar-live-session-sync.md)
+- verify: json_path(path="start.workflow_containers", matches=".+")
+- start: the sidecar process may be invoked in one-shot `--query` or `--exit-code` mode by Docker discovery or the workflow container entrypoint
+- verify: json_path(path="start.sidecar_invocation_mode", matches="^--(query|exit-code)$")
 - steps:
   1. A startup discovery scan or manual refresh enters the [per-container
      discovery resolver](../concepts/workflow-discovery-scan.md#method-resolve-container)
@@ -135,20 +136,24 @@ shape, and nothing in it records which side of the fallback produced it.
       bodies. The browser therefore takes the same parse path for a failed read as
       for a successful one, and renders `(no files)` or `(no changes)` from the
       data itself.
+Together, these paths preserve the primary live websocket session as the
+steady-state channel while keeping legacy, post-exit, startup, and no-socket
+cases usable.
 - end: discovery has a resolved workflow record from either a running-container
-  query snapshot or volume reconstruction; residual exited/progress/blocked pushes
-  either update and broadcast host workflow state or fail silently at the producer
-  when Groom is unreachable; and dashboard file/diff reads either use a live
-  sidecar RPC result or return the documented workspace-volume fallback response.
-  These paths preserve the primary live websocket session as the steady-state
-  channel while keeping legacy, post-exit, startup, and no-socket cases usable.
+  query snapshot or volume reconstruction.
 - verify: json_path(path="sidecar snapshot.current_node", equals="write_story")
 - verify: json_path(path="workflow.state", equals="FINISHED")
+- end: residual exited/progress/blocked pushes either update and broadcast host
+  workflow state or fail silently at the producer when Groom is unreachable.
 - verify: absent(subject="sidecar snapshot after query failure")
 - verify: emitted(event="dashboard state payload", count=1)
 - verify: emitted(event="notify", count=1)
+- end: dashboard file/diff reads either use a live sidecar RPC result or return
+  the documented workspace-volume fallback response.
 - verify: json_path(path="file-list response.paths", equals=["README.md"])
 - verify: json_path(path="file-content response.content", equals="")
+- detail: [live sidecar RPC and volume fallback selection](../concepts/live-sidecar-rpc-and-volume-fallback-selection.md)
+- detail: [blocked push flow contexts](../concepts/blocked-push-flow-contexts.md)
 - tests: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch,
   groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates,
   groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape,

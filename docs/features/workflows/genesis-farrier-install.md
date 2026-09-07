@@ -35,5 +35,5 @@ before any failure.
 - default: empty list
 - required: false
 - semantics: scaffold identifiers rendered in input order
-- verify: json_path(path="$.scaffolds_rendered", equals=[])
+- verify: count(subject="scaffolds_rendered", equals=0)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::FarrierInstall.scaffolds_rendered`

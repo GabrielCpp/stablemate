@@ -20,6 +20,7 @@ checkpoint value carrying all five research counters and two operator grants.
 ### method: ResearchResult
 - sig: `ResearchResult(data: Any) -> ResearchResult`
 - does: removes entries whose value is `None` from dictionary input before descendant validation
+- verify: removed(subject="None-valued entries from dictionary input")
 - verify: count(subject="research null-input normalization operations", equals=1)
 - does: ignores keys not declared by the concrete research model
 - verify: count(subject="research unknown-key inputs accepted", equals=1)
@@ -123,14 +124,34 @@ checkpoint value carrying all five research counters and two operator grants.
 
 ### method: Build
 - sig: `Build(status: str = "", command: list[str] = [], dry_run_command: list[str] = [], cwd: str = "", result_file: str = "result.json", code_files: list[str] = [], fault_locus: str = "", component: str = "", notes: str = "") -> Build`
-- does: carries measurement and rehearsal argv, working directory, result filename, code files, and fault classification
+- does: carries the measurement argv
+- verify: count(subject="the measurement argv", equals=0)
+- does: carries the rehearsal argv
+- verify: count(subject="the rehearsal argv", equals=0)
+- does: carries the working directory
+- verify: json_path(path="$.cwd", equals="")
+- does: carries the result filename
 - verify: json_path(path="$.result_file", equals="result.json")
+- does: carries the code files
+- verify: count(subject="the code files", equals=0)
+- does: carries the fault locus
+- verify: json_path(path="$.fault_locus", equals="")
+- does: carries the component classification
+- verify: json_path(path="$.component", equals="")
 - code: `workflows/src/workhorse_workflows/research/schemas.py::Build`
 
 ### method: DryRun
 - sig: `DryRun(ok: bool = false, exit_code: int | None = None, fault_locus: str = "", stderr_tail: str = "", reason: str = "") -> DryRun`
-- does: reports rehearsal success and preserves exit, fault, stderr, and reason
+- does: reports rehearsal success
 - verify: json_path(path="$.ok", equals=false)
+- does: preserves the runner exit code
+- verify: json_path(path="$.exit_code", equals=1)
+- does: preserves the classified fault locus
+- verify: json_path(path="$.fault_locus", equals="repo")
+- does: preserves the captured stderr tail
+- verify: json_path(path="$.stderr_tail", matches="Traceback")
+- does: preserves the failure reason
+- verify: json_path(path="$.reason", equals="no such file: run.py")
 - code: `workflows/src/workhorse_workflows/research/schemas.py::DryRun`
 - tests: `workflows/tests/research/test_workflow.py::test_a_rehearsal_that_dies_under_the_runner_never_reaches_submission`
 
@@ -170,8 +191,12 @@ checkpoint value carrying all five research counters and two operator grants.
 
 ### method: Budget
 - sig: `Budget(reworks: int = 0, build_fixes: int = 0, rescopes: int = 0, lead_reviews: int = 0, extensions: int = 0, lead_review_grants: int = 0, extension_grants: int = 0) -> Budget`
-- does: carries per-gate rework, build-fix, and rescope counters plus run-wide review and extension counters and operator grants
+- does: carries per-gate rework, build-fix, and rescope counters
 - verify: json_path(path="$.reworks", equals=0)
+- does: carries run-wide review and extension counters
+- verify: json_path(path="$.lead_reviews", equals=0)
+- does: carries operator grants
+- verify: json_path(path="$.lead_review_grants", equals=0)
 - does: rejects in-place mutation by remaining frozen after construction
 - verify: unchanged(subject="budget", except_fields=[])
 - code: `workflows/src/workhorse_workflows/research/schemas.py::Budget`

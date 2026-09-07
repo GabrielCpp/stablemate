@@ -70,7 +70,9 @@ value additionally carries the repository-relative receipt path.
 ### graphDigest
 - type: lowercase hexadecimal SHA-256 string
 - required: true
-- semantics: digest of active seed identities and each story's slug, title, covered seed items, and dependencies
+- semantics: digest of active seed identities
+- verify: json_path(path="$.graphDigest", matches="^[0-9a-f]{64}$")
+- semantics: digest of each story's slug, title, covered seed items, and dependencies
 - verify: json_path(path="$.graphDigest", matches="^[0-9a-f]{64}$")
 - code: `workflows/src/workhorse_workflows/author/shared/story_split_receipt.py::story_split_digest`
 

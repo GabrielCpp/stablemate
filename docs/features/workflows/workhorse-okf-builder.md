@@ -29,6 +29,7 @@ Runs the backfill registry described by the [OKF-builder workflow composition ro
   - starts the selected registered backfill flow
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main`
+- detail: [OKF-builder command selection](concepts/okf-builder-command-selection.md)
 
 ### dot
 - usage: `workhorse-okf-builder dot [--name ID] [-o out.dot]`
@@ -39,6 +40,7 @@ Runs the backfill registry described by the [OKF-builder workflow composition ro
   - renders the registered builder and walkthrough state graphs
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main`
+- detail: [OKF-builder command selection](concepts/okf-builder-command-selection.md)
 
 ### version
 - usage: `workhorse-okf-builder version`
@@ -46,3 +48,4 @@ Runs the backfill registry described by the [OKF-builder workflow composition ro
   - prints the installed Workhorse engine version
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main`
+- detail: [OKF-builder command selection](concepts/okf-builder-command-selection.md)

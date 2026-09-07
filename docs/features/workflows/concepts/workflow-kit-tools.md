@@ -27,7 +27,12 @@ The genesis workflow patches this callable at its module boundary with a canned
 - does: starts the external program named by `argv[0]` with the complete `argv` list
 - verify: exit_status(code=0)
 - does: runs the child with the supplied `cwd`, or inherits the caller's working directory when `cwd` is `None`
-- does: captures standard output and standard error as text without letting `subprocess.run` raise for the child's non-zero status
+- does: captures standard output as text
+- verify: json_path(path="return.stdout", matches=".*")
+- does: captures standard error as text
+- verify: json_path(path="return.stderr", matches=".*")
+- does: returns normally for the child's non-zero status when `check` is `False`
+- verify: json_path(path="return.returncode", equals=1)
 - does: when `check` is `True` and the child exits non-zero, logs the command, exit code, and trimmed standard error if `logger` is supplied
 - does: when `check` is `True` and the child exits non-zero, raises `RuntimeError` naming the executable and trimmed standard error
 - verify: exit_status(code=1)

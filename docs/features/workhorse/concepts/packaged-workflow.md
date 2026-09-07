@@ -24,7 +24,13 @@ missing packages, and non-directory resources are rejected before the first prom
 - code: `workhorse/workhorse/packaged.py::package_dir`
 
 ### method: PackagedWorkflowError
+
+QA invokes `package_dir` with a missing package and captures the raised exception type. It also
+constructs `PackagedWorkflowError("installation layout error")` and captures its message.
+
 - sig: `PackagedWorkflowError(message: str)`
 - does: identify an installation or package-layout error that prevents filesystem prompt loading
+- verify: json_path(path="exception.type", equals="PackagedWorkflowError")
 - returns: a `RuntimeError` carrying the operator-facing explanation
+- verify: json_path(path="error.message", equals="installation layout error")
 - code: `workhorse/workhorse/packaged.py::PackagedWorkflowError`

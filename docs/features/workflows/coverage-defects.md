@@ -20,6 +20,7 @@ coverage-specific doctor errors remain.
 - semantics: true when the selected epic has no relevant coverage defect
 - verify: json_path(path="$.ok", equals=True)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects`
+- detail: [coverage defect result fields](concepts/coverage-defect-result-fields.md)
 
 ### errors
 - type: string
@@ -28,3 +29,4 @@ coverage-specific doctor errors remain.
 - semantics: newline-separated coverage findings, empty on success
 - verify: json_path(path="$.errors", equals="")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects`
+- detail: [coverage defect result fields](concepts/coverage-defect-result-fields.md)

@@ -21,6 +21,7 @@ title: Story author completion
 - semantics: distinguishes normal authored completion from a parked blocked result
 - verify: json_path(path="$.status", equals="authored")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryAuthorDone`
+- detail: [story author completion field roles](concepts/story-author-done-field-roles.md)
 
 ### epic
 - type: string
@@ -29,6 +30,7 @@ title: Story author completion
 - semantics: parent epic of the authored story
 - verify: json_path(path="$.epic", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryAuthorDone`
+- detail: [story author completion field roles](concepts/story-author-done-field-roles.md)
 
 ### story
 - type: string
@@ -37,6 +39,7 @@ title: Story author completion
 - semantics: authored story slug
 - verify: json_path(path="$.story", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryAuthorDone`
+- detail: [story author completion field roles](concepts/story-author-done-field-roles.md)
 
 ### story_path
 - type: repository-relative string path
@@ -45,6 +48,7 @@ title: Story author completion
 - semantics: path to the authored story document
 - verify: json_path(path="$.story_path", matches="/story\\.md$")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryAuthorDone`
+- detail: [story author completion field roles](concepts/story-author-done-field-roles.md)
 
 ### mockup
 - type: string path or empty string
@@ -53,6 +57,7 @@ title: Story author completion
 - semantics: story-local mockup reference carried through authoring
 - verify: json_path(path="$.mockup", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryAuthorDone`
+- detail: [story author completion field roles](concepts/story-author-done-field-roles.md)
 
 ### notes
 - type: string
@@ -61,3 +66,4 @@ title: Story author completion
 - semantics: blocking or audit notes returned with the result
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryAuthorDone`
+- detail: [story author completion field roles](concepts/story-author-done-field-roles.md)

@@ -22,6 +22,7 @@ literal request.
 - semantics: identifies the resolved backlog item or normalized literal bullet
 - verify: json_path(path="$.id", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet`
+- detail: [resolved bullet field roles](concepts/resolved-bullet-field-roles.md)
 
 ### source_bullet
 - type: string
@@ -30,6 +31,7 @@ literal request.
 - semantics: preserves the source text used as the added story's scope description
 - verify: json_path(path="$.source_bullet", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet`
+- detail: [resolved bullet field roles](concepts/resolved-bullet-field-roles.md)
 
 ### from_backlog
 - type: boolean
@@ -38,3 +40,4 @@ literal request.
 - semantics: distinguishes a bullet matched in the configured backlog from a literal or normalized request
 - verify: json_path(path="$.from_backlog", equals=True)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet`
+- detail: [resolved bullet field roles](concepts/resolved-bullet-field-roles.md)

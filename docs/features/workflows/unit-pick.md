@@ -19,6 +19,7 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - semantics: whether a pending unit was selected
 - verify: json_path(path="$.has_unit", equals=false)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick`
+- detail: [unit pick fields](concepts/unit-pick-fields.md)
 
 ### unit_id
 - type: string
@@ -27,6 +28,7 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - semantics: selected inventory unit identifier
 - verify: json_path(path="$.unit_id", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick`
+- detail: [unit pick fields](concepts/unit-pick-fields.md)
 
 ### unit_path
 - type: string
@@ -35,6 +37,7 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - semantics: source path represented by the selected unit
 - verify: json_path(path="$.unit_path", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick`
+- detail: [unit pick fields](concepts/unit-pick-fields.md)
 
 ### unit_kind
 - type: string
@@ -43,6 +46,7 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - semantics: inventory rule kind of the selected unit
 - verify: json_path(path="$.unit_kind", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick`
+- detail: [unit pick fields](concepts/unit-pick-fields.md)
 
 ### record_path
 - type: string path
@@ -51,6 +55,7 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - semantics: finding-record path derived from the unit identifier
 - verify: json_path(path="$.record_path", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick`
+- detail: [unit pick fields](concepts/unit-pick-fields.md)
 
 ### reason
 - type: string
@@ -59,6 +64,7 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - semantics: explanation when no selectable unit exists
 - verify: json_path(path="$.reason", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick`
+- detail: [unit pick fields](concepts/unit-pick-fields.md)
 
 ### progress
 - type: string
@@ -67,6 +73,7 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - semantics: completed and total unit counts from the selection snapshot
 - verify: json_path(path="$.progress", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick`
+- detail: [unit pick fields](concepts/unit-pick-fields.md)
 
 ### kinds
 - type: string
@@ -75,3 +82,4 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - semantics: unit-kind counts from the selection snapshot
 - verify: json_path(path="$.kinds", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick`
+- detail: [unit pick fields](concepts/unit-pick-fields.md)

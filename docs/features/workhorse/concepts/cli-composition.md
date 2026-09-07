@@ -11,8 +11,13 @@ binds the same registry to the parsed namespace, and dispatches the selected com
 command table is fixed to `run`, `dot`, `control`, `inbox`, and `version`; a workflow name alone
 never triggers discovery.
 
+`ConsoleEntry` is the protocol expected by a distribution's `[project.scripts]` target: the
+returned callable has a public `__name__` and accepts an optional argv list, while the workflow
+registry remains bound in the closure that invokes `main`.
+
 - code: `workhorse/workhorse/cli/__init__.py::console_script`
 - code: `workhorse/workhorse/cli/__init__.py::main`
+- code: `workhorse/workhorse/cli/__init__.py::ConsoleEntry`
 - code: `workhorse/workhorse/cli/parser.py::Command`
 - code: `workhorse/workhorse/cli/parser.py::COMMANDS`
 - code: `workhorse/workhorse/cli/parser.py::build_parser`

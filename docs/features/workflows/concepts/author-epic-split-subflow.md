@@ -145,7 +145,8 @@ automatic resolution. A successful split does not commit, author prose, or creat
 - verify: count(subject="roadmap-owned epic-split milestones", equals=1)
 - does: snapshots milestone documents, epic documents, seed identities, and story identities
 - verify: created(subject="an epic-split graph snapshot")
-- returns: returns the [epic split context](../epic-split-context.md) bounding later mutations
+- consistency: returns the [epic split context](../epic-split-context.md) with the selected milestone path to bound later mutations
+- verify: json_path(path="$.milestone_path", equals="docs/milestones/account-access.md")
 - code: `workflows/src/workhorse_workflows/author/epic_split/nodes/epics.py::prepare_epic_split`
 
 ### validate_epic_split
@@ -156,8 +157,14 @@ automatic resolution. A successful split does not commit, author prose, or creat
 - verify: unchanged(subject="ordered milestone epics", except_fields=[])
 - does: requires every milestone epic to have an epic skeleton
 - verify: count(subject="milestone epics with skeletons", equals=1)
-- does: rejects changes to prepared seeds, stories, unrelated milestones, and existing epics
-- verify: unchanged(subject="pre-existing planning graph", except_fields=[])
+- consistency: rejects mutations to seed identities captured in the prepared context
+- verify: json_path(path="$.errors", matches=".*must not create, remove, or edit seeds in '.+'.*")
+- consistency: rejects mutations to story identities captured in the prepared context
+- verify: json_path(path="$.errors", matches=".*must not create, remove, or edit stories in '.+'.*")
+- consistency: rejects mutations to milestone documents other than the selected milestone
+- verify: json_path(path="$.errors", matches=".*must not edit unrelated milestone '.+'.*")
+- consistency: rejects mutations to pre-existing epic documents
+- verify: json_path(path="$.errors", matches=".*must not edit existing epic '.+'.*")
 - does: rejects prose, seeds, or stories inside a newly created epic skeleton
 - verify: absent(subject="authored content inside new epic skeletons")
 - returns: returns validation status, milestone path, ordered epics, and newline-separated errors

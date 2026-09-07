@@ -18,8 +18,14 @@ requires an operator because the missing evidence or decision is outside the rep
 ### status
 - type: literal `approved`, `needs_changes`, or `blocked`
 - required: true
-- semantics: binding implementation verdict; only `approved` proceeds and `blocked` bypasses repair
+- semantics: binding implementation verdict
 - verify: json_path(path="$.status", matches="approved|needs_changes|blocked")
+- semantics: only `approved` proceeds to feedback
+- verify: json_path(path="$.status", equals="approved")
+- semantics: `needs_changes` supplies notes to the apply loop
+- verify: json_path(path="$.status", equals="needs_changes")
+- semantics: `blocked` bypasses repair and goes to operator resolution
+- verify: json_path(path="$.status", equals="blocked")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.status`
 
 ### notes

@@ -38,8 +38,10 @@ in [research workflow schemas](research-schemas.md).
 - type: `dict[str, str | int]`
 - default: `min_containment=premium, envelope_ram_gb=0, envelope_cpus=0, envelope_gpu=none, envelope_disk_gb=0`
 - required: true
-- semantics: resource and containment defaults used when a program manifest omits an envelope key; zero numeric limits are unbounded
+- semantics: resource and containment defaults used when a program manifest omits an envelope key
 - verify: json_path(path="$.ENVELOPE_DEFAULTS.envelope_gpu", equals="none")
+- semantics: zero numeric envelope limits are unbounded
+- verify: json_path(path="$.ENVELOPE_DEFAULTS.envelope_ram_gb", equals=0)
 - code: `workflows/src/workhorse_workflows/research/nodes/program.py::ENVELOPE_DEFAULTS`
 
 ### LEDGER_NAME
@@ -141,8 +143,14 @@ in [research workflow schemas](research-schemas.md).
 
 ### load_program
 - sig: `load_program(logger: logging.Logger, program: str, repo_dir: str, launch_dir_path: str = "", reauthorize: bool = False) -> Program`
-- does: selects the explicit program, then the nearest launch-directory manifest, repository `agents.yml`, or legacy `.agents/program`, in that order
-- verify: count(subject="research program selection decisions", equals=1)
+- does: selects the explicit `program` parameter when it is supplied
+- verify: count(subject="explicit research program selections", equals=1)
+- does: otherwise selects the nearest launch-directory manifest
+- verify: count(subject="launch-directory research program selections", equals=1)
+- does: otherwise selects the repository `agents.yml` program
+- verify: count(subject="agents.yml research program selections", equals=1)
+- does: otherwise selects the legacy `.agents/program` pointer
+- verify: count(subject="legacy research program selections", equals=1)
 - does: rejects a selected program whose `program.yml` is absent, malformed, or missing `code_root`
 - verify: count(subject="research invalid program manifest failures", equals=1)
 - does: rejects a selected program whose README ladder is absent
@@ -202,7 +210,7 @@ in [research workflow schemas](research-schemas.md).
 - does: refuses a positive estimate with no timed calibration units as a design fault
 - verify: json_path(path="$.fault_locus", equals="design")
 - does: removes stale result and runner artifacts only when no job is currently running
-- verify: absent(subject="stale measurement artifacts before a new submission")
+- verify: removed(subject="stale measurement artifacts from the previous measurement attempt")
 - does: creates the job directory and writes a sibling `.gitignore` that excludes job logs
 - verify: created(subject="measurement job directory and log ignore rule")
 - does: adopts a live job in the requested directory instead of launching a duplicate
@@ -220,7 +228,7 @@ in [research workflow schemas](research-schemas.md).
 - sig: `dry_run(logger: logging.Logger, job_dir: str, command: list[str], cwd: str, repo_dir: str = "", result_file: str = "result.json", min_containment: str = "advisory", memory_mb: int = 0, cpus: int = 0) -> DryRun`
 - does: runs the rehearsal command through the detached runner with a 900-second bound
 - verify: count(subject="research detached n=1 rehearsals", equals=1)
-- does: refuses an empty rehearsal command as a repository fault before creating a runner manifest
+- does: refuses an empty rehearsal command as a repository fault without submitting a runner job
 - verify: json_path(path="$.fault_locus", equals="repo")
 - does: succeeds only when the runner exits zero and the declared result file exists in the job directory or experiment working directory
 - verify: json_path(path="$.ok", equals=true)
@@ -264,6 +272,7 @@ in [research workflow schemas](research-schemas.md).
 - does: collects supervisor cost data and reads the experiment result without a model call
 - verify: count(subject="research deterministic job collections", equals=1)
 - does: archives a valid result from the experiment working directory beside the supervisor record
+- verify: created(subject="research collected result artifact")
 - verify: persists(subject="research collected result artifact")
 - does: prefers the job-directory result over a same-named result left in the experiment working directory
 - verify: json_path(path="$.metrics.accuracy", equals=0.9)
@@ -275,8 +284,16 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.outcome", equals="invalid")
 - does: classifies a non-object JSON result or a result missing `status` or `metrics` as `invalid`
 - verify: json_path(path="$.reason", matches="result file")
-- does: classifies a clean exit with `status` and `metrics` in a JSON object as `ok` and copies its seed, control, and completion values
+- does: classifies a clean exit with `status` and `metrics` in a JSON object as `ok`
 - verify: json_path(path="$.outcome", equals="ok")
+- does: copies the result's seed values into `seeds`
+- verify: json_path(path="$.seeds", matches="0")
+- does: copies the result's control values into `controls`
+- verify: json_path(path="$.controls", matches="scratch")
+- does: copies the result's completed count into `n_completed`
+- verify: json_path(path="$.n_completed", equals=10)
+- does: copies the result's planned count into `n_planned`
+- verify: json_path(path="$.n_planned", equals=10)
 - returns: a `Collected` carrying outcome, fault locus, runner cost, result path and parsed measurement data
 - verify: json_path(path="$.result_path", matches=".+")
 - code: `workflows/src/workhorse_workflows/research/nodes/measure.py::collect_job`

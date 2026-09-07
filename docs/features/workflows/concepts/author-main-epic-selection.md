@@ -24,6 +24,7 @@ resolved back to Ostler's numbered directory name before it is passed to later n
 - does: returns milestone epic slugs in the order listed by the graph
 - verify: count(subject="milestone-ordered epic slugs", equals=1)
 - does: removes blank and duplicate milestone epic slugs while preserving first-seen order
+- verify: removed(subject="blank and duplicate milestone epic slugs")
 - verify: count(subject="unique milestone epic slugs", equals=1)
 - returns: returns the graph epic names in graph order when no milestone supplies an epic
 - verify: count(subject="graph-order epic fallback", equals=1)

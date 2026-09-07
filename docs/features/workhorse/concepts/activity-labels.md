@@ -23,6 +23,7 @@ metric cardinality bounded.
 - code: `workhorse/workhorse/pyflow/activity.py::LABEL`
 - tests: `workhorse/tests/test_activity.py`
 - detail: [OpenTelemetry instrumentation](telemetry-instrumentation.md)
+- detail: [Pyflow activity label documentation](pyflow-activity-label-selection.md)
 
 ## Methods
 
@@ -32,6 +33,7 @@ metric cardinality bounded.
 - verify: unchanged(subject="current activity label across workflow label rebase")
 - verify: emitted(event="activity labels after workflow label rebase", count=1)
 - code: `workhorse/workhorse/pyflow/activity.py::ActivityLog.rebase`
+- detail: [ActivityLog rebase documentation](activitylog-rebase-documentation.md)
 
 ### filter
 - sig: `ActivityLog.filter(record: logging.LogRecord) -> bool`
@@ -42,6 +44,7 @@ metric cardinality bounded.
 - returns: `True` for every record so the filter never suppresses logging
 - verify: emitted(event="every filtered log record", count=1)
 - code: `workhorse/workhorse/pyflow/activity.py::ActivityLog.filter`
+- detail: [Pyflow activity label documentation](pyflow-activity-label-selection.md)
 
 ### install
 - sig: `install(log: logging.Logger) -> ActivityLog`
@@ -52,3 +55,4 @@ metric cardinality bounded.
 - returns: the logger's single activity tracker
 - verify: count(subject="activity trackers attached to the logger", equals=1)
 - code: `workhorse/workhorse/pyflow/activity.py::install`
+- detail: [Pyflow activity label documentation](pyflow-activity-label-selection.md)

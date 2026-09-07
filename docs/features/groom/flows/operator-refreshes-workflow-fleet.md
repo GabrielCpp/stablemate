@@ -28,8 +28,11 @@ in it the socket does not already deliver, in a shape the renderer already knows
   dashboard websocket so state broadcasts can reach it. The process-local
   [workflow registry](../concepts/workflow-registry.md) may be empty, stale,
   partially hydrated by sidecar pushes, or already reconciled by startup
-  discovery; the manual refresh does not require a selected run, selected
+  discovery.
+- verify: visible(locator="groom dashboard")
+- start: the manual refresh does not require a selected run, selected
   repository, open settings pane, or idle startup scan.
+- verify: omits(subject="refresh request", matches="selected run|selected repository|open settings pane|idle startup scan")
 - steps:
   1. The operator chooses a refresh entry point. In settings mode, activating
      [rescan containers from settings](../gui/screens/groom-dashboard.md#rescan-containers-from-settings)
@@ -118,6 +121,8 @@ in it the socket does not already deliver, in a shape the renderer already knows
 - end: a post-scan broadcast failure propagates after the registry has already
   been reconciled and the scanning flag cleared.
 - verify: emitted(event="state", count=2)
+- detail: [dashboard shell broadcast contexts](../concepts/dashboard-shell-broadcast-contexts.md)
+- detail: [workflow discovery scan](../concepts/workflow-discovery-scan.md)
 - tests: groom/tests/test_app.py::test_refresh_prunes_vanished_containers
 - tests: groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
 - tests: groom/tests/test_state.py::test_prune_drops_absent_keeps_present

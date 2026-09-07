@@ -21,6 +21,8 @@ status cannot be read is omitted so the later scrub does not guess at its state.
 - type: `dict[str, str]`
 - default: empty mapping
 - required: false
-- semantics: `git status --porcelain` output keyed by absolute code-repository path; unreadable or non-directory repositories are absent
+- semantics: `git status --porcelain` output is keyed by absolute code-repository path
 - verify: json_path(path="$.status", matches=".*")
+- semantics: unreadable or non-directory repositories are absent
+- verify: absent(subject="unreadable or non-directory repositories")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::WorktreeSnapshot.status`

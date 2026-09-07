@@ -29,8 +29,10 @@ backend or the clock, which reach the CLI through `turn`.
 | `node: AgentNode` | Supplies `node.id` for logging and `node.outputs`, whose declared keys `extract_outputs` extracts from the result text. |
 | `session_id_path: Path | None` | Passes straight through to `turn` and remains unchanged across retries, so every attempt in this loop resumes the **same** session. |
 | `model: str | None` | Passes straight through to `turn`. |
+| `prompt_path: Path | None` (keyword-only) | Passes the already-persisted rendered-prompt path through to `turn` for backend inspection. |
 | `timeout: float` (keyword-only) | The per-turn wall-clock budget, resolved once by the caller. |
 | `cwd: str | None`, `add_dirs: list[str] | None`, `effort: str | None` (keyword-only) | Pass straight through to `turn`. |
+| `validate` (keyword-only) | An optional callback that accepts the extracted outputs and checks the caller's result shape; a validation exception becomes an `OutputParseError` and follows the same corrective retry path as malformed output. |
 
 - **From `self`:** `resilience.max_output_retries` (default `2`, env `AGENT_MAX_OUTPUT_RETRIES`) —
   additional same-session attempts after the first; total attempts = `max_output_retries + 1`.
@@ -47,9 +49,13 @@ through unchanged from `turn`, so a failed invocation ends this parse-retry loop
 max_output_retries = self.resilience.max_output_retries
 for attempt in 0 .. max_output_retries:
     result_text = self.turn(prompt, node.id, session_id_path, model=model, timeout=timeout,
-                            cwd=cwd, add_dirs=add_dirs, effort=effort)
+                            prompt_path=prompt_path, cwd=cwd, add_dirs=add_dirs, effort=effort,
+                            invoke_retries=node.invoke_retries)
     try:
-        return extract_outputs(result_text, node)
+        outputs = extract_outputs(result_text, node)
+        if validate is not None:
+            validate(outputs)  # validation failures become OutputParseError
+        return outputs
     except OutputParseError as exc:
         if attempt >= max_output_retries:
             raise
@@ -60,8 +66,11 @@ for attempt in 0 .. max_output_retries:
 1. **Invoke.** [`turn`](agent-turn.md) runs one turn and returns its raw result text, or raises
    `BackendInvocationError` (propagated immediately — this loop only retries *parse* failures, not
    invocation failures; the transient and cap recoveries already happened one layer down).
-2. **Parse.** `extract_outputs(result_text, node)` turns the text into the node's declared
-   outputs dict; success returns immediately.
+2. **Parse and validate.** `extract_outputs(result_text, node)` turns the text into the node's
+   declared outputs dict. When `validate` is supplied, it checks that dict against the caller's
+   result shape; any validation exception is wrapped as `OutputParseError`, so an output with the
+   required keys but invalid values receives the same recovery as malformed text. Success returns
+   the outputs immediately.
 3. **On `OutputParseError`, decide whether to retry in-session.** If this was the last allowed
    attempt (`attempt >= max_output_retries`), re-raise so the caller escalates. Otherwise log a
    warning and continue: `session_id_path` is untouched (the CLI turn that just ran already
@@ -69,8 +78,8 @@ for attempt in 0 .. max_output_retries:
    starting over.
 4. **Build the corrective prompt.** [`retry_prompt(node, exc)`](retry-prompt.md) replaces `prompt`
    with a short nudge — "reply with ONLY a JSON object containing exactly these keys: […]" —
-   naming `node.outputs`' keys and the parse error, explicitly asking the agent not to redo any
-   work (the session already has the prior turn's output attempt in context).
+   naming `node.outputs`' keys and the parse or validation error, explicitly asking the agent not
+   to redo any work (the session already has the prior turn's output attempt in context).
 5. Loop back to step 1 with the new `prompt` and the unchanged `session_id_path`.
 
 The `for` loop always either `return`s from step 2 or `raise`s from step 3 on its final iteration;

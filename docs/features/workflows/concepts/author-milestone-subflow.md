@@ -75,8 +75,15 @@ validation returns to the same agent state through an operator-awaiting context 
 - verify: count(subject="snapshotted milestone documents", equals=1)
 - does: snapshots every epic document fingerprint
 - verify: count(subject="snapshotted epic documents", equals=1)
-- returns: returns the roadmap, resolved paths, existing milestone identity and epic list, and both fingerprint maps
+- returns: returns the approved roadmap and resolved epic directory
 - verify: json_path(path="$.roadmap", matches=".+")
+- verify: json_path(path="$.epics_dir", matches=".+")
+- returns: returns the existing milestone identity and epic list
+- verify: json_path(path="$.milestone_path", matches="^(|docs/.+)$")
+- verify: json_path(path="$.milestone_epics", matches="^\\[.*\\]$")
+- returns: returns the milestone and epic fingerprint maps
+- verify: json_path(path="$.milestone_fingerprints", matches="^\\{.*\\}$")
+- verify: json_path(path="$.epic_fingerprints", matches="^\\{.*\\}$")
 - code: `workflows/src/workhorse_workflows/author/milestone/nodes/milestone.py::prepare_milestone`
 
 ### validate_milestone
@@ -84,7 +91,7 @@ validation returns to the same agent state through an operator-awaiting context 
 - does: requires exactly one milestone sourced by the prepared roadmap
 - verify: count(subject="roadmap-owned milestones", equals=1)
 - does: requires the roadmap to be the milestone's sole source item
-- verify: json_path(path="$.sourceItems", equals=["docs/roadmaps/account-access.md"])
+- verify: json_path(path="$.sourceItems", matches="^\\['docs/roadmaps/account-access\\.md'\\]$")
 - does: requires the milestone epic list to preserve the prepared order
 - verify: unchanged(subject="milestone epics", except_fields=[])
 - does: rejects creation or modification of unrelated milestone documents

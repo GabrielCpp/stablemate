@@ -21,6 +21,7 @@ with newlines for the operator or resolver.
 - semantics: whether the epic document and researched-seed validation passed without errors
 - verify: json_path(path="$.ok", equals=true)
 - code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicEvidence`
+- detail: [epic evidence field roles](concepts/epic-evidence-field-roles.md)
 
 ### epic
 - type: string
@@ -29,6 +30,7 @@ with newlines for the operator or resolver.
 - semantics: canonical epic name when found, or the requested name when validation cannot resolve it
 - verify: json_path(path="$.epic", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicEvidence`
+- detail: [epic evidence field roles](concepts/epic-evidence-field-roles.md)
 
 ### epic_dir
 - type: repository-relative string path
@@ -37,6 +39,7 @@ with newlines for the operator or resolver.
 - semantics: resolved or attempted directory for the validated epic
 - verify: json_path(path="$.epic_dir", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicEvidence`
+- detail: [epic evidence field roles](concepts/epic-evidence-field-roles.md)
 
 ### epic_path
 - type: repository-relative string path
@@ -45,6 +48,7 @@ with newlines for the operator or resolver.
 - semantics: existing epic document path, or the expected `epic.md` path when absent
 - verify: json_path(path="$.epic_path", matches="/epic\\.md$")
 - code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicEvidence`
+- detail: [epic evidence field roles](concepts/epic-evidence-field-roles.md)
 
 ### seed_count
 - type: integer
@@ -53,6 +57,7 @@ with newlines for the operator or resolver.
 - semantics: number of researched seeds found on the epic
 - verify: json_path(path="$.seed_count", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicEvidence`
+- detail: [epic evidence field roles](concepts/epic-evidence-field-roles.md)
 
 ### errors
 - type: newline-separated string
@@ -62,3 +67,4 @@ with newlines for the operator or resolver.
 - verify: json_path(path="$.errors", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicEvidence`
 - tests: `workflows/tests/author/epic_author/test_flow.py::test_document_validation_uses_epic_md_and_seed_evidence`
+- detail: [epic evidence field roles](concepts/epic-evidence-field-roles.md)

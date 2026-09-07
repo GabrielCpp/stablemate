@@ -13,6 +13,7 @@ Selection and menu contents live in one slice rather than two because they are r
 - code: groom/groom/assets/dashboard.js::selectRepo
 - code: groom/groom/assets/dashboard.js::openRepoMenu
 - code: groom/groom/assets/dashboard.js::repoItems
+- detail: [repository picker item projection](concepts/repository-picker-item-projection.md)
 - refs: [dashboard client store](concepts/dashboard-client-store.md), [repository menu data](repository-menu-data.md), [workspace file list data](workspace-file-list-data.md), [workspace file content data](workspace-file-content-data.md), [workspace diff data](workspace-diff-data.md)
 
 ## Contract

@@ -28,9 +28,31 @@ The wire carries the raw unified diff as one JSON string — `{"diff": "…"}` �
   15. The operator may activate [toggle diff directory](../gui/screens/groom-dashboard.md#toggle-diff-directory). Collapse state is component-local to that directory node and survives re-render because the node is keyed by name; toggling flips the row's `aria-expanded` and its subtree's visibility without fetching data, reparsing the diff, selecting a file, or changing repository state.
   16. The operator activates [select diff file row](../gui/screens/groom-dashboard.md#select-diff-file-row). The dashboard writes that leaf's parsed-file index into the diff slice — one store write, which is what marks that row and only that row `active`/`aria-current="true"`, since every row's selected state is derived from the same index.
   17. The diff viewer reads the parsed file at the selected index straight out of the cache and renders it with Diff2Html for a one-element array, using `drawFileList: false`, line matching, line-by-line output, and dark colour scheme. Selecting a file sends no HTTP request, reparses no raw diff text, mutates no server state, changes no URL, and sends no websocket message.
-- end: the dashboard remains in Diff mode with the selected repository label visible on both repository picker buttons, the diff tree built from the latest parsed-file cache, directory collapse state held per component, at most one changed-file row marked `active`/`aria-current`, and the diff viewer showing either the selected file's dark line-by-line Diff2Html render, the empty selected-file prompt, `(no changes)` in the tree, or `failed to load` after a client-side fetch or body-read failure. Server-side sidecar and fallback diff failures are represented as an empty `diff` string, not endpoint-specific error responses.
-- verify: json_path(path="$.diff", matches="diff --git")
-- verify: visible(locator="#diff-tree .tree-file.active", text="app.py")
+- end: the dashboard remains in Diff mode with the selected repository label visible on both repository picker buttons
+- verify: visible(locator="[data-mode=diff]", text="Diff")
+- end: the diff tree is built from the latest parsed-file cache
+- verify: visible(locator="#diff-tree .tree-file", text="app.py")
+- end: directory collapse state is held per component
+- verify: visible(locator="#diff-tree [aria-expanded=true]", text="src")
+- end: at most one changed-file row is marked `active`/`aria-current`
+- verify: count(subject="active changed-file rows", equals=1)
+- end: the diff viewer shows the selected file's dark line-by-line Diff2Html render
+- verify: visible(locator="#diff-view .d2h-file-wrapper", text="app.py")
+- end: the diff viewer shows the empty selected-file prompt when no file is selected
+- verify: visible(locator="#diff-view", text="Select a changed file to see its diff.")
+- end: the diff tree shows `(no changes)` for empty diff text or a parser that produced no files
+- verify: visible(locator="#diff-tree", text="(no changes)")
+- end: the diff viewer shows `failed to load` after a client-side fetch or body-read failure
+- verify: visible(locator="#diff-view", text="failed to load")
+- end: server-side sidecar and fallback diff failures are represented as an empty `diff` string, not endpoint-specific error responses
+- verify: json_path(path="$.diff", equals="")
+- detail: [live sidecar RPC and volume fallback selection](../concepts/live-sidecar-rpc-and-volume-fallback-selection.md)
+- detail: [repository picker flow selection](../concepts/repository-picker-flow-selection.md)
+- detail: [dashboard active-pane flow selection](../concepts/dashboard-active-pane-flow-selection.md)
+- detail: [dashboard repository selection flow contexts](../concepts/dashboard-repository-selection-flow-contexts.md)
+- detail: [dashboard tree flow selection](../concepts/dashboard-tree-flow-selection.md)
+- detail: [shared repository picker flow contexts](../concepts/shared-repository-picker-flow-contexts.md)
+- detail: [Files and Diff mode selection](../concepts/files-and-diff-mode-selection.md)
 - tests: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
   groom/tests/test_app.py::test_diff_prefers_sidecar_socket,
   groom/tests/test_app.py::test_diff_endpoint_passes_repo_through,

@@ -53,8 +53,10 @@ title: Coder documentation schemas
 ### method: DocumentationResult
 - sig: `DocumentationResult(status: Literal["documented", "not_required", "blocked"], nodes: list[str] = [], notes: str = "") -> DocumentationResult`
 - does: carries an agent's documentation decision, touched node identities, and explanation
-- returns: only one of documented, not_required, or blocked; status has no default
+- returns: only one of documented, not_required, or blocked
 - verify: json_path(path="$.status", matches="^(documented|not_required|blocked)$")
+- returns: status is required and has no default
+- verify: json_path(path="exception.type", equals="ValidationError")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationResult`
 
 ### method: DocumentationGate
@@ -86,8 +88,10 @@ title: Coder documentation schemas
 ### method: DocumentationReview
 - sig: `DocumentationReview(status: Literal["approved", "revise", "blocked"], findings: list[DocumentationFinding] = [], notes: str = "") -> DocumentationReview`
 - does: carries the independent review disposition and structured findings
-- returns: an approved, revise, or blocked review; status has no default
+- returns: an approved, revise, or blocked review
 - verify: json_path(path="$.status", matches="^(approved|revise|blocked)$")
+- returns: status has no default
+- verify: json_path(path="exception.type", equals="ValidationError")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationReview`
 
 ### method: DocsProgress

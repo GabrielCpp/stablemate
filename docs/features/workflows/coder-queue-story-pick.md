@@ -21,6 +21,7 @@ permits pruning and merge, and `blocked` sets the epic aside. The pessimistic de
 - semantics: next main-loop branch decision for the epic
 - verify: json_path(path="$.story_outcome", equals="blocked")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryPick`
+- detail: [coder queue story pick field roles](concepts/coder-queue-story-pick-field-roles.md)
 
 ### story_path
 - type: string path
@@ -29,6 +30,7 @@ permits pruning and merge, and `blocked` sets the epic aside. The pessimistic de
 - semantics: selected story document path
 - verify: json_path(path="$.story_path", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryPick`
+- detail: [coder queue story pick field roles](concepts/coder-queue-story-pick-field-roles.md)
 
 ### spec_dir
 - type: string path
@@ -37,6 +39,7 @@ permits pruning and merge, and `blocked` sets the epic aside. The pessimistic de
 - semantics: directory containing the selected story specification
 - verify: json_path(path="$.spec_dir", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryPick`
+- detail: [coder queue story pick field roles](concepts/coder-queue-story-pick-field-roles.md)
 
 ### story_slug
 - type: string
@@ -45,6 +48,7 @@ permits pruning and merge, and `blocked` sets the epic aside. The pessimistic de
 - semantics: selected story slug
 - verify: json_path(path="$.story_slug", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryPick`
+- detail: [coder queue story pick field roles](concepts/coder-queue-story-pick-field-roles.md)
 
 ### story_id
 - type: string
@@ -53,6 +57,7 @@ permits pruning and merge, and `blocked` sets the epic aside. The pessimistic de
 - semantics: minted story identifier used in commit trailers, when present
 - verify: json_path(path="$.story_id", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryPick`
+- detail: [coder queue story pick field roles](concepts/coder-queue-story-pick-field-roles.md)
 
 ### epic
 - type: string
@@ -61,6 +66,7 @@ permits pruning and merge, and `blocked` sets the epic aside. The pessimistic de
 - semantics: epic whose story queue was inspected
 - verify: json_path(path="$.epic", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryPick`
+- detail: [coder queue story pick field roles](concepts/coder-queue-story-pick-field-roles.md)
 
 ### reason
 - type: string
@@ -69,6 +75,7 @@ permits pruning and merge, and `blocked` sets the epic aside. The pessimistic de
 - semantics: explanation for selection, completion, blocking, or unreadable queue state
 - verify: json_path(path="$.reason", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryPick`
+- detail: [coder queue story pick field roles](concepts/coder-queue-story-pick-field-roles.md)
 
 ### progress
 - type: string
@@ -77,6 +84,7 @@ permits pruning and merge, and `blocked` sets the epic aside. The pessimistic de
 - semantics: completed and total story worklist snapshot
 - verify: json_path(path="$.progress", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryPick`
+- detail: [coder queue story pick field roles](concepts/coder-queue-story-pick-field-roles.md)
 
 ### remaining_count
 - type: integer
@@ -85,3 +93,4 @@ permits pruning and merge, and `blocked` sets the epic aside. The pessimistic de
 - semantics: number of stories still remaining in the epic report
 - verify: json_path(path="$.remaining_count", equals=0)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryPick`
+- detail: [coder queue story pick field roles](concepts/coder-queue-story-pick-field-roles.md)

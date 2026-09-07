@@ -9,15 +9,26 @@ title: workhorse local development
 - environment: [workhorse Python uv workspace](workhorse-python-uv-workspace.md)
 - cli: [workhorse](../workhorse.md)
 - surfaces: [workhorse](../workhorse.md)
-- code: `workhorse/Makefile::install`
+- code: `workhorse/Makefile::help`
 - working-directory: workhorse
 
-This runbook is the package-local development interface for the workhorse library. It runs from
-`workhorse/`; the Makefile delegates dependency installation, tests, packaging, wheel inspection,
-published-package import verification, and version reporting to uv, pytest, and the package
-metadata. It does not start a network service.
+This runbook is the package-local development interface for the workhorse library, linked from
+the [workhorse CLI surface](../workhorse.md). It runs from `workhorse/`; `make help` is the default
+driver and lists every available package task. The Makefile delegates dependency installation,
+tests, packaging, wheel inspection, published-package import verification, build-artifact cleanup,
+and version reporting to uv, pytest, and the package metadata. It does not start a network service.
 
 ## Steps
+
+### help
+
+- kind: prepare
+- run: `make help`
+- working-directory: workhorse
+- timeout: 30
+- produces: the available package-local Make targets and their descriptions
+- verify: [workhorse Makefile](../../../../workhorse/Makefile)
+- provenance: derived
 
 ### install
 
@@ -64,6 +75,16 @@ metadata. It does not start a network service.
 - working-directory: workhorse
 - timeout: 120
 - produces: the imported `workhorse.console_script` public API from the refreshed published package
+- verify: [workhorse Makefile](../../../../workhorse/Makefile)
+- provenance: derived
+
+### clean
+
+- kind: prepare
+- run: `make clean`
+- working-directory: workhorse
+- timeout: 30
+- produces: removal of `workhorse/dist/`, `workhorse/build/`, and `workhorse/*.egg-info`
 - verify: [workhorse Makefile](../../../../workhorse/Makefile)
 - provenance: derived
 

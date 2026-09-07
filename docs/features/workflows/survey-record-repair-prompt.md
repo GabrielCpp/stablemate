@@ -40,8 +40,10 @@ when validation still fails.
 - type: string
 - default: empty string
 - required: false
-- semantics: advisory reply outcome, `fixed` or `unfixable`; validation, not this field, decides acceptance
-- verify: json_path(path="$.status", matches=".*")
+- semantics: advisory reply outcome, `fixed` or `blocked`
+- verify: json_path(path="$.status", matches="^(fixed|blocked)$")
+- semantics: validation, not this field, decides acceptance
+- verify: json_path(path="$.status", matches="^(fixed|blocked)$")
 
 ### notes
 - type: string

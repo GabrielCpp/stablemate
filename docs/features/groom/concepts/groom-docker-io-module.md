@@ -88,6 +88,7 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - default: `20`
 - required: true
 - code: groom/groom/docker_io.py::DOCKER_TIMEOUT
+- detail: [Docker command timeout](docker-command-timeout.md)
 - meaning: default maximum seconds a Docker subprocess may run before the subprocess runtime raises a timeout exception.
 - used-by: every helper that calls the [Docker subprocess runner](docker-subprocess-runner.md) without an explicit timeout override.
 
@@ -97,6 +98,7 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - default: `alpine:3.20`
 - required: true
 - code: groom/groom/docker_io.py::ALPINE_IMAGE
+- detail: [Docker volume helper image](docker-volume-helper-image.md)
 - meaning: image used for read-only volume scans, file reads, and file writes that need BusyBox `find`, `grep`, `cat`, or `cp` behavior.
 - used-by: [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md), [workspace volume file-list reader](workspace-volume-file-list-reader.md), [Docker run-directory reader](docker-run-directory-reader.md), [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), and [workspace volume file writer](workspace-volume-file-writer.md).
 
@@ -116,7 +118,9 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - sig: `docker_ps_all() -> list[dict[str, Any]]`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
+- verify: json_path(path="exception.type", matches="FileNotFoundError|TimeoutExpired")
 - returns: parseable rows from Docker's all-container JSON-line listing, or `[]` when Docker reports the listing command failed.
+- verify: count(subject="parseable rows from a successful Docker all-container JSON-line listing", equals=2)
 - code: groom/groom/docker_io.py::docker_ps_all
 - detail: [Docker all-container listing reader](docker-all-container-listing-reader.md)
 
@@ -131,6 +135,7 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - verify: count(subject="container ID prefixes from a successful empty listing", equals=0)
 - code: groom/groom/docker_io.py::list_container_ids
 - detail: [Docker container-id listing reader](docker-container-id-listing-reader.md)
+- detail: [Docker container-id listing documentation scope](docker-container-id-listing-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_short_id_set
 - tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_none_on_docker_failure
 - tests: groom/tests/test_docker_io.py::test_list_container_ids_empty_when_no_containers
@@ -144,6 +149,7 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - verify: exit_status(code=0)
 - code: groom/groom/docker_io.py::docker_exec
 - detail: [Docker exec runner](docker-exec-runner.md)
+- detail: [Docker exec documentation scope](docker-exec-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_docker_exec_builds_user_and_env_flags
 
 ### sidecar-query
@@ -171,17 +177,29 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - sig: `docker_inspect(container_id: str) -> dict[str, Any] | None`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
-- returns: the first parsed [Docker inspect container object](../docker-inspect-container-object.md), or `None` for Docker failure, invalid JSON, or an empty inspect array.
+- verify: json_path(path="exception.type", matches="^(OSError|TimeoutExpired)$")
+- returns: the first parsed [Docker inspect container object](../docker-inspect-container-object.md) for a zero-exit, valid-JSON, truthy response.
+- verify: json_path(path="result.Id", equals="container-123")
+- returns: `None` for Docker failure.
+- verify: json_path(path="result", equals=null)
+- returns: `None` for invalid JSON.
+- verify: json_path(path="result", equals=null)
+- returns: `None` for an empty inspect array.
+- verify: json_path(path="result", equals=null)
 - code: groom/groom/docker_io.py::docker_inspect
 - detail: [Docker inspection reader](docker-inspection-reader.md)
+- detail: [Docker inspect documentation scope](docker-inspect-documentation-scope.md)
 
 ### docker-start
 
 - sig: `docker_start(container_id: str) -> bool`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
+- verify: json_path(path="exception.type", matches="FileNotFoundError|TimeoutExpired")
 - returns: `true` only when `docker start <container_id>` completes with return code `0`.
+- verify: json_path(path="return value", equals=true)
 - code: groom/groom/docker_io.py::docker_start
+- detail: [Docker start documentation scope](docker-start-documentation-scope.md)
 - detail: [stopped container start fallback](stopped-container-start-fallback.md)
 
 ### is-running
@@ -189,7 +207,9 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - sig: `is_running(container_id: str) -> bool`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from [docker-inspect](#docker-inspect) can propagate.
+- verify: json_path(path="exception.type", matches="^(OSError|TimeoutExpired)$")
 - returns: `true` only when inspect data exists and `State.Running` is truthy.
+- verify: json_path(path="result", equals=true)
 - code: groom/groom/docker_io.py::is_running
 - detail: [container running-state check](container-running-state-check.md)
 
@@ -198,9 +218,12 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - sig: `safe_relpath(path: str) -> str`
 - abstract: false
 - raises: `ValueError` when the supplied path is empty, absolute, contains backslash-root syntax, contains an empty segment, or contains `..`.
+- verify: json_path(path="exception.type", equals="ValueError")
 - returns: the path normalized to forward-slash separators without changing segment names.
+- verify: json_path(path="result", equals="a/b/c")
 - code: groom/groom/docker_io.py::safe_relpath
 - detail: [workspace volume relative-path guard](workspace-volume-relative-path-guard.md)
+- detail: [safe relpath documentation views](safe-relpath-documentation-views.md)
 
 ### grep-awaiting-files
 
@@ -211,6 +234,7 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - verify: count(subject="awaiting file paths after a successful sweep", equals=2)
 - verify: count(subject="awaiting file paths after Docker failure", equals=0)
 - code: groom/groom/docker_io.py::grep_awaiting_files
+- detail: [Grep awaiting-files documentation views](grep-awaiting-files-documentation-views.md)
 - detail: [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md)
 - tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths
 - tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_empty_on_docker_failure
@@ -222,6 +246,7 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
 - returns: sorted repo-relative [workspace file list data](../workspace-file-list-data.md), or `[]` for Docker failure or an empty tree.
 - code: groom/groom/docker_io.py::list_files
+- detail: [List-files documentation views](list-files-documentation-views.md)
 - detail: [workspace volume file-list reader](workspace-volume-file-list-reader.md)
 - tests: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs
 - tests: groom/tests/test_docker_io.py::test_list_files_volume_root_when_repo_dir_empty
@@ -232,9 +257,14 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - sig: `list_run_dirs(volume: str) -> list[str]`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
-- returns: sorted top-level directory names under a `/runs` volume, or `[]` for Docker failure.
+- verify: json_path(path="exception.type", matches="^(FileNotFoundError|TimeoutExpired)$")
+- returns: sorted top-level directory names under a `/runs` volume.
+- verify: json_path(path="result", equals=["older-run", "newer-run"])
+- returns: `[]` for Docker failure.
+- verify: json_path(path="result", equals=[])
 - code: groom/groom/docker_io.py::list_run_dirs
 - detail: [Docker run-directory reader](docker-run-directory-reader.md)
+- detail: [Docker run-directory listing documentation views](docker-run-directory-listing-documentation-views.md)
 
 ### list-repo-dirs
 
@@ -247,6 +277,7 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - verify: count(subject="repository directories after Docker failure", equals=0)
 - code: groom/groom/docker_io.py::list_repo_dirs
 - detail: [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md)
+- detail: [Repository-directory listing documentation scope](repository-directory-listing-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git
 - tests: groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_when_none_found
 - tests: groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_on_docker_failure
@@ -259,6 +290,7 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - returns: the first sorted repository directory from [list-repo-dirs](#list-repo-dirs), or `""` when none exists.
 - code: groom/groom/docker_io.py::find_repo_dir
 - detail: [first-repository lookup](workspace-volume-repository-directory-reader.md#find-repo-dir)
+- detail: [Repository-directory lookup documentation scope](repository-directory-lookup-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git
 - tests: groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_when_none_found
 - tests: groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_on_docker_failure
@@ -274,6 +306,7 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - verify: count(subject="diff output bytes when git exits non-zero", equals=0)
 - code: groom/groom/docker_io.py::git_diff
 - detail: [workspace volume diff reader](workspace-volume-diff-reader.md)
+- detail: [Docker git diff documentation scope](docker-git-diff-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_git_diff_returns_empty_when_no_repo_found
 - tests: groom/tests/test_docker_io.py::test_git_diff_returns_stdout_on_success
 - tests: groom/tests/test_docker_io.py::test_git_diff_returns_empty_on_git_failure
@@ -283,18 +316,26 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - sig: `read_file(volume: str, rel_path: str) -> str | None`
 - abstract: false
 - raises: `ValueError` from [safe-relpath](#safe-relpath).
+- verify: json_path(path="exception.type", equals="ValueError")
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
+- verify: json_path(path="exception.type", matches="FileNotFoundError|TimeoutExpired")
 - returns: text [workspace file content data](../workspace-file-content-data.md), or `None` when Docker cannot read the selected safe path.
+- verify: json_path(path="result", equals="print(1)\n")
+- verify: json_path(path="result", equals=null)
 - code: groom/groom/docker_io.py::read_file
 - detail: [workspace volume file-content reader](workspace-volume-file-content-reader.md)
+- detail: [read-file documentation scope](read-file-documentation-scope.md)
 
 ### write-file
 
 - sig: `write_file(volume: str, rel_path: str, content: str) -> bool`
 - abstract: false
 - raises: `ValueError` from [safe-relpath](#safe-relpath).
+- verify: absent(subject="Docker subprocess invocation for an unsafe relative path")
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
+- verify: json_path(path="exception.type", matches="FileNotFoundError|TimeoutExpired")
 - returns: `true` only when the temporary container copies the supplied content to the selected safe path with return code `0`.
+- verify: json_path(path="result", equals=true)
 - code: groom/groom/docker_io.py::write_file
 - detail: [workspace volume file writer](workspace-volume-file-writer.md)
 
@@ -305,8 +346,9 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - sig: `_run(args: list[str], timeout: int = DOCKER_TIMEOUT, input_text: str | None = None) -> subprocess.CompletedProcess`
 - abstract: false
 - raises: process launch and timeout exceptions from the subprocess runtime.
+- verify: json_path(path="exception.type", matches="^(FileNotFoundError|TimeoutExpired)$")
 - code: groom/groom/docker_io.py::_run
-- detail: [Docker subprocess runner](docker-subprocess-runner.md#run)
+- detail: [Docker subprocess runner documentation](docker-subprocess-runner-documentation.md)
 
 ### field: skip dirs
 
@@ -314,7 +356,7 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - default: `(".git", "node_modules", "__pycache__", ".venv")`
 - required: true
 - code: groom/groom/docker_io.py::_SKIP_DIRS
-- detail: [workspace-volume awaiting-file reader skipped directory names](workspace-volume-awaiting-file-reader.md#field-skipped-directory-names)
+- detail: [workspace volume skip directory names](workspace-volume-skip-directory-names.md)
 
 ## Algorithms
 

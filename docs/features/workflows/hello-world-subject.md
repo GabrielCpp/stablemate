@@ -16,7 +16,7 @@ returns this typed value from its measuring node and carries its letter count in
 ### name
 
 - type: `str`
-- default: none; the caller must supply a name
+- default: none
 - verify: json_path(path="$.name", equals="globex")
 - required: true
 - verify: json_path(path="$.name", equals="globex")
@@ -27,7 +27,9 @@ returns this typed value from its measuring node and carries its letter count in
 ### letters
 
 - type: `int`
-- default: none; measurement always supplies the value
+- default: none
+- verify: json_path(path="$.letters", equals=6)
+- default: measurement always supplies the value
 - verify: json_path(path="$.letters", equals=6)
 - required: true
 - verify: json_path(path="$.letters", equals=6)

@@ -28,7 +28,8 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 
 - purpose: give a tab everything it needs to draw the fleet list in one JSON array, with no second request per row and no judgement left to the client.
 - source: the caller supplies a snapshot list of workflow containers, commonly the whole in-memory [workflow registry](concepts/workflow-registry.md). Telemetry is looked up per row from the run telemetry hot cache.
-- eligibility: every supplied workflow produces a row. Gate presence, state, liveness, and exit code affect a row's *content and order*, never its inclusion.
+- consistency: every supplied workflow produces a row unless the query excludes it. Gate presence, state, liveness, and exit code affect a row's *content and order*, never its inclusion.
+- verify: count(subject="fleet rows for a mixed-state unfiltered snapshot", equals=4)
 - order: by `(rank, name)` — blocked first, then alive, then presumed-dead, then finished, ties broken by workflow name ascending. Sorting server-side is what keeps a 5-second push from reshuffling the list under the operator's cursor.
 - rank derivation: `blocked` is rank 0 regardless of liveness; a `finished` workflow or one whose telemetry reports terminal is rank 3; otherwise rank 1 when liveness is `live` and rank 2 when it is not.
 - liveness is a telemetry question, and the only one asked is *is this run emitting right now*: a run is `live` when its most recent heartbeat, span, or first-seen stamp is within the server-side liveness window, `dead` when it is observably silent past it, `done` when its own telemetry reported a terminal for the session now running, and `unknown` when it never exported telemetry at all. `dead` must mean *observed silent*, never *unobserved*.
@@ -41,6 +42,10 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - server-side query: `fleet_rows` accepts a query and drops non-matching rows. It is used by [get dashboard state](http/groom.md#get-dashboard-state)'s `q` parameter; the websocket push never passes one, because a filtered push would give every tab one tab's filter.
 - query matching: case-insensitive substring over workflow name, repository name, repository branch, workflow type, current node, run id, activity, and every open gate file path. It is not trimmed, tokenized, globbed, or regex-matched.
 - query exclusions: container id, gate question text, gate status, answer text, and exit-code hints are not server-side haystacks.
+- consistency: an empty workflow snapshot produces no fleet rows.
+- verify: count(subject="fleet rows for an empty workflow snapshot", equals=0)
+- consistency: a query that matches no workflow produces no fleet rows.
+- verify: count(subject="fleet rows for an unmatched workflow query", equals=0)
 - client-side query: the fleet component filters again in the browser over the row's own fields, because the fleet is small and the server pushes the whole thing on every tick — a server-filtered live list would be clobbered by the next push. The two filters are independent by design and neither is the other's fallback.
 - fleet counts: filtering never changes the status counts. Those are fleet-wide, computed from the unfiltered snapshot, because a status bar narrowed by one tab's search box misreports the fleet it claims to describe.
 - empty versus loading: an empty result is rendered as the discovery spinner only when the [dashboard discovery scanning flag](concepts/dashboard-discovery-scanning-flag.md) is true *and* no query is active; a query that matches nothing renders the ordinary empty state even mid-scan, because there an empty result is the honest answer.
@@ -164,6 +169,7 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - sig: `fleet_rows(workflows: list[WorkflowContainer], query: str = "", now: float | None = None) -> list[dict[str, Any]]`
 - abstract: false
 - raises: none intentionally raised for empty, unmatched, or partially populated snapshots.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::fleet_rows
 - step: Resolve the clock once, so every row in the list is labelled against the same instant.
 - step: Project each workflow that satisfies the query, looking its telemetry up from the hot cache by run id.
@@ -175,6 +181,7 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - sig: `run_row(wf: WorkflowContainer, tel: RunTelemetry | None = None, now: float | None = None) -> dict[str, Any]`
 - abstract: false
 - raises: none intentionally raised for a workflow with or without gates, telemetry, or an exit code.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::run_row
 - step: Sort the workflow's open gates by file path and take the first, if any.
 - step: Derive liveness from telemetry and the clock, and the exit hint from state and exit code.
@@ -187,6 +194,7 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - sig: `matches(wf: WorkflowContainer, query: str) -> bool`
 - abstract: false
 - raises: none intentionally raised for missing optional text fields.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::matches
 - step: Return true immediately for an empty query, without reading any haystack.
 - step: Lowercase the query and each documented haystack; a missing value compares as the empty string.
@@ -197,6 +205,7 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - sig: `liveness(wf: WorkflowContainer, tel: RunTelemetry | None, now: float) -> tuple[str, str]`
 - abstract: false
 - raises: none.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::liveness
 - step: Without telemetry, fall back to the container: `done`/`ended` when the workflow is finished, else `unknown` with an empty label — a run that never reported must not be guessed about.
 - step: Return `done` when this session's telemetry reports a terminal, labelled with the terminal reason.
@@ -208,6 +217,7 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - sig: `fleet_rank(wf: WorkflowContainer, live_cls: str) -> int`
 - abstract: false
 - raises: none.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::fleet_rank
 - step: Blocked is 0, whatever its liveness — it is waiting on the operator.
 - step: Finished, or liveness `done`, is 3.
@@ -218,6 +228,7 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - sig: `repo_label(wf: WorkflowContainer) -> str`
 - abstract: false
 - raises: none intentionally raised for missing repository name or branch.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::repo_label
 - step: Return `{repo_name}@{repo_branch}` when a branch is known.
 - step: Return `repo_name` when it is not.
@@ -248,6 +259,7 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - sig: `row_mini(tel: RunTelemetry | None) -> str`
 - abstract: false
 - raises: none.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::row_mini
 - step: Return the empty string without telemetry.
 - step: Add `in node {duration}` when the node has a measured elapsed time.
@@ -259,6 +271,7 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - sig: `type_hue(workflow_type: str) -> int`
 - abstract: false
 - raises: none.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::type_hue
 - step: Fold the type string into a stable value in `0`–`359` and return it, so an unknown workflow type is still visually distinct without a stylesheet change.
 
@@ -284,13 +297,13 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - Missing telemetry: a supported input, not an error. The row reports liveness `unknown`, zero durations, and an empty `mini`.
 - Malformed gate record: gate projection expects text `file_path` and `question` values; anything else is outside the contract and fails as ordinary Python attribute or string operations fail.
 - Query input: the supported type is `str`; `None` and non-string values are outside the contract even though the empty-string default covers unfiltered projection.
-- Empty and unmatched snapshots: an empty workflow list or a query matching nothing returns an empty array. The empty-versus-loading distinction is the client's, made from the scanning flag.
+- Empty-result presentation: the client's scanning flag supplies the empty-versus-loading distinction.
 - Delegated exceptions: this concept defines no domain-specific error object, partial result, or status code. It performs no registry rollback, websocket send, HTTP response construction, or gate write of its own.
 
 ## Invariants
 
 - whole-fleet: every workflow in the supplied snapshot produces a row unless the query excludes it. Nothing is hidden for lacking gates, telemetry, or a live process.
-- stable-order: the same snapshot and clock always produce the same order, so a tick never reshuffles the list.
+- consistency: the same snapshot and clock always produce the same `(rank, name)` row order, so a tick never reshuffles the list.
 - fleet-counts: filtering the rows never redefines the status-bar totals, which stay global to the registry.
 - one-row-shape: the row in a full-state payload and the row in a single-run delta are the same object shape, so the client has one merge rule.
 - data-not-markup: no field is HTML, and no field's safety depends on an escape call being remembered.

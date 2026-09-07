@@ -19,6 +19,7 @@ The deterministic validation outcome for the finding partition.
 - semantics: whether the partition covers every assessed unit without invented work
 - verify: json_path(path="$.partition_ok", equals=false)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionCheck`
+- detail: [partition check field roles](concepts/partition-check-field-roles.md)
 
 ### partition_errors
 - type: string
@@ -27,3 +28,4 @@ The deterministic validation outcome for the finding partition.
 - semantics: diagnostic partition validation errors
 - verify: json_path(path="$.partition_errors", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionCheck`
+- detail: [partition check field roles](concepts/partition-check-field-roles.md)

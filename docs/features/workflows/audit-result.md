@@ -20,14 +20,16 @@ passes. An empty findings list is the pass evidence; `notes` is explanatory only
 - semantics: agent-reported audit status
 - verify: json_path(path="$.status", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditResult`
+- detail: [audit result field roles](concepts/audit-result-field-roles.md)
 
 ### findings
 - type: list of [audit findings](audit-finding.md)
 - default: empty list
 - required: false
 - semantics: defects the auditor found in the story
-- verify: json_path(path="$.findings", equals=[])
+- verify: count(subject="findings", equals=0)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditResult`
+- detail: [audit result field roles](concepts/audit-result-field-roles.md)
 
 ### notes
 - type: string
@@ -36,3 +38,4 @@ passes. An empty findings list is the pass evidence; `notes` is explanatory only
 - semantics: audit summary accompanying the findings
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditResult`
+- detail: [audit result field roles](concepts/audit-result-field-roles.md)

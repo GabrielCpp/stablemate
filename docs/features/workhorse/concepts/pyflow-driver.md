@@ -25,9 +25,11 @@ unchanged by that, which is why a ported workflow's operator knobs still mean wh
 ## Methods
 
 ### Resume
+`Resume` carries the checkpoint values needed to re-enter a state, revive workflow context, and
+restore a waiting gate.
+
 - sig: `Resume(state, params, inputs={}, ctx=None, flow=None, waiting_on=None)`
 - code: `workhorse/workhorse/pyflow/driver.py::Resume`
-- semantics: checkpoint values needed to re-enter a state, revive workflow context, and restore a waiting gate
 
 ### read_resume
 - sig: `read_resume(checkpoint: Checkpoint) -> Resume`

@@ -59,7 +59,7 @@ the target.
 - default: empty list
 - required: false
 - semantics: resolved service markers used by later genesis steps
-- verify: json_path(path="$.markers", equals=[])
+- verify: json_path(path="$.markers", matches="^\\[\\]$")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::TargetClassification.markers`
 
 ### note

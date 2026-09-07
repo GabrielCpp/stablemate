@@ -79,6 +79,7 @@ The implementation returns the Docker subprocess runner result directly from
 - returns: returns the text-mode completed process result unchanged when Docker exits before the timeout, including its args, return code, stdout, and stderr.
 - verify: json_path(path="returncode", equals=0)
 - code: groom/groom/docker_io.py::docker_exec
+- detail: [Docker exec documentation scope](docker-exec-documentation-scope.md)
 - tests: `groom/tests/test_docker_io.py::test_docker_exec_builds_user_and_env_flags`
 
 Builds the host-side Docker exec argv for one already-running container and hands that argv to the shared subprocess layer exactly once. It is intentionally a command-construction boundary: it does not parse Docker output, validate sidecar payloads, retry failed execs, start stopped containers, or map Docker return codes into Groom domain values.

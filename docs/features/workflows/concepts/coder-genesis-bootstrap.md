@@ -18,7 +18,7 @@ are input values.
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_repo_skips_git_init_but_still_builds_the_new_service`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_service_skips_the_skeleton_and_never_re_runs_the_init_command`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_blank_target_fails_before_anything_mutates`
-- detail: [coder service contract](concepts/coder-service-contract.md)
+- detail: [coder service contract](coder-service-contract.md)
 
 ## Fields
 
@@ -30,6 +30,7 @@ are input values.
 - semantics: absolute or relative target directory supplied to the bootstrap run
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### service
 
@@ -39,6 +40,7 @@ are input values.
 - semantics: logical service name written as the workspace and service-gate key
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### service_root
 
@@ -48,15 +50,19 @@ are input values.
 - semantics: repository-relative directory in which the service marker and native initialization are evaluated
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### packs
 
 - type: comma-separated string
 - default: empty string
 - required: false
-- semantics: farrier pack ids split before installation; empty means no pack installation
+- semantics: farrier pack ids are split before installation
+- verify: exit_status(code=0)
+- semantics: an empty pack list means no pack installation
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### scaffolds
 
@@ -66,6 +72,7 @@ are input values.
 - semantics: farrier scaffold entries enabled in `agents.yml` and rendered in order
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### init_cmd
 
@@ -75,6 +82,7 @@ are input values.
 - semantics: stack-owned native initialization command run in the service directory when its marker is absent
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### marker
 
@@ -84,15 +92,19 @@ are input values.
 - semantics: file whose presence proves the native service initialization succeeded
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### markers
 
 - type: comma-separated string
 - default: empty string
 - required: false
-- semantics: complete service marker list; when empty, the singular marker is used
+- semantics: complete service marker list
+- verify: exit_status(code=0)
+- semantics: when empty, the singular marker is used
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### workflows
 
@@ -102,6 +114,7 @@ are input values.
 - semantics: workflow ids merged into the repository configuration
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### assistants
 
@@ -111,15 +124,19 @@ are input values.
 - semantics: assistant backends enabled in the farrier configuration
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### gates
 
 - type: comma-separated string of `<gate>=<command>` entries
 - default: empty string
 - required: false
-- semantics: service-specific deterministic commands merged under `services:`; malformed entries are reported and omitted
+- semantics: service-specific deterministic commands are merged under `services:`
 - verify: exit_status(code=0)
+- semantics: malformed entries are reported and omitted
+- verify: json_path(path="note", matches="gate\\(s\\).*dropped")
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ## Methods
 

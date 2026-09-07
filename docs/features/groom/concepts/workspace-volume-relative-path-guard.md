@@ -67,6 +67,7 @@ Workspace volume relative path guard is the validation layer used by the [worksp
 - raises: `ValueError` for empty, leading-root, empty-segment, trailing-separator, or parent-traversal paths.
 - returns: [field-return-value](#field-return-value) on acceptance.
 - code: groom/groom/docker_io.py::safe_relpath
+- detail: [safe relpath documentation views](safe-relpath-documentation-views.md)
 
 #### Effects
 

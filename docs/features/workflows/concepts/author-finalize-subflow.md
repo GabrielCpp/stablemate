@@ -28,7 +28,9 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - type: `str`
 - default: `"auto"`
 - required: false
-- semantics: selects automatic resolution or direct human operator gates; only `auto` and `human` are accepted
+- semantics: selects automatic resolution or direct human operator gates
+- verify: json_path(path="$.operator_mode", matches="^(auto|human)$")
+- semantics: accepts only `auto` and `human`
 - verify: json_path(path="$.operator_mode", matches="^(auto|human)$")
 - code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.operator_mode`
 
@@ -182,8 +184,10 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: visible(locator="operator-awaiting context", text="graph")
 - does: repeats integrity with an incremented resolution count when the resolver answers
 - verify: count(subject="graph resolution retry transitions", equals=1)
-- raises: no workflow failure solely because the resolver escalates; escalation becomes an operator await
+- raises: no workflow failure solely because the resolver escalates
 - verify: count(subject="graph resolver workflow failures", equals=0)
+- raises: an escalated resolver result becomes an operator await
+- verify: visible(locator="operator-awaiting context", text="graph")
 - returns: returns an integrity continuation or an operator await state
 - verify: count(subject="graph resolution outcomes", equals=1)
 - code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_graph`
@@ -210,8 +214,10 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: visible(locator="operator-awaiting context", text="milestone")
 - does: repeats milestone validation with an incremented resolution count when the resolver answers
 - verify: count(subject="milestone resolution retry transitions", equals=1)
-- raises: no workflow failure solely because the resolver escalates; escalation becomes an operator await
+- raises: no workflow failure solely because the resolver escalates
 - verify: count(subject="milestone resolver workflow failures", equals=0)
+- raises: an escalated resolver result becomes an operator await
+- verify: visible(locator="operator-awaiting context", text="milestone")
 - returns: returns a milestone continuation or an operator await state
 - verify: count(subject="milestone resolution outcomes", equals=1)
 - code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_milestone`

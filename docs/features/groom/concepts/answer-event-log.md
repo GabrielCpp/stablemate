@@ -36,7 +36,9 @@ Answer event log is groom's process-local, bounded history of dashboard answer a
 
 - type: [answer log entry](../answer-log-entry.md)
 - default: none
+- verify: count(subject="the answer event log before any append", equals=0)
 - required: true for appended members
+- verify: created(subject="the supplied answer log entry")
 - multiplicity: zero to 200 retained entries.
 - ordering: newest entries appear after older retained entries.
 - meaning: one completed answer attempt record containing the event discriminator, normalized container id, gate file path, success flag, and outcome message.
@@ -50,6 +52,7 @@ Answer event log is groom's process-local, bounded history of dashboard answer a
 - abstract: false
 - raises: no domain-specific errors.
 - raises: ordinary container append errors would propagate to the caller.
+- verify: json_path(path="exception.type", equals="RuntimeError")
 - code: groom/groom/state.py::record_log
 
 Appends one already-built event dictionary to the process-local answer event log without validating, normalizing, cloning, broadcasting, or persisting it.

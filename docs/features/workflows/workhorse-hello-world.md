@@ -31,6 +31,7 @@ Runs the single-machine greeting example registered by the [hello-world workflow
 - verify: exit_status(code=0)
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main`
+- detail: [Hello-world command selection](concepts/workhorse-hello-world-command-selection.md)
 - tests: `workflows/tests/test_hello_world.py::test_the_documented_command_is_declared`
 - tests: `workflows/tests/test_hello_world.py::test_the_documented_dry_run_walks_the_machine_green`
 - tests: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting`
@@ -44,6 +45,7 @@ Runs the single-machine greeting example registered by the [hello-world workflow
   - renders the registered HelloWorld state graph
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main`
+- detail: [Hello-world command selection](concepts/workhorse-hello-world-command-selection.md)
 
 ### version
 - usage: `workhorse-hello-world version`
@@ -51,3 +53,4 @@ Runs the single-machine greeting example registered by the [hello-world workflow
   - prints the installed Workhorse engine version
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main`
+- detail: [Hello-world command selection](concepts/workhorse-hello-world-command-selection.md)

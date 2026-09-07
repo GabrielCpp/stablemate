@@ -21,15 +21,21 @@ push, or failed after an attempted push. Notes identify the branch and local che
 - type: `Literal["pushed", "unavailable", "failed"]`
 - default: `failed`
 - required: false
-- semantics: `pushed` means the remote head advanced to the local branch; `unavailable` means no push was possible; `failed` means an attempted push did not land or could not verify the remote head
+- semantics: `pushed` means the remote head advanced to the local branch
+- verify: json_path(path="$.status", equals="pushed")
+- semantics: `unavailable` means no push was possible because a required branch, credential, or remote was absent
+- verify: json_path(path="$.status", equals="unavailable")
+- semantics: `failed` means an attempted push did not land or its remote head could not be verified
 - verify: json_path(path="$.status", equals="failed")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::PushOutcome`
+- detail: [push outcome field roles](concepts/push-outcome-field-roles.md)
 
 ### notes
 
 - type: `str`
 - default: empty string
 - required: false
-- semantics: status, branch, and checkout context returned with the push outcome
+- semantics: identifies the status, branch, and checkout context returned with the push outcome
 - verify: json_path(path="$.notes", matches="/.+")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::PushOutcome`
+- detail: [push outcome field roles](concepts/push-outcome-field-roles.md)

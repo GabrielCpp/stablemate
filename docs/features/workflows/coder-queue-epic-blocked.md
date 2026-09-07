@@ -20,6 +20,7 @@ queue entry and branch unmerged.
 - semantics: whether the supplied epic was recorded as blocked
 - verify: json_path(path="$.epic_blocked", equals=false)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::EpicBlocked`
+- detail: [epic blocked field roles](concepts/epic-blocked-field-roles.md)
 
 ### blocked_epics
 - type: string
@@ -28,6 +29,7 @@ queue entry and branch unmerged.
 - semantics: comma-joined identifiers in the current run's blocked set
 - verify: json_path(path="$.blocked_epics", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::EpicBlocked`
+- detail: [epic blocked field roles](concepts/epic-blocked-field-roles.md)
 
 ### reason
 - type: string
@@ -36,3 +38,4 @@ queue entry and branch unmerged.
 - semantics: explanation of the set-aside decision or missing epic input
 - verify: json_path(path="$.reason", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::EpicBlocked`
+- detail: [epic blocked field roles](concepts/epic-blocked-field-roles.md)

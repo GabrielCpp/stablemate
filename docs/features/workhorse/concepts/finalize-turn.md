@@ -116,6 +116,7 @@ Two design rules hold this struct in place:
 - semantics: final answer text selected by the backend event reader
 - verify: json_path(path="$.result_text", matches=".*")
 - code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+- detail: [TurnState field selection](turn-state-fields.md)
 
 ### session_id
 - type: `str | None`
@@ -124,6 +125,7 @@ Two design rules hold this struct in place:
 - semantics: CLI session handle used for the next turn's resume operation
 - verify: json_path(path="$.session_id", absent=true)
 - code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+- detail: [TurnState field selection](turn-state-fields.md)
 
 ### usage
 - type: `TurnUsage`
@@ -132,6 +134,7 @@ Two design rules hold this struct in place:
 - semantics: normalized token and cost measurements accumulated during the turn
 - verify: absent(subject="usage attributes on a turn with no provider usage")
 - code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+- detail: [TurnState field selection](turn-state-fields.md)
 
 ### diagnostics
 - type: `list[str]`
@@ -140,6 +143,7 @@ Two design rules hold this struct in place:
 - semantics: non-JSON output and structured error descriptions retained for classification
 - verify: json_path(path="$.diagnostics", matches=".*")
 - code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+- detail: [TurnState field selection](turn-state-fields.md)
 
 ### timed_out
 - type: `bool`
@@ -148,6 +152,7 @@ Two design rules hold this struct in place:
 - semantics: whether timeout/watchdog or early-abort handling ended the stream
 - verify: json_path(path="$.timed_out", equals=false)
 - code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+- detail: [TurnState field selection](turn-state-fields.md)
 
 ### returncode
 - type: `int`
@@ -156,6 +161,7 @@ Two design rules hold this struct in place:
 - semantics: child process exit code copied from the supervised stream
 - verify: json_path(path="$.returncode", equals=0)
 - code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+- detail: [TurnState field selection](turn-state-fields.md)
 
 ## Methods
 

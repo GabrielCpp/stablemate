@@ -11,7 +11,15 @@ As a one-shot Docker fleet reader, the module enumerates Docker containers throu
 
 For stopped or legacy containers, the scan's current-run-state method selects the latest run through the [Docker run-directory reader](docker-run-directory-reader.md) before reading checkpoint and terminal metadata from that run directory.
 
+Use discovery when startup reconciliation or an operator-initiated fleet refresh needs a
+one-time Docker snapshot. The refresh flow invokes it to replace and safely prune the
+registry; the blocked-gate answer flow may begin with a gate that discovery previously made
+visible, but answering neither invokes nor repeats the scan. Live state after discovery comes
+from sidecar pushes rather than periodic scans, so neither flow is a general steady-state
+reconciliation path.
+
 - code: groom/groom/discovery.py
+- rule: use the refresh flow to request a one-shot fleet reconciliation; use the blocked-gate answer flow only after a gate is visible, regardless of whether discovery, a push, or a sidecar delta made it visible
 - verify: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
 - verify: groom/tests/test_discovery.py::test_scan_uses_sidecar_query_for_running_container
 - verify: groom/tests/test_discovery.py::test_scan_query_terminal_wins_over_gates
@@ -179,6 +187,7 @@ Converts one Docker inspect container object into a baseline workflow-container 
 - volume mapping: the `/workspace` and `/runs` mount rows supply `workspace_volume` and `runs_volume` from their `Name` fields, defaulting to empty strings when absent.
 - state mapping: truthy `State.Running` produces `WorkflowState.RUNNING`; falsey or absent running state produces `WorkflowState.IDLE` until later discovery evidence changes it.
 - side effects: none; the conversion does not inspect additional containers, query sidecars, read volumes, mutate the workflow registry, or write gate files.
+- verify: unchanged(subject="workflow registry and filesystem")
 
 ### method-resolve-container
 

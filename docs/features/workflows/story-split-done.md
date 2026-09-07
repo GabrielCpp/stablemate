@@ -21,6 +21,7 @@ and semantic review.
 - semantics: terminal disposition indicating the story graph was accepted
 - verify: json_path(path="$.status", equals="accepted")
 - code: `workflows/src/workhorse_workflows/author/story_split/schemas.py::StorySplitDone`
+- detail: [story split completion field roles](concepts/story-split-done-field-roles.md)
 
 ### epic
 - type: string
@@ -28,6 +29,7 @@ and semantic review.
 - semantics: explicitly selected epic whose stories were split
 - verify: json_path(path="$.epic", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/story_split/schemas.py::StorySplitDone`
+- detail: [story split completion field roles](concepts/story-split-done-field-roles.md)
 
 ### epic_dir
 - type: string path
@@ -35,6 +37,7 @@ and semantic review.
 - semantics: canonical repository-relative directory containing the selected epic
 - verify: json_path(path="$.epic_dir", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/story_split/schemas.py::StorySplitDone`
+- detail: [story split completion field roles](concepts/story-split-done-field-roles.md)
 
 ### receipt_path
 - type: string path
@@ -42,6 +45,7 @@ and semantic review.
 - semantics: repository-relative path to the digest-bound semantic review receipt
 - verify: json_path(path="$.receipt_path", matches="story-split-receipt\\.json$")
 - code: `workflows/src/workhorse_workflows/author/story_split/schemas.py::StorySplitDone`
+- detail: [story split completion field roles](concepts/story-split-done-field-roles.md)
 
 ### coverage_reworks
 - type: integer
@@ -50,6 +54,7 @@ and semantic review.
 - semantics: number of coverage-driven story split rework passes
 - verify: json_path(path="$.coverage_reworks", equals=0)
 - code: `workflows/src/workhorse_workflows/author/story_split/schemas.py::StorySplitDone`
+- detail: [story split completion field roles](concepts/story-split-done-field-roles.md)
 
 ### operator_resolutions
 - type: integer
@@ -58,3 +63,4 @@ and semantic review.
 - semantics: number of operator-resolution turns used by the split flow
 - verify: json_path(path="$.operator_resolutions", equals=0)
 - code: `workflows/src/workhorse_workflows/author/story_split/schemas.py::StorySplitDone`
+- detail: [story split completion field roles](concepts/story-split-done-field-roles.md)

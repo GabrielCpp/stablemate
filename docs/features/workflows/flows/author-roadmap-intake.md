@@ -30,13 +30,14 @@ support a survey, `baseline_inventory` and `parity_survey_dir` support a parity 
 - detail: [author finalize subflow](../concepts/author-finalize-subflow.md)
 - tests: workflows/tests/author/test_workflow.py::test_epic_mode_authors_one_roadmap_milestone_and_commits_it
 - tests: workflows/tests/author/test_config.py::test_roadmap_must_source_exactly_one_nonempty_milestone
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.setup`
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.start`
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.next_stage`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/planner.py::plan_author_step`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::validate_roadmap_milestone`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::mark_roadmap_authored`
+The flow is implemented by `workflows/src/workhorse_workflows/author/main/flow.py::Author.setup`,
+`workflows/src/workhorse_workflows/author/main/flow.py::Author.start`, and
+`workflows/src/workhorse_workflows/author/main/flow.py::Author.next_stage`; configuration,
+planning, and roadmap validation are implemented by
+`workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`,
+`workflows/src/workhorse_workflows/author/main/nodes/planner.py::plan_author_step`,
+`workflows/src/workhorse_workflows/author/main/nodes/intake.py::validate_roadmap_milestone`, and
+`workflows/src/workhorse_workflows/author/main/nodes/intake.py::mark_roadmap_authored`.
 
 ## Invocations
 
@@ -72,8 +73,8 @@ The machine resolves the repository root and configured document paths. In epic 
 one approved roadmap and carries its resolved path in the run context; it does not substitute the
 backlog or create a feature inventory.
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.setup`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`
+Setup is implemented by `workflows/src/workhorse_workflows/author/main/flow.py::Author.setup`
+and `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`.
 
 ### Plan and dispatch
 After setup, the planner rereads the approved roadmap's planning graph and selects one incomplete
@@ -89,10 +90,11 @@ stage. A blocked story is recorded in the planner's skip set while the flat queu
 other stories; an unblocked story is handed off with its epic, story, run-directory feedback path,
 and operator mode.
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.start`
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.next_stage`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/planner.py::plan_author_step`
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow`
+Planning and dispatch are implemented by
+`workflows/src/workhorse_workflows/author/main/flow.py::Author.start`,
+`workflows/src/workhorse_workflows/author/main/flow.py::Author.next_stage`,
+`workflows/src/workhorse_workflows/author/main/nodes/planner.py::plan_author_step`, and
+`workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow`.
 
 `Author.next_stage` passes the planner's selected epic and story into the matching subflow. A
 blocked `StoryAuthor` result is not terminal: it is logged, its `epic/story` key is added to the
@@ -100,7 +102,8 @@ current run's blocked set, and planning resumes with that key skipped. Any other
 returns to the same planner with the existing blocked set. When the planner returns `finalize`,
 the dispatcher hands off `Finalize` and does not plan another stage.
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.next_stage`
+This dispatcher behavior is implemented by
+`workflows/src/workhorse_workflows/author/main/flow.py::Author.next_stage`.
 - tests: `workflows/tests/author/test_planner.py::test_blocked_story_is_skipped_for_the_remainder_of_one_main_run`
 
 The same dispatcher has two explicit non-epic branches. `mode=survey` hands off to `Surveyor` with
@@ -113,8 +116,9 @@ running the epic planning or commit tail. Adoption resolves the consuming reposi
 and raises `WorkflowFailed` with Ostler's message when adoption fails; the story seed is not
 attempted after that failure.
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.start`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::adopt_backlog`
+These non-epic branches are implemented by
+`workflows/src/workhorse_workflows/author/main/flow.py::Author.start` and
+`workflows/src/workhorse_workflows/author/main/nodes/intake.py::adopt_backlog`.
 - tests: workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit
 - tests: workflows/tests/author/test_workflow.py::test_survey_mode_runs_the_surveyor_and_stops_at_discovery
 
@@ -123,7 +127,8 @@ returned story slug and the current run directory to `StoryAuthor`. It prunes th
 bullet only after the handoff is prepared. The survey branches return `Done` immediately after
 their handoff, while epic mode returns `Continue` into `next_stage`.
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.start`
+The story branch is implemented by
+`workflows/src/workhorse_workflows/author/main/flow.py::Author.start`.
 
 ### Finalize
 Finalization verifies reconciliation, whole-graph integrity, and the roadmap-owned milestone. It
@@ -136,17 +141,18 @@ reconciliation or integrity failure is first offered to an automatic resolver up
 resolution count; human mode, exhausted resolution, or an escalated resolver response reaches the
 operator context file. Only passing or explicitly skipped gates proceed to the next validation.
 
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.close`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::validate_roadmap_milestone`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::mark_roadmap_authored`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::validate_artifacts`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_integrity`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_reconcile`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::commit_author`
+Finalization is implemented by `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.close`,
+`workflows/src/workhorse_workflows/author/main/nodes/intake.py::validate_roadmap_milestone`,
+`workflows/src/workhorse_workflows/author/main/nodes/intake.py::mark_roadmap_authored`,
+`workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::validate_artifacts`,
+`workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_integrity`,
+`workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_reconcile`, and
+`workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::commit_author`.
 
 When a story handoff returns an audit block, the dispatcher keeps the result, logs the blocked
 epic/story pair, adds that pair to the in-run skip set, and selects another stage. When the planner
 reports no remaining stage, the dispatcher hands off to `Finalize` and ends after its result.
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.next_stage`
+This final dispatch behavior is implemented by
+`workflows/src/workhorse_workflows/author/main/flow.py::Author.next_stage`.
 - tests: workflows/tests/author/test_planner.py::test_blocked_story_is_skipped_for_the_remainder_of_one_main_run

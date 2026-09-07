@@ -71,6 +71,7 @@ The workflow registry is groom's process-local map of live [workflow containers]
 - sig: `_all_workflows() -> list[WorkflowContainer]`
 - abstract: false
 - raises: none intentionally raised for an empty or populated registry.
+- verify: json_path(path="$.exception", absent=true)
 - code: groom/groom/app.py::_all_workflows
 
 Returns a new list containing the current registry values. The snapshot freezes only membership of the returned sequence at the moment of the call; the list items remain the same mutable [workflow container](workflow-container.md) objects held by the registry.

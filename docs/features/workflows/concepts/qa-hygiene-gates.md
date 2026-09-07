@@ -23,12 +23,15 @@ the supplied `repo_dir`, rather than from the process working directory.
 - does: leaves root images already tracked by git in place and reports their count as `kept_tracked`
 - verify: count(subject="tracked root images left in place", equals=1)
 - does: creates `<spec_dir>/qa/` below the repository root and moves each untracked root image there
+- verify: created(subject="the QA directory below the repository root")
 - verify: count(subject="untracked root images moved into the QA directory", equals=1)
 - does: chooses a `-1`, `-2`, and later suffix when a destination filename already exists, never overwriting it
 - verify: unchanged(subject="pre-existing QA screenshots", except_fields=[])
 - does: leaves untracked images in place and logs a warning when `spec_dir` is blank, resolves to the repository root or above it, the destination cannot be created, or an individual move fails
 - verify: count(subject="unmovable root screenshots retained", equals=1)
-- returns: `ScreenshotFlush` with `flushed`, `kept_tracked`, and a human-readable `notes` summary; all counts remain zero when no matching root image exists
+- returns: `ScreenshotFlush` with `flushed`, `kept_tracked`, and a human-readable `notes` summary
+- verify: json_path(path="$.notes", matches=".+")
+- returns: all counts remain zero when no matching root image exists
 - verify: json_path(path="$.flushed", equals=0)
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py::flush_root_screenshots`
 
@@ -38,8 +41,18 @@ the supplied `repo_dir`, rather than from the process working directory.
 - verify: count(subject="added source diff lines scanned by the sentinel gate", equals=1)
 - does: scans only `.go`, `.ts`, `.tsx`, `.js`, and `.jsx` additions, excluding test files and pure comment lines
 - verify: count(subject="eligible shipped-source additions scanned", equals=1)
-- does: rejects an eligible added line containing an all-zero UUID, an all-zero hexadecimal or UUID string, a `falls back until|when|if X exists` stub, or a `TODO until`, `placeholder until`, or `stub until` marker
-- verify: count(subject="unreconciled sentinel additions rejected", equals=1)
+- does: rejects an eligible added line containing an all-zero UUID
+- verify: count(subject="all-zero UUID sentinel additions rejected", equals=1)
+- does: rejects an eligible added line containing an all-zero hexadecimal or UUID string
+- verify: count(subject="all-zero hexadecimal or UUID sentinel additions rejected", equals=1)
+- does: rejects an eligible added line containing a `falls back until|when|if X exists` stub
+- verify: count(subject="fallback stub sentinel additions rejected", equals=1)
+- does: rejects an eligible added line containing a `TODO until` marker
+- verify: count(subject="TODO-until sentinel additions rejected", equals=1)
+- does: rejects an eligible added line containing a `placeholder until` marker
+- verify: count(subject="placeholder-until sentinel additions rejected", equals=1)
+- does: rejects an eligible added line containing a `stub until` marker
+- verify: count(subject="stub-until sentinel additions rejected", equals=1)
 - does: returns a failed result listing each matching filename, target line number, sentinel description, and up to 120 characters of trimmed content
 - verify: json_path(path="$.status", equals="failed")
 - does: returns a passed result with a skip note when the trunk base cannot be determined or diff execution fails

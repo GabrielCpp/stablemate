@@ -24,6 +24,7 @@ knowledge — the backends import it, never the reverse.
   `workhorse/tests/test_backends.py::test_finalize_turn_non_recoverable_names_each_backend`,
   `workhorse/tests/test_backends.py::test_opencode_provider_header_timeout_aborts_into_short_retry`,
   `workhorse/tests/test_agent_recovery.py::test_context_overflow_is_detected`
+- detail: [Failure classification documentation views](failure-classification-views.md)
 
 ## Contract
 

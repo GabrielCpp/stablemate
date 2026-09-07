@@ -48,7 +48,7 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - does: sorts and de-duplicates the recorded path entries
 - verify: count(subject="duplicate snapshot entries", equals=0)
 - does: returns an empty entry list when repository state cannot be read
-- verify: json_path(path="$.entries", equals=[])
+- verify: count(subject="snapshot entries after repository state read failure", equals=0)
 - returns: a `WorktreeSnapshot` containing entries and a human-readable note
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::snapshot_worktree_state`

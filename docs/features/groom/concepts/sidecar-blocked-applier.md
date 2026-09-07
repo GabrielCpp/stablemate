@@ -47,7 +47,9 @@ The sidecar blocked applier is the groom server layer that folds a connected sid
 - sig: `async _apply_socket_blocked(container_id: str, data: dict) -> None`
 - abstract: false
 - raises: propagates ordinary exceptions from workflow upsert, gate construction, state or detail projection, or dashboard broadcast.
+- verify: json_path(path="$.exception.type", equals="RuntimeError")
 - raises: intentionally raises nothing for an empty file path.
+- verify: json_path(path="$.exception.type", absent=true)
 - code: groom/groom/app.py::_apply_socket_blocked
 
 Applies one live sidecar blocked delta to the in-memory dashboard state and emits the two browser-facing JSON frames that follow from it. The method is called only after [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) has accepted a sidecar `hello`, registered a live connection, and dispatched a `blocked` frame for that connected container.

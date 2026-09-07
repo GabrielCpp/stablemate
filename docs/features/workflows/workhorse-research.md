@@ -28,6 +28,7 @@ Runs the research gate loop registered by the [research workflow composition roo
   - starts the registered Research flow
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/research/workflow.py::main`
+- detail: [Research command selection](concepts/research-command-selection.md)
 
 ### dot
 - usage: `workhorse-research dot [--name ID] [-o out.dot]`
@@ -38,6 +39,7 @@ Runs the research gate loop registered by the [research workflow composition roo
   - renders the registered Research state graph
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/research/workflow.py::main`
+- detail: [Research command selection](concepts/research-command-selection.md)
 
 ### version
 - usage: `workhorse-research version`
@@ -45,3 +47,4 @@ Runs the research gate loop registered by the [research workflow composition roo
   - prints the installed Workhorse engine version
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/research/workflow.py::main`
+- detail: [Research command selection](concepts/research-command-selection.md)

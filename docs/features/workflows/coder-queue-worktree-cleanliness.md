@@ -20,6 +20,7 @@ the development gate. Paths that were dirty before the story and untouched by it
 - semantics: whether no story-owned uncommitted paths remain
 - verify: json_path(path="$.clean", equals=false)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeCleanliness`
+- detail: [coder queue worktree cleanliness field roles](concepts/coder-queue-worktree-cleanliness-field-roles.md)
 
 ### dirty
 - type: list of strings
@@ -28,6 +29,7 @@ the development gate. Paths that were dirty before the story and untouched by it
 - semantics: repository-qualified paths still uncommitted after exclusions
 - verify: count(subject="dirty paths", equals=0)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeCleanliness`
+- detail: [coder queue worktree cleanliness field roles](concepts/coder-queue-worktree-cleanliness-field-roles.md)
 
 ### repos
 - type: list of strings
@@ -36,3 +38,4 @@ the development gate. Paths that were dirty before the story and untouched by it
 - semantics: repository names inspected for the story
 - verify: count(subject="inspected repositories", equals=0)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeCleanliness`
+- detail: [coder queue worktree cleanliness field roles](concepts/coder-queue-worktree-cleanliness-field-roles.md)

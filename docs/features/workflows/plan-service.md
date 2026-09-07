@@ -42,8 +42,10 @@ One service or shared package changed by a plan. Shared packages omit `plan_file
 - type: `str`
 - default: empty string
 - required: false
-- semantics: service plan path relative to the specification directory; empty for shared packages
-- verify: json_path(path="$.plan_file", matches=".*")
+- semantics: service plan path relative to the specification directory
+- verify: json_path(path="$.plan_file", matches="^[^/].*")
+- semantics: empty for shared packages
+- verify: json_path(path="$.plan_file", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanService.plan_file`
 
 ### new_service

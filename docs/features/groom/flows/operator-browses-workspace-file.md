@@ -7,9 +7,16 @@ title: Operator browses workspace file
 
 This journey covers the as-built operator path through the [groom dashboard](../gui/screens/groom-dashboard.md) Files pane: activating [files mode](../gui/screens/groom-dashboard.md#select-activity-files-mode), opening the [files repository picker](../gui/screens/groom-dashboard.md#open-files-repository-picker), selecting a [repository menu option](../gui/screens/groom-dashboard.md#select-repository-menu-option), loading [workspace file list data](../workspace-file-list-data.md) through [GET /files/{container_id}](../http/groom.md#get-workspace-file-list), selecting a [files file row](../gui/screens/groom-dashboard.md#select-files-file-row), loading [workspace file content data](../workspace-file-content-data.md) through [GET /file/{container_id}](../http/groom.md#get-workspace-file-content), and rendering the selected file in the [file view region](../gui/screens/groom-dashboard.md#file-view-region). The server-side reads prefer [sidecar live sessions](../sidecar-live-sessions.md) RPCs and fall back to the workflow workspace volume readers when no live sidecar can serve the data.
 
+The scenario may include a [workflow container](../concepts/workflow-container.md) with a known `workspace_volume`. When the dashboard has no selected repository, entering Files mode shows the picker prompt; an existing selection is reused when the operator enters Files mode.
+
 Every response on this path is JSON — a `paths` array, and a `{path, content, lang}` object. The server sends no markup and picks no colours; the browser builds the tree, and the highlighter runs client-side against the language name the server derived from the path. That is the whole reason the same two endpoints serve a sidecar-backed read and a volume-backed one identically: neither one is rendering anything.
 
-- start: the groom server is running, the browser has loaded the [groom dashboard](../gui/screens/groom-dashboard.md), and at least one [workflow container](../concepts/workflow-container.md) may have a known `workspace_volume`. The dashboard starts in runs mode with no selected repository; an existing selected repository is allowed and is reused when the operator enters files mode.
+- start: the groom server is running
+- verify: http_status(code=200, title="Groom Dashboard", path="/")
+- start: the browser has loaded the [groom dashboard](../gui/screens/groom-dashboard.md)
+- verify: visible(locator=".app")
+- start: the dashboard starts in runs mode
+- verify: visible(locator=".app[data-mode='runs']")
 - steps:
   1. The operator activates [select activity files mode](../gui/screens/groom-dashboard.md#select-activity-files-mode) from the activity bar. The dashboard sets `.app[data-mode]` to `files`, marks the Files activity control active and `aria-pressed="true"`, writes the mode into the [dashboard client store](../concepts/dashboard-client-store.md), closes the repository menu if it was open, and enters the Files pane load path.
   2. If no repository is selected, the Files pane load path returns without a request and the [files tree](../gui/screens/groom-dashboard.md#files-directory-toggle) island renders `Pick a container / repo above.` from store state alone. If a repository is already selected, the load path resets the files slice to `loading` with an empty path list and an idle viewer — which is what re-renders `#file-view` to `Select a file to view it.` — and requests [GET /files/{container_id}](../http/groom.md#get-workspace-file-list) with the selected `repo`.
@@ -33,6 +40,13 @@ Every response on this path is JSON — a `paths` array, and a `{path, content, 
 - verify: json_path(path="$.content", equals="print(1)\n")
 - verify: json_path(path="$.lang", equals="python")
 - verify: visible(locator="#files-tree .tree-file.active", text="README.md")
+- detail: [live sidecar RPC and volume fallback selection](../concepts/live-sidecar-rpc-and-volume-fallback-selection.md)
+- detail: [repository picker flow selection](../concepts/repository-picker-flow-selection.md)
+- detail: [dashboard active-pane flow selection](../concepts/dashboard-active-pane-flow-selection.md)
+- detail: [dashboard repository selection flow contexts](../concepts/dashboard-repository-selection-flow-contexts.md)
+- detail: [dashboard tree flow selection](../concepts/dashboard-tree-flow-selection.md)
+- detail: [shared repository picker flow contexts](../concepts/shared-repository-picker-flow-contexts.md)
+- detail: [Files and Diff mode selection](../concepts/files-and-diff-mode-selection.md)
 - tests: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
   groom/tests/test_app.py::test_repos_endpoint_reads_native_run_from_local_disk,
   groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,

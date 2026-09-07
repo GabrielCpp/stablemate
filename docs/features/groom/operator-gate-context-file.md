@@ -116,6 +116,8 @@ then rereads and reclassifies each candidate before creating gate info.
 - sig: `status_of(text: str) -> str`
 - abstract: false
 - raises: none intentionally raised for any string input.
+- returns: unknown status tokens uppercased without validating them against known lifecycle values, leaving answerability to callers.
+- verify: json_path(path="return value", equals="UNRECOGNIZED")
 - verify: json_path(path="return value", equals="AWAITING_OPERATOR")
 - code: groom/groom/gates.py::status_of
 - tests: groom/tests/test_gates.py::test_status_of_reads_the_status_line
@@ -130,7 +132,6 @@ Parses one operator gate context file text into the normalized lifecycle token t
 - Search scope: scans the whole supplied string under multiline line-start semantics; callers that pass only a prefix receive a prefix-only classification.
 - Token boundary: captures exactly the first non-whitespace run after `STATUS:` and ignores any later words, punctuation, sections, or additional status-like lines.
 - Normalizes: uppercases the captured token before returning it, so `consumed` and `CONSUMED` classify identically while preserving non-letter characters as part of the token.
-- Unknown token rule: returns unknown status tokens after uppercasing rather than validating against the known lifecycle values; callers decide whether the token is answerable.
 - Return contract: always returns a string and never `None`.
 - Fallback: returns the empty string when no line has `STATUS:` followed by a token.
 - Used by: [method-scan_gates](concepts/sidecar-snapshot.md#method-scan_gates) passes each file's initial 512-character prefix through this classifier and retains only the exact `AWAITING_OPERATOR` result.
@@ -164,6 +165,8 @@ Classifies whether one operator gate context file is currently answerable by com
 - sig: `extract_question(text: str) -> str`
 - abstract: false
 - raises: none intentionally raised for any string input.
+- returns: at most the first 4000 characters of the stripped selected body.
+- verify: json_path(path="return value", matches="^.{4000}$")
 - verify: json_path(path="return value", equals="Should the fallback default to \"unknown\" or raise?")
 - verify: json_path(path="return value", equals="STATUS: AWAITING_OPERATOR\n\njust a blob, no section header")
 - code: groom/groom/gates.py::extract_question
@@ -183,7 +186,6 @@ Extracts the operator-facing prompt text from one gate file for [gate info](conc
 - Extracts: all text after the recognized heading's newline run and before the next newline followed by `##` or the end of the file.
 - Fallback: uses the stripped whole file text when no recognized question heading exists.
 - Normalizes: strips leading and trailing whitespace from the selected body before applying the preview limit.
-- Limits: returns at most the first 4000 characters of the stripped selected body, counting Python string characters.
 - Used by: [method-scan_gates](concepts/sidecar-snapshot.md#method-scan_gates)
   after a file is known to be awaiting, so the snapshot stores only the
   operator-facing prompt rather than the full gate context whenever the
@@ -195,7 +197,12 @@ Extracts the operator-facing prompt text from one gate file for [gate info](conc
 
 - sig: `apply_answer(text: str, answer: str) -> str`
 - abstract: false
-- raises: none intentionally raised for any string input; invalid or missing gate status content is preserved except that no status line can be flipped when the status pattern is absent.
+- raises: none intentionally raised for any string input.
+- verify: absent(subject="raised exception")
+- raises: invalid or missing gate status content is preserved except that no status line can be flipped when the status pattern is absent.
+- verify: unchanged(subject="non-status gate content", except_fields=["status line"])
+- returns: for a non-blank submitted answer, the status-updated text right-trimmed, followed by one blank line, the stripped answer, and one trailing newline.
+- verify: json_path(path="return value", equals="STATUS: ANSWERED\n\nready\n")
 - verify: count(subject="STATUS: ANSWERED lines in returned gate text", equals=1)
 - verify: count(subject="answer paragraphs in returned gate text", equals=0)
 - code: groom/groom/gates.py::apply_answer
@@ -211,7 +218,6 @@ Builds the answered form of one operator gate context file from the current file
 - Mutates text: replaces at most one matched status line with exactly `STATUS: ANSWERED`; if no line matches, the status portion of the returned text is unchanged.
 - Preserves: all unmatched file content, section ordering, headings, and non-status text before any optional answer append.
 - Normalizes: strips leading and trailing whitespace from the submitted answer before deciding whether an answer paragraph exists.
-- Appends: when the stripped answer is non-empty, right-trims the status-updated file text, adds one blank line, appends the stripped answer, and terminates the file with one newline.
 - Skips append: when the stripped answer is empty, returns the status-updated file text without adding an answer paragraph or trimming trailing content.
 - Output shape: a non-blank answer always produces text ending with exactly one newline after the answer paragraph; a blank answer preserves whatever trailing whitespace was present after the status replacement.
 - Calls: no other groom source symbols.
@@ -219,9 +225,13 @@ Builds the answered form of one operator gate context file from the current file
 
 ## Lifecycle
 
-- step: A workflow wait script writes a context file with `STATUS: AWAITING_OPERATOR` and enough question/context text for an operator.
-- step: The sidecar or host discovery scans workspace files and keeps only files whose status parser returns `AWAITING_OPERATOR` from the scan prefix.
-- step: Groom stores the workspace-relative path and extracted question as a gate record and renders an answer form for that specific path.
-- step: On answer submission, the gate-answering layer rereads the same file while holding the per-gate lock and rejects it unless the current status is still `AWAITING_OPERATOR`.
-- step: The accepted answer changes the status line to `STATUS: ANSWERED` and may append the submitted answer paragraph.
-- step: The in-container wait script observes the changed file and proceeds; later non-awaiting statuses are ignored by groom discovery and answer handling.
+A workflow wait script creates this context file with `STATUS: AWAITING_OPERATOR`
+and operator-facing question text. Sidecar and host discovery retain files whose
+scan prefix classifies as `AWAITING_OPERATOR`, then groom records each retained
+workspace-relative path and extracted question to render that path's answer
+form. On submission, `answer_gate` rereads the file under its per-gate lock,
+accepting it only while its current status remains `AWAITING_OPERATOR`; the
+accepted text changes the status to `STATUS: ANSWERED` and can append the
+submitted answer paragraph. The wait script observes that changed file and
+continues, while groom discovery and answer handling ignore later non-awaiting
+statuses.

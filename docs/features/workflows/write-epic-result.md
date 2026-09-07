@@ -19,6 +19,7 @@ The agent reply returned after writing one epic document carries its status and 
 - semantics: agent-reported outcome of writing the epic
 - verify: json_path(path="$.status", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult`
+- detail: [write epic result field roles](concepts/write-epic-result-field-roles.md)
 
 ### notes
 - type: string
@@ -27,3 +28,4 @@ The agent reply returned after writing one epic document carries its status and 
 - semantics: agent notes accompanying the epic-writing outcome
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult`
+- detail: [write epic result field roles](concepts/write-epic-result-field-roles.md)

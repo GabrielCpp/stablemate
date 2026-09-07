@@ -14,6 +14,7 @@ their own classification and diagnostic data without changing the shared store.
 - code: `workhorse/workhorse/inbox.py::Message`
 - tests: `workhorse/tests/test_inbox.py::test_outstanding_excludes_replied_messages`
 - detail: [run inbox JSONL](../inbox-jsonl.md)
+- detail: [message documentation](message-documentation.md)
 
 The same store carries failure-handoff entries from the driver. The inbox primitive does not
 interpret message kinds; a workflow or operator filters them.
@@ -26,6 +27,7 @@ interpret message kinds; a workflow or operator filters them.
 - semantics: caller-supplied identity used to locate the message for a reply
 - verify: json_path(path="$.id", matches=".+")
 - code: `workhorse/workhorse/inbox.py::Message`
+- detail: [Message representations](message-representations.md)
 
 ### body
 - type: string
@@ -33,6 +35,7 @@ interpret message kinds; a workflow or operator filters them.
 - semantics: operator or failure-handoff message text
 - verify: json_path(path="$.body", matches=".*")
 - code: `workhorse/workhorse/inbox.py::Message`
+- detail: [Message representations](message-representations.md)
 
 ### at
 - type: string
@@ -40,14 +43,18 @@ interpret message kinds; a workflow or operator filters them.
 - semantics: creation timestamp supplied by the writer
 - verify: json_path(path="$.at", matches=".+")
 - code: `workhorse/workhorse/inbox.py::Message`
+- detail: [Message representations](message-representations.md)
 
 ### reply
 - type: string
 - default: empty string
 - required: true
-- semantics: response text; empty means the message remains outstanding
+- semantics: response text written by a reply
+- verify: json_path(path="$.reply", equals="acknowledged")
+- semantics: an empty reply means the message remains outstanding
 - verify: json_path(path="$.reply", equals="")
 - code: `workhorse/workhorse/inbox.py::Message`
+- detail: [Message representations](message-representations.md)
 
 ### replied_at
 - type: string
@@ -56,6 +63,7 @@ interpret message kinds; a workflow or operator filters them.
 - semantics: timestamp written with a non-empty reply
 - verify: json_path(path="$.replied_at", equals="")
 - code: `workhorse/workhorse/inbox.py::Message`
+- detail: [Message representations](message-representations.md)
 
 ## Methods
 

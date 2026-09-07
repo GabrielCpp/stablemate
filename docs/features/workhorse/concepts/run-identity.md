@@ -13,7 +13,7 @@ The resolver accepts a path, a full directory name, or the id that named the dir
 
 ### derive_run_id
 - sig: `derive_run_id(run_id: str | None, params: dict[str, Any] | None) -> str | None`
-- consistency: an explicit id is returned unchanged
+- consistency: run-id — an explicit id is returned unchanged
 - does: returns `p` plus the first eight hexadecimal SHA-1 characters of canonical sorted JSON when params are non-empty and no explicit id exists
 - does: returns `None` when neither an explicit id nor non-empty params exist
 - returns: an id that is deterministic for equal parameter mappings
@@ -31,9 +31,9 @@ The resolver accepts a path, a full directory name, or the id that named the dir
 ### auto_resolve
 - sig: `auto_resolve(runs_dir: Path, workflow_name: str, run_id: str | None = None) -> tuple[str, Path | None]`
 - does: maps a missing id to `default` and constructs `<workflow>-<id>` below `runs_dir`
-- consistency: a missing checkpoint returns the effective id with no resume directory
+- consistency: checkpoint — a missing checkpoint returns the effective id with no resume directory
 - verify: absent(subject="resume directory when the checkpoint is absent")
-- consistency: a terminal `run.json` record returns the effective id with no resume directory
+- consistency: run-record — a terminal `run.json` record returns the effective id with no resume directory
 - verify: absent(subject="resume directory when the run record is terminal")
 - returns: the effective id and an existing non-terminal checkpoint directory, or `None`
 - code: `workhorse/workhorse/rundir.py::auto_resolve`
@@ -53,8 +53,8 @@ The resolver accepts a path, a full directory name, or the id that named the dir
 
 ### runtime_deadline
 - sig: `runtime_deadline(started_at_iso: str, budget_s: float) -> float | None`
-- consistency: a non-positive runtime budget returns no deadline
-- verify: json_path(path="$.deadline", equals=null)
+- consistency: runtime-budget — a non-positive runtime budget returns no deadline
+- verify: json_path(path="$.deadline", absent=true)
 - does: anchors a positive budget to the recorded start timestamp
 - returns: an absolute Unix timestamp deadline
 - code: `workhorse/workhorse/rundir.py::runtime_deadline`

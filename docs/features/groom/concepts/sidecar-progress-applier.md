@@ -87,8 +87,18 @@ The sidecar progress applier is the groom server layer that folds a connected si
 
 - sig: `async _apply_socket_progress(container_id: str, data: dict) -> None`
 - abstract: false
-- does: handles absent `current_node`, JSON `null` current nodes, empty strings, non-string current-node values, and extra frame fields as ordinary inputs.
+- does: preserves the existing current-node value when `current_node` is absent.
+- verify: unchanged(subject="workflow current_node after an omitted current_node")
+- does: preserves the existing current-node value when `current_node` is JSON `null`.
+- verify: unchanged(subject="workflow current_node after a null current_node")
+- does: writes an empty-string `current_node` exactly as supplied.
+- verify: json_path(path="workflow.current_node", equals="")
+- does: writes a non-string `current_node` value exactly as supplied.
+- verify: json_path(path="workflow.current_node", equals=0)
+- does: ignores frame fields other than `current_node` without changing unrelated workflow fields.
+- verify: unchanged(subject="workflow fields unrelated to current_node", except_fields=["state", "current_node"])
 - raises: propagates workflow-upsert, renderer, or broadcast exceptions.
+- verify: json_path(path="exception.type", equals="RuntimeError")
 - code: groom/groom/app.py::_apply_socket_progress
 
 Fold one connected sidecar `progress` frame for one already accepted sidecar websocket into the visible workflow fleet.

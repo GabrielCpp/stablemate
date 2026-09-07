@@ -45,9 +45,9 @@ authority for whether findings are complete.
 - does: returns an applied result without deleting files when `story_slug` is empty
 - verify: json_path(path="$.status", equals="applied")
 - does: deletes the current cycle's `review-resolution.json` when it exists under `spec_dir`
-- verify: absent(subject="the stale review-resolution.json sidecar")
+- verify: removed(subject="the stale review-resolution.json sidecar")
 - does: deletes the current cycle's `review-settlement.json` when it exists under `spec_dir`
-- verify: absent(subject="the stale review-settlement.json sidecar")
+- verify: removed(subject="the stale review-settlement.json sidecar")
 - returns: an applied `ImplResult` whose notes list the sidecar filenames that were cleared
 - verify: json_path(path="$.status", equals="applied")
 - code: `workflows/src/workhorse_workflows/coder/shared/review.py::clear_review_resolution`
@@ -86,7 +86,7 @@ authority for whether findings are complete.
 - verify: json_path(path="$.present", equals=false)
 - does: returns present `Feedback` containing the message body when a note exists
 - verify: json_path(path="$.present", equals=true)
-- returns: the message scope narrowed to `story` or `epic`, defaulting unsupported or missing scopes to `story`
-- verify: json_path(path="$.present", equals=true)
+- returns: a `Feedback` with only `present` and `content` fields, without the inbox message scope
+- verify: json_path(path="$.scope", absent=true)
 - code: `workflows/src/workhorse_workflows/coder/shared/review.py::check_feedback`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_dropped_operator_note_buys_exactly_one_re_qa`

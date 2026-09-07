@@ -20,6 +20,7 @@ queue. `reason` carries the distinction when no epic is selected.
 - semantics: whether an epic is available for the next main-loop pass
 - verify: json_path(path="$.has_epic", equals=false)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::EpicPick`
+- detail: [coder queue epic pick field roles](concepts/coder-queue-epic-pick-field-roles.md)
 
 ### epic
 - type: string
@@ -28,6 +29,7 @@ queue. `reason` carries the distinction when no epic is selected.
 - semantics: identifier of the selected epic
 - verify: json_path(path="$.epic", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::EpicPick`
+- detail: [coder queue epic pick field roles](concepts/coder-queue-epic-pick-field-roles.md)
 
 ### reason
 - type: string
@@ -36,3 +38,4 @@ queue. `reason` carries the distinction when no epic is selected.
 - semantics: explanation for selection failure, queue exhaustion, or all epics being set aside
 - verify: json_path(path="$.reason", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::EpicPick`
+- detail: [coder queue epic pick field roles](concepts/coder-queue-epic-pick-field-roles.md)

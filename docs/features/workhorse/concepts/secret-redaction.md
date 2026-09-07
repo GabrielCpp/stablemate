@@ -19,7 +19,7 @@ split across chunks, and fails closed by emitting the redaction marker if rewrit
 ### REDACTED
 - type: string
 - required: true
-- verify: json_path(path="$", absent=false)
+- verify: json_path(path="$", equals="••••")
 - semantics: `••••`, substituted for a matched or unsafe-to-rewrite secret
 - verify: json_path(path="$", equals="••••")
 - code: `workhorse/workhorse/runner/redact.py::REDACTED`

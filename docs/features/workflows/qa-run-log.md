@@ -18,16 +18,20 @@ non-assertion objects, while retaining the complete object for assertion records
 
 - type: `string`
 - required: true
-- semantics: record discriminator; assertion records use the literal `assert`
+- semantics: identifies assertion records
+- verify: json_path(path="$.kind", equals="assert")
+- semantics: uses the literal `assert` for assertion records
 - verify: json_path(path="$.kind", equals="assert")
 
 ### id
 
 - type: `string`
-- default: absent; failed-assertion routing substitutes `?`
+- default: absent in single-scenario logs
+- verify: json_path(path="$.id", absent=true)
+- default: failed-assertion routing substitutes `?`
+- verify: json_path(path="$.id", equals="?")
 - required: false
 - semantics: assertion identifier used in failure notes
-- verify: json_path(path="$.id", matches=".*")
 
 ### scenario
 
@@ -41,5 +45,7 @@ non-assertion objects, while retaining the complete object for assertion records
 
 - type: `string`
 - required: true
-- semantics: assertion outcome; `FAIL` after trimming and case normalization is treated as failed
+- semantics: assertion outcome
 - verify: json_path(path="$.result", matches="PASS|FAIL")
+- semantics: `FAIL` after trimming and case normalization is treated as failed
+- verify: json_path(path="$.result", matches="(?i)^\\s*FAIL\\s*$")

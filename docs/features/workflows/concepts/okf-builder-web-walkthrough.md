@@ -85,8 +85,10 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - type: `str`
 - default: empty string
 - required: true
-- semantics: service feature-book name; an empty value means no single app is selected
+- semantics: service feature-book name
 - verify: count(subject="web walkthrough service input", equals=1)
+- semantics: an empty value means no single app is selected
+- verify: count(subject="web walkthrough empty service input", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.service`
 
 ### docs_path
@@ -109,8 +111,10 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - type: `int`
 - default: `0`
 - required: true
-- semantics: per-run walkthrough item ceiling; zero means no ceiling
+- semantics: per-run walkthrough item ceiling
 - verify: count(subject="web walkthrough item ceiling input", equals=1)
+- semantics: zero means no walkthrough item ceiling
+- verify: count(subject="unlimited web walkthrough item ceiling input", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.max_items`
 
 ## Methods
@@ -128,7 +132,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - does: labels the run with its service
 - verify: count(subject="web walkthrough service labels", equals=1)
 - does: adds the selected work item and progress after item selection
-- verify: count(subject="web walkthrough item labels", equals=1)
+- verify: created(subject="the selected work item and progress labels")
 - code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.labels`
 
 ### start
@@ -141,8 +145,12 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="web walkthrough browser boots", equals=1)
 - does: seeds the unconfirmed journey and screen worklist before continuing to selection
 - verify: persists(subject="web walkthrough worklist")
-- raises: no workflow error for an app or browser boot failure; the flow exits through its documented cleanup path
-- verify: count(subject="web walkthrough fail-soft boot exits", equals=1)
+- raises: no workflow error for an app or browser boot failure
+- verify: count(subject="web walkthrough fail-soft boot errors", equals=0)
+- raises: an app boot failure exits through its documented direct completion path
+- verify: count(subject="web walkthrough app boot fail-soft exits", equals=1)
+- raises: a browser boot failure exits through its documented cleanup path
+- verify: count(subject="web walkthrough browser boot fail-soft exits", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.start`
 
 ### pick
@@ -203,7 +211,9 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="web walkthrough launch-contract parses", equals=1)
 - does: returns no contract when either launch or entry URL is absent
 - verify: json_path(path="$.launch_cmd", absent=true)
-- does: resolves relative working directories against the repository root and supplies health, identity, stop, timeout, and walkthrough values
+- does: resolves relative working directories against the repository root
+- verify: count(subject="web walkthrough launch-contract working directories", equals=1)
+- does: supplies health, identity, stop, timeout, and walkthrough values
 - verify: count(subject="web walkthrough launch-contract fields", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/walkthrough.py::parse_launch_contract`
 
@@ -225,7 +235,9 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: json_path(path="$.is_webapp", equals=false)
 - does: reads the marked server launch contract, with a compatibility fallback to the service's serve command
 - verify: count(subject="web walkthrough runtime-contract detections", equals=1)
-- does: creates the build worklist and in-book screenshots directory when a web app is detected
+- does: creates the build worklist when a web app is detected and the worklist is absent
+- verify: created(subject="web walkthrough build worklist")
+- does: ensures the in-book screenshots directory exists when a web app is detected
 - verify: persists(subject="web walkthrough screenshot directory")
 - returns: a `WebApp` containing launch, health, identity, teardown, worklist, screenshots, and CDP settings
 - verify: json_path(path="$.cdp_url", equals="http://127.0.0.1:9222")

@@ -22,6 +22,7 @@ It is an **ABC, not a `Protocol`**: a backend is a plugin point with real shared
 method should fail loudly at construction rather than silently satisfy a structural check.
 
 - code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend`
+- detail: [AgentBackend documentation scope](agent-backend-documentation-scope.md)
 
 The contract is exercised by `workhorse/tests/test_backends.py::test_non_claude_backends_registered`
 and `workhorse/tests/test_config_harness_env.py::test_every_backend_forwards_its_own_table`.
@@ -125,6 +126,7 @@ Selected at runtime by [`get_backend`](get-backend.md), which
 - semantics: harness name used in logs, errors, and harness configuration lookup
 - verify: json_path(path="$.name", matches="^[a-z]+$")
 - code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend`
+- detail: [AgentBackend attribute overrides](agent-backend-attribute-overrides.md)
 
 ### default_model
 - type: `str | None`
@@ -135,6 +137,7 @@ Selected at runtime by [`get_backend`](get-backend.md), which
 - semantics: `None` delegates model selection to the CLI
 - verify: json_path(path="$.default_model", absent=true)
 - code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend`
+- detail: [AgentBackend attribute overrides](agent-backend-attribute-overrides.md)
 
 ### supports_compaction
 - type: `bool`
@@ -143,6 +146,7 @@ Selected at runtime by [`get_backend`](get-backend.md), which
 - semantics: whether the backend can compact the current session in place before a retry
 - verify: json_path(path="$.supports_compaction", equals=false)
 - code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend`
+- detail: [AgentBackend attribute overrides](agent-backend-attribute-overrides.md)
 
 ## Methods
 

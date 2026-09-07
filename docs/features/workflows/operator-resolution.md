@@ -19,6 +19,7 @@ steps were attempted before the workflow awaits an operator.
 - semantics: confirms the resolver did not make an unsupported product or scope decision
 - verify: json_path(path="$.decision", equals="escalated")
 - code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::OperatorResolution`
+- detail: [operator resolution field roles](concepts/operator-resolution-field-roles.md)
 
 ### notes
 - type: string
@@ -26,11 +27,13 @@ steps were attempted before the workflow awaits an operator.
 - semantics: diagnostic explanation presented with the operator gate
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::OperatorResolution`
+- detail: [operator resolution field roles](concepts/operator-resolution-field-roles.md)
 
 ### tried
 - type: list of strings
 - default: empty list
 - required: true
 - semantics: diagnostic actions completed before escalation
-- verify: json_path(path="$.tried", equals=[])
+- verify: count(subject="$.tried", equals=0)
 - code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::OperatorResolution`
+- detail: [operator resolution field roles](concepts/operator-resolution-field-roles.md)

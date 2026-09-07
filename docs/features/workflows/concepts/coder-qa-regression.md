@@ -54,7 +54,7 @@ book's verification index for diagnosis only.
 - does: asks the shared gate-command resolver for the service's `regression` declaration and omits services with no command
 - verify: count(subject="declared regression command selections", equals=1)
 - returns: a `RegressionSuites` containing one `RegressionSuite` per touched service with a declared command, its `<repo path>::<service path>` label, absolute working directory, and command
-- verify: json_path(path="$.suites", absent=false)
+- verify: count(subject="resolved regression suites", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::detect_regression_suites`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_failing_journey_suite_is_fixed_and_the_story_is_re_qad`
 
@@ -73,13 +73,13 @@ book's verification index for diagnosis only.
 - does: classifies a missing service directory or unstartable declared command as `error`
 - verify: json_path(path="$.status", equals="error")
 - does: classifies other non-zero exits as `failed` and records parsed failing test paths and names, or the output tail when individual failures cannot be parsed
-- verify: json_path(path="$.failing_tests", absent=false)
+- verify: json_path(path="$.failing_tests[0]", matches="^.+: .+$")
 - does: writes combined standard output and error to a sanitized per-service QA log when `qa_dir` is supplied, without changing the verdict if the log cannot be written
 - verify: created(subject="regression suite output log")
 - does: merges multiple service results by worst status precedence while retaining all failing tests, log paths, and notes
 - verify: count(subject="merged regression suite results", equals=1)
 - does: attributes each failed test to verification-index owners as `impacted`, `outside-impact`, or `unattributed` without changing the suite status
-- verify: json_path(path="$.failure_attribution", absent=false)
+- verify: json_path(path="$.failure_attribution[0].classification", matches="^(impacted|outside-impact|unattributed)$")
 - returns: a `RegressionRun` carrying one of `passed`, `failed`, `blocked`, `skipped`, or `error`, failure details, persisted log paths, notes, and optional verification-index attribution
 - verify: json_path(path="$.notes", matches=".+")
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::run_regression_suite`

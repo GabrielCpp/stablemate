@@ -24,6 +24,7 @@ through the operator-awaiting path.
 - semantics: selects successful milestone authoring or operator blocking
 - verify: json_path(path="$.status", equals="complete")
 - code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneResult`
+- detail: [milestone result fields](concepts/milestone-result-fields.md)
 
 ### notes
 - type: string
@@ -32,3 +33,4 @@ through the operator-awaiting path.
 - semantics: describes the created or reused milestone, or explains the blocking question
 - verify: json_path(path="$.notes", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneResult`
+- detail: [milestone result fields](concepts/milestone-result-fields.md)

@@ -35,6 +35,7 @@ tests to enforce agent-facing field prose.
 - does: obtains the supplied model's JSON schema
 - verify: count(subject="schema JSON schema generation", equals=1)
 - does: removes generated titles from object and field schemas while retaining descriptions attached to fields
+- verify: removed(subject="generated title metadata from the rendered schema")
 - verify: count(subject="pruned rendered schema metadata", equals=1)
 - does: serializes the pruned schema as indented UTF-8 JSON with two-space indentation
 - verify: count(subject="indented rendered schema bodies", equals=1)
@@ -64,8 +65,10 @@ tests to enforce agent-facing field prose.
 ### _pruned
 - sig: `_pruned(value: Any) -> Any`
 - does: recursively copies dictionaries and lists while removing `title` from every dictionary
+- verify: removed(subject="title metadata from the rendered schema")
 - verify: count(subject="schema title metadata removed", equals=1)
 - does: additionally removes `description` only from dictionaries that contain `properties`, preserving property-level descriptions
+- verify: removed(subject="object-level descriptions from the rendered schema")
 - verify: count(subject="object-level schema descriptions removed", equals=1)
 - returns: the recursively pruned value, leaving scalar values unchanged
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::_pruned`

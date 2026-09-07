@@ -61,6 +61,8 @@ produces an all-blank result for standalone execution, including an empty story 
 - type: `str`
 - default: empty string
 - required: false
-- semantics: minted story identity used for commit trailers; empty when the story has no minted id
-- verify: json_path(path="$.story_id", matches=".*")
+- semantics: minted story identity used for commit trailers
+- verify: json_path(path="$.story_id", matches=".+")
+- semantics: empty when the story has no minted id
+- verify: json_path(path="$.story_id", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths.story_id`

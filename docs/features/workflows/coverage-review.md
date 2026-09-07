@@ -20,6 +20,7 @@ validation.
 - semantics: selects receipt recording, operator resolution, or story rework
 - verify: json_path(path="$.status", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview`
+- detail: [coverage review response fields](concepts/coverage-review-response-fields.md)
 
 ### notes
 - type: string
@@ -28,3 +29,4 @@ validation.
 - semantics: review findings passed to story splitting or the operator context
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview`
+- detail: [coverage review response fields](concepts/coverage-review-response-fields.md)

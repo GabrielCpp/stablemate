@@ -7,6 +7,8 @@ title: Progress push payload
 
 Progress push payload is the JSON request body accepted by the [receive progress push](http/groom.md#receive-progress-push) invocation on the [groom server](http/groom.md). It is produced by the residual HTTP progress path through the [sidecar residual HTTP push helper](concepts/sidecar-residual-http-push-helper.md), described in [sidecar protocol](sidecar-protocol.md), and updates one [workflow container](concepts/workflow-container.md) in the [workflow registry](concepts/workflow-registry.md) to [workflow state](concepts/workflow-state.md) `running` after the [push-first volume metadata resolver](concepts/push-first-volume-metadata-resolver.md) has had a chance to hydrate volume metadata. It is the residual HTTP counterpart of the websocket [sidecar progress applier](concepts/sidecar-progress-applier.md): both carry a current-node liveness delta and neither clears gates or terminal metadata.
 
+The residual helper in `groom/groom/sidecar.py::_push` makes a synchronous HTTP call using `GROOM_PUSH_TIMEOUT`, which defaults to `1.0` seconds. It suppresses connection, response-open, response-close, and other unexpected failures, so callers receive no reporting error; the call can still wait until its configured timeout.
+
 - file: not an on-disk artifact; this is a best-effort HTTP JSON request body for `POST /push/progress`.
 - code: groom/groom/app.py::push_progress
 - code: groom/groom/sidecar.py::push_progress
@@ -24,7 +26,6 @@ Progress push payload is the JSON request body accepted by the [receive progress
 - producer identity: first-party residual pushes include `container_id`, `name`, `repo_name`, and `repo_branch` before the explicit `current_node` field is merged; explicit event payload keys win on collision, though the current progress wrapper supplies only `current_node`.
 - producer endpoint: the sidecar posts the serialized JSON object to `http://{GROOM_HOST}:{GROOM_PORT}/push/progress`, where `GROOM_HOST` defaults to `host.docker.internal` and `GROOM_PORT` defaults to `8787`.
 - producer transport: the first-party sidecar serializes the merged object as UTF-8 JSON, declares `Content-Type: application/json`, performs exactly one HTTP `POST` attempt, closes the response object when a response is opened, ignores the response body, and performs no command-line output for this notice path.
-- producer timeout: the sidecar uses `GROOM_PUSH_TIMEOUT` seconds for the HTTP call, defaulting to `1.0`; connection failures, HTTP-open failures, response-close failures, and unexpected exceptions are ignored so progress reporting never blocks or changes workflow execution.
 - consumer: the progress-push endpoint accepts the parsed JSON object and ignores fields other than `container_id`, `name`, `repo_name`, `repo_branch`, and `current_node`.
 - object rule: no envelope, nested object, ordered field layout, route parameter, query parameter, cookie, authentication token, or required request header participates in this payload contract beyond the JSON body being parsed for object-style key lookup.
 - id normalization: `container_id` is read with missing default `""`, converted to text, and truncated to 12 characters before any state lookup or mutation.

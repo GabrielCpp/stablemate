@@ -30,11 +30,17 @@ resync path are not two renderers that can drift apart, and the first frame a fr
 tab receives is byte-identical to the body a recovering tab polls.
 
 - start: an operator invokes `groom serve` on a trusted host with a parseable
-  host and port. The groom process has not yet accepted dashboard requests for
-  this run; its process-local [workflow registry](../concepts/workflow-registry.md)
-  starts empty, and the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md)
+  host and port.
+- verify: json_path(path="start.command", equals="groom serve")
+- start: the groom process has not yet accepted dashboard requests for this run.
+- verify: count(subject="dashboard requests accepted before startup", equals=0)
+- start: its process-local [workflow registry](../concepts/workflow-registry.md)
+  starts empty.
+- verify: count(subject="workflow registry entries at startup", equals=0)
+- start: the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md)
   starts `True` so an initially empty fleet renders as discovery in progress
   rather than as a finished, empty answer.
+- verify: json_path(path="dashboard discovery scanning flag at startup", equals=true)
 - steps:
   1. [`groom serve`](../groom-cli.md#serve) validates the parsed command shape,
      optionally warns when the selected bind host is non-loopback and the
@@ -127,20 +133,28 @@ tab receives is byte-identical to the body a recovering tab polls.
       what lets the browser read silence as a dead connection rather than as a
       quiet fleet, and hand the tab to the
       [resync poller](../concepts/dashboard-resync-poller.md) when it does.
-- end: the server is running with the dashboard route table available and all
-  three startup hooks scheduled; at least one browser tab can hold a live `/ws`
-  session and is showing a connection phase derived from message recency; the
-  startup discovery task has either completed reconciliation or failed after
-  clearing the scanning flag; and the visible runs list and status bar are
-  projected from the current process-local workflow registry through the state
-  payload. The process remains unauthenticated and single-process, with no durable
-  persistence of the workflow registry, the connected clients, their run
-  subscriptions, or the scanning flag beyond process memory.
-- verify: emitted(event="dashboard state payload", count=1)
-- verify: json_path(path="scanning", equals=false)
-- verify: visible(locator="#runs-list")
-- verify: visible(locator="#statusbar")
+- end: the server is running with the dashboard route table available
+- end: all three startup hooks are scheduled
+- end: at least one browser tab can hold a live `/ws` session
 - verify: visible(locator="[data-conn]", text="live")
+- end: the browser tab shows a connection phase derived from message recency
+- end: the startup discovery task has either completed reconciliation or failed after clearing the scanning flag
+- verify: json_path(path="scanning", equals=false)
+- end: the visible runs list is projected from the current process-local workflow registry through the state payload
+- verify: visible(locator="#runs-list")
+- end: the status bar is projected from the current process-local workflow registry through the state payload
+- verify: visible(locator="#statusbar")
+- end: the state payload is emitted to the browser
+- verify: emitted(event="dashboard state payload", count=1)
+- end: the process remains unauthenticated
+- end: the process remains single-process
+- end: the workflow registry has no durable persistence beyond process memory
+- end: the connected clients have no durable persistence beyond process memory
+- end: the run subscriptions have no durable persistence beyond process memory
+- end: the scanning flag has no durable persistence beyond process memory
+- detail: [dashboard shell broadcast contexts](../concepts/dashboard-shell-broadcast-contexts.md)
+- detail: [application factory usage](../concepts/application-factory-usage.md)
+- detail: [dashboard websocket flow contexts](../concepts/dashboard-websocket-flow-contexts.md)
 - tests: groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes,
   groom/tests/test_app.py::test_background_scan_clears_scanning_on_error,
   groom/tests/test_app.py::test_the_clock_refreshes_every_open_pane_alongside_the_fleet,

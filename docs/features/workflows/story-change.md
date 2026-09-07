@@ -18,6 +18,7 @@ One projected story mutation in an epic edit plan.
 - semantics: structural operation applied to the story
 - verify: json_path(path="$.action", equals="add")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange`
+- detail: [story change field roles](concepts/story-change-field-roles.md)
 ### slug
 - type: string
 - default: empty string
@@ -25,6 +26,7 @@ One projected story mutation in an epic edit plan.
 - semantics: story identifier
 - verify: json_path(path="$.slug", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange`
+- detail: [story change field roles](concepts/story-change-field-roles.md)
 ### title
 - type: string
 - default: empty string
@@ -32,20 +34,23 @@ One projected story mutation in an epic edit plan.
 - semantics: resulting story title
 - verify: json_path(path="$.title", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange`
+- detail: [story change field roles](concepts/story-change-field-roles.md)
 ### covers
 - type: list of strings
 - default: empty list
 - required: false
 - semantics: seed identifiers covered by the resulting story
-- verify: json_path(path="$.covers", equals=[])
+- verify: json_path(path="$.covers", matches="^\\[\\]$")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange`
+- detail: [story change field roles](concepts/story-change-field-roles.md)
 ### depends
 - type: list of strings
 - default: empty list
 - required: false
 - semantics: resulting story dependencies
-- verify: json_path(path="$.depends", equals=[])
+- verify: json_path(path="$.depends", matches="^\\[\\]$")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange`
+- detail: [story change field roles](concepts/story-change-field-roles.md)
 ### rewrite
 - type: boolean
 - default: false
@@ -53,3 +58,4 @@ One projected story mutation in an epic edit plan.
 - semantics: whether the story body must be rewritten after graph application
 - verify: json_path(path="$.rewrite", equals=False)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange`
+- detail: [story change field roles](concepts/story-change-field-roles.md)

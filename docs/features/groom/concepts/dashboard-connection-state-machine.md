@@ -86,6 +86,7 @@ The rule is a pure function of observations, so it can be asserted against synth
 - sig: `deriveConnection(obs) -> {phase, resyncing}`
 - abstract: false
 - raises: none.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/assets/dashboard.js::deriveConnection
 - step: If the socket is open, compute silence as `now - lastMessageTs`.
 - step: Silence within `STALE_AFTER_MS` → `{phase: "live", resyncing: false}`.
@@ -98,6 +99,7 @@ The rule is a pure function of observations, so it can be asserted against synth
 - sig: `backoffDelay(attempt) -> number`
 - abstract: false
 - raises: none.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/assets/dashboard.js::backoffDelay
 - step: Return `min(BACKOFF_MAX_MS, BACKOFF_BASE_MS × 2^attempt)`.
 
@@ -106,6 +108,7 @@ The rule is a pure function of observations, so it can be asserted against synth
 - sig: `evaluateConnection() -> void`
 - abstract: false
 - raises: none.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/assets/dashboard.js::evaluateConnection
 - step: Build an observation from wall time and the connection singleton's open flag, last-message timestamp, and closed-since timestamp.
 - step: Derive the next phase.

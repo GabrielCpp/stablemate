@@ -18,6 +18,7 @@ The result is the structured reply returned by the split and rework agent turns.
 - semantics: whether the agent completed the requested split or cannot proceed
 - verify: json_path(path="$.status", equals="complete")
 - code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitResult`
+- detail: [epic split result field roles](concepts/epic-split-result-field-roles.md)
 
 ### notes
 - type: string
@@ -25,3 +26,4 @@ The result is the structured reply returned by the split and rework agent turns.
 - semantics: agent explanation passed to review or operator resolution
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitResult`
+- detail: [epic split result field roles](concepts/epic-split-result-field-roles.md)

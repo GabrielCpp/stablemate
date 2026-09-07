@@ -82,6 +82,7 @@ that is parsed into container ids.
 - returns: `None` when Docker exits non-zero.
 - verify: absent(subject="returned container-id set")
 - code: groom/groom/docker_io.py::list_container_ids
+- detail: [Docker container-id listing documentation scope](docker-container-id-listing-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_short_id_set
 - tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_none_on_docker_failure
 - tests: groom/tests/test_docker_io.py::test_list_container_ids_empty_when_no_containers

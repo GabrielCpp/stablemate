@@ -15,6 +15,7 @@ Nothing in this format is markup. Every value is a string or an integer, and the
 - code: groom/groom/projection.py::repo_entries
 - code: groom/groom/assets/dashboard.js::repoItems
 - code: groom/groom/assets/dashboard.js::RepoMenu
+- detail: [repository picker item projection](concepts/repository-picker-item-projection.md)
 - tests: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
   groom/tests/test_app.py::test_repos_endpoint_reads_native_run_from_local_disk,
   groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container,
@@ -26,7 +27,8 @@ Nothing in this format is markup. Every value is a string or an integer, and the
 - producer: [serve repository menu](http/groom.md#serve-repository-menu) filters the process-local workflow registry to workflows with a known workspace, enumerates each one's checkouts concurrently, and hands the resulting pairs to the projection.
 - media: `application/json`. A list of group objects — the top level is a list, not an object, because there is nothing fleet-wide to say alongside it.
 - source snapshot: the endpoint reads the workflow registry once for the request; later registry changes do not mutate an already-returned menu. The picker is re-fetched every time it opens, which is how it stays current without a subscription.
-- pull only: this shape is never pushed. It costs one checkout enumeration per container, so sending it on every fleet tick would spend that on every tab whether or not the picker was open.
+- consistency: repository menu data is never sent in dashboard WebSocket frames.
+- verify: omits(subject="captured dashboard WebSocket frames", matches="\"groups\"\\s*:")
 - eligibility: a workflow contributes a group only when its `workspace_volume` field is non-empty. A workflow whose workspace is unknown has nothing browsable, so it is absent rather than present-and-empty.
 - reader selection: a native workflow's checkouts are enumerated straight from local disk; every other workflow's are enumerated through a throwaway read-only Docker container. Both return the same list of volume-relative directories, which is why the group shape does not record which ran.
 - checkout discovery: each eligible workflow's checkout list is resolved independently and concurrently; no eligible workflow skips discovery.
@@ -37,6 +39,8 @@ Nothing in this format is markup. Every value is a string or an integer, and the
 - filtering: the picker's search box filters entries client-side by case-insensitive substring over `label`. The server does not receive the query, because the menu is already in the tab.
 - no escaping: values are JSON data set as text or as attribute values by Preact. There is no HTML-escaping step anywhere on this path, because nothing here becomes markup.
 - side effects: building this data never mutates workflow state, writes workspace files, contacts sidecar sockets, broadcasts websocket updates, reads file contents, or computes diffs.
+
+The picker fetches this shape from `GET /repos` in `groom/groom/assets/dashboard.js::openRepoMenu`; its WebSocket dispatcher handles state, run, detail, notification, and answer frames instead. Each fetch enumerates one workspace per eligible container, so the on-demand pull avoids doing that work for tabs whose picker is closed.
 
 ## Fields
 
@@ -124,7 +128,11 @@ Nothing in this format is markup. Every value is a string or an integer, and the
 
 - sig: `repo_entries(entries: list[tuple[WorkflowContainer, list[str]]]) -> list[dict[str, Any]]`
 - abstract: false
-- raises: none intentionally; a workflow state outside the known set would fail the sort's state lookup.
+- raises: none intentionally for a known workflow state and any checkout list.
+- verify: json_path(path="exception", absent=true)
+- raises: `KeyError` when a workflow state is outside the known set.
+- verify: json_path(path="exception.type", equals="KeyError")
+- returns: the sorted repository menu group list, with one group per input workflow container.
 - verify: count(subject="repository menu groups", equals=2)
 - code: groom/groom/projection.py::repo_entries
 - tests: groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container,
@@ -143,15 +151,18 @@ Nothing in this format is markup. Every value is a string or an integer, and the
 
 - sig: `async repos() -> list[dict]`
 - abstract: false
-- raises: no endpoint-specific exception for an empty fleet or a workflow with no discoverable checkout; discovery process-launch and timeout exceptions can propagate.
+- raises: no endpoint-specific exception for an empty fleet or a workflow with no discoverable checkout.
+- verify: json_path(path="exception", absent=true)
 - verify: count(subject="repository menu groups", equals=1)
+- raises: discovery process-launch and timeout exceptions can propagate.
+- verify: json_path(path="exception.type", matches="^(OSError|TimeoutExpired)$")
 - code: groom/groom/app.py::repos
 - tests: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
   groom/tests/test_app.py::test_repos_endpoint_reads_native_run_from_local_disk
 - input: none; the handler reads the process-local workflow registry.
 - output: [field-groups](#field-groups), serialized as the JSON response body.
 - effects: reads workflow registry state and launches one read-only checkout enumeration per eligible workflow, on worker threads; it mutates nothing.
-- concurrency: enumerations run concurrently rather than in sequence, because each is an independent throwaway process and a serial fleet-sized loop would make opening the picker feel like a page load.
+- concurrency: repository-enumeration — enumerations run concurrently rather than in sequence, because each is an independent throwaway process and a serial fleet-sized loop would make opening the picker feel like a page load.
 - calls: the local-filesystem or Docker-volume [workspace volume repository-directory reader](concepts/workspace-volume-repository-directory-reader.md) per workflow, then [method-repo-entries](#method-repo-entries).
 - algorithm:
   1. Take the fleet snapshot and keep only workflows with a non-empty workspace volume.

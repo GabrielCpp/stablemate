@@ -19,6 +19,7 @@ The result of stamping an inventory unit from its finding record.
 - semantics: whether the matching inventory entry was written
 - verify: json_path(path="$.marked", equals=false)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::MarkResult`
+- detail: [mark result field roles](concepts/mark-result-field-roles.md)
 
 ### unit_status
 - type: string
@@ -27,6 +28,7 @@ The result of stamping an inventory unit from its finding record.
 - semantics: status read from or assigned to the finding record
 - verify: json_path(path="$.unit_status", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::MarkResult`
+- detail: [mark result field roles](concepts/mark-result-field-roles.md)
 
 ### mark_note
 - type: string
@@ -35,3 +37,4 @@ The result of stamping an inventory unit from its finding record.
 - semantics: diagnostic or outcome note for the mark operation
 - verify: json_path(path="$.mark_note", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::MarkResult`
+- detail: [mark result field roles](concepts/mark-result-field-roles.md)

@@ -33,6 +33,7 @@ do not end a wait. `answer` is persisted by the gate consumer before it is ackno
 - semantics: unknown verbs are declined by the consumer
 - verify: count(subject="unknown action requests declined by the consumer", equals=1)
 - code: `workhorse/workhorse/control.py::Request`
+- detail: [request field selection](request-field-selection.md)
 
 ### core
 - type: boolean
@@ -41,6 +42,7 @@ do not end a wait. `answer` is persisted by the gate consumer before it is ackno
 - semantics: reload workhorse itself as well as the workflow package
 - verify: json_path(path="$.core", equals=false)
 - code: `workhorse/workhorse/control.py::Request`
+- detail: [request field selection](request-field-selection.md)
 
 ### at_boundary
 - type: boolean
@@ -49,6 +51,7 @@ do not end a wait. `answer` is persisted by the gate consumer before it is ackno
 - semantics: defer reload until the next state boundary instead of cutting the active turn
 - verify: json_path(path="$.at_boundary", equals=false)
 - code: `workhorse/workhorse/control.py::Request`
+- detail: [request field selection](request-field-selection.md)
 
 ### cli
 - type: string
@@ -59,6 +62,7 @@ do not end a wait. `answer` is persisted by the gate consumer before it is ackno
 - semantics: empty means retain the current CLI
 - verify: json_path(path="$.cli", equals="")
 - code: `workhorse/workhorse/control.py::Request`
+- detail: [request field selection](request-field-selection.md)
 
 ### profile
 - type: string
@@ -67,6 +71,7 @@ do not end a wait. `answer` is persisted by the gate consumer before it is ackno
 - semantics: named model profile to apply from the next turn
 - verify: json_path(path="$.profile", equals="")
 - code: `workhorse/workhorse/control.py::Request`
+- detail: [request field selection](request-field-selection.md)
 
 ### path
 - type: string
@@ -75,6 +80,7 @@ do not end a wait. `answer` is persisted by the gate consumer before it is ackno
 - semantics: absolute operator-gate path targeted by an answer
 - verify: json_path(path="$.path", equals="")
 - code: `workhorse/workhorse/control.py::Request`
+- detail: [request field selection](request-field-selection.md)
 
 ### body
 - type: string
@@ -83,6 +89,7 @@ do not end a wait. `answer` is persisted by the gate consumer before it is ackno
 - semantics: operator prose delivered as an answer
 - verify: json_path(path="$.body", equals="")
 - code: `workhorse/workhorse/control.py::Request`
+- detail: [request field selection](request-field-selection.md)
 
 ### requested_at
 - type: string
@@ -91,6 +98,7 @@ do not end a wait. `answer` is persisted by the gate consumer before it is ackno
 - semantics: timestamp attached to the wire request
 - verify: json_path(path="$.requested_at", matches=".+")
 - code: `workhorse/workhorse/control.py::Request`
+- detail: [request field selection](request-field-selection.md)
 
 ## Methods
 

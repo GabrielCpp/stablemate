@@ -19,6 +19,7 @@ The result of replacing an oversized folder unit with eligible immediate childre
 - semantics: whether the folder was replaced successfully
 - verify: json_path(path="$.split_ok", equals=false)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult`
+- detail: [survey split result field roles](concepts/survey-split-result-field-roles.md)
 
 ### children_count
 - type: integer
@@ -27,6 +28,7 @@ The result of replacing an oversized folder unit with eligible immediate childre
 - semantics: number of child units inserted by the split
 - verify: json_path(path="$.children_count", equals=0)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult`
+- detail: [survey split result field roles](concepts/survey-split-result-field-roles.md)
 
 ### split_errors
 - type: string
@@ -35,3 +37,4 @@ The result of replacing an oversized folder unit with eligible immediate childre
 - semantics: diagnostic reason the split could not be performed
 - verify: json_path(path="$.split_errors", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult`
+- detail: [survey split result field roles](concepts/survey-split-result-field-roles.md)

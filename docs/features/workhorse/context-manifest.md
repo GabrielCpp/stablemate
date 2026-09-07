@@ -57,7 +57,9 @@ either way, never a silent empty manifest.
 ### field: template
 - type: `map<string, any>`
 - default: `{}`
+- verify: json_path(path="$.template", matches="^\\{\\}$")
 - required: false
+- verify: json_path(path="$.template", absent=true)
 
 Arbitrary key/value pairs from the repo's farrier `agents.yml` (`vars:`/`template:` blocks,
 merged). Copied into the run's starting context verbatim under the `template` key, so a library
@@ -66,7 +68,9 @@ prompt reads `{{ template.<key> }}`.
 ### field: repo
 - type: `map<string, any>`
 - default: `{}`
+- verify: json_path(path="$.repo", matches="^\\{\\}$")
 - required: false
+- verify: json_path(path="$.repo", absent=true)
 
 Repo identity/metadata from `agents.yml`'s `repo:` block, plus `name` (defaults to the repo dir
 name), `prefix` (the farrier install prefix), and `root` — pinned to the literal string `"."` in
@@ -77,7 +81,9 @@ into context verbatim under the `repo` key (`{{ repo.<key> }}`).
 ### field: vars
 - type: `map<string, any>`
 - default: `{}`
+- verify: json_path(path="$.vars", matches="^\\{\\}$")
 - required: false
+- verify: json_path(path="$.vars", absent=true)
 
 The same value as [`template`](#field-template) — farrier writes both keys so a prompt can use whichever
 name it prefers. Copied into context verbatim under the `vars` key (`{{ vars.<key> }}`); distinct
@@ -87,7 +93,9 @@ from — and unrelated to — a workflow's own `vars:` block or [`run`](workhors
 ### field: instructions
 - type: `map<string, string>`
 - default: `{}`
+- verify: json_path(path="$.instructions", matches="^\\{\\}$")
 - required: false
+- verify: json_path(path="$.instructions", absent=true)
 
 Selected-skill id → repo-root-relative path to that skill's **installed** file for the target
 backend (e.g. `.claude/skills/acme-coder-workflow/SKILL.md`). Stashed under the reserved context
@@ -98,7 +106,9 @@ not in the map.
 ### field: instruction_tags
 - type: `map<string, list<string>>`
 - default: `{}`
+- verify: json_path(path="$.instruction_tags", matches="^\\{\\}$")
 - required: false
+- verify: json_path(path="$.instruction_tags", absent=true)
 
 Selected-skill id → the tags that skill's front matter declares (`tags: [web, tests]`), lowercased.
 Keyed by the same alias names as [`instructions`](#field-instructions), so a matched name resolves
@@ -112,7 +122,9 @@ farrier has no such key, and every tag query on it matches nothing.
 ### field: prompts
 - type: `map<string, string>`
 - default: `{}`
+- verify: json_path(path="$.prompts", matches="^\\{\\}$")
 - required: false
+- verify: json_path(path="$.prompts", absent=true)
 
 Selected-prompt id → repo-root-relative path to that prompt's installed file. Stashed under the
 reserved context key `_prompts`; read by the `prompt_ref`/`prompt_file` Jinja helpers (same
@@ -121,7 +133,9 @@ placeholder fallback as [`instructions`](#field-instructions)).
 ### field: used_skills
 - type: `list<string>`
 - default: `[]`
+- verify: count(subject="used_skills", equals=0)
 - required: false
+- verify: json_path(path="$.used_skills", absent=true)
 
 The sorted set of skill ids selected for this repo. Stashed under the reserved context key
 `_used_skills`; read by the `isUsingInstruction(name)` Jinja helper (`name in used_skills`), which
@@ -130,7 +144,9 @@ lets a prompt conditionally include a section only when that skill was actually 
 ### field: skill_dir
 - type: `string`
 - default: `""`
+- verify: json_path(path="$.skill_dir", equals="")
 - required: false
+- verify: json_path(path="$.skill_dir", absent=true)
 
 Repo-root-relative directory the manifest's own skills were installed under (e.g.
 `.claude/skills`). Stashed under the reserved context key `_skill_dir`; read by the `skill_dir()`

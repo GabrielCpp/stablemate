@@ -20,6 +20,7 @@ notes carry the turn's explanation to validation, rework, or an operator gate.
 - semantics: outcome used to route story writing
 - verify: json_path(path="$.status", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteStoryResult`
+- detail: [write story result field roles](concepts/write-story-result-field-roles.md)
 
 ### notes
 - type: string
@@ -28,3 +29,4 @@ notes carry the turn's explanation to validation, rework, or an operator gate.
 - semantics: writer explanation passed to the next branch or gate
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteStoryResult`
+- detail: [write story result field roles](concepts/write-story-result-field-roles.md)

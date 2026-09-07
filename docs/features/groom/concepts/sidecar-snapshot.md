@@ -30,12 +30,13 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
 - current node: reads [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md)
   from the latest available run directory and maps a present `current_id` value
   unchanged to snapshot `current_node`; missing run directories, missing
-  checkpoints, unreadable checkpoints, malformed JSON, and absent `current_id`
-  values all become `""`.
-- source shape: the run checkpoint and run metadata readers expect parsed JSON
-  objects; JSON arrays, strings, numbers, booleans, or null are outside the
-  accepted source shape and can escape as ordinary attribute errors from those
-  helpers rather than being normalized.
+  checkpoints, `OSError` during checkpoint reading or parsing, malformed JSON,
+  and absent `current_id` values all become `""`. Invalid UTF-8 checkpoint bytes
+  raise `UnicodeDecodeError` instead of returning an empty current node.
+- source shape: parseable non-object checkpoint JSON (arrays, strings, numbers,
+  booleans, or null) yields an empty current node. The run metadata reader expects
+  a JSON object; non-object metadata can escape as an ordinary attribute error
+  rather than being normalized.
 - ordering: reads current node first, terminal state second, and open gates third;
   each value reflects the filesystem state observed by its own read path rather
   than a transactionally consistent snapshot across both mounts.
@@ -49,13 +50,15 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
 - freshness: intended for reconnect/one-shot reconciliation; the returned object
   is current at read time and carries no subscription, cursor, timestamp, or
   durable identity.
-- error handling: read and JSON errors inside the delegated readers are absorbed
-  by those readers and represented as empty fields; the aggregator itself adds no
-  additional exception handling.
+- error handling: the current-node reader normalizes `OSError` from checkpoint
+  reading or parsing and malformed JSON to an empty field, but `UnicodeDecodeError`
+  propagates through the snapshot call. Other delegated errors follow each reader's
+  own normalization contract; the aggregator adds no exception handling.
 
 ## Algorithm
 
-1. Read the current workflow graph node from the latest run checkpoint.
+1. Read the current workflow graph node from the latest run checkpoint, normalizing
+   checkpoint read/parse `OSError` to `""`; `UnicodeDecodeError` aborts the call.
 2. Read the terminal workflow state from the latest run metadata.
 3. Sweep the workspace for every currently awaiting operator gate.
 4. Return a dictionary containing those three results under the fixed keys
@@ -67,7 +70,8 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
   directory in the configured runs mount, or `None` when the mount is absent or
   empty.
 - `_current_node() -> str` returns the latest run checkpoint's raw `current_id`
-  value, normally a graph-node string, or `""` when no checkpoint can supply one.
+  value, normally a graph-node string, or `""` for missing checkpoints, checkpoint
+  read/parse `OSError`, or normalized parse failures. `UnicodeDecodeError` propagates.
 - `_terminal() -> str` returns the latest run's truthy terminal-state value, or
   `""` when the run has not finished or no readable [sidecar run
   metadata](../sidecar-run-metadata.md) exists.
@@ -100,7 +104,8 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
   [method-_terminal](#method-_terminal), and
   [method-scan_gates](#method-scan_gates), in that order.
 - algorithm:
-  1. Read the latest current graph-node id with [method-_current_node](#method-_current_node).
+  1. Read the latest current graph-node id with [method-_current_node](#method-_current_node);
+     `UnicodeDecodeError` propagates without reading terminal state or gates.
   2. Read the latest terminal-state marker with [method-_terminal](#method-_terminal).
   3. Sweep for awaiting gate entries with [method-scan_gates](#method-scan_gates).
   4. Return the three values under exactly the `current_node`, `terminal`, and
@@ -140,13 +145,19 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
 - sig: `_current_node() -> str`
 - abstract: false
 - verify: json_path(path="$.current_node", equals="write_story")
-- raises: none for missing runs, missing checkpoints, unreadable checkpoints, or
-  malformed checkpoint JSON; those cases return `""`.
+- raises: none for missing runs, missing checkpoints, `OSError` during checkpoint
+  reading or parsing, or malformed checkpoint JSON; those cases return `""`.
 - verify: json_path(path="$.current_node", equals="")
-- raises: a parseable non-object JSON value is outside the accepted checkpoint
-  shape and can raise instead of normalizing.
+- raises: none for a parseable non-object checkpoint JSON value (array, string,
+  number, boolean, or null), which returns `""`.
+- verify: json_path(path="$", equals="")
+- raises: `UnicodeDecodeError` propagates when checkpoint bytes cannot be decoded
+  as UTF-8; this failure does not return `""`.
 - code: groom/groom/sidecar.py::_current_node
 - tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
+- tests: groom/tests/test_checkpoints.py::test_malformed_or_wrongly_typed_position_is_empty
+- tests: paddock/data/tests/test_behavior_eval.py::test_current_node_normalizes_checkpoint_read_oserror
+- tests: paddock/data/tests/test_behavior_eval.py::test_postrepair_unmatched_decoding_failure_is_real
 - input: no call arguments; uses `method-_latest_run_dir` to find the latest run
   directory from the sidecar's configured runs mount.
 - output: current workhorse graph-node id from the latest [sidecar run checkpoint
@@ -160,11 +171,12 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
   2. Return `""` when no latest run directory exists.
   3. Select `checkpoint.json` inside that latest run directory.
   4. Return `""` when the checkpoint file is absent.
-  5. Read and parse the checkpoint as JSON.
+  5. Read and parse the checkpoint as JSON; `UnicodeDecodeError` propagates if
+     decoding fails.
   6. Return the parsed JSON object's `current_id` value unchanged when the key is
      present, including falsey or non-string JSON values.
-  7. Return `""` when the checkpoint cannot be read, cannot be parsed, or lacks
-     a `current_id` key.
+  7. Return `""` on `OSError` during checkpoint reading or parsing, malformed
+     JSON, a non-object JSON value, or an absent `current_id` key.
 
 ### method-_terminal
 

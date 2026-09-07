@@ -30,7 +30,8 @@ Reload decisions follow the [reload policy](concepts/reload-policy.md); gate fil
 [generic worklists](concepts/worklist.md) provide workflow-agnostic selection and progress
 summaries; and [packaged workflow directories](concepts/packaged-workflow.md) reject prompt
 packages that cannot be read from a real filesystem directory.
-CLI assembly and registry binding are specified by [CLI composition](concepts/cli-composition.md);
+CLI assembly and registry binding are specified by [CLI composition](concepts/cli-composition.md),
+and the package-root public API is [workhorse package exports](concepts/package-exports.md);
 workflow input merging is [parameter loading](concepts/workflow-parameter-loading.md), and the
 run boundary's library roots follow [CLI library resolution](concepts/cli-library-resolution.md).
 Run observation uses [OpenTelemetry instrumentation](concepts/telemetry-instrumentation.md),
@@ -42,6 +43,8 @@ The pyflow implementation contracts are [blueprints](concepts/pyflow-blueprints.
 [errors](concepts/pyflow-errors.md), [run invocation](concepts/pyflow-run.md), and
 [activity tracking](concepts/pyflow-activity.md).
 The complete executable test-module inventory is [test evidence](concepts/test-evidence-inventory.md).
+Engine contributors use the [local development runbook](ops/workhorse-local-development.md) for the
+package-local Make drivers.
 
 **Workhorse ships no executable.** It is a library, and the only command line it owns is
 the one a *workflow* binds: a distribution declares `workhorse-<name> =
@@ -241,6 +244,7 @@ still shows the subcommand listing.
       the state in flight, prints the `--resume-run` command, and exits `130`
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/run.py::add_arguments`
 - code: `workhorse/workhorse/cli/run.py::run`
 - code: `workhorse/workhorse/cli/run.py::invocation`
 - detail: [workflow parameter loading](concepts/workflow-parameter-loading.md)
@@ -289,6 +293,7 @@ coder pipeline executes before QA and again before commit.
 The state-source rule is described in the [state graph](concepts/pyflow-state-graph.md).
 - verify: exit_status(code=0)
 - code: `workhorse/workhorse/cli/dot.py::run`
+- code: `workhorse/workhorse/cli/dot.py::add_arguments`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`
 
 There are no `--pin`/`--leaf` flags. They collapsed a *declared* branch node into one
@@ -308,6 +313,7 @@ there is nothing declared to pin.
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
 - code: `workhorse/workhorse/cli/version.py::run`
+- code: `workhorse/workhorse/cli/version.py::add_arguments`
 
 ### control
 - usage: `workhorse-<name> control {reload,status,questions,answer,switch-cli,switch-profile} [NAME] [options]`

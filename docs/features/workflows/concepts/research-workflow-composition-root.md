@@ -47,6 +47,7 @@ previously concluded program requires explicit `reauthorize` during setup.
 - tests: `workflows/tests/research/test_workflow.py::test_a_gate_designed_built_measured_and_approved_drives_the_program_to_its_goal`
 - tests: `workflows/tests/research/test_workflow.py::test_the_checkpoint_carries_the_counters_an_operator_would_edit`
 - tests: `workflows/tests/research/test_workflow.py::test_a_resume_rebuilds_the_budget_from_the_checkpoint`
+- detail: [research workflow documentation boundaries](research-workflow-documentation-boundaries.md)
 
 ## Methods
 

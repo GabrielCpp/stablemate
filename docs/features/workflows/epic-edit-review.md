@@ -20,6 +20,7 @@ review proceeds; needs-rework and blocked statuses keep the edit from being appl
 - semantics: review disposition for the epic edit plan
 - verify: json_path(path="$.status", equals="needs_rework")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditReview`
+- detail: [epic edit review field roles](concepts/epic-edit-review-field-roles.md)
 
 ### notes
 - type: string
@@ -28,3 +29,4 @@ review proceeds; needs-rework and blocked statuses keep the edit from being appl
 - semantics: reviewer explanation accompanying the disposition
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditReview`
+- detail: [epic edit review field roles](concepts/epic-edit-review-field-roles.md)

@@ -5,13 +5,19 @@ title: Workflow prompt static contracts
 ---
 # Workflow prompt static contracts
 
-The shared static checks inspect every literal `self.agent(...)` call in the author, coder,
-OKF-builder, and research packages. For the coder package this means recursively walking every
+The prompt-path sweep inspects every literal `self.agent(...)` call in the `author`, `coder`,
+`hello_world`, `okf_builder`, and `research` packages. For the coder package this means recursively walking every
 Python module under `workhorse_workflows/coder`, including the main machine, every registered
 sub-flow, nested QA nodes, and operator gates, rather than only traversing the flow reachable from
 the default entry point. A sweep must find at least one applicable turn in every workflow;
 otherwise the checker treats a changed call shape or broken walker as a failure instead of passing
 vacuously.
+
+The sweep is source-based rather than runtime-based. It parses each packaged Python module,
+records the workflow name, source path, line number, and prompt expression for every matching
+`self.agent(...)` call, and checks the resulting collection as one parametrized set. This reaches
+turns hidden behind nested sub-flows or operator gates without requiring a run to enter those
+states.
 
 The prompt-file check resolves each call's first positional `prompt` argument or named `prompt`
 keyword. A conditional expression is expanded into all literal arms. A role envelope produced by
@@ -20,6 +26,13 @@ using the nearest preceding literal role assignment. This preserves the coder co
 sub-flow prompt paths are rooted at `coder/` while the prompt file remains beside the flow that
 renders it. An unresolved, computed, or f-string prompt is rejected. Every resulting path must be
 a file in the packaged workflow directory.
+
+The resolver expands a conditional prompt recursively, so both literal arms are checked. It also
+rewrites `turn.prompt` to the envelope path derived from the nearest preceding literal
+`roles.turn(self, ...)` assignment in the same source walk. A role assignment with a non-string
+or otherwise non-literal arm is not partially accepted. The final path is joined to the workflow
+package selected by `WORKFLOWS`, and `test_the_prompt_file_is_there` rejects both non-string AST
+expressions and missing files.
 
 The variable check parses each literal prompt with Jinja's parser and also recognizes literal
 arguments to `workhorse_var`. It compares those references with the union of argument keys passed
@@ -110,16 +123,11 @@ model. The corresponding sweep and shape checks are:
 - `workflows/tests/test_prompt_output_shape.py::_model_fields`
 - `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`
 
-`{{ result_schema }}` is generated from the declared result model and is therefore exempt from
-the hand-written-example comparison. Prompt variables inside a Jinja raw block are likewise not
-render-time references. Any turn arguments the static reader cannot resolve fail separately,
-rather than silently weakening the variable check. The same rule applies to the prompt-path
-resolver: a turn that cannot be reduced to a packaged literal is a finding, not an uncovered
-exception.
-
 - code: `workflows/tests/test_prompts_exist.py::_agent_prompts`
+- code: `workflows/tests/test_prompts_exist.py::_branches`
 - code: `workflows/tests/test_prompts_exist.py::_literalize`
 - code: `workflows/tests/test_prompts_exist.py::_roles_by_line`
+- code: `workflows/tests/test_prompts_exist.py::_sites`
 - code: `workflows/tests/test_prompt_variables.py::_turns`
 - code: `workflows/tests/test_prompt_variables.py::_keys_of_local`
 - code: `workflows/tests/test_prompt_variables.py::_keys_of_helper`
@@ -131,9 +139,199 @@ exception.
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.adjudicate`
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.recheck`
 - code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.walk`
-- code: `workflows/tests/test_prompts_exist.py::test_the_prompt_file_is_there`
-- code: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply`
-- code: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`
+- tests: `workflows/tests/test_prompts_exist.py::test_the_prompt_file_is_there`
+- tests: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply`
+- tests: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`
 - tests: `workflows/tests/test_prompts_exist.py::test_the_sweep_found_turns_in_every_workflow`
 - tests: `workflows/tests/test_prompt_variables.py::test_no_turn_is_unreadable`
 - tests: `workflows/tests/test_prompt_output_shape.py::test_the_sweep_found_turns_in_every_workflow`
+
+## Methods
+
+The prompt-variable test module implements the variable side of this contract with a deliberately
+limited AST resolver. It accepts only statically nameable argument shapes; an unreadable shape is a
+finding rather than a partial vocabulary that could produce a false missing-variable report.
+
+### _package_defs
+
+- sig: `_package_defs() -> dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]]`
+- code: `workflows/tests/test_prompt_variables.py::_package_defs`
+
+Indexes module-level synchronous and asynchronous function definitions across the installed
+workflow package. Methods are excluded so same-named methods in different lanes cannot be mistaken
+for importable helpers.
+
+### _dict_keys
+
+- sig: `_dict_keys(node: ast.Dict, spread: str | None, scope: ast.AST, module: ast.Module) -> set[str] | None`
+- code: `workflows/tests/test_prompt_variables.py::_dict_keys`
+
+Returns literal string keys from a dictionary expression, recursively resolving supported `**`
+expansions. It ignores the helper's declared `**kwargs` expansion and returns `None` when a key or
+expansion cannot be named statically.
+
+### _keys_of
+
+- sig: `_keys_of(node: ast.expr, scope: ast.AST, module: ast.Module) -> set[str] | None`
+- code: `workflows/tests/test_prompt_variables.py::_keys_of`
+
+Dispatches static argument-key resolution for dictionary literals, local dictionary names,
+instance helper calls, and imported module-level helper calls. Other expressions are unreadable.
+
+### _keys_of_local
+
+- sig: `_keys_of_local(name: str, scope: ast.AST, module: ast.Module) -> set[str] | None`
+- code: `workflows/tests/test_prompt_variables.py::_keys_of_local`
+
+Collects keys assigned to a local dictionary both at initialization and through literal-key
+subscript assignments. A computed assignment key or unreadable value makes the result unreadable.
+
+### _defs
+
+- sig: `_defs(name: str, module: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]`
+- code: `workflows/tests/test_prompt_variables.py::_defs`
+
+Uses definitions in the current module when present; otherwise returns the package-wide index for
+an imported helper. This local-first rule prevents an unrelated same-named helper from determining
+the call site's vocabulary.
+
+### _keys_of_helper
+
+- sig: `_keys_of_helper(name: str, call: ast.Call, module: ast.Module) -> set[str] | None`
+- code: `workflows/tests/test_prompt_variables.py::_keys_of_helper`
+
+Resolves a helper only when exactly one definition exists and every return is a dictionary literal,
+then adds the call's literal keyword names. Multiple definitions, missing returns, non-dictionary
+returns, or an opaque `**` expansion are unreadable.
+
+### _scopes
+
+- sig: `_scopes(tree: ast.Module) -> dict[int, ast.AST]`
+- code: `workflows/tests/test_prompt_variables.py::_scopes`
+
+Maps every call node to its innermost enclosing function, so local dictionary analysis does not
+merge identically named locals from separate functions.
+
+### _turns
+
+- sig: `_turns(source: Path) -> tuple[list[tuple[int, str, set[str]]], list[int]]`
+- code: `workflows/tests/test_prompt_variables.py::_turns`
+
+Finds every literal-prompt `self.agent(..., args=...)` call in one source file and records its line,
+prompt path, and statically resolved argument names. It separately records call lines whose
+arguments cannot be resolved and ignores non-literal prompt expressions because prompt-path
+validation owns those findings.
+
+### _prompts
+
+- sig: `_prompts() -> dict[tuple[str, str], tuple[set[str], list[str]]]`
+- code: `workflows/tests/test_prompt_variables.py::_prompts`
+
+Walks every Python module in the four configured workflow packages, unions the argument vocabulary
+for each `(workflow, prompt)` pair, and records all rendering call sites. The union is intentional:
+conditional prompt sections may be supplied by different callers.
+
+### _referenced
+
+- sig: `_referenced(body: str) -> set[str]`
+- code: `workflows/tests/test_prompt_variables.py::_referenced`
+
+Parses a prompt with Jinja, returns undeclared template names, and adds literal names passed to
+`workhorse_var`. References inside Jinja raw blocks are excluded by the parser.
+
+### test_the_sweep_checks_every_workflow
+
+- sig: `test_the_sweep_checks_every_workflow() -> None`
+- code: `workflows/tests/test_prompt_variables.py::test_the_sweep_checks_every_workflow`
+- tests: `workflows/tests/test_prompt_variables.py::test_the_sweep_checks_every_workflow`
+
+Fails if the prompt-variable inventory has no prompt for any configured workflow, preventing a
+walker that matches nothing from passing vacuously.
+
+### test_no_turn_is_unreadable
+
+- sig: `test_no_turn_is_unreadable() -> None`
+- code: `workflows/tests/test_prompt_variables.py::test_no_turn_is_unreadable`
+- tests: `workflows/tests/test_prompt_variables.py::test_no_turn_is_unreadable`
+
+Fails when any literal prompt call builds its argument mapping in a shape the static resolver
+cannot name, because that would make the subsequent missing-variable report incomplete.
+
+### test_the_prompt_reads_only_names_the_workflow_can_supply
+
+- sig: `test_the_prompt_reads_only_names_the_workflow_can_supply(workflow: str, prompt: str) -> None`
+- code: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply`
+- tests: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply`
+
+For every discovered workflow/prompt pair, the test fails if Jinja or `workhorse_var` references a
+name outside the prompt's unioned call-site vocabulary and the ambient names. The failure identifies
+the rendering sites and supplied vocabulary so an author can repair the prompt or its caller.
+
+`{{ result_schema }}` is generated from the declared result model and is therefore exempt from the
+hand-written-example comparison. Prompt variables inside a Jinja raw block are likewise not
+render-time references. Any turn arguments the static reader cannot resolve fail separately,
+rather than silently weakening the variable check. The same rule applies to the prompt-path
+resolver: a turn that cannot be reduced to a packaged literal is a finding, not an uncovered
+exception.
+
+The output-shape half is implemented by `test_prompt_output_shape.py`. It walks source rather than
+executing the workflows, so model-returning turns in nested sub-flows remain covered even when no
+runtime path reaches them. A turn without a declared model is intentionally outside this check.
+
+### _top_level_keys
+
+- sig: `_top_level_keys(body: str) -> set[str] | None`
+- code: `workflows/tests/test_prompt_output_shape.py::_top_level_keys`
+
+Scans the first fenced JSON object for keys at depth one without requiring valid JSON. Pseudo-JSON
+such as a documented enum is accepted; no object or no readable key produces `None`.
+
+### _turns_output_shape
+
+The two prompt-contract modules both expose `_turns`, but they are separate source symbols. The
+variable checker records argument names, while this module records model-returning calls. The
+output-shape symbol accepts positional or named literal prompts, requires a literal `returns=`
+expression, and records each matching call's line, prompt path, and return expression. Calls with
+missing returns, non-literal prompts, or non-`self.agent` callees are excluded because another
+check owns those findings or because no model shape is available.
+
+- sig: `_turns(source: Path) -> list[tuple[int, str, ast.expr]]`
+- code: `workflows/tests/test_prompt_output_shape.py::_turns`
+
+### _sites
+
+- sig: `_sites() -> list[tuple[str, Path, int, str, ast.expr]]`
+- code: `workflows/tests/test_prompt_output_shape.py::_sites`
+
+Enumerates Python files recursively beneath each configured workflow package and aggregates the
+literal model-returning turns with their workflow name and source location. The configured set is
+`author`, `coder`, `okf_builder`, and `research`; the sweep must find at least one turn in each.
+
+### _model_fields
+
+- sig: `_model_fields(source: Path, returns: ast.expr) -> set[str]`
+- code: `workflows/tests/test_prompt_output_shape.py::_model_fields`
+
+Imports the module containing the turn, resolves the declared return expression in that module's
+namespace, and returns the model's top-level field names. This preserves caller-local name binding
+and deliberately does not treat nested fields as envelope keys.
+
+### test_the_sweep_found_turns_in_every_workflow
+
+- sig: `test_the_sweep_found_turns_in_every_workflow() -> None`
+- code: `workflows/tests/test_prompt_output_shape.py::test_the_sweep_found_turns_in_every_workflow`
+- tests: `workflows/tests/test_prompt_output_shape.py::test_the_sweep_found_turns_in_every_workflow`
+
+Rejects a source walker that finds no applicable model-returning turn for any configured workflow,
+preventing the output-shape suite from passing vacuously after a call-shape or traversal change.
+
+### test_the_prompt_documents_the_keys_the_turn_is_asked_for
+
+- sig: `test_the_prompt_documents_the_keys_the_turn_is_asked_for(workflow: str, source: Path, lineno: int, prompt: str, returns: ast.expr) -> None`
+- code: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`
+- tests: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`
+
+For each model-returning turn, requires a fenced JSON example whose top-level keys exactly equal
+the declared model fields. Prompts containing `{{ result_schema }}` are exempt because the runtime
+renders that schema from the same declared model. A mismatch identifies the source call and prompt,
+so wrapped, missing, or extra keys cannot silently enter the retry ladder and default to null.

@@ -125,8 +125,11 @@ and `workhorse/tests/test_stream_subprocess.py::test_an_at_boundary_request_does
 ### stream_subprocess
 - sig: `stream_subprocess(cmd, node_id, timeout, on_line, *, resilience, stdin_data=None, cwd=None, env_extra=None, secrets=None) -> tuple[bool, int]`
 - does: delegates the complete streaming call to the installed `ProcessSupervisor`
+- verify: count(subject="calls to the installed ProcessSupervisor.stream", equals=1)
 - raises: `ReloadRequested` when the active stream accepts a reload cut
+- verify: json_path(path="exception.type", equals="ReloadRequested")
 - returns: the supervisor's `(timed_out, returncode)` result
+- verify: json_path(path="return.returncode", equals=17)
 - code: `workhorse/workhorse/runner/process.py::stream_subprocess`
 
 ### terminate_active

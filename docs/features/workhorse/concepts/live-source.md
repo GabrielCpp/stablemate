@@ -14,6 +14,7 @@ container harness.
 - code: `workhorse/livesource.py::LiveSource`
 - tests: `workhorse/tests/test_livesource.py::test_an_edit_to_the_bind_does_not_reach_an_existing_generation`,
   `workhorse/tests/test_livesource.py::test_a_failed_install_leaves_the_previous_generation_in_place`
+- detail: [LiveSource documentation guide](live-source-documentation-guide.md)
 
 The source directory is copied once, with generated or dependency directories excluded. A
 successful refresh installs the new copy and retains the newest two generations; an absent bind,
@@ -28,6 +29,7 @@ copy failure, missing `uv`, or failed install leaves the prior installed generat
 - semantics: package name used in diagnostics and generation-install log messages
 - verify: count(subject="required LiveSource constructor fields", equals=4)
 - code: `workhorse/livesource.py::LiveSource`
+- detail: [LiveSource configuration fields](live-source-configuration.md)
 
 ### mount
 - type: `Path`
@@ -38,6 +40,7 @@ copy failure, missing `uv`, or failed install leaves the prior installed generat
 - semantics: a missing directory means this source is disabled, not erroneous
 - verify: absent(subject="missing live-source mount treated as a staging error")
 - code: `workhorse/livesource.py::LiveSource`
+- detail: [LiveSource configuration fields](live-source-configuration.md)
 
 ### root
 - type: `Path`
@@ -46,6 +49,7 @@ copy failure, missing `uv`, or failed install leaves the prior installed generat
 - semantics: container-local directory containing numeric generation directories for this source
 - verify: created(subject="container-local live-source generation root")
 - code: `workhorse/livesource.py::LiveSource`
+- detail: [LiveSource configuration fields](live-source-configuration.md)
 
 ### with_editable
 - type: `tuple[Path, ...]`
@@ -54,6 +58,7 @@ copy failure, missing `uv`, or failed install leaves the prior installed generat
 - semantics: additional local packages passed to `uv tool install --with-editable` alongside the staged package
 - verify: count(subject="extra editable packages passed to the install command", equals=1)
 - code: `workhorse/livesource.py::LiveSource`
+- detail: [LiveSource configuration fields](live-source-configuration.md)
 
 ## Methods
 

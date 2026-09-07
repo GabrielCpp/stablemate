@@ -24,7 +24,7 @@ attempt count and blocks it at three attempts rather than looping forever.
 ### load_worklist
 - sig: `load_worklist(path: Path, service: str, features: Path, *, scope_id: str = "bulk", mode: str = "bulk") -> tuple[dict[str, Any], bool]`
 - does: creates a stamped empty worklist when no compatible file exists
-- verify: json_path(path="$.items", equals=[])
+- verify: count(subject="items in the fresh OKF-builder worklist", equals=0)
 - does: rejects malformed, differently stamped, or completed-without-book worklists as stale and returns a fresh worklist
 - verify: count(subject="stale OKF-builder worklist resets", equals=1)
 - does: preserves a compatible worklist while refreshing its service, scope, mode, and book stamp
@@ -50,6 +50,7 @@ attempt count and blocks it at three attempts rather than looping forever.
 - does: marks the current matching item done and records its documentation status and note
 - verify: persists(subject="closed OKF-builder worklist item")
 - does: adds valid undiscovered work as pending while deduplicating normalized kind and target
+- verify: created(subject="a pending worklist item identified by normalized kind and target")
 - verify: count(subject="deduplicated OKF-builder discoveries", equals=1)
 - does: reopens a done item when requested and increments its attempt count
 - verify: count(subject="reopened OKF-builder worklist items", equals=1)

@@ -27,6 +27,7 @@ one-line notes and concrete investigated items.
 - verify: json_path(path="$.context_path", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic`
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve`
+- detail: [author resolve-operator field roles](concepts/author-resolve-operator-field-roles.md)
 
 ### epic_dir
 - type: `str`
@@ -35,6 +36,7 @@ one-line notes and concrete investigated items.
 - verify: json_path(path="$.epic_dir", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic`
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve`
+- detail: [author resolve-operator field roles](concepts/author-resolve-operator-field-roles.md)
 
 ### block_stage
 - type: `str`
@@ -43,6 +45,7 @@ one-line notes and concrete investigated items.
 - verify: json_path(path="$.block_stage", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic`
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve`
+- detail: [author resolve-operator field roles](concepts/author-resolve-operator-field-roles.md)
 
 ### block_notes
 - type: `str`
@@ -51,6 +54,7 @@ one-line notes and concrete investigated items.
 - verify: json_path(path="$.block_notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic`
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve`
+- detail: [author resolve-operator field roles](concepts/author-resolve-operator-field-roles.md)
 
 ### decision
 - type: `str`
@@ -59,6 +63,7 @@ one-line notes and concrete investigated items.
 - verify: json_path(path="$.decision", equals="escalated")
 - code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic`
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve`
+- detail: [author resolve-operator field roles](concepts/author-resolve-operator-field-roles.md)
 
 ### notes
 - type: `str`
@@ -67,6 +72,7 @@ one-line notes and concrete investigated items.
 - verify: json_path(path="$.notes", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic`
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve`
+- detail: [author resolve-operator field roles](concepts/author-resolve-operator-field-roles.md)
 
 ### tried
 - type: `list[str]`
@@ -75,3 +81,4 @@ one-line notes and concrete investigated items.
 - verify: json_path(path="$.tried", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic`
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve`
+- detail: [author resolve-operator field roles](concepts/author-resolve-operator-field-roles.md)

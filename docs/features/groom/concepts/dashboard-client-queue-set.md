@@ -41,6 +41,7 @@ The [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-s
 - default: empty set at process import/startup
 - required: true
 - code: groom/groom/state.py::CLIENTS
+- detail: [clients field documentation views](clients-field-documentation-views.md)
 - meaning: the current process-local membership of dashboard browser outbound queues eligible for future broadcasts.
 
 ### field-client-queue
@@ -59,6 +60,7 @@ The [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-s
 - sig: `add_client(queue: asyncio.Queue) -> None`
 - abstract: false
 - raises: none intentionally raised by the registry operation.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/state.py::add_client
 
 Adds one websocket outbound queue to the process-local client set. Adding the same queue again is idempotent because membership is set-based.
@@ -90,6 +92,7 @@ Adds one websocket outbound queue to the process-local client set. Adding the sa
 - sig: `remove_client(queue: asyncio.Queue) -> None`
 - abstract: false
 - raises: none intentionally raised by the registry operation.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/state.py::remove_client
 
 Removes one websocket outbound queue from the process-local client set. Removing an absent queue is a no-op. Unregistration affects only future broadcast membership; queue draining, task cancellation, and websocket close behavior remain owned by the dashboard websocket session and send loop. It also removes the queue's [run watch registry](run-watch-registry.md) entry so a disconnect cannot leave a subscription pointing at a queue nobody reads.
@@ -138,8 +141,9 @@ Enqueues one already-projected JSON message object for every dashboard websocket
 
 - Reads: copies the current `CLIENTS` set into a list before enqueueing, so clients that connect or disconnect after that snapshot do not change the target set for this pass.
 - Enqueues: awaits `queue.put(message)` once for each queue in the snapshot, passing the exact object supplied by the caller without serializing, wrapping, filtering, or cloning it. Every tab therefore shares one object; nothing downstream may mutate it.
-- Emits: no return value.
-- Emits: completion means every queue in the snapshot accepted the message.
+- emits: no return value.
+- verify: json_path(path="return", equals=None)
+- emits: completion means every queue in the snapshot accepted the message.
 - verify: emitted(event="dashboard message", count=1)
 - Failure: if a queue put raises or cancellation interrupts the coroutine, the exception propagates to the caller after any earlier queues in the iteration may already have accepted the message; the method does not roll back those enqueues.
 - Empty set: when no dashboard clients are registered, the copied target list is empty and the method completes without enqueueing or raising a no-clients condition.

@@ -20,6 +20,7 @@ authority after this reply.
 - semantics: repair outcome: `fixed` or `blocked`
 - verify: json_path(path="$.status", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix`
+- detail: [record-fix field roles](concepts/record-fix-field-roles.md)
 
 ### notes
 - type: string
@@ -28,3 +29,4 @@ authority after this reply.
 - semantics: repair explanation
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix`
+- detail: [record-fix field roles](concepts/record-fix-field-roles.md)

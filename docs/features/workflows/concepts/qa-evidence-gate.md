@@ -37,8 +37,10 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - type: `dict[str, QaStatus]`
 - default: `failed -> failed, blocked -> blocked, invalid -> invalid`
 - required: true
-- semantics: closed mapping for non-pass runner claims; an empty or unknown claim is not mapped and becomes invalid
+- semantics: closed mapping for non-pass runner claims
 - verify: count(subject="preserved non-pass QA statuses", equals=3)
+- semantics: an empty or unknown claim is not mapped and becomes invalid
+- verify: json_path(path="$.status", equals="invalid")
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::PASSTHROUGH_STATUSES`
 
 ### CRITERION_KINDS
@@ -160,7 +162,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - does: records unexpected and unlabeled counts as informational notes when no manifested element is missing
 - verify: count(subject="visual fidelity informational notes", equals=1)
 - returns: separate problem and note lists for the gate to combine without treating informational buckets as failures
-- verify: json_path(path="$.notes", absent=false)
+- verify: json_path(path="$.notes", matches=".*unexpected=[0-9]+ unlabeled=[0-9]+ .*informational only.*")
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_visual_fidelity_problems`
 
 ### _report_problems

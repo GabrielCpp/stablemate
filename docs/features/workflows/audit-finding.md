@@ -20,6 +20,7 @@ audited axis, while target, issue, and repair make the finding actionable.
 - semantics: stable identifier for the finding
 - verify: json_path(path="$.id", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditFinding`
+- detail: [audit finding field roles](concepts/audit-finding-field-roles.md)
 
 ### kind
 - type: `Literal["journey", "chrome", "transient-feedback", "grounding"]`
@@ -28,6 +29,7 @@ audited axis, while target, issue, and repair make the finding actionable.
 - semantics: audited defect axis
 - verify: json_path(path="$.kind", equals="grounding")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditFinding`
+- detail: [audit finding field roles](concepts/audit-finding-field-roles.md)
 
 ### target
 - type: string
@@ -36,6 +38,7 @@ audited axis, while target, issue, and repair make the finding actionable.
 - semantics: story section or line against which the defect is reported
 - verify: json_path(path="$.target", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditFinding`
+- detail: [audit finding field roles](concepts/audit-finding-field-roles.md)
 
 ### issue
 - type: string
@@ -44,6 +47,7 @@ audited axis, while target, issue, and repair make the finding actionable.
 - semantics: defect explanation
 - verify: json_path(path="$.issue", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditFinding`
+- detail: [audit finding field roles](concepts/audit-finding-field-roles.md)
 
 ### repair
 - type: string
@@ -52,3 +56,4 @@ audited axis, while target, issue, and repair make the finding actionable.
 - semantics: repair direction supplied for the defect
 - verify: json_path(path="$.repair", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditFinding`
+- detail: [audit finding field roles](concepts/audit-finding-field-roles.md)

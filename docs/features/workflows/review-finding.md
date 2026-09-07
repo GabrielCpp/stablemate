@@ -42,8 +42,10 @@ The review flow keeps every finding; confidence controls whether it is mandatory
 ### category
 - type: literal `Bug`, `Standard`, or `Reuse`
 - required: true
-- semantics: review lens that found the issue; `Reuse` covers duplication and a missed utility
+- semantics: review lens that found the issue
 - verify: json_path(path="$.category", matches="Bug|Standard|Reuse")
+- semantics: the `Reuse` lens covers duplication and a missed utility
+- verify: json_path(path="$.category", equals="Reuse")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding.category`
 - tests: `workflows/tests/coder/review/test_flow.py::test_the_split_is_inclusive_at_the_confidence_line`
 

@@ -26,13 +26,16 @@ invent epic paths or duplicate the graph's story semantics.
 
 ### seed_story
 - sig: `seed_story(logger, epic: str = "", bullet: str = "", layers: str = "", services: str = "", repo_dir: str = "") -> SeededStory`
-- does: resolves a backlog id, backlog text, or literal bullet into one story id and source bullet
+- does: resolves a backlog id, backlog text, or literal bullet into one story id
 - verify: json_path(path="$.bullet_id", matches="^[A-Za-z0-9][A-Za-z0-9._-]*$")
+- does: carries the resolved source bullet into the seed and story records
+- verify: persists(subject="the resolved source bullet in the seed and story records")
 - does: requires an existing epic and raises a workflow failure when the epic or bullet is missing
 - verify: count(subject="workflow failures for missing story inputs", equals=1)
 - does: reuses an existing story that already covers the resolved bullet id without adding a duplicate
 - verify: count(subject="stories covering the resolved bullet after reuse", equals=1)
 - does: adds a researched seed with source bullet metadata and optional layer/service metadata when the seed is new
+- verify: created(subject="the researched seed for the resolved bullet")
 - verify: persists(subject="the researched seed metadata")
 - does: creates one story covering the seed and returns its epic directory, story paths, bullet id, provenance, and reason
 - verify: count(subject="stories created for one seeded bullet", equals=1)
@@ -45,8 +48,18 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: count(subject="story deletions for an absent story", equals=0)
 - does: refuses to delete a story whose status is not `Not started` unless `force` is true
 - verify: count(subject="unforced deletions of started stories", equals=0)
-- does: deletes the requested story and returns its epic, story paths, changed flag, and result message
+- does: deletes the requested story
 - verify: removed(subject="the requested story")
+- does: returns the requested story's epic
+- verify: json_path(path="$.epic", matches=".+")
+- does: returns the requested story's story directory
+- verify: json_path(path="$.story_dir", matches=".+")
+- does: returns the requested story's story path
+- verify: json_path(path="$.story_path", matches=".+")
+- does: returns a changed flag set to true
+- verify: json_path(path="$.changed", equals=true)
+- does: returns the deletion result message
+- verify: json_path(path="$.reason", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::remove_story`
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_remove_refuses_a_started_story_without_force`
 
@@ -78,7 +91,9 @@ invent epic paths or duplicate the graph's story semantics.
 
 ### validate_story
 - sig: `validate_story(logger, story_dir: str = "", repo_dir: str = "") -> Defects`
-- does: reports an error when no story directory is supplied or when its `story.md` is missing
+- does: reports an error when no story directory is supplied
+- verify: json_path(path="$.ok", equals=false)
+- does: reports an error when the supplied story directory's `story.md` is missing
 - verify: json_path(path="$.ok", equals=false)
 - does: requires the status bullet and every Ostler-declared story section to be present, non-empty, and ordered
 - verify: count(subject="missing or misordered required story sections", equals=0)
@@ -95,10 +110,14 @@ invent epic paths or duplicate the graph's story semantics.
 - sig: `check_story_grounding(logger, story_dir: str = "", epic_dir: str = "", features_dir: str = "", repo_dir: str = "") -> Defects`
 - does: reports an error when story or epic directory input is blank or the epic seed list cannot be read
 - verify: json_path(path="$.ok", equals=false)
+- does: derives the story and epic identifiers from the supplied directory basenames and reads the epic seed set through Ostler
+- verify: count(subject="story grounding epic seed reads", equals=1)
 - does: rejects every story coverage id that is absent from the epic's seed set
 - verify: count(subject="phantom story seed references", equals=0)
 - does: when the graph has UI nodes, requires the story to cite at least one resolvable UI surface node and rejects missing citations
 - verify: count(subject="resolvable UI nodes cited by the story", equals=1)
+- does: does not require UI citations while the Ostler graph has no UI nodes
+- verify: absent(subject="UI citation requirement on an empty UI graph")
 - does: returns `ok` with newline-separated findings only when seed scope and the armed UI citation contract hold
 - verify: json_path(path="$.ok", equals=false)
 - code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_grounding`

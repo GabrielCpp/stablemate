@@ -24,6 +24,7 @@ and joins every failure into `errors` for the awaiting state.
 - semantics: true only when all milestone ownership and immutability checks pass
 - verify: json_path(path="$.ok", equals=False)
 - code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation`
+- detail: [milestone validation field roles](concepts/milestone-validation-field-roles.md)
 
 ### milestone_path
 - type: string
@@ -32,6 +33,7 @@ and joins every failure into `errors` for the awaiting state.
 - semantics: repository-relative path of the validated milestone
 - verify: json_path(path="$.milestone_path", equals="")
 - code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation`
+- detail: [milestone validation field roles](concepts/milestone-validation-field-roles.md)
 
 ### reused
 - type: boolean
@@ -40,6 +42,7 @@ and joins every failure into `errors` for the awaiting state.
 - semantics: records whether preparation found and the flow reused an existing milestone
 - verify: json_path(path="$.reused", equals=False)
 - code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation`
+- detail: [milestone validation field roles](concepts/milestone-validation-field-roles.md)
 
 ### errors
 - type: string
@@ -48,3 +51,4 @@ and joins every failure into `errors` for the awaiting state.
 - semantics: newline-separated validation failures passed to an awaiting run
 - verify: json_path(path="$.errors", equals="")
 - code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation`
+- detail: [milestone validation field roles](concepts/milestone-validation-field-roles.md)

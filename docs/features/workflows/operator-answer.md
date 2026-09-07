@@ -24,8 +24,10 @@ title: Coder operator answer
 - type: literal `story` or `epic`
 - default: `story`
 - required: false
-- semantics: operator answer scope; only an exact `epic` marker is epic scope
+- semantics: operator answer scope
 - verify: json_path(path="$.scope", matches="story|epic")
+- semantics: only an exact `epic` marker is epic scope
+- verify: json_path(path="$.scope", equals="epic")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorAnswer.scope`
 
 ### content

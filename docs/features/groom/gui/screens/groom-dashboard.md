@@ -43,7 +43,21 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - mode: `runs` by default; `files`, `diff`, `telemetry`, and `settings` are mutually exclusive alternatives written to `.app[data-mode]` and to the store together.
 - selected run: absent until a run row, palette result, or `j`/`k` row movement writes [dashboard selected worker state](../../dashboard-selected-worker-state.md). Selecting one clears the detail pane, sends this tab's watch subscription, and fetches `GET /worker/{container_id}` once.
 - selected repository: absent until a repository menu item is chosen; choosing one writes [dashboard selected repository state](../../dashboard-selected-repository-state.md), updates both picker labels, and loads whichever of the files or diff panes is active.
-- repository menu: closed by default with `#repo-menu-wrap` lacking `open`; opening positions it under the invoking picker, fetches `GET /repos`, clears the menu search, and focuses `#repo-search`; closing removes the `open` class, drops `aria-activedescendant`, and returns focus to the invoking picker.
+- repository menu: closed by default with `#repo-menu-wrap` lacking `open`.
+- consistency: Opening the repository menu positions it under the invoking picker.
+- verify: json_path(path="repository_menu.position.anchor", equals="invoking picker")
+- consistency: Opening the repository menu requests `GET /repos`.
+- verify: json_path(path="repository_menu.request.path", equals="/repos")
+- consistency: Opening the repository menu clears the search input.
+- verify: json_path(path="repository_menu.search.value", equals="")
+- consistency: Opening the repository menu focuses `#repo-search`.
+- verify: visible(locator="#repo-search:focus")
+- consistency: Closing the repository menu removes the `open` class from `#repo-menu-wrap`.
+- verify: json_path(path="repository_menu.wrap.open", equals=false)
+- consistency: Closing the repository menu removes `aria-activedescendant` from `#repo-search`.
+- verify: json_path(path="repository_menu.search.aria_activedescendant", absent=true)
+- consistency: Closing the repository menu while focus is inside it returns focus to the invoking picker.
+- verify: json_path(path="repository_menu.focus", equals="invoking picker")
 - command palette: closed by default; `Ctrl+K` or `Meta+K` toggles it, and the status-bar button opens it. Opening clears its input, renders the current fleet from the store as results, and focuses `#palette-input`; while open, Tab is trapped on that input.
 - discovery: `scanning` is true until the [startup background discovery scan](../../concepts/startup-background-discovery-scan.md) finishes; an empty fleet renders as `Discovering containers…` while it is, and as `No workhorse runs — nothing is running.` after.
 - connection: `connecting` on load, then `live` while a frame has arrived within 15s, `stale` when the open socket has been silent longer, `reconnecting` for the first 60s after a close, and `offline` beyond that. Every phase but `live` polls `GET /api/state` on a 5s interval.
@@ -57,10 +71,15 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - role: navigation
 - name: `Panels`
 - placement: width 0-20%, x 0-20%
-- keyboard: not focusable itself; Tab moves through the five mode buttons it contains, in DOM order.
-- parent: [groom dashboard](#groom-dashboard)
-- states: static. It is shell markup, never re-rendered; only the `active` class and `aria-pressed` on its buttons change.
+- keyboard: not focusable itself.
 - verify: visible(locator="#activitybar", text="Panels")
+- keyboard: Tab moves through the five mode buttons it contains, in DOM order.
+- verify: visible(locator="#activitybar .act-btn", text="Runs")
+- parent: [groom dashboard](#groom-dashboard)
+- states: static.
+- verify: visible(locator="#activitybar", text="Panels")
+- states: It is shell markup, never re-rendered; only the `active` class and `aria-pressed` on its buttons change.
+- verify: visible(locator="#activitybar .act-btn", text="Runs")
 - code: groom/groom/templates/dashboard.html
 - tests: groom/tests/test_a11y_dynamic.py::test_the_activity_rail_is_reachable_and_operable_by_keyboard
 - dom: a `<nav>` rather than a `role="toolbar"` div — switching panes *is* this page's navigation, and a toolbar is not a landmark, so its contents would otherwise sit outside every region. `groom/groom/assets/dashboard.css` assigns it to the left `act` grid area, whose first column is fixed at 48px.
@@ -72,9 +91,15 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - role: main
 - name: none
 - placement: width 60-100%, x 0-20%
-- keyboard: not focusable; a landmark, not a control.
+- keyboard: not focusable.
+- verify: json_path(path="keyboard.focusable", equals=false)
+- keyboard: a landmark, not a control.
+- verify: json_path(path="keyboard.kind", equals="landmark")
 - parent: [groom dashboard](#groom-dashboard)
-- states: always present; its visible child is whichever pane `.app[data-mode]` selects.
+- states: always present.
+- verify: json_path(path="states.present", equals=true)
+- states: its visible child is whichever pane `.app[data-mode]` selects.
+- verify: json_path(path="states.visible_child", equals="pane selected by .app[data-mode]")
 - code: groom/groom/templates/dashboard.html
 - dom: holds all five panes as siblings. The four inactive ones are `display:none`, so exactly one pane's controls are in the accessibility tree at a time. `groom/groom/assets/dashboard.css` gives `.app` a fixed 48px activity column and assigns `#main` the remaining `main` grid area.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-main-region.png
@@ -83,10 +108,14 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 
 - selector: `#main > h1.sr-only`
 - role: heading
+- verify: visible(locator="#main > h1.sr-only", text="groom — workhorse fleet dashboard")
 - name: `groom — workhorse fleet dashboard`
+- verify: json_path(path="accessibility.name", equals="groom — workhorse fleet dashboard")
 - keyboard: not focusable.
+- verify: json_path(path="keyboard.focusable", equals=false)
 - parent: [main-region](#main-region)
 - states: static.
+- verify: json_path(path="states.present", equals=true)
 - dom: visually hidden and always rendered. It is the page's one `h1`; without it the document outline would start at `h2` and a screen reader would have nothing to announce the page as.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-page-heading.png
 
@@ -95,9 +124,15 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `.act-btn[data-mode="runs"]`
 - role: button
 - name: `Runs`
-- keyboard: natively focusable with Tab and Shift+Tab; Enter or Space activates the mode switch.
+- keyboard: natively focusable with Tab and Shift+Tab.
+- verify: visible(locator=".act-btn[data-mode='runs']:focus", text="Runs")
+- keyboard: Enter or Space activates the mode switch.
+- verify: visible(locator=".app[data-mode='runs']", text="Runs")
 - parent: [activity-rail](#activity-rail)
-- states: active by default, with the `active` class and `aria-pressed="true"`; inactive with `aria-pressed="false"` in any other mode.
+- states: active by default, with the `active` class and `aria-pressed="true"`.
+- verify: visible(locator=".act-btn[data-mode='runs'].active[aria-pressed='true']", text="Runs")
+- states: inactive with `aria-pressed="false"` in any other mode.
+- verify: visible(locator=".act-btn[data-mode='runs'][aria-pressed='false']", text="Runs")
 - code: groom/groom/assets/dashboard.js::setMode
 - props:
   - `data-mode`: literal `runs`; required; the mode value the delegated rail handler passes to the mode switch.
@@ -113,9 +148,15 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `.act-btn[data-mode="files"]`
 - role: button
 - name: `Files`
-- keyboard: natively focusable with Tab and Shift+Tab; Enter or Space activates the mode switch.
+- keyboard: natively focusable with Tab and Shift+Tab.
+- verify: visible(locator=".act-btn[data-mode='files']:focus")
+- keyboard: Enter or Space activates the mode switch.
+- verify: visible(locator=".app[data-mode='files']")
 - parent: [activity-rail](#activity-rail)
-- states: inactive with `aria-pressed="false"` in runs, diff, telemetry, or settings mode; active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="files"`.
+- states: inactive with `aria-pressed="false"` in runs, diff, telemetry, or settings mode.
+- verify: visible(locator=".act-btn[data-mode='files'][aria-pressed='false']")
+- states: active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="files"`.
+- verify: visible(locator=".act-btn[data-mode='files'].active[aria-pressed='true']")
 - code: groom/groom/assets/dashboard.js::setMode
 - dom: icon-only native `<button type="button">`, second in the rail; an inline `aria-hidden` folder SVG and no text node.
 - leads-to: [select activity files mode](#select-activity-files-mode), which shows the files pane containing the [files repository picker button](#files-repository-picker-button), `#files-tree`, and `#file-view`.
@@ -125,10 +166,18 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 
 - selector: `.act-btn[data-mode="diff"]`
 - role: button
+- verify: visible(locator="button.act-btn[data-mode='diff']", text="Diff")
 - name: `Diff`
-- keyboard: natively focusable with Tab and Shift+Tab; Enter or Space activates the mode switch.
+- verify: visible(locator="button.act-btn[data-mode='diff']", text="Diff")
+- keyboard: natively focusable with Tab and Shift+Tab.
+- verify: visible(locator=".act-btn[data-mode='diff']:focus", text="Diff")
+- keyboard: Enter or Space activates the mode switch.
+- verify: visible(locator=".app[data-mode='diff']", text="Diff")
 - parent: [activity-rail](#activity-rail)
-- states: inactive with `aria-pressed="false"` in runs, files, telemetry, or settings mode; active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="diff"`.
+- states: inactive with `aria-pressed="false"` in runs, files, telemetry, or settings mode.
+- verify: visible(locator=".act-btn[data-mode='diff'][aria-pressed='false']", text="Diff")
+- states: active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="diff"`.
+- verify: visible(locator=".act-btn[data-mode='diff'].active[aria-pressed='true']", text="Diff")
 - code: groom/groom/assets/dashboard.js::setMode
 - dom: icon-only native `<button type="button">`, third in the rail; an inline `aria-hidden` bidirectional-arrows SVG and no text node.
 - leads-to: [select activity diff mode](#select-activity-diff-mode), which shows the diff pane containing the [diff repository picker button](#diff-repository-picker-button), `#diff-tree`, and `#diff-view`.
@@ -139,9 +188,15 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `.act-btn[data-mode="telemetry"]`
 - role: button
 - name: `Telemetry`
-- keyboard: natively focusable with Tab and Shift+Tab; Enter or Space activates the mode switch.
+- keyboard: natively focusable with Tab and Shift+Tab.
+- verify: visible(locator=".act-btn[data-mode='telemetry']:focus", text="Telemetry")
+- keyboard: Enter or Space activates the mode switch.
+- verify: visible(locator=".app[data-mode='telemetry']", text="Telemetry")
 - parent: [activity-rail](#activity-rail)
-- states: inactive with `aria-pressed="false"` in runs, files, diff, or settings mode; active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="telemetry"`.
+- states: inactive with `aria-pressed="false"` in runs, files, diff, or settings mode.
+- verify: visible(locator=".act-btn[data-mode='telemetry'][aria-pressed='false']", text="Telemetry")
+- states: active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="telemetry"`.
+- verify: visible(locator=".act-btn[data-mode='telemetry'].active[aria-pressed='true']", text="Telemetry")
 - code: groom/groom/assets/dashboard.js::setMode
 - dom: icon-only native `<button type="button">`, fourth in the rail and the last before the spacer; an inline `aria-hidden` sparkline SVG and no text node.
 - leads-to: [select activity telemetry mode](#select-activity-telemetry-mode), which shows the telemetry pane containing the span filter and [telemetry traces table](#telemetry-traces-table).
@@ -152,9 +207,15 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `.act-btn[data-mode="settings"]`
 - role: button
 - name: `Settings`
-- keyboard: natively focusable with Tab and Shift+Tab; Enter or Space activates the mode switch.
+- keyboard: natively focusable with Tab and Shift+Tab.
+- verify: visible(locator=".act-btn[data-mode='settings']:focus", text="Settings")
+- keyboard: Enter or Space activates the mode switch.
+- verify: visible(locator=".app[data-mode='settings']", text="Settings")
 - parent: [activity-rail](#activity-rail)
-- states: inactive with `aria-pressed="false"` in runs, files, diff, or telemetry mode; active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="settings"`.
+- states: inactive with `aria-pressed="false"` in runs, files, diff, or telemetry mode.
+- verify: visible(locator=".act-btn[data-mode='settings'][aria-pressed='false']", text="Settings")
+- states: active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="settings"`.
+- verify: visible(locator=".act-btn[data-mode='settings'].active[aria-pressed='true']", text="Settings")
 - code: groom/groom/assets/dashboard.js::setMode
 - dom: icon-only native `<button type="button">` after the rail spacer, at the bottom of the rail; an inline `aria-hidden` gear SVG and no text node.
 - leads-to: [select activity settings mode](#select-activity-settings-mode), which shows the settings pane containing the [settings rescan button](#settings-rescan-button) and [settings enable notifications button](#settings-enable-notifications-button).
@@ -165,9 +226,21 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#runs .pane-head input.filter[name="q"]`
 - role: searchbox
 - name: `Filter runs`
-- keyboard: natively focusable with Tab; typing filters as you type; the browser's own search-input clear affordance is available.
+- keyboard: natively focusable with Tab.
+- verify: visible(locator="#runs .pane-head input.filter[name='q']:focus", text="Filter runs")
+- keyboard: typing filters as you type.
+- verify: visible(locator="#runs-list", text="author-002")
+- keyboard: the browser's own search-input clear affordance is available.
+- verify: visible(locator="#runs .pane-head input.filter[type='search']")
 - parent: [groom dashboard](#groom-dashboard)
-- states: empty by default, showing the whole pushed fleet; non-empty, showing only rows whose haystack contains the query, case-insensitively.
+- states: empty by default.
+- verify: visible(locator="#runs .pane-head input.filter[name='q']", text="Filter runs")
+- states: an empty query shows the whole pushed fleet.
+- verify: visible(locator="#runs-list", text="author-002")
+- states: a non-empty query shows only rows whose haystack contains it.
+- verify: visible(locator="#runs-list", text="author-002")
+- states: haystack matching is case-insensitive.
+- verify: visible(locator="#runs-list", text="author-002")
 - code: groom/groom/assets/dashboard.js::wireEvents
 - code: groom/groom/assets/dashboard.js::rowHaystack
 - props:
@@ -183,9 +256,18 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#runs-list`
 - role: log
 - name: `Workhorse runs`
-- keyboard: not focusable itself; Tab reaches the run rows inside it, and `j`/`k` move the selection without focus leaving the document body.
+- keyboard: not focusable itself.
+- verify: absent(subject="#runs-list:focus")
+- keyboard: Tab reaches the run rows inside it.
+- verify: visible(locator="#runs-list .row[data-worker-id]:focus")
+- keyboard: `j`/`k` move the selection without focus leaving the document body.
+- verify: visible(locator="#runs-list .row[aria-current='true']")
 - parent: [groom dashboard](#groom-dashboard)
-- states: `Discovering containers…` while the startup scan runs and nothing has been found; `No workhorse runs — nothing is running.` when the fleet is empty and the scan is done; otherwise one [run row](#run-row) per matching run.
+- states: `Discovering containers…` while the startup scan runs and nothing has been found.
+- verify: visible(locator="#runs-list .empty.loading", text="Discovering containers…")
+- states: `No workhorse runs — nothing is running.` when the fleet is empty and the scan is done.
+- verify: visible(locator="#runs-list .empty", text="No workhorse runs — nothing is running.")
+- states: one [run row](#run-row) per matching run.
 - verify: count(subject="#runs-list .row[data-worker-id]", equals=3)
 - code: groom/groom/assets/dashboard.js::Fleet
 - tests: groom/tests/test_projection.py::test_fleet_rows_include_every_instance
@@ -198,10 +280,19 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#runs-list .row[data-worker-id]`
 - role: button
 - name: `{repo} #{short_handle} {liveness} {doing}`
-- keyboard: natively focusable with Tab; Enter or Space selects the run. `j` and `k` move the selection down and up from anywhere that is not a text field.
+- keyboard: natively focusable with Tab.
+- verify: visible(locator="#runs-list .row[data-worker-id]:focus", text="{repo} #{short_handle} {liveness} {doing}")
+- keyboard: Enter or Space selects the run.
+- verify: visible(locator="#runs-list .row[data-worker-id].selected[aria-current='true']", text="{repo} #{short_handle} {liveness} {doing}")
+- keyboard: `j` and `k` move the selection down and up from anywhere that is not a text field.
+- verify: visible(locator="#runs-list .row[data-worker-id].selected[aria-current='true']", text="{repo} #{short_handle} {liveness} {doing}")
 - parent: [runs-live-region](#runs-live-region)
-- states: blocked rows carry the `blocked` class; the open row carries `selected` and `aria-current="true"`, and every other row omits `aria-current` entirely rather than setting it to `"false"`.
-- verify: visible(locator="#runs-list .row[data-worker-id]", text="{repo} #{short_handle} {liveness} {doing}")
+- states: blocked rows carry the `blocked` class.
+- verify: visible(locator="#runs-list .row[data-worker-id].blocked", text="{repo} #{short_handle} {liveness} {doing}")
+- states: the open row carries `selected` and `aria-current="true"`.
+- verify: visible(locator="#runs-list .row[data-worker-id].selected[aria-current='true']", text="{repo} #{short_handle} {liveness} {doing}")
+- states: every other row omits `aria-current` entirely rather than setting it to `"false"`.
+- verify: omits(subject="#runs-list .row[data-worker-id]:not(.selected)", matches="aria-current")
 - code: groom/groom/assets/dashboard.js::RunRow
 - tests: `groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished`
 - tests: `groom/tests/test_projection.py::test_run_message_row_matches_the_same_row_in_the_state_message`
@@ -219,9 +310,13 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#detail`
 - role: none
 - name: none
-- keyboard: not focusable itself; contains the answer form and the diff disclosure.
+- keyboard: not focusable itself.
+- keyboard: contains the answer form and the diff disclosure.
 - parent: [groom dashboard](#groom-dashboard)
-- states: `Select a run to see its activity, answer its gate, and read its metrics and logs.` with nothing selected; `Loading…` between a selection and its first payload; `Run not found.` for an id the server does not know; otherwise the run header, gate blocks or a no-gate note, metrics, logs, and the diff disclosure.
+- states: `Select a run to see its activity, answer its gate, and read its metrics and logs.` with nothing selected.
+- states: `Loading…` between a selection and its first payload.
+- states: `Run not found.` for an id the server does not know.
+- states: otherwise the run header, gate blocks or a no-gate note, metrics, logs, and the diff disclosure.
 - verify: visible(locator="#detail", text="Metrics")
 - code: groom/groom/assets/dashboard.js::Detail
 - tests: groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs
@@ -249,8 +344,11 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - name: none
 - keyboard: not focusable; rendered prose.
 - parent: [detail-pane](#detail-pane)
-- states: one block per open gate, keyed by gate file path; absent for a run with no open gate, which instead renders a note naming the run's state and node.
+- states: one block per open gate, keyed by gate file path.
 - verify: visible(locator="#detail .gate-block .question", text="Use ?")
+- states: absent for a run with no open gate.
+- states: a no-gate note naming the run's state and node renders when no gate is open.
+- verify: visible(locator="#detail .no-gate", text="Nothing to answer")
 - code: groom/groom/assets/dashboard.js::GateBlock
 - code: groom/groom/assets/dashboard.js::Markdown
 - tests: groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup
@@ -262,10 +360,19 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#detail form[data-answer] textarea[name="answer"]`
 - role: textbox
 - name: `Your answer`
-- keyboard: natively focusable with Tab; multi-line text entry; Enter inserts a newline rather than submitting.
+- keyboard: Tab reaches the button.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: supports multi-line text entry.
+- verify: json_path(path="keyboard.multiline", equals=true)
+- keyboard: Enter inserts a newline rather than submitting.
+- verify: json_path(path="keyboard.enter_inserts_newline", equals=true)
 - parent: [detail-pane](#detail-pane)
-- states: empty on render; cleared only after a successfully sent answer, so a rejected send leaves the text in the box.
-- verify: visible(locator="#detail form[data-answer] textarea[name=\"answer\"]")
+- states: empty on render.
+- verify: json_path(path="states.on_render.value", equals="")
+- states: cleared after a successfully sent answer.
+- verify: json_path(path="states.after_success.value", equals="")
+- states: a rejected send leaves the text in the box.
+- verify: json_path(path="states.after_rejected.value", equals="draft answer")
 - code: groom/groom/assets/dashboard.js::AnswerForm
 - tests: groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard
 - dom: four rows, inside a form carrying hidden `cmd`, `workflow_id`, and `file_path` fields. The form is re-rendered on every 5s push, but the gate block is keyed by file path, so Preact reuses the same `<textarea>` DOM node and a half-typed answer survives.
@@ -276,9 +383,14 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#detail form[data-answer] button[type="submit"]`
 - role: button
 - name: `Send answer`
-- keyboard: natively focusable with Tab; Enter or Space submits the form, as does Enter from any single-line field in it.
+- verify: visible(locator="#detail form[data-answer] button[type='submit']", text="Send answer")
+- keyboard: natively focusable with Tab.
+- verify: visible(locator="#detail form[data-answer] button[type='submit']:focus", text="Send answer")
+- keyboard: Enter or Space submits the form, as does Enter from any single-line field in it.
+- verify: count(subject="WebSocket sends after Enter or Space submits the answer form", equals=1)
 - parent: [detail-pane](#detail-pane)
 - states: always enabled. The result is reported by a toast, not by a disabled state.
+- verify: json_path(path="answer_button.disabled", equals=false)
 - code: groom/groom/assets/dashboard.js::AnswerForm
 - leads-to: [send detail answer](#send-detail-answer), which serializes the form and sends it over the dashboard websocket.
 - screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-send-answer-button.png
@@ -288,9 +400,21 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#detail details.disclosure > summary`
 - role: button
 - name: `Working-tree diff`
-- keyboard: natively focusable with Tab; Enter or Space toggles the disclosure.
+- keyboard: natively focusable with Tab.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: Enter or Space toggles the disclosure.
+- verify: json_path(path="keyboard.enter_or_space_toggles", equals=true)
 - parent: [detail-pane](#detail-pane)
-- states: collapsed on render; the first expansion fetches the diff and shows `Loading diff…`, then either the rendered diff, `(no changes)`, or `failed to load diff`. Re-collapsing and re-expanding does not re-fetch.
+- states: collapsed on render.
+- verify: json_path(path="states.on_render", equals="collapsed")
+- states: the first expansion fetches the diff.
+- verify: json_path(path="states.first_expansion.fetches", equals=true)
+- states: the first expansion shows `Loading diff…` while the diff is loading.
+- verify: visible(locator="#detail details", text="Loading diff…")
+- states: after loading, the disclosure shows the rendered diff, `(no changes)`, or `failed to load diff`.
+- verify: json_path(path="states.after_load", matches="rendered diff|\\(no changes\\)|failed to load diff")
+- states: re-collapsing and re-expanding does not re-fetch.
+- verify: json_path(path="states.re_expansion.fetch_count", equals=1)
 - code: groom/groom/assets/dashboard.js::DiffDisclosure
 - dom: a native `<details>`/`<summary>` pair, keyed by run id so switching runs resets the disclosure rather than showing the previous run's diff.
 - leads-to: [toggle detail working tree diff](#toggle-detail-working-tree-diff), which lazily loads that run's [workspace diff data](../../workspace-diff-data.md).
@@ -303,7 +427,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - name: none
 - keyboard: not focusable.
 - parent: [detail-pane](#detail-pane)
-- states: `No telemetry for this run — it is either pre-OTel or exporting to another collector.` when the run has none; otherwise a grid of key/value cells in the projection's order, followed by an optional footer of fired alert-rule chips and the run directory.
+- states: `No telemetry for this run — it is either pre-OTel or exporting to another collector.` when the run has none.
+- verify: visible(locator="#detail .live-sec .fd-empty", text="No telemetry for this run — it is either pre-OTel or exporting to another collector.")
+- states: a grid of key/value cells in the projection's order, followed by an optional footer of fired alert-rule chips and the run directory when telemetry is present.
 - verify: visible(locator="#detail .live-sec .metrics-grid .metric:first-child .m-k", text="node")
 - verify: visible(locator="#detail .live-sec .metrics-grid", text="review")
 - code: groom/groom/assets/dashboard.js::Metrics
@@ -317,7 +443,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - name: none
 - keyboard: not focusable.
 - parent: [detail-pane](#detail-pane)
-- states: `No log lines for this run (workhorse ships in-process script logs over OTLP).` when empty; otherwise capped, newest-first lines, each a timestamp, severity, node, and body.
+- states: `No log lines for this run (workhorse ships in-process script logs over OTLP).` when empty.
+- verify: visible(locator="#detail .live-sec .log-trail .fd-empty", text="No log lines for this run (workhorse ships in-process script logs over OTLP).")
+- states: capped, newest-first lines, each a timestamp, severity, node, and body when logs are present.
 - verify: visible(locator="#detail .live-sec .log-line:first-child .lt-body", text="boom")
 - verify: count(subject="#detail .live-sec .log-line", equals=60)
 - code: groom/groom/assets/dashboard.js::LogTrail
@@ -329,7 +457,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#files-pane .repo-picker[data-picker="files"]`
 - role: button
 - name: `Select container / repo…`
-- keyboard: natively focusable with Tab; Enter or Space toggles the shared repository menu.
+- keyboard: natively focusable with Tab.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: Enter or Space toggles the shared repository menu.
+- verify: json_path(path="keyboard.enter_or_space_toggles", equals=true)
 - parent: [groom dashboard](#groom-dashboard)
 - exclusive-with: [diff-repository-picker-button](#diff-repository-picker-button)
 - states: label text is replaced on both pickers whenever a repository is chosen, so the two never disagree.
@@ -347,7 +478,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: natively focusable with Tab; Enter or Space toggles the shared repository menu.
 - parent: [groom dashboard](#groom-dashboard)
 - exclusive-with: [files-repository-picker-button](#files-repository-picker-button)
-- states: identical to the files picker; both labels are written together by the repository selector.
+- states: choosing a repository replaces the label text on the picker.
+- verify: json_path(path="states.after_selection.label_replaced", equals=true)
+- states: the files and diff picker labels are written together and never disagree.
+- verify: json_path(path="states.after_selection.labels_agree", equals=true)
 - code: groom/groom/assets/dashboard.js::openRepoMenu
 - code: groom/groom/assets/dashboard.js::wireEvents
 - leads-to: [open diff repository picker](#open-diff-repository-picker), which opens the shared menu below this button.
@@ -358,12 +492,33 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#repo-search`
 - role: combobox
 - name: `Search container / repo`
-- keyboard: focused automatically when the menu opens; ArrowDown and ArrowUp move the active option, Enter chooses it, Escape closes the menu and returns focus to the invoking picker.
+- keyboard: focused automatically when the menu opens.
+- verify: json_path(path="keyboard.focused_on_open", equals=true)
+- keyboard: ArrowDown and ArrowUp move the active option.
+- verify: json_path(path="keyboard.arrow_navigation_moves_active_option", equals=true)
+- keyboard: Enter chooses the active option.
+- verify: json_path(path="keyboard.enter_chooses_active_option", equals=true)
+- keyboard: Escape closes the menu.
+- verify: json_path(path="keyboard.escape_closes_menu", equals=true)
+- keyboard: Escape returns focus to the invoking picker.
+- verify: json_path(path="keyboard.escape_returns_focus_to_invoking_picker", equals=true)
 - parent: [groom dashboard](#groom-dashboard)
-- states: `aria-expanded` is `true` while the menu is open and `false` otherwise; `aria-activedescendant` points at the active option's id while one exists and is removed when the filtered list is empty or the menu closes. The value is cleared on every open.
+- states: `aria-expanded` is `true` while the menu is open.
+- verify: json_path(path="states.aria_expanded_while_open", equals=true)
+- states: `aria-expanded` is `false` while the menu is closed.
+- verify: json_path(path="states.aria_expanded_while_closed", equals=false)
+- states: `aria-activedescendant` points at the active option's id while one exists.
+- verify: json_path(path="states.aria_activedescendant", matches="^repo-opt-[0-9]+$")
+- states: `aria-activedescendant` is removed when the filtered list is empty.
+- verify: json_path(path="states.aria_activedescendant", absent=true)
+- states: `aria-activedescendant` is removed when the menu closes.
+- verify: json_path(path="states.aria_activedescendant", absent=true)
+- states: The value is cleared on every open.
+- verify: json_path(path="states.value_on_open", equals="")
 - code: groom/groom/assets/dashboard.js::openRepoMenu
 - code: groom/groom/assets/dashboard.js::closeRepoMenu
 - code: groom/groom/assets/dashboard.js::RepoMenu
+- detail: [repository menu composition](../../concepts/repository-menu-composition.md)
 - props:
   - `role`: literal `combobox`; required.
   - `aria-controls`: literal `repo-menu`; required; associates the input with the listbox it drives.
@@ -377,10 +532,19 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#repo-menu`
 - role: listbox
 - name: `Containers and repositories`
-- keyboard: not focusable itself; driven entirely from the search input via `aria-activedescendant`.
+- keyboard: not focusable itself.
+- verify: json_path(path="keyboard.focusable", equals=false)
+- keyboard: driven entirely from the search input via `aria-activedescendant`.
+- verify: json_path(path="keyboard.driver", equals="search input via aria-activedescendant")
 - parent: [groom dashboard](#groom-dashboard)
-- states: `Loading…` while the fetch is in flight; `No repositories available.` when the response is empty or the search matches nothing; otherwise one option per repository, grouped per container by the server and flattened for the keyboard.
+- states: `Loading…` while the fetch is in flight.
+- verify: visible(locator="#repo-menu", text="Loading…")
+- states: `No repositories available.` when the response is empty or the search matches nothing.
+- verify: visible(locator="#repo-menu", text="No repositories available.")
+- states: otherwise one option per repository, grouped per container by the server and flattened for the keyboard.
+- verify: json_path(path="states.options", equals="one option per repository, grouped per container by the server and flattened for the keyboard")
 - code: groom/groom/assets/dashboard.js::RepoMenu
+- detail: [repository menu composition](../../concepts/repository-menu-composition.md)
 - dom: a shell `<div>` the menu island renders into, positioned under whichever picker invoked it.
 - screenshot: docs/specs/groom-dashboard/vet/repository-menu-repository-menu-listbox.png
 
@@ -389,11 +553,20 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#repo-menu .repo-item[role="option"]`
 - role: option
 - name: `{container} / {repo}`
-- keyboard: not individually focusable; reached with ArrowDown and ArrowUp from the search input and chosen with Enter. Pointer click selects it directly.
+- keyboard: not individually focusable.
+- verify: json_path(path="keyboard.focusable", equals=false)
+- keyboard: reached with ArrowDown and ArrowUp from the search input and chosen with Enter.
+- verify: json_path(path="keyboard.arrow_navigation_and_enter", equals="ArrowDown and ArrowUp from the search input, chosen with Enter")
+- keyboard: Pointer click selects the option directly.
+- verify: json_path(path="keyboard.pointer_click_selects", equals=true)
 - parent: [repository-menu-listbox](#repository-menu-listbox)
-- states: `aria-selected="true"` on the active option and `"false"` on the rest; the active option is scrolled into view on each render.
+- states: `aria-selected="true"` on the active option and `"false"` on the rest.
+- verify: json_path(path="states.aria_selected", equals="true on the active option and false on the rest")
+- states: the active option is scrolled into view on each render.
+- verify: json_path(path="states.active_option_scrolled", equals=true)
 - code: groom/groom/assets/dashboard.js::RepoMenu
 - code: groom/groom/assets/dashboard.js::repoItems
+- detail: [repository menu composition](../../concepts/repository-menu-composition.md)
 - props:
   - `id`: `repo-opt-{index}`; required; the target of the search input's `aria-activedescendant`.
   - `data-container`: the container id; required.
@@ -408,10 +581,24 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#files-tree .tree-dir-head`
 - role: button
 - name: `{directory}`
-- keyboard: natively focusable with Tab; Enter or Space collapses and expands the directory.
+- keyboard: natively focusable with Tab.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: Enter or Space collapses and expands the directory.
+- verify: json_path(path="keyboard.enter_or_space_toggles", equals=true)
 - parent: [groom dashboard](#groom-dashboard)
 - exclusive-with: [diff-directory-toggle](#diff-directory-toggle)
-- states: expanded by default with `aria-expanded="true"`; collapsed with `aria-expanded="false"` and the `collapsed` class on its wrapper. The collapse state is component-local and survives a re-render because the node is keyed by name; it is deliberately not in the store, since nothing else reads it.
+- states: expanded by default with `aria-expanded="true"`.
+- verify: json_path(path="states.default.aria_expanded", equals=true)
+- states: collapsed with `aria-expanded="false"`.
+- verify: json_path(path="states.collapsed.aria_expanded", equals=true)
+- states: collapsed with the `collapsed` class on its wrapper.
+- verify: json_path(path="states.collapsed.wrapper_class", equals="collapsed")
+- states: the collapse state is component-local.
+- verify: json_path(path="states.scope", equals="component-local")
+- states: the collapse state survives a re-render because the node is keyed by name.
+- verify: json_path(path="states.after_rerender", equals="preserved_by_name")
+- states: the collapse state is deliberately not in the store, since nothing else reads it.
+- verify: json_path(path="states.store", equals="absent")
 - code: groom/groom/assets/dashboard.js::TreeDir
 - code: groom/groom/assets/dashboard.js::buildTree
 - dom: a native `<button type="button">` with an `aria-hidden` chevron; the nesting is a pure function of the flat path list the server sends, computed by the [dashboard tree builder](../../concepts/dashboard-tree-builder.md).
@@ -423,10 +610,16 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#files-tree button.tree-file`
 - role: button
 - name: `{filename}`
-- keyboard: natively focusable with Tab; Enter or Space opens the file in the viewer.
+- keyboard: natively focusable with Tab.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: Enter or Space opens the file in the viewer.
+- verify: json_path(path="keyboard.enter_or_space_opens_file", equals=true)
 - parent: [groom dashboard](#groom-dashboard)
 - exclusive-with: [diff-file-row](#diff-file-row)
-- states: the open file's row carries the `active` class and `aria-current="true"`; every other row omits `aria-current`.
+- states: the open file's row carries the `active` class and `aria-current="true"`.
+- verify: json_path(path="states.open_row.active_and_current", equals=true)
+- states: every other row omits `aria-current`.
+- verify: json_path(path="states.other_rows.omit_current", equals=true)
 - code: groom/groom/assets/dashboard.js::FilesTree
 - dom: a native `<button type="button">` keyed by full path, holding only the base name. The full path is closed over by the click handler rather than written to a data attribute.
 - leads-to: [select files file row](#select-files-file-row), which fetches that file's [workspace file content data](../../workspace-file-content-data.md).
@@ -436,10 +629,14 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 
 - selector: `#file-view`
 - role: none
+- verify: json_path(path="accessibility.role", equals="none")
 - name: none
+- verify: json_path(path="accessibility.name", equals="none")
 - keyboard: not focusable; the code block is selectable text.
+- verify: json_path(path="keyboard.focusable", equals=false)
 - parent: [groom dashboard](#groom-dashboard)
 - states: `Select a file to view it.` when idle; `Loading…` in flight; `failed to load` on rejection; `(empty or binary file)` under the path header when the content is empty; otherwise the path header and the highlighted source.
+- verify: json_path(path="states.rendered", matches="Select a file to view it\\.|Loading…|failed to load|\\(empty or binary file\\)|highlighted source")
 - code: groom/groom/assets/dashboard.js::FileView
 - code: groom/groom/assets/dashboard.js::highlight
 - dom: highlighting is applied by highlight.js, whose output is escaped HTML; when the library is absent or throws, the content is rendered as a plain text node instead. The language comes from the server so the extension table lives next to the rest of the presentation policy.
@@ -453,7 +650,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: natively focusable with Tab; Enter or Space collapses and expands the directory.
 - parent: [groom dashboard](#groom-dashboard)
 - exclusive-with: [files-directory-toggle](#files-directory-toggle)
-- states: expanded by default with `aria-expanded="true"`; collapsed with `aria-expanded="false"`. Same component as the files tree uses, over the changed-file list put through the same [dashboard tree builder](../../concepts/dashboard-tree-builder.md).
+- states: expanded by default with `aria-expanded="true"`.
+- verify: json_path(path="states.on_render", equals="expanded")
+- states: collapsed with `aria-expanded="false"`. Same component as the files tree uses, over the changed-file list put through the same [dashboard tree builder](../../concepts/dashboard-tree-builder.md).
+- verify: json_path(path="states.after_collapse", equals="collapsed")
 - code: groom/groom/assets/dashboard.js::TreeDir
 - leads-to: [toggle diff directory](#toggle-diff-directory).
 - screenshot: docs/specs/groom-dashboard/vet/diff-diff-directory-toggle.png
@@ -463,10 +663,16 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#diff-tree button.tree-file`
 - role: button
 - name: `{filename} +{added} -{deleted}`
-- keyboard: natively focusable with Tab; Enter or Space shows that file's diff.
+- keyboard: natively focusable with Tab.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: Enter or Space shows that file's diff.
+- verify: json_path(path="keyboard.enter_or_space_shows_diff", equals=true)
 - parent: [groom dashboard](#groom-dashboard)
 - exclusive-with: [files-file-row](#files-file-row)
-- states: the shown file's row carries the `active` class and `aria-current="true"`; every other row omits `aria-current`.
+- states: the shown file's row carries the `active` class and `aria-current="true"`.
+- verify: json_path(path="states.shown_row", equals="active with aria-current=true")
+- states: every other row omits `aria-current`.
+- verify: json_path(path="states.other_rows", equals="aria-current absent")
 - code: groom/groom/assets/dashboard.js::DiffTree
 - dom: keyed by its index into the [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md); the index is closed over by the click handler rather than written to a data attribute. A file added or deleted in the diff is addressed by its non-`/dev/null` name.
 - leads-to: [select diff file row](#select-diff-file-row).
@@ -477,9 +683,15 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#diff-view`
 - role: none
 - name: none
-- keyboard: not focusable; the rendered diff is selectable text.
+- keyboard: not focusable.
+- verify: json_path(path="keyboard.tab_reachable", equals=false)
+- keyboard: the rendered diff is selectable text.
+- verify: json_path(path="keyboard.text_selectable", equals=true)
 - parent: [groom dashboard](#groom-dashboard)
-- states: `Select a changed file to see its diff.` until a changed file is chosen; otherwise that one file's rendered diff.
+- states: `Select a changed file to see its diff.` until a changed file is chosen.
+- verify: visible(locator="#diff-view", text="Select a changed file to see its diff.")
+- states: after a changed file is chosen, the region shows that file's rendered diff.
+- verify: visible(locator="#diff-view")
 - code: groom/groom/assets/dashboard.js::DiffView
 - code: groom/groom/assets/dashboard.js::diffMarkup
 - dom: diff2html both parses the unified text and renders it, and escapes what it emits — which is why the raw diff rides the wire unsplit rather than having half a parser reimplemented server-side.
@@ -492,7 +704,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - name: `Filter by run id`
 - keyboard: natively focusable with Tab; typing re-queries.
 - parent: [groom dashboard](#groom-dashboard)
-- states: empty by default; any value narrows the query to matching run ids.
+- states: empty by default.
+- verify: json_path(path="states.value_on_load", equals="")
+- states: any value narrows the query to matching run ids.
+- verify: json_path(path="states.query_narrows_to_matching_run_ids", equals=true)
 - code: groom/groom/assets/dashboard.js::loadTraces
 - screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-run-filter-input.png
 
@@ -503,7 +718,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - name: `Filter by node`
 - keyboard: natively focusable with Tab; typing re-queries.
 - parent: [groom dashboard](#groom-dashboard)
-- states: empty by default; any value narrows the query to matching workflow nodes.
+- states: empty by default.
+- verify: json_path(path="states.empty_by_default", equals=true)
+- states: any value narrows the query to matching workflow nodes.
+- verify: json_path(path="states.value_narrows_query", equals=true)
 - code: groom/groom/assets/dashboard.js::loadTraces
 - screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-node-filter-input.png
 
@@ -512,9 +730,20 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#traces-filter select[name="status"]`
 - role: combobox
 - name: `Filter by span status`
-- keyboard: natively focusable with Tab; ArrowUp and ArrowDown or typing choose an option; changing the value re-queries.
+- keyboard: natively focusable with Tab.
+- verify: json_path(path="keyboard.focusable_with_tab", equals=true)
+- keyboard: ArrowUp and ArrowDown choose an option.
+- verify: json_path(path="keyboard.arrow_keys_choose_option", equals=true)
+- keyboard: typing chooses an option.
+- verify: json_path(path="keyboard.typing_chooses_option", equals=true)
+- keyboard: changing the value re-queries.
+- verify: json_path(path="keyboard.value_change_requeries", equals=true)
 - parent: [groom dashboard](#groom-dashboard)
-- states: `any status` by default, with an empty value; `ERROR`, `OK`, and `UNSET` are the alternatives.
+- states: `any status` by default, with an empty value.
+- verify: json_path(path="states.default", equals="any status")
+- verify: json_path(path="states.value", equals="")
+- states: `ERROR`, `OK`, and `UNSET` are the alternatives.
+- verify: json_path(path="states.alternatives", matches="ERROR.*OK.*UNSET")
 - code: groom/groom/assets/dashboard.js::loadTraces
 - dom: a native single-select `<select>`, which computes to `combobox` — not `listbox` — because it is closed and shows one value at a time.
 - screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-status-filter-select.png
@@ -526,7 +755,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - name: `Minimum duration in seconds`
 - keyboard: natively focusable with Tab; typing re-queries.
 - parent: [groom dashboard](#groom-dashboard)
-- states: empty by default; a numeric value drops spans faster than that many seconds.
+- states: empty by default.
+- verify: json_path(path="states.value_on_load", equals="")
+- states: a numeric value drops spans faster than that many seconds.
+- verify: json_path(path="states.numeric_value_filters_faster_spans", equals=true)
 - code: groom/groom/assets/dashboard.js::loadTraces
 - screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-slower-than-input.png
 
@@ -535,9 +767,17 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#traces-filter input[name="show_ended"]`
 - role: checkbox
 - name: `show ended`
-- keyboard: natively focusable with Tab; Space toggles it, which re-queries.
+- keyboard: natively focusable with Tab.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: Space toggles it, which re-queries.
+- verify: json_path(path="keyboard.space_toggles_and_requeries", equals=true)
 - parent: [groom dashboard](#groom-dashboard)
-- states: unchecked by default, which is the connected-runs-only view; checked sends `show_ended=1` and the pane also shows runs that have finished or gone silent.
+- states: unchecked by default, which is the connected-runs-only view.
+- verify: json_path(path="states.default_checked", equals=false)
+- states: checked sends `show_ended=1`.
+- verify: json_path(path="states.checked_query", equals="show_ended=1")
+- states: the checked view also shows runs that have finished or gone silent.
+- verify: json_path(path="states.checked_view", equals="finished or silent runs included")
 - code: groom/groom/assets/dashboard.js::loadTraces
 - dom: a native `<input type="checkbox">` inside its own `<label>`, so the visible text is the accessible name and clicking the text toggles it. Unchecked, the field is simply absent from the serialized form — which is the same thing an omitted query parameter means to the server, so the default view needs no client-side special case.
 
@@ -546,9 +786,21 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#traces-list table.traces`
 - role: table
 - name: none
-- keyboard: not focusable; the cells are selectable text.
+- keyboard: not focusable.
+- verify: json_path(path="keyboard.focusable", equals=false)
+- keyboard: the cells are selectable text.
+- verify: json_path(path="keyboard.cells_selectable", equals=true)
 - parent: [groom dashboard](#groom-dashboard)
-- states: `No telemetry yet.` before the first query; `failed to load` on rejection; `No run is connected right now. Tick show ended to read the runs that already finished.` when the connected-only view is empty; a run-card strip with `No spans match — …` when runs are known but no span matches; otherwise the strip plus a six-column table of started, run, node, span, duration, and status.
+- states: `No telemetry yet.` before the first query.
+- verify: visible(locator="#traces-list", text="No telemetry yet.")
+- states: `failed to load` on rejection.
+- verify: visible(locator="#traces-list", text="failed to load")
+- states: `No run is connected right now. Tick show ended to read the runs that already finished.` when the connected-only view is empty.
+- verify: visible(locator="#traces-list", text="No run is connected right now. Tick show ended to read the runs that already finished.")
+- states: a run-card strip with `No spans match — …` when runs are known but no span matches.
+- verify: visible(locator="#traces-list", text="No spans match")
+- states: otherwise the strip plus a six-column table of started, run, node, span, duration, and status.
+- verify: visible(locator="#traces-list table.traces", text="started run node span duration status")
 - code: groom/groom/assets/dashboard.js::Traces
 - code: groom/groom/assets/dashboard.js::RunCard
 - dom: a real `<table>` with a `<thead>` row of `<th>` cells, so the columns are announced as headers rather than as a grid of unlabelled text. Rows with an `ERROR` status carry an extra class on the status cell only.
@@ -559,10 +811,21 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#btn-refresh`
 - role: button
 - name: `Rescan containers`
-- keyboard: natively focusable with Tab; Enter or Space triggers the rescan.
+- keyboard: natively focusable with Tab.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: Enter or Space triggers the rescan.
+- verify: json_path(path="keyboard.enter_or_space_triggers_rescan", equals=true)
 - parent: [groom dashboard](#groom-dashboard)
-- states: idle; while a rescan is in flight it carries `data-busy` and the `spinning` class, and further activations are ignored until the request settles.
+- states: idle.
+- verify: json_path(path="states.idle", equals=true)
+- states: while a rescan is in flight it carries `data-busy`.
+- verify: json_path(path="states.in_flight.data_busy", equals=true)
+- states: while a rescan is in flight it carries the `spinning` class.
+- verify: json_path(path="states.in_flight.spinning", equals=true)
+- states: further activations are ignored until the request settles.
+- verify: json_path(path="states.in_flight.activations_ignored", equals=true)
 - code: groom/groom/assets/dashboard.js::doRefresh
+- detail: [dashboard rescan control selection](../../concepts/dashboard-rescan-control-selection.md)
 - dom: a text button in the settings pane, beside the explanatory line `Re-run the docker discovery pass.`
 - leads-to: [rescan containers from settings](#rescan-containers-from-settings).
 - screenshot: docs/specs/groom-dashboard/vet/settings-settings-rescan-button.png
@@ -572,9 +835,15 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#btn-notify`
 - role: button
 - name: `Enable notifications`
-- keyboard: natively focusable with Tab; Enter or Space requests the browser permission.
+- keyboard: natively focusable with Tab.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: Enter or Space requests the browser permission.
+- verify: json_path(path="keyboard.enter_or_space_requests_permission", equals=true)
 - parent: [groom dashboard](#groom-dashboard)
-- states: static — the label does not change with the permission state; the browser owns the prompt and the answer.
+- states: static — the label does not change with the permission state.
+- verify: json_path(path="states.label", equals="static across permission states")
+- states: the browser owns the permission prompt and the answer.
+- verify: json_path(path="states.permission_prompt_owner", equals="browser")
 - code: groom/groom/assets/dashboard.js::wireEvents
 - dom: a ghost button in the settings pane, beside `Browser alerts when a worker blocks.`
 - leads-to: [enable browser notifications from settings](#enable-browser-notifications-from-settings), which asks for [browser notification permission](../../concepts/browser-notification-permission.md).
@@ -585,10 +854,21 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#statusbar`
 - role: status
 - name: `Fleet status`
-- keyboard: not focusable itself; contains the refresh and palette buttons.
+- keyboard: not focusable itself.
+- verify: json_path(path="keyboard.focusable", equals=false)
+- keyboard: contains the refresh and palette buttons.
+- verify: json_path(path="keyboard.child_controls", equals="refresh and palette buttons")
 - parent: [groom dashboard](#groom-dashboard)
-- states: four state counts in the order blocked, running, idle, finished, then the repo and worker totals, the connection chip, the refresh control, and the palette button.
+- states: four state counts in the order blocked, running, idle, finished.
 - verify: visible(locator="#statusbar", text="1 blocked 2 running 1 idle 0 finished")
+- states: the repo and worker totals.
+- verify: visible(locator="#statusbar", text="repos · workers")
+- states: the connection chip.
+- verify: visible(locator="#statusbar .stat.conn", text="Connection:")
+- states: the refresh control.
+- verify: visible(locator="#btn-refresh-bar", text="Rescan containers")
+- states: the palette button.
+- verify: visible(locator="#btn-palette", text="Open command palette")
 - code: groom/groom/assets/dashboard.js::StatusBar
 - tests: `groom/tests/test_projection.py::test_status_bar_counts_states`
 - dom: a shell `<div>` with `role="status"`, `aria-live="polite"`, and its own `aria-label`. It is one of three `role="status"` regions on this page; each is named so they are distinguishable.
@@ -599,10 +879,21 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#statusbar .stat.conn`
 - role: status
 - name: `Connection: ` followed by the current phase word — `live`, `stale`, `reconnecting`, or `offline`.
-- keyboard: not focusable; it is a report, not a control.
-- parent: [statusbar-region](#statusbar-region)
-- states: `live` while a frame has arrived within the last 15 seconds; `stale` when the socket is open but has been silent longer; `reconnecting` for the first 60 seconds after the socket closes, while backoff is in flight; `offline` beyond that. `connecting` is the value the store starts with, before the first evaluation.
+- keyboard: not focusable.
 - verify: visible(locator="#statusbar .stat.conn", text="live")
+- keyboard: it is a report, not a control.
+- verify: visible(locator="#statusbar .stat.conn", text="Connection:")
+- parent: [statusbar-region](#statusbar-region)
+- states: `live` while a frame has arrived within the last 15 seconds.
+- verify: visible(locator="#statusbar .stat.conn", text="live")
+- states: `stale` when the socket is open but has been silent longer.
+- verify: visible(locator="#statusbar .stat.conn", text="stale")
+- states: `reconnecting` for the first 60 seconds after the socket closes, while backoff is in flight.
+- verify: visible(locator="#statusbar .stat.conn", text="reconnecting")
+- states: `offline` beyond that.
+- verify: visible(locator="#statusbar .stat.conn", text="offline")
+- states: `connecting` is the value the store starts with, before the first evaluation.
+- verify: visible(locator="#statusbar .stat.conn", text="connecting")
 - code: groom/groom/assets/dashboard.js::ConnectionChip
 - code: groom/groom/assets/dashboard.js::deriveConnection
 - tests: groom/tests/test_connection_state.py::test_the_full_live_to_stale_to_offline_progression
@@ -620,10 +911,17 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#btn-refresh-bar`
 - role: button
 - name: `Rescan containers (reconcile + prune)`
-- keyboard: natively focusable with Tab; Enter or Space triggers the rescan.
+- keyboard: natively focusable with Tab.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: Enter or Space triggers the rescan.
+- verify: json_path(path="keyboard.enter_or_space_triggers_rescan", equals=true)
 - parent: [statusbar-region](#statusbar-region)
-- states: idle; `data-busy` and the `spinning` class while a rescan is in flight, during which further activations are ignored.
+- states: idle.
+- verify: json_path(path="states.idle", equals=true)
+- states: `data-busy` and the `spinning` class while a rescan is in flight, during which further activations are ignored.
+- verify: json_path(path="states.busy_ignores_further_activations", equals=true)
 - code: groom/groom/assets/dashboard.js::doRefresh
+- detail: [dashboard rescan control selection](../../concepts/dashboard-rescan-control-selection.md)
 - dom: an icon-only button holding an `aria-hidden` glyph, named longer than the settings-pane control it duplicates so the two are distinguishable when settings mode puts both on screen at once.
 - leads-to: [rescan containers from statusbar](#rescan-containers-from-statusbar).
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-statusbar-refresh-button.png
@@ -633,10 +931,16 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#btn-palette`
 - role: button
 - name: `Open command palette`
-- keyboard: natively focusable with Tab; Enter or Space opens the palette. `Ctrl+K` or `Meta+K` opens it from anywhere on the page.
+- keyboard: Tab reaches the button.
+- verify: json_path(path="$.activeElement", equals="#btn-palette")
+- keyboard: Enter or Space opens the palette.
+- verify: visible(locator="#palette", text="Command palette")
+- keyboard: `Ctrl+K` or `Meta+K` opens it from anywhere on the page.
+- verify: visible(locator="#palette", text="Command palette")
 - parent: [statusbar-region](#statusbar-region)
 - states: static. Opening records the invoker so focus returns here on close.
 - code: groom/groom/assets/dashboard.js::openPalette
+- detail: [command palette opening](../../concepts/command-palette-opening.md)
 - dom: shows the `⌘K` hint as an `aria-hidden` glyph beside the word `palette`; the accessible name comes from `aria-label` so the shortcut glyph is never read out as text.
 - leads-to: [toggle command palette shortcut](#toggle-command-palette-shortcut).
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-command-palette-open-button.png
@@ -647,11 +951,20 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - role: dialog
 - name: `Command palette`
 - placement: width 95-100%, x 0-5%
-- keyboard: Escape closes it; while it is open Tab is trapped on its input, which is its only focusable element.
+- keyboard: Escape closes it.
+- verify: absent(subject="command palette dialog")
+- keyboard: while it is open Tab is trapped on its input, which is its only focusable element.
+- verify: json_path(path="$.activeElement", equals="#palette-input")
 - parent: [groom dashboard](#groom-dashboard)
-- states: closed by default; `open` on the wrapper while shown. Closing returns focus to whatever opened it rather than dropping it to `<body>`.
+- states: closed by default.
+- verify: absent(subject="command palette dialog on initial load")
+- states: `open` on the wrapper while shown.
+- verify: visible(locator="#palette", text="Command palette")
+- states: closing returns focus to whatever opened it rather than dropping it to `<body>`.
+- verify: json_path(path="$.activeElement", equals="#btn-palette")
 - code: groom/groom/assets/dashboard.js::openPalette
 - code: groom/groom/assets/dashboard.js::closePalette
+- detail: [command palette opening](../../concepts/command-palette-opening.md)
 - dom: `aria-modal="true"`. The trap is one element wide on purpose — there is nothing else in the dialog to reach. `groom/groom/assets/dashboard.css` fixes the dialog wrapper to all viewport edges, so it spans the viewport rather than only the centered palette box inside it.
 - screenshot: docs/specs/groom-dashboard/vet/command-palette-command-palette-dialog.png
 
@@ -660,11 +973,28 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#palette-input`
 - role: combobox
 - name: `Jump to a worker or blocked gate`
-- keyboard: focused automatically on open; ArrowDown and ArrowUp move the active result, Enter chooses it, Escape closes the palette.
+- keyboard: focused automatically on open.
+- verify: json_path(path="$.activeElement", equals="#palette-input")
+- keyboard: ArrowDown and ArrowUp move the active result.
+- verify: json_path(path="$.aria-activedescendant", equals="presult-1")
+- keyboard: Enter chooses the active result.
+- verify: visible(locator="#detail .detail-head", text="{repo} #{short_handle}")
+- keyboard: Escape closes the palette.
+- verify: absent(subject="command palette dialog")
 - parent: [command-palette-dialog](#command-palette-dialog)
-- states: cleared on every open; `aria-expanded` tracks the palette's open state; `aria-activedescendant` points at the active result and is removed when nothing matches.
+- states: cleared on every open.
+- verify: json_path(path="$.value", equals="")
+- states: `aria-expanded` is true while the palette is open.
+- verify: json_path(path="$.aria-expanded", equals="true")
+- states: `aria-expanded` is false while the palette is closed.
+- verify: json_path(path="$.aria-expanded", equals="false")
+- states: `aria-activedescendant` points at the active result.
+- verify: json_path(path="$.aria-activedescendant", matches="^presult-[0-9]+$")
+- states: `aria-activedescendant` is removed when nothing matches.
+- verify: json_path(path="$.aria-activedescendant", absent=true)
 - code: groom/groom/assets/dashboard.js::PaletteResults
 - code: groom/groom/assets/dashboard.js::movePaletteActive
+- detail: [command palette result presentation](../../concepts/command-palette-result-presentation.md)
 - screenshot: docs/specs/groom-dashboard/vet/command-palette-command-palette-input.png
 
 ### command-palette-results-listbox
@@ -672,10 +1002,19 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#palette-results`
 - role: listbox
 - name: `Workers`
-- keyboard: not focusable itself; driven from the palette input via `aria-activedescendant`.
+- keyboard: not focusable itself.
+- verify: json_path(path="$.activeElement", equals="#palette-input")
+- keyboard: driven from the palette input via `aria-activedescendant`.
+- verify: json_path(path="$.aria-activedescendant", matches="^presult-[0-9]+$")
 - parent: [command-palette-dialog](#command-palette-dialog)
-- states: every run in the fleet when the query is empty; the matching subset otherwise; empty when nothing matches.
+- states: every run in the fleet when the query is empty.
+- verify: visible(locator="#palette-results", text="{repo} #{short_handle}")
+- states: the matching subset when the query is non-empty.
+- verify: visible(locator="#palette-results", text="{repo} #{short_handle}")
+- states: empty when nothing matches.
+- verify: count(subject="command palette results", equals=0)
 - code: groom/groom/assets/dashboard.js::PaletteResults
+- detail: [command palette result presentation](../../concepts/command-palette-result-presentation.md)
 - screenshot: docs/specs/groom-dashboard/vet/command-palette-command-palette-results-listbox.png
 
 ### command-palette-result
@@ -683,11 +1022,24 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#palette-results .presult[role="option"]`
 - role: option
 - name: `{repo} #{short_handle} {doing} {hint}`
-- keyboard: not individually focusable; reached with ArrowDown and ArrowUp and chosen with Enter. Pointer click chooses it directly.
+- keyboard: not individually focusable.
+- verify: json_path(path="$.activeElement", equals="#palette-input")
+- keyboard: reached with ArrowDown and ArrowUp.
+- verify: json_path(path="$.aria-activedescendant", equals="presult-1")
+- keyboard: chosen with Enter.
+- verify: visible(locator="#detail .detail-head", text="{repo} #{short_handle}")
+- keyboard: pointer click chooses it directly.
+- verify: visible(locator="#detail .detail-head", text="{repo} #{short_handle}")
 - parent: [command-palette-results-listbox](#command-palette-results-listbox)
-- states: `aria-selected="true"` on the active result and `"false"` on the rest; the active result is scrolled into view on each render.
+- states: `aria-selected="true"` on the active result.
+- verify: json_path(path="$.aria-selected", equals="true")
+- states: `aria-selected="false"` on the rest.
+- verify: json_path(path="$.aria-selected", equals="false")
+- states: the active result is scrolled into view on each render.
+- verify: visible(locator="#palette-results .presult[aria-selected='true']", text="{repo} #{short_handle}")
 - code: groom/groom/assets/dashboard.js::PaletteResults
 - code: groom/groom/assets/dashboard.js::paletteHits
+- detail: [command palette result presentation](../../concepts/command-palette-result-presentation.md)
 - props:
   - `id`: `presult-{index}`; required; the target of the palette input's `aria-activedescendant`.
 - dom: keyed by run id. The hit list is computed from the fleet **in the store**, not from the rendered rows, so the palette finds a run the runs-pane filter is currently hiding.
@@ -699,9 +1051,19 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#toasts`
 - role: alert
 - name: none
-- keyboard: not focusable; toasts are not dismissible by hand and expire on their own.
+- keyboard: not focusable.
+- verify: json_path(path="keyboard.focusable", equals=false)
+- keyboard: not dismissible by hand.
+- verify: json_path(path="keyboard.dismissible", equals=false)
 - parent: [groom dashboard](#groom-dashboard)
-- states: empty most of the time; one entry per blocked notification or answer confirmation, removed on its own timer — seven seconds for a block, three and a half for a confirmation.
+- states: empty most of the time.
+- verify: json_path(path="states.empty_most_of_time", equals=true)
+- states: one entry per blocked notification or answer confirmation.
+- verify: json_path(path="states.entries", equals="one per blocked notification or answer confirmation")
+- states: removed on its own timer — seven seconds for a block.
+- verify: json_path(path="states.expiration.blocked_seconds", equals=7)
+- states: removed on its own timer — three and a half seconds for a confirmation.
+- verify: json_path(path="states.expiration.confirmation_seconds", equals=3.5)
 - code: groom/groom/assets/dashboard.js::pushToast
 - dom: `aria-live="assertive"`, because a worker blocking is the one thing on this page worth interrupting for. Titles and bodies are set as text nodes, never as markup.
 
@@ -719,15 +1081,99 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - The click target or an ancestor matches `.act-btn`, and that control's `data-mode` is `runs`.
   - The prior mode may be any of the five.
 - does:
-  - Writes `runs` to the root `.app` element's `data-mode`, showing the runs pane and removing the other four panes from the accessibility tree.
-  - Recomputes the `active` class and `aria-pressed` on every rail button by comparing its `data-mode` to `runs`.
+  - Writes `runs` to the root `.app` element's `data-mode`.
+- verify: visible(locator=".app[data-mode='runs']", text="Runs")
+- does:
+  - Shows the runs pane.
+- verify: visible(locator="#runs-pane")
+- does:
+  - Removes the files, diff, telemetry, and settings panes from the accessibility tree.
+- verify: absent(subject="the files, diff, telemetry, and settings panes in the accessibility tree")
+- does:
+  - Adds the `active` class to the runs rail button.
+- verify: visible(locator=".act-btn[data-mode='runs'].active", text="Runs")
+- does:
+  - Sets `aria-pressed="true"` on the runs rail button.
+- verify: visible(locator=".act-btn[data-mode='runs'][aria-pressed='true']", text="Runs")
+- does:
+  - Removes the `active` class from every non-runs rail button.
+- verify: json_path(path="activity.buttons.files.classList", matches="^(?!.*\\bactive\\b).*$")
+- does:
+  - Sets `aria-pressed="false"` on every non-runs rail button.
+- verify: json_path(path="activity.buttons.files.ariaPressed", equals="false")
+- does:
   - Writes the mode to the store, so components that branch on it agree with the DOM.
-  - Closes the repository menu, idempotently; menu contents, search text, picker labels, and the selected repository are all retained.
-  - Takes no loader branch: runs is neither `files`, `diff`, nor `telemetry`, so no request is issued and the cached files, diff, and traces state is left as-is.
-  - Leaves the selected run, the fleet, the detail pane, the palette, the status bar, the socket, and all server state untouched.
-  - Performs no HTTP request, websocket send, navigation, focus move, or permission prompt.
+- verify: json_path(path="store.mode", equals="runs")
+- does:
+  - Closes the repository menu idempotently.
+- verify: absent(subject="the open repository menu")
+- does:
+  - Retains the repository menu contents.
+- verify: unchanged(subject="repository menu contents")
+- does:
+  - Retains the repository search text.
+- verify: unchanged(subject="repository search text")
+- does:
+  - Retains the repository picker labels.
+- verify: unchanged(subject="repository picker labels")
+- does:
+  - Retains the selected repository.
+- verify: unchanged(subject="selected repository")
+- does:
+  - Skips every panel loader when mode is `runs`.
+- verify: count(subject="files, diff, and telemetry loader calls", equals=0)
+- does:
+  - Issues no HTTP request.
+- verify: count(subject="HTTP requests", equals=0)
+- does:
+  - Leaves cached files state unchanged.
+- verify: unchanged(subject="cached files state")
+- does:
+  - Leaves cached diff state unchanged.
+- verify: unchanged(subject="cached diff state")
+- does:
+  - Leaves cached traces state unchanged.
+- verify: unchanged(subject="cached traces state")
+- does:
+  - Leaves the selected run unchanged.
+- verify: unchanged(subject="selected run")
+- does:
+  - Leaves the fleet unchanged.
+- verify: unchanged(subject="fleet")
+- does:
+  - Leaves the detail pane unchanged.
+- verify: unchanged(subject="detail pane")
+- does:
+  - Leaves the command palette unchanged.
+- verify: unchanged(subject="command palette")
+- does:
+  - Leaves the status bar unchanged.
+- verify: unchanged(subject="status bar")
+- does:
+  - Leaves the socket unchanged.
+- verify: unchanged(subject="dashboard socket")
+- does:
+  - Leaves server state unchanged.
+- verify: unchanged(subject="server state")
+- does:
+  - Performs no HTTP request.
+- verify: count(subject="HTTP requests", equals=0)
+- does:
+  - Performs no WebSocket send.
+- verify: count(subject="WebSocket sends", equals=0)
+- does:
+  - Performs no navigation.
+- verify: unchanged(subject="browser URL")
+- does:
+  - Performs no focus move.
+- verify: unchanged(subject="document.activeElement")
+- does:
+  - Performs no permission prompt.
+- verify: count(subject="permission prompts", equals=0)
 - code: groom/groom/assets/dashboard.js::setMode
 - code: groom/groom/assets/dashboard.js::closeRepoMenu
+- detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
+- detail: [repository menu closing contexts](../../concepts/repository-menu-closing-contexts.md)
 
 ### select-activity-files-mode
 
@@ -735,24 +1181,108 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click, tap, Enter, or Space on the files rail button or its SVG, captured by the delegated `#activitybar` click handler.
 - role: button
 - name: `Files`
-- keyboard: Tab and Shift+Tab reach the button; Enter or Space activates it.
+- keyboard: Tab and Shift+Tab reach the button.
+- verify: visible(locator=".act-btn[data-mode='files']:focus", text="Files")
+- keyboard: Enter or Space activates the button.
+- verify: visible(locator=".app[data-mode='files']", text="Files")
 - when:
   - The click target or an ancestor matches `.act-btn` with `data-mode="files"`.
   - A selected repository may be absent, or may hold a container id plus an optional repository path in [dashboard selected repository state](../../dashboard-selected-repository-state.md).
 - does:
-  - Writes `files` to `.app[data-mode]`, recomputes `active` and `aria-pressed` across the rail, writes the mode to the store, and closes the repository menu.
+  - Writes `files` to `.app[data-mode]`.
+- verify: visible(locator=".app[data-mode='files']", text="Files")
+- does:
+  - Recomputes `active` and `aria-pressed` across the rail for the Files button.
+- verify: visible(locator=".act-btn[data-mode='files'].active[aria-pressed='true']", text="Files")
+- does:
+  - Writes `files` to the mode in the store.
+- verify: json_path(path="store.mode", equals="files")
+- does:
+  - Closes the repository menu.
+- verify: absent(subject="repository menu")
+- does:
   - Enters the files loader — even when files mode was already active, so reselecting the control reloads the pane.
-  - Returns immediately without a request when no repository container is selected; the tree keeps its `Pick a container / repo above.` prompt.
-  - Otherwise resets the files slice to a loading state with an empty path list, no open path, and an idle viewer, so a previous repository's file and tree are cleared before the new load.
-  - Sends `GET /files/{container_id}?repo={repo}` to [get workspace file list](../../http/groom.md#get-workspace-file-list), URL-encoding both the container id and the repository path; an unset repository path is sent as an empty value.
-  - Parses the response as JSON [workspace file list data](../../workspace-file-list-data.md) and stores its path array, rendering `(no files)` when it is empty.
-  - Groups the flat repo-relative paths into a [dashboard path tree](../../dashboard-path-tree.md) at render time, sorting directories and then files by name; directories start expanded.
-  - Stores an error status on a rejected fetch, which the tree renders as `failed to load`.
-  - Leaves the selected run, the fleet, the detail pane, the palette, the status bar, and the socket untouched.
+- verify: visible(locator="#files-tree", text="Loading files…")
+- does:
+  - Returns immediately without a request when no repository container is selected.
+- verify: count(subject="files requests", equals=0)
+- does:
+  - Keeps the `Pick a container / repo above.` tree prompt when no repository container is selected.
+- verify: visible(locator="#files-tree", text="Pick a container / repo above.")
+- does:
+  - Otherwise resets the files slice to a loading state.
+- verify: visible(locator="#files-tree", text="Loading files…")
+- does:
+  - Otherwise resets the files slice with an empty path list.
+- verify: count(subject="files paths", equals=0)
+- does:
+  - Otherwise resets the files slice with no open path.
+- verify: json_path(path="files.path", equals=null)
+- does:
+  - Otherwise resets the files slice with an idle viewer.
+- verify: json_path(path="files.view.status", equals="idle")
+- does:
+  - Sends `GET /files/{container_id}?repo={repo}` to [get workspace file list](../../http/groom.md#get-workspace-file-list).
+- verify: json_path(path="request.url", matches="^/files/[^?]+\\?repo=")
+- does:
+  - URL-encodes the container id and repository path in the files request.
+- verify: json_path(path="request.url", matches="^/files/[^/]+\\?repo=[^&]*$")
+- does:
+  - Sends an unset repository path as an empty `repo` query value.
+- verify: json_path(path="request.url", matches="\\?repo=$")
+- does:
+  - Parses the response as JSON [workspace file list data](../../workspace-file-list-data.md).
+- verify: json_path(path="response.paths[0]", equals="README.md")
+- does:
+  - Stores the response path array.
+- verify: json_path(path="files.paths[0]", equals="README.md")
+- does:
+  - Renders `(no files)` when the response path array is empty.
+- verify: visible(locator="#files-tree", text="(no files)")
+- does:
+  - Groups the flat repository-relative paths into a [dashboard path tree](../../dashboard-path-tree.md) at render time.
+- verify: visible(locator="#files-tree", text="README.md")
+- does:
+  - Sorts directories by name before files in the rendered path tree.
+- verify: visible(locator="#files-tree", text="src README.md")
+- does:
+  - Sorts files by name within each rendered path tree level.
+- verify: visible(locator="#files-tree", text="a.txt z.txt")
+- does:
+  - Starts rendered directories expanded.
+- verify: visible(locator=".tree-dir:not(.collapsed) .tree-children", text="README.md")
+- does:
+  - Clears a previous repository's file and tree before loading the new repository.
+- verify: visible(locator="#files-tree", text="Loading files…")
+- does:
+  - Stores an error status on a rejected files request.
+- verify: json_path(path="files.status", equals="error")
+- does:
+  - Renders `failed to load` for a rejected files request.
+- verify: visible(locator="#files-tree", text="failed to load")
+- does:
+  - Leaves the selected run untouched.
+- verify: unchanged(subject="selected run")
+- does:
+  - Leaves the fleet untouched.
+- verify: unchanged(subject="fleet")
+- does:
+  - Leaves the detail pane untouched.
+- verify: unchanged(subject="detail pane")
+- does:
+  - Leaves the palette untouched.
+- verify: unchanged(subject="palette")
+- does:
+  - Leaves the status bar untouched.
+- verify: unchanged(subject="status bar")
+- does:
+  - Leaves the socket untouched.
+- verify: unchanged(subject="socket")
 - code: groom/groom/assets/dashboard.js::setMode
 - code: groom/groom/assets/dashboard.js::loadFiles
 - code: groom/groom/assets/dashboard.js::FilesTree
 - code: groom/groom/assets/dashboard.js::buildTree
+- detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 
 ### select-activity-diff-mode
 
@@ -760,22 +1290,54 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click, tap, Enter, or Space on the diff rail button or its SVG, captured by the delegated `#activitybar` click handler.
 - role: button
 - name: `Diff`
-- keyboard: Tab and Shift+Tab reach the button; Enter or Space activates it.
+- keyboard: Tab and Shift+Tab reach the button.
+- verify: visible(locator=".act-btn[data-mode='diff']:focus", text="Diff")
+- keyboard: Enter or Space activates the button.
+- verify: visible(locator=".app[data-mode='diff']", text="Diff")
 - when:
   - The click target or an ancestor matches `.act-btn` with `data-mode="diff"`.
   - A selected repository may be absent or present.
 - does:
-  - Writes `diff` to `.app[data-mode]`, recomputes `active` and `aria-pressed` across the rail, writes the mode to the store, and closes the repository menu.
+  - Writes `diff` to `.app[data-mode]` and recomputes `active` and `aria-pressed` across the rail.
+- verify: visible(locator=".act-btn[data-mode='diff'].active[aria-pressed='true']", text="Diff")
+- does:
+  - Writes `diff` to the mode in the store.
+- verify: json_path(path="store.mode", equals="diff")
+- does:
+  - Closes the repository menu.
+- verify: absent(subject="repository menu")
+- does:
   - Enters the diff loader, unconditionally, so reselecting the control reloads the pane.
+- verify: visible(locator="#diff-tree", text="Loading changes…")
+- does:
   - Returns without a request when no repository container is selected.
+- verify: visible(locator="#diff-tree", text="Pick a container / repo above.")
+- does:
   - Otherwise resets the diff slice to a loading state with no parsed files and no selected index.
-  - Sends `GET /diff/{container_id}?repo={repo}` to [get working tree diff](../../http/groom.md#get-working-tree-diff) and reads the JSON body's raw unified diff.
-  - Parses that text into a [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md) with diff2html, storing an empty list for an empty diff, and leaves the selected index unset so the viewer shows its prompt.
+- verify: visible(locator="#diff-tree", text="Loading changes…")
+- does:
+  - Sends `GET /diff/{container_id}?repo={repo}` to [get working tree diff](../../http/groom.md#get-working-tree-diff).
+- verify: visible(locator="#diff-tree", text="Loading changes…")
+- does:
+  - Reads the JSON body's raw unified diff.
+- verify: visible(locator="#diff-view")
+- does:
+  - Parses that text into a [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md) with diff2html, storing an empty list for an empty diff.
+- verify: count(subject="diff.files", equals=0)
+- does:
+  - Leaves the selected index unset so the viewer shows its prompt.
+- verify: visible(locator="#diff-view", text="Select a changed file to see its diff.")
+- does:
   - Stores an error status on a rejected fetch, which the tree renders as `failed to load`.
+- verify: visible(locator="#diff-tree", text="failed to load")
+- does:
   - Leaves the selected run, the fleet, the detail pane, the palette, the status bar, and the socket untouched.
+- verify: unchanged(subject="dashboard state outside diff mode")
 - code: groom/groom/assets/dashboard.js::setMode
 - code: groom/groom/assets/dashboard.js::loadDiff
 - code: groom/groom/assets/dashboard.js::DiffTree
+- detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
+- detail: [dashboard Diff pane selection contexts](../../concepts/dashboard-diff-pane-selection-contexts.md)
 
 ### select-activity-telemetry-mode
 
@@ -783,20 +1345,97 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click, tap, Enter, or Space on the telemetry rail button or its SVG, captured by the delegated `#activitybar` click handler.
 - role: button
 - name: `Telemetry`
-- keyboard: Tab and Shift+Tab reach the button; Enter or Space activates it.
+- keyboard: Tab reaches the button.
+- verify: visible(locator=".act-btn[data-mode='telemetry']:focus", text="Telemetry")
+- keyboard: Shift+Tab reaches the button.
+- verify: visible(locator=".act-btn[data-mode='telemetry']:focus", text="Telemetry")
+- keyboard: Enter activates the button.
+- verify: visible(locator=".app[data-mode='telemetry']", text="Telemetry")
+- keyboard: Space activates the button.
+- verify: visible(locator=".app[data-mode='telemetry']", text="Telemetry")
 - when:
   - The click target or an ancestor matches `.act-btn` with `data-mode="telemetry"`.
-  - The span-filter fields hold whatever the operator last typed or ticked; they are shell markup and are not cleared by a mode switch.
+- verify: visible(locator=".app[data-mode='telemetry']", text="Telemetry")
+- when:
+  - The span-filter fields retain whatever the operator last typed or ticked.
+- verify: unchanged(subject="telemetry filter fields")
+- when:
+  - A mode switch does not clear the shell-markup span-filter fields.
+- verify: unchanged(subject="telemetry filter fields")
 - does:
-  - Writes `telemetry` to `.app[data-mode]`, recomputes `active` and `aria-pressed` across the rail, writes the mode to the store, and closes the repository menu.
-  - Enters the traces loader, unconditionally, so reselecting the control re-queries.
-  - Serializes the filter fields into a query string and sends `GET /traces` with it.
-  - Stores the response's run cards and span rows, which the pane renders as the card strip and the traces table; an empty span list renders the no-match note under the strip, or the not-connected note when `show ended` is unticked and no run came back.
-  - Stores an error status on a rejected fetch, which the pane renders as `failed to load`.
-  - Leaves the selected run, the fleet, the detail pane, the files and diff caches, the palette, and the socket untouched.
+  - Writes `telemetry` to `.app[data-mode]`.
+- verify: visible(locator=".app[data-mode='telemetry']", text="Telemetry")
+- does:
+  - Recomputes `active` across the rail.
+- verify: visible(locator=".act-btn[data-mode='telemetry'].active", text="Telemetry")
+- does:
+  - Recomputes `aria-pressed` across the rail.
+- verify: visible(locator=".act-btn[data-mode='telemetry'][aria-pressed='true']", text="Telemetry")
+- does:
+  - Writes `telemetry` to the mode in the store.
+- verify: json_path(path="store.mode", equals="telemetry")
+- does:
+  - Closes the repository menu.
+- verify: absent(subject="repository menu")
+- does:
+  - Enters the traces loader unconditionally, so reselecting the control re-queries.
+- verify: visible(locator="#traces-filter")
+- does:
+  - Serializes the filter fields into a query string.
+- verify: json_path(path="request.url", matches="^/traces\\?")
+- does:
+  - Sends `GET /traces` with the serialized query string.
+- verify: json_path(path="request.url", matches="^/traces\\?")
+- does:
+  - Stores the response's run cards.
+- verify: visible(locator=".run-cards")
+- does:
+  - Stores the response's span rows.
+- verify: visible(locator=".traces")
+- does:
+  - Renders the card strip for response run cards.
+- verify: visible(locator=".run-cards")
+- does:
+  - Renders the traces table for response span rows.
+- verify: visible(locator=".traces")
+- does:
+  - Renders the no-match note beneath the card strip for an empty span list.
+- verify: visible(locator=".empty", text="No spans match")
+- does:
+  - Renders the not-connected note when `show ended` is unticked and no run came back.
+- verify: visible(locator=".empty", text="No run is connected right now.")
+- does:
+  - Stores an error status on a rejected fetch.
+- verify: json_path(path="traces.status", equals="error")
+- does:
+  - Renders `failed to load` for a rejected fetch.
+- verify: visible(locator=".empty", text="failed to load")
+- does:
+  - Leaves the selected run untouched.
+- verify: unchanged(subject="selected run")
+- does:
+  - Leaves the fleet untouched.
+- verify: unchanged(subject="fleet")
+- does:
+  - Leaves the detail pane untouched.
+- verify: unchanged(subject="detail pane")
+- does:
+  - Leaves the files cache untouched.
+- verify: unchanged(subject="files cache")
+- does:
+  - Leaves the diff cache untouched.
+- verify: unchanged(subject="diff cache")
+- does:
+  - Leaves the palette untouched.
+- verify: unchanged(subject="palette")
+- does:
+  - Leaves the socket untouched.
+- verify: unchanged(subject="socket")
 - code: groom/groom/assets/dashboard.js::setMode
 - code: groom/groom/assets/dashboard.js::loadTraces
 - code: groom/groom/assets/dashboard.js::Traces
+- detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
+- detail: [telemetry trace query contexts](../../concepts/telemetry-trace-query-contexts.md)
 
 ### select-activity-settings-mode
 
@@ -804,14 +1443,35 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click, tap, Enter, or Space on the settings rail button or its SVG, captured by the delegated `#activitybar` click handler.
 - role: button
 - name: `Settings`
-- keyboard: Tab and Shift+Tab reach the button; Enter or Space activates it.
+- keyboard: Tab reaches the button.
+- verify: visible(locator=".act-btn[data-mode='settings']:focus", text="Settings")
+- keyboard: Shift+Tab reaches the button.
+- verify: visible(locator=".act-btn[data-mode='settings']:focus", text="Settings")
+- keyboard: Enter activates the button.
+- verify: visible(locator=".app[data-mode='settings']", text="Settings")
+- keyboard: Space activates the button.
+- verify: visible(locator=".app[data-mode='settings']", text="Settings")
 - when:
   - The click target or an ancestor matches `.act-btn` with `data-mode="settings"`.
 - does:
-  - Writes `settings` to `.app[data-mode]`, recomputes `active` and `aria-pressed` across the rail, writes the mode to the store, and closes the repository menu.
+  - Writes `settings` to `.app[data-mode]`.
+- verify: visible(locator=".app[data-mode='settings']", text="Settings")
+- does:
+  - Recomputes `active` across the rail.
+- verify: visible(locator=".act-btn[data-mode='settings'].active", text="Settings")
+- does:
+  - Recomputes `aria-pressed` across the rail.
+- verify: visible(locator=".act-btn[data-mode='settings'][aria-pressed='true']", text="Settings")
+- does:
+  - Writes the mode to the store.
+- verify: json_path(path="$.mode", equals="settings")
+- does:
+  - Closes the repository menu.
+- verify: absent(subject="repository menu")
   - Takes no loader branch, issues no request, and prompts for no permission — entering settings mode is inert.
   - Leaves every other piece of browser and server state untouched.
 - code: groom/groom/assets/dashboard.js::setMode
+- detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - screenshot: docs/features/groom/gui/screenshots/operator-refreshes-workflow-fleet-settings-idle.png
 
 ### filter-runs
@@ -820,20 +1480,54 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: an `input` event on the runs filter field — typing, pasting, or using the search field's clear affordance.
 - role: searchbox
 - name: `Filter runs`
-- keyboard: Tab reaches the field; every keystroke fires the handler.
-- when:
-  - The runs pane is loaded; the fleet may be empty, mid-discovery, or populated.
-- does:
-  - Writes the field's raw value to the store's query, with no debounce — filtering happens on the client over a few dozen already-pushed rows, so there is nothing to wait for.
-  - Re-renders the run list to only those rows whose haystack — name, repository, type, node, activity, current doing line, question, and run id, lowercased and joined — contains the trimmed lowercased query.
-  - Renders `No workhorse runs — nothing is running.` when the query matches nothing, rather than the discovery message; the discovery message is shown only for an empty *unfiltered* fleet.
-  - Does not filter server-side. A server-filtered list would be clobbered by the next 5s push, which is the whole reason the fleet is sent whole.
-  - Leaves the selected run, the detail pane, and the command palette's own hit list untouched — the palette reads the fleet from the store, so it still finds a run this filter is hiding.
-  - Performs no HTTP request and no websocket send.
+- keyboard: Tab reaches the field.
+- verify: json_path(path="$.activeElement", equals="#runs .filter")
+- keyboard: Every keystroke fires the handler.
+- verify: json_path(path="$.query", equals="author")
+- when: The runs pane is loaded.
+- verify: visible(locator="#runs")
+- when: The fleet may be empty, mid-discovery, or populated.
 - verify: visible(locator="#runs-list", text="author-002")
+- does:
+  - Writes the field's raw value to the store's query without debounce, because filtering happens on the client over a few dozen already-pushed rows.
+- verify: json_path(path="$.query", equals=" author ")
+- does:
+  - Re-renders the run list to only rows whose lowercased haystack contains the trimmed lowercased query.
+- verify: visible(locator="#runs-list", text="author-002")
+- does:
+  - Builds each row's haystack from its name, repository, type, node, activity, current doing line, question, and run id.
+- verify: visible(locator="#runs-list", text="author-002")
+- does:
+  - Renders `No workhorse runs — nothing is running.` when the query matches nothing.
+- verify: visible(locator="#runs-list", text="No workhorse runs — nothing is running.")
+- does:
+  - Shows the discovery message only for an empty unfiltered fleet.
+- verify: visible(locator="#runs-list", text="Discovering containers…")
+- does:
+  - Does not filter server-side, because a server-filtered list would be clobbered by the next 5s push that sends the whole fleet.
+- verify: count(subject="outbound HTTP requests after filter input", equals=0)
+- does:
+  - Leaves the selected run untouched.
+- verify: unchanged(subject="selected run")
+- does:
+  - Leaves the detail pane untouched.
+- verify: unchanged(subject="run detail pane")
+- does:
+  - Leaves the command palette's hit list untouched.
+- verify: unchanged(subject="command palette hit list")
+- does:
+  - Lets the command palette find a run this filter is hiding because its hit list reads the fleet from the store.
+- verify: visible(locator="#palette-results", text="author-002")
+- does:
+  - Performs no HTTP request.
+- verify: count(subject="outbound HTTP requests after filter input", equals=0)
+- does:
+  - Performs no websocket send.
+- verify: count(subject="outbound websocket sends after filter input", equals=0)
 - code: groom/groom/assets/dashboard.js::wireEvents
 - code: groom/groom/assets/dashboard.js::Fleet
 - code: groom/groom/assets/dashboard.js::rowHaystack
+- detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 - tests: groom/tests/test_projection.py::test_query_filters_the_fleet
 
 ### select-run-row
@@ -842,23 +1536,44 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click, tap, Enter, or Space anywhere in a run row, captured by the delegated body click handler that looks for the nearest `[data-worker-id]` ancestor.
 - role: button
 - name: `{repo} #{short_handle} {liveness} {doing}`
-- keyboard: Tab reaches the row; Enter or Space activates it.
+- keyboard: Tab reaches the row.
+- verify: visible(locator="[data-worker-id]")
+- keyboard: Enter or Space activates the row.
+- verify: json_path(path="selection.activation_key_selects_row", equals=true)
 - when:
   - The click did not originate inside a form, the repository menu, a repository picker, or a file tree — those have their own handlers.
   - The nearest matching ancestor carries a `data-worker-id`.
 - does:
   - Takes the next selection sequence number, so a slower reply for an older selection cannot land.
+  - verify: json_path(path="selection.stale_fetch_is_ignored", equals=true)
   - Writes the run id and a null detail to the store in one update, so no render pairs the new selection with the previous run's pane; that pair is what the detail pane renders as `Loading…`.
-  - Sends this tab's watch subscription for the id over the dashboard websocket, replacing whatever it was watching. A tab watches at most one run, and a refused send is not retried because the next selection or reconnect re-sends it.
-  - Fetches [GET /worker/{container_id}](../../http/groom.md#get-run-detail) once and stores the parsed body — but only if this is still the newest selection *and* no pushed detail has landed meanwhile, since a `detail` frame that arrived first is the fresher truth.
-  - Swallows a rejected fetch; the pane stays in its loading state and is filled by the subscription's next push, so a transient failure costs a tick rather than an error message.
-  - Renders selection rather than applying it: the row emits `selected` and `aria-current="true"` from the store on every render, so a fleet push already agrees with the selection and nothing walks the document repainting rows.
-  - Does not move focus, change the active mode, or mutate any server state beyond the subscription.
-- verify: emitted(event="detail", count=1)
-- verify: emitted(event="detail", count=1)
+  - verify: json_path(path="store.detail", equals=null)
+  - Sends this tab's watch subscription for the id over the dashboard websocket, replacing whatever it was watching.
+  - verify: json_path(path="watch.subscription", equals="selected run")
+  - Limits a tab to watching one run.
+  - verify: count(subject="runs watched by the selecting tab", equals=1)
+  - Does not retry a refused watch send, because the next selection or reconnect re-sends it.
+  - verify: count(subject="watch sends after a refused send", equals=1)
+  - Fetches [GET /worker/{container_id}](../../http/groom.md#get-run-detail) once.
+  - verify: count(subject="GET /worker/{container_id} requests after selection", equals=1)
+  - Stores the parsed fetch body only when this is still the newest selection and no pushed detail has landed meanwhile, since a `detail` frame that arrived first is the fresher truth.
+  - verify: unchanged(subject="pushed run detail after an older fetch completes")
+  - Swallows a rejected fetch.
+  - verify: json_path(path="selection.fetch_rejection_is_handled", equals=true)
+  - Leaves the pane in its loading state after a rejected fetch until the subscription's next push fills it, so a transient failure costs a tick rather than an error message.
+  - verify: visible(locator="#detail", text="Loading…")
+  - Renders the selected row from the store with `selected` and `aria-current="true"` on every render, so a fleet push already agrees with the selection and nothing walks the document repainting rows.
+  - verify: json_path(path="selected_row.ariaCurrent", equals="true")
+  - Does not move focus.
+  - verify: unchanged(subject="active element after selecting a run")
+  - Does not change the active mode.
+  - verify: unchanged(subject="active dashboard mode after selecting a run")
+  - Does not mutate server state beyond the watch subscription.
+  - verify: unchanged(subject="server state except the selecting tab's watch subscription")
 - code: groom/groom/assets/dashboard.js::select
 - code: groom/groom/assets/dashboard.js::onDetail
 - code: groom/groom/assets/dashboard.js::RunRow
+- detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
 - tests: groom/tests/test_app.py::test_watch_registers_the_tab_and_pushes_that_run_immediately
 - tests: groom/tests/test_app.py::test_a_detail_push_reaches_only_the_tabs_watching_that_run
 - screenshot: docs/features/groom/gui/screenshots/operator-answers-blocked-gate-detail-selected.png
@@ -869,18 +1584,40 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pressing `j` or `k` anywhere on the page while focus is not in an input or textarea.
 - role: button
 - name: `{repo} #{short_handle} {liveness} {doing}`
-- keyboard: `j` moves the selection one row down, `k` one row up; both clamp at the ends of the list rather than wrapping.
+- keyboard: `j` moves the selection one row down and clamps at the end of the list rather than wrapping.
+- verify: json_path(path="keyboard.j.moves_selection_down_and_clamps", equals=true)
+- keyboard: `k` moves the selection one row up and clamps at the beginning of the list rather than wrapping.
+- verify: json_path(path="keyboard.k.moves_selection_up_and_clamps", equals=true)
 - when:
   - The command palette is closed — while it is open, the same keys type into its input.
   - The active element is not an `INPUT` or `TEXTAREA`, so typing a `j` into the filter box never moves the selection.
 - does:
-  - Reads the currently rendered rows out of `#runs-list` and finds the index of the selected run by its `data-worker-id`; an unselected fleet starts from the first row.
-  - Clamps the neighbouring index into range and, if a row is there, switches to runs mode and selects that run through the same selector the click path uses.
+  - Reads the currently rendered rows out of `#runs-list` and finds the index of the selected run by its `data-worker-id`.
+- verify: json_path(path="selection.index_is_read_from_rendered_rows", equals=true)
+- does:
+  - Starts from the first row when the fleet has no selected run.
+- verify: json_path(path="selection.unselected_fleet_starts_at_first_row", equals=true)
+- does:
+  - Clamps the neighbouring index into range.
+- verify: json_path(path="selection.neighbouring_index_is_clamped", equals=true)
+- does:
+  - When a row is in range, switches to runs mode.
+- verify: json_path(path="selection.in_range_row_switches_to_runs_mode", equals=true)
+- does:
+  - When a row is in range, selects that run through the same selector the click path uses.
+- verify: json_path(path="selection.in_range_row_uses_the_click_selector", equals=true)
+- does:
   - Moves through the *rendered* rows, so an active filter narrows what the keys traverse.
+- verify: json_path(path="selection.traverses_filtered_rendered_rows", equals=true)
+- does:
   - Does nothing when the list is empty.
+- verify: json_path(path="selection.empty_list_does_nothing", equals=true)
 - code: groom/groom/assets/dashboard.js::wireEvents
 - code: groom/groom/assets/dashboard.js::select
 - code: groom/groom/assets/dashboard.js::setMode
+- detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
+- detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
+- detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 
 ### open-files-repository-picker
 
@@ -888,20 +1625,71 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click, tap, Enter, or Space on the files pane's picker.
 - role: button
 - name: `Select container / repo…`
-- keyboard: Tab reaches the button; Enter or Space toggles the menu.
-- when:
-  - The files pane is the active pane; the menu may be open or closed.
+- keyboard: Tab reaches the button.
+- verify: json_path(path="keyboard.tab_reaches_files_picker", equals=true)
+- keyboard: Enter or Space toggles the menu.
+- verify: json_path(path="keyboard.enter_or_space_toggles_menu", equals=true)
+- when: The files pane is the active pane.
+- verify: json_path(path="active_pane", equals="files")
+- when: The menu may be open or closed.
+- verify: json_path(path="menu.open", equals=false)
 - does:
-  - Closes the menu and returns when it is already open, so the picker toggles rather than re-opening.
-  - Otherwise records this button as the invoker, positions the menu box under it at least as wide as the button, and adds `open` to the wrapper.
-  - Sets `aria-expanded="true"` on the menu search input and clears its value.
-  - Resets the repository slice to loading with no groups, no query, and the first row active.
-  - Fetches `GET /repos` from [get repository menu](../../http/groom.md#get-repository-menu) and stores the returned [repository menu data](../../repository-menu-data.md) groups; a rejection stores an empty list, which the menu renders as `No repositories available.`
+  - Closes the menu when it is already open, so the picker toggles rather than re-opening.
+- verify: json_path(path="menu.open", equals=false)
+- does:
+  - Returns after closing an already open menu without fetching repositories.
+- verify: count(subject="GET /repos requests after closing the files picker", equals=0)
+- does:
+  - Records this button as the menu invoker.
+- verify: json_path(path="menu.invoker.dataset.picker", equals="files")
+- does:
+  - Positions the menu box under the recorded invoker at least as wide as the button.
+- verify: json_path(path="menu.position.below_invoker", equals=true)
+- does:
+  - Adds `open` to the menu wrapper.
+- verify: visible(locator="#repo-menu-wrap.open")
+- does:
+  - Sets `aria-expanded="true"` on the menu search input.
+- verify: json_path(path="repo-search.aria-expanded", equals="true")
+- does:
+  - Clears the menu search input value.
+- verify: json_path(path="repo-search.value", equals="")
+- does:
+  - Resets the repository slice to loading.
+- verify: json_path(path="repo.loading", equals=true)
+- does:
+  - Resets the repository slice with no groups.
+- verify: count(subject="repository menu groups before the GET /repos response", equals=0)
+- does:
+  - Resets the repository slice with no query.
+- verify: json_path(path="repo.query", equals="")
+- does:
+  - Resets the repository slice with the first row active.
+- verify: json_path(path="repo.active", equals=0)
+- does:
+  - Fetches `GET /repos` from [get repository menu](../../http/groom.md#get-repository-menu).
+- verify: count(subject="GET /repos requests when opening the files picker", equals=1)
+- does:
+  - Stores returned [repository menu data](../../repository-menu-data.md) groups.
+- verify: json_path(path="repo.groups[0].container", equals="acme")
+- does:
+  - Stores an empty group list when the repository request is rejected.
+- verify: count(subject="repository menu groups after a rejected GET /repos request", equals=0)
+- does:
+  - Renders `No repositories available.` when the repository request is rejected.
+- verify: visible(locator="#repo-menu-wrap .repo-empty", text="No repositories available.")
+- does:
   - Focuses the menu search input.
+- verify: visible(locator="#repo-search:focus")
+- does:
   - Leaves the previously selected repository, both picker labels, and the loaded files pane untouched until an option is chosen.
+- verify: unchanged(subject="the selected repository, both picker labels, and the loaded files pane")
 - code: groom/groom/assets/dashboard.js::openRepoMenu
 - code: groom/groom/assets/dashboard.js::closeRepoMenu
 - code: groom/groom/assets/dashboard.js::wireEvents
+- detail: [shared repository picker flow contexts](../../concepts/shared-repository-picker-flow-contexts.md)
+- detail: [repository menu closing contexts](../../concepts/repository-menu-closing-contexts.md)
+- detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 - screenshot: docs/features/groom/gui/screenshots/operator-browses-workspace-file-repo-menu-open.png
 
 ### open-diff-repository-picker
@@ -910,14 +1698,35 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click, tap, Enter, or Space on the diff pane's picker.
 - role: button
 - name: `Select container / repo…`
-- keyboard: Tab reaches the button; Enter or Space toggles the menu.
+- keyboard: Tab reaches the button.
+- verify: json_path(path="keyboard.tab_reaches_diff_picker", equals=true)
+- keyboard: Enter or Space toggles the menu.
+- verify: json_path(path="keyboard.enter_or_space_toggles_menu", equals=true)
 - when:
-  - The diff pane is the active pane; the menu may be open or closed.
+  - The diff pane is the active pane.
+- verify: json_path(path="active_pane", equals="diff")
+- when:
+  - The menu may be open or closed.
+- verify: json_path(path="menu.open", equals=false)
 - does:
-  - Behaves identically to the files picker — the menu, its data, and its handlers are shared; only the recorded invoker differs, which is what decides where the box is positioned and where focus returns on close.
+  - Opens the shared repository menu used by the files picker.
+- verify: visible(locator="#repo-menu-wrap.open")
+- does:
+  - Records the diff picker as the menu invoker.
+- verify: json_path(path="menu.invoker.dataset.picker", equals="diff")
+- does:
+  - Positions the menu below the recorded invoker at least as wide as that picker.
+- verify: json_path(path="menu.position.below_invoker", equals=true)
+- does:
+  - Returns focus to the recorded diff picker when the menu closes while focus is inside it.
+- verify: json_path(path="focus.after_menu_close.dataset.picker", equals="diff")
+- does:
   - Fetches `GET /repos` fresh on every open, so a container that appeared or vanished since the last open is reflected.
+- verify: count(subject="GET /repos requests after opening the diff picker twice", equals=2)
 - code: groom/groom/assets/dashboard.js::openRepoMenu
 - code: groom/groom/assets/dashboard.js::wireEvents
+- detail: [shared repository picker flow contexts](../../concepts/shared-repository-picker-flow-contexts.md)
+- detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 
 ### filter-repository-menu-options
 
@@ -925,19 +1734,40 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: an `input` event on the menu search field.
 - role: combobox
 - name: `Search container / repo`
-- keyboard: Tab is not needed — the field is focused on open; ArrowDown and ArrowUp move the active option and Enter chooses it.
-- when:
-  - The repository menu is open; its groups may still be loading.
+- keyboard: The field is focused when the menu opens, so Tab is not needed to reach it.
+- verify: visible(locator="#repo-search:focus")
+- keyboard: ArrowDown and ArrowUp move the active repository option through the filtered list.
+- verify: visible(locator="#repo-menu-wrap .repo-item.active[aria-selected='true']", text="acme / web-app")
+- keyboard: Enter chooses the active repository option.
+- verify: visible(locator=".repo-picker-label", text="acme / web-app")
+- when: The repository menu is open.
+- verify: visible(locator="#repo-menu-wrap.open")
+- when: Its groups may still be loading.
+- verify: visible(locator="#repo-menu-wrap .repo-empty", text="Loading…")
 - does:
-  - Writes the raw query to the repository slice and resets the active index to the first row, so the keyboard never points past the end of a shortened list.
+  - Writes the raw query to the repository slice.
+  - Resets the active index to the first row, so the keyboard never points past the end of a shortened list.
   - Re-flattens the server's per-container groups into a single ordered list, keeping only entries whose label contains the trimmed lowercased query — the list the keyboard actually moves through.
   - Rebuilds the rendered options rather than hiding non-matching rows, so a filtered-out repository is out of the accessibility tree rather than merely invisible.
-  - Republishes `aria-activedescendant` on the search input to the surviving active option, or removes it when nothing matches, and scrolls that option into view.
-  - Issues no request; the groups were fetched once when the menu opened.
+  - Publishes `aria-activedescendant` on the search input to the surviving active option.
+  - Removes `aria-activedescendant` when nothing matches.
+  - Scrolls the surviving active option into view.
+  - Issues no request while filtering.
+  - Uses the groups fetched when the menu opened.
+- verify: json_path(path="repo.query", equals="Web")
+- verify: json_path(path="repo.active", equals=0)
+- verify: visible(locator="#repo-menu-wrap .repo-item", text="acme / web-app")
+- verify: omits(subject="repository menu options", text="globex / api-service")
+- verify: json_path(path="aria-activedescendant", equals="repo-opt-0")
+- verify: json_path(path="aria-activedescendant", absent=true)
+- verify: visible(locator="#repo-menu-wrap .repo-item.active", text="acme / web-app")
+- verify: count(subject="repository fetches", equals=0)
+- verify: count(subject="repository fetches while the menu is open", equals=1)
 - code: groom/groom/assets/dashboard.js::wireEvents
 - code: groom/groom/assets/dashboard.js::repoItems
 - code: groom/groom/assets/dashboard.js::RepoMenu
 - code: groom/groom/assets/dashboard.js::moveRepoActive
+- detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 
 ### select-repository-menu-option
 
@@ -945,18 +1775,59 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click or tap on an option, or Enter from the menu search input with an active option.
 - role: option
 - name: `{container} / {repo}`
-- keyboard: ArrowDown and ArrowUp move the active option; Enter chooses it; Escape abandons the menu without choosing.
+- keyboard: ArrowDown moves the active option.
+- verify: visible(locator="#repo-menu-wrap .repo-item.active", text="acme / web-app")
+- keyboard: ArrowUp moves the active option.
+- verify: visible(locator="#repo-menu-wrap .repo-item.active", text="acme / web-app")
+- keyboard: Enter chooses the active option.
+- verify: visible(locator=".repo-picker-label", text="acme / web-app")
+- keyboard: Escape abandons the menu without choosing.
+- verify: json_path(path="repo.menu.open", equals=false)
 - when:
   - The menu is open and the flattened option list is non-empty.
 - does:
-  - Writes the chosen container id, repository path, and label to [dashboard selected repository state](../../dashboard-selected-repository-state.md).
+  - Writes the chosen container id to [dashboard selected repository state](../../dashboard-selected-repository-state.md).
+- verify: json_path(path="repo.container", equals="acme")
+- does:
+  - Writes the chosen repository path to [dashboard selected repository state](../../dashboard-selected-repository-state.md).
+- verify: json_path(path="repo.dir", equals="web-app")
+- does:
+  - Writes the chosen label to [dashboard selected repository state](../../dashboard-selected-repository-state.md).
+- verify: json_path(path="repo.label", equals="acme / web-app")
+- does:
   - Replaces the label text on *both* repository pickers, so the files and diff panes never disagree about what is selected.
-  - Loads whichever pane is active through the [dashboard active pane loader](../../concepts/dashboard-active-pane-loader.md) — the files tree in files mode, the diff tree in diff mode, and nothing at all in any other mode.
-  - Closes the menu: removes `open`, sets `aria-expanded="false"`, drops `aria-activedescendant`, and returns focus to the invoking picker rather than dropping it to `<body>`.
-  - Retains the loaded groups and the search text; the next open clears them itself.
+- verify: count(subject="repository picker labels showing acme / web-app", equals=2)
+- does:
+  - Loads the files tree through the [dashboard active pane loader](../../concepts/dashboard-active-pane-loader.md) when the files pane is active.
+- verify: count(subject="files pane loads", equals=1)
+- does:
+  - Loads the diff tree through the [dashboard active pane loader](../../concepts/dashboard-active-pane-loader.md) when the diff pane is active.
+- verify: count(subject="diff pane loads", equals=1)
+- does:
+  - Does not load a pane when no supported pane is active.
+- verify: count(subject="pane loads", equals=0)
+- does:
+  - Closes the menu by removing `open`.
+- verify: json_path(path="repo.menu.open", equals=false)
+- does:
+  - Sets the menu search input's `aria-expanded` to `false`.
+- verify: json_path(path="repo.search.aria-expanded", equals="false")
+- does:
+  - Removes `aria-activedescendant` from the menu search input.
+- verify: json_path(path="repo.search.aria-activedescendant", absent=true)
+- does:
+  - Returns focus to the invoking picker rather than dropping it to `<body>`.
+- verify: json_path(path="document.activeElement", equals="repository picker")
+- does:
+  - Retains the loaded groups.
+- verify: count(subject="loaded repository groups after selection", equals=1)
+- does:
+  - Retains the search text; the next open clears it itself.
+- verify: json_path(path="repo.search.value", equals="web")
 - code: groom/groom/assets/dashboard.js::selectRepo
 - code: groom/groom/assets/dashboard.js::loadActivePane
 - code: groom/groom/assets/dashboard.js::closeRepoMenu
+- detail: [repository menu closing contexts](../../concepts/repository-menu-closing-contexts.md)
 
 ### toggle-files-directory
 
@@ -964,14 +1835,41 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click, tap, Enter, or Space on a directory row in the files tree.
 - role: button
 - name: `{directory}`
-- keyboard: Tab reaches the row; Enter or Space toggles it.
+- keyboard: Tab reaches the row.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: Enter or Space toggles the directory.
+- verify: json_path(path="keyboard.enter_or_space_toggles_directory", equals=true)
 - when:
   - The files tree has rendered at least one directory level.
 - does:
-  - Flips that directory node's local open state and its `aria-expanded`, adding or removing the `collapsed` class on its wrapper.
-  - Keeps the state component-local rather than in the store: it belongs to this directory in this tab and nothing else reads it, and it survives a re-render because the node is keyed by name.
-  - Leaves the open file, the viewer, and every other directory untouched, and issues no request.
+  - Flips that directory node's local open state.
+- verify: json_path(path="directory.open", equals=false)
+- does:
+  - Reflects that directory node's local open state in its `aria-expanded` attribute.
+- verify: json_path(path="directory.aria_expanded", equals="false")
+- does:
+  - Adds or removes the `collapsed` class on that directory wrapper.
+- verify: json_path(path="directory.wrapper.class", matches="(^|\\s)collapsed(\\s|$)")
+- does:
+  - Keeps the directory state component-local rather than in the dashboard store.
+- verify: unchanged(subject="dashboard store")
+- does:
+  - Retains the directory state after a re-render because the directory node is keyed by name.
+- verify: json_path(path="directory.open_after_rerender", equals=false)
+- does:
+  - Leaves the open file untouched.
+- verify: unchanged(subject="the open file")
+- does:
+  - Leaves the viewer untouched.
+- verify: unchanged(subject="the file viewer")
+- does:
+  - Leaves every other directory untouched.
+- verify: unchanged(subject="every other directory")
+- does:
+  - Issues no request.
+- verify: count(subject="HTTP requests", equals=0)
 - code: groom/groom/assets/dashboard.js::TreeDir
+- detail: [dashboard tree flow selection](../../concepts/dashboard-tree-flow-selection.md)
 
 ### select-files-file-row
 
@@ -979,7 +1877,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click, tap, Enter, or Space on a file row in the files tree.
 - role: button
 - name: `{filename}`
-- keyboard: Tab reaches the row; Enter or Space opens the file.
+- keyboard: Tab reaches the row.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: Enter or Space opens the file.
+- verify: json_path(path="keyboard.enter_or_space_opens_file", equals=true)
 - when:
   - A repository is selected and the files tree has rendered at least one file.
 - does:
@@ -1002,13 +1903,32 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click, tap, Enter, or Space on a directory row in the diff tree.
 - role: button
 - name: `{directory}`
-- keyboard: Tab reaches the row; Enter or Space toggles it.
+- keyboard: Tab reaches the row.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: Enter or Space toggles it.
+- verify: json_path(path="keyboard.enter_or_space_toggles_directory", equals=true)
 - when:
   - The diff tree has rendered at least one directory level.
 - does:
-  - Flips that directory node's local open state and its `aria-expanded`, exactly as the files tree does — the two trees are one component over two entry lists.
-  - Leaves the shown diff, the parsed diff cache, and every other directory untouched, and issues no request.
+  - Flips that directory node's local open state exactly as the files tree does — the two trees are one component over two entry lists.
+- verify: json_path(path="directory.open", equals=false)
+- does:
+  - Reflects that directory node's local open state in its `aria-expanded` attribute.
+- verify: json_path(path="directory.aria_expanded", equals=false)
+- does:
+  - Leaves the shown diff untouched.
+- verify: unchanged(subject="the shown diff")
+- does:
+  - Leaves the parsed diff cache untouched.
+- verify: unchanged(subject="the parsed diff cache")
+- does:
+  - Leaves every other directory untouched.
+- verify: unchanged(subject="every other directory")
+- does:
+  - Issues no request.
+- verify: count(subject="HTTP requests", equals=0)
 - code: groom/groom/assets/dashboard.js::TreeDir
+- detail: [dashboard tree flow selection](../../concepts/dashboard-tree-flow-selection.md)
 
 ### select-diff-file-row
 
@@ -1016,16 +1936,27 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click, tap, Enter, or Space on a changed-file row in the diff tree.
 - role: button
 - name: `{filename} +{added} -{deleted}`
-- keyboard: Tab reaches the row; Enter or Space shows that file's diff.
+- keyboard: Tab reaches the row.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: Enter or Space shows that file's diff.
+- verify: json_path(path="keyboard.enter_or_space_shows_diff", equals=true)
 - when:
   - A repository is selected and the parsed diff holds at least one changed file.
 - does:
-  - Writes that file's index into the [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md) to the diff slice; nothing is fetched, because the whole diff was parsed when the pane loaded.
+  - Writes that file's index into the [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md) to the diff slice.
+- verify: json_path(path="diff.selected_file_index", matches="^[0-9]+$")
+- does:
+  - Fetches nothing, because the whole diff was parsed when the pane loaded.
+- verify: count(subject="HTTP requests", equals=0)
+- does:
   - Renders that one parsed file with diff2html into the viewer, line by line, in the dark colour scheme and with no file-list header.
+- does:
   - Marks this row `active` with `aria-current="true"` and clears the previous row's marking.
+- does:
   - Renders nothing but the selection prompt when the index points at no file.
 - code: groom/groom/assets/dashboard.js::DiffTree
 - code: groom/groom/assets/dashboard.js::DiffView
+- detail: [dashboard Diff pane selection contexts](../../concepts/dashboard-diff-pane-selection-contexts.md)
 - screenshot: docs/features/groom/gui/screenshots/operator-inspects-working-tree-diff-file-selected.png
 
 ### edit-detail-answer-textarea
@@ -1034,7 +1965,12 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: typing, pasting, or otherwise editing the answer field.
 - role: textbox
 - name: `Your answer`
-- keyboard: Tab reaches the field; Enter inserts a newline; Tab moves on to the send button.
+- keyboard: Tab reaches the field.
+- verify: json_path(path="keyboard.tab_reachable", equals=true)
+- keyboard: Enter inserts a newline.
+- verify: json_path(path="keyboard.enter_inserts_newline", equals=true)
+- keyboard: Tab moves on to the send button.
+- verify: json_path(path="keyboard.tab_moves_to_send_button", equals=true)
 - when:
   - The open run has at least one open gate, so the answer form is rendered.
 - does:
@@ -1051,19 +1987,63 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: submitting the answer form — clicking the button, or Enter from within it — captured by a delegated document-level submit handler.
 - role: button
 - name: `Send answer`
-- keyboard: Tab reaches the button; Enter or Space submits.
-- when:
-  - The submit target is inside a `form[data-answer]`.
-  - The websocket may be open or closed; the outcome differs and is reported either way.
+- keyboard: Tab reaches the button.
+- verify: visible(locator=".answer button[type='submit']:focus", text="Send answer")
+- keyboard: Enter submits the answer form.
+- verify: count(subject="WebSocket sends after Enter submits the answer form", equals=1)
+- keyboard: Space submits the answer form.
+- verify: count(subject="WebSocket sends after Space submits the answer form", equals=1)
+- when: The submit target is inside a `form[data-answer]`.
+- verify: json_path(path="submit_target.is_answer_form", equals=true)
+- when: The dashboard websocket is open.
+- verify: json_path(path="websocket.readyState", equals=1)
+- when: The dashboard websocket is closed.
+- verify: json_path(path="websocket.readyState", equals=3)
 - does:
-  - Prevents the browser's own form submission, so the page never navigates.
-  - Serializes the form's fields into a [dashboard websocket answer frame](../../dashboard-websocket-answer-frame.md) — the `answer` command, the workflow id, the gate file path, and the typed answer — and sends it over the dashboard websocket. The client serializes the frame itself, which is what lets a failed send *say* it failed.
-  - Clears the textarea on a successful send and leaves it untouched otherwise, so a rejected answer is still in the box.
-  - Pushes the `✗ not sent` toast, naming the lost connection, when the send is refused.
-  - Does not re-fetch the pane. The server's [gate answering layer](../../concepts/gate-answering-layer.md) broadcasts a [dashboard answered message](../../dashboard-answered-message.md) to every tab, which only raises the `✓ answer sent` confirmation; the pane itself is refreshed by the `detail` push the same command triggers, which carries the gates — so no tab re-fetches and a half-typed answer against a different run is never touched.
-  - Delegates from the document rather than binding per form, because the form is re-rendered on every push and a delegated handler outlives every one of them.
+  - Prevents the browser's own form submission.
+- verify: unchanged(subject="browser URL")
+- does:
+  - Sends an `answer` command in the [dashboard websocket answer frame](../../dashboard-websocket-answer-frame.md).
+- verify: json_path(path="websocket.frames[0].cmd", equals="answer")
+- does:
+  - Sends the form's workflow id in the answer frame.
+- verify: json_path(path="websocket.frames[0].workflow_id", equals="fixture workflow id")
+- does:
+  - Sends the form's gate file path in the answer frame.
+- verify: json_path(path="websocket.frames[0].file_path", equals="fixture gate file path")
+- does:
+  - Sends the typed answer in the answer frame.
+- verify: json_path(path="websocket.frames[0].answer", equals="fixture answer")
+- does:
+  - Sends one answer frame over the open dashboard websocket.
+- verify: count(subject="answer frames sent after one submission", equals=1)
+- does:
+  - Clears the textarea after a successful send.
+- verify: json_path(path="answer_textarea.value", equals="")
+- does:
+  - Leaves the textarea unchanged when the send is refused.
+- verify: json_path(path="answer_textarea.value", equals="fixture answer")
+- does:
+  - Pushes the `✗ not sent` toast when the send is refused.
 - verify: visible(locator="#toasts", text="✗ not sent")
+- does:
+  - Names the lost connection in the refused-send toast.
+- verify: visible(locator="#toasts", text="No connection to groom")
+- does:
+  - Does not re-fetch the pane after submission.
+- verify: count(subject="HTTP requests after answer submission", equals=0)
+- does:
+  - Shows the `✓ answer sent` confirmation when it receives a [dashboard answered message](../../dashboard-answered-message.md).
 - verify: visible(locator="#toasts", text="✓ answer sent")
+- does:
+  - Refreshes the pane from the `detail` push triggered by the answer command.
+- verify: visible(locator=".detail-body", text="fixture refreshed gate detail")
+- does:
+  - Leaves a half-typed answer for a different run untouched when the answered pane refreshes.
+- verify: json_path(path="other_run.answer_textarea.value", equals="fixture answer")
+- does:
+  - Continues to handle answer-form submissions after a detail push re-renders the form.
+- verify: count(subject="answer frames sent after a detail-push re-render", equals=1)
 - code: groom/groom/assets/dashboard.js::wireAnswerForm
 - code: groom/groom/assets/dashboard.js::sendCommand
 - code: groom/groom/assets/dashboard.js::onAnswered
@@ -1078,16 +2058,63 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: a `toggle` event on the detail pane's `<details>` disclosure, from a click, tap, Enter, or Space on its summary.
 - role: button
 - name: `Working-tree diff`
-- keyboard: Tab reaches the summary; Enter or Space expands and collapses it.
+- keyboard: Tab reaches the summary.
+- verify: visible(locator="summary", text="Working-tree diff")
+- keyboard: Enter expands the disclosure.
+- verify: json_path(path="disclosure.open_after_enter", equals=true)
+- keyboard: Space collapses the disclosure.
+- verify: json_path(path="disclosure.open_after_space", equals=false)
 - when:
   - A run is open in the detail pane.
   - The disclosure is being opened, and it has neither loaded nor failed before.
 - does:
-  - Returns immediately when the disclosure is closing, when the diff is already loaded, or when a previous attempt failed — so collapsing and re-expanding never re-fetches, and a failure is not retried on every toggle.
-  - Otherwise fetches `GET /diff/{container_id}` from [get working tree diff](../../http/groom.md#get-working-tree-diff) for the open run's container and stores the JSON body's raw unified diff, treating a missing field as empty.
-  - Shows `Loading diff…` until the reply lands, then the rendered diff, `(no changes)` for an empty or whitespace-only diff, or `failed to load diff` on rejection.
-  - Renders with diff2html, which parses the unified text and escapes what it emits.
-  - Resets when the open run changes, because the disclosure is keyed by run id — a newly opened run never shows the previous run's diff.
+  - Returns immediately when the disclosure is closing.
+- verify: count(subject="GET /diff/{container_id} requests while closing", equals=0)
+- does:
+  - Returns immediately when the diff is already loaded.
+- verify: count(subject="GET /diff/{container_id} requests after the diff is loaded", equals=0)
+- does:
+  - Returns immediately when a previous attempt failed.
+- verify: count(subject="GET /diff/{container_id} requests after a failed attempt", equals=0)
+- does:
+  - Never re-fetches when the disclosure is collapsed then expanded.
+- verify: count(subject="GET /diff/{container_id} requests after collapse and re-expansion", equals=1)
+- does:
+  - Fetches `GET /diff/{container_id}` from [get working tree diff](../../http/groom.md#get-working-tree-diff) for the open run's container.
+- verify: count(subject="GET /diff/{container_id} requests for the open run", equals=1)
+- does:
+  - Stores the JSON body's raw unified diff.
+- verify: json_path(path="diff.raw", equals="diff --git a/x b/x\n")
+- does:
+  - Treats a missing diff field as empty.
+- verify: json_path(path="diff.raw", equals="")
+- does:
+  - Shows `Loading diff…` until the reply lands.
+- verify: visible(locator=".diff-wrap", text="Loading diff…")
+- does:
+  - Shows the rendered diff after the reply lands.
+- verify: visible(locator=".diff-wrap", text="diff --git a/x b/x")
+- does:
+  - Shows `(no changes)` for an empty diff.
+- verify: visible(locator=".diff-wrap", text="(no changes)")
+- does:
+  - Shows `(no changes)` for a whitespace-only diff.
+- verify: visible(locator=".diff-wrap", text="(no changes)")
+- does:
+  - Shows `failed to load diff` on rejection.
+- verify: visible(locator=".diff-wrap", text="failed to load diff")
+- does:
+  - Renders with diff2html, which parses the unified text.
+- verify: visible(locator=".d2h-file-wrapper", text="diff --git a/x b/x")
+- does:
+  - Escapes the text emitted by diff2html.
+- verify: omits(subject="rendered working-tree diff", matches="<script")
+- does:
+  - Resets when the open run changes.
+- verify: json_path(path="disclosure.loaded", absent=true)
+- does:
+  - Shows no diff from the previous run in a newly opened run.
+- verify: omits(subject="new run's working-tree diff", text="previous run's diff")
 - code: groom/groom/assets/dashboard.js::DiffDisclosure
 - code: groom/groom/assets/dashboard.js::diffMarkup
 - screenshot: docs/features/groom/gui/screenshots/operator-inspects-working-tree-diff-detail-disclosure-expanded.png
@@ -1098,18 +2125,68 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click, tap, Enter, or Space on the settings pane's rescan button, captured by the delegated body click handler.
 - role: button
 - name: `Rescan containers`
-- keyboard: Tab reaches the button; Enter or Space activates it.
+- keyboard: Tab reaches the button.
+- verify: visible(locator="#btn-notify", text="Enable notifications")
+- keyboard: Enter or Space activates the button.
+- verify: emitted(event="browser notification permission request", count=1)
 - when:
   - Settings mode is active. A rescan may already be in flight.
 - does:
   - Returns immediately when the button already carries `data-busy`, so a double click issues one request.
-  - Marks the button busy and spinning, then sends `POST /refresh` to [post refresh](../../http/groom.md#post-refresh).
-  - Clears the busy marking and the spinner when the request settles, on success or failure alike.
-  - Renders nothing from the reply. The server reconciles the fleet, prunes vanished containers, and broadcasts the resulting state on the socket, so the run list and status bar update through the same path as every other push.
-  - Leaves the selected run, the detail pane, the files and diff caches, and the palette untouched.
+- verify: count(subject="POST /refresh requests after a double click", equals=1)
+- does:
+  - Marks the button busy before sending the refresh request.
+- verify: json_path(path="refresh_button.busy", equals=true)
+- does:
+  - Shows the button spinner while the refresh request is in flight.
+- verify: visible(locator="#btn-refresh.spinning", text="Rescan containers")
+- does:
+  - Sends `POST /refresh` to [post refresh](../../http/groom.md#post-refresh).
+- verify: count(subject="POST /refresh requests after one activation", equals=1)
+- does:
+  - Clears the button's busy marking when the request settles, whether it succeeds or fails.
+- verify: json_path(path="refresh_button.busy", equals=false)
+- does:
+  - Stops the button spinner when the request settles, whether it succeeds or fails.
+- verify: json_path(path="refresh_button.spinning", equals=false)
+- does:
+  - Does not render the refresh reply directly.
+- verify: unchanged(subject="dashboard state before and after the refresh reply")
+- does:
+  - Reconciles the fleet with containers discovered by the scan.
+- verify: created(subject="workflow discovered by the refresh scan")
+- does:
+  - Prunes a container that the scan no longer finds.
 - verify: removed(subject="state.WORKFLOWS['gone']")
+- does:
+  - Broadcasts the reconciled fleet state on the dashboard websocket.
+- verify: emitted(event="state", count=1)
+- does:
+  - Updates the run list from the broadcast state.
+- verify: visible(locator="#runs-list", text="discovered-workflow")
+- does:
+  - Updates the status bar from the broadcast state.
+- verify: visible(locator=".status-right", text="1 workers")
+- does:
+  - Leaves the selected run untouched.
+- verify: unchanged(subject="selected run")
+- does:
+  - Leaves the detail pane untouched.
+- verify: unchanged(subject="run detail pane")
+- does:
+  - Leaves the files cache untouched.
+- verify: unchanged(subject="files cache")
+- does:
+  - Leaves the diff cache untouched.
+- verify: unchanged(subject="diff cache")
+- does:
+  - Leaves the command palette untouched.
+- verify: unchanged(subject="command palette")
+- does:
+  - Retains the existing fleet when Docker availability cannot be determined, so a transient outage does not empty the dashboard.
 - verify: unchanged(subject="state.WORKFLOWS['keep']")
 - code: groom/groom/assets/dashboard.js::doRefresh
+- detail: [dashboard rescan control selection](../../concepts/dashboard-rescan-control-selection.md)
 - tests: groom/tests/test_app.py::test_refresh_prunes_vanished_containers
 - tests: groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
 
@@ -1119,15 +2196,30 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click, tap, Enter, or Space on the status bar's refresh control, captured by the same delegated body click handler.
 - role: button
 - name: `Rescan containers (reconcile + prune)`
-- keyboard: Tab reaches the button; Enter or Space activates it.
+- keyboard: Tab reaches the button.
+- verify: visible(locator="#btn-refresh-bar")
+- keyboard: Enter or Space activates it.
+- verify: count(subject="POST /refresh requests after one status-bar keyboard activation", equals=1)
 - when:
   - Any mode is active — the status bar is outside the panes and always visible.
 - does:
-  - Runs the identical rescan the settings control runs; the two share one handler and one busy guard per button.
-  - Spins its own icon while in flight, which is the only feedback until the resulting state broadcast arrives.
-  - Is named longer than the settings control on purpose: both are on screen together in settings mode, and two buttons computing to the same role and name would be indistinguishable to a screen reader and to `getByRole`.
+  - Runs the identical rescan as the settings control.
+- verify: count(subject="POST /refresh requests after one status-bar activation", equals=1)
+- does:
+  - Uses the same refresh handler as the settings control.
+- verify: json_path(path="settings_and_statusbar_refresh.handler", equals="doRefresh")
+- does:
+  - Keeps an independent busy guard for the status-bar button.
+- verify: count(subject="POST /refresh requests after a status-bar double click", equals=1)
+- does:
+  - Spins its own icon while the refresh request is in flight; this is the only feedback until the resulting state broadcast arrives.
+- verify: visible(locator="#btn-refresh-bar.spinning")
+- does:
+  - Uses a longer accessible name than the settings control because both controls are visible in settings mode and matching role and names would make them indistinguishable to a screen reader and `getByRole`.
+- verify: json_path(path="accessibility.statusbar_refresh_button.name", equals="Rescan containers (reconcile + prune)")
 - code: groom/groom/assets/dashboard.js::doRefresh
 - code: groom/groom/assets/dashboard.js::StatusBar
+- detail: [dashboard rescan control selection](../../concepts/dashboard-rescan-control-selection.md)
 - screenshot: docs/features/groom/gui/screenshots/operator-refreshes-workflow-fleet-post-scan.png
 
 ### enable-browser-notifications-from-settings
@@ -1136,16 +2228,41 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click, tap, Enter, or Space on the settings pane's notifications button.
 - role: button
 - name: `Enable notifications`
-- keyboard: Tab reaches the button; Enter or Space activates it.
+- keyboard: Tab reaches the button, then Enter or Space activates it.
+- verify: emitted(event="browser notification permission request", count=1)
 - when:
   - The browser exposes the Notification API. Where it does not, the click is ignored entirely.
+- verify: emitted(event="browser notification permission request", count=0)
 - does:
-  - Requests [browser notification permission](../../concepts/browser-notification-permission.md), which shows the browser's own prompt when the permission is still at its default and resolves silently when it has already been granted or denied.
-  - Changes no dashboard state: the label does not change, nothing is stored, and no request is sent.
-  - Determines only what a later block does — with permission granted, a blocked-run notification raises a system notification alongside its toast; without it, only the toast.
-  - Is not the only path: the first click anywhere on the page also asks once, because an unprompted permission dialog is a dark pattern and browsers ignore one without a user gesture anyway.
+  - Requests [browser notification permission](../../concepts/browser-notification-permission.md).
+- verify: emitted(event="browser notification permission request", count=1)
+- does:
+  - Shows the browser's own prompt when permission is still at its default.
+- verify: emitted(event="browser notification permission prompt", count=1)
+- does:
+  - Resolves silently when permission has already been granted or denied.
+- verify: emitted(event="browser notification permission prompt", count=0)
+- does:
+  - Changes no dashboard state: the label does not change.
+- verify: unchanged(subject="dashboard state")
+- does:
+  - Stores nothing and sends no request.
+- verify: unchanged(subject="dashboard persistence and requests")
+- does:
+  - With permission granted, a blocked-run notification raises a system notification alongside its toast.
+- verify: emitted(event="browser notification", count=1)
+- does:
+  - Without permission, a blocked-run notification raises only the toast.
+- verify: emitted(event="browser notification", count=0)
+- does:
+  - The first click anywhere on the page also asks once.
+- verify: emitted(event="browser notification permission request", count=1)
+- does:
+  - The first-click path requires a user gesture because browsers ignore an unprompted permission dialog.
+- verify: emitted(event="browser notification permission request", count=0)
 - code: groom/groom/assets/dashboard.js::wireEvents
 - code: groom/groom/assets/dashboard.js::onNotify
+- detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 
 ### toggle-command-palette-shortcut
 
@@ -1153,19 +2270,88 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: `Ctrl+K` or `Meta+K` anywhere on the page, or pointer click, tap, Enter, or Space on the status bar's palette button.
 - role: button
 - name: `Open command palette`
-- keyboard: `Ctrl+K` and `Meta+K` toggle the palette from anywhere, including from inside a text field; Escape closes it.
+- keyboard: Either `Ctrl+K` or `Meta+K` opens the palette from anywhere, including inside a text field.
+- verify: visible(locator="#palette.open")
+- keyboard: Either `Ctrl+K` or `Meta+K` closes the palette when it is open.
+- verify: absent(subject="open command palette dialog")
+- keyboard: Escape closes the palette.
+- verify: absent(subject="open command palette dialog")
 - when:
-  - The dashboard is loaded. The palette may be open or closed; the shortcut toggles, the button only opens.
+  - The dashboard is loaded.
+- verify: visible(locator=".app")
+- when:
+  - The palette is closed when the keyboard shortcut opens it.
+- verify: visible(locator="#palette.open")
+- when:
+  - The palette is open when the keyboard shortcut closes it.
+- verify: absent(subject="open command palette dialog")
 - does:
-  - Suppresses the browser's default for the shortcut, then closes the palette if it is open and opens it otherwise.
-  - On open: records the invoker — the button, or whatever had focus when the shortcut fired — adds `open`, sets `aria-expanded="true"`, clears the input, resets the query and active index in the store, and focuses the input.
+  - Suppresses the browser default for the shortcut.
+- verify: json_path(path="keyboardEvent.defaultPrevented", equals=true)
+- does:
+  - Closes the palette when the shortcut fires while it is open.
+- verify: absent(subject="open command palette dialog")
+- does:
+  - Opens the palette when the shortcut fires while it is closed.
+- verify: visible(locator="#palette.open")
+- does:
+  - Leaves the palette open when the palette button is clicked while it is already open.
+- verify: json_path(path="store.palette.open", equals=true)
+- does:
+  - Records the palette button as the invoker when that button opens the palette.
+- verify: json_path(path="document.activeElement.id", equals="btn-palette")
+- does:
+  - Records the focused element as the invoker when the shortcut opens the palette.
+- verify: json_path(path="document.activeElement.id", equals="repo-search")
+- does:
+  - Adds `open` to the palette when it opens.
+- verify: visible(locator="#palette.open")
+- does:
+  - Sets the palette input's `aria-expanded` value to `true` when it opens.
+- verify: json_path(path="palette.input.aria-expanded", equals="true")
+- does:
+  - Clears the palette input when it opens.
+- verify: json_path(path="palette.input.value", equals="")
+- does:
+  - Resets the palette query in the store when it opens.
+- verify: json_path(path="store.palette.query", equals="")
+- does:
+  - Resets the palette active index in the store when it opens.
+- verify: json_path(path="store.palette.active", equals=0)
+- does:
+  - Focuses the palette input when it opens.
+- verify: json_path(path="document.activeElement.id", equals="palette-input")
+- does:
   - Renders the current fleet from the store as results, so the palette lists runs the runs-pane filter is hiding.
+- verify: count(subject="palette results", equals=2)
+- does:
   - Traps Tab on the input while open, since that input is the dialog's only focusable element.
-  - On close: removes `open`, sets `aria-expanded="false"`, drops `aria-activedescendant`, marks the palette closed in the store, and returns focus to the recorded invoker rather than to `<body>`.
-  - Sends no request and touches no server state.
+- verify: json_path(path="document.activeElement.id", equals="palette-input")
+- does:
+  - Removes `open` from the palette when it closes.
+- verify: absent(subject="open command palette dialog")
+- does:
+  - Sets the palette input's `aria-expanded` value to `false` when it closes.
+- verify: json_path(path="palette.input.aria-expanded", equals="false")
+- does:
+  - Removes `aria-activedescendant` from the palette input when it closes.
+- verify: json_path(path="palette.input.aria-activedescendant", absent=true)
+- does:
+  - Marks the palette closed in the store.
+- verify: json_path(path="store.palette.open", equals=false)
+- does:
+  - Returns focus to the recorded invoker when the palette closes.
+- verify: json_path(path="document.activeElement.id", equals="btn-palette")
+- does:
+  - Sends no request.
+- verify: count(subject="HTTP requests", equals=0)
+- does:
+  - Leaves server state unchanged.
+- verify: unchanged(subject="server state")
 - code: groom/groom/assets/dashboard.js::openPalette
 - code: groom/groom/assets/dashboard.js::closePalette
 - code: groom/groom/assets/dashboard.js::wireEvents
+- detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 
 ### filter-command-palette-results
 
@@ -1173,15 +2359,22 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: an `input` event on the palette field, or ArrowDown/ArrowUp to move the active result.
 - role: combobox
 - name: `Jump to a worker or blocked gate`
-- keyboard: the field is focused on open; ArrowDown and ArrowUp move the active result and are prevented from scrolling the page; Enter chooses; Escape closes.
+- keyboard: the field is focused on open. ArrowDown and ArrowUp move the active result and are prevented from scrolling the page. Enter chooses. Escape closes.
+- verify: json_path(path="document.activeElement.id", equals="palette-input")
 - when:
   - The palette is open. The fleet may be empty.
+- verify: visible(locator="#palette-input")
 - does:
   - Writes the raw query to the palette slice and resets the active index to the first hit.
+- verify: json_path(path="palette.query", equals="worker")
   - Computes hits from the fleet **in the store** — not from the rendered rows — filtering on the same haystack the runs filter uses, so a run hidden by that filter is still reachable here.
+- verify: count(subject="palette results for a run hidden by the runs filter", equals=1)
   - Clamps the active index into the hit list on every move, so it never points past the end of a shortened list, and does nothing at all when there are no hits.
+- verify: json_path(path="palette.active", equals=0)
   - Republishes `aria-activedescendant` on the input to the active result, or removes it when nothing matches, and scrolls that result into view.
+- verify: json_path(path="palette.input.aria-activedescendant", equals="presult-0")
   - Sends no request; the fleet is already in the browser.
+- verify: count(subject="HTTP requests", equals=0)
 - code: groom/groom/assets/dashboard.js::paletteHits
 - code: groom/groom/assets/dashboard.js::PaletteResults
 - code: groom/groom/assets/dashboard.js::movePaletteActive
@@ -1192,7 +2385,12 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - trigger: pointer click or tap on a result, or Enter from the palette input with an active result.
 - role: option
 - name: `{repo} #{short_handle} {doing} {hint}`
-- keyboard: ArrowDown and ArrowUp move the active result; Enter chooses it; Escape abandons the palette.
+- keyboard: ArrowDown and ArrowUp move the active result.
+- verify: json_path(path="$.aria-activedescendant", equals="presult-1")
+- keyboard: Enter chooses the active result.
+- verify: visible(locator="#detail .detail-head", text="{repo} #{short_handle}")
+- keyboard: Escape abandons the palette.
+- verify: absent(subject="command palette dialog")
 - when:
   - The palette is open and at least one result matches.
 - does:
@@ -1203,6 +2401,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - code: groom/groom/assets/dashboard.js::choosePaletteHit
 - code: groom/groom/assets/dashboard.js::select
 - code: groom/groom/assets/dashboard.js::setMode
+- detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
+- detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
 
 ### filter-telemetry-spans
 
@@ -1211,16 +2411,32 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - role: combobox
 - name: `Filter by span status`
 - keyboard: Tab reaches each field in turn; ArrowUp and ArrowDown change the select; Enter submits, which is intercepted rather than navigating.
+- verify: visible(locator="#traces-filter select[name='status']", text="any status")
 - when:
   - Telemetry mode is active.
+- verify: visible(locator="#telemetry-pane", text="Telemetry")
 - does:
   - Prevents the form's default submission, so the page never navigates.
+- verify: unchanged(subject="browser URL")
+- does:
   - Serializes the fields — run id, node, span status, minimum duration in seconds, and the `show ended` checkbox when it is ticked — into a query string and sends `GET /traces` with it. Empty fields are sent as empty values and ignored by the server; an unticked checkbox is not sent at all, which the server reads as the connected-runs-only default.
+- verify: json_path(path="request.url", matches="^/traces\\?run=.*&node=.*&status=.*&slower_than=.*")
+- does:
   - Stores the returned run cards and span rows, replacing the previous result wholesale.
+- verify: json_path(path="traces.runs[0].run_id", equals="run-1")
+- does:
   - Renders the run-card strip above the table, and beneath it the no-match note when runs are known but no span survives the filter, or the not-connected note when the connected-only view came back empty.
+- verify: visible(locator=".run-cards", text="run-1")
+- does:
   - Stores an error status on rejection, rendered as `failed to load`.
+- verify: visible(locator="#telemetry", text="failed to load")
+- does:
   - Re-queries on every keystroke, without debounce; the query is served from groom's local span store rather than from a remote backend.
+- verify: count(subject="trace requests", equals=1)
+- does:
   - Leaves the selected run, the fleet, and the detail pane untouched.
+- verify: unchanged(subject="selected run")
 - code: groom/groom/assets/dashboard.js::loadTraces
 - code: groom/groom/assets/dashboard.js::Traces
 - code: groom/groom/assets/dashboard.js::RunCard
+- detail: [telemetry trace query contexts](../../concepts/telemetry-trace-query-contexts.md)

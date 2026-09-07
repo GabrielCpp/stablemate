@@ -18,6 +18,8 @@ The frame is deliberately kept **off** the [dashboard state payload](dashboard-s
 - code: groom/groom/app.py::_dispatch_alerts
 - code: groom/groom/assets/dashboard.js::onFrame
 - code: groom/groom/assets/dashboard.js::onNotify
+- detail: [blocked push flow contexts](concepts/blocked-push-flow-contexts.md)
+- detail: [dashboard frame dispatch](concepts/dashboard-frame-dispatch.md)
 - refs: [blocked push payload](blocked-push-payload.md), [dashboard state payload](dashboard-state-payload.md), [dashboard answered message](dashboard-answered-message.md), [browser notification permission](concepts/browser-notification-permission.md)
 - verify: groom/tests/test_app.py::test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame
 - verify: groom/tests/test_app.py::test_socket_blocked_delta_sends_the_same_notify_frame_as_the_http_push

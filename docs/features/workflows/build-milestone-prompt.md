@@ -25,6 +25,7 @@ commits, or downstream artifacts. The response is a JSON object accepted by
 - semantics: repository-relative approved roadmap path that is the milestone's sole source item
 - verify: json_path(path="$.roadmap", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.start`
+- detail: [milestone prompt field roles](concepts/milestone-prompt-field-roles.md)
 
 ### status
 - type: `Literal["complete", "blocked"]`
@@ -32,6 +33,7 @@ commits, or downstream artifacts. The response is a JSON object accepted by
 - semantics: reports whether the milestone was created or reused, or whether the turn needs an operator decision
 - verify: json_path(path="$.status", matches="^(complete|blocked)$")
 - code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.start`
+- detail: [milestone prompt field roles](concepts/milestone-prompt-field-roles.md)
 
 ### notes
 - type: string
@@ -39,3 +41,4 @@ commits, or downstream artifacts. The response is a JSON object accepted by
 - semantics: describes the created or reused milestone, or states the blocking question
 - verify: json_path(path="$.notes", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.start`
+- detail: [milestone prompt field roles](concepts/milestone-prompt-field-roles.md)

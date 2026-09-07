@@ -8,7 +8,8 @@ title: Coder main flow
 - The default [Coder composition root](../concepts/coder-workflow-composition-root.md) runs this
   machine when no specialist flow is selected. It hands implementation, review, documentation,
   QA, backlog fixing, CI repair, and merge work to the specialist flows while retaining the queue
-  and transition decisions here.
+  and transition decisions here. Its agent turns use the [coder conversation lifecycle](../concepts/coder-conversation.md),
+  [prompt role resolution](../concepts/coder-prompt-role-resolution.md), and [rendered schema contracts](../concepts/coder-render-schema-contracts.md).
 
 - start: the run has a resolvable repository context and its checkpointed mode is `epic` or `story`
 - verify: exit_status(code=0)
@@ -16,8 +17,9 @@ title: Coder main flow
 - verify: count(subject="coder run entry paths", equals=1)
 - steps:
   - [initialize](#initialize)
-  - [epic-queue](#epic-queue)
-  - [story-pipeline](#story-pipeline)
+   - [epic-queue](#epic-queue)
+   - [story-pipeline](#story-pipeline)
+   - [agent-turn-contract](#agent-turn-contract)
   - [backlog-drain](#backlog-drain)
   - [story-commit](#story-commit)
   - [pull-request-gates](#pull-request-gates)
@@ -36,11 +38,15 @@ title: Coder main flow
 
 ### initialize
 
+- kind: prepare
+
 `setup` resolves the workspace directories before any story is selected, so the planning-only
 replan and merge paths have the same repository context as story work. `start` records the run,
 then either branches the explicit story or initializes the base branch for epic queue processing.
 
 ### epic-queue
+
+- kind: run
 
 Epic mode selects the front epic, branches every repository for it, and repeatedly selects the next
 unimplemented story. An empty epic queue tears down the reusable QA stack and ends normally. A
@@ -48,6 +54,8 @@ blocked epic is flagged and set aside so the next epic can be considered; a comp
 to pull-request preparation.
 
 ### story-pipeline
+
+- kind: run
 
 Each selected story is snapshotted against pre-existing work, resolved to its paths, and sent through
 `dev`, `review`, `document`, and `qa`. A development or QA rescope/rework returns to the appropriate
@@ -58,13 +66,30 @@ without a commit; other exhausted QA paths remain operator-gated inside QA.
 The story's epic is resolved from the prepared story when story mode was handed a bare slug,
 otherwise from the queue selection or the explicit epic parameter.
 
+### agent-turn-contract
+
+- kind: drive
+
+The main flow hands story implementation, review, documentation, QA, and backlog work to typed
+sub-flows. Their turns receive the story-derived backbone or a lane-specific session according to
+the specialist flow's contract; the main flow preserves returned statuses and counters rather than
+reconstructing their conversations. The main flow's own turns are bounded and typed: `replan` uses
+the authoritative operator answer and `ReplanResult` at high power, `settle` uses the story's
+implementation conversation and `WorktreeSettled`, and `fix_merge` uses a separate epic merge
+conversation and `MergeFixResult` at high power. Their prompt formats are [epic replan](../coder-replan-epic-prompt.md),
+[worktree settlement](../coder-settle-worktree-prompt.md), and [merge repair](../coder-fix-merge-prompt.md).
+
 ### backlog-drain
+
+- kind: run
 
 A passing QA result hands the backlog to the `fix` flow. That flow documents and commits each
 drained item before this machine resumes, while the current story's documentation-taint flag is
 carried forward unchanged.
 
 ### story-commit
+
+- kind: run
 
 The finalization state re-runs documentation only when QA or backlog mutation marked the story
 tainted. Epic mode checks the repositories, allows one chained settle turn for uncommitted work,
@@ -76,6 +101,8 @@ The settle turn is chained to the story's implementation conversation, but `comm
 worktree again before stamping the story.
 
 ### pull-request-gates
+
+- kind: run
 
 After an epic's queue is pruned, its pull request is opened when the branch is independently
 shippable. A branch carrying unmerged work from a set-aside epic is left without a PR so that the

@@ -62,6 +62,7 @@ The design constraint that makes it worth a document is that the resync must not
 - abstract: false
 - raises: none.
 - raises: network failures are caught and dropped.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/assets/dashboard.js::resync
 - step: Return immediately if a resync is already in flight.
 - step: Raise the in-flight guard.
@@ -75,6 +76,7 @@ The design constraint that makes it worth a document is that the resync must not
 - sig: `startConnection() -> void`
 - abstract: false
 - raises: none.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/assets/dashboard.js::startConnection
 - step: Open the websocket.
 - step: Start the once-a-second connection evaluator, which is what schedules resyncs.

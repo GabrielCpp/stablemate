@@ -106,6 +106,7 @@ current directory when no explicit repository was supplied. Git-specific root lo
 ### epic_context
 - sig: `epic_context(epic_dir_rel: str) -> str`
 - does: appends `context.md` to an epic directory after removing trailing separators
+- verify: removed(subject="trailing separators from the epic directory path")
 - verify: count(subject="author epic context paths", equals=1)
 - returns: the epic context path
 - verify: count(subject="author epic context results", equals=1)

@@ -37,6 +37,7 @@ only composes them for one story-split run.
 - verify: json_path(path="$.epic", matches=".+")
 - verify: count(subject="story-split runs with one selected epic", equals=1)
 - code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow`
+- detail: [story-split input fields](../concepts/story-split-input-fields.md)
 
 ### operator_mode
 - type: literal `auto` or `human`
@@ -47,6 +48,7 @@ only composes them for one story-split run.
 - verify: json_path(path="$.operator_mode", equals="auto")
 - verify: count(subject="human-mode story-split operator gates", equals=1)
 - code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow`
+- detail: [story-split input fields](../concepts/story-split-input-fields.md)
 
 ## Methods
 
@@ -202,9 +204,9 @@ documented by the linked shared concepts and formats.
 - sig: `record_story_split_review(logger: logging.Logger, epic: str, repo_dir: str = "") -> StorySplitReceipt`
 - does: resolves the repository root and locates the named epic in the Ostler graph
 - verify: count(subject="story-split receipt epic resolutions", equals=1)
-- does: rejects an absent epic
-- raises: raises `WorkflowFailed` stating that no epic with the requested name exists
+- consistency: rejects an absent epic
 - verify: count(subject="missing story-split receipt epic failures", equals=1)
+- raises: raises `WorkflowFailed` stating that no epic with the requested name exists
 - does: rejects an epic without a persisted `epic.md`
 - raises: raises `WorkflowFailed` stating that the epic has no `epic.md`
 - verify: count(subject="epics without story-split receipt paths", equals=1)

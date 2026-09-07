@@ -20,6 +20,7 @@ branch operation succeeded. Re-running the operation checks out existing branche
 - semantics: branch read before the story branch was cut
 - verify: json_path(path="$.base_branch", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryBranch`
+- detail: [coder queue story branch field roles](concepts/coder-queue-story-branch-field-roles.md)
 
 ### story_branch
 - type: string
@@ -28,6 +29,7 @@ branch operation succeeded. Re-running the operation checks out existing branche
 - semantics: branch named exactly for the story slug
 - verify: json_path(path="$.story_branch", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryBranch`
+- detail: [coder queue story branch field roles](concepts/coder-queue-story-branch-field-roles.md)
 
 ### repos
 - type: list of strings
@@ -36,3 +38,4 @@ branch operation succeeded. Re-running the operation checks out existing branche
 - semantics: workspace repository names actually branched, with the documentation repository first
 - verify: count(subject="branched repositories", equals=0)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryBranch`
+- detail: [coder queue story branch field roles](concepts/coder-queue-story-branch-field-roles.md)

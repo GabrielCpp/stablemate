@@ -21,22 +21,25 @@ was not required.
 - semantics: whether a mockup turn is required before story authoring
 - verify: json_path(path="$.required", equals=True)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate`
+- detail: [mockup gate field roles](concepts/mockup-gate-field-roles.md)
 
 ### layers
 - type: list of strings
 - default: empty list
 - required: false
 - semantics: union of implementation layers declared by the story's covered seeds
-- verify: json_path(path="$.layers", equals=[])
+- verify: count(subject="layers", equals=0)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate`
+- detail: [mockup gate field roles](concepts/mockup-gate-field-roles.md)
 
 ### services
 - type: list of strings
 - default: empty list
 - required: false
 - semantics: union of services declared by the story's covered seeds
-- verify: json_path(path="$.services", equals=[])
+- verify: count(subject="services", equals=0)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate`
+- detail: [mockup gate field roles](concepts/mockup-gate-field-roles.md)
 
 ### evidence
 - type: string
@@ -45,3 +48,4 @@ was not required.
 - semantics: source evidence supporting the mockup requirement decision
 - verify: json_path(path="$.evidence", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate`
+- detail: [mockup gate field roles](concepts/mockup-gate-field-roles.md)

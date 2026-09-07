@@ -72,8 +72,13 @@ Stopped container start fallback is Groom's post-answer recovery path for a work
 - sig: `docker_start(container_id: str) -> bool`
 - abstract: false
 - raises: Propagates subprocess launch, timeout, and other unexpected subprocess wrapper exceptions.
-- returns: `True` for a zero Docker exit status and `False` for a completed non-zero Docker exit status.
+- verify: json_path(path="exception.type", matches="FileNotFoundError|TimeoutExpired")
+- returns: `True` for a zero Docker exit status.
+- verify: json_path(path="return value", equals=true)
+- returns: `False` for a completed non-zero Docker exit status.
+- verify: json_path(path="return value", equals=false)
 - code: groom/groom/docker_io.py::docker_start
+- detail: [Docker start documentation scope](docker-start-documentation-scope.md)
 - detail: [Groom Docker I/O module docker-start method](groom-docker-io-module.md#docker-start)
 
 Attempts to start one existing Docker container id and returns only whether Docker reported success.

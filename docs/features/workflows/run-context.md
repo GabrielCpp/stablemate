@@ -21,6 +21,7 @@ state value carried by the run rather than the loader result.
 - semantics: absolute repository root resolved for the run
 - verify: json_path(path="$.repo_root", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext`
+- detail: [run context field roles](concepts/run-context-field-roles.md)
 
 ### backlog_path
 - type: repository-relative string path
@@ -29,6 +30,7 @@ state value carried by the run rather than the loader result.
 - semantics: configured backlog path restored in the run context
 - verify: json_path(path="$.backlog_path", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext`
+- detail: [run context field roles](concepts/run-context-field-roles.md)
 
 ### roadmap_path
 - type: repository-relative string path
@@ -37,6 +39,7 @@ state value carried by the run rather than the loader result.
 - semantics: approved roadmap path restored for epic authoring
 - verify: json_path(path="$.roadmap_path", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext`
+- detail: [run context field roles](concepts/run-context-field-roles.md)
 
 ### epics_dir
 - type: repository-relative string path
@@ -45,6 +48,7 @@ state value carried by the run rather than the loader result.
 - semantics: configured epic directory restored for path resolution
 - verify: json_path(path="$.epics_dir", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext`
+- detail: [run context field roles](concepts/run-context-field-roles.md)
 
 ### features_dir
 - type: repository-relative string path
@@ -53,11 +57,13 @@ state value carried by the run rather than the loader result.
 - semantics: configured feature-book directory restored as read-only grounding
 - verify: json_path(path="$.features_dir", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext`
+- detail: [run context field roles](concepts/run-context-field-roles.md)
 
 ### layers
 - type: list of strings
 - default: empty list
 - required: false
 - semantics: local-instruction skill paths restored as prompt layer hints
-- verify: json_path(path="$.layers", equals=[])
+- verify: count(subject="$.layers", equals=0)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext`
+- detail: [run context field roles](concepts/run-context-field-roles.md)

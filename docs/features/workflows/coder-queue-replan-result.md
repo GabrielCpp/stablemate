@@ -19,6 +19,7 @@ An unresolved answer remains blocked rather than becoming an invented execution 
 - semantics: whether the epic was re-grounded or must remain blocked
 - verify: json_path(path="$.status", equals="blocked")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::ReplanResult`
+- detail: [coder queue replan result field roles](concepts/coder-queue-replan-result-field-roles.md)
 
 ### notes
 - type: string
@@ -27,3 +28,4 @@ An unresolved answer remains blocked rather than becoming an invented execution 
 - semantics: summary of what was re-grounded or what remained undecided
 - verify: json_path(path="$.notes", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::ReplanResult`
+- detail: [coder queue replan result field roles](concepts/coder-queue-replan-result-field-roles.md)

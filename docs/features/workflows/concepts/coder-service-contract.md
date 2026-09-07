@@ -25,8 +25,10 @@ messages. It does not mutate the path or infer a service type.
 - verify: count(subject="service contract problems", equals=1)
 - does: returns one error identifying the label when the path exists but is not a directory
 - verify: count(subject="service contract problems", equals=1)
-- does: returns one error identifying the label, expected marker names, and service path when markers are configured and none exists below the service directory
+- does: returns one error when markers are configured and none exists below the service directory
 - verify: count(subject="service contract problems", equals=1)
+- does: identifies the marker error with the label, expected marker names, and service path
+- verify: json_path(path="$[0]", matches=".*: no service marker found \\(expected one of \\[.*\\] in .+\\)")
 - does: skips marker validation when the marker sequence is empty
 - verify: count(subject="service contract problems", equals=0)
 - does: accepts the service when it is an existing directory and at least one configured marker exists below it

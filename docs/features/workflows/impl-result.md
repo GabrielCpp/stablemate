@@ -15,9 +15,12 @@ title: Coder implementation result
 ### status
 - type: literal `done`, `applied`, `no_changes_needed`, `needs_changes`, or `blocked`
 - required: true
-- semantics: implementation outcome reported by the turn; only `blocked` routes directly to a block
+- semantics: implementation outcome reported by the turn
 - verify: json_path(path="$.status", matches="done|applied|no_changes_needed|needs_changes|blocked")
+- semantics: only `blocked` routes directly to a block
+- verify: json_path(path="$.status", equals="blocked")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.status`
+- detail: [implementation result status](concepts/implementation-result-status.md)
 
 ### notes
 - type: `str`
@@ -26,3 +29,4 @@ title: Coder implementation result
 - semantics: implementation, verification, or blocking explanation
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.notes`
+- detail: [implementation result notes](concepts/impl-result-notes.md)

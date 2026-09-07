@@ -21,6 +21,7 @@ previous attempt outcome.
 - semantics: whether implementation work was committed in any affected repository
 - verify: json_path(path="$.committed", equals=false)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryCommitted`
+- detail: [coder queue story committed field roles](concepts/coder-queue-story-committed-field-roles.md)
 
 ### superseded_outcome
 - type: boolean
@@ -29,3 +30,4 @@ previous attempt outcome.
 - semantics: whether the passing status replaced a prior non-default story outcome
 - verify: json_path(path="$.superseded_outcome", equals=false)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryCommitted`
+- detail: [coder queue story committed field roles](concepts/coder-queue-story-committed-field-roles.md)

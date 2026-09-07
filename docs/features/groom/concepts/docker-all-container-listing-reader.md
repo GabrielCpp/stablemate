@@ -23,6 +23,7 @@ The function accepts no caller arguments and uses the local Docker CLI and daemo
 - default: `['docker', 'ps', '-a', '--format', '{{json .}}']`
 - required: true
 - code: `groom/groom/docker_io.py::docker_ps_all`
+- detail: [Docker ps all field guide](docker-ps-all-field-guide.md)
 
 The complete argv vector requests all containers, including stopped containers, and asks Docker to emit one JSON object per output line. The vector is passed to the subprocess runner without shell parsing or token rewriting.
 
@@ -32,6 +33,7 @@ The complete argv vector requests all containers, including stopped containers, 
 - default: derived from completed-process stdout
 - required: true
 - code: `groom/groom/docker_io.py::docker_ps_all`
+- detail: [Docker ps all field guide](docker-ps-all-field-guide.md)
 
 These are the stdout lines produced by a zero-exit Docker command, split at line boundaries. Each line is stripped before the reader decides whether it is empty or parseable.
 
@@ -41,6 +43,7 @@ These are the stdout lines produced by a zero-exit Docker command, split at line
 - default: `[]`
 - required: true
 - code: `groom/groom/docker_io.py::docker_ps_all`
+- detail: [Docker ps all field guide](docker-ps-all-field-guide.md)
 
 This is the result sequence accumulated from successfully decoded lines. It preserves retained values and their input order, including a decoded non-object value if Docker supplies one.
 

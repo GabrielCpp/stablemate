@@ -80,6 +80,7 @@ needs it, then restores the caller's prior process state even when that callee f
 - sig: `scoped_env(name: str, value: str) -> Iterator[None]`
 - does: sets `name` to `value` for the duration of the context block
 - does: removes `name` when the block exits if it had no prior value
+- verify: removed(subject="the environment variable named by name")
 - does: restores the prior value of `name` when the block exits if one existed
 - does: restores or removes `name` when the block exits through an exception
 - verify: count(subject="scoped environment restoration cases", equals=4)

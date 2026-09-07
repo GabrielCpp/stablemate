@@ -20,6 +20,7 @@ separate from whether the check was skipped. `report` preserves the resolver-fac
 - semantics: whether the verification condition holds or is allowed through as skipped
 - verify: json_path(path="$.holds", equals=False)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport`
+- detail: [verify report field roles](concepts/verify-report-field-roles.md)
 
 ### skipped
 - type: boolean
@@ -28,6 +29,7 @@ separate from whether the check was skipped. `report` preserves the resolver-fac
 - semantics: whether verification could not run because its prerequisite was unavailable
 - verify: json_path(path="$.skipped", equals=False)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport`
+- detail: [verify report field roles](concepts/verify-report-field-roles.md)
 
 ### errors
 - type: string
@@ -36,6 +38,7 @@ separate from whether the check was skipped. `report` preserves the resolver-fac
 - semantics: verification findings presented to the author flow
 - verify: json_path(path="$.errors", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport`
+- detail: [verify report field roles](concepts/verify-report-field-roles.md)
 
 ### report
 - type: string
@@ -44,3 +47,4 @@ separate from whether the check was skipped. `report` preserves the resolver-fac
 - semantics: multi-line verification preamble supplied to the resolver prompt
 - verify: json_path(path="$.report", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport`
+- detail: [verify report field roles](concepts/verify-report-field-roles.md)

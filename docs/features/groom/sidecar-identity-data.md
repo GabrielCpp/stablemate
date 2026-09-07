@@ -28,9 +28,11 @@ payloads that merge it may add their own event-specific fields.
 - producer: every call reads the current process hostname and the current
   `REPO_NAME` and `REPO_BRANCH` environment values at call time; it does not
   cache identity across calls.
-- embedding: websocket hello frames place this object under `identity`; residual
-  HTTP pushes merge this object into the top-level request body before adding the
-  event-specific payload fields.
+- consistency: websocket hello frames place this object under `identity`.
+- verify: json_path(path="$.identity.repo_name", equals="Acme")
+- consistency: residual HTTP pushes merge this object into the top-level request
+  body before adding event-specific payload fields.
+- verify: json_path(path="$.repo_branch", equals="fixes/x")
 - collision rule: residual HTTP event payload keys override same-named identity
   keys because the event payload is merged after this object; first-party event
   producers do not currently send colliding keys.

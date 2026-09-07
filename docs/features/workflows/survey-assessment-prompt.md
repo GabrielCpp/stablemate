@@ -57,8 +57,12 @@ or a unit that must be split into immediate children.
 - type: string
 - default: empty string
 - required: false
-- semantics: `assessed`, `clean`, `split`, or `blocked`; `split` replaces the unit and writes no record
+- semantics: `assessed`, `clean`, `split`, or `blocked`
 - verify: json_path(path="$.status", matches=".*")
+- semantics: `split` replaces the unit
+- verify: json_path(path="$.status", equals="split")
+- semantics: `split` writes no record
+- verify: absent(subject="the assessment finding record for the split unit")
 
 ### notes
 - type: string

@@ -21,8 +21,10 @@ controls the runner's credential boundary.
 - type: `dict[str, QaStatus]`
 - default: `passed -> passed, failed -> failed, blocked -> blocked, invalid -> invalid`
 - required: true
-- semantics: closed mapping from the Ostler runner's status text to the four statuses accepted by `QaPlanRun`; any other text becomes `invalid`
+- semantics: closed mapping from the Ostler runner's status text to the four statuses accepted by `QaPlanRun`
 - verify: count(subject="accepted QA runner statuses", equals=4)
+- semantics: any other runner status text becomes `invalid`
+- verify: json_path(path="$.status", equals="invalid")
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::RUN_STATUSES`
 
 ### TEARDOWN_STATES
@@ -68,7 +70,11 @@ controls the runner's credential boundary.
 
 ### ensure_stack
 - sig: `ensure_stack(logger: logging.Logger, docs_path: str = "", repo_dir: str = "") -> StackStatus`
-- does: resolves the docs root, loads the book's stack manifest, and returns `ready="unneeded"` when the book serves no screen or server surface and therefore needs no stack
+- does: resolves the docs root
+- verify: count(subject="QA docs root resolutions", equals=1)
+- does: loads the book's stack manifest
+- verify: count(subject="QA stack manifest loads", equals=1)
+- does: returns `ready="unneeded"` when the book serves no screen or server surface and therefore needs no stack
 - verify: json_path(path="$.ready", equals="unneeded")
 - does: returns `ready="none"` when the book serves a screen or server but declares no stack runbook or walkthrough server
 - verify: json_path(path="$.ready", equals="none")
@@ -98,7 +104,7 @@ controls the runner's credential boundary.
 - does: resolves the docs root and asks Ostler for the QA tools configured by the repository and available on the current host
 - verify: count(subject="QA tool catalog resolutions", equals=1)
 - returns: a `QaToolCatalog` containing the resolved tool records and any catalog errors, suitable for checkpointing across resume
-- verify: json_path(path="$.tools", absent=false)
+- verify: json_path(path="$.tools", equals="[]")
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::qa_tools_catalog`
 
 ### validate_qa_plan
@@ -125,7 +131,7 @@ controls the runner's credential boundary.
 - does: marks every named scenario with assertions and no failures as verified while retaining the complete requested scenario list
 - verify: count(subject="verified dry-run scenarios", equals=1)
 - returns: a `DryRunGate` with `passed` or `failed` status, notes, requested scenarios, and the verified subset
-- verify: json_path(path="$.verified", absent=false)
+- verify: json_path(path="$.status", matches="^(passed|failed)$")
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::verify_qa_dry_run`
 - tests: `workflows/tests/coder/qa/test_dry_run_gate.py::test_a_green_dry_run_for_every_named_scenario_passes`
 
@@ -134,9 +140,9 @@ controls the runner's credential boundary.
 - does: resolves the docs root and invokes the runbook stop recipe after the QA run reaches a terminal path
 - verify: count(subject="QA stack teardown attempts", equals=1)
 - does: maps the lifecycle outcome to `yes`, `no`, or `skipped` and never turns cleanup failure into a failed QA verdict
-- verify: json_path(path="$.torn_down", absent=false)
+- verify: json_path(path="$.torn_down", matches="^(yes|no|skipped)$")
 - returns: a `StackTornDown` recording teardown state and the lifecycle message
-- verify: json_path(path="$.notes", absent=false)
+- verify: json_path(path="$.notes", matches="^(stack torn down|teardown failed|the book declares no runbook.*|no `stop:` recipe.*)$")
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::teardown_stack`
 
 ### _mint_qa_secrets
@@ -147,17 +153,27 @@ controls the runner's credential boundary.
 - verify: count(subject="QA secret mint recipes", equals=1)
 - does: stops at the first invalid recipe, execution error, timeout, non-zero exit, or empty output and discards every token minted earlier in that loop
 - verify: count(subject="all-or-nothing QA secret mint failures", equals=1)
-- returns: a complete token mapping with an empty error on success, or an empty mapping with a diagnostic error on failure; token values are not logged or returned by a node schema
-- verify: json_path(path="$.error", absent=false)
+- returns: a complete token mapping with an empty error on success, or an empty mapping with a diagnostic error on failure
+- verify: json_path(path="$.error", equals="")
+- returns: token values are not logged
+- verify: omits(subject="QA secret mint logs", matches="token value")
+- returns: token values are not returned by a node schema
+- verify: omits(subject="QA node return payload", matches="token value")
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::_mint_qa_secrets`
 - tests: `workflows/tests/coder/qa/test_refresh_env.py::test_an_earlier_failure_discards_the_tokens_already_minted`
 
 ### run_qa_plan
 - sig: `run_qa_plan(logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = "") -> QaPlanRun`
-- does: resolves the docs root and QA plan, loads runbook secrets, and blocks before running the plan when secret minting fails
+- does: resolves the docs root from the supplied documentation or repository path
+- verify: count(subject="resolved QA docs roots", equals=1)
+- does: resolves the QA plan path from the supplied specification directory
+- verify: count(subject="resolved QA plan paths", equals=1)
+- does: loads the runbook secrets before executing the QA plan
+- verify: count(subject="loaded QA runbook secret manifests", equals=1)
+- does: blocks before running the plan when secret minting fails
 - verify: json_path(path="$.status", equals="blocked")
 - does: scopes freshly minted secret values to the in-process Ostler QA run and removes or restores them when that run exits
-- verify: count(subject="scoped QA secret environments", equals=1)
+- verify: removed(subject="freshly minted QA secret environment variables")
 - does: invokes Ostler QA run once and ignores its process return code because the payload status is authoritative
 - verify: count(subject="Ostler QA plan runs", equals=1)
 - does: maps runner statuses `passed`, `failed`, and `blocked` directly and maps any unrecognized status to `invalid`
