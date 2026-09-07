@@ -34,6 +34,7 @@ from workhorse.runner.spec import AgentNode, OutputSpec
 from workhorse.pyflow.blueprint import NodeSpec, node_spec
 from workhorse.pyflow.errors import (
     AgentTimeout,
+    AgentTurnFailed,
     NodeNotRunError,
     UnknownNodeError,
     WorkflowFailed,
@@ -454,13 +455,14 @@ class Engine:
                     ),
                 )
             except BackendInvocationError as exc:
-                # Only the wall-clock overrun gets a pyflow name, and only once the
-                # ladder is done with it. Everything else propagates as it always has:
-                # a state that cannot tell a cut turn from a crashed CLI would land
-                # partial work on a node that never wrote any.
-                if not exc.timed_out:
-                    raise
-                raise AgentTimeout(str(exc)) from exc
+                # The ladder is done with this turn, and its verdict is a fact about the
+                # workflow's node — so it crosses into pyflow's vocabulary here rather
+                # than travelling as a runner name a workflow may not import. Two names,
+                # not one: a state that cannot tell a cut turn from a turn that answered
+                # nothing would land partial work on a node that never wrote any.
+                if exc.timed_out:
+                    raise AgentTimeout(str(exc)) from exc
+                raise AgentTurnFailed(str(exc)) from exc
             writer.write_step(node_id, rendered, raw, {}, next_node=None)
             return _coerce(raw, returns, node_id)
 

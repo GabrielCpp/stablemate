@@ -36,6 +36,7 @@ from workhorse.config_run import RunConfig  # noqa: E402
 from workhorse.manifest import ManifestContext  # noqa: E402
 from workhorse.pyflow import (  # noqa: E402
     AgentTimeout,
+    AgentTurnFailed,
     Await,
     Blueprint,
     Continue,
@@ -1347,12 +1348,14 @@ def test_an_overrun_turn_reaches_the_state_as_a_catchable_agent_timeout():
         assert drive(Asks(), env) == "landed: timed out after 1200s"
 
 
-def test_a_backend_failure_that_is_not_a_timeout_still_propagates():
-    """The translation is narrow on purpose.
+def test_a_spent_turn_that_is_not_a_timeout_is_a_separate_catchable_name():
+    """Two names, not one, and not a subtype either.
 
-    A state that caught a crashed CLI as a timeout would go on to repair a file the
-    turn never wrote — so only `timed_out` gets the pyflow name, and everything else
-    ends the run at a resumable checkpoint the way it always has.
+    A state that caught a crashed CLI as a timeout would go on to repair a file the turn
+    never wrote, so `AgentTimeout` stays exactly as narrow as it was. But the verdict on
+    a turn that produced *nothing* is just as much a fact about the node — a state may
+    want to gate on it, and enumerating cannot reach a name that lives behind pyflow's
+    import line. So it crosses as `AgentTurnFailed`, catchable and distinct.
     """
     with tempfile.TemporaryDirectory() as tmp:
 
@@ -1367,12 +1370,35 @@ def test_a_backend_failure_that_is_not_a_timeout_still_propagates():
                     self.agent("prompts/review.md", returns=Payload)
                 except AgentTimeout:
                     return Done("mistaken for a timeout")
+                except AgentTurnFailed as exc:
+                    return Done(f"gated: {exc}")
                 return Done("never reached")
+
+        assert drive(Asks(), env) == "gated: the CLI exited with code 1"
+
+
+def test_a_spent_turn_nobody_catches_still_ends_the_run():
+    """The new name changes what a state *can* do, not what happens when it does nothing.
+
+    A workflow that does not handle a dead provider must still stop — inventing an answer
+    for a node is the one thing the ladder never does — and the runner name it used to
+    propagate as was never something a state could catch anyway.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+
+        def crash(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+            raise BackendInvocationError("the CLI exited with code 1", transient=False)
+
+        env = _env(tmp, agent_runner=ScriptedRunner(crash))
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                return Done(self.agent("prompts/review.md", returns=Payload))
 
         try:
             drive(Asks(), env)
-            raise AssertionError("a non-timeout backend failure must end the run")
-        except BackendInvocationError:
+            raise AssertionError("a spent agent turn must end the run")
+        except AgentTurnFailed:
             pass
 
 

@@ -238,9 +238,6 @@ wall clock. Spending-cap waits are unaffected — a cap always clears.
 Such a node usually wants to *land* an overrun too, and `AgentTimeout` is the name it
 catches to do so — raised by `self.agent` once the ladder has finished with a turn its
 `timeout` cut, so catching it is not short-circuiting a retry that would have worked.
-Only the wall-clock overrun is translated; a crashed CLI still ends the run, because a
-state that confused the two would repair a file the turn never wrote:
-
 ```python
 try:
     self.agent("prompts/plan.md", returns=Plan, timeout=1200, retries=0)
@@ -248,6 +245,14 @@ except AgentTimeout:
     pass                                  # the partial draft on disk is the deliverable
 return Continue(None, self.validate)      # …which the next state reads and repairs
 ```
+
+A turn that ends with **no answer at all** — an empty result from a flaky provider, a CLI
+that exited non-zero — is `AgentTurnFailed`, a sibling and deliberately *not* a supertype:
+a state that confused the two would repair a file the turn never wrote. Catch it where the
+state has somewhere better to send a dead provider than the end of the run — recording the
+failure and opening an operator gate is the usual answer, and is what okf-builder's
+`behavior-audit` does. Uncaught, it stops the run at a resumable checkpoint; the ladder
+still never answers for a node.
 
 These are **real values, not templates**: the state computes the path in Python and
 passes it. (They are still Jinja-rendered on the way through, so a literal path is a

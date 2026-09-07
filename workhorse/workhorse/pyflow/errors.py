@@ -38,6 +38,33 @@ class WorkflowFailed(PyflowError):
         self.artifacts = dict(artifacts or {})
 
 
+class AgentTurnFailed(PyflowError):
+    """The recovery ladder is finished with an agent turn and it produced nothing.
+
+    Raised by `self.agent` only once every rung is spent — transient retries, compaction,
+    reframes — so a state that catches this is landing a verdict, not short-circuiting a
+    recovery that would have worked.
+
+    Its sibling `AgentTimeout` is deliberately NOT a subtype: the two want opposite things
+    from the node. A cut turn was working and may have left a partial file worth keeping;
+    this one produced *no* answer at all — an empty result from a flaky provider, a CLI
+    that exited non-zero — so a state that repaired a draft here would be repairing a file
+    the turn never wrote.
+
+    It exists for the same reason `AgentTimeout` does. The ladder's verdict is a fact about
+    the workflow's node, not about the transport, and the transport's own name for it
+    (`BackendInvocationError`, in `workhorse.runner.failure`) is a module a workflow must
+    not import — pyflow stays cheap to import because resolving a workflow *name* imports
+    it. Without a name on this side of that line, a state could not say "gate on this"
+    however carefully it enumerated, and the run died on a node whose own author had
+    written an operator gate for exactly this case.
+
+    Uncaught, it stops the run at a resumable checkpoint rather than stamping a terminal
+    (`pyflow/run.py`): a provider that gave up is an operational stop, not the workflow's
+    verdict on itself.
+    """
+
+
 class AgentTimeout(PyflowError):
     """An agent turn was stopped at its per-node `timeout`, with its budget spent.
 
@@ -56,7 +83,8 @@ class AgentTimeout(PyflowError):
 
     The transport-level signal (`BackendInvocationError.timed_out`) lives in
     `workhorse.runner.failure`, which a workflow must not import — pyflow stays cheap
-    to import because resolving a workflow *name* imports it. This is the translation.
+    to import because resolving a workflow *name* imports it. This is the translation;
+    `AgentTurnFailed` above is the one for every other way a spent turn ends.
     """
 
 

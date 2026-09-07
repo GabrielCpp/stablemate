@@ -90,7 +90,10 @@ remains resumable and no output is fabricated. A resumed node gets fresh recover
 while `WORKHORSE_MAX_RUNTIME_S`, when set, still counts from the original run start.
 
 **There is no fourth layer.** When all three are spent the node raises and the run
-stops at its checkpoint, for an operator to look at and resume. The ladder never
+stops at its checkpoint, for an operator to look at and resume — unless the state itself
+catches the ladder's verdict (`workhorse.pyflow.AgentTimeout` for a cut turn,
+`AgentTurnFailed` for one that produced nothing) and lands something better, which is a
+decision only the calling state can make. The ladder never
 answers *for* a node: a null `decision` from a review node or a null plan from a dev
 node is not a degraded answer but a fabricated one, and every node downstream then
 does real work on it while the run reports success. A run that stops is recoverable
