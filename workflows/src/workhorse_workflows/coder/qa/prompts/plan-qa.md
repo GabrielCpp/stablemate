@@ -280,6 +280,8 @@ arrangement in which most write bugs are invisible.
 | `qa.field(data, "a.b.0")` | read observed data along a dotted path; missing yields `MISSING`, never raises |
 | `qa.check(label, condition, actual=…, expected=…, covers=…)` | record one claim; returns the verdict, never raises |
 | `qa.require(label, condition, …)` | record one claim and stop the scenario if it fails |
+| `qa.eventually(label, lambda: …, covers=…)` | record one claim the page is allowed to *arrive* at; re-samples until it holds |
+| `qa.require_eventually(label, lambda: …, …)` | the same, stopping the scenario when the page never arrives |
 | `qa.verify(check, observed, covers=…, **args)` | make an observation the book *declared*; ostler owns the comparison |
 | `with qa.step("label"):` | group a phase under a named step; the report lists each assertion and screenshot under the step it ran in |
 | `qa.capture(key, value)` / `qa.get(key)` | publish a value into the ledger and read it back |
@@ -291,6 +293,25 @@ arrangement in which most write bugs are invisible.
 | `qa.diagnostics.console_errors/page_errors/failed_requests/responses()` | the live console and network record for that page |
 | `qa.diagnostics.layout()` | where the page put its content: the viewport, and each region's box as a share of it |
 | `qa.maestro.flow([...])` / `qa.maestro.run(flow)` | build and run a Maestro flow; the result is yours to assert on |
+
+**Anything the page has to reach is `eventually`, and anything later assertions depend on
+is `require_eventually`.** `qa.check` receives an already-collapsed bool, so Python samples
+the DOM once and hands the harness a dead `False` that cannot be told apart from "not yet";
+hand over the sampler instead — a lambda, a bound method, a named nested function.
+
+The stopping variant is the one that decides how much of a scenario survives a failure, and
+the difference is large. When a precondition is recorded with plain `eventually` and the
+state never arrives, the scenario keeps going and the *next* line dereferences the locator
+that is not there — a thirty-second Playwright timeout, an uncaught exception, and an
+aborted scenario. An aborted scenario claims nothing: the harness writes one failing record
+over its whole `covers` list, and every assertion that had already passed inside it stops
+counting as evidence. A real run lost thirteen obligations that way, on a story whose defect
+it had correctly caught two lines earlier. `require_eventually` records the same failure,
+stops on purpose, and leaves everything the scenario had already proven standing.
+
+So: arrange with `qa.step` and `require_eventually`, assert with `check`/`verify`. If a line
+below would read a locator that only exists when a check above passed, that check is a
+`require`, not a `check`.
 
 ### QA tools
 

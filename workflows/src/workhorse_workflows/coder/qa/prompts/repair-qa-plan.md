@@ -159,6 +159,13 @@ trip over:
   the assertion ranges over — different states, versions and owners across the entities a
   write must leave alone — rather than widening `except_fields` until the check passes.
   Widening it is how an obligation ends up `insensitive` at audit.
+- **A precondition later lines depend on is `qa.require_eventually`, not `qa.eventually`.**
+  A plain `eventually` records the failure and lets the scenario walk into the next line,
+  which dereferences a locator that is not there: a thirty-second timeout, an uncaught
+  exception, and an *aborted* scenario — which claims nothing, so every assertion that
+  already passed inside it stops counting. Repairing an aborted scenario usually means
+  turning the precondition into the stopping variant, not weakening the assertion that
+  followed it.
 - **Module level is declarations only.** A request, a subprocess or a file write at module
   scope turns every `ostler qa validate` into a run, because validation imports the module.
 - **Do not defend against a wrong key.** If a repair makes you reach for `.get(…, [])` or a
