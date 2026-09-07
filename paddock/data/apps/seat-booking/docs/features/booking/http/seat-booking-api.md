@@ -84,7 +84,7 @@ confirming a hold has to quote the number the caller was given.
 - does:
   - moves a free seat to `held`, bumps its version, and returns the hold id together with the version the caller must quote to confirm.
 - verify: http_status(201, path="/api/seats/A1/hold")
-- verify: json_path("hold.version", equals="1")
+- verify: json_path("hold.version", equals=1)
 - errors: `409 Seat Unavailable` when the seat is already held or already booked, and leaves the
   ledger as it was.
 - verify: http_status(409, title="Seat Unavailable", path="/api/seats/A1/hold")
@@ -113,7 +113,7 @@ confirming a hold has to quote the number the caller was given.
   - returns a held seat to `free`, bumps its version, and answers `204` with no body.
 - verify: http_status(204, path="/api/seats/A1/hold")
 - verify: json_path("seats[0].state", equals="free")
-- verify: json_path("seats[0].version", equals="2")
+- verify: json_path("seats[0].version", equals=2)
 - does:
   - touches the released seat and no other — every other seat keeps its state, its version and its booking.
 - verify: unchanged(subject="seats", except_fields=["A1.state", "A1.version", "A1.hold"])
@@ -184,7 +184,7 @@ confirming a hold has to quote the number the caller was given.
   - puts the showing back to its opening state — every seat `free`, every version back to `0`, every hold and booking dropped — and answers `204` with no body.
 - verify: http_status(204, path="/api/showing")
 - verify: count(subject="free seats", equals=12)
-- verify: json_path("seats[0].version", equals="0")
+- verify: json_path("seats[0].version", equals=0)
 - does:
   - is idempotent: resetting a showing that is already empty answers `204` and changes nothing.
 - verify: http_status(204, path="/api/showing")

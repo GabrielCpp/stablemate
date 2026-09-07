@@ -30,7 +30,7 @@ to it. The durable side — where the states are written and how — is
 - sig: `hold(store: Store, seat: str) -> dict`
 - abstract: takes a free seat off the market for whoever is deciding, and hands back the version to
   confirm against.
-- verify: json_path("hold.version", equals="1")
+- verify: json_path("hold.version", equals=1)
 - does: moves the seat from `free` to `held` and increments its version.
 - raises: `Seat Unavailable` when the seat is held or booked, leaving the ledger untouched.
 - verify: unchanged(subject="seat A1", except_fields=[])
@@ -39,7 +39,7 @@ to it. The durable side — where the states are written and how — is
 - code: app/hold.py::hold
 - concurrency: seat-record — the version it hands back is the seat's own, so a hold taken while
   another caller is deciding cannot be spent against a stale token.
-- verify: json_path("hold.version", equals="1")
+- verify: json_path("hold.version", equals=1)
 - verify: conflict_on_stale(subject="seat A1", token="version")
 - parent: [Seat](#seat)
 
@@ -56,7 +56,7 @@ to it. The durable side — where the states are written and how — is
 - code: app/hold.py::release
 - concurrency: seat-record — the release increments the version like any other transition, so the
   hold it gave back cannot be confirmed afterwards.
-- verify: json_path("seats[0].version", equals="2")
+- verify: json_path("seats[0].version", equals=2)
 - verify: conflict_on_stale(subject="seat A1", token="version")
 - parent: [Seat](#seat)
 

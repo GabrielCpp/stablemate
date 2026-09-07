@@ -1,0 +1,150 @@
+# MiniMax over OpenRouter — a metered probe of a non-frontier model.
+#
+# This is `configs/opencode.toml` with one thing changed: every `power` rung resolves to
+# a MiniMax model reached over an OpenRouter API key, instead of an `openai/` id reached
+# over the ChatGPT-subscription oauth credential. Everything else — the `qa_tools` tables,
+# the absent paths a task fills at run time — is copied verbatim, because a round whose
+# tool definitions differ is not measuring the model.
+#
+# The cost column produced under this file IS an invoice. That is the opposite of the
+# subscription config, where groom's dollars are rate-card multiplication against
+# models.dev and the scarce resource is plan quota. Here the scarce resource is credit on
+# an OpenRouter account, and a round that runs out stops mid-flight with a 402 rather
+# than a quota error.
+
+config_version = 1
+default_cli = "opencode"
+
+# --- the endpoint pin, which is the reason this file names a tag ------------------------
+#
+# An OpenRouter model is a fan-out over upstream endpoints that differ in price, context
+# window and cache-read discount, and the prompt cache lives ON the endpoint — so a silent
+# failover starts a cold prefix and bills the next ~175k-token prompt at full input rate.
+# For a workload that is ~90% cache reads that is not a tuning detail, it is the bill.
+#
+# The pin itself cannot live in this file: opencode reads provider routing from
+# `~/.config/opencode/opencode.jsonc`, not from a stablemate config. Before running a
+# round under this config, that file must carry — for each slug named below —
+#
+#   provider.openrouter.models."minimax/minimax-m3".options.provider =
+#       { "order": ["parasail/fp8", "novita/fp8", "minimax/fp8", "deepinfra/fp8"],
+#         "allow_fallbacks": false }
+#   provider.openrouter.models."minimax/minimax-m2.7".options.provider =
+#       { "order": ["novita/fp8", "deepinfra/fp8", "minimax/fp8", "atlas-cloud/fp8"],
+#         "allow_fallbacks": false }
+#
+# and `provider.openrouter.options.setCacheKey = true`, so repeat turns route back to the
+# node holding the prefix.
+#
+# **The order is a list, not a single tag, and that is the whole lesson of the first
+# round.** It began pinned to one endpoint apiece with `allow_fallbacks: false`, which
+# reads like the careful choice and is in fact a single point of failure: an endpoint that
+# rate-limits upstream has nowhere to send the turn, so the run stalls on retry backoff
+# rather than routing around it. Both pins throttled within an hour of each other
+# (`[Parasail] ... temporarily rate-limited`, `[Novita] ... temporarily rate-limited`) and
+# the round survived only on workhorse's 60-attempt budget. `allow_fallbacks` stays
+# `false` — the list is still closed, and nothing routes to an endpoint not named here —
+# but a closed list of four costs nothing over a closed list of one except a cold prefix
+# on the turn that fails over, which is strictly cheaper than not running.
+#
+# Every tag listed serves the same weights, quotes cache-read pricing, and reports
+# `tools=true`. That last one is not decorative: m3's 1M-context alternates
+# `streamlake/fp8` and `gmicloud/fp8` report `tools=false`, and routing an agent turn to
+# one would fail the QA lane in a way that reads as a model result when it is a config
+# one. Prefer a 524k window that can call tools over a 1M window that cannot.
+#
+# Re-check before a round — endpoints and their prices change, and an unpinned run is the
+# failure this comment exists to prevent:
+#
+#   curl -s https://openrouter.ai/api/v1/models/minimax/minimax-m3/endpoints \
+#     | jq -r '.data.endpoints[] | [.tag, .context_length, .pricing.prompt,
+#                                   .pricing.input_cache_read, .uptime_last_30m] | @tsv'
+
+# --- the rungs --------------------------------------------------------------------------
+#
+# M3 is the flagship (1M context, reasoning, tool calling) and M2.7 is the cheaper sibling
+# on a 200k window. The separation between rungs is bought with `effort` — opencode
+# renders it as `--variant` (low -> minimal, medium -> provider default, high -> high,
+# xhigh -> max) — exactly as the subscription config does, so the ~40 `power=` sites under
+# workflows/ keep meaning what their comments say they mean.
+#
+# `low` is the one rung that changes model rather than effort: it is the per-node tier
+# workflows reach for when the decision is mechanical, it is where the turn count lives,
+# and M2.7 on a 200k window is sufficient for it at a third less per token. If a round
+# fails on context there, move it to M3 and note that the round measured something else.
+
+# --- the clock, which is a property of the model and not of the node ---------------------
+#
+# Every `timeout:` under workflows/ states the *shape* of the work — "a QA plan is about
+# twenty minutes" — which is true whatever model does it. What differs here is how fast
+# this endpoint executes a unit of that work, so the scalar rides the power table beside
+# the model it belongs to and multiplies every budget resolved at that rung.
+#
+# 3.0 is measured, not guessed. Across the first round's `agent_turn` spans MiniMax
+# averaged ~340s per turn against ~115s for the subscription models on the same nodes —
+# a ratio of ~2.95 for m3 (n=20) and ~2.9 for m2.7 (n=8). The n is small and mixes node
+# kinds, so the number is a floor to revise once a full round has run, not a constant.
+# It is uniform across rungs for the same reason: 28 turns cannot tell the rungs apart,
+# and inventing a per-rung difference the data does not show is how a config acquires a
+# number nobody can defend.
+#
+# Two consequences to hold in view. The worst-case wall clock for a node is
+# `timeout x scale x (retries + 1)`, so `fix-regression` (5400s, retries=3) goes from ~6h
+# to ~18h — raise `WORKHORSE_MAX_RUNTIME_S` in the same breath as running under this file.
+# The `MAX_*` lap ceilings are counted in turns, so a scale buys no extra laps: the cost
+# ceiling is unchanged and a slow round stays comparable to a fast one. The advisory lane
+# clocks (`QA_LANE_BUDGET_S`, `PLAN_LANE_BUDGET_S`) will fire on nearly every scaled
+# trial; they decide nothing, and making them model-aware means threading a param the
+# workflow package is forbidden to read from the environment.
+
+[power.high.opencode]
+model = "openrouter/minimax/minimax-m3"
+effort = "high"
+timeout_scale = 3.0
+
+[power.smart.opencode]
+model = "openrouter/minimax/minimax-m3"
+effort = "high"
+timeout_scale = 3.0
+
+[power.extra-smart.opencode]
+model = "openrouter/minimax/minimax-m3"
+effort = "xhigh"
+timeout_scale = 3.0
+
+[power.medium.opencode]
+model = "openrouter/minimax/minimax-m3"
+effort = "medium"
+timeout_scale = 3.0
+
+[power.low.opencode]
+model = "openrouter/minimax/minimax-m2.7"
+effort = "low"
+timeout_scale = 3.0
+
+[default.opencode]
+model = "openrouter/minimax/minimax-m3"
+effort = "medium"
+timeout_scale = 3.0
+
+# --- QA tools: copied verbatim from configs/opencode.toml --------------------------------
+#
+# These are not model choices and must not drift from the subscription config: a round
+# that cannot reach `docker` or `jq` blocks on tooling and scores as a model failure. See
+# the comments in `configs/opencode.toml` for why each one is here.
+
+[qa_tools.docker]
+command = "docker"
+description = "the docker CLI, for restarting the app under test between two observations"
+
+[qa_tools.jq]
+command = "jq"
+description = "the jq CLI, for reading a durable store file as evidence that a write persisted"
+
+[qa_tools.make]
+command = "make"
+description = "the make CLI, for driving a repo's own documented build and plan targets"
+
+[qa_tools.python3]
+command = "python3"
+description = "the python interpreter, for driving a Python CLI over a process boundary"
