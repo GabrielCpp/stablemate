@@ -110,11 +110,19 @@ The counters the ladder is tuned by are **not** parameters — they are `resilie
 
 ## Setup (once, before the ladder)
 
-1. **Timeout.** `effective_timeout = node.timeout or resilience.result_timeout_s` (default
-   `3600`); `node.timeout == float("inf")` (from
-   [`timeout: infinity`](../workflow-format.md#timeout)) short-circuits to `unbounded = True`, which
-   the stream loops honor natively (`elapsed > inf` never trips) and which is surfaced to the
-   prompt as the literal string `"unbounded"` rather than `int(inf)`.
+1. **Power, then timeout.** Power is resolved *first* (see step 6 below for what it maps), because
+   the tier also carries a wall-clock scale and the scaled budget is what the prompt is told two
+   steps down. `base_timeout` is `node.timeout` when the node declares one, else
+   `resilience.result_timeout_s` (`AGENT_RESULT_TIMEOUT_S`, default `3600`); `effective_timeout =
+   base_timeout * timeout_scale`. The node's number states the *shape* of the work and the scale
+   states how fast this model executes a unit of it, so a slow-model config pins both at once.
+   `node.timeout == float("inf")` (from
+   [`timeout: infinity`](../workflow-format.md#timeout)) short-circuits to `unbounded = True` —
+   `inf * scale` is still `inf` — which the stream loops honor natively (`elapsed > inf` never
+   trips) and which is surfaced to the prompt as the literal string `"unbounded"` rather than
+   `int(inf)`. When the scale is anything but `1.0` the turn publishes a `budget_scaled` span event
+   carrying `scale` and `base_timeout_s`, so a later comparison can tell a config-scaled budget
+   from an edited number in the workflow; at `1.0` it is silent and the run is byte-identical.
 2. **Render `cwd`.** `rendered_cwd = render_string(node.cwd, ctx).strip()` if set, else `None`.
 3. **Render `args` and build the prompt context.** `rendered_args = {k: render_string(v, ctx) for
    k, v in node.args.items()}`; merged with `ctx`, `node_timeout_s`/`node_timeout_min` (ints, or
@@ -132,8 +140,9 @@ The counters the ladder is tuned by are **not** parameters — they are `resilie
    Entries equal to the resolved `cwd` (by `Path.resolve()`) are dropped — the backend already
    passes `cwd` as the subprocess working directory, so re-granting it via `--add-dir` is
    redundant.
-6. **Resolve the model and effort.** `model, node_effort = _resolve_power_settings(node.power,
-   self.backend.name, self.model_override)` maps the node's abstract
+6. **Resolve the model, effort and clock scale.** `model, node_effort, timeout_scale =
+   _resolve_power_settings(node.power, self.backend.name, self.model_override)` maps the node's
+   abstract
    [`power:`](../workflow-format.md#power) tier through
    [config](config.md#resolve_power), falling back per field to the run-level `model_override`
    then the config's `[default.<backend>]` table, and finally to `backend.default_model`. The

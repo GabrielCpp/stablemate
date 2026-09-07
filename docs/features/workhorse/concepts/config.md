@@ -7,7 +7,7 @@ title: stablemate config file
 
 The toolchain's small persistent settings file — **one** TOML file at
 `~/.config/stablemate/config.toml`, shared by workhorse and farrier, holding `library_dir`,
-`stablemate_dir`, `base_dir`, `worktree_dir`, `default_cli`, a `[power.<tier>.<backend>]` model/effort table, a per-backend
+`stablemate_dir`, `base_dir`, `worktree_dir`, `default_cli`, a `[power.<tier>.<backend>]` model/effort/timeout_scale table, a per-backend
 `[default.<backend>]` fallback table, a per-harness `[harness.<backend>].env` table, and any number of
 named [`[profiles.<name>]`](#profiles) tables carrying a whole alternative set of the model
 ones. Read and
@@ -248,8 +248,8 @@ own default applies.
 - **Input:** `power: str | None`, `backend: str`, `cfg: dict | None` (defaults to
   `load_config()`; under a [profile](#profiles) the caller passes the narrowed table
   instead, which is why this function knows nothing about profiles).
-- **Output:** `PowerMapping(model, effort)` — each field `None` unless the config supplies a
-  non-empty string.
+- **Output:** `PowerMapping(model, effort, timeout_scale)` — each field `None` unless the config
+  supplies a non-empty string (or, for the scale, a positive finite number).
 - code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_power`
 
 ## resolve_backend_default
@@ -262,8 +262,8 @@ Any missing/non-dict step (no `default` table, no such backend section) yields a
 rather than an error.
 
 - **Input:** `backend: str`, `cfg: dict | None` (defaults to `load_config()`).
-- **Output:** `PowerMapping(model, effort)` — each field `None` unless the config supplies a
-  non-empty string.
+- **Output:** `PowerMapping(model, effort, timeout_scale)` — each field `None` unless the config
+  supplies a non-empty string (or, for the scale, a positive finite number).
 - code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_backend_default`
 
 ## resolve_default_cli
@@ -311,8 +311,16 @@ an environment is strings, and quietly stringifying a bare TOML `1` would hide t
 ## PowerMapping
 
 The frozen dataclass `resolve_power` and `resolve_backend_default` return: `model: str | None =
-None`, `effort: str | None = None`. Both fields default to unset so an unconfigured tier/backend
-combination is a no-op override, not an error.
+None`, `effort: str | None = None`, `timeout_scale: float | None = None`. Every field defaults to
+unset so an unconfigured tier/backend combination is a no-op override, not an error — and so
+"first non-None wins" still falls through to `[default.<backend>]`, which a literal `1.0` would
+stop.
+
+`timeout_scale` multiplies every per-node wall-clock budget resolved at that tier. The node's own
+`timeout:` states the *shape* of the work; the scale states how fast this model executes a unit of
+it, which is a property of the model and therefore belongs beside its name. Only a strictly
+positive, finite number is honoured: a string, a bool, `0`, a negative and `inf` all read as unset,
+because a typo must not buy an unattended run an infinite budget.
 
 - code: `workhorse/workhorse/_vendor/stablemate_core/config.py::PowerMapping`
 

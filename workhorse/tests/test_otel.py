@@ -22,8 +22,10 @@ import socket
 import tempfile
 from pathlib import Path
 
+from _fakes import FakeBackend, FakeClock, RecordingTelemetry
 from workhorse import artifacts, otel, records, reload
-from workhorse.runner import usage
+from workhorse.config_run import AgentResilience
+from workhorse.runner import ladder, usage
 
 
 def _event(node: str, seq: int, phase: records.NodePhase, **extra):
@@ -959,6 +961,48 @@ def test_end_run_stops_the_heartbeat_before_flushing():
     t.end_run("terminal", None)
     assert t._stop.is_set()
     assert shutdown["called"] is True
+
+
+
+# --------------------------------------------------------------------------- #
+# The scaled-budget event                                                       #
+# --------------------------------------------------------------------------- #
+
+
+def _turn_recording(**kwargs):
+    """Run one turn through the real ladder against a recording adapter."""
+    fake = RecordingTelemetry()
+    runner = ladder.AgentRunner(
+        backend=FakeBackend(turn=lambda *a, **k: "{}"),
+        resilience=AgentResilience(),
+        clock=FakeClock(),
+    )
+    with installed(fake):
+        runner.turn("p", "plan_qa", None, timeout=750, **kwargs)
+    return fake
+
+
+def test_a_scaled_budget_records_the_scale_and_the_number_it_scaled():
+    """`timeout_s` alone cannot say *why* a node had the budget it had.
+
+    A later comparison of two configs needs to tell "the power tier scaled this node"
+    from "somebody edited the number in the workflow" — the two produce an identical
+    span attribute, and only this event separates them.
+    """
+    fake = _turn_recording(budget_scale=2.5, base_timeout_s=300)
+
+    scaled = [attrs for name, _, attrs in fake.events if name == "budget_scaled"]
+
+    assert len(scaled) == 1
+    assert scaled[0]["scale"] == 2.5
+    assert scaled[0]["base_timeout_s"] == 300
+
+
+def test_an_unscaled_turn_publishes_no_budget_event():
+    """Silent at 1.0, so the event's presence is itself the signal."""
+    fake = _turn_recording()
+
+    assert [name for name, _, _ in fake.events if name == "budget_scaled"] == []
 
 
 if __name__ == "__main__":

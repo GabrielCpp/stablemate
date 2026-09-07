@@ -56,55 +56,66 @@ def _config(cfg):
         yield
 
 
+def _model_effort(*args):
+    """The resolved (model, effort), dropping the third member of the triple.
+
+    ``_resolve_power_settings`` also returns the tier's wall-clock ``timeout_scale``,
+    which has no observable effect until the ladder multiplies a budget by it — so it
+    is asserted in ``tests/test_node_timeout.py``, where that effect exists, and left
+    out of the resolution assertions here.
+    """
+    return _resolve_power_settings(*args)[:2]
+
+
 def test_none_power_yields_the_override_model_and_no_effort():
     with _config(CONFIG):
-        assert _resolve_power_settings(None, "claude", None) == (None, None)
-        assert _resolve_power_settings(None, "codex", "x") == ("x", None)
+        assert _model_effort(None, "claude", None) == (None, None)
+        assert _model_effort(None, "codex", "x") == ("x", None)
 
 
 def test_power_picks_backend_mapping():
     with _config(CONFIG):
-        assert _resolve_power_settings("high", "claude", None) == ("opus", "high")
-        assert _resolve_power_settings("high", "codex", None) == ("@gpt-5.5", "high")
-        assert _resolve_power_settings("high", "opencode", None) == ("openai/gpt-5.5", "high")
+        assert _model_effort("high", "claude", None) == ("opus", "high")
+        assert _model_effort("high", "codex", None) == ("@gpt-5.5", "high")
+        assert _model_effort("high", "opencode", None) == ("openai/gpt-5.5", "high")
 
 
 def test_missing_backend_mapping_falls_through_to_the_override_and_no_effort():
     with _config(CONFIG):
-        assert _resolve_power_settings("medium", "opencode", None) == (None, None)
-        assert _resolve_power_settings("medium", "opencode", "fallback") == ("fallback", None)
+        assert _model_effort("medium", "opencode", None) == (None, None)
+        assert _model_effort("medium", "opencode", "fallback") == ("fallback", None)
 
 
 def test_default_backend_mapping_covers_unlisted_backends():
     cfg = {"power": {"high": {"default": {"model": "default-model", "effort": "high"}}}}
     with _config(cfg):
-        assert _resolve_power_settings("high", "copilot", None) == ("default-model", "high")
+        assert _model_effort("high", "copilot", None) == ("default-model", "high")
 
 
 def test_empty_config_keeps_harness_defaults_unset():
     with _config({}):
-        assert _resolve_power_settings("high", "claude", None) == (None, None)
-        assert _resolve_power_settings("high", "claude", "sonnet") == ("sonnet", None)
+        assert _model_effort("high", "claude", None) == (None, None)
+        assert _model_effort("high", "claude", "sonnet") == ("sonnet", None)
 
 
 def test_backend_default_fills_powerless_node():
     cfg = {"default": {"opencode": {"model": "openai/gpt-5.5", "effort": "high"}}}
     with _config(cfg):
-        assert _resolve_power_settings(None, "opencode", None) == ("openai/gpt-5.5", "high")
+        assert _model_effort(None, "opencode", None) == ("openai/gpt-5.5", "high")
         # Only the named backend gets the default — others stay on harness defaults.
-        assert _resolve_power_settings(None, "claude", None) == (None, None)
+        assert _model_effort(None, "claude", None) == (None, None)
 
 
 def test_power_mapping_wins_over_backend_default():
     cfg = dict(CONFIG, default={"opencode": {"model": "wrong", "effort": "low"}})
     with _config(cfg):
-        assert _resolve_power_settings("high", "opencode", None) == ("openai/gpt-5.5", "high")
+        assert _model_effort("high", "opencode", None) == ("openai/gpt-5.5", "high")
 
 
 def test_override_model_wins_over_backend_default():
     cfg = {"default": {"opencode": {"model": "config-default"}}}
     with _config(cfg):
-        assert _resolve_power_settings(None, "opencode", "run-override") == ("run-override", None)
+        assert _model_effort(None, "opencode", "run-override") == ("run-override", None)
 
 
 def test_backend_default_fills_fields_power_left_unset():
@@ -114,7 +125,7 @@ def test_backend_default_fills_fields_power_left_unset():
         "default": {"opencode": {"model": "unused", "effort": "high"}},
     }
     with _config(cfg):
-        assert _resolve_power_settings("medium", "opencode", None) == ("openai/gpt-5.5", "high")
+        assert _model_effort("medium", "opencode", None) == ("openai/gpt-5.5", "high")
 
 
 def test_resolve_backend_default_ignores_malformed_tables():
@@ -146,11 +157,11 @@ def _file(cfg):
 
 def test_a_profile_replaces_the_top_level_tables():
     with _file(_PROFILED):
-        assert _resolve_power_settings("high", "opencode", None, "local") == ("qwen", "high")
+        assert _model_effort("high", "opencode", None, "local") == ("qwen", "high")
         # The machine's [power.high.claude] is not inherited: the profile is the whole
         # answer, so claude resolves to nothing rather than to "opus".
-        assert _resolve_power_settings("high", "claude", None, "local") == (None, None)
-        assert _resolve_power_settings(None, "opencode", None, "local") == ("qwen-small", None)
+        assert _model_effort("high", "claude", None, "local") == (None, None)
+        assert _model_effort(None, "opencode", None, "local") == ("qwen-small", None)
 
 
 def test_without_a_profile_nothing_is_narrowed():
@@ -167,9 +178,9 @@ def test_a_profile_deleted_mid_run_resolves_empty_rather_than_raising():
     ladder._warned_missing_profile.discard("gone")
     noise = io.StringIO()
     with _file(_PROFILED), redirect_stdout(noise):
-        assert _resolve_power_settings("high", "claude", None, "gone") == (None, None)
+        assert _model_effort("high", "claude", None, "gone") == (None, None)
         # Warned once per name, not once per turn: this runs for every agent node.
-        assert _resolve_power_settings("high", "claude", None, "gone") == (None, None)
+        assert _model_effort("high", "claude", None, "gone") == (None, None)
     assert noise.getvalue().count("gone") == 1, noise.getvalue()
 
 
@@ -197,7 +208,7 @@ def test_a_switch_is_one_assignment_that_the_next_turn_reads():
             "ok": True, "profile": "cheap", "was": ""
         }
         assert runner.profile.name == "cheap"
-        assert _resolve_power_settings("high", "fake", None, runner.profile.name) == (
+        assert _model_effort("high", "fake", None, runner.profile.name) == (
             "haiku", None
         )
 

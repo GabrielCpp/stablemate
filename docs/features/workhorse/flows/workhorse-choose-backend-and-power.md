@@ -32,7 +32,9 @@ so pointing one run at cheaper models no longer means editing the file every oth
      [config file](../concepts/config.md) directly at its
      [resolved path](../concepts/config.md#location) (`$STABLEMATE_CONFIG`, else the
      platform default), adding one `[power.<tier>.<backend>]` section per tier/backend pair it
-     wants to override, each with `model = "…"` and/or `effort = "…"` string keys, e.g.:
+     wants to override, each with `model = "…"` and/or `effort = "…"` string keys (plus an
+     optional `timeout_scale = <positive number>` that scales every budget resolved at that tier),
+     e.g.:
      ```toml
      [power.high.claude]
      model = "opus"
@@ -103,7 +105,7 @@ so pointing one run at cheaper models no longer means editing the file every oth
   6. **Run the machine.** [`drive`](../concepts/pyflow-driver.md) walks the states; each
      [agent turn](../workflow-format.md#the-agent-turn) a state reaches is driven by
      [`AgentRunner.run`](../concepts/run-agent.md).
-  7. **Resolve this turn's power to a concrete model/effort.** Inside `AgentRunner.run`'s setup
+  7. **Resolve this turn's power to a concrete model/effort/clock scale.** Inside `AgentRunner.run`'s setup
      (before the resilience ladder), `_resolve_power_settings(node.power, backend.name,
      model_override, profile)` loads the config, narrows it through
      [`select_profile`](../concepts/config.md#profiles) when a profile is set, and maps the
@@ -124,6 +126,11 @@ so pointing one run at cheaper models no longer means editing the file every oth
      - back in `AgentRunner.run`, a still-unset `model` finally falls through to `backend.default_model`
        (`sonnet` for claude; `None` for the others, which leaves the harness to pick) so a node
        without any configuration still runs.
+     - the tier's optional `timeout_scale` falls through the same way (tier, then
+       `[default.<backend>]`, then `1.0`) and multiplies this node's wall-clock budget — the
+       node's `timeout:` states the shape of the work, the scale states how fast this model
+       executes a unit of it. Only a positive finite number is honoured; the resolution happens
+       before the prompt is rendered so the agent is told the budget it actually has.
   8. **Drive the turn with the resolved settings.** `AgentRunner.run` calls
      [`AgentBackend.run_turn`](../concepts/agent-backend.md#contract)`(prompt, session_id_path,
      model=model, effort=node_effort, …)` on the step-4 backend instance; each concrete backend

@@ -53,18 +53,24 @@ class AgentNode(BaseModel):
     # (or misspelled) tier degrades to that backend's default rather than failing the
     # run. See workhorse/config.py and runner/ladder.py.
     power: str | None = None
-    # Per-node wall-clock budget (seconds) for the agent's turn. Defaults to 3600s
-    # (1 hour) — research/implementation nodes routinely run a benchmark that
-    # exceeds the old 600s ceiling. Set explicitly per node to widen or tighten it
-    # (e.g. `timeout: 5000`); an explicit None/0 falls back to the engine default
-    # (AGENT_RESULT_TIMEOUT_S). Set `timeout: infinity` (also "inf"/"unbounded"/
+    # Per-node wall-clock budget (seconds) for the agent's turn. Unset (the default)
+    # falls back to the engine default, `resilience.result_timeout_s`, which is itself
+    # 3600s (1 hour) and settable with AGENT_RESULT_TIMEOUT_S — research/implementation
+    # nodes routinely run a benchmark that exceeds the old 600s ceiling. This defaulted
+    # to a literal 3600 until the fallback was found to be unreachable: no node left it
+    # unset, so the engine default applied to nothing and the documented env var moved
+    # no budget anywhere. Set explicitly per node to widen or tighten it
+    # (e.g. `timeout: 5000`); an explicit None/0 falls back to the engine default.
+    # Whatever value applies is then multiplied by the power tier's `timeout_scale`,
+    # so a slower model widens every budget at once from config rather than by edit.
+    # Set `timeout: infinity` (also "inf"/"unbounded"/
     # "never", or YAML `.inf`) for **no wall-clock limit** — the turn runs until the
     # CLI returns, for open-ended nodes that must not be cut off (e.g. resolving an
     # operator block). WARNING: an unbounded node that wedges hangs the run with no
     # timeout-retry recovery; prefer a large finite value unless you truly want this.
     # The effective value is surfaced to the prompt as `node_timeout_s` /
     # `node_timeout_min` ("unbounded" when infinite), so the agent can size its work.
-    timeout: float | None = 3600
+    timeout: float | None = None
     # Per-node reframe budget: how many times a failed turn is re-asked from scratch in
     # a fresh session before the ladder gives up on this node. None (the default) means
     # the run's `resilience.max_rephrase_attempts`.

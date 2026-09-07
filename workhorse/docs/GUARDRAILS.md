@@ -158,7 +158,7 @@ same CLI configuration as the conversation it is compacting.
 | `AGENT_MAX_INVOKE_RETRIES` | 60 | Additional attempts for transient agent CLI failures. Sized in days, not minutes: with the backoff below the ladder spans ~27h, so a link down for a working day is slept through rather than died inside |
 | `AGENT_MAX_COMPACT_ATTEMPTS` | 2 | `/compact`-and-continue tries on context overflow before reframing (0 disables) |
 | `AGENT_MAX_REPHRASE_ATTEMPTS` | 3 | Fresh-session reframings before the run stops. A node may override it for itself with `self.agent(..., retries=N)` — notably `retries=0` for a node whose deliverable is a file its caller can read back partially, where a reframe re-asks at full price for nothing (see [AUTHORING.md](AUTHORING.md#where-an-agent-turn-runs-cwd--add_dirs)) |
-| `AGENT_RESULT_TIMEOUT_S` | 3600 | Maximum seconds to wait for a result event. A turn cut at its budget reaches the calling state as `workhorse.pyflow.AgentTimeout` once the ladder is spent, so a state whose deliverable is a file can land the partial draft instead of ending the run |
+| `AGENT_RESULT_TIMEOUT_S` | 3600 | Maximum seconds to wait for a result event, for every node that does not declare a `timeout:` of its own. A turn cut at its budget reaches the calling state as `workhorse.pyflow.AgentTimeout` once the ladder is spent, so a state whose deliverable is a file can land the partial draft instead of ending the run. Whichever budget applies — this one or the node's — is then multiplied by the active power tier's `timeout_scale` (below — a config key, not an environment variable) |
 | `AGENT_INVOKE_BACKOFF_BASE_S` | 15 | Base seconds for exponential backoff |
 | `AGENT_INVOKE_BACKOFF_CAP_S` | 1800 | Maximum backoff delay in seconds — the coarsest useful poll for "is the network back" |
 | `AGENT_RETRY_WAIT_BUDGET_S` | 97305 (~27h) | Cumulative transient-backoff sleep for one agent-node visit; shared by output retries and reframes |
@@ -175,6 +175,33 @@ same CLI configuration as the conversation it is compacting.
 | `AGENT_CAP_MAX_WAIT_S` | 691200 (8 days) | Upper bound on a single `resetsAt`-derived cap sleep (guards against a bogus far-future epoch) |
 | `AGENT_REFRAME_WAIT_BUDGET_S` | 60 | Cumulative pause before fresh-session reframes for one agent-node visit |
 | `AGENT_WATCHDOG_GRACE_S` | 120 | Grace beyond `AGENT_RESULT_TIMEOUT_S` after which a separate watchdog thread SIGKILLs the turn's process group. The in-loop timeout can only fire *between* stream reads, so a socket that wedges mid-line would otherwise block forever; this is the always-on backstop. |
+
+### Scaling every budget for a slower model (`timeout_scale`)
+
+Every number above states the *shape* of the work — "a QA plan is about twenty minutes"
+— which is true whatever model does it. What differs between models is how fast one
+executes a unit of that work, and that is a property of the model, not of the node. So
+it rides the power table rather than the node or the environment:
+
+```toml
+[power.high.opencode]
+model = "some/slower-model"
+effort = "high"
+timeout_scale = 2.5      # every budget resolved at this tier, times 2.5
+```
+
+It is per-tier, per-backend and per-profile, falls through to `[default.<backend>]` the
+same way `model` and `effort` do, and is hot-reloadable — so pinning a slow model pins
+its clock with it, and a `--config` pin carries the pairing into a benchmark unchanged.
+Only a strictly positive, finite number is honoured; anything else (a string, `true`,
+`0`, a negative, `inf`) is read as unset, because a typo must not buy an unattended run
+an infinite budget. An unbounded node stays unbounded under any scale.
+
+Two consequences worth stating before you set one. The worst-case wall clock for a node
+is `timeout × scale × (retries + 1)`, so `WORKHORSE_MAX_RUNTIME_S` is the backstop to
+raise in the same breath. And the `MAX_*` lap ceilings are counted in **turns**, so a
+scale buys no extra laps — the cost ceiling is unchanged and a slow run stays comparable
+to a fast one.
 
 ### Driver-level guards (workhorse/pyflow)
 

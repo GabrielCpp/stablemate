@@ -162,7 +162,7 @@ def _resolve_power_settings(
     backend_name: str,
     model_override: str | None,
     profile: str = "",
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, float]:
     """Resolve a node's abstract ``power`` into concrete backend settings.
 
     Per field, the power mapping wins when present. Model then falls through to the
@@ -170,6 +170,13 @@ def _resolve_power_settings(
     CLI boundary and handed down), then the config's ``[default.<backend>]`` table;
     effort falls through to that table directly (it has no override). Anything still
     unset stays None so the harness default applies.
+
+    The third value is the wall-clock multiplier for this tier, defaulting to ``1.0``
+    — a run that configures nothing keeps every budget byte-identical. It rides here
+    rather than beside the node numbers because a node's ``timeout=`` states the shape
+    of the work ("a QA plan is about twenty minutes"), which is true whatever model
+    does it; how fast a model executes a unit of that work is a property of the model,
+    which is exactly what the ``[power.*]`` tables already describe.
 
     ``profile`` narrows *which* config those two tables are read from, and narrowing is
     the whole mechanism: a selected profile replaces the top level rather than layering
@@ -179,7 +186,8 @@ def _resolve_power_settings(
     mapped = resolve_power(power, backend_name, cfg)
     fallback = resolve_backend_default(backend_name, cfg)
     model = mapped.model or model_override or fallback.model
-    return model, mapped.effort or fallback.effort
+    scale = mapped.timeout_scale or fallback.timeout_scale or 1.0
+    return model, mapped.effort or fallback.effort, scale
 
 
 @dataclass(frozen=True)
@@ -319,11 +327,27 @@ class AgentRunner:
         resilience = self.resilience
         ctx = context.as_dict()
 
+        # The node's abstract power tier maps through user config to concrete
+        # model/effort for the active backend. Missing config falls back to the run's
+        # override then the backend's defaults, preserving harness behavior. This is
+        # resolved BEFORE the budget below because the tier also carries the wall-clock
+        # scale, and the scaled budget is what the prompt is told a few lines down.
+        model, node_effort, timeout_scale = _resolve_power_settings(
+            node.power, self.backend.name, self.model_override, self.profile.name
+        )
+        model = model or self.backend.default_model
+
         # The wall-clock budget for this node's turn: the node's own timeout when set,
-        # else the engine default. Surfaced to the prompt (node_timeout_s/min) so the
-        # agent can size its commands to finish — a turn killed at the budget restarts
-        # the node from scratch with no memory, wasting the whole budget.
-        effective_timeout = node.timeout if node.timeout else resilience.result_timeout_s
+        # else the engine default, times the tier's model-speed scale. Surfaced to the
+        # prompt (node_timeout_s/min) so the agent can size its commands to finish — a
+        # turn killed at the budget restarts the node from scratch with no memory,
+        # wasting the whole budget.
+        base_timeout = (
+            node.timeout
+            if node.timeout is not None and node.timeout > 0
+            else resilience.result_timeout_s
+        )
+        effective_timeout = base_timeout * timeout_scale
         # An unbounded budget (timeout: infinity) means "never kill this turn". The stream
         # loops compare `elapsed > timeout`, so float('inf') naturally never trips; only the
         # prompt-surfaced ints need a non-numeric stand-in (int(inf) would overflow).
@@ -375,14 +399,6 @@ class AgentRunner:
             cwd_resolved = Path(rendered_cwd).resolve()
             rendered_add_dirs = [d for d in rendered_add_dirs if Path(d).resolve() != cwd_resolved]
 
-        # The node's abstract power tier maps through user config to concrete
-        # model/effort for the active backend. Missing config falls back to the run's
-        # override then the backend's defaults, preserving harness behavior.
-        model, node_effort = _resolve_power_settings(
-            node.power, self.backend.name, self.model_override, self.profile.name
-        )
-        model = model or self.backend.default_model
-
         # New node = clean context: drop any session left by a previous node so this
         # node's first attempt does not --resume someone else's conversation. When
         # resume_session is set we keep it, so the interrupted node continues where it
@@ -420,6 +436,8 @@ class AgentRunner:
                     prompt, node, session_id_path, model,
                     prompt_path=prompt_path,
                     timeout=effective_timeout,
+                    budget_scale=timeout_scale,
+                    base_timeout_s=base_timeout,
                     cwd=rendered_cwd, add_dirs=rendered_add_dirs,
                     effort=node_effort,
                     validate=validate,
@@ -573,6 +591,8 @@ class AgentRunner:
         *,
         prompt_path: Path | None = None,
         timeout: float,
+        budget_scale: float = 1.0,
+        base_timeout_s: float | None = None,
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
@@ -590,6 +610,7 @@ class AgentRunner:
             result_text = self.turn(
                 prompt, node.id, session_id_path, model=model, timeout=timeout,
                 prompt_path=prompt_path,
+                budget_scale=budget_scale, base_timeout_s=base_timeout_s,
                 cwd=cwd, add_dirs=add_dirs, effort=effort,
                 invoke_retries=node.invoke_retries,
             )
@@ -637,6 +658,8 @@ class AgentRunner:
         *,
         prompt_path: Path | None = None,
         timeout: float,
+        budget_scale: float = 1.0,
+        base_timeout_s: float | None = None,
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
@@ -685,6 +708,16 @@ class AgentRunner:
                     cwd=cwd,
                     add_dirs=tuple(add_dirs or ()),
                 )
+                # `timeout` above is already the scaled budget, so without this a later
+                # comparison cannot tell "the config scaled this node" from "somebody
+                # edited the number in the workflow" — the exact confound a two-config
+                # benchmark must not have. Silent at 1.0: an unscaled run says nothing.
+                if budget_scale != 1.0:
+                    otel.turn_event(
+                        "budget_scaled",
+                        scale=budget_scale,
+                        base_timeout_s=base_timeout_s,
+                    )
                 with recovery_wait_scope(budget):
                     result = backend.run_turn(
                         attempt_prompt,
