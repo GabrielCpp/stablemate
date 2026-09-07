@@ -197,6 +197,30 @@ def test_a_ref_that_is_not_a_node_groups_by_the_file() -> None:
     assert len(ctx["findings"]) == 2
 
 
+def test_an_indexed_file_node_ref_mints_one_item_per_bullet() -> None:
+    """The row split doctor's per-bullet index causes on a *file* node, on the record.
+
+    Doctor addresses a per-bullet finding as `<node>#<key>:<index>` so two defects under one
+    repeatable key stop sharing an address — without it the drain collapsed them into one row
+    with one three-attempt budget and the repair turn answered whichever sibling it read. A
+    document's file node has the bare path as its id, so its findings ref `<path>#<key>:<n>`
+    and `_node_of` reads that whole segment as the node: one row becomes one row per index.
+
+    That is the intended consequence, not a regression — one row per addressable finding, each
+    with its own budget. It costs a one-time churn on any in-flight run (`settle_stale_rows`
+    closes the old-shaped rows and opens these at `attempts: 0`) and one restart of the
+    whole-book stall comparison, since `_signature` is keyed on `(code, path, ref)`.
+    """
+    doc = f"{BOOK}/pay.md"
+    items = _repair_items([
+        {**_finding("unparsed-check", path=doc), "ref": f"{doc}#verify:1"},
+        {**_finding("unparsed-check", path=doc), "ref": f"{doc}#verify:2"},
+    ])
+
+    assert [i["target"] for i in items] == [
+        f"{doc}#{doc}#verify:1#unparsed-check", f"{doc}#{doc}#verify:2#unparsed-check"]
+
+
 def test_a_grounded_code_is_a_flag_not_a_kind() -> None:
     """`GROUNDED_CODES` stopped naming the item and started describing it.
 
