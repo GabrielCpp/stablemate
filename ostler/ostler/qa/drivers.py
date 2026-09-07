@@ -70,6 +70,14 @@ def _covers_in(covers: list[str], node_id: str) -> list[str]:
     return [item for item in covers if _document(item) in ("", document)]
 
 
+#: The context size a browser target gets when its plan declares no `viewport`. It is
+#: duplicated in `harness/ostler_qa_browser.py`, which cannot import from here — the harness
+#: is stdlib-plus-playwright and runs in the project's interpreter, not ostler's — and the two
+#: copies have to agree: this module measures the recording that module films, and a
+#: disagreement aborts the scenario rather than reporting a bad file.
+DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
+
+
 @dataclass
 class ScenarioResult:
     status: str
@@ -177,14 +185,14 @@ class PythonDriver(QaDriver):
                 f"{sys.platform}. Use the default `viewport` mode, which records the page "
                 "through Playwright on every platform."
             )
-        viewport = self.target.get("viewport", {"width": 1440, "height": 900})
+        viewport = self.target.get("viewport", DEFAULT_VIEWPORT)
         # The launcher chooses the recorder because the two have to agree about which
         # machine the browser is drawn on: filming the host's X display while the browser
         # runs in a container yields a valid, empty video, which reads as evidence.
         self._window_recorder = self.launcher.window_recorder(
             self,
-            width=int(viewport.get("width", 1440)),
-            height=int(viewport.get("height", 900)),
+            width=int(viewport.get("width", DEFAULT_VIEWPORT["width"])),
+            height=int(viewport.get("height", DEFAULT_VIEWPORT["height"])),
             fps=int(recording.get("fps", 30)),
             # Declared, or none: an ambient `$DISPLAY` is not an answer to "which screen is
             # the app on". See `DisplayRecorder`.
@@ -607,8 +615,9 @@ class PythonDriver(QaDriver):
         if kind == "video" and path.is_file():
             measured = _probe_media(path)
             metadata.update(measured)
-            viewport = self.target.get("viewport", {"width": 1440, "height": 900})
-            width, height = int(viewport.get("width", 1440)), int(viewport.get("height", 900))
+            viewport = self.target.get("viewport", DEFAULT_VIEWPORT)
+            width = int(viewport.get("width", DEFAULT_VIEWPORT["width"]))
+            height = int(viewport.get("height", DEFAULT_VIEWPORT["height"]))
             if measured.get("width") and (
                 measured.get("width") != width or measured.get("height") != height
             ):

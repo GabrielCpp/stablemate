@@ -700,3 +700,95 @@ def test_a_request_that_never_completed_is_recorded_as_such_not_as_an_empty_body
     reasons = {record["url"]: record["bodyOmitted"] for record in written["requests"]}
     assert reasons["http://127.0.0.1:8099/stream"] == "request did not complete"
     assert reasons["http://127.0.0.1:8099/slow"] == "still in flight when the scenario ended"
+
+
+def _fake_playwright(contexts: list[dict[str, Any]]) -> Any:
+    """A Playwright stand-in that records the context options `open` asks for."""
+
+    def new_context(**options: Any) -> Any:
+        contexts.append(options)
+        return SimpleNamespace(
+            new_page=lambda: SimpleNamespace(on=lambda *_: None),
+            tracing=SimpleNamespace(start=lambda **_: None),
+        )
+
+    chromium = SimpleNamespace(
+        launch=lambda **_: SimpleNamespace(new_context=new_context),
+    )
+    return lambda: SimpleNamespace(start=lambda: SimpleNamespace(chromium=chromium))
+
+
+def _open_options(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    recording: dict[str, Any],
+    viewport: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    contexts: list[dict[str, Any]] = []
+    monkeypatch.setattr(ostler_qa_browser, "sync_playwright", _fake_playwright(contexts))
+    browser = _browser(tmp_path, recording=recording, viewport=viewport)
+    browser._listen = lambda page: None
+    browser.open()
+    assert len(contexts) == 1
+    return contexts[0]
+
+
+def test_a_required_recording_is_filmed_at_the_viewport_the_target_declares(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The defect: every plan that did not declare a small viewport lost its scenario.
+
+    Playwright does not film at the viewport unless told to — with no `record_video_size` it
+    scales the page to fit inside 800x800, so this class's own 1440x900 default was filmed at
+    800x500. ostler measures the file against the target's declared shape, the mismatch is a
+    scenario problem rather than a note about a file, and the scenario aborts with every
+    obligation it covered unproven. It was invisible because a plan that happened to declare a
+    viewport under 800x800 — as one authored plan did and another did not — escaped by
+    accident, so the failure looked like a property of the plan's author.
+    """
+    default = _open_options(
+        tmp_path, monkeypatch, recording={"required": True, "mode": "viewport"}
+    )
+    assert default["viewport"] == {"width": 1440, "height": 900}
+    assert default["record_video_size"] == default["viewport"]
+
+    declared = _open_options(
+        tmp_path,
+        monkeypatch,
+        recording={"required": True, "mode": "viewport"},
+        viewport={"width": 1280, "height": 1024},
+    )
+    assert declared["viewport"] == {"width": 1280, "height": 1024}
+    assert declared["record_video_size"] == declared["viewport"]
+
+
+def test_nothing_is_filmed_when_the_target_asks_for_no_viewport_recording(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The size rides with the directory: neither is set unless Playwright is doing the filming.
+
+    `window` mode is ffmpeg grabbing an X display around this process, and an optional
+    recording is not filmed at all — passing a video size in either case would ask Playwright
+    to record where the plan said it should not.
+    """
+    window = _open_options(
+        tmp_path, monkeypatch, recording={"required": True, "mode": "window"}
+    )
+    assert "record_video_dir" not in window and "record_video_size" not in window
+
+    optional = _open_options(tmp_path, monkeypatch, recording={"required": False})
+    assert "record_video_dir" not in optional and "record_video_size" not in optional
+
+
+def test_the_harness_and_ostler_agree_on_the_viewport_a_plan_does_not_declare() -> None:
+    """Two copies of one number, in two interpreters, with an abort between them.
+
+    ostler measures the recording the harness films and rejects anything that is not the
+    target's shape. When the plan declares no viewport both sides fall back to their own
+    default, so a drift here is not a wrong pixel count — it is every browser scenario in
+    every plan that left `viewport=` off, aborting with its obligations unproven.
+    """
+    from ostler.qa.drivers import DEFAULT_VIEWPORT
+
+    assert ostler_qa_browser.DEFAULT_VIEWPORT == DEFAULT_VIEWPORT

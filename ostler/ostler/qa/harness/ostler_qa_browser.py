@@ -178,6 +178,15 @@ class Browser:
         if self.required and self.mode == "viewport":
             self.video_dir.mkdir(parents=True, exist_ok=True)
             options["record_video_dir"] = str(self.video_dir)
+            # Pin the film to the viewport. Playwright's default is *not* the viewport: with
+            # no `record_video_size` it scales the page down to fit inside 800x800, so a
+            # 1440x900 context — this class's own default — is filmed at 800x500. ostler then
+            # measures the file with ffprobe and rejects it for not being the target's shape,
+            # and because that rejection is a scenario problem rather than a note about a
+            # file, the whole scenario aborts and every obligation it covered goes unproven.
+            # A plan that declares no viewport was silently in that hole; one that declared a
+            # small enough viewport escaped it by accident.
+            options["record_video_size"] = dict(self.viewport)
         self._context = self._browser.new_context(**options)
         self.start_offset_ms = self.clock()
         self.page = self._context.new_page()
