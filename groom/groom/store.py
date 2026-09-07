@@ -555,6 +555,41 @@ def _resilient(fn: Callable[_P, _T]) -> Callable[_P, _T]:
     return wrapper
 
 
+def _noop_on_empty(zero: Any) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:
+    """Answer a batch with nothing in it *before* :func:`_resilient` takes the lock.
+
+    This reads as redundant with the ``if not rows: return`` at the top of each
+    writer, and is not. That guard runs with the store lock already held, so an
+    export carrying zero rows still queues behind whatever write is in flight —
+    and against a saturated host that wait is seconds, spent on work that was
+    always going to be nothing. Empty exports are also the common case, not the
+    rare one: every idle exporter in a fleet of concurrent runs sends them on its
+    own schedule, and each one costs a thread from the ingest pool for as long as
+    it waits. Exhaust that pool and the dashboard's own live tick, which reaches
+    the store the same way, stops sending frames.
+
+    The batch is taken as the first positional argument. A caller that passes it
+    by keyword falls through to the wrapped function, whose own guard still
+    holds — slower, never wrong.
+
+    ``zero`` is the value the wrapped function itself returns for an empty batch,
+    typed ``Any`` because binding it to the return variable narrows it to the
+    literal it was written as and then rejects the wider annotation on the
+    function it is decorating.
+    """
+
+    def decorate(fn: Callable[_P, _T]) -> Callable[_P, _T]:
+        @functools.wraps(fn)
+        def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+            if args and not args[0]:
+                return zero
+            return fn(*args, **kwargs)
+
+        return wrapper
+
+    return decorate
+
+
 def _connection() -> sqlite3.Connection:
     return _STORE.connect()
 
@@ -575,6 +610,7 @@ def health_dict() -> dict[str, Any]:
     return asdict(_STORE.health())
 
 
+@_noop_on_empty(None)
 @_resilient
 def insert_spans(spans: list[dict[str, Any]]) -> None:
     """Upsert decoded spans (see groom.otlp.parse_traces). INSERT OR REPLACE:
@@ -603,7 +639,6 @@ def insert_spans(spans: list[dict[str, Any]]) -> None:
         )
 
 
-@_resilient
 def insert_metrics(points: list[dict[str, Any]]) -> None:
     """Append decoded metric points (see groom.otlp.parse_metrics).
 
@@ -618,10 +653,22 @@ def insert_metrics(points: list[dict[str, Any]]) -> None:
     picture is the in-memory cache groom.alerts folds them into at ingest. Filtered
     at this layer rather than in the OTLP handler because that handler's other
     consumer (``alerts.ingest_metrics``) must keep seeing them.
+
+    The filter runs here, ahead of the store lock, rather than inside the write:
+    a batch that is entirely liveness ticks is a batch with no rows to store, and
+    since those ticks are most of what arrives, that is the shape a busy fleet
+    sends most often. Taking the lock to discover it has nothing to do is the
+    contention this split exists to avoid — see :func:`_noop_on_empty`.
     """
     points = [p for p in points if p.get("name") not in LIVENESS_METRICS]
     if not points:
         return
+    _write_metrics(points)
+
+
+@_resilient
+def _write_metrics(points: list[dict[str, Any]]) -> None:
+    """Store already-filtered, non-empty metric points."""
     with _STORE.writing() as conn:
         conn.executemany(
             "INSERT INTO metrics (run_id, name, ts, value, attrs_json) VALUES (?, ?, ?, ?, ?)",
@@ -641,6 +688,7 @@ def _log_attribute(attrs: dict[str, Any], key: str) -> str | None:
     return raw if isinstance(raw, str) and raw else None
 
 
+@_noop_on_empty(None)
 @_resilient
 def insert_logs(records: list[dict[str, Any]]) -> None:
     """Append decoded log records (see groom.otlp.parse_logs).
@@ -1635,6 +1683,7 @@ def purge_test_runs(dry_run: bool = False, vacuum: bool = True) -> dict[str, int
     return counts
 
 
+@_noop_on_empty(0)
 @_resilient
 def insert_turns(rows: list[dict[str, Any]]) -> int:
     """Index archived turn records; how many rows the index gained or replaced.
