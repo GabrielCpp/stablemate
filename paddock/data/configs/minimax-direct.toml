@@ -1,0 +1,128 @@
+# MiniMax over minimax.io — a non-frontier model on a prepaid token plan.
+#
+# This is `configs/opencode.toml` with one thing changed: every `power` rung resolves to
+# a MiniMax model reached over minimax.io's own API key, instead of an `openai/` id
+# reached over the ChatGPT-subscription oauth credential. Everything else — the
+# `qa_tools` tables, the absent paths a task fills at run time — is copied verbatim,
+# because a round whose tool definitions differ is not measuring the model.
+#
+# It is a separate file from `configs/openrouter-minimax.toml` rather than an edit to it
+# because the two reach the *same weights over different transports*, and the transport
+# is a variable a comparison has to hold still. OpenRouter fans one slug out over
+# competing upstream endpoints that differ in quantization, context window and cache
+# behaviour; minimax.io is the lab serving its own model, one endpoint, no failover. A
+# round under this file therefore has no routing confound — which also means a result
+# here does not transfer to the OpenRouter arm, or the other way round.
+#
+# **The dollars this file produces are notional, like the subscription config's and
+# unlike OpenRouter's.** A token plan is prepaid: the scarce resource is plan quota, and
+# a round that exhausts it fails with a quota error rather than a 402. Any `usd` groom
+# reports under this file is rate-card multiplication against models.dev, not an invoice,
+# and must not be compared against the OpenRouter arm's real spend as if both were bills.
+
+config_version = 1
+default_cli = "opencode"
+
+# --- no endpoint pin, and that is the point ---------------------------------------------
+#
+# `configs/openrouter-minimax.toml` carries thirty lines of provider routing because an
+# OpenRouter slug is a fan-out: the prompt cache lives on the endpoint, so a silent
+# failover starts a cold prefix and bills the next ~175k-token prompt at full input rate,
+# and two of m3's endpoints report `tools=false`, which fails an agent turn in a way that
+# reads as a model result when it is a config one.
+#
+# None of that applies here. `minimax/MiniMax-M3` is opencode's built-in provider
+# namespace, authenticated by the `minimax` entry in `~/.local/share/opencode/auth.json`,
+# and it names one upstream. There is nothing to pin, nothing to re-check before a round,
+# and no failure mode where the same slug quietly serves different weights.
+
+# --- the rungs --------------------------------------------------------------------------
+#
+# M3 is the flagship and M2.7 the cheaper sibling, exactly as in the OpenRouter file, and
+# the separation between rungs is bought with `effort` — opencode renders it as
+# `--variant` (low -> minimal, medium -> provider default, high -> high, xhigh -> max) —
+# so the ~40 `power=` sites under workflows/ keep meaning what their comments say.
+#
+# `low` is the one rung that changes model rather than effort: it is the tier workflows
+# reach for when the decision is mechanical, it is where the turn count lives, and M2.7
+# is sufficient for it. If a round fails on context there, move it to M3 and note that
+# the round measured something else.
+
+# --- the clock, which is a property of the model and not of the node ---------------------
+#
+# Every `timeout:` under workflows/ states the *shape* of the work — "a QA plan is about
+# twenty minutes" — which is true whatever model does it. What differs is how fast this
+# endpoint executes a unit of that work, so the scalar rides the power table beside the
+# model it belongs to and multiplies every budget resolved at that rung.
+#
+# 3.0 is carried over from the OpenRouter arm, where it was measured (~340s per turn
+# against ~115s for the subscription models on the same nodes; ~2.95 for m3 at n=20).
+# **It is a floor, and it is borrowed from a different transport** — the ratio was
+# observed against pinned third-party endpoints, and minimax.io's own serving may be
+# faster or slower. Revise it from this arm's `agent_turn` spans after the first full
+# round rather than assuming it carried over:
+#
+#   groom profile --run RUN
+#   sqlite3 "$(groom db-path)" "SELECT node, ROUND(AVG(end_ts-start_ts),1), COUNT(*)
+#     FROM spans WHERE run_id='RUN' AND name='agent_turn' GROUP BY node;"
+#
+# Two consequences to hold in view. The worst-case wall clock for a node is
+# `timeout x scale x (retries + 1)`, so `fix-regression` (5400s, retries=3) goes from ~6h
+# to ~18h — `WORKHORSE_MAX_RUNTIME_S` is the run-level backstop and defaults to unbounded.
+# The `MAX_*` lap ceilings are counted in turns, so a scale buys no extra laps: the cost
+# ceiling is unchanged and a slow round stays comparable to a fast one. The advisory lane
+# clocks (`QA_LANE_BUDGET_S`, `PLAN_LANE_BUDGET_S`) will fire on nearly every scaled
+# trial; they decide nothing, and making them model-aware means threading a param the
+# workflow package is forbidden to read from the environment.
+
+[power.high.opencode]
+model = "minimax/MiniMax-M3"
+effort = "high"
+timeout_scale = 3.0
+
+[power.smart.opencode]
+model = "minimax/MiniMax-M3"
+effort = "high"
+timeout_scale = 3.0
+
+[power.extra-smart.opencode]
+model = "minimax/MiniMax-M3"
+effort = "xhigh"
+timeout_scale = 3.0
+
+[power.medium.opencode]
+model = "minimax/MiniMax-M3"
+effort = "medium"
+timeout_scale = 3.0
+
+[power.low.opencode]
+model = "minimax/MiniMax-M2.7"
+effort = "low"
+timeout_scale = 3.0
+
+[default.opencode]
+model = "minimax/MiniMax-M3"
+effort = "medium"
+timeout_scale = 3.0
+
+# --- QA tools: copied verbatim from configs/opencode.toml --------------------------------
+#
+# These are not model choices and must not drift from the subscription config: a round
+# that cannot reach `docker` or `jq` blocks on tooling and scores as a model failure. See
+# the comments in `configs/opencode.toml` for why each one is here.
+
+[qa_tools.docker]
+command = "docker"
+description = "the docker CLI, for restarting the app under test between two observations"
+
+[qa_tools.jq]
+command = "jq"
+description = "the jq CLI, for reading a durable store file as evidence that a write persisted"
+
+[qa_tools.make]
+command = "make"
+description = "the make CLI, for driving a repo's own documented build and plan targets"
+
+[qa_tools.python3]
+command = "python3"
+description = "the python interpreter, for driving a Python CLI over a process boundary"
