@@ -7,8 +7,8 @@ skills:
   - root-cause
   - code-review
   - root-cause
-prompts:
   - grill
+prompts:
   - brainstorm
   - implement-plan-worktree
   - implement-plan-here

@@ -531,6 +531,46 @@ def test_a_state_dependent_alternative_is_not_an_unstated_precondition(repo: Pat
         assert "unstated-precondition" not in all_codes(_run(repo)), claim
 
 
+def test_a_verb_alternation_is_state_dependent_without_a_cue_word(repo: Path):
+    """`restores or removes` is the prior-state condition, spelled as the alternation itself.
+
+    The first version of the exemption scanned only the tokens *after* the lifecycle verb and
+    demanded a separate cue word. Both halves miss this shape: the alternative mutation and
+    the marker sit to the *left* of `removes`, and the condition is never named — the branch
+    is the condition. A context manager that puts back the prior value, or unsets the name
+    when there was no prior value, has no single lifecycle direction to observe, so
+    `removed(subject=...)` asserts a branch that does not always run.
+    """
+    claims = (
+        "restores or removes `name` when the block exits through an exception",
+        "removes the override, or restores the value the caller shadowed",
+    )
+    for claim in claims:
+        write(repo / "docs/features/groom/concepts/publisher.md",
+              "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+              "## Methods\n\n### Publish\n"
+              f"- does: {claim}\n"
+              '- verify: emitted(event="scope exited", count=1)\n')
+        assert "unstated-precondition" not in all_codes(_run(repo)), claim
+
+
+def test_a_lone_alternative_marker_does_not_excuse_an_unconditional_creation(repo: Path):
+    """The near-miss that keeps the alternation test tight rather than sentence-wide.
+
+    `or` appears here, and so does a second verb — but the two are not arms of one choice,
+    and the creation is unconditional. Accepting any marker anywhere beside any mutation
+    anywhere would drop this claim, which is exactly the finding's job.
+    """
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- does: creates the revision, then updates the manifest row it points at or the\n"
+          "  index that lists it\n"
+          '- verify: http_status(201, path="/revisions")\n')
+    finding = next(f for f in _run(repo).findings if f.code == "unstated-precondition")
+    assert "creates" in finding.message
+
+
 def test_a_negator_elsewhere_in_the_sentence_does_not_clear_a_real_creation(repo: Path):
     """The near-miss that makes the scoping load-bearing, not a detail of the implementation.
 

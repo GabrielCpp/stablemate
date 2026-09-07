@@ -1354,17 +1354,48 @@ _NEGATIVE_DETERMINERS = frozenset({"no", "none", "nothing", "neither"})
 #: deliberately require an alternative, another mutation, and a prior-state cue together;
 #: any one alone is common in an unconditional creation claim.
 _ALTERNATIVE_MARKERS = frozenset({"or", "otherwise"})
+#: `restores`/`unsets` are the other arm a lifecycle verb is most often paired against — a
+#: scope that puts back what it shadowed, or clears the name when there was nothing to put
+#: back. They are mutations that only make sense against a prior state, which is why they
+#: belong here and not in `LIFECYCLE_VERBS`: neither one has a `created`/`removed` direction
+#: of its own to observe.
 _ALTERNATIVE_MUTATIONS = frozenset({
     "strip", "strips", "stripping", "update", "updates", "updating",
     "replace", "replaces", "replacing", "reuse", "reuses", "reusing",
+    "restore", "restores", "restoring", "unset", "unsets", "unsetting",
 }) | LIFECYCLE_VERBS
 _PRIOR_STATE_CUES = frozenset({
     "already", "existing", "exists", "present", "absent", "missing",
 })
 
 
+def _is_one_arm_of_a_verb_alternation(words: list[str], lifecycle_index: int) -> bool:
+    """Whether the verb is coordinated directly against another mutation: `restores or removes`.
+
+    The coordination *is* the prior-state condition. A scope that restores the value it
+    shadowed, or removes the name when there was nothing to restore, never says "if it was
+    already there" — the branch says it, and demanding a separate cue word misses every claim
+    written this way. `removed(subject=…)` then asserts one arm of a choice, which is a check
+    that fails whenever the other arm runs.
+
+    Adjacency across the marker is what keeps this from being the sentence-wide test the
+    constants above reject. `creates the revision, then updates the manifest row it points at
+    or the index that lists it` carries a marker and a second mutation too, but they are not
+    two arms of one choice and the creation is unconditional — the finding belongs there.
+    """
+    pairs = zip(words, words[1:])
+    return any(
+        (first in _ALTERNATIVE_MUTATIONS and second in _ALTERNATIVE_MARKERS)  # `restores or …`
+        or (first in _ALTERNATIVE_MARKERS and second in _ALTERNATIVE_MUTATIONS)  # `… or restores`
+        for index, (first, second) in enumerate(pairs)
+        if index != lifecycle_index and index + 1 != lifecycle_index
+    )
+
+
 def _has_state_dependent_alternative(words: list[str], lifecycle_index: int) -> bool:
     """Whether a lifecycle verb is one branch of a toggle or idempotent upsert."""
+    if _is_one_arm_of_a_verb_alternation(words, lifecycle_index):
+        return True
     rest = words[lifecycle_index + 1:]
     if not any(word in _PRIOR_STATE_CUES for word in rest):
         return False

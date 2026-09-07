@@ -1,7 +1,12 @@
 ---
-description: Interview me relentlessly about a plan, a design or an idea until the design tree has no unvisited branch — one round of numbered questions per frontier, each with your recommendation
-argument-hint: "[the plan, decision or idea to stress-test]"
-tags: [grill]
+name: stablemate-grill
+description: "Interview me relentlessly about a plan, a design or an idea until the design tree has no unvisited branch — one round of numbered questions per frontier, each with your recommendation"
+metadata:
+  generated_by: farrier
+  source: library/skills/grill/SKILL.md
+  resolve: "farrier source .claude/skills/stablemate-grill/SKILL.md"
+  do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
+  tags: [grill]
 ---
 
 # Grill
