@@ -153,6 +153,12 @@ trip over:
   mechanism.
 - A scenario's id is its function name with underscores turned into dashes. Renaming a
   function renames the scenario the findings cite — don't, unless a finding asks.
+- **A scenario's arrangement has to be able to catch what its `forbid` list names.** For each
+  entry, ask which value in the setup would come back different if the product did that; if
+  the answer is none, the repair is the arrangement, not the assertion. Diversify the state
+  the assertion ranges over — different states, versions and owners across the entities a
+  write must leave alone — rather than widening `except_fields` until the check passes.
+  Widening it is how an obligation ends up `insensitive` at audit.
 - **Module level is declarations only.** A request, a subprocess or a file write at module
   scope turns every `ostler qa validate` into a run, because validation imports the module.
 - **Do not defend against a wrong key.** If a repair makes you reach for `.get(…, [])` or a

@@ -50,6 +50,8 @@ was effective:
 - Was the causal precondition established and asserted?
 - Did the journey begin at the intended flow entry rather than deep-linking past integration work?
 - Did every required intermediate checkpoint execute?
+- Would the scenario's arrangement have shown any behaviour its `forbid` list names, or was
+  the state uniform enough that the forbidden version would have passed too?
 - Did the run reach the operation and terminal observation named by the objective?
 - Did the assertion prove the `covers` claim rather than page presence or command success?
 - Were hidden 5xx responses, crashes, console errors, partial persistence, or wrong producer data

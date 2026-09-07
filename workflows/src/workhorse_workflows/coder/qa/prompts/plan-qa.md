@@ -98,15 +98,12 @@ sample is evidence for only the category it actually exercises; it is not eviden
 the unvisited remainder of a universal AC.
 
 For document/PDF/print stories, universal evidence is content-shaped, not artifact-shaped:
-
-- "every word" means derive a complete normalized source-text inventory and compare it with
-  each produced output's text/OCR inventory, with only named browser headers/footers excluded;
-- "every heading" means include the reader/page H1 and every generated subsection heading in
-  the adjacency/page-break assertions;
-- "inspect by eye", "visual inspection", or equivalent wording means record a terminal
-  artifact-backed visual-review assertion with explicit accept/reject criteria for clipping,
-  chrome leakage, page breaks, blank pages, and print fidelity. Producing PDFs, screenshots,
-  rasters, or a manifest is setup for that observation; it is not the observation itself.
+"every word" means a complete normalized source-text inventory compared against each output's
+text/OCR inventory, only named browser headers/footers excluded; "every heading" includes the
+reader/page H1 and every generated subsection heading in the adjacency/page-break assertions;
+and "inspect by eye" means a terminal artifact-backed visual-review assertion with explicit
+accept/reject criteria for clipping, chrome leakage, page breaks, blank pages and print
+fidelity. Producing the PDF is setup for that observation, not the observation.
 
 ## Required Outputs
 
@@ -177,6 +174,57 @@ from a canned input). There is no third: a test suite standing in for the produc
 evidence about the product. `driver` is execution (`python`,
 `playwright`, or `maestro`). Never use a driver name as a mechanism. A scenario's id is its function name with underscores turned into
 dashes, so the function name is the id — no separate uniqueness bookkeeping to get wrong.
+
+### What `preconditions`, `checkpoints` and `forbid` are for
+
+Nothing collapses these three to a bool, so they are where you say what the assertions below
+them are *for* — and the run assessment, the audit and `qa-report.md` all read them back
+against what the scenario actually did. Write each as a claim about the product, not as a
+description of your code.
+
+- **`preconditions`** — what must already be true for the observation to mean anything, as a
+  fact rather than as the calls that produced it: `"A1 is held and every other seat carries a
+  state or version unlike a freshly seeded one"`, not `"we posted a hold"`.
+- **`checkpoints`** — what an observer would see this scenario prove, in the order it proves
+  them: the accepted response, the persisted change, the untouched neighbour. Each one should
+  have an assertion behind it. A checkpoint with no assertion is a promise the report cannot
+  show, and the first question asked of the run is whether every checkpoint executed.
+- **`forbid`** — the weaker or wrong behaviour this scenario **must be able to catch**. Not a
+  wish about the product in general: the specific cheaper implementation that would satisfy
+  your own checkpoints if you were careless — `"the author field is taken from the request
+  body"`, `"the whole ledger is rewritten instead of the one row"`, `"the refusal is a 200
+  with an error string in the body"`. An obligation you cover with an empty `forbid` is one
+  you have not yet asked what a violation of it would look like.
+
+### Arrange so that a violation would show
+
+**Choose the setup state so that every entry in `forbid` would change something you observe
+if it happened.** An entry you could not have caught is a comment. This is the one failure
+that survives every other gate in this loop: `covers` is right, the checkpoints are right,
+the assertion is right — and the arrangement is so uniform that the forbidden behaviour
+produces output identical to the correct one. The obligation comes back green and the defect
+ships, which is worse than no scenario, because now something claims to have looked.
+
+Ask it of each `forbid` entry in one sentence: *if the product did this instead, which value
+in my arrangement would come back different?* If the answer is "none", the arrangement is
+wrong — not the assertion. The example above forbids `"the author field is taken from the
+request body"` and posts `author: "attacker"` precisely so a product that did take it would
+show a different value; had it posted the token's own uid as the author, the same assertion
+would forbid nothing.
+
+The failure is easiest to see on a write that must leave its neighbours alone. A release
+endpoint must return one held seat to free and touch nothing else, and the scenario forbids
+`"the whole map is rebuilt from a fresh showing"`. Reset the showing, hold `A1`, release it,
+compare before with after: every other seat was already free at version 0, so an
+implementation that throws the map away and rebuilds it empty returns exactly the map the
+correct one returns. Book `B2`, hold `C3`, and bump `E5`'s version *first*, and the same
+comparison goes red the instant the map is rewritten. Same `covers`, same checkpoints, same
+`qa.verify` — the discriminating state is the whole test.
+
+The general shape: give every entity the assertion ranges over a **distinct** value on the
+field the forbidden behaviour would flatten, and make the entity under test unlike its
+neighbours before you act on it. A freshly seeded, all-identical arrangement is the one
+arrangement in which most write bugs are invisible.
 
 ### What the module may do
 
@@ -330,16 +378,11 @@ a static count of the `qa.check`/`qa.require` calls in its body, and again at ru
   same records are written to `qa/traces/<scenario>-diagnostics.json` when the scenario ends
   (`schema: browser-diagnostics/2`), for the post-run audit; every record carries `atMs`, the
   run-relative offset, so console and network can be read against each other.
-- The records are the DevTools panels, not a summary of them: `console(level=…, contains=…)`
-  is every message with its arguments as **values** (`args`), where `text` is only the
-  `{items: Array(3), …}` line DevTools prints; `requests(url_contains=…)` and
-  `responses(status_at_least=…, url_contains=…)` carry `requestHeaders`, `requestBody`,
-  `responseHeaders`, `responseBody` and `durationMs`. Assert on what the *page* sent and
-  received rather than re-issuing the call through `qa.http`, which goes out with different
+- The records are the DevTools panels, not a summary of them. Assert on what the *page* sent
+  and received rather than re-issuing the call through `qa.http`, which goes out with different
   cookies and proves a different thing. A record with no `responseBody` always carries
   `bodyOmitted` saying why (binary, a redirect, budget exhausted, still in flight) — read it
-  before asserting absence, since an uncaptured body and an empty one read alike. Secrets and
-  credential header values are already redacted, with the header name kept.
+  before asserting absence, since an uncaptured body and an empty one read alike.
 - Background daemons are declared with `background(...)` — the runner starts and stops them,
   and the scenario must not. It is for **foreground in-QA services** scoped to the run (a dev
   server pinned to branch source, an event tail). The **heavyweight stack** (containers,
@@ -367,6 +410,18 @@ a static count of the `qa.check`/`qa.require` calls in its body, and again at ru
   how two plans share a helper instead of each carrying a copy of it. A static input file is
   declared with `input_file("name", "qa-inputs/thing.json")`; validation checks it exists
   and lives outside disposable `qa/`.
+  A *discriminating* arrangement is not an exception to this rule. The rule is about state two
+  scenarios share. State one scenario needs is reached the way a person reaches it — by driving
+  the target through its own documented operations inside a `qa.step`, which is evidence in its
+  own right, because the product built the state and the report shows it doing so. Booking one
+  seat and holding another before you release a third is not improvisation; writing rows behind
+  the product's back, or reaching for an arrangement no fixture in the Inputs list declares, is.
+  When the declared fixtures and the documented operations together cannot reach a state in
+  which a `forbid` entry would show, do not quietly ship the version that cannot catch it: name
+  in `qa-plan.md`, under that obligation, the arrangement that is missing and the forbidden
+  behaviour it would have caught, and repeat that sentence in `notes`. That is a fixture request
+  the next reader can act on, and it is the only way the gap gets seen. Return `blocked` only
+  when the obligation is the story's central claim and no reachable state discriminates at all.
 - **Say in the story which fixtures it arranges with.** Every fixture this plan reaches for
   belongs under `## Fixtures` in the story's own `story.md`, one `- Fixture: <name>` bullet
   each, or the bare `(none)` when the plan arranges nothing:
@@ -386,14 +441,11 @@ obligation itself:
   `keyboard`, `route`, `entry` and `params` bullets. Address the element by `role` + `name`
   (`qa.by_role("alert", name=…)`); use `qa.by_css` only when the node states a `selector`; fall back
   to a text locator only when the node documents neither, and say so in the scenario.
-- A node's documented `role` is the *intended* semantic, not a guarantee of what the target
-  engine's accessibility tree actually computes for that markup. Native disclosure elements
-  (`<summary>` inside `<details>`) are the known case: several engines expose the summary as
-  `group`, not `button`, so a `role: button` locator against it times out with zero matches
-  even though the element renders correctly. When the node's underlying element is a native
-  `<summary>`/`<details>` pair, use its `selector` (or a CSS locator scoped to a stable class
-  or `:has-text(...)`) instead of `role`+`name`, and say so in the scenario — don't spend a
-  repair cycle rediscovering this at review time.
+- A node's documented `role` is the *intended* semantic, not what the engine computes: a
+  native `<summary>` inside `<details>` is exposed as `group` by several engines, so a
+  `role: button` locator times out with zero matches on an element that renders correctly.
+  For a native `<summary>`/`<details>` pair use the node's `selector` instead of `role`+`name`,
+  and say so in the scenario.
 - Playwright locators are strict-mode: `.is_visible()` **throws** (it does not return
   `False`) when the locator resolves to more than one element, even if every match is
   legitimately present and visible — so the scenario dies with a strict-mode violation, not
@@ -453,7 +505,8 @@ Contract consumers must use a real producer when the repository declares one.
 - one section per acceptance criterion in story order;
 - one section listing every OKF obligation from the context packet;
 - scenario and assertion coverage for each AC/obligation;
-- each scenario's objective, causal preconditions, intermediate checkpoints, forbidden bypasses,
+- each scenario's objective, causal preconditions, intermediate checkpoints, forbidden bypasses
+  **and the arrangement detail that makes each bypass observable**,
   and terminal proof;
 - expected observable result and evidence type; and
 - why omitted optional journeys are outside impact.
@@ -508,6 +561,20 @@ invokes, and the check's comparison is ostler's rather than yours — which is t
 `qa.check` takes an already-collapsed bool, so a scenario can decide weakly what "the manifest
 is unchanged" means; `qa.verify` cannot, because the assertion *is* the claim.
 
+A declared check that ran and passed is not yet evidence. After the run, `ostler qa
+sensitivity` takes each `qa.verify` call, synthesizes the observation it would have seen,
+perturbs it the way a defect does — the field the claim names is missing or holds something
+else, a different route answered, the ledger the write was meant to leave alone moved — and
+re-verifies. A call is **sensitive** when at least one perturbation turns it red, and
+**insensitive** when every perturbation leaves it green: the same verdict whatever the product
+did. The audit reports an obligation whose checks are all insensitive as `insensitive`, and
+records that a pass there proves the assertion ran, not that the product does this. So keep
+each declared call narrow: name the `subject` and list in `except_fields` only the fields this
+operation is allowed to move, because an `except_fields` broad enough to be safe is broad
+enough to absorb the bug. Sensitivity perturbs the *observation*, never your arrangement — an
+assertion can be sensitive and still be pointed at a state where nothing would have differed,
+which is exactly the failure the arrangement rule above prevents. Both bars are yours.
+
 The declared arguments are part of the contract. Do not rewrite them to match the shape you
 happen to captured. Shape the observed value instead: if the declaration says
 `json_path(path="$.blocks", ...)`, pass the object whose root has `blocks`, not a wrapper that
@@ -556,7 +623,8 @@ Dry-running every scenario is the bar. Dry-running the **one or two you judged r
 the floor, and it is checked: name those ids in `proved_scenarios` and the workflow reads the
 scratch run log for each one before it will spend a suite run on your plan. Pick by what the
 list above says goes wrong — the scenario with the newest locator, the unfamiliar fixture, the
-first use of a credential, the obligation whose declared check you had to shape a value for.
+first use of a credential, the obligation whose declared check you had to shape a value for,
+the scenario whose forbidden behaviour was hardest to make visible.
 Naming an id you did not actually run green fails the gate exactly as a red one does, so name
 what you proved and nothing else. A plan with nothing worth proving — a single trivial unit
 scenario — leaves the list empty and says so in `notes`.
@@ -571,9 +639,7 @@ Do not validate the *plan* yourself, by any other route: not `ostler qa validate
 `ostler qa run`, and not by importing `ostler.qa` from Python. A workflow script node validates it
 the moment you return and hands you its diagnostics if it fails, so a self-check can only repeat a
 verdict that is one call away. The Python route is named explicitly because forbidding the commands
-alone left it open, and a run took it: four Bash turns rediscovering `load_plan`'s signature, inside
-a turn that spent ten minutes and a quarter of the run's whole wall-clock budget arriving where the
-node arrived immediately afterwards.
+alone left it open, and a run took it.
 
 ## Commit Identity
 
