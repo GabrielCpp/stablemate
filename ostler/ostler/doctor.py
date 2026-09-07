@@ -2043,13 +2043,23 @@ def _check_ui(graph: Graph, f: list[Finding],
             verb = _states_a_lifecycle_claim(claim_values.get((key, index), ""))
             if not verb:
                 continue
+            # The claim quoted, not just its key. A node states `does:` several times, and
+            # `node#does` names all of them at once — so on a node whose *other* `does:`
+            # already declares `removed(...)`, every sentence this finding prints is true of
+            # the answered bullet too. A repair turn reads it there, finds the book correct,
+            # and reports `documented` with the finding still standing; three of those and an
+            # adjudication is a run blocked on a defect whose remedy was one bullet away.
+            # `key:index` is how obligation ids are already minted, so the id in the message
+            # is the id `qa context` and the worklist use for the same claim.
+            claim_text = claim_values.get((key, index), "")
             f.append(Finding(
                 "warn", "unstated-precondition",
-                f"{node.id}: `{key}:` states a lifecycle change ('{verb}'), and the checks read "
+                f"{node.id}: `{key}:{index}` ({_prose(claim_text).strip()}) states a lifecycle "
+                f"change ('{verb}'), and the checks read "
                 f"only the state afterwards — which is the same state a no-op leaves when "
                 f"the subject was already there. Declare the change as a change, so the "
                 f"before-read is part of the observation rather than an assumption",
-                path=rel, line=node.line, ref=f"{node.id}#{key}",
+                path=rel, line=node.line, ref=f"{node.id}#{key}:{index}",
                 suggestion=f'- {verify_key}: created(subject="…")   # or: removed'))
             # One per node, as before: a node whose claims all read the aftermath has one
             # thing wrong with it, and N copies of that sentence is N waivers to write.

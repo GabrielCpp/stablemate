@@ -487,7 +487,9 @@ def test_a_sibling_claim_declaring_the_change_does_not_answer_this_one(repo: Pat
           '- verify: removed(subject="the manifest row")\n')
     finding = next(f for f in _run(repo).findings if f.code == "unstated-precondition")
     assert "creates" in finding.message
-    assert finding.ref == f"{finding.path}#publish#returns"
+    # `:1` because the ref is the *claim*, not the key: a node states `returns:`/`does:` more
+    # than once, and a ref naming only the key points a repair turn at every one of them.
+    assert finding.ref == f"{finding.path}#publish#returns:1"
 
 
 def test_a_verb_its_own_sentence_negates_states_no_lifecycle_change(repo: Path):
@@ -1211,3 +1213,30 @@ def test_a_sibling_claims_strong_check_no_longer_answers_this_one(repo: Path):
     assert [f.message for f in findings] and all(
         "publish:raises:1" in f.message for f in findings
     )
+
+
+def test_the_finding_names_which_claim_when_siblings_share_the_key(repo: Path):
+    """Two `does:` bullets, one already answered — the finding has to say which is the other.
+
+    This is the shape that blocked two `okf-builder` runs for eight hours. The node states a
+    lifecycle verb twice: the second claim declares `removed(...)` and is answered, the first
+    is not. Reported as `node#does` with only the verb quoted, both claims match the sentence
+    the finding prints, and a repair turn reads it against the *answered* bullet, concludes
+    the book is already correct, and returns `documented` with the finding still standing.
+    Three attempts and an adjudication later the run gives up on a defect whose remedy was
+    one bullet away — so the claim's own index and its text are part of the finding, not
+    something the reader has to guess from a shared key.
+    """
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- does: collapses the manifest and removes its surrounding whitespace\n"
+          '- verify: json_path(path="$.manifest", equals="tidy")\n'
+          "- does: removes the trailing separator from the normalized manifest\n"
+          '- verify: removed(subject="the trailing separator")\n')
+    finding = next(f for f in _run(repo).findings if f.code == "unstated-precondition")
+    # The unanswered claim is the FIRST `does:`, and the answered one is the second. A reader
+    # given only "`does:` states a lifecycle change ('removes')" cannot tell them apart.
+    assert "does:1" in finding.message, finding.message
+    assert "surrounding whitespace" in finding.message, finding.message
+    assert "trailing separator" not in finding.message, finding.message
