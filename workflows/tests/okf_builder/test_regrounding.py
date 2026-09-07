@@ -150,7 +150,7 @@ def test_a_closed_regrounding_row_retires_its_own_watermark(
     (item,) = _verdict(booked, logger).regrounding
 
     result = advance_watermark(
-        logger, str(booked), item["kind"], item["context"], "complete"
+        logger, str(booked), item["kind"], item["context"], "documented"
     )
     assert result.advanced == [SOURCE_FILE]
     assert not result.watermark_error

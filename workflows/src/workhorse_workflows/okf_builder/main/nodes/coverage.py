@@ -508,14 +508,16 @@ def advance_watermark(
 ) -> Watermarked:
     """Retire one regrounding row by re-reading the file the turn just documented against.
 
-    Only for a `fix:stale-citation` item, and only when the turn says it finished. A row that
-    closed without its watermark moving is reported drifted again by the very next join — the
-    drain would hand the same node to turn after turn until the attempts cap blocked it, which
-    is a loop that costs money to spin. And a partial turn must *not* advance: the citation
-    still describes bytes nobody reconciled, and stamping it current would hide the gap under
-    a clean verdict.
+    Only for a `fix:stale-citation` item, and only when the turn says it finished — the
+    `documented` verdict of the turn's own schema (the default, an unstated verdict, counts
+    as one too). A row that closed without its watermark moving is reported drifted again by
+    the very next join — the drain would hand the same node to turn after turn until the
+    attempts cap blocked it, which is a loop that costs money to spin; that is exactly what
+    happened while this gate spelled the verdict `complete`, a word no turn ever emits. And a
+    `partial` turn must *not* advance: the citation still describes bytes nobody reconciled,
+    and stamping it current would hide the gap under a clean verdict.
     """
-    if item_kind != "fix:stale-citation" or doc_status not in ("", "complete"):
+    if item_kind != "fix:stale-citation" or doc_status not in ("", "documented"):
         return Watermarked()
     try:
         context = json.loads(item_context or "{}")
