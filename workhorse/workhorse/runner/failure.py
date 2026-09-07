@@ -92,12 +92,19 @@ _TRANSIENT_MARKERS = (
     "mid-response",
     "response above may be incomplete",
     # opencode's session store (a shared sqlite) under concurrent writers — several
-    # runs driving opencode at once contend on it and a losing turn exits 1. Depending
-    # on where the lock times out, opencode exposes either the underlying execution
-    # failure or only the project upsert. The store is fine a moment later, nothing is
-    # wrong with the prompt, and the same turn re-run completes.
+    # runs driving opencode at once contend on it and a losing turn exits 1. The store
+    # is fine a moment later, nothing is wrong with the prompt, and the same turn re-run
+    # completes.
+    #
+    # Match the store's own prefix for "this write did not complete", not the statement
+    # it names. This listed `insert into "project"` literally, because that is the upsert
+    # that was in front of the author; the day a lock timed out on `update "session" set
+    # "project_id" = …` instead, the identical condition read as deterministic and ended
+    # an unattended run. The set of statements opencode can lose a race on is every
+    # statement it has — enumerating them is a list that grows by one on each death —
+    # while the set of ways it reports the loss is these two lines.
     "failed to execute statement",
-    'failed query: insert into "project"',
+    "failed query:",
 )
 
 # Substrings (case-insensitive) that mark an exhausted context window — the model

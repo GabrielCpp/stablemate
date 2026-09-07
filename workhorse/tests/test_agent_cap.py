@@ -373,6 +373,29 @@ def test_non_timeout_transient_retries_prompt_unchanged():
     assert seen_prompts == ["DO THE TASK", "DO THE TASK"]
 
 
+def test_every_rendering_of_an_opencode_store_lock_is_transient():
+    """The condition is "opencode could not complete a write", not the statement it named.
+
+    The marker table listed `insert into "project"` literally. The day a lock timed out on
+    `update "session" set "project_id" = ...` instead, the identical condition read as a
+    deterministic failure and ended an unattended run — the set of statements opencode can
+    lose a race on is every statement it has, so enumerating them is a list that grows on
+    each death. `Failed query:` is opencode's own prefix for the class.
+    """
+    renderings = (
+        'Error: Unexpected error\nFailed query: insert into "project" ("id", "worktree") '
+        'values (?, ?) on conflict ("project"."id") do update set "worktree" = ?',
+        'Error: Unexpected error\nFailed query: update "session" set "project_id" = ?, '
+        '"time_updated" = ? where (("session"."project_id" = ?) and ("session"."directory" = ?))',
+        'level=ERROR run=09586c53 message=process error="Failed to execute statement"',
+    )
+    for rendering in renderings:
+        assert failure.is_transient(rendering) is True, f"not transient: {rendering[:60]}"
+    # Still narrow: prose about a query that did not come from the store's own failure path
+    # is not a licence to retry a deterministic error.
+    assert failure.is_transient("the query returned no rows, so the node has nothing to do") is False
+
+
 def test_opencode_project_store_lock_retries_through_transient_ladder():
     """OpenCode's project-upsert rendering of SQLite contention must not end the run."""
     diagnostics = (
