@@ -109,4 +109,5 @@ def write_file(qa: Qa, path, text, covers: list[str]):
 
 def list_entries(qa: Qa, ledger, covers: list[str]):
     """The entries the ledger holds right now."""
-    return json.loads(read_file(qa, ledger, covers)["text"])["entries"]
+    text = qa.field(read_file(qa, ledger, covers), "text")
+    return qa.field(json.loads(text), "entries")

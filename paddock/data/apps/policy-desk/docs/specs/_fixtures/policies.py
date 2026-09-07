@@ -12,6 +12,8 @@ through the public API. These are the bodies it posts, not the records it reads 
 
 from typing import Any
 
+from ostler_qa import Qa
+
 
 def valid_policy(number: str, email: str = "alex@example.com", coverage: str = "auto") -> dict:
     """A policy the desk accepts, in the coverage type named.
@@ -32,20 +34,24 @@ def valid_policy(number: str, email: str = "alex@example.com", coverage: str = "
     }
 
 
-def amendment_body(policy: dict, premium: Any) -> dict:
+def amendment_body(qa: Qa, policy: dict, premium: Any) -> dict:
     """A full amendment of `policy` changing only the premium, quoting the version read.
 
     The version is carried from the record the caller read rather than re-fetched: an
     amendment that re-reads the policy first is quoting a version that is current by
     construction, which proves nothing about the stale-write refusal.
+
+    `policy` is a record the desk returned, so every field comes out through `qa.field`:
+    a key the product spells differently is a failed check naming the field, not a
+    `KeyError` that kills the scenario and leaves its obligations unproven.
     """
     return {
-        "holder_email": policy["holder_email"],
-        "coverage_type": policy["coverage_type"],
+        "holder_email": qa.field(policy, "holder_email"),
+        "coverage_type": qa.field(policy, "coverage_type"),
         "vehicle_vin": policy.get("vehicle_vin", ""),
         "property_address": policy.get("property_address", ""),
-        "start_date": policy["start_date"],
-        "end_date": policy["end_date"],
+        "start_date": qa.field(policy, "start_date"),
+        "end_date": qa.field(policy, "end_date"),
         "premium": premium,
-        "version": policy["version"],
+        "version": qa.field(policy, "version"),
     }

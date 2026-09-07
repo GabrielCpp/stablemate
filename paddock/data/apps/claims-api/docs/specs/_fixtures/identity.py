@@ -37,9 +37,15 @@ def sign_in(qa: Qa, account: tuple[str, str]) -> dict:
         json_body={"email": email, "password": password, "returnSecureToken": True},
         expect_status=200,
     ).json()
-    return {"token": body["idToken"], "uid": body["localId"]}
+    return {"token": qa.field(body, "idToken"), "uid": qa.field(body, "localId")}
 
 
-def bearer(identity: dict) -> dict:
-    """The header an identity is presented in."""
-    return {"Authorization": f"Bearer {identity['token']}"}
+def bearer(qa: Qa, identity: dict) -> dict:
+    """The header an identity is presented in.
+
+    Takes `qa` only so the token comes out through `qa.field` like every other read of a
+    mapping in a plan. The dict is `sign_in`'s own, so a missing key here is this module
+    being wrong rather than the product — but the rule is uniform on purpose: a plan that
+    may subscript "the safe ones" is a plan whose reviewer has to decide which those are.
+    """
+    return {"Authorization": f"Bearer {qa.field(identity, 'token')}"}

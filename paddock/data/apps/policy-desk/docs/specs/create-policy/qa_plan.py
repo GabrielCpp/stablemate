@@ -127,11 +127,11 @@ def create_policy_api(qa: Qa) -> None:
     # to the shape of that record breaks the editor as surely as the creator, and the editor is
     # in no story's diff, so it is proved here rather than left to whoever touches it next.
     reading = qa.field(qa.http.get("/api/policies/pn-1001", expect_status=200).json(), "policy")
-    amended = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(reading, qa.field(reading, "premium") + 1), expect_status=200)
+    amended = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(qa, reading, qa.field(reading, "premium") + 1), expect_status=200)
     qa.verify("http_status", amended, code=200, path="/api/policies/pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:contract"])
     # The version below was spent by the amendment above, and nothing has re-read the policy
     # since — a token re-fetched first is current by construction and refutes nothing.
-    stale = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(reading, qa.field(reading, "premium") + 2), expect_status=409)
+    stale = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(qa, reading, qa.field(reading, "premium") + 2), expect_status=409)
     qa.verify("conflict_on_stale", stale, subject="policy pn-1001", token="version", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1"])
     qa.verify("http_status", stale, code=409, title="Stale Policy", path="/api/policies/pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1"])
     json.dump({"created": policy, "reread": reread_body, "refused": refused_body}, qa.artifact("steps/api-evidence.json", kind="json").open("w"))

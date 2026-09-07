@@ -86,7 +86,7 @@ def amend_policy_and_preserve_the_ledger(qa: Qa) -> None:
     premium = qa.field(before, "premium") + 1
     response = qa.http.put(
         "/api/policies/pn-1001",
-        json_body=amendment_body(before, premium),
+        json_body=amendment_body(qa, before, premium),
         expect_status=200,
     )
     stored = qa.field(response.json(), "policy")
@@ -104,7 +104,7 @@ def amend_policy_and_preserve_the_ledger(qa: Qa) -> None:
     neighbour_after = next(item for item in qa.field(after_ledger, "policies") if qa.field(item, "id") == "pn-1002")
     qa.verify("unchanged", (neighbour_before, neighbour_after), subject="policy pn-1002", except_fields=[], covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:does:2"])
     qa.verify("keys_unchanged", ({qa.field(item, "id"): item for item in qa.field(before_ledger, "policies")}, {qa.field(item, "id"): item for item in qa.field(after_ledger, "policies")}), subject="policies", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:does:2"])
-    invalid = dict(amendment_body(stored, premium), version=qa.field(stored, "version"), premium=0)
+    invalid = dict(amendment_body(qa, stored, premium), version=qa.field(stored, "version"), premium=0)
     invalid_response = qa.http.put("/api/policies/pn-1001", json_body=invalid, expect_status=422)
     invalid_body = invalid_response.json()
     qa.check("invalid amendment answers 422 with premium error", "premium" in qa.field(invalid_body, "errors"), covers=["ac:3", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:errors:2"])
@@ -141,20 +141,20 @@ def reject_missing_and_stale_amendments_without_erasing_the_reading(qa: Qa) -> N
     original = qa.field(qa.http.get("/api/policies/pn-1001").json(), "policy")
     missing_body = {
         key: value
-        for key, value in amendment_body(original, qa.field(original, "premium") + 2).items()
+        for key, value in amendment_body(qa, original, qa.field(original, "premium") + 2).items()
         if key != "version"
     }
     missing = qa.http.put("/api/policies/pn-1001", json_body=missing_body, expect_status=400)
     qa.check("missing version is refused as Version Required", qa.field(missing.json(), "title") == "Version Required", covers=["ac:2", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:errors:1"])
     qa.verify("http_status", missing, code=400, title="Version Required", path="/api/policies/pn-1001", covers=["ac:2", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:errors:1"])
-    first = qa.field(qa.http.put("/api/policies/pn-1001", json_body=amendment_body(original, qa.field(original, "premium") + 2), expect_status=200).json(), "policy")
-    stale = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(original, qa.field(original, "premium") + 3), expect_status=409)
+    first = qa.field(qa.http.put("/api/policies/pn-1001", json_body=amendment_body(qa, original, qa.field(original, "premium") + 2), expect_status=200).json(), "policy")
+    stale = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(qa, original, qa.field(original, "premium") + 3), expect_status=409)
     qa.check("stale version is refused as Stale Policy", qa.field(stale.json(), "title") == "Stale Policy", covers=["ac:2", "ac:6", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1"])
     qa.verify("conflict_on_stale", stale, subject="policy pn-1001", token="version", covers=["ac:2", "ac:6", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1"])
     qa.verify("http_status", stale, code=409, title="Stale Policy", path="/api/policies/pn-1001", covers=["ac:2", "ac:6", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1"])
     current = qa.field(qa.http.get("/api/policies/pn-1001").json(), "policy")
     qa.check("stale write changes nothing", current == first, covers=["ac:2", "ac:6"])
-    unknown = qa.http.put("/api/policies/missing", json_body=amendment_body(original, qa.field(original, "premium")), expect_status=404)
+    unknown = qa.http.put("/api/policies/missing", json_body=amendment_body(qa, original, qa.field(original, "premium")), expect_status=404)
     qa.check("unknown amendment is identified", qa.field(unknown.json(), "title") == "Unknown Policy", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:errors:3"])
     qa.verify("http_status", unknown, code=404, title="Unknown Policy", path="/api/policies/missing", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:errors:3"])
     json.dump({"original": original, "first": first, "stale": stale.json(), "current": current}, qa.artifact("steps/stale-amendment.json", kind="json").open("w"))
@@ -267,7 +267,7 @@ def stale_edit_keeps_the_open_form_and_detail_reading(qa: Qa) -> None:
     qa.eventually("the edit form offers its save control", save.is_visible)
     qa.vet("docs/features/policy/gui/screens/edit-policy.md", name="edit-form-before-stale-write", components=["edit-form"])
     current = qa.field(qa.http.get("/api/policies/pn-1001").json(), "policy")
-    qa.http.put("/api/policies/pn-1001", json_body=amendment_body(current, qa.field(current, "premium") + 1), expect_status=200)
+    qa.http.put("/api/policies/pn-1001", json_body=amendment_body(qa, current, qa.field(current, "premium") + 1), expect_status=200)
     with qa.page.expect_response("**/api/policies/pn-1001") as stale_submission:
         save.click()
     alert = qa.by_css('p[role="alert"]')
