@@ -38,6 +38,7 @@ from groom import (
     localfs,
     notify,
     otlp,
+    pools,
     projection,
     sidecar_hub,
     sidecar_turns,
@@ -566,10 +567,12 @@ async def _run_facts(wf: WorkflowContainer) -> tuple:
     Two sources answer complementary halves — ``alerts.live_status`` says where
     the run is *now* (its open node has no span yet, by construction; pure
     in-memory, so it runs inline), ``run_summaries`` says what it has done so
-    far. The SQLite reads go through ``to_thread``: every store call serializes
-    under one lock, so even a bounded query run inline stalls the whole server
-    for as long as whatever holds that lock — which is exactly how a slow cold
-    read once wedged every request at once.
+    far. The SQLite reads go off the loop, on ``pools.QUERY``: every store call
+    serializes under one lock, so even a bounded query run inline stalls the whole
+    server for as long as whatever holds that lock — which is exactly how a slow
+    cold read once wedged every request at once. Its own pool rather than the
+    shared default one because this is the read the operator is waiting on, and
+    the default pool is where docker and the bulk file copies queue.
     """
     run_id = projection.run_id_of(wf)
     tel = state.RUNS.get(run_id)
@@ -578,9 +581,9 @@ async def _run_facts(wf: WorkflowContainer) -> tuple:
     if run_id:
         facts.update(next(iter(alerts.live_status(run=run_id)), {}) or {})
         facts.update(
-            next(iter(await asyncio.to_thread(store.run_summaries, limit=1, run=run_id)), {}) or {}
+            next(iter(await pools.QUERY.run(store.run_summaries, limit=1, run=run_id)), {}) or {}
         )
-        logs = await asyncio.to_thread(
+        logs = await pools.QUERY.run(
             store.query_logs, run=run_id, limit=projection.LOG_TRAIL_LIMIT
         )
     return tel, facts, logs
@@ -869,7 +872,12 @@ async def otlp_traces(request: Request) -> Response:
     `sqlite3` releases the GIL around its own work, but the commit is still a blocking
     syscall — and on the event loop it is one every live run pays for every other run:
     a single collector serving a fleet serializes every export, every alert evaluation
-    and every dashboard request behind whichever write is in flight."""
+    and every dashboard request behind whichever write is in flight.
+
+    The thread comes from ``pools.INGEST`` rather than the shared default executor,
+    which docker, discovery and the transcript harvest also draw on. A fleet of
+    concurrent runs saturates that default pool routinely, and when it goes so does
+    the collector — see groom.pools."""
     body = b""
     try:
         body = await request.body()
@@ -888,7 +896,7 @@ async def otlp_traces(request: Request) -> Response:
         )
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
     try:
-        await asyncio.to_thread(store.insert_spans, spans)
+        await pools.INGEST.run(store.insert_spans, spans)
     except sqlite3.Error:
         # Returning early on purpose: nothing was stored, so evaluating alerts
         # or projecting rows off this batch would publish a state the store
@@ -911,7 +919,7 @@ async def otlp_metrics(request: Request) -> Response:
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
     try:
-        await asyncio.to_thread(store.insert_metrics, points)
+        await pools.INGEST.run(store.insert_metrics, points)
     except sqlite3.Error:
         # Returning early on purpose: nothing was stored, so evaluating alerts
         # or projecting rows off this batch would publish a state the store
@@ -941,7 +949,7 @@ async def otlp_logs(request: Request) -> Response:
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
     try:
-        await asyncio.to_thread(store.insert_logs, records)
+        await pools.INGEST.run(store.insert_logs, records)
     except sqlite3.Error:
         # Returning early on purpose: nothing was stored, so evaluating alerts
         # or projecting rows off this batch would publish a state the store
@@ -970,14 +978,15 @@ async def traces(
         threshold = float(slower_than) if slower_than.strip() else None
     except ValueError:
         threshold = None
-    # Both store reads off the loop: they share the one store lock with every
-    # OTLP write, so run inline they would hold the whole server behind a scan.
-    # live_run_ids reads only the in-memory cache and stays inline.
-    spans = await asyncio.to_thread(
+    # Both store reads off the loop, on the dashboard's own pool: they share the
+    # one store lock with every OTLP write, so run inline they would hold the whole
+    # server behind a scan. live_run_ids reads only the in-memory cache and stays
+    # inline.
+    spans = await pools.QUERY.run(
         store.query_spans, run=run, node=node, status=status, slower_than=threshold
     )
     return projection.traces_view(
-        await asyncio.to_thread(store.run_summaries, run=run.strip()),
+        await pools.QUERY.run(store.run_summaries, run=run.strip()),
         spans,
         state.RUNS,
         alerts.live_run_ids(),
@@ -1744,5 +1753,5 @@ def create_app() -> Litestar:
             create_static_files_router(path="/assets", directories=[ASSETS_DIR]),
         ],
         on_startup=[_spawn_scan, _spawn_rules, _spawn_live],
-        on_shutdown=[_stop_rules, _stop_live],
+        on_shutdown=[_stop_rules, _stop_live, pools.shutdown_all],
     )
