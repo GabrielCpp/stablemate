@@ -143,6 +143,23 @@ class TurnUsage:
         }
 
     @property
+    def generated_tokens(self) -> int | None:
+        """Every token the model *produced* this turn — the answer and the thinking
+        it did to get there — or ``None`` when the harness reported neither.
+
+        The two fields are one budget. A provider bills reasoning against the same
+        max-output ceiling as the answer, and reports the split inconsistently: the
+        same model on the same node returns ``output=1, reasoning=31999`` on one turn
+        and ``output=32000, reasoning=0`` on the next, for the identical event. Only
+        the sum is stable, which is why the classifier reads this and not either
+        field. ``None`` stays distinct from ``0`` for the reason the rest of this
+        module keeps it: "generated nothing" and "did not say" are different turns.
+        """
+        if self.output_tokens is None and self.reasoning_output_tokens is None:
+            return None
+        return (self.output_tokens or 0) + (self.reasoning_output_tokens or 0)
+
+    @property
     def is_empty(self) -> bool:
         """True when the turn reported neither tokens nor money, i.e. there is
         nothing to fold and nothing worth stamping. Duration alone does not

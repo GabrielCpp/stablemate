@@ -89,4 +89,10 @@ def finalize_turn(
         session_id=state.session_id,
         session_id_path=session_id_path,
         rate_reset_at=rate_reset_at,
+        # The counts this function already stamped on the span, handed to the
+        # classifier as well: an empty turn that generated thousands of tokens is a
+        # different failure from one that generated none, and this is the only place
+        # both facts are in scope. The Claude path leaves it unset — that CLI does not
+        # report reasoning tokens, so the distinction is not decidable there.
+        generated_tokens=state.usage.generated_tokens,
     )

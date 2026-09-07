@@ -355,6 +355,7 @@ def classify_turn(
     session_id_path: Path | None = None,
     rate_limited: bool = False,
     rate_reset_at: float | None = None,
+    generated_tokens: int | None = None,
 ) -> str:
     """Classify a finished agent-CLI turn uniformly for EVERY backend.
 
@@ -375,7 +376,10 @@ def classify_turn(
     - non-zero exit → transient *iff* the output matches a retryable marker (or a
       rate limit fired); otherwise NON-RECOVERABLE (``transient=False``) so the
       runner stops instead of reframing a crashed CLI.
-    - empty result → transient (the CLI was likely interrupted).
+    - empty result, with ``generated_tokens`` reporting output → ``overflow``: the
+      model spent its max-output budget reasoning and never answered, which no retry
+      of the same prompt can clear, and which compaction is the only lever against.
+    - empty result otherwise → transient (the CLI was likely interrupted).
     A cap-like failure carries ``reset_at`` so the runner can sleep until the
     window reopens; a plain transient must not, or it would look like a cap.
     The session id is persisted on success and on overflow.
@@ -434,6 +438,33 @@ def classify_turn(
             reset_at=cap_reset_at,
         )
     if not result_text:
+        # An empty turn has two causes that look identical from here, and they want
+        # opposite remedies. If the model generated NOTHING, the provider returned an
+        # empty completion and another attempt is worth having. If it generated
+        # thousands of tokens and none of them were an answer, it spent its whole
+        # max-output budget on reasoning about a prompt too big to think about inside
+        # it — and retrying the same prompt just re-rolls the same dice. The counts
+        # that separate them were already collected for telemetry; without them this
+        # branch called both "no result text" and marked both transient, which is why
+        # a node could burn a full retry ladder on a budget overrun that no retry
+        # could ever clear.
+        #
+        # The second case is routed as an overflow because compaction is its remedy:
+        # less context is less to reason about, which is the only lever that moves a
+        # ceiling the model itself sets. It is not the context *window* that
+        # overflowed, so the message says which one did.
+        if generated_tokens:
+            if session_id_path and session_id:
+                session_id_path.parent.mkdir(parents=True, exist_ok=True)
+                session_id_path.write_text(session_id)
+                record_session_map(session_id_path, node_id, session_id, backend_name)
+            raise BackendInvocationError(
+                f"{backend_name} spent {generated_tokens} generation tokens without "
+                f"answering for node '{node_id}' — output budget exhausted while "
+                f"reasoning{tail}",
+                transient=False,
+                overflow=True,
+            )
         raise BackendInvocationError(
             f"No result text from {backend_name} for node '{node_id}'{tail}",
             transient=True,

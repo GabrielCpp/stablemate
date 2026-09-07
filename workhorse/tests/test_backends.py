@@ -29,6 +29,7 @@ from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
 from workhorse import sessions
 from workhorse.runner import failure, ladder, process
+from workhorse.runner.usage import TurnUsage
 from workhorse.runner.backends import (
     AgentBackend,
     claude,
@@ -763,7 +764,7 @@ def test_agentnode_power_is_optional():
 def test_agentnode_power_is_an_opaque_tier_name():
     """`power` is the operator's vocabulary, so the engine must not police the name.
 
-    The shipped workflows use low/medium/high/smart/extra-smart, but the tier is only
+    The shipped workflows use low/medium/high/max/ultra, but the tier is only
     ever a key into the operator's own `[power.<level>.<backend>]` tables — a workflow is
     free to name a rung this repo never imagined and have its operator map it. An enum
     here would make that a validation error instead of a config entry.
@@ -773,7 +774,7 @@ def test_agentnode_power_is_an_opaque_tier_name():
         # and it is the path an operator-invented tier travels.
         return {"type": "agent", "id": "n", "prompt": "p", "power": power, "next": "done"}
 
-    for tier in ("low", "medium", "high", "smart", "extra-smart", "verdict", "cheap-bulk"):
+    for tier in ("low", "medium", "high", "max", "ultra", "verdict", "cheap-bulk"):
         assert AgentNode.model_validate(node(tier)).power == tier
 
 
@@ -1243,6 +1244,100 @@ def test_opencode_provider_header_timeout_aborts_into_short_retry():
         assert exc.timed_out is False, "provider timeout did not spend the node budget"
         assert "ProviderHeaderTimeoutError" in str(exc)
         assert "Timeout waiting for result" not in str(exc)
+
+
+def test_an_empty_turn_that_generated_nothing_stays_a_plain_transient():
+    """The provider returned an empty completion: the model produced no tokens at
+    all, so another attempt is worth having and the ladder should retry."""
+    try:
+        failure.classify_turn(
+            "opencode",
+            "behavior-audit",
+            result_text="",
+            diagnostics="",
+            timed_out=False,
+            returncode=0,
+            timeout=TIMEOUT,
+            generated_tokens=0,
+        )
+    except failure.BackendInvocationError as exc:
+        assert exc.transient is True
+        assert exc.overflow is False
+        assert "No result text" in str(exc)
+    else:
+        raise AssertionError("expected BackendInvocationError")
+
+
+def test_an_empty_turn_that_generated_tokens_is_a_budget_overrun_not_a_retry():
+    """The model spent its whole max-output budget reasoning and never answered.
+    Retrying the same prompt re-rolls the same dice, so this must NOT come back as a
+    transient; it is routed as an overflow because compaction — less context to think
+    about — is the only lever against a ceiling the model itself sets."""
+    try:
+        failure.classify_turn(
+            "opencode",
+            "behavior-audit",
+            result_text="",
+            diagnostics="",
+            timed_out=False,
+            returncode=0,
+            timeout=TIMEOUT,
+            generated_tokens=32000,
+        )
+    except failure.BackendInvocationError as exc:
+        assert exc.transient is False, "a retry cannot clear a budget overrun"
+        assert exc.overflow is True, "compaction is the remedy"
+        assert "32000" in str(exc), "the count is the evidence; say it"
+        assert "No result text" not in str(exc)
+    else:
+        raise AssertionError("expected BackendInvocationError")
+
+
+def test_the_split_reads_the_sum_because_providers_label_it_inconsistently():
+    """The same model on the same node reports `output=1, reasoning=31999` on one
+    turn and `output=32000, reasoning=0` on the next for the identical event. Only
+    the sum is stable, so both must classify the same way."""
+    as_reasoning = TurnUsage(output_tokens=1, reasoning_output_tokens=31999)
+    as_output = TurnUsage(output_tokens=32000, reasoning_output_tokens=0)
+    assert as_reasoning.generated_tokens == as_output.generated_tokens == 32000
+    # A harness that reports neither field says nothing, which is not the same as
+    # reporting zero — the classifier must not read silence as "generated nothing".
+    assert TurnUsage().generated_tokens is None
+
+
+def test_an_empty_turn_with_no_usage_report_keeps_the_old_verdict():
+    """Claude does not report reasoning tokens, so the distinction is undecidable on
+    that path. Unset must behave exactly as it did before this split existed."""
+    try:
+        failure.classify_turn(
+            "claude",
+            "behavior-audit",
+            result_text="",
+            diagnostics="",
+            timed_out=False,
+            returncode=0,
+            timeout=TIMEOUT,
+        )
+    except failure.BackendInvocationError as exc:
+        assert exc.transient is True
+        assert exc.overflow is False
+        assert "No result text" in str(exc)
+    else:
+        raise AssertionError("expected BackendInvocationError")
+
+
+def test_finalize_turn_hands_the_classifier_the_counts_it_stamped():
+    """The counts reach the classifier from the one place both are in scope. Without
+    this wiring the branch above is dead code on every real turn."""
+    state = turn.TurnState(result_text="")
+    state.usage = TurnUsage(output_tokens=1, reasoning_output_tokens=31999)
+    try:
+        turn.finalize_turn("opencode", "behavior-audit", state, None, TIMEOUT)
+    except failure.BackendInvocationError as exc:
+        assert exc.overflow is True
+        assert "32000" in str(exc)
+    else:
+        raise AssertionError("expected BackendInvocationError")
 
 
 if __name__ == "__main__":
