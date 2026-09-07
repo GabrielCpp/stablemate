@@ -8,15 +8,21 @@ remains the append-only record-of-truth — SQLite exists for cross-run search
 (slowest nodes, error spans, cost per run, who cap-waited), not as the primary
 record. Spans older than the retention window are pruned to bound growth.
 
-One process-wide connection, and it is *not* free of locks or of failure. Reads
-run inline on the event loop while every write goes to an ``asyncio.to_thread``
-worker, so a connection — which has exactly one transaction and one snapshot — is
-shared across threads: :class:`_Store` therefore holds it behind an ``RLock``, opens
-it in real autocommit (``isolation_level=None``) so no failure path can strand an
-open transaction, and wraps multi-statement writes in an explicit ``BEGIN IMMEDIATE``.
+One writer, many readers. Every write goes through a single process-wide
+connection — which has exactly one transaction and one snapshot, and is shared
+across threads — so :class:`_Store` holds it behind an ``RLock``, opens it in real
+autocommit (``isolation_level=None``) so no failure path can strand an open
+transaction, and wraps multi-statement writes in an explicit ``BEGIN IMMEDIATE``.
 When a statement fails anyway the connection is recycled and the call retried once
 (:func:`_resilient`), because a collector meant to run for weeks cannot answer a
 wedged handle with a 500 forever. :func:`health` is what that looks like from outside.
+
+Reads take none of that. Every query runs on a ``query_only`` connection belonging
+to the calling thread (:meth:`_Store.read_connection`, :func:`_reading`), because
+WAL already gives a reader a consistent snapshot alongside the writer — the lock
+was never buying correctness there. Putting reads under it did buy an outage: one
+slow cold read on a saturated disk held the lock, and the dashboard, the live tick
+and every OTLP receiver queued behind a query none of them had asked for.
 """
 
 from __future__ import annotations
@@ -377,6 +383,11 @@ class _Store:
         self.lock = threading.RLock()
         self._conn: sqlite3.Connection | None = None
         self._path: Path | None = None
+        # Read handles, one per calling thread and outside `lock` entirely — see
+        # `read_connection`. `_generation` is how they learn the writer's handle
+        # was thrown away underneath them.
+        self._readers = threading.local()
+        self._generation = 0
         self._reopens = 0
         self._failures = 0
         self._last_error = ""
@@ -467,6 +478,7 @@ class _Store:
         case's)."""
         with self.lock:
             self._close_quietly()
+            self.retire_reader()
             self._path = None
             self._reopens = 0
             self._failures = 0
@@ -485,6 +497,77 @@ class _Store:
             with suppress(sqlite3.Error):
                 self._conn.close()
         self._conn = None
+        # Readers are not closed from here: another thread may be mid-statement on
+        # one, and closing a connection under it is a crash rather than a cleanup.
+        # They retire themselves the next time they see a generation that has moved.
+        self._generation += 1
+
+    def read_connection(self) -> sqlite3.Connection:
+        """A read-only connection belonging to the calling thread.
+
+        The fast path takes no lock at all — that is the entire point. Both checks
+        it makes are plain attribute reads, so a read stays fast while another
+        thread holds the write lock for however long its disk makes it.
+
+        Per thread rather than shared because a sqlite3 connection carries one
+        transaction and one snapshot: handing the same one to two pool threads
+        interleaves their statements. The pools are small and long-lived, so this
+        is a handful of handles for the life of the process, not one per request.
+        """
+        path = db_path()
+        cached: _Reader | None = getattr(self._readers, "handle", None)
+        if cached is not None and cached.generation == self._generation and cached.path == path:
+            return cached.conn
+        self.retire_reader()
+        with self.lock:
+            # Only the writer creates the file, applies the schema and runs the
+            # migrations, and only a read-write connection can recover a hot WAL —
+            # none of which a `query_only` handle is allowed to do. This is the one
+            # place a read touches the lock, once per thread, on its first query.
+            self.connect()
+            if not (self._path or path).exists():
+                # A writer handle can outlive its file: sqlite keeps the descriptor
+                # valid after the path is unlinked, so writes still land somewhere
+                # nothing can be opened by name any more. Reopening re-creates the
+                # file and re-applies the schema, which is what the reader needs to
+                # have something to attach to at all.
+                self._close_quietly()
+                self.connect()
+            generation, opened = self._generation, self._path or path
+        conn = sqlite3.connect(opened, check_same_thread=False, isolation_level=None)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=5000")
+        # A write sent down the read path should fail here and name itself, rather
+        # than quietly contend for the file with the writer this split exists to
+        # keep out of the way.
+        conn.execute("PRAGMA query_only=1")
+        self._readers.handle = _Reader(conn, generation, opened)
+        return conn
+
+    def retire_reader(self) -> None:
+        """Drop this thread's read handle; its next query opens a fresh one."""
+        cached: _Reader | None = getattr(self._readers, "handle", None)
+        self._readers.handle = None
+        if cached is not None:
+            with suppress(sqlite3.Error):
+                cached.conn.close()
+
+    def recycle_reader(self, exc: BaseException, where: str) -> None:
+        """A read failed: retire that handle, and leave the writer alone.
+
+        Deliberately not :meth:`recycle`. A reader's broken handle says nothing
+        about the writer's, and closing the writer here would abort whatever
+        transaction another thread has open on it.
+
+        The counters are stamped without the lock: they feed a health display, and
+        taking the write lock to record a number is exactly the wait this path was
+        built to avoid. A lost increment under a race is the cheaper of the two.
+        """
+        self._failures += 1
+        self._last_error = f"{type(exc).__name__}: {exc}"
+        self._last_error_ts = time.time()
+        logger.error("groom.store: retiring the read handle after %s in %s", exc, where)
+        self.retire_reader()
 
     def note_ok(self) -> None:
         """Stamp a statement that ran. What :attr:`StoreHealth.ok` is measured against:
@@ -516,6 +599,15 @@ class _Store:
             wal_bytes=wal_bytes,
             last_checkpoint_busy=self._last_checkpoint_busy,
         )
+
+
+@dataclass(slots=True)
+class _Reader:
+    """One thread's read handle, tagged with what it was opened against."""
+
+    conn: sqlite3.Connection
+    generation: int
+    path: Path
 
 
 _STORE = _Store()
@@ -551,6 +643,34 @@ def _resilient(fn: Callable[_P, _T]) -> Callable[_P, _T]:
             result = fn(*args, **kwargs)
             _STORE.note_ok()
             return result
+
+    return wrapper
+
+
+def _reading(fn: Callable[_P, _T]) -> Callable[_P, _T]:
+    """:func:`_resilient` for a query: heal once, and take no lock doing it.
+
+    Same one-retry contract, because a read hits the same disposable handle — but
+    without the serialisation, since :meth:`_Store.read_connection` gives this
+    thread a connection nothing else is using.
+
+    Decorate leaf functions only, as with :func:`_resilient`: a decorated function
+    that calls another one multiplies attempts.
+    """
+    name = getattr(fn, "__name__", "store read")
+
+    @functools.wraps(fn)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+        try:
+            result = fn(*args, **kwargs)
+        except sqlite3.Error as exc:
+            _STORE.recycle_reader(exc, name)
+        else:
+            _STORE.note_ok()
+            return result
+        result = fn(*args, **kwargs)
+        _STORE.note_ok()
+        return result
 
     return wrapper
 
@@ -592,6 +712,10 @@ def _noop_on_empty(zero: Any) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:
 
 def _connection() -> sqlite3.Connection:
     return _STORE.connect()
+
+
+def _read_connection() -> sqlite3.Connection:
+    return _STORE.read_connection()
 
 
 def reset() -> None:
@@ -729,7 +853,7 @@ def insert_logs(records: list[dict[str, Any]]) -> None:
 _SEVERITY_ORDER = ("FATAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE")
 
 
-@_resilient
+@_reading
 def query_logs(
     run: str = "",
     node: str = "",
@@ -765,7 +889,7 @@ def query_logs(
         where.append("ts < ?")
         params.append(float(before_ts))
     clause = f"WHERE {' AND '.join(where)}" if where else ""
-    conn = _connection()
+    conn = _read_connection()
     rows = conn.execute(
         f"SELECT run_id, workflow, run_dir, node, logger, severity, body, ts, trace_id,"  # noqa: S608
         f" attrs_json, head, workspace, vcs, origin, branch, repositories"
@@ -813,7 +937,7 @@ _ESTIMABLE = (
 )
 
 
-@_resilient
+@_reading
 def unpriced_models(run: str = "") -> dict[str, int]:
     """Models with turns the rate card cannot price, and how many turns each has.
 
@@ -825,7 +949,7 @@ def unpriced_models(run: str = "") -> dict[str, int]:
     if run:
         clauses.append("run_id = ?")
         params.append(run)
-    conn = _connection()
+    conn = _read_connection()
     rows = conn.execute(
         # By the rate that priced it where there is one, so a turn whose alias was
         # resolved against its session store stops reading as a gap in the card.
@@ -883,11 +1007,11 @@ def reprice(run: str = "", missing_only: bool = True) -> dict[str, Any]:
     }
 
 
-@_resilient
+@_reading
 def _estimable_turns(clauses: list[str], params: list[Any]) -> list[sqlite3.Row]:
     """Turns matching `clauses`, with everything pricing one needs already coalesced."""
     return (
-        _connection()
+        _read_connection()
         .execute(
             "SELECT span_id, priced_model,"  # noqa: S608
             " json_extract(attrs_json, '$.model') AS model,"
@@ -902,7 +1026,7 @@ def _estimable_turns(clauses: list[str], params: list[Any]) -> list[sqlite3.Row]
     )
 
 
-@_resilient
+@_reading
 def unpriceable_turns(run: str = "") -> list[dict[str, Any]]:
     """Turns with tokens, no estimate, and a model no rate covers.
 
@@ -935,7 +1059,7 @@ def apply_estimates(updates: list[tuple[float, str, str]]) -> int:
     return len(updates)
 
 
-@_resilient
+@_reading
 def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
     """Per-node agent spend for a run: where the money and the rework went.
 
@@ -978,7 +1102,7 @@ def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
     if run:
         clauses.append("run_id = ?")
         params.append(run)
-    conn = _connection()
+    conn = _read_connection()
     rows = conn.execute(
         "SELECT node,"  # noqa: S608 — clauses are literals; every value is bound
         " COUNT(*) AS turns,"
@@ -1039,7 +1163,7 @@ class Lap:
     est: float | None
 
 
-@_resilient
+@_reading
 def loop_convergence(
     run: str = "",
     workflow: str = "",
@@ -1117,7 +1241,7 @@ def loop_convergence(
     if since_ts is not None:
         clauses.append("start_ts >= ?")
         params.append(float(since_ts))
-    rows = _connection().execute(
+    rows = _read_connection().execute(
         "SELECT node, run_id,"  # noqa: S608 — clauses are literals; every value is bound
         " json_extract(attrs_json, '$.work_id') AS work_id,"
         f" {_cost} AS cost_usd, {_cost} = 0 AND COALESCE({_output}, 0) > 0 AS suspect_zero,"
@@ -1406,7 +1530,7 @@ def _profile_time_partition(
     }
 
 
-@_resilient
+@_reading
 def run_profile(run: str) -> dict[str, Any] | None:
     """Partition one run's retained wall time and aggregate its agent rework.
 
@@ -1416,7 +1540,7 @@ def run_profile(run: str) -> dict[str, Any] | None:
     """
     if not run:
         return None
-    rows = _connection().execute(
+    rows = _read_connection().execute(
         f"SELECT {_SPAN_COLUMNS}, duration_ms AS profile_duration_ms,"  # noqa: S608
         f" {_cost} AS profile_cost_usd, {_output} AS profile_output_tokens,"
         " resume_generation FROM spans WHERE run_id = ? ORDER BY start_ts",
@@ -1428,7 +1552,7 @@ def run_profile(run: str) -> dict[str, Any] | None:
     # Gauges only, now that the heartbeat ticks are never stored: a run that died
     # before its first gauge export contributes no metric bounds, and its wall
     # clock falls back to the span envelope alone.
-    metric_bounds = _connection().execute(
+    metric_bounds = _read_connection().execute(
         "SELECT MIN(ts) AS first_ts, MAX(ts) AS last_ts FROM metrics WHERE run_id = ?",
         (run,),
     ).fetchone()
@@ -1467,7 +1591,7 @@ _SPAN_COLUMNS = (
 )
 
 
-@_resilient
+@_reading
 def query_spans(
     run: str = "",
     node: str = "",
@@ -1502,7 +1626,7 @@ def query_spans(
         clauses.append("start_ts >= ?")
         params.append(float(since_ts))
     params.append(max(1, min(int(limit), 1000)))
-    rows = _connection().execute(
+    rows = _read_connection().execute(
         f"SELECT {_SPAN_COLUMNS} FROM spans WHERE {' AND '.join(clauses)}"  # noqa: S608 - literals
         " ORDER BY start_ts DESC LIMIT ?",
         params,
@@ -1510,7 +1634,7 @@ def query_spans(
     return [dict(row) for row in rows]
 
 
-@_resilient
+@_reading
 def run_summaries(
     limit: int = 50, now: float | None = None, run: str = ""
 ) -> list[dict[str, Any]]:
@@ -1534,7 +1658,7 @@ def run_summaries(
         run_clause = "AND run_id = ?"
         params.append(run)
     params.append(max(1, min(int(limit), 500)))
-    rows = _connection().execute(
+    rows = _read_connection().execute(
         "SELECT run_id, MAX(workflow) AS workflow, MAX(repo) AS repo,"
         " MIN(start_ts) AS first_ts, MAX(end_ts) AS last_ts,"
         " COUNT(*) AS span_count,"
@@ -1613,7 +1737,7 @@ def is_scratch_run_dir(run_dir: str) -> bool:
     return False
 
 
-@_resilient
+@_reading
 def _test_run_ids() -> set[str]:
     """The run ids whose run dir says they were throwaway (:func:`is_scratch_run_dir`).
 
@@ -1622,7 +1746,7 @@ def _test_run_ids() -> set[str]:
     — ``metrics`` does not — so a run that only ever emitted heartbeats before
     its first node completed is invisible here and is left alone.
     """
-    conn = _connection()
+    conn = _read_connection()
     pairs: set[tuple[str, str]] = set()
     for table in ("spans", "logs"):
         pairs.update(
@@ -1634,7 +1758,7 @@ def _test_run_ids() -> set[str]:
     return {run_id for run_id, run_dir in pairs if run_id and is_scratch_run_dir(run_dir)}
 
 
-@_resilient
+@_reading
 def test_run_ids() -> set[str]:
     """:func:`_test_run_ids`, with the store's heal-and-retry around it."""
     return _test_run_ids()
@@ -1676,8 +1800,11 @@ def purge_test_runs(dry_run: bool = False, vacuum: bool = True) -> dict[str, int
     with _STORE.writing() as conn:
         sweep(conn)
     if vacuum and counts["runs"]:
-        # Outside the transaction — VACUUM cannot run inside one — but still under
-        # the store lock, so it cannot rewrite the file under another thread's read.
+        # Outside the transaction — VACUUM cannot run inside one — and under the
+        # store lock, which serialises it against every other writer. Readers hold
+        # their own connections and do not honour this lock, but each of their
+        # statements is its own autocommit read: SQLite's own file locking makes
+        # them wait out the rewrite rather than observe it half-done.
         with _STORE.lock:
             _connection().execute("VACUUM")
     return counts
@@ -1714,7 +1841,7 @@ def insert_turns(rows: list[dict[str, Any]]) -> int:
     return len(rows)
 
 
-@_resilient
+@_reading
 def query_turns(
     run: str = "",
     node: str = "",
@@ -1738,7 +1865,7 @@ def query_turns(
             params.append(value)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     params.append(max(1, limit))
-    rows = _connection().execute(
+    rows = _read_connection().execute(
         "SELECT run_id, workflow, flow, node, session_id, generation, seq, ts, backend,"
         f" source, path, bytes, sha256, head FROM turns {where}"  # noqa: S608 - bound values
         " ORDER BY run_id, generation, seq LIMIT ?",
@@ -1747,7 +1874,7 @@ def query_turns(
     return [dict(row) for row in rows]
 
 
-@_resilient
+@_reading
 def run_directories() -> list[dict[str, Any]]:
     """Every run telemetry has seen a directory for: run_id, run_dir, workflow.
 
@@ -1756,20 +1883,20 @@ def run_directories() -> list[dict[str, Any]]:
     """
     return [
         dict(row)
-        for row in _connection().execute(
+        for row in _read_connection().execute(
             "SELECT DISTINCT run_id, run_dir, workflow FROM spans"
             " WHERE run_dir != '' AND run_id != ''"
         )
     ]
 
 
-@_resilient
+@_reading
 def turns_before(cutoff: float) -> list[dict[str, Any]]:
     """Index rows for archived turns older than ``cutoff``. ``ts`` of 0 means the turn
     never recorded one, and an unstamped record is never aged out on a guess."""
     return [
         dict(row)
-        for row in _connection().execute(
+        for row in _read_connection().execute(
             "SELECT run_id, workflow, node, session_id, generation, seq, ts, path"
             " FROM turns WHERE ts > 0 AND ts < ?",
             (cutoff,),
