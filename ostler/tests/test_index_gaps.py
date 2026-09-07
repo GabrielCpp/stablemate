@@ -80,7 +80,11 @@ def test_a_deleted_file_still_dangles_every_link_into_it(ui_book: Path, warm: Pa
     uncached = doctor_report(ui_book, "--no-index")
 
     dangling = [f for f in cached["findings"] if f["code"] == "dangling-link"]
-    assert {f["ref"] for f in dangling} == {"../area/rec.md", "../area/rec.md#rec"}
+    # The ref carries the citing location: the same broken href is cited from two files
+    # in a real book, and the fix is in a different one each time.
+    assert {f["ref"] for f in dangling} == {
+        "docs/features/ui/dash.md:12:../area/rec.md",
+        "docs/features/ui/dash.md:12:../area/rec.md#rec"}
     assert_agree(cached, uncached)
     assert cached["index"]["hits"] > 0, "the files that did not change are still served warm"
 
@@ -94,7 +98,8 @@ def test_a_renamed_file_is_not_served_under_its_old_path(ui_book: Path, warm: Pa
     uncached = doctor_report(ui_book, "--no-index")
 
     assert {f["ref"] for f in cached["findings"] if f["code"] == "dangling-link"} == {
-        "../area/rec.md", "../area/rec.md#rec"}
+        "docs/features/ui/dash.md:12:../area/rec.md",
+        "docs/features/ui/dash.md:12:../area/rec.md#rec"}
     assert_agree(cached, uncached)
     assert cached["index"]["hits"] > 0
 

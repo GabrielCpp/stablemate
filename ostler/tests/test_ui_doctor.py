@@ -189,7 +189,7 @@ def test_overlong_normative_bullet(repo: Path):
     assert finding.severity == "error"
     # Per bullet, not per key: a waiver has to name the one bullet, not silence `does:` book-wide.
     assert finding.path == "docs/features/groom/gui/screens/s.md"
-    assert finding.ref == f"{finding.path}#click#does"
+    assert finding.ref == f"{finding.path}#click#does:1"
 
 
 def test_a_short_normative_bullet_is_not_flagged(repo: Path):
@@ -398,8 +398,10 @@ def test_a_check_that_cannot_go_red_is_reported(repo: Path):
     # names the value the claim turns on, or it does not.
     assert finding.severity == "error"
     assert "passes on the default" in finding.message
-    assert "publish:returns:1" in finding.message
-    assert finding.ref == f"{finding.path}#publish#verify"
+    # The message and the ref are one string: naming the claim one way and addressing it
+    # another is how a repair turn ends up reading a sibling bullet.
+    assert "#publish#returns:1" in finding.message
+    assert finding.ref == f"{finding.path}#publish#returns:1"
 
 
 def test_a_success_status_naming_neither_route_nor_title_is_weak(repo: Path):
@@ -1139,7 +1141,7 @@ LINKED_REPORT_JSON = """\
       "line": 8,
       "message": "docs/features/groom/concepts/diff.md: link './diff.md#nope' — file exists but `#nope` heading not found",
       "path": "docs/features/groom/concepts/diff.md",
-      "ref": "./diff.md#nope",
+      "ref": "docs/features/groom/concepts/diff.md:8:./diff.md#nope",
       "related": [],
       "severity": "error",
       "suggestion": ""
@@ -1151,7 +1153,7 @@ LINKED_REPORT_JSON = """\
       "line": 12,
       "message": "docs/features/groom/gui/screens/changes-view.md: link './gone.md' target file does not exist",
       "path": "docs/features/groom/gui/screens/changes-view.md",
-      "ref": "./gone.md",
+      "ref": "docs/features/groom/gui/screens/changes-view.md:12:./gone.md",
       "related": [],
       "severity": "error",
       "suggestion": ""
@@ -1251,7 +1253,7 @@ def test_a_sibling_claims_strong_check_no_longer_answers_this_one(repo: Path):
           '- verify: json_path(path="$.revision", absent=false)\n')
     findings = [f for f in _run(repo).findings if f.code == "weak-check"]
     assert [f.message for f in findings] and all(
-        "publish:raises:1" in f.message for f in findings
+        "#publish#raises:1" in f.message for f in findings
     )
 
 
@@ -1280,3 +1282,67 @@ def test_the_finding_names_which_claim_when_siblings_share_the_key(repo: Path):
     assert "does:1" in finding.message, finding.message
     assert "surrounding whitespace" in finding.message, finding.message
     assert "trailing separator" not in finding.message, finding.message
+
+
+# ---------------------------------------------------------------------------
+# one finding, one remedy, one ref — the per-bullet index (`refs.bullet_ref`)
+#
+# Every code below fires per *bullet*, on a key a node may state many times. Without the
+# occurrence index the siblings arrive under one identical address, the okf-builder drain
+# collapses them into one worklist row with one three-attempt budget, and the repair turn
+# answers whichever sibling it happens to read. `scripts/check_finding_refs.py` enforces the
+# property over the real corpus; these pin the spelling and the message per code, so a reader
+# can tell which bullet a finding is about without opening the file.
+# ---------------------------------------------------------------------------
+def _node(repo: Path, body: str) -> Path:
+    """A concept with two sibling bullets under one key, at a stable path."""
+    path = repo / "docs/features/groom/concepts/publisher.md"
+    write(path, "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+                "## Methods\n\n### Publish\n" + body)
+    return path
+
+
+def _refs(repo: Path, code: str) -> list[str]:
+    return [f.ref for f in _run(repo).findings if f.code == code]
+
+
+NODE = "docs/features/groom/concepts/publisher.md#publish"
+
+
+def test_overlong_normative_bullet_names_which_bullet_is_too_long(repo: Path):
+    long = "the manifest is rewritten again " * 22
+    _node(repo, f"- does: collapses the manifest\n- does: {long}\n")
+    assert _refs(repo, "overlong-normative-bullet") == [f"{NODE}#does:2"]
+
+
+def test_relation_without_subject_names_which_bullet_lacks_one(repo: Path):
+    _node(repo, "- persistence: payout-record — the row is written before the reply\n"
+                "- persistence: the row is written before the reply\n")
+    findings = [f for f in _run(repo).findings if f.code == "relation-without-subject"]
+    # The subjectless bullet is the SECOND; a ref naming only `#persistence` would send the
+    # repair turn to the one that is already correct.
+    assert [f.ref for f in findings] == [f"{NODE}#persistence:2"]
+    assert "`persistence:2`" in findings[0].message
+
+
+def test_compound_normative_bullet_names_which_bullet_states_two(repo: Path):
+    _node(repo, "- does: collapses the manifest\n"
+                "- does: collapses the manifest and rejects a revision, and logs the reason\n")
+    assert _refs(repo, "compound-normative-bullet") == [f"{NODE}#does:2"]
+
+
+def test_unparsed_check_names_which_verify_failed(repo: Path):
+    _node(repo, "- does: collapses the manifest\n"
+                '- verify: json_path(path="$.state", equals="published")\n'
+                '- verify: json_path(path="$.order", equals=None)\n')
+    findings = [f for f in _run(repo).findings if f.code == "unparsed-check"]
+    assert [f.ref for f in findings] == [f"{NODE}#verify:2"]
+    # The value is quoted, so the message and the ref agree on which call is malformed.
+    assert "equals=None" in findings[0].message
+    assert "$.state" not in findings[0].message
+
+
+def test_known_defect_findings_name_which_defect_bullet(repo: Path):
+    _node(repo, "- does: collapses the manifest\n"
+                "- known-defect: not a defect declaration\n")
+    assert _refs(repo, "stale-defect") == [f"{NODE}#known-defect:1"]

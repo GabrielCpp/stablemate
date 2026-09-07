@@ -1,4 +1,8 @@
-"""The ``code:`` bullet's ref grammar, in one place.
+"""The ref grammars this package mints and reads, in one place.
+
+Two of them live here: the ``code:`` bullet's citation grammar, and the **anchor ref** a
+doctor finding carries as its address. The first is the reason the module exists and is
+described below; the second is :func:`bullet_ref`, whose contract is on the function.
 
 A ``code:`` bullet may cite **more than one target**, and books already write it that way::
 
@@ -39,6 +43,7 @@ book wins; a tool that cannot parse it is the defect.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -123,6 +128,55 @@ def code_refs(value: Any) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def bullet_ref(node_id: str, key: str, index: int | None = None) -> str:
+    """The address a finding names: a node, the bullet key, and *which* occurrence of it.
+
+    A node states ``does:``, ``verify:`` or ``returns:`` many times, so a ref naming only the
+    key addresses every one of them at once. Downstream that is not cosmetic: the okf-builder
+    drain keys a worklist row on the ref, so N distinct defects collapse into one row with one
+    three-attempt budget, and the repair turn reads whichever sibling it lands on, finds it
+    correct, and returns with the finding still standing. One finding, one remedy, one ref —
+    the same invariant ``competing-implementations`` states in :mod:`ostler.doctor`.
+
+    ``index`` is **1-based and counts occurrences of that key only**, which is exactly what
+    :func:`ostler.registry.normative_claims` returns and what ``qa context`` mints obligation
+    ids from. Emitting the same number here is what lets a doctor ref and an obligation id name
+    the same claim.
+
+    Pass ``index=None`` only when the finding genuinely is not about one bullet — the key is
+    absent, or the defect is that a single-valued key was stated twice. That is a decision to
+    write down at the call site, not a default to fall into.
+
+    The separator is ``#`` for the key and ``:`` for the index, so every anchor parser in this
+    package — which splits on the first ``#`` only — reads the node id unchanged.
+    """
+    anchor = f"{node_id}#{key}"
+    return anchor if index is None else f"{anchor}:{index}"
+
+
+def collision_ref(node_id: str, collision: Mapping[str, Any]) -> str:
+    """The address of *one collision a node takes part in*, not of the node.
+
+    ``ambiguous-locator`` is the finding with no bullet to index: one component collides once
+    per screen it is reached from, once per role, and once per template whose holes match its
+    name. Every one of those was emitted at ``ref=node_id``, so a node's several distinct
+    ambiguities arrived under one address and the repair turn could not tell which pair it was
+    sent to separate — the failure :func:`bullet_ref` describes, reached by a different route.
+
+    The identity of a collision is its ``(screen, role, name)`` group key **and its membership**.
+    The key alone is not enough: a templated name matches several static siblings, so one
+    ``{directory}`` template produces one record per partner, all under the same key. The
+    partners are named by their anchors, the way the finding's own message names them, so the
+    ref stays something a reader can act on rather than a digest.
+
+    A third ``#`` segment is safe here: every reader cuts the node id at the first ``#`` past
+    the path, and a colliding node is a ``component``, never a file node.
+    """
+    others = "+".join(sorted(o.rpartition("#")[2] for o in collision["nodes"] if o != node_id))
+    parts = [collision["screen"], collision["role"], collision["name"] or "", others]
+    return f"{node_id}#" + ":".join(parts)
+
+
 def ref_path(ref: str) -> str:
     """The file part of a normalized ``path::symbol`` ref (the whole ref when it has none)."""
     try:
@@ -133,7 +187,9 @@ def ref_path(ref: str) -> str:
 
 __all__ = [
     "CodeRef",
+    "bullet_ref",
     "code_refs",
+    "collision_ref",
     "normalize_ref",
     "parse_code_ref",
     "ref_path",

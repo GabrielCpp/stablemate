@@ -290,7 +290,8 @@ def _apply_known_defects(graph: Graph, findings: list[Finding]) -> None:
     stale: list[Finding] = []
     for node in graph.ui_nodes:
         rel = node.path.relative_to(graph.root).as_posix()
-        for value in _bullet_values(node.meta.get("known-defect", "")):
+        # Indexed: `known-defect:` repeats, and each bullet excuses a different finding.
+        for index, value in enumerate(_bullet_values(node.meta.get("known-defect", "")), 1):
             parsed = parse_known_defect(value)
             if parsed is None:
                 stale.append(Finding(
@@ -298,7 +299,7 @@ def _apply_known_defects(graph: Graph, findings: list[Finding]) -> None:
                     f"{node.id}: `known-defect: {value}` names no seed and finding code — "
                     f"the form is `<seed-id> <finding-code>`, and a bullet with neither "
                     f"excuses nothing",
-                    path=rel, line=node.line, ref=f"{node.id}#known-defect",
+                    path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, "known-defect", index),
                     suggestion="- known-defect: <seed-id> <finding-code>"))
                 continue
             seed_id, code = parsed
@@ -315,7 +316,7 @@ def _apply_known_defects(graph: Graph, findings: list[Finding]) -> None:
                     f"{node.id}: `known-defect: {seed_id} {code}` points at work that is not "
                     f"open — {why}; the finding it excused is back in this report. Fix the "
                     f"code under an active seed, or drop the bullet",
-                    path=rel, line=node.line, ref=f"{node.id}#known-defect",
+                    path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, "known-defect", index),
                     suggestion="- known-defect: <an active seed-id> " + code))
                 continue
             if not matched:
@@ -324,7 +325,7 @@ def _apply_known_defects(graph: Graph, findings: list[Finding]) -> None:
                     f"{node.id}: `known-defect: {seed_id} {code}` excuses a finding that no "
                     f"longer fires — the code was fixed, or the record was wrong; left in "
                     f"place it pre-excuses the next `{code}` on this node. Drop the bullet",
-                    path=rel, line=node.line, ref=f"{node.id}#known-defect",
+                    path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, "known-defect", index),
                     suggestion="delete the `known-defect:` bullet"))
                 continue
             suppressed.update(matched)
@@ -1120,7 +1121,9 @@ def _check_judgment(graph: Graph, f: list[Finding],
             f"{node.id}: `deprecates:` names a node but no `prefers:` or `rule:` says "
             f"what replaces it — a deprecation with no successor reads as \"delete "
             f"this\", which is usually wrong",
-            path=rel, line=node.line, ref=f"{node.id}#deprecates",
+            # No index: the defect is that the node states no successor at all —
+            # a whole-node property, not one `deprecates:` bullet's.
+            path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, "deprecates"),
             suggestion="- prefers: [<winning node>](<path>)   # or a `rule:` stating "
                        "when the deprecated one is still the right call"))
 
@@ -1136,7 +1139,8 @@ def _check_unspecified(graph: Graph, f: list[Finding],
     not a warn: the remedy is mechanical — cite what settled it, or delete the bullet.
     """
     for node in graph.ui_nodes:
-        for value in _bullet_values(node.meta.get("unspecified", "")):
+        # Indexed: a node may state several `unspecified:` bullets and only one be ungrounded.
+        for index, value in enumerate(_bullet_values(node.meta.get("unspecified", "")), 1):
             links = markdown.extract_refs(value).links
             grounded = any(
                 (target := resolver.resolve(node.path, href)) is not None and target.resolved
@@ -1149,10 +1153,11 @@ def _check_unspecified(graph: Graph, f: list[Finding],
                     else "it cites no record at all")
             f.append(Finding(
                 "error", "ungrounded-unspecified",
-                f"{node.id}: an `unspecified:` bullet claims the behaviour is resolved by "
-                f"design, but {what} — nothing distinguishes it from a gap someone "
-                f"decorated",
-                path=rel, line=node.line, ref=f"{node.id}#unspecified",
+                f"{node.id}: `unspecified:{index}` ({_prose(value).strip()}) claims the "
+                f"behaviour is resolved by design, but {what} — nothing distinguishes it "
+                f"from a gap someone decorated",
+                path=rel, line=node.line,
+                ref=refs_mod.bullet_ref(node.id, "unspecified", index),
                 suggestion="link the record that settled it — a decision doc, an "
                            "acceptance criterion, a stated convention; with nothing to "
                            "cite, delete the bullet"))
@@ -1743,7 +1748,10 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
                 f"{node_id}: role={collision['role']}{named} also matches "
                 + ", ".join(o.split("#")[-1] for o in collision["nodes"] if o != node_id)
                 + " on the same screen — `getByRole` cannot tell them apart",
-                ref=node_id,
+                # The ref names the *collision*, not the node: one component reached from
+                # several screens collides once per screen, and every one of those used to
+                # arrive at `ref=node_id`. See `refs.collision_ref`.
+                ref=refs_mod.collision_ref(node_id, collision),
                 suggestion="give each control a distinct accessible `name:`",
                 **_at(node_id)))
 
@@ -1840,16 +1848,18 @@ def _check_placement(node, rel: str, f: list[Finding]) -> None:
                 "error", "missing-placement",
                 f"{node.id}: role={role} carries the page but no `placement:` says where it "
                 f"sits — a role+name assertion passes on a component crushed into a sliver",
-                path=rel, line=node.line, ref=f"{node.id}#placement",
+                # No index: the bullet is absent, so the ref names the key to add.
+                path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, "placement"),
                 suggestion="- placement: width 60-100%, x 0-20%   (read off the running UI)"))
         return
-    for value in values:
+    for index, value in enumerate(values, 1):
         parsed = placement_mod.parse_placement(value)
         if isinstance(parsed, str):
             f.append(Finding(
                 "error", "malformed-placement",
-                f"{node.id}: `placement: {value}` is not a placement — {parsed}",
-                path=rel, line=node.line, ref=f"{node.id}#placement",
+                f"{node.id}: `placement:{index}` ({value}) is not a placement — {parsed}",
+                path=rel, line=node.line,
+                ref=refs_mod.bullet_ref(node.id, "placement", index),
                 suggestion="- placement: width 60-100%, x 0-20%"))
 
 
@@ -1897,7 +1907,9 @@ def _check_ui(graph: Graph, f: list[Finding],
                     f"{node.id}: `{key}:` is stated {len(node.meta[key])} times — a component "
                     f"has one {key}, so the node cannot say which it is; keep the bullet the "
                     f"source supports and drop the rest",
-                    path=rel, line=node.line, ref=f"{node.id}#{key}",
+                    # No index: the defect *is* that a single-valued key was stated N
+                    # times, so the finding is about the set, not one occurrence of it.
+                    path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, key),
                     suggestion=f"- {key}: <the one value the source renders>"))
 
         # A profile key on a type that does not declare it is inert: a `verify:` on a concept is
@@ -1921,19 +1933,28 @@ def _check_ui(graph: Graph, f: list[Finding],
                     f"inert — nothing orders it, grades it, grounds it or binds a `verify:` "
                     f"to it; move the claim under a key {node.type} mints from "
                     f"({minted or 'none — this type states no claims'}) or into prose",
-                    path=rel, line=node.line, ref=f"{node.id}#{key}"))
+                    # No index: an unknown key is inert in every one of its occurrences.
+                    path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, key)))
 
         normative = 0
         for key in registry.normative_keys(node.type):
-            for value in _bullet_values(node.meta.get(key, "")):
+            # `index` is the 1-based occurrence of *this key* — the number
+            # `registry.normative_claims` returns and `qa context` mints obligation ids from,
+            # so a ref here and an obligation id name the same claim. A node states `does:` a
+            # dozen times; without it every one of those bullets shares one address, the
+            # repair drain collapses them into one worklist row, and the turn reads whichever
+            # sibling it lands on. See `refs.bullet_ref`.
+            for index, value in enumerate(_bullet_values(node.meta.get(key, "")), 1):
                 normative += 1
                 length = len(_prose(value))
                 if length > MAX_NORMATIVE_PROSE:
                     f.append(Finding(
                         "error", "overlong-normative-bullet",
-                        f"{node.id}: `{key}:` runs {length} characters of prose — too much to "
-                        f"prove as one claim; split it into one bullet per provable claim",
-                        path=rel, line=node.line, ref=f"{node.id}#{key}"))
+                        f"{node.id}: `{key}:{index}` runs {length} characters of prose — "
+                        f"too much to prove as one claim; split it into one bullet per "
+                        f"provable claim",
+                        path=rel, line=node.line,
+                        ref=refs_mod.bullet_ref(node.id, key, index)))
                     continue
                 # A `warn`, alone among the UI checks, and for the reason the header states in
                 # reverse: there is no deterministic remedy. Splitting a bullet is authoring
@@ -1951,20 +1972,23 @@ def _check_ui(graph: Graph, f: list[Finding],
                 if key in RELATION_KEYS and relation_subject(value)[0] is None:
                     f.append(Finding(
                         "warn", "relation-without-subject",
-                        f"{node.id}: `{key}:` names no subject, so no other node can be found "
-                        f"to share it; lead with the record, event or lock it is about, as one "
-                        f"lowercase slug before a spaced em dash — "
-                        f"`- {key}: payout-record — {_prose(value)[:40]}…`",
-                        path=rel, line=node.line, ref=f"{node.id}#{key}"))
+                        f"{node.id}: `{key}:{index}` ({_prose(value)[:60]}) names no "
+                        f"subject, so no other node can be found to share it; lead with the "
+                        f"record, event or lock it is about, as one lowercase slug before a "
+                        f"spaced em dash — `- {key}: payout-record — {_prose(value)[:40]}…`",
+                        path=rel, line=node.line,
+                        ref=refs_mod.bullet_ref(node.id, key, index)))
                 reasons = _split_signals(value)
                 if reasons:
                     f.append(Finding(
                         "warn", "compound-normative-bullet",
-                        f"{node.id}: `{key}:` states more than one observation — "
-                        f"{'; '.join(reasons)}. One bullet is one obligation and is proved by "
-                        f"one scenario, so the clauses that share it are covered by whichever "
-                        f"one the planner read; split it into one bullet per observation",
-                        path=rel, line=node.line, ref=f"{node.id}#{key}"))
+                        f"{node.id}: `{key}:{index}` ({_prose(value)[:60]}) states more "
+                        f"than one observation — {'; '.join(reasons)}. One bullet is one "
+                        f"obligation and is proved by one scenario, so the clauses that share "
+                        f"it are covered by whichever one the planner read; split it into one "
+                        f"bullet per observation",
+                        path=rel, line=node.line,
+                        ref=refs_mod.bullet_ref(node.id, key, index)))
 
         # The other half of `undeclared-obligation`: a node that mints nothing at all, yet one
         # of its bullets reads like a claim — a status code, an error name, a lifecycle verb, a
@@ -1998,13 +2022,19 @@ def _check_ui(graph: Graph, f: list[Finding],
                     f"{node.id}: `{key}:` reads like a claim ({signal}) but {node.type} mints no "
                     f"obligation from it — nothing will ask a QA plan to prove it; move it under "
                     f"a normative key ({minted}) or into prose",
-                    path=rel, line=node.line, ref=f"{node.id}#{key}"))
+                    # No index: the `break` below makes this deliberately one finding per
+                    # node — the remedy is a decision about the node's vocabulary, not a
+                    # rewrite of one bullet.
+                    path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, key)))
                 break
 
         check_keys = registry.check_keys(node.type)
         declared = 0
         for key in check_keys:
-            for value in _bullet_values(node.meta.get(key, "")):
+            # Indexed for `refs.bullet_ref`'s reason, and acutely here: `verify:` is the
+            # most-repeated key in a real book — one node in this repo carries twelve
+            # unparseable ones, which without an index arrive as twelve copies of one address.
+            for index, value in enumerate(_bullet_values(node.meta.get(key, "")), 1):
                 # Counted before it is parsed: a node that declared and got the call wrong is
                 # already told so by `unparsed-check`, and telling it twice buys the author
                 # nothing and costs a second thing to waive.
@@ -2013,8 +2043,9 @@ def _check_ui(graph: Graph, f: list[Finding],
                 if isinstance(parsed, str):
                     f.append(Finding(
                         "error", "unparsed-check",
-                        f"{node.id}: `{key}:` {parsed}",
-                        path=rel, line=node.line, ref=f"{node.id}#{key}",
+                        f"{node.id}: `{key}:{index}` ({value}) {parsed}",
+                        path=rel, line=node.line,
+                        ref=refs_mod.bullet_ref(node.id, key, index),
                         # The failing check's own signature, never a canned example: an author
                         # shown `http_status(code=…)` after mis-calling `absent` learns nothing
                         # about `absent`, and guesses again on the next lap.
@@ -2040,8 +2071,11 @@ def _check_ui(graph: Graph, f: list[Finding],
         # `unstated-precondition` asks whether they read the change or only its aftermath.
         calls_by_claim = {ck: _calls(values) for ck, values in claim_checks.items()}
 
-        claims = [(f"{node.id}:contract", contract_calls)]
-        claims += [(f"{node.id}:{key}:{index}", calls_by_claim[(key, index)])
+        # The claim id and the ref are one string: this used to name the claim in the message
+        # and then throw the index away in the ref, so every weak claim on a node arrived under
+        # the same address and the repair turn could not tell which one it was sent for.
+        claims = [(refs_mod.bullet_ref(node.id, "contract"), contract_calls)]
+        claims += [(refs_mod.bullet_ref(node.id, key, index), calls_by_claim[(key, index)])
                    for (key, index) in claim_checks]
         for claim, calls in claims:
             stamps = [_rubber_stamp(call) for call in calls]
@@ -2050,7 +2084,7 @@ def _check_ui(graph: Graph, f: list[Finding],
                     "error", "weak-check",
                     f"{claim}: every check declared for this claim passes on the defect it is "
                     f"meant to catch — {stamps[0]}",
-                    path=rel, line=node.line, ref=f"{node.id}#{verify_key}",
+                    path=rel, line=node.line, ref=claim,
                     suggestion=f'- {verify_key}: json_path(path="…", equals="…")'))
 
         # A prose-driven heuristic, `warn` for `compound-normative-bullet`'s reason — the
@@ -2090,7 +2124,8 @@ def _check_ui(graph: Graph, f: list[Finding],
                 f"only the state afterwards — which is the same state a no-op leaves when "
                 f"the subject was already there. Declare the change as a change, so the "
                 f"before-read is part of the observation rather than an assumption",
-                path=rel, line=node.line, ref=f"{node.id}#{key}:{index}",
+                path=rel, line=node.line,
+                ref=refs_mod.bullet_ref(node.id, key, index),
                 suggestion=f'- {verify_key}: created(subject="…")   # or: removed'))
             # One per node, as before: a node whose claims all read the aftermath has one
             # thing wrong with it, and N copies of that sentence is N waivers to write.
@@ -2117,7 +2152,9 @@ def _check_ui(graph: Graph, f: list[Finding],
                 f"`{check_keys[0]}:` — nothing says what observing them looks like, so a QA plan "
                 f"claiming them can assert anything and still pass; declare a check per "
                 f"observation (`ostler checks` lists the vocabulary and its signatures)",
-                path=rel, line=node.line, ref=f"{node.id}#{check_keys[0]}",
+                # No index: no check bullet exists, so the ref names the key to add.
+                path=rel, line=node.line,
+                ref=refs_mod.bullet_ref(node.id, check_keys[0]),
                 # Nothing was declared, so there is no attempted name to echo back — but an
                 # example is one check out of ten, and the author has to pick from all of them.
                 suggestion=f'- {check_keys[0]}: http_status(code=409, title="Conflict")'
@@ -2152,19 +2189,23 @@ def _check_ui(graph: Graph, f: list[Finding],
                 target = resolver.resolve(path, href)
                 if target is None or target.resolved:
                     continue
+                # The ref carries the citing location, not the bare href. Link validation is
+                # document-wide, so one broken href cited from three files produced three
+                # findings at one address — and the fix is in a different file each time.
+                ref = f"{rel}:{line}:{href}"
                 rkey = relation_hrefs.get((str(path), href))
                 if rkey:
                     f.append(Finding("error", "unresolved-relation",
                                      f"{rel}: `{rkey}:` target '{href}' does not resolve",
-                                     path=rel, line=line, ref=href, fixable=True))
+                                     path=rel, line=line, ref=ref, fixable=True))
                 elif not target.file_exists:
                     f.append(Finding("error", "dangling-link",
                                      f"{rel}: link '{href}' target file does not exist",
-                                     path=rel, line=line, ref=href, fixable=True))
+                                     path=rel, line=line, ref=ref, fixable=True))
                 else:
                     f.append(Finding("error", "missing-anchor",
                                      f"{rel}: link '{href}' — file exists but `#{target.anchor}` "
-                                     f"heading not found", path=rel, line=line, ref=href,
+                                     f"heading not found", path=rel, line=line, ref=ref,
                                      fixable=True))
 
 
