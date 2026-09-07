@@ -49,14 +49,28 @@ protocol change, and spends its science budget on a `ModuleNotFoundError`.
 
 | persona | power | owns |
 | --- | --- | --- |
-| **scientist** (`design-experiment`) | `smart` | the protocol, the declared resources, the calibration probe, and every *scientific* rework |
+| **scientist** (`design-experiment`) | `max` | the protocol, the declared resources, the calibration probe, and every *scientific* rework |
 | **engineer** (`build-experiment`, `triage-overrun`) | `high` | whether it runs: the code, the argv handoff, the n=1 dry run, crash repair, overrun triage |
-| **lead** (`gate-check`, `research-lead-review`, `lead-goal-review`) | `extra-smart` | verdicts on artifacts, whether a kill was sound, and the program's direction |
+| **lead** (`gate-check`, `research-lead-review`, `program-review`, `program-recharter`, `lead-goal-review`) | `ultra` | verdicts on artifacts, whether a kill was sound, whether the *program* is circling, and its direction |
 
 `gate-check` and `research-lead-review` are separate reviews of separate questions: the
 first judges one artifact against one gate's thresholds, the second judges whether the
-*gate* is still worth pursuing. `lead-goal-review` is a third node again, and it is the
-only one that can end the program.
+*gate* is still worth pursuing. `program-review` is a third question again — is the
+*program* still worth pursuing on this target, with this eval — and it is asked before
+the gate question at every kill and every escalation, before every revival, and
+periodically from `start`. `lead-goal-review` closes an exhausted ladder.
+
+The program lead never reads the repository. It reads a **dossier** the loop computes
+with no model call (`nodes/dossier.py`): the README's frozen target, every dated point
+of that metric with its per-seed spread, the effect the target requires against that
+spread (*resolvability*, the number a circling program never has), kills, reopenings,
+apparatus cycles, code churn per gate, pending results, and the circling triggers those
+imply. The lead can then say `continue`, order a cheap decisive `probe_first`, have a
+finished run re-scored from its cache, `recharter` the target or eval, `bank` what is
+already shippable, or `stop_negative`. `operator` is reserved for a fact no agent can
+produce. A re-charter is applied in place by `program-recharter` under the same folder
+contract as a new direction, and the loop **checks the new target's resolvability in
+code** before taking it: an unresolvable target goes back to the lead once, then parks.
 
 ---
 
@@ -78,8 +92,16 @@ start (select gate)
   └─▶ check     [lead]          artifact vs thresholds — never re-runs the measurement
         ├─ approved ▶ record_pass ▶ start
         ├─ rework   ▶ design  (×2 → lead review)
-        └─ killed   ▶ lead_review ─┬─ revive         (autonomous)
-                                   └─ new_direction  ▶ Await(operator)
+        └─ killed   ▶ program_review [lead, on the computed dossier]
+                        ├─ continue      ▶ lead_review ─┬─ revive        ▶ program_review ▶ revive
+                        │                               └─ new_direction ▶ resolvable? ▶ start
+                        │                                                   else ▶ recharter
+                        ├─ probe_first / score_from_cache / recharter ▶ recharter ▶ start
+                        ├─ bank / stop_negative ▶ record_goal
+                        └─ operator ▶ Await(operator)
+
+periodic: every PROGRAM_REVIEW_EVERY gates, or when the dossier's circling fingerprint
+changes, `start` runs program_review first (the same fingerprint never asks twice).
 ```
 
 **No arm ends in `WorkflowFailed`.** Every exhausted budget is an `Await` or an escalation
@@ -157,9 +179,16 @@ Flat keys, read by `load_program`:
 A design over the envelope is rescoped **by the workflow's own arithmetic**, before
 anything is built — never by a person, and never by launching it and finding out.
 
-`ledger.yml`, beside it, is the program's spend: `extensions`, `lead_reviews` and
-`status`. It is written by `record_spend` and read by the *next* run, which is what makes
-the caps bound a program rather than bound one run.
+`ledger.yml`, beside it, is the program's spend: `extensions`, `lead_reviews`,
+`program_reviews`, `recharters` and `status`. It is written by `record_spend` and read by
+the *next* run, which is what makes the caps bound a program rather than bound one run.
+
+`history.jsonl`, also beside it, is the loop's own record of what it did — one JSON line
+per event (`gate_selected`, `pass`, `kill`, `rework`, `build_fix`, `lead_review`,
+`revive`, `program_review`, `recharter`, `probe_ordered`, `goal`, …) with the gate, the
+date and, for program reviews, the dossier fingerprint that was judged. The dossier is
+built from it rather than from PROGRESS prose; a program that predates the file gets it
+bootstrapped once from PROGRESS's dated headings (`source: bootstrap`).
 
 ---
 
@@ -175,6 +204,10 @@ question upward, and the run stays resumable.
 | `MAX_RESCOPES` | 2 | → lead review (`max_rescopes`) |
 | `MAX_LEAD_REVIEWS` | 4 | → operator `Await`; answering grants exactly one more |
 | `MAX_EXTENSIONS` | 6 | → operator `Await`; answering grants exactly one more |
+| `MAX_PROGRAM_REVIEWS` | 8 | → operator `Await`; answering grants exactly one more |
+| `MAX_RECHARTERS` | 2 | → operator `Await` with the proposed target |
+| `MAX_RECHARTER_FIXES` | 1 | an unresolvable re-charter is sent back once, then parks |
+| `PROGRAM_REVIEW_EVERY` | 3 | gates between periodic program reviews |
 | overrun triage | unbounded | — |
 
 The counters travel as one frozen `Budget` in the state parameters, so a checkpoint carries

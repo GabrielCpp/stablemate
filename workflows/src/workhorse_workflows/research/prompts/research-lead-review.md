@@ -22,6 +22,19 @@ Killed gate: `{{ gate_id }}`
 Gate doc: `{{ gate_doc_path }}`
 Gate-check failures (if from this run): `{{ failed_criteria | default('(not available — kill detected at gate selection)') }}`
 Reviewer notes: `{{ notes | default('(none)') }}`
+{% if escalation %}Escalation: `{{ escalation }}` (a repair budget ran out; this kill is
+the loop giving up on the apparatus, not a measured refutation — weigh that.){% endif %}
+
+## The program dossier (computed, no model in the loop)
+
+The program review has already judged the program as a whole on the dossier below and
+chose to let this gate-level review run. Program verdicts — bank, stop, re-charter,
+probe first — are **not your job here**; yours is the one question under it. Use the
+dossier for what it is good for: how many times this gate has already been killed and
+revived, whether its metric is inside seed noise, what results the record still owes.
+Do not recompute it.
+
+{{ dossier | default('(no dossier available)') }}
 
 ## The single question you must answer
 
@@ -68,7 +81,9 @@ That kill was withdrawn.)
 
 Be concrete and skeptical. Defaulting to `revive` to avoid hard negative results
 is itself a NEVER-listed shortcut — only revive when the apparatus is genuinely at
-fault. Do not edit any files here; you only judge and route.
+fault. A revival is also **reviewed again** by the program review before it goes
+ahead: if the dossier shows this gate already revived twice with the same eval, say
+so in `evidence` rather than leaving the next review to find it. Do not edit any files here; you only judge and route.
 
 ## Output (JSON only)
 

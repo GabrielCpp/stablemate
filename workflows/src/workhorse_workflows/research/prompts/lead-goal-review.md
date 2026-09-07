@@ -20,6 +20,14 @@ Progress log: `{{ progress_path }}`
 Code root: `{{ code_root }}`
 Extensions spent: **{{ extensions_spent | default(0) }} of {{ extensions_max | default(6) }}**
 
+## The program dossier (computed, no model in the loop)
+
+The frozen target as numbers, every dated observation of its metric, the required
+effect against the seed noise of the eval, and the circling triggers that fired. This
+is the series condition 2 below is decided on; do not recompute it.
+
+{{ dossier | default('(no dossier available)') }}
+
 ## The single question
 
 **Has the North star been reached — and if not, is the strongest result already worth
@@ -73,10 +81,11 @@ state each in the output:
    the passed ladder has produced* — a real target replacing a proxy, a load-bearing
    assumption removed, a held-out population, the missing baseline. "The same
    experiment, bigger/longer/better-tuned" is not a new evidence class.
-2. **The gap is measurably closing.** Compare the frozen metric across the program's
-   extensions so far. If the number has not moved materially toward the threshold
-   across the last two extensions, `extend` is **forbidden** — that is the signature of
-   a program circling, and the honest verdicts are `banked` or `impossible`.
+2. **The gap is measurably closing.** Read the dossier's metric series. If its best
+   value has not moved toward the threshold across the last two extensions, or the
+   dossier's resolvability line says the required effect is inside seed noise
+   (`NOT resolvable`), `extend` is **forbidden** — that is the signature of a program
+   circling, and the honest verdicts are `banked` or `impossible`.
 3. **Nothing shippable is being deferred.** If the strongest current result would be
    banked by the standard above, bank it. A shippable result withheld pending a gate
    that might improve it is a result nobody ever sees.
@@ -97,9 +106,8 @@ files here — judge and route only.
    `{{ progress_path }}`, every gate's Result slot, and every finding under
    `{{ program_dir }}/findings/`. Re-derive what has *actually* been demonstrated on
    held-out data — do not trust summaries.
-2. Write the frozen metric's value for each of the program's strongest results, in
-   order, against the frozen threshold. That series is what decides whether the gap is
-   closing.
+2. Take the frozen metric's series from the dossier (add any strongest result it
+   missed, with its date). That series is what decides whether the gap is closing.
 3. State the gap between the strongest passed result and the frozen threshold in one
    sentence. Name what is still a proxy, assumed, untested, or unscaled.
 4. Decide the verdict:

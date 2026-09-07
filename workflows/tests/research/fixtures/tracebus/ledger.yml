@@ -1,0 +1,9 @@
+# Written by the research loop; read at the top of every run.
+#
+# These counters are program-scoped, not run-scoped: they are what makes
+# MAX_EXTENSIONS / MAX_LEAD_REVIEWS bound the *program* rather than one invocation of
+# it. Delete this file to reset the program's budget; set `status: active` to
+# re-authorize a concluded one (or pass --params '{"reauthorize": true}' once).
+status: active
+extensions: 0
+lead_reviews: 6

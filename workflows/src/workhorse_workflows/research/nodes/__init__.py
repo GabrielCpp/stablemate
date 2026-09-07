@@ -10,6 +10,10 @@ name `workflow.py` needs from here. The submodules are the subjects, one each:
   with no model calls (`check_envelope`, `submit_job`, `dry_run`, `watch_job`,
   `collect_job`, `kill_job`)
 * `publish` — get the gate's work off this machine (`publish_results`)
+* `dossier` — what a program-level review is judged on, computed from the program
+  folder with no model calls (`build_dossier`)
+* `history` — the loop's own record of what it decided, one JSON line per event
+  (`append_history`)
 
 Ported from `base-library/workflows/research/scripts/{setup,load_config,publish}.py`.
 Three things change and nothing else does:
@@ -31,6 +35,8 @@ land in the checkpoint. See the rule in `workflows/README.md`.
 from __future__ import annotations
 
 from workhorse_workflows.research.nodes._blueprint import blueprint
+from workhorse_workflows.research.nodes.dossier import build_dossier
+from workhorse_workflows.research.nodes.history import append_history
 from workhorse_workflows.research.nodes.measure import (
     check_envelope,
     classify_fault,
@@ -46,7 +52,9 @@ from workhorse_workflows.research.nodes.publish import publish_results
 from workhorse_workflows.research.nodes.setup import clone_repo
 
 __all__ = [
+    "append_history",
     "blueprint",
+    "build_dossier",
     "check_envelope",
     "classify_fault",
     "clone_repo",

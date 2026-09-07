@@ -1,0 +1,39 @@
+{
+ "controls": [
+  "scratch",
+  "random",
+  "shuffled",
+  "same_param"
+ ],
+ "metrics": {
+  "all_losses_decreased": 1.0,
+  "all_zero_weight_checks_passed": 0.0,
+  "completion_fraction": 1.0,
+  "corrective_median_wall_s": 32.578339292886085,
+  "corrective_over_random_mean_delta": 0.43265306122448977,
+  "corrective_over_random_p": 0.03125,
+  "corrective_over_shuffled_mean_delta": 0.3836734693877551,
+  "corrective_over_shuffled_p": 0.03125,
+  "corrective_primary_regressions": 0.0,
+  "corrective_primary_resolve": 0.564625850340136,
+  "corrective_primary_resolved_total": 83.0,
+  "grammar_leak_flag": 1.0,
+  "lookup_flag": 0.0,
+  "max_retention_ratio": 1.2260841307545827,
+  "oracle_route_flag": 0.0,
+  "parameter_counts_valid": 1.0,
+  "repair_flag": 0.0,
+  "same_param_data_cv": 0.25965216951151104,
+  "same_param_steps_cv": 0.17496355305594127
+ },
+ "n_completed": 7278,
+ "n_planned": 7278,
+ "seeds": [
+  0,
+  1,
+  2,
+  3,
+  4
+ ],
+ "status": "ok"
+}

@@ -186,6 +186,8 @@ def read_ledger(path: Path) -> Ledger:
         path=str(path),
         extensions=count("extensions"),
         lead_reviews=count("lead_reviews"),
+        program_reviews=count("program_reviews"),
+        recharters=count("recharters"),
         status=cfg.get("status") or "active",
     )
 
@@ -198,6 +200,8 @@ def record_spend(
     extensions: int = 0,
     lead_reviews: int = 0,
     status: str = "active",
+    program_reviews: int = 0,
+    recharters: int = 0,
 ) -> Ledger:
     """Write the program's spend back to its ledger, for the next run to read.
 
@@ -211,13 +215,21 @@ def record_spend(
         f"{LEDGER_HEADER}status: {status}\n"
         f"extensions: {extensions}\n"
         f"lead_reviews: {lead_reviews}\n"
+        f"program_reviews: {program_reviews}\n"
+        f"recharters: {recharters}\n"
     )
     logger.info(
-        "ledger %s: status=%s extensions=%d lead_reviews=%d",
-        path, status, extensions, lead_reviews,
+        "ledger %s: status=%s extensions=%d lead_reviews=%d program_reviews=%d "
+        "recharters=%d",
+        path, status, extensions, lead_reviews, program_reviews, recharters,
     )
     return Ledger(
-        path=str(path), extensions=extensions, lead_reviews=lead_reviews, status=status
+        path=str(path),
+        extensions=extensions,
+        lead_reviews=lead_reviews,
+        program_reviews=program_reviews,
+        recharters=recharters,
+        status=status,
     )
 
 
@@ -334,6 +346,8 @@ def load_program(
         envelope_disk_gb=_int(cfg, "envelope_disk_gb"),
         extensions_spent=ledger.extensions,
         lead_reviews_spent=ledger.lead_reviews,
+        program_reviews_spent=ledger.program_reviews,
+        recharters_spent=ledger.recharters,
         # Reauthorizing does not un-conclude the program on disk; the loop writes the
         # status back itself on the arm that spends. Carrying `active` here keeps the
         # in-run reading of `self.ctx.status` about *this* run.

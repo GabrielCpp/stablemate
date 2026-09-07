@@ -222,6 +222,7 @@ class _Run:
         self.checkpoints: list[dict[str, Any]] = fields["checkpoints"]
         self.branches: list[str] = fields["branches"]
         self.ledger: str = fields["ledger"]
+        self.history: list[dict[str, Any]] = fields.get("history", [])
 
     @property
     def blocked_text(self) -> str:
@@ -263,6 +264,7 @@ def _drive(
     ledger: str = "",
     caps: dict[str, int] | None = None,
     answer: str = "",
+    readme: str = "",
     **inputs: Any,
 ) -> _Run:
     """Drive `Research` against a real repo until it terminates, parks, or halts.
@@ -300,6 +302,8 @@ def _drive(
         repo = _program_repo(root)
         if ledger:
             (repo / PROGRAM_DIR / "ledger.yml").write_text(ledger)
+        if readme:
+            (repo / PROGRAM_DIR / "README.md").write_text(readme)
         agent = _Agent(script)
         nodes = nodes or _Nodes()
         result: Any = None
@@ -322,6 +326,12 @@ def _drive(
             except WorkflowFailed as exc:
                 error = exc
         ledger_file = repo / PROGRAM_DIR / "ledger.yml"
+        history_file = repo / PROGRAM_DIR / "history.jsonl"
+        history = (
+            [json.loads(line) for line in history_file.read_text().splitlines() if line]
+            if history_file.exists()
+            else []
+        )
         return _Run(
             result=result,
             error=error,
@@ -332,6 +342,7 @@ def _drive(
             checkpoints=checkpoints,
             branches=_branches(repo),
             ledger=ledger_file.read_text() if ledger_file.exists() else "",
+            history=history,
         )
 
 
@@ -365,6 +376,11 @@ GATE = {
     "build-experiment": [{"status": "ok", "command": ["python", "run.py"]}],
     "record-result": [{"status": "ok", "outcome": "PASS"}],
     "lead-goal-review": [{"verdict": "reached"}],
+    # The program lead waves the gate-level question through: a fresh program has no
+    # circling to find, and every kill and escalation passes here before the lead.
+    "program-review": [{"verdict": "continue"}],
+    # A re-charter turn that writes no target: whatever asked for it parks for cause.
+    "program-recharter": [{"status": "written"}],
 }
 
 
@@ -924,17 +940,36 @@ def test_a_pre_existing_kill_reaches_the_lead_rather_than_dying():
     assert isinstance(outcome.result, RecordResult), outcome.result
 
 
-def test_a_new_direction_always_reaches_a_person_and_is_published_first():
-    """Not because anything failed. A new direction discards a ladder somebody chose,
-    which is precisely the decision nobody wants to find out about on Monday — and the
-    work is already written and committed when the block lands, so answering costs a
-    read rather than a re-run."""
+KILLED = {
+    "select-next-gate": [{"gate_id": "G1", "gate_doc_path": "g.md", "program_killed": True}],
+}
+
+#: A frozen target the in-code check accepts: 20 tasks of 400 at a 0.5 baseline is
+#: 0.05 against a pooled SE of 0.025 — two SE, exactly the floor.
+RESOLVABLE_README = (
+    "# Alpha\n\n## North star\n\n"
+    "| Field | Value |\n|---|---|\n"
+    "| Metric | resolved |\n| Dataset | bench (n=400) |\n"
+    "| Threshold | >= 220/400 |\n| Baseline | 200/400 |\n"
+    "| Seeds | {0, 1, 2} |\n| Deadline | 2027-01-01 |\n\n"
+    "## Frozen target\n\n"
+    "| Field | Value |\n|---|---|\n"
+    "| Metric | resolved |\n| Dataset | bench (n=400) |\n"
+    "| Threshold | >= 220/400 |\n| Baseline | 200/400 |\n"
+    "| Seeds | {0, 1, 2} |\n| Deadline | 2027-01-01 |\n"
+)
+
+
+def test_a_new_direction_is_checked_in_code_and_parks_only_when_its_target_cannot_resolve():
+    """The arm that always reached a person now reaches one only for cause. The lead
+    wrote a new ladder whose README has no resolvable frozen target; the loop reads the
+    README back, computes that, hands the exact statement to the re-charter turn once,
+    and parks with it when the second attempt is no better. The work is committed
+    before the block lands."""
     outcome = _parking(
         _script(
+            **KILLED,
             **{
-                "select-next-gate": [
-                    {"gate_id": "G1", "gate_doc_path": "g.md", "program_killed": True}
-                ],
                 "research-lead-review": [{"verdict": "new_direction"}],
                 "define-new-direction": [
                     {
@@ -944,13 +979,355 @@ def test_a_new_direction_always_reaches_a_person_and_is_published_first():
                         "new_gates": ["H1", "H2"],
                     }
                 ],
+                "program-recharter": [{"status": "written"}],
+            },
+        )
+    )
+
+    counts = outcome.agent.counts()
+    assert counts["program-review"] == 1, counts
+    assert counts["define-new-direction"] == 1, counts
+    assert counts["program-recharter"] == 2, counts
+    first, second = outcome.agent.args_for("program-recharter")
+    assert "Frozen target" in first["resolvability_failure"], first
+    assert "sparse routing" in first["review"]["reason"], first
+    assert second["resolvability_failure"], second
+    assert "not resolvable after 2 attempts" in outcome.blocked_text, outcome.blocked_text
+    assert "alpha/auto" in outcome.branches, outcome.branches
+    events = [h["event"] for h in outcome.history]
+    assert events.count("recharter") == 2, events
+    assert "new_direction" in events, events
+
+
+def test_a_new_direction_with_a_resolvable_target_starts_with_nobody_in_the_loop():
+    """The other half: the lead's new README carries a target the eval can resolve, the
+    in-code check passes, and the loop takes the new ladder at once."""
+
+    def writes_readme(kw: dict[str, Any]) -> Any:
+        return None
+
+    outcome = _run(
+        _script(
+            **{
+                "select-next-gate": [
+                    {"gate_id": "G1", "gate_doc_path": "g.md", "program_killed": True},
+                    {"gate_id": "none"},
+                ],
+                "research-lead-review": [{"verdict": "new_direction"}],
+                "define-new-direction": [{"status": "ok", "direction_name": "routing"}],
+            }
+        ),
+        readme=RESOLVABLE_README,
+    )
+
+    counts = outcome.agent.counts()
+    assert counts["program-recharter"] == 0, counts
+    assert isinstance(outcome.result, RecordResult), outcome.result
+
+
+# ---------------------------------------------------------- the program lead
+
+
+def test_a_kill_reaches_the_program_lead_before_the_gate_lead():
+    """The program-level question is asked first, on computed evidence: the dossier is
+    built with no model call and rendered into the review, and the gate lead sees the
+    same dossier when the program lead waves the kill through."""
+    outcome = _run(
+        _script(
+            **{
+                "select-next-gate": [
+                    {"gate_id": "G1", "gate_doc_path": "g.md"},
+                    {"gate_id": "none"},
+                ],
+                "gate-check": [{"status": "killed", "notes": "below threshold"}],
+                "research-lead-review": [{"verdict": "revive"}],
+                "revive-gate": [{"status": "ok"}],
             }
         )
     )
 
-    assert "sparse routing" in outcome.blocked_text, outcome.blocked_text
-    assert "H1, H2" in outcome.blocked_text, outcome.blocked_text
-    assert "alpha/auto" in outcome.branches, outcome.branches
+    calls = outcome.agent.calls
+    assert calls.index("program-review") < calls.index("research-lead-review"), calls
+    review = outcome.agent.args_for("program-review")[0]
+    assert review["origin"] == "kill", review
+    assert "Frozen target" in review["dossier"], review["dossier"]
+    assert review["program_reviews_max"] == research.MAX_PROGRAM_REVIEWS, review
+    lead = outcome.agent.args_for("research-lead-review")[0]
+    assert lead["dossier"] == review["dossier"]
+    # A revival is reviewed again before it acts.
+    assert outcome.agent.counts()["program-review"] == 2, outcome.agent.counts()
+    assert outcome.agent.args_for("program-review")[1]["origin"] == "revive"
+    assert "program_reviews: 2" in outcome.ledger, outcome.ledger
+    events = [h["event"] for h in outcome.history]
+    assert events.count("program_review") == 2, events
+    assert "kill" in events and "revive" in events, events
+
+
+def test_the_program_lead_can_bank_a_killed_program_from_the_kill():
+    """`bank` is reachable from a kill, not only from an exhausted ladder — which is
+    where a circling program never arrives."""
+    outcome = _run(
+        _script(
+            **KILLED,
+            **{
+                "program-review": [{"verdict": "bank", "reason": "83/147 is shippable"}],
+            },
+        )
+    )
+
+    assert "status: banked" in outcome.ledger, outcome.ledger
+    forced = outcome.agent.args_for("record-result")[0]
+    assert forced["forced_outcome"] == research.GOAL_BANKED, forced
+    assert outcome.agent.counts()["research-lead-review"] == 0
+
+
+def test_a_stop_negative_verdict_records_the_program_impossible():
+    outcome = _run(
+        _script(**KILLED, **{"program-review": [{"verdict": "stop_negative"}]})
+    )
+
+    assert "status: impossible" in outcome.ledger, outcome.ledger
+    assert [h["event"] for h in outcome.history][-1] == "goal"
+
+
+def test_a_probe_order_is_written_and_the_ladder_is_read_again():
+    """`probe_first` orders one cheap decisive measurement: the re-charter turn writes
+    it, nothing is re-run, and `start` picks the ladder up with the probe on top. A probe
+    is not a re-charter, so it does not spend that budget."""
+    outcome = _run(
+        _script(
+            **{
+                "select-next-gate": [
+                    {"gate_id": "G1", "gate_doc_path": "g.md", "program_killed": True},
+                    {"gate_id": "none"},
+                ],
+                "program-review": [
+                    {
+                        "verdict": "probe_first",
+                        "reason": "parents are mode-collapsed",
+                        "probe": {"gate_id": "P1", "question": "is base sharper?"},
+                    },
+                    {"verdict": "continue"},
+                ],
+                "program-recharter": [{"status": "written", "probe_doc_path": "P1.md"}],
+            }
+        )
+    )
+
+    calls = outcome.agent.calls
+    i = calls.index("program-recharter")
+    assert calls[i - 1] == "program-review" and calls[i + 1] == "select-next-gate", calls
+    args = outcome.agent.args_for("program-recharter")[0]
+    assert args["review"]["probe"]["gate_id"] == "P1", args
+    assert args["gate_template"].endswith("gate.md"), args
+    assert "recharters: 0" in outcome.ledger, outcome.ledger
+    probe = [h for h in outcome.history if h["event"] == "probe_ordered"]
+    assert probe and probe[0]["gate_id"] == "P1", outcome.history
+
+
+def test_a_recharter_is_checked_in_code_and_spends_its_own_budget():
+    """The lead's `why_resolvable` is prose and is never trusted: the written numbers
+    are read back and the effect is compared to seed noise. A target that clears it
+    starts; the ledger counts the re-charter."""
+    outcome = _run(
+        _script(
+            **{
+                "select-next-gate": [
+                    {"gate_id": "G1", "gate_doc_path": "g.md", "program_killed": True},
+                    {"gate_id": "none"},
+                ],
+                "program-review": [
+                    {"verdict": "recharter", "reason": "1.7 SE cannot be told"},
+                    {"verdict": "continue"},
+                ],
+                "program-recharter": [
+                    {
+                        "status": "written",
+                        "new_target": {
+                            "metric": "resolved",
+                            "threshold": ">= 220/400",
+                            "threshold_count": 220,
+                            "n": 400,
+                            "baseline_count": 200,
+                            "seeds": [0, 1, 2],
+                            "why_resolvable": "2 SE",
+                        },
+                    }
+                ],
+            }
+        )
+    )
+
+    assert outcome.agent.counts()["program-recharter"] == 1, outcome.agent.counts()
+    assert "recharters: 1" in outcome.ledger, outcome.ledger
+    assert [h for h in outcome.history if h["event"] == "recharter"], outcome.history
+
+
+def test_a_recharter_whose_numbers_do_not_clear_seed_noise_is_retried_once_then_parked():
+    outcome = _parking(
+        _script(
+            **KILLED,
+            **{
+                "program-review": [{"verdict": "recharter", "reason": "too noisy"}],
+                "program-recharter": [
+                    {
+                        "status": "written",
+                        "new_target": {
+                            "metric": "resolved",
+                            "threshold_count": 93,
+                            "n": 147,
+                            "baseline_count": 83,
+                            "seeds": [0, 1, 2],
+                            "why_resolvable": "trust me",
+                        },
+                    }
+                ],
+            },
+        )
+    )
+
+    assert outcome.agent.counts()["program-recharter"] == 2, outcome.agent.counts()
+    retry = outcome.agent.args_for("program-recharter")[1]
+    assert "NOT resolvable" in retry["resolvability_failure"], retry
+    assert "Supply a bigger eval" in outcome.blocked_text, outcome.blocked_text
+
+
+def test_the_recharter_cap_parks_with_the_proposed_target():
+    outcome = _parking(
+        _script(
+            **KILLED,
+            **{
+                "program-review": [
+                    {
+                        "verdict": "recharter",
+                        "reason": "again",
+                        "recharter": {"metric": "resolved", "dataset": "swe", "n": 300},
+                    }
+                ],
+            },
+        ),
+        ledger="status: active\nrecharters: 2\n",
+    )
+
+    assert "re-chartered its frozen target 2 times" in outcome.blocked_text
+    assert "resolved on swe" in outcome.blocked_text, outcome.blocked_text
+    assert outcome.agent.counts()["program-recharter"] == 0
+
+
+def test_an_operator_verdict_parks_on_the_lead_s_own_question():
+    outcome = _parking(
+        _script(
+            **KILLED,
+            **{
+                "program-review": [
+                    {
+                        "verdict": "operator",
+                        "operator_question": "Is the SWE-bench cache still on disk?",
+                        "reason": "the dossier cannot say",
+                    }
+                ],
+            },
+        )
+    )
+
+    assert "SWE-bench cache" in outcome.blocked_text, outcome.blocked_text
+    parked = outcome.checkpoints[-1]
+    assert parked["state"] == "program_review", parked
+    assert parked["params"]["budget"]["program_reviews"] == 1, parked
+
+
+def test_a_program_verdict_the_loop_cannot_act_on_parks_instead_of_guessing():
+    outcome = _parking(_script(**KILLED, **{"program-review": [{"verdict": "shrug"}]}))
+
+    assert "no actionable verdict" in outcome.blocked_text, outcome.blocked_text
+
+
+def test_the_program_review_cap_parks_and_an_answer_authorizes_one_more():
+    outcome = _parking(_script(**KILLED), ledger="status: active\nprogram_reviews: 8\n")
+
+    assert "program-level reviews" in outcome.blocked_text, outcome.blocked_text
+    assert outcome.agent.counts()["program-review"] == 0
+
+    released = _run(
+        _script(
+            **{
+                "select-next-gate": [
+                    {"gate_id": "G1", "gate_doc_path": "g.md", "program_killed": True},
+                    {"gate_id": "none"},
+                ],
+                "program-review": [{"verdict": "bank"}],
+            }
+        ),
+        ledger="status: active\nprogram_reviews: 8\n",
+        answer="one more",
+    )
+    assert released.agent.counts()["program-review"] == 1, released.agent.counts()
+    assert "program_reviews: 9" in released.ledger, released.ledger
+
+
+def test_a_periodic_review_fires_after_enough_gates_and_the_clock_restarts():
+    """No kill, no escalation: three passes in a row and `start` still asks the program
+    lead whether the ladder is worth a fourth. `continue` goes straight to the gate the
+    selector named, and the cycle counter starts over so it is not asked again at once."""
+    outcome = _run(
+        _script(
+            **{
+                "select-next-gate": [
+                    {"gate_id": "G1", "gate_doc_path": "g.md"},
+                    {"gate_id": "G2", "gate_doc_path": "g.md"},
+                    {"gate_id": "G3", "gate_doc_path": "g.md"},
+                    {"gate_id": "none"},
+                ],
+                "gate-check": [{"status": "approved"}],
+            }
+        ),
+        caps={"PROGRAM_REVIEW_EVERY": 2},
+    )
+
+    reviews = outcome.agent.args_for("program-review")
+    assert [r["origin"] for r in reviews] == ["periodic"], reviews
+    assert reviews[0]["gate_id"] == "G3", reviews
+    assert outcome.agent.counts()["design-experiment"] == 3
+    cycles = [
+        cp["params"].get("budget", {}).get("gate_cycles", 0)
+        for cp in outcome.checkpoints
+        if cp["state"] == "start"
+    ]
+    # The review at the third `start` reset the clock; G3 then passed and counted one.
+    assert cycles == [0, 1, 2, 1], cycles
+
+
+def test_a_resume_rebuilds_the_program_review_s_parameters_from_the_checkpoint():
+    """`program_review` carries a `LeadReview | None` and a list of criteria; a resume
+    has to bring both back as models, and the `revive` arm reads the review."""
+    seen: list[dict[str, Any]] = []
+    real_write = ArtifactWriter.write_state_checkpoint
+
+    def capture(self: Any, state: str, params: dict[str, Any], **kwargs: Any) -> Any:
+        seen.append({"engine": "pyflow", "state": state, "params": params, **kwargs})
+        return real_write(self, state, params, **kwargs)
+
+    script = {
+        **_script(),
+        "select-next-gate": [
+            {"gate_id": "G1", "gate_doc_path": "g.md", "program_killed": True},
+            {"gate_id": "none"},
+        ],
+        "research-lead-review": [{"verdict": "revive", "evidence": "wrong metric"}],
+        "revive-gate": [{"status": "ok"}],
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        repo = _program_repo(root)
+        with patch.object(ArtifactWriter, "write_state_checkpoint", capture):
+            drive(research.Research(program=PROGRAM_DIR), _env(root, repo, _Agent(script), _Nodes()))
+        at_revive = [c for c in seen if c["state"] == "program_review"][1]
+        resume = read_resume(parse_checkpoint(json.dumps(at_revive)))
+        second = _Agent(script)
+        drive(research.Research(**resume.inputs), _env(root, repo, second, _Nodes()), resume)
+
+    revived = second.args_for("revive-gate")
+    assert revived and revived[0]["lead_review"]["evidence"] == "wrong metric", revived
 
 
 def test_a_lead_verdict_the_loop_cannot_act_on_parks_instead_of_guessing():
@@ -1047,8 +1424,12 @@ def test_the_checkpoint_carries_the_counters_an_operator_would_edit():
         "rescopes": 0,
         "lead_reviews": 0,
         "extensions": 0,
+        "program_reviews": 0,
+        "recharters": 0,
+        "gate_cycles": 0,
         "lead_review_grants": 0,
         "extension_grants": 0,
+        "program_review_grants": 0,
     }
     # And it is plain JSON: every transition parameter is a str/int/list/dict, which is
     # what lets `coerce_params` revalidate it back into a `Budget` and a
@@ -1081,6 +1462,7 @@ def test_a_resume_rebuilds_the_budget_from_the_checkpoint():
         "revive-gate": [{"status": "ok"}],
         "select-next-gate": [{"gate_id": "none"}],
         "lead-goal-review": [{"verdict": "reached"}],
+        "program-review": [{"verdict": "continue"}],
     }
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)

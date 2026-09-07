@@ -1,0 +1,27 @@
+{
+ "controls": [
+  "within_parent_success_stratum",
+  "cross_process_determinism",
+  "zero_weights_sharpness",
+  "length_format_diagnostics"
+ ],
+ "metrics": {
+  "classification": "OFF_POLICY_REFUTED",
+  "completion_fraction": 1.0,
+  "corrective_rows": 21,
+  "guards": {
+   "x": 1
+  },
+  "registered_classification_valid": true,
+  "success_rows": 42,
+  "universe_size": 63
+ },
+ "n_completed": 189,
+ "n_planned": 189,
+ "seeds": [
+  0,
+  1,
+  2
+ ],
+ "status": "ok"
+}

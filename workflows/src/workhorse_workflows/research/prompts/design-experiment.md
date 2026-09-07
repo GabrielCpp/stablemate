@@ -90,7 +90,10 @@ non-linear (warmup, a checkpoint at the end, a bigger later split).
 ## Do this
 
 1. Read the gate doc in full — its question, its hypotheses, its exact numeric success
-   gate. Read `{{ program_dir }}/README.md` for the program's controls, metrics and
+   gate. If the doc carries a `## Loop directive` section (written by a program
+   review), it binds this design: "score from cache" means the protocol scores the
+   named directory's existing outputs and **does not re-run** the experiment; a probe
+   gate's declared `expected_cost_s` is the wall-clock budget the estimate must fit. Read `{{ program_dir }}/README.md` for the program's controls, metrics and
    kill criteria, and the upstream results in `{{ progress_path }}` so you inherit
    settled assumptions instead of re-deciding them.
 2. Write the protocol: what is measured, over what, against which controls, with how

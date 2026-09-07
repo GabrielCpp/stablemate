@@ -9,6 +9,10 @@ Repository: `{{ repo_dir | default('.') }}`
 Program (authoritative): `{{ program_dir }}`
 Progress log: `{{ progress_path }}`
 
+Program dossier, in brief (computed by code — target, latest metric, counts, triggers):
+
+{{ dossier_summary | default('(none)') }}
+
 ## Do this
 
 1. Read `{{ program_dir }}/README.md` — the gate ladder table, dependencies, and
@@ -17,7 +21,11 @@ Progress log: `{{ progress_path }}`
 2. Read `{{ progress_path }}` for the status of each gate (if it does not exist
    yet, treat all gates as not-started).
 3. Pick the lowest gate in the ladder that is **not yet PASS/WEAK_PASS** and whose
-   dependencies (per the README) are satisfied.
+   dependencies (per the README) are satisfied. Two rows outrank that order:
+   - a **probe** gate (id `P<n>`, written by a program review) with status
+     `NOT STARTED` is selected before any ladder gate;
+   - a gate whose status reads `REOPENED (score from cache)` is selected as it stands
+     — its doc carries a `## Loop directive` the design must honour.
 4. Check the program kill criteria: if a recorded result already trips one, set
    `program_killed: true` AND set `gate_id`/`gate_doc_path` to the **killed gate**
    (not `"none"`) — the research lead reviews it downstream before the program is

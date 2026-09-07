@@ -25,6 +25,17 @@ Lead's review:
 {{ lead_review | default('{}') }}
 ```
 
+## The program dossier (computed, no model in the loop)
+
+{{ dossier | default('(no dossier available)') }}
+
+The dossier's **resolvability** line is a requirement on the direction you define, not
+background: the new direction's frozen target is checked in code against the binomial
+seed noise of its eval, and a target whose required effect is under two standard errors
+above its baseline is sent back. If the current target is `NOT resolvable`, the new
+direction must change the eval size, the threshold margin or the metric — and the
+README's Frozen target table must say so (add a `Baseline` row with `<count>/<n>`).
+
 ## Do this
 
 1. Read the program README, every recorded finding under

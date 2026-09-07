@@ -1,0 +1,18 @@
+# TRACEBUS — research program manifest (read by load_program). 1 folder = 1 program.
+code_root: src/assembler/phasor
+progress_path: docs/research/tracebus/PROGRESS.md
+result_branch: tracebus/auto
+
+# The machine this program's experiments must fit. 0 / none = no bound declared.
+# 12 GB is the program's own registered resource cap (exp/capped.sh); declaring it
+# here is what lets an over-sized design be rescoped before anything is launched
+# instead of after hours of wall time.
+envelope_ram_gb: 12
+envelope_cpus: 8
+envelope_gpu: none
+envelope_disk_gb: 200
+
+# The weakest containment a measurement here may be trusted under. Under `premium`
+# the runner enforces the declared RAM as a hard cgroup bound, so a result that came
+# back is a result that stayed inside what it declared.
+min_containment: premium

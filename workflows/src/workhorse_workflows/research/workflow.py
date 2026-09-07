@@ -11,12 +11,12 @@ with zero model calls.
 Three personas own the three kinds of problem a gate has, because they are three
 different problems and one prompt answered all of them badly:
 
-* the **scientist** (`smart`) owns the protocol, the declared resources and the
+* the **scientist** (`max`) owns the protocol, the declared resources and the
   calibration probe — and the scientific rework, where the protocol may change but the
   hypothesis and the frozen target may not;
 * the **engineer** (`high`) owns runnability: the command, the `n=1` rehearsal through
   the real runner, crash repair, and mid-flight triage of a job running long;
-* the **lead** (`extra-smart`) owns verdicts — the gate's artifact against its
+* the **lead** (`ultra`) owns verdicts — the gate's artifact against its
   thresholds, whether a kill was sound, and where the program goes next.
 
 And one rule holds over every arm: **no arm ends in `WorkflowFailed`.** Every budget
@@ -27,13 +27,16 @@ human noticed.
 """
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse.cli import console_script
 from workhorse.pyflow import Await, Continue, Done, Registry, Workflow
 from workhorse_workflows.research.nodes import (
+    append_history,
     blueprint,
+    build_dossier,
     check_envelope,
     clone_repo,
     collect_job,
@@ -46,19 +49,30 @@ from workhorse_workflows.research.nodes import (
     submit_job,
     watch_job,
 )
+from workhorse_workflows.research.nodes.dossier import (
+    parse_frozen_target,
+    render_dossier,
+    resolvability,
+    summarize,
+)
 from workhorse_workflows.research.schemas import (
     Budget,
     Build,
     Collected,
     Design,
+    Dossier,
     ExtendResult,
     FailedCriterion,
+    FrozenTarget,
     GateCheck,
     GateSelection,
     GoalReview,
     LeadReview,
     NewDirectionResult,
+    NewTarget,
     Program,
+    ProgramReview,
+    RecharterResult,
     RecordResult,
     ReviveResult,
     TriageResult,
@@ -93,6 +107,24 @@ MAX_LEAD_REVIEWS = 4
 #: therefore persisted to the program's ledger (`nodes/program.py`) and read back into
 #: `Program.extensions_spent`, and the guards below compare against the sum.
 MAX_EXTENSIONS = 6
+#: Program-level reviews — the lead judging the *dossier* rather than one gate. Fires
+#: on every kill, every exhausted repair budget, before every revive, and periodically;
+#: program-scoped through the ledger like the two above. Generous because a review is
+#: how the loop stops circling, and a cap that bit early would put the circling back.
+MAX_PROGRAM_REVIEWS = 8
+#: Re-charters — the lead changing the frozen target (metric, eval, threshold). Twice:
+#: a program whose target has been rewritten twice and is still not resolvable is a
+#: program whose eval a person has to choose.
+MAX_RECHARTERS = 2
+#: Retries when a written target fails the in-code resolvability check. One: the lead
+#: is told exactly which number was short, and a second miss means it cannot be fixed
+#: with the eval the program has.
+MAX_RECHARTER_FIXES = 1
+#: Gates concluded (pass or kill) between periodic program reviews from `start`.
+PROGRAM_REVIEW_EVERY = 3
+
+#: The gate doc a re-charter's probe gate is written from — the scaffold's own.
+GATE_TEMPLATE = Path(__file__).resolve().parent / "scaffold" / "templates" / "gate.md"
 
 #: Where an operator finds what the loop is blocked on, repo-relative to the program.
 #: One file, re-armed and appended to on every block, so a program's whole history of
@@ -268,9 +300,17 @@ class Research(Workflow):
             self.ctx.lead_reviews_spent + budget.lead_reviews,
         )
 
+    def _program_spent(self, budget: Budget) -> tuple[int, int]:
+        """`(program_reviews, recharters)` this **program** has spent, not this run."""
+        return (
+            self.ctx.program_reviews_spent + budget.program_reviews,
+            self.ctx.recharters_spent + budget.recharters,
+        )
+
     def _persist(self, budget: Budget, *, status: str = "active") -> None:
         """Write the program's spend to its ledger, before the publish that commits it."""
         extensions, lead_reviews = self._spent(budget)
+        program_reviews, recharters = self._program_spent(budget)
         self.call(
             record_spend,
             repo_dir=self.ctx.repo_dir,
@@ -278,7 +318,82 @@ class Research(Workflow):
             extensions=extensions,
             lead_reviews=lead_reviews,
             status=status,
+            program_reviews=program_reviews,
+            recharters=recharters,
         )
+
+    def _dossier(self, budget: Budget) -> Dossier:
+        """The program's computed evidence — numbers, dates, counts — with no model in it.
+
+        This is what the loop never had. Every verdict below used to be made by a
+        persona reading one gate's doc, by path; the dossier is what a lead who read the
+        whole record would have in front of them, and it is deterministic so the tests
+        can say exactly what the lead saw.
+        """
+        _, lead_reviews = self._spent(budget)
+        program_reviews, _ = self._program_spent(budget)
+        return self.call(
+            build_dossier,
+            repo_dir=self.ctx.repo_dir,
+            program_dir=self.ctx.program_dir,
+            progress_path=self.ctx.progress_path,
+            code_root=self.ctx.code_root,
+            lead_reviews=lead_reviews,
+            program_reviews=program_reviews,
+            gate_cycles=budget.gate_cycles,
+            review_every=PROGRAM_REVIEW_EVERY,
+        )
+
+    def _history(
+        self, event: str, gate_id: str = "", *, note: str = "", fingerprint: str = ""
+    ) -> None:
+        """One line into the program's `history.jsonl` — the record the dossier counts.
+
+        Written by the loop from now on so the dossier does not depend on parsing prose;
+        soft by contract, a run never stops on bookkeeping.
+        """
+        self.call(
+            append_history,
+            repo_dir=self.ctx.repo_dir,
+            program_dir=self.ctx.program_dir,
+            event=event,
+            gate_id=gate_id,
+            note=note,
+            fingerprint=fingerprint,
+        )
+
+    def _check_target(self, target: NewTarget | None = None) -> str:
+        """The in-code resolvability check on a (re)written frozen target.
+
+        Empty when the target's effect can be told from seed noise on its own eval; else
+        the one-line statement of why not, which is what the lead is handed to fix. The
+        README is the source of truth when no explicit target was returned — the lead
+        writes the table, the loop reads it back, and `why_resolvable` is never trusted.
+        """
+        if target is not None and target.n:
+            frozen = FrozenTarget(
+                metric=target.metric,
+                dataset=target.dataset,
+                threshold=target.threshold,
+                threshold_count=target.threshold_count,
+                n=target.n,
+                threshold_value=target.threshold_count / target.n,
+                seeds=target.seeds,
+                deadline=target.deadline,
+                baseline_count=target.baseline_count,
+                baseline_value=target.baseline_count / target.n,
+            )
+        else:
+            readme = self._abs(f"{self.ctx.program_dir}/README.md")
+            text = readme.read_text(encoding="utf-8") if readme.is_file() else ""
+            frozen = parse_frozen_target(text)
+            if not frozen.n:
+                return (
+                    "no `Frozen target` table with a `count/n` threshold could be read "
+                    f"from {self.ctx.program_dir}/README.md"
+                )
+        verdict = resolvability(frozen)
+        return "" if verdict.resolvable else verdict.statement
 
     def _record(self, gate_id: str, *, forced: str = "") -> RecordResult:
         """Write one outcome to the program's progress file."""
@@ -292,7 +407,7 @@ class Research(Workflow):
             # A gate outcome is bookkeeping — copy a verdict into the progress file.
             # A *forced* one is not: on `GOAL_BANKED` this turn writes the program's
             # product, the standalone claim a reader outside the program acts on.
-            power="smart" if forced else "low",
+            power="max" if forced else "low",
             args=args,
         )
 
@@ -318,7 +433,8 @@ class Research(Workflow):
         """
         return Continue(
             None,
-            self.lead_review,
+            self.program_review,
+            origin="escalation",
             gate_id=gate_id,
             gate_doc_path=gate_doc_path,
             failed_criteria=failed_criteria or [],
@@ -343,13 +459,14 @@ class Research(Workflow):
         Both a rework and a rescope route back to `design`, so clearing them there
         would reset the very budgets being spent.
         """
+        dossier = self._dossier(budget)
         selection = self.agent(
             "prompts/select-next-gate.md",
             returns=GateSelection,
             # Reads the README ladder + progress and picks the next gate id — bounded
             # selection over existing docs, no deep reasoning needed.
             power="low",
-            args=self._program_args(),
+            args=self._program_args(dossier_summary=summarize(dossier)),
         )
         if selection.gate_id in ("", "none"):
             # Ladder exhausted: don't terminate — let the lead judge the North star.
@@ -358,7 +475,8 @@ class Research(Workflow):
             # A pre-existing kill: let the research lead judge it, don't just die.
             return Continue(
                 selection,
-                self.lead_review,
+                self.program_review,
+                origin="kill",
                 gate_id=selection.gate_id,
                 gate_doc_path=selection.gate_doc_path,
                 failed_criteria=[],
@@ -366,6 +484,23 @@ class Research(Workflow):
                 escalation="",
                 budget=budget,
             )
+        if dossier.review_due:
+            # The computed triggers say the program is circling (or it has simply been
+            # a while), and nothing about this gate is what settles that. The review
+            # is fingerprint-deduped in the dossier, so "still circling" cannot loop
+            # the review itself.
+            return Continue(
+                selection,
+                self.program_review,
+                origin="periodic",
+                gate_id=selection.gate_id,
+                gate_doc_path=selection.gate_doc_path,
+                failed_criteria=[],
+                notes=selection.rationale,
+                escalation="",
+                budget=budget,
+            )
+        self._history("gate_selected", selection.gate_id)
         return Continue(
             selection,
             self.design,
@@ -397,6 +532,10 @@ class Research(Workflow):
         (`rework_notes` + `failed_criteria`), a rescope after the design asked for more
         than the machine has (`rescope_reason`), or a fresh gate (neither).
         """
+        if rework_notes:
+            self._history("rework", gate_id, note=rework_notes)
+        elif rescope_reason:
+            self._history("rescope", gate_id, note=rescope_reason)
         design = self.agent(
             "prompts/design-experiment.md",
             returns=Design,
@@ -404,7 +543,7 @@ class Research(Workflow):
             # not matched, a metric over the wrong split — and that error is not cheap
             # to hold: it burns the hours of CPU that follow, a rework lap, and, if the
             # check misses it, banks a result that is false.
-            power="smart",
+            power="max",
             args=self._program_args(
                 code_root=self.ctx.code_root,
                 gate_id=gate_id,
@@ -478,6 +617,8 @@ class Research(Workflow):
         inherited variable that is not in the job's environment, a result file written
         somewhere nobody will look. Rehearsing anywhere else rehearses the wrong thing.
         """
+        if fix_reason:
+            self._history("build_fix", gate_id, note=fix_reason)
         build = self.agent(
             "prompts/build-experiment.md",
             returns=Build,
@@ -908,7 +1049,7 @@ class Research(Workflow):
             # indistinguishable from a real result — nothing downstream can recover the
             # difference — and it fires once or twice per gate, so the tier costs little
             # against what it protects.
-            power="extra-smart",
+            power="ultra",
             # Deliberately not `_program_args`: the reviewer is not shown the progress
             # file. It judges against the gate doc's criteria and the artifact, and what
             # the designer claimed is exactly what it must not be anchored on.
@@ -960,8 +1101,9 @@ class Research(Workflow):
     def record_pass(self, gate_id: str, budget: Budget = Budget()) -> Continue:
         """Write the approved gate's outcome, publish, and take the next gate."""
         result = self._record(gate_id)
+        self._history("pass", gate_id)
         self._publish()
-        return Continue(result, self.start, budget=budget)
+        return Continue(result, self.start, budget=budget.cycled())
 
     def record_kill(
         self,
@@ -971,17 +1113,25 @@ class Research(Workflow):
         notes: str,
         budget: Budget = Budget(),
     ) -> Continue:
-        """Write the kill, then hand off to the research lead rather than terminating."""
+        """Write the kill, then hand off to the research lead rather than terminating.
+
+        The lead sees the program before the gate: a kill is the moment the record is
+        most likely to show circling, and the gate-level question ("was this kill
+        sound?") only makes sense once the program-level one ("is this ladder still
+        worth a gate?") has been answered.
+        """
         self._record(gate_id)
+        self._history("kill", gate_id, note=notes)
         return Continue(
             None,
-            self.lead_review,
+            self.program_review,
+            origin="kill",
             gate_id=gate_id,
             gate_doc_path=gate_doc_path,
             failed_criteria=failed_criteria,
             notes=notes,
             escalation="",
-            budget=budget,
+            budget=budget.cycled(),
         )
 
     # --- the research lead --------------------------------------------------
@@ -994,6 +1144,7 @@ class Research(Workflow):
         notes: str,
         escalation: str = "",
         budget: Budget = Budget(),
+        dossier: str = "",
     ) -> Continue | Await:
         """Judge whether the gate is dead, and route the program on the verdict.
 
@@ -1024,13 +1175,16 @@ class Research(Workflow):
                 notes=notes,
                 escalation=escalation,
                 budget=budget.granted_review(),
+                dossier=dossier,
             )
+        if not dossier:
+            dossier = render_dossier(self._dossier(budget))
         review = self.agent(
             "prompts/research-lead-review.md",
             returns=LeadReview,
             # The program's direction turns on this call — revive, redirect, or die —
             # and it fires at most a handful of times per program.
-            power="extra-smart",
+            power="ultra",
             args=self._program_args(
                 goal=self.ctx.goal,
                 gate_id=gate_id,
@@ -1040,14 +1194,22 @@ class Research(Workflow):
                 ],
                 notes=notes,
                 escalation=escalation,
+                dossier=dossier,
             ),
         )
+        self._history("lead_review", gate_id, note=review.verdict)
         if review.verdict == "revive":
+            # A revival is where a circling program spends its months, so it is the
+            # one verdict that goes back through the program lead before it acts.
             return Continue(
                 review,
-                self.revive,
+                self.program_review,
+                origin="revive",
                 gate_id=gate_id,
                 gate_doc_path=gate_doc_path,
+                failed_criteria=failed_criteria or [],
+                notes=notes,
+                escalation=escalation,
                 review=review,
                 budget=budget,
             )
@@ -1074,6 +1236,7 @@ class Research(Workflow):
             notes=notes,
             escalation=escalation,
             budget=budget,
+            dossier=dossier,
         )
 
     def revive(
@@ -1089,11 +1252,12 @@ class Research(Workflow):
             returns=ReviveResult,
             # Acts on the lead's verdict — a course-correcting decision, kept on the
             # same tier as the review that drove it.
-            power="smart",
+            power="max",
             args=self._program_args(
                 gate_id=gate_id, gate_doc_path=gate_doc_path, lead_review=review
             ),
         )
+        self._history("revive", gate_id, note=result.status)
         spent = budget.reviewed()
         self._persist(spent)
         self._publish()
@@ -1105,43 +1269,288 @@ class Research(Workflow):
         gate_doc_path: str,
         review: LeadReview,
         budget: Budget = Budget(),
-    ) -> Await:
-        """Define the direction that replaces a justifiably killed one — then stop.
+        dossier: str = "",
+    ) -> Continue:
+        """Define the direction that replaces a justifiably killed one — then check it.
 
-        The one arm that always reaches a person, and not because anything failed. A
-        new direction discards a ladder somebody chose and commits the program's next
-        weeks to one the loop chose for itself; that is precisely the decision nobody
-        wants to discover after the fact, in a progress file, on Monday. The work is
-        already written and published when the block lands, so answering costs a read
-        rather than a re-run.
+        This used to be the one arm that always reached a person. It no longer does:
+        the check a person was there to make — is the new ladder's frozen target one
+        this program can actually resolve? — is now made in code, on the README the
+        lead just wrote. A target that clears it starts at once; one that does not goes
+        into the re-charter fix loop, which parks after one retry. The work is written
+        and published either way, so a reader who wants to change it can.
         """
+        if not dossier:
+            dossier = render_dossier(self._dossier(budget))
         result = self.agent(
             "prompts/define-new-direction.md",
             returns=NewDirectionResult,
             # The most open-ended, highest-leverage call in the loop.
-            power="extra-smart",
+            power="ultra",
             args=self._program_args(
                 goal=self.ctx.goal,
                 gate_id=gate_id,
                 gate_doc_path=gate_doc_path,
                 lead_review=review,
+                dossier=dossier,
             ),
+        )
+        self._history(
+            "new_direction", gate_id, note=result.direction_name or result.core_question
         )
         spent = budget.reviewed()
         self._persist(spent)
         self._publish()
+        failure = self._check_target()
+        if not failure:
+            return Continue(result, self.start, budget=spent)
+        return Continue(
+            result,
+            self.recharter,
+            review=ProgramReview(
+                verdict="recharter",
+                reason=(
+                    f"The new direction **{result.direction_name or '(unnamed)'}** was "
+                    "written, but its frozen target is not resolvable on its own eval."
+                ),
+                evidence=[failure],
+            ),
+            budget=spent,
+            resolvability_failure=failure,
+        )
+
+    # --- the program lead ---------------------------------------------------
+
+    def program_review(
+        self,
+        origin: str,
+        gate_id: str,
+        gate_doc_path: str,
+        failed_criteria: list[FailedCriterion],
+        notes: str,
+        escalation: str = "",
+        review: LeadReview | None = None,
+        budget: Budget = Budget(),
+    ) -> Continue | Await:
+        """Judge the *program* on its computed dossier, and route on a verdict that acts.
+
+        Reached four ways, and `origin` says which: a kill (`kill`), an exhausted repair
+        budget (`escalation`), a gate the gate-lead wants revived (`revive`), or the
+        periodic check from `start` (`periodic`). The question is the one no gate-level
+        state can ask — is this program still moving its frozen metric, or has it been
+        reworking apparatus for two months? — and the evidence is computed rather than
+        read: metric series with dates, seed spread against the required effect, kill
+        and reopen counts, code churn, results still pending, the circling triggers.
+
+        Seven verdicts, because "continue" and "stop" are the two that were never the
+        problem. `probe_first` orders one cheap decisive measurement before any more
+        gate work; `score_from_cache` reads a result that already exists instead of
+        re-running; `recharter` changes a target the eval cannot resolve; `bank` and
+        `stop_negative` are the program-scope terminals, reachable from a kill rather
+        than only from an exhausted ladder; `operator` is for a fact no agent can
+        produce. `continue` hands the gate-level question on to `lead_review`.
+        """
+        program_reviews, recharters = self._program_spent(budget)
+        if program_reviews >= MAX_PROGRAM_REVIEWS + budget.program_review_grants:
+            return self._blocked(
+                f"This program has spent {program_reviews} program-level reviews "
+                f"(cap {MAX_PROGRAM_REVIEWS}), and gate {gate_id or GOAL} needs another "
+                f"one ({origin}).\n\nThat many program reviews means the lead keeps "
+                "finding the program circling and keeps failing to stop it. Read the "
+                "dossier the last one saw (`history.jsonl`, the progress file) before "
+                "answering.\n\nAnswering this gate authorizes exactly one more review; "
+                "the loop then continues from where it stopped. To stop the program "
+                "instead, set its ledger status and do not answer.",
+                self.program_review,
+                origin=origin,
+                gate_id=gate_id,
+                gate_doc_path=gate_doc_path,
+                failed_criteria=failed_criteria or [],
+                notes=notes,
+                escalation=escalation,
+                review=review,
+                budget=budget.granted_program_review(),
+            )
+        dossier = self._dossier(budget)
+        rendered = render_dossier(dossier)
+        verdict = self.agent(
+            "prompts/program-review.md",
+            returns=ProgramReview,
+            # The program's months turn on this call, and it fires a handful of times
+            # per program: every kill, every escalation, every revival, and when the
+            # computed triggers say the record has stopped moving.
+            power="ultra",
+            args=self._program_args(
+                origin=origin,
+                gate_id=gate_id,
+                gate_doc_path=gate_doc_path,
+                escalation=escalation,
+                goal=self.ctx.goal,
+                notes=notes,
+                program_reviews_spent=program_reviews,
+                program_reviews_max=MAX_PROGRAM_REVIEWS,
+                recharters_spent=recharters,
+                recharters_max=MAX_RECHARTERS,
+                dossier=rendered,
+            ),
+        )
+        spent = budget.program_reviewed()
+        self._persist(spent)
+        self._history(
+            "program_review",
+            gate_id,
+            note=f"{origin}: {verdict.verdict} — {verdict.reason}",
+            fingerprint=dossier.fingerprint,
+        )
+        if verdict.verdict == "continue":
+            if origin == "revive" and review is not None:
+                return Continue(
+                    verdict,
+                    self.revive,
+                    gate_id=gate_id,
+                    gate_doc_path=gate_doc_path,
+                    review=review,
+                    budget=spent,
+                )
+            if origin == "periodic":
+                self._history("gate_selected", gate_id)
+                return Continue(
+                    verdict,
+                    self.design,
+                    gate_id=gate_id,
+                    gate_doc_path=gate_doc_path,
+                    budget=spent.fresh_gate(),
+                )
+            return Continue(
+                verdict,
+                self.lead_review,
+                gate_id=gate_id,
+                gate_doc_path=gate_doc_path,
+                failed_criteria=failed_criteria or [],
+                notes=notes,
+                escalation=escalation,
+                budget=spent,
+                dossier=rendered,
+            )
+        if verdict.verdict in ("probe_first", "score_from_cache", "recharter"):
+            if verdict.verdict == "recharter" and recharters >= MAX_RECHARTERS:
+                return self._blocked(
+                    f"This program has re-chartered its frozen target {recharters} "
+                    f"times (cap {MAX_RECHARTERS}), and the lead wants to again:\n\n"
+                    f"{verdict.reason}\n\nProposed: {verdict.recharter.metric or '?'} "
+                    f"on {verdict.recharter.dataset or '?'}, "
+                    f"{verdict.recharter.threshold or '?'} (n={verdict.recharter.n}) — "
+                    f"{verdict.recharter.why_resolvable or '(no resolvability case)'}"
+                    "\n\nA program that cannot settle on a resolvable target is a "
+                    "program whose eval a person has to choose. Write the target into "
+                    "the README's `Frozen target` table and answer this gate; the loop "
+                    "reads it back and continues.",
+                    self.start,
+                    budget=spent,
+                )
+            return Continue(verdict, self.recharter, review=verdict, budget=spent)
+        if verdict.verdict == "bank":
+            return Continue(verdict, self.record_goal, outcome=GOAL_BANKED, budget=spent)
+        if verdict.verdict == "stop_negative":
+            return Continue(
+                verdict, self.record_goal, outcome=GOAL_IMPOSSIBLE, budget=spent
+            )
+        question = (
+            verdict.operator_question
+            if verdict.verdict == "operator" and verdict.operator_question
+            else (
+                f"The program lead returned no actionable verdict for gate "
+                f"{gate_id or GOAL} (got {verdict.verdict!r}; expected `continue`, "
+                "`probe_first`, `score_from_cache`, `recharter`, `bank`, "
+                "`stop_negative` or `operator`)."
+            )
+        )
         return self._blocked(
-            f"The program has replaced the direction that gate {gate_id or GOAL} "
-            f"belonged to with **{result.direction_name or 'a new direction'}**.\n\n"
-            f"Core question: {result.core_question or '(not stated)'}\n"
-            f"Ruled out: {', '.join(result.ruled_out) or '(nothing recorded)'}\n"
-            f"New gates: {', '.join(result.new_gates) or '(none listed)'}\n"
-            f"Written to: {result.readme_path or self.ctx.program_dir}\n\n"
-            "It is on the result branch already. Read it, change it if it is wrong, "
-            "and answer this gate to let the loop start on the new ladder.",
-            self.start,
+            f"{question}\n\nReason: {verdict.reason or '(none given)'}\n\nWrite the "
+            "answer here and answer this gate; the program lead re-reads the record on "
+            "resume.",
+            self.program_review,
+            origin=origin,
+            gate_id=gate_id,
+            gate_doc_path=gate_doc_path,
+            failed_criteria=failed_criteria or [],
+            notes=notes,
+            escalation=escalation,
+            review=review,
             budget=spent,
         )
+
+    def recharter(
+        self,
+        review: ProgramReview,
+        budget: Budget = Budget(),
+        attempt: int = 0,
+        resolvability_failure: str = "",
+    ) -> Continue | Await:
+        """Apply a program-level verdict to the program folder, in place, then loop.
+
+        Three verdicts land here and one turn applies whichever fields the review set:
+        a probe gate written to the top of the ladder, a score-from-cache directive on
+        an existing gate doc, a rewritten frozen target. The target is the one that is
+        *checked*: the lead's `why_resolvable` is prose, and the loop reads the written
+        numbers back and computes whether the required effect clears seed noise. A miss
+        is handed back once with the exact statement; a second miss is an eval a person
+        has to choose.
+        """
+        result = self.agent(
+            "prompts/program-recharter.md",
+            returns=RecharterResult,
+            # Rewrites the program's contract — target, ladder, directives — on the
+            # same tier as the review that ordered it.
+            power="max",
+            args=self._program_args(
+                review=review.model_dump(mode="json"),
+                dossier=render_dossier(self._dossier(budget)),
+                resolvability_failure=resolvability_failure,
+                gate_template=str(GATE_TEMPLATE),
+                today=date.today().isoformat(),
+            ),
+        )
+        rechartered = review.verdict == "recharter" or bool(result.new_target.n)
+        failure = ""
+        if rechartered:
+            failure = self._check_target(result.new_target)
+        if failure and attempt < MAX_RECHARTER_FIXES:
+            self._history("recharter", note=f"unresolvable, retrying: {failure}")
+            self._publish()
+            return Continue(
+                result,
+                self.recharter,
+                review=review,
+                budget=budget,
+                attempt=attempt + 1,
+                resolvability_failure=failure,
+            )
+        if failure:
+            self._history("recharter", note=f"unresolvable, parked: {failure}")
+            self._publish()
+            return self._blocked(
+                f"The re-chartered target is still not resolvable after "
+                f"{attempt + 1} attempts:\n\n{failure}\n\nThe lead's case: "
+                f"{result.new_target.why_resolvable or '(none)'}\n\nSupply a bigger "
+                "eval or a different metric in the README's `Frozen target` table and "
+                "answer this gate; the loop reads it back and continues.",
+                self.start,
+                budget=budget,
+            )
+        event = {
+            "probe_first": "probe_ordered",
+            "score_from_cache": "cache_directive",
+        }.get(review.verdict, "recharter")
+        spent = budget.rechartered() if rechartered else budget
+        self._history(
+            event,
+            review.probe.gate_id or review.cache_gate_id,
+            note=result.reason or review.reason,
+        )
+        self._persist(spent)
+        self._publish()
+        return Continue(result, self.start, budget=spent)
 
     # --- self-extension -----------------------------------------------------
 
@@ -1163,7 +1572,7 @@ class Research(Workflow):
             returns=GoalReview,
             # The one turn the whole program's ending rests on: it decides whether the
             # program is done, dead, shippable, or must grow.
-            power="extra-smart",
+            power="ultra",
             args=self._program_args(
                 code_root=self.ctx.code_root,
                 goal=self.ctx.goal,
@@ -1171,6 +1580,7 @@ class Research(Workflow):
                 # without knowing this is the fifth extension is judging blind.
                 extensions_spent=extensions_spent,
                 extensions_max=MAX_EXTENSIONS,
+                dossier=render_dossier(self._dossier(budget)),
             ),
         )
         if review.verdict == "reached":
@@ -1222,7 +1632,7 @@ class Research(Workflow):
             "prompts/extend-program.md",
             returns=ExtendResult,
             # Writes the next gate (ladder + gate doc + progress) — new science.
-            power="smart",
+            power="max",
             args=self._program_args(
                 code_root=self.ctx.code_root, goal=self.ctx.goal, goal_review=review
             ),
@@ -1245,6 +1655,7 @@ class Research(Workflow):
         state has no sibling.
         """
         result = self._record(GOAL, forced=outcome)
+        self._history("goal", GOAL, note=outcome)
         self._persist(budget, status=GOAL_STATUS.get(outcome, "active"))
         self._publish()
         return Done(result)
@@ -1262,6 +1673,8 @@ workflow = Registry("research", package=__package__).add_blueprints(blueprint).s
         # path. Everything else a turn returns stays a blank model.
         "select-next-gate": {"gate_id": ""},
         "lead-goal-review": {"verdict": "reached"},
+        "program-review": {"verdict": "continue"},
+        "program-recharter": {"status": "written"},
     }
 )
 main = console_script(workflow.entry_point(Research))

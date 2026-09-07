@@ -85,6 +85,10 @@ class Program(ResearchResult):
     extensions_spent: int = 0
     #: Lead reviews this program has already spent, over every prior run.
     lead_reviews_spent: int = 0
+    #: Program reviews (`program_review`) this program has already spent.
+    program_reviews_spent: int = 0
+    #: Re-charters (`recharter`) this program has already spent.
+    recharters_spent: int = 0
     #: `active`, or one of the terminal statuses a prior run banked/recorded.
     status: str = "active"
 
@@ -113,6 +117,8 @@ class Ledger(ResearchResult):
     path: str = ""
     extensions: int = 0
     lead_reviews: int = 0
+    program_reviews: int = 0
+    recharters: int = 0
     status: str = "active"
 
 
@@ -434,6 +440,190 @@ class TriageResult(ResearchResult):
     fix_hint: str = ""
 
 
+# ── the program dossier, and the verdicts that act on it ────────────────────
+#
+# Everything a `program_review` turn is shown is computed here, by `nodes/dossier.py`,
+# with zero model calls. The prompt judges; it does not count. These models are the
+# shape of that evidence, and every field is defaulted so a record the parsers could
+# not read degrades to "unknown" rather than to a crash.
+
+
+class FrozenTarget(ResearchResult):
+    """The README's `Frozen target` table, as numbers."""
+
+    metric: str = ""
+    dataset: str = ""
+    #: The raw threshold cell, e.g. `>= 0.6262 (93/147)`.
+    threshold: str = ""
+    #: The threshold as a fraction of `n`, when the cell names one; else 0.
+    threshold_value: float = 0.0
+    #: The count form (`93` of `147`) when the cell or the dataset names one.
+    threshold_count: int = 0
+    n: int = 0
+    seeds: list[int] = Field(default_factory=list)
+    deadline: str = ""
+    #: The baseline the threshold is measured against, as a fraction of `n`.
+    baseline_value: float = 0.0
+    baseline_count: int = 0
+    #: Where the baseline came from (`table`, `prose`, or empty).
+    baseline_source: str = ""
+
+
+class GateRow(ResearchResult):
+    """One row of a progress status table."""
+
+    gate_id: str = ""
+    document: str = ""
+    depends_on: str = ""
+    status: str = ""
+    result: str = ""
+    date: str = ""
+
+
+class HistoryEvent(ResearchResult):
+    """One line of `history.jsonl` — what the loop did, when, to which gate."""
+
+    date: str = ""
+    event: str = ""
+    gate_id: str = ""
+    note: str = ""
+    #: `loop` for lines the workflow wrote, `bootstrap` for lines parsed from prose.
+    source: str = "loop"
+    fingerprint: str = ""
+
+
+class JobSummary(ResearchResult):
+    """What one `jobs/<gate>/` directory says, per seed family."""
+
+    gate_id: str = ""
+    finished_at: str = ""
+    exit_code: int = 0
+    wall_s: float = 0.0
+    kill_reason: str = ""
+    n_completed: int = 0
+    n_planned: int = 0
+    seeds: list[int] = Field(default_factory=list)
+    #: `<base>` -> per-seed values, for every `<base>_seed<i>` family in `metrics`.
+    families: dict[str, list[float]] = Field(default_factory=dict)
+    family_mean: dict[str, float] = Field(default_factory=dict)
+    family_sd: dict[str, float] = Field(default_factory=dict)
+    #: Scalar metrics that are not part of a seed family.
+    scalars: dict[str, float] = Field(default_factory=dict)
+    #: Metric names whose value was truthy and whose name reads as a flag
+    #: (`*_blocked`, `*_flag`, `*_tension`, `leak*`).
+    flags: list[str] = Field(default_factory=list)
+
+
+class MetricPoint(ResearchResult):
+    """One dated observation of the frozen metric."""
+
+    date: str = ""
+    value: float = 0.0
+    count: int = 0
+    n: int = 0
+    gate_id: str = ""
+    source: str = ""
+
+
+class Resolvability(ResearchResult):
+    """Can the frozen target's effect be told from seed noise on its own eval?"""
+
+    required_effect: float = 0.0
+    #: Pooled binomial SE at the baseline rate over `n`.
+    pooled_se: float = 0.0
+    #: Per-seed required tasks against the per-seed SE, when seeds are known.
+    per_seed_required: float = 0.0
+    per_seed_se: float = 0.0
+    #: Observed per-seed spread, when a seed family for the metric exists.
+    observed_seed_sd: float = 0.0
+    ratio: float = 0.0
+    resolvable: bool = False
+    statement: str = ""
+
+
+class Dossier(ResearchResult):
+    """The computed program-level evidence one `program_review` turn is judged on."""
+
+    today: str = ""
+    program_dir: str = ""
+    frozen: FrozenTarget = Field(default_factory=FrozenTarget)
+    rows: list[GateRow] = Field(default_factory=list)
+    superseded_rows: list[GateRow] = Field(default_factory=list)
+    history: list[HistoryEvent] = Field(default_factory=list)
+    jobs: list[JobSummary] = Field(default_factory=list)
+    series: list[MetricPoint] = Field(default_factory=list)
+    moved_last_on: str = ""
+    days_since_moved: int = 0
+    days_to_deadline: int = 0
+    resolvability: Resolvability = Field(default_factory=Resolvability)
+    counts: dict[str, int] = Field(default_factory=dict)
+    #: `gate_id` -> lines changed in `code_root` since the program's last metric move.
+    churn: dict[str, int] = Field(default_factory=dict)
+    pending: list[str] = Field(default_factory=list)
+    triggers: list[str] = Field(default_factory=list)
+    circling: bool = False
+    fingerprint: str = ""
+    review_due: bool = False
+    active_gate: str = ""
+    unparsed: list[str] = Field(default_factory=list)
+
+
+class ProbeOrder(ResearchResult):
+    """A cheap, decisive measurement the lead orders before any more gate work."""
+
+    gate_id: str = ""
+    question: str = ""
+    expected_cost_s: int = 0
+    kill_if: str = ""
+
+
+class NewTarget(ResearchResult):
+    """A re-chartered frozen target. `why_resolvable` is checked in code, not trusted."""
+
+    metric: str = ""
+    dataset: str = ""
+    threshold: str = ""
+    threshold_count: int = 0
+    n: int = 0
+    seeds: list[int] = Field(default_factory=list)
+    baseline: str = ""
+    baseline_count: int = 0
+    deadline: str = ""
+    why_resolvable: str = ""
+
+
+class ProgramReview(ResearchResult):
+    """The lead's program-level verdict on a dossier.
+
+    `verdict` is one of `continue`, `probe_first`, `score_from_cache`, `recharter`,
+    `bank`, `stop_negative`, `operator`. The default `""` matches no arm and parks.
+    """
+
+    verdict: str = ""
+    circling: bool = False
+    triggers_confirmed: list[str] = Field(default_factory=list)
+    reason: str = ""
+    evidence: list[str] = Field(default_factory=list)
+    probe: ProbeOrder = Field(default_factory=ProbeOrder)
+    cache_gate_id: str = ""
+    cache_dir: str = ""
+    recharter: NewTarget = Field(default_factory=NewTarget)
+    operator_question: str = ""
+    confidence: str = ""
+
+
+class RecharterResult(ResearchResult):
+    """What `program-recharter` wrote into the program folder."""
+
+    status: str = ""
+    new_target: NewTarget = Field(default_factory=NewTarget)
+    probe_doc_path: str = ""
+    cache_doc_path: str = ""
+    readme_path: str = ""
+    progress_updated: bool = False
+    reason: str = ""
+
+
 # ── a state parameter ───────────────────────────────────────────────────────
 
 
@@ -471,6 +661,12 @@ class Budget(BaseModel):
     lead_reviews: int = 0
     #: Program self-extensions, across the whole run.
     extensions: int = 0
+    #: Program-level reviews (`program_review`), across the whole run.
+    program_reviews: int = 0
+    #: Re-charters applied (`recharter`), across the whole run.
+    recharters: int = 0
+    #: Gates concluded (pass or kill) since the last periodic program review.
+    gate_cycles: int = 0
 
     # ── what an operator authorized, after a cap was hit ─────────────────────
     #
@@ -484,6 +680,8 @@ class Budget(BaseModel):
     lead_review_grants: int = 0
     #: Extra extensions an operator has authorized past `MAX_EXTENSIONS`.
     extension_grants: int = 0
+    #: Extra program reviews an operator has authorized past `MAX_PROGRAM_REVIEWS`.
+    program_review_grants: int = 0
 
     def fresh_gate(self) -> Budget:
         """Entering a gate: every per-gate counter starts over.
@@ -516,6 +714,25 @@ class Budget(BaseModel):
     def extended(self) -> Budget:
         return self.model_copy(update={"extensions": self.extensions + 1})
 
+    def cycled(self) -> Budget:
+        """A gate concluded: one more cycle toward the next periodic program review."""
+        return self.model_copy(update={"gate_cycles": self.gate_cycles + 1})
+
+    def program_reviewed(self) -> Budget:
+        """A program review ran: count it, and the periodic clock starts over."""
+        return self.model_copy(
+            update={"program_reviews": self.program_reviews + 1, "gate_cycles": 0}
+        )
+
+    def rechartered(self) -> Budget:
+        return self.model_copy(update={"recharters": self.recharters + 1})
+
+    def granted_program_review(self) -> Budget:
+        """An operator answered the program-review block: one more is authorized."""
+        return self.model_copy(
+            update={"program_review_grants": self.program_review_grants + 1}
+        )
+
 
 __all__ = [
     "AntiShortcutFlags",
@@ -523,24 +740,35 @@ __all__ = [
     "Build",
     "Collected",
     "Design",
+    "Dossier",
     "DryRun",
     "EnvelopeCheck",
     "ExtendResult",
     "FailedCriterion",
+    "FrozenTarget",
     "GateCheck",
+    "GateRow",
     "GateSelection",
     "GoalReview",
+    "HistoryEvent",
     "Job",
+    "JobSummary",
     "JobWatch",
     "LeadReview",
     "Ledger",
+    "MetricPoint",
     "NewDirectionResult",
+    "NewTarget",
     "Probe",
+    "ProbeOrder",
     "Program",
+    "ProgramReview",
     "PublishResult",
+    "RecharterResult",
     "RecordResult",
     "RepoSetup",
     "ResearchResult",
+    "Resolvability",
     "ReviveResult",
     "TriageResult",
 ]

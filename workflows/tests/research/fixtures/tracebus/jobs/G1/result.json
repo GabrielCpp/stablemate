@@ -1,0 +1,29 @@
+{
+ "controls": [
+  "scratch",
+  "random",
+  "shuffled",
+  "same_param"
+ ],
+ "metrics": {
+  "C": 101.0,
+  "apparatus_blocked": 1.0,
+  "candidate_uniqueness_mean": 4.530612244897959,
+  "completion_fraction": 1.0,
+  "coverage_seed0": 34.0,
+  "coverage_seed1": 31.0,
+  "coverage_seed2": 36.0,
+  "exact_stage_headroom": 0.0,
+  "pass": 0.0,
+  "precondition_tension": 1.0,
+  "weak_pass": 0.0
+ },
+ "n_completed": 408,
+ "n_planned": 408,
+ "seeds": [
+  0,
+  1,
+  2
+ ],
+ "status": "ok"
+}
