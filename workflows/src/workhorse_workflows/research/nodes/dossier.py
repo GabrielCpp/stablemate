@@ -42,9 +42,14 @@ if __name__ == "__main__":  # pragma: no cover
     # register `build_dossier` twice on the blueprint; run the imported copy instead.
     import sys
 
-    from workhorse_workflows.research.nodes.dossier import _main as _imported_main
+    from workhorse_workflows.research.nodes import dossier as _loaded
 
-    _imported_main()
+    # The *module*, not the member: this guard runs before the rest of this file
+    # is executed, so `_main` is not bound in this namespace yet and a `from … import
+    # _main` reads as unresolved to anything analysing the file top to bottom. The
+    # attribute is looked up on the fully-loaded copy instead, which is the copy that
+    # holds the registered blueprint anyway.
+    _loaded._main()
     sys.exit(0)
 
 from workhorse_workflows.research.nodes._blueprint import blueprint
@@ -352,6 +357,11 @@ def pending_results(progress: str, cap: int = 20) -> list[str]:
 
 
 def _epoch_to_date(value: object) -> str:
+    # `runner` is parsed JSON, so the field is whatever the file happened to carry.
+    # Anything `float()` could not have taken already left here as "" by way of the
+    # `TypeError` arm; rejecting it up front says so in the types as well.
+    if not isinstance(value, int | float | str):
+        return ""
     try:
         return datetime.fromtimestamp(float(value), tz=timezone.utc).date().isoformat()
     except (TypeError, ValueError, OverflowError):
