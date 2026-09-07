@@ -7,7 +7,13 @@ knowledge of what the book used to be. Each fix is a shape predicate, idempotent
 convergent from any input, so running it on a clean or from-scratch book is a no-op and
 running it twice is the same as running it once.
 
-The one fix so far: a `verify:` bullet holding test-id citations. The contract split the
+The second fix: a `json_path` check asserting `equals=None` (or JSON's `null`). The
+vocabulary's `equals` is a scalar and carries no null — a field that holds nothing is
+asserted by its absence, `absent=true` — and the two spellings are exactly what an author
+transcribing a Python default or a JSON sample writes. The fix rewrites that one keyword,
+and only when the result parses as a check.
+
+The first fix: a `verify:` bullet holding test-id citations. The contract split the
 observation (`verify:` — a call in the closed check vocabulary) from the evidence path
 (`tests:` — `path::symbol` citations), and drifted books still carry the citations under
 the old key. A value that fails check parsing, opens with an inline-code citation run,
@@ -18,13 +24,15 @@ predicate cannot prove stays where it is and remains a doctor finding for judgme
 
 from __future__ import annotations
 
+import ast
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from ostler import markdown, refs, registry
 from ostler.checks import CheckCall, parse_check
 from ostler.fmt import _target_files
-from ostler.model import Graph, _file_main_section
+from ostler.model import Graph, _file_main_section, _inline_type
 
 #: The key whose drifted values this module recognizes, and the key they belong under.
 _DRIFTED_KEY = "verify"
@@ -49,18 +57,54 @@ def _is_test_citation_run(value: str) -> bool:
     return bool(cited) and all(Path(refs.ref_path(ref)).suffix for ref in cited)
 
 
-def _fix_bullet(bullet: markdown.Bullet, uitype: registry.UINodeType,
+_NULL_EQUALS = re.compile(r"\bequals\s*=\s*(?:None|null)\b")
+
+
+def _is_null_equals(value: str) -> bool:
+    """True when a `verify:` value is provably `json_path(..., equals=None|null)`.
+
+    Proved on the syntax tree, not the text: the call is `json_path`, its `equals` is the
+    constant `None` or the bare name `null`, and no other `one_of` argument is present —
+    so the rewrite cannot leave a call asserting two things at once.
+    """
+    try:
+        tree = ast.parse(value.strip(), mode="eval")
+    except SyntaxError:
+        return False
+    call = tree.body
+    if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+            and call.func.id == "json_path"):
+        return False
+    keywords = {kw.arg: kw.value for kw in call.keywords if kw.arg}
+    equals = keywords.get("equals")
+    if equals is None or "absent" in keywords or "matches" in keywords:
+        return False
+    is_none = isinstance(equals, ast.Constant) and equals.value is None
+    is_null = isinstance(equals, ast.Name) and equals.id == "null"
+    return is_none or is_null
+
+
+def _fix_bullet(bullet: markdown.Bullet, uitype: registry.UINodeType | None,
                 body_lines: list[str]) -> tuple[int, int, list[str]] | None:
-    """The one-line key rewrite for a drifted bullet, or None if the predicate fails."""
-    if bullet.label != _DRIFTED_KEY or _TARGET_KEY not in uitype.bullet_by_key:
-        return None
-    if not _is_test_citation_run(bullet.value):
+    """The one-line rewrite for a drifted bullet, or None if every predicate fails.
+
+    `uitype` is None for an untyped heading: the key move needs the type to own `tests:`,
+    the null rewrite is a property of the call and applies wherever a `verify:` sits.
+    """
+    if bullet.label != _DRIFTED_KEY:
         return None
     head = body_lines[bullet.line_start]
     marker, _, rest = head.partition("-")
     _, _, value = rest.partition(":")
-    fixed = f"{marker}- {_TARGET_KEY}:{value}"
-    return (bullet.line_start, bullet.line_start + 1, [fixed])
+    owns_tests = uitype is not None and _TARGET_KEY in uitype.bullet_by_key
+    if owns_tests and _is_test_citation_run(bullet.value):
+        fixed = f"{marker}- {_TARGET_KEY}:{value}"
+        return (bullet.line_start, bullet.line_start + 1, [fixed])
+    if _is_null_equals(bullet.value):
+        rewritten = _NULL_EQUALS.sub("absent=true", value, count=1)
+        if isinstance(parse_check(rewritten.strip()), CheckCall):
+            return (bullet.line_start, bullet.line_start + 1, [f"{marker}- {_DRIFTED_KEY}:{rewritten}"])
+    return None
 
 
 def fix_text(text: str) -> str:
@@ -69,28 +113,36 @@ def fix_text(text: str) -> str:
     body_lines = doc.body.split("\n")
     edits: list[tuple[int, int, list[str]]] = []
 
-    def visit(section: markdown.Section, uitype: registry.UINodeType) -> None:
+    def visit(section: markdown.Section, uitype: registry.UINodeType | None) -> None:
         for bullet in section.bullets:
             if edit := _fix_bullet(bullet, uitype, body_lines):
                 edits.append(edit)
 
-    ftype = registry.ui_type(registry.type_of(doc.frontmatter or {}))
-    if ftype is not None and ftype.kind == "file":
-        main = _file_main_section(doc)
-        if main is not None:
-            visit(main, ftype)
-
-    for section in doc.walk_sections():
-        if section.level != 2:
-            continue
+    def promote(section: markdown.Section, container: str | None) -> None:
+        # The same walk `model._promote_section` types nodes by: a container heading
+        # types its direct children and is no node itself; an inline `type:` prefix wins;
+        # otherwise the container's type, else untyped. Nesting composes at any depth, so
+        # a `#### field:` under a record is reached the same way a `### method` is.
         # Case-insensitive on purpose: a drifted book may not have seen `fmt` yet, and
         # `## components` holds the same nodes `## Components` does.
-        type_name = _HEADING_TO_TYPE_LOWER.get(section.title.strip().lower())
-        if type_name is None:
-            continue
-        uitype = registry.ui_type_named(type_name)
+        child_container = _HEADING_TO_TYPE_LOWER.get(section.title.strip().lower())
+        if child_container is not None:
+            for sub in section.children:
+                promote(sub, child_container)
+            return
+        ntype, _ = _inline_type(section.title.strip())
+        ntype = ntype or container
+        visit(section, registry.ui_type_named(ntype) if ntype else None)
         for sub in section.children:
-            visit(sub, uitype)
+            promote(sub, None)
+
+    ftype = registry.ui_type(registry.type_of(doc.frontmatter or {}))
+    main = _file_main_section(doc)
+    if ftype is not None and ftype.kind == "file" and main is not None:
+        visit(main, ftype)
+    top = main.children if (main is not None and main.level == 1) else doc.sections
+    for section in top:
+        promote(section, None)
 
     if not edits:
         return text

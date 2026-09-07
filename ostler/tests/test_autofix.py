@@ -1,6 +1,6 @@
 """`ostler autofix` — deterministic repair of shape-detectable format drift.
 
-The one fix under test: a `verify:` bullet holding `path::symbol` test citations — the
+The first fix under test: a `verify:` bullet holding `path::symbol` test citations — the
 pre-split spelling — moves to `tests:`. The predicate must prove the value is a citation
 run before touching it; everything it cannot prove stays for doctor and judgment.
 """
@@ -79,6 +79,40 @@ def test_file_level_node_is_fixed_too():
     out = autofix.fix_text(text)
     assert "- tests: `api-service/internal/ledger/ledger_test.go::Test_Balance`" in out
     assert "- verify:" not in out
+
+
+def test_null_equals_becomes_absent():
+    out = autofix.fix_text(endpoint_doc('json_path(path="$.order", equals=None)'))
+    assert '- verify: json_path(path="$.order", absent=true)' in out
+    assert "equals" not in out
+
+
+def test_json_null_spelling_becomes_absent_too():
+    out = autofix.fix_text(endpoint_doc('json_path(path="$.result", equals=null)'))
+    assert '- verify: json_path(path="$.result", absent=true)' in out
+
+
+def test_null_equals_with_a_sibling_assertion_is_left_alone():
+    # Rewriting would leave `absent` twice; the call is malformed for a reason the fix
+    # cannot prove, so it stays a doctor finding.
+    text = endpoint_doc('json_path(path="$.x", equals=None, absent=true)')
+    assert autofix.fix_text(text) == text
+
+
+def test_nested_field_under_a_record_is_reached():
+    text = (
+        "---\ntype: concept\nslug: s\ntitle: T\n---\n# T\n\n"
+        "## Records\n\n### WorkItem\n- code: `pkg/worklist.py::WorkItem`\n\n"
+        "#### field: order\n- type: `int | None`\n- default: `None`\n"
+        '- verify: json_path(path="$.order", equals=None)\n'
+    )
+    out = autofix.fix_text(text)
+    assert '- verify: json_path(path="$.order", absent=true)' in out
+
+
+def test_null_equals_on_another_check_is_left_alone():
+    text = endpoint_doc('http_status(code=None)')
+    assert autofix.fix_text(text) == text
 
 
 def test_idempotent():
