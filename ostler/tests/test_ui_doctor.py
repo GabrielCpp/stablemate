@@ -799,7 +799,11 @@ def test_concept_judgment_keys_are_advisory_relations(repo: Path):
 
 
 def _endpoint_file(slug: str, symbol: str, extra: str = "") -> str:
-    return (f"---\ntype: api\nslug: {slug}\ntitle: {slug}\n---\n# {slug}\n\n"
+    # The H1 is a heading GitHub anchors too, so a document whose H1 and section share a title
+    # renders the section at `#slug-1`. Keep them distinct here: the subject is co-citation,
+    # not anchor uniquifying, and `test_a_repeated_heading_gets_the_anchor_github_renders`
+    # in `test_ui_graph.py` is where that behaviour is pinned.
+    return (f"---\ntype: api\nslug: {slug}\ntitle: {slug}\n---\n# {slug} API\n\n"
             f"## Endpoints\n\n### {slug}\n- method: POST\n- path: /{slug}\n"
             f"- does:\n  - state: sends the notification\n- status: `201` on success\n"
             f"- verify: http_status(code=201, path=\"/{slug}\")\n"

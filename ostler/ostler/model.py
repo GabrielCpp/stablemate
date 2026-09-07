@@ -990,9 +990,67 @@ _ANCHOR_SPACE_RE = re.compile(r"\s+")
 
 
 def anchor_of(title: str) -> str:
-    """GitHub-style heading anchor: lowercase, spaces→hyphens, punctuation dropped."""
+    """Slug one heading title: lowercase, spaces→hyphens, punctuation dropped.
+
+    This is **half** of GitHub's anchor algorithm — the pure half. The other half is stateful:
+    a slug GitHub has already issued in this document gets ``-1``, ``-2`` appended, so two
+    headings reading ``#### Effects`` render as ``#effects`` and ``#effects-1``. An anchor is
+    therefore not a property of a heading; it is a property of a heading's *position in a
+    document*, and this function does not take a document.
+
+    So it is not the anchor, and nothing may mint an identity from it. :func:`document_anchors`
+    is the anchor. This stays because slugging one string is genuinely wanted elsewhere —
+    ``fmt`` kebab-cases a heading's *text* with it, which is a rewrite of the title, not an
+    address.
+    """
     s = _ANCHOR_STRIP_RE.sub("", title.strip().lower())
     return _ANCHOR_SPACE_RE.sub("-", s).strip("-")
+
+
+def document_anchors(doc: markdown.MarkdownDoc) -> dict[int, str]:
+    """Every heading's rendered anchor in one document, keyed by its body-relative heading line.
+
+    The uniquifying half of GitHub's algorithm, which :func:`anchor_of` cannot do: walk the
+    headings in **source order** and append ``-1``, ``-2`` to a slug already issued. Two things
+    follow from matching GitHub rather than approximating it, and both are the point:
+
+    * The id a section node carries is the anchor a reader's browser actually jumps to, so a
+      link written ``./queue.md#effects-1`` — copied from the rendered page — resolves instead
+      of being reported ``missing-anchor``.
+    * Two headings that share a title stop sharing an id. They did share one:
+      ``_promote_section`` minted ``f"{rel}#{anchor_of(title)}"`` and appended without asking
+      whether the id was taken, so the second node was unreachable through
+      :meth:`Graph.find_ui_node` — which returns the first match — and every address into it
+      (a link, a coverage join, a ``qa context`` obligation id, a doctor finding's ref) named
+      the first occurrence silently.
+
+    **Every** heading is counted, container headings (``## Methods``) included, because GitHub
+    counts every heading it renders. Node promotion skips containers, so the count cannot be
+    kept during that walk — which is why this is a separate pass over the document rather than
+    a counter threaded through :func:`_promote_section`.
+
+    ``walk_sections`` yields tree order, so the sections are sorted by ``line_start`` — a
+    heading's line, unique within a document, which is also what makes it the key.
+    """
+    issued: set[str] = set()
+    repeats: dict[str, int] = {}
+    anchors: dict[int, str] = {}
+    for section in sorted(doc.walk_sections(), key=lambda s: s.line_start):
+        title = section.title.strip()
+        if not title:
+            continue
+        base = anchor_of(title)
+        anchor = base
+        # GitHub's own counter, plus a skip: a document holding both `## Effects` twice and a
+        # `## Effects 1` would make GitHub itself render two `#effects-1`, and an id that is
+        # ambiguous is not an id. Advancing past a taken slug keeps the result an identity in
+        # the case GitHub gets wrong, and is a no-op in every case it gets right.
+        while anchor in issued:
+            repeats[base] = repeats.get(base, 0) + 1
+            anchor = f"{base}-{repeats[base]}"
+        issued.add(anchor)
+        anchors[section.line_start] = anchor
+    return anchors
 
 
 def _file_main_section(doc: markdown.MarkdownDoc) -> markdown.Section | None:
@@ -1019,7 +1077,8 @@ def _inline_type(title: str) -> tuple[str | None, str]:
 
 
 def _promote_section(section: markdown.Section, rel: str, path: Path, offset: int,
-                     parent_id: str, container_type: str | None, nodes: list[UINode]) -> None:
+                     parent_id: str, container_type: str | None, nodes: list[UINode],
+                     anchors: dict[int, str]) -> None:
     """Promote **every** heading to a section node so its links are captured and it nests. Its type
     comes from an inline ``type:`` prefix / first-word (`### field: timeout`, `## field timeout`) or
     its enclosing container (`## Methods` → its children are ``method``s); a heading that names no
@@ -1033,11 +1092,11 @@ def _promote_section(section: markdown.Section, rel: str, path: Path, offset: in
     child_container = registry.UI_HEADING_TO_TYPE.get(title)
     if child_container is not None:
         for sub in section.children:
-            _promote_section(sub, rel, path, offset, parent_id, child_container, nodes)
+            _promote_section(sub, rel, path, offset, parent_id, child_container, nodes, anchors)
         return
     ntype, ntitle = _inline_type(title)                # inline type: / first word wins…
     ntype = ntype or container_type or "untyped"       # …else container's type, else untyped
-    anchor = anchor_of(title)                          # the rendered heading anchor
+    anchor = anchors[section.line_start]                # the rendered anchor, unique in this doc
     node_id = f"{rel}#{anchor}"
     nodes.append(UINode(
         type=ntype, kind="section", id=node_id, path=path, anchor=anchor,
@@ -1049,7 +1108,7 @@ def _promote_section(section: markdown.Section, rel: str, path: Path, offset: in
     ))
     # container_type applies only to a container's direct children, so it resets on descent.
     for sub in section.children:
-        _promote_section(sub, rel, path, offset, node_id, None, nodes)
+        _promote_section(sub, rel, path, offset, node_id, None, nodes, anchors)
 
 
 def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[UINode]:
@@ -1058,6 +1117,7 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
     `_promote_section`."""
     rel = path.relative_to(root).as_posix()
     offset = doc.body_offset
+    anchors = document_anchors(doc)
     nodes: list[UINode] = []
 
     fm = doc.frontmatter or {}
@@ -1087,7 +1147,7 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
     # Recurse the heading tree: the H1's children (or the doc's root sections) hang off the file node.
     top = main.children if (main is not None and main.level == 1) else doc.sections
     for sec in top:
-        _promote_section(sec, rel, path, offset, file_id, None, nodes)
+        _promote_section(sec, rel, path, offset, file_id, None, nodes, anchors)
     return nodes
 
 

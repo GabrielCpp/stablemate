@@ -444,7 +444,7 @@ def test_the_hop_does_not_chain_past_one_node(tmp_path: Path):
         ("archiver", "Archiver", "- consumes: mail.sent\n", "archive"),
     ):
         (tmp_path / f"docs/features/demo/{slug}.md").write_text(
-            f"---\ntype: screen\ntitle: {title}\n---\n# {title}\n\n"
+            f"---\ntype: screen\ntitle: {title}\n---\n# {title} Screen\n\n"
             "- route: /demo\n"
             "- code:\n\n"
             f"## {title}\n\n"

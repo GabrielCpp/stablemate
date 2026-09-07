@@ -81,7 +81,12 @@ INDEX_DIR_NAME = "ostler-index"
 #: recomputation and is the only lever that invalidates a stale entry deterministically.
 #: 4: the behavior verdict memo (:mod:`ostler.behavior_memo`) writes entries under this
 #: version; a build that does not know them must miss on them rather than read them.
-SCHEMA_VERSION = 4
+#: 5: a stored entry carries its file's ``ui_nodes``, and a node's ``id`` is now the anchor
+#: :func:`ostler.model.document_anchors` issues rather than a slug of the heading title. The
+#: bytes did not move, so nothing else in this file's keying would notice: an entry written
+#: before that change hands back the old, colliding ids forever on a source checkout, where
+#: the version in the epoch never moves.
+SCHEMA_VERSION = 5
 
 #: How long an entry may go unwritten before a prune removes it. Two weeks: long enough
 #: that an occasional book survives a quiet fortnight, short enough that an unattended

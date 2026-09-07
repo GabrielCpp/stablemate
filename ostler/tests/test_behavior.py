@@ -7,7 +7,7 @@ import pytest
 
 from ostler.behavior import (
     AuditPacket, AuditVerdicts, BookClaim, BookClaims, CandidateVerdict, ClaimVerdict,
-    build_audit_packets, duplicate_node_ids, exported_symbol, extract_book, extract_claims,
+    build_audit_packets, exported_symbol, extract_book, extract_claims,
     extract_evidence, validate_verdicts,
 )
 from ostler.model import load
@@ -575,7 +575,16 @@ def test_old_receipt_without_book_evidence_still_validates(audit_packet: AuditPa
     assert all(item.model_dump()["book_evidence"] == () for item in report.verdicts.candidates)
 
 
-def test_duplicate_anchor_claims_are_skipped_and_named(tmp_path: Path) -> None:
+def test_two_sections_sharing_a_heading_are_both_audited(tmp_path: Path) -> None:
+    """A repeated heading is two nodes at two anchors, so neither claim is dropped.
+
+    They used to share an id — `model.anchor_of` minted it from the heading title alone — and
+    `extract_book` skipped every claim under the second, recording a limitation that told the
+    operator to repair a `duplicate-container-heading` finding. That code fires only on
+    *registered* container headings, so on this shape doctor reported nothing and the named
+    repair did not exist. `model.document_anchors` issues the anchor GitHub renders, unique
+    within a document, and the skip has nothing left to skip.
+    """
     docs = tmp_path / "docs/features/api"
     docs.mkdir(parents=True)
     (docs / "items.md").write_text(
@@ -586,12 +595,12 @@ def test_duplicate_anchor_claims_are_skipped_and_named(tmp_path: Path) -> None:
     )
     (tmp_path / "api.py").write_text("def items():\n    return 50\n\ndef other():\n    return 1\n", encoding="utf-8")
     graph = load(tmp_path)
-    assert duplicate_node_ids(graph) == ("docs/features/api/items.md#items",)
     book = extract_book(graph)
-    assert [claim.node for claim in book.claims] == ["docs/features/api/items.md#other"]
-    assert len(book.limitations) == 1 and "duplicate-container-heading" in book.limitations[0]
+    assert [claim.node for claim in book.claims] == ["docs/features/api/items.md#items",
+                                                     "docs/features/api/items.md#items-1",
+                                                     "docs/features/api/items.md#other"]
+    assert book.limitations == ()
     preparation = build_audit_packets(extract_evidence(tmp_path, ["api.py"]), book)
-    assert all(book.limitations[0] in packet.limitations for packet in preparation.packets)
     assert len(preparation.packets) >= 1
 
 

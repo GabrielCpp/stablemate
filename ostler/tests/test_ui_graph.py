@@ -197,3 +197,54 @@ def test_selectors(repo: Path):
     assert graph.select(d, bullet="default=3600")
     assert all("sig" in n["bullets"] for n in graph.select(d, has_bullet="sig"))
     assert graph.select(d, node_type="method") and graph.select(d, title="timeout")
+
+
+REPEATED_HEADING = """\
+---
+type: concept
+slug: queue
+title: Queue
+---
+# Queue
+
+Jump to the [second one](./queue.md#effects-1).
+
+## Methods
+
+### method-register
+#### Effects
+- does: the client is added
+
+### method-unregister
+#### Effects
+- does: the client is dropped
+"""
+
+
+def test_a_repeated_heading_gets_the_anchor_github_renders(repo: Path):
+    """Two headings with one title are two nodes, at the two anchors a browser jumps to.
+
+    An anchor is a property of a heading's *position in a document*, not of its title: GitHub
+    slugs the title and then appends ``-1``, ``-2`` to a slug it has already issued. Minting the
+    id from the title alone gave both `#### Effects` the id ``queue.md#effects``, so the second
+    node was unreachable — ``find_ui_node`` returns the first match — and the link a reader
+    copies off the rendered page, ``#effects-1``, was reported ``missing-anchor``.
+    """
+    write(repo / "docs/features/groom/concepts/queue.md", REPEATED_HEADING)
+    g = load(repo)
+
+    ids = [n.id for n in g.ui_nodes]
+    assert len(ids) == len(set(ids)), f"node ids stated twice: {ids}"
+    assert "docs/features/groom/concepts/queue.md#effects" in ids
+    assert "docs/features/groom/concepts/queue.md#effects-1" in ids
+
+    # Each id reaches *its own* heading, not whichever came first.
+    first = g.find_ui_node("docs/features/groom/concepts/queue.md#effects")
+    second = g.find_ui_node("docs/features/groom/concepts/queue.md#effects-1")
+    assert first is not None and second is not None and first.line < second.line
+    assert first.meta["does"] == "the client is added"
+    assert second.meta["does"] == "the client is dropped"
+
+    # …and the link resolver agrees with the minting, so `#effects-1` is not a dangling anchor.
+    resolver = links.LinkResolver(g)
+    assert "effects-1" in resolver.anchors(repo / "docs/features/groom/concepts/queue.md")

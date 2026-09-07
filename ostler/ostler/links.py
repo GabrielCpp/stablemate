@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ostler.model import Graph, anchor_of, read_doc
+from ostler.model import Graph, document_anchors, read_doc
 
 _SKIP_PREFIXES = ("http://", "https://", "mailto:", "tel:", "ftp://")
 
@@ -65,7 +65,10 @@ class LinkResolver:
             doc = read_doc(path)
         except OSError:
             return set()
-        return {anchor_of(s.title) for s in doc.walk_sections() if s.title.strip()}
+        # The same pass `model` mints node ids from, so a link is checked against the anchors
+        # that exist rather than against a slug of each title — which collapsed a repeated
+        # heading onto one anchor and rejected `#effects-1`, the one GitHub actually renders.
+        return set(document_anchors(doc).values())
 
     def resolve(self, source: Path, href: str) -> LinkTarget | None:
         """Resolve *href* found in *source*. None if it isn't a doc link (URL / code ref)."""

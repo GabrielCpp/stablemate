@@ -198,20 +198,6 @@ def extract_claims(graph: Graph) -> tuple[BookClaim, ...]:
     return extract_book(graph).claims
 
 
-def duplicate_node_ids(graph: Graph) -> tuple[str, ...]:
-    """Every node id the book spells more than once, in id order.
-
-    Two sections under one node with the same heading — two `## Effects`, say — parse to two
-    nodes with one id, and every claim minted under the second collides with the first.
-    `doctor` reports the collision as `duplicate-container-heading`; the audit only has to
-    survive it, so the book's other claims are still reviewed while that one is repaired.
-    """
-    counts: dict[str, int] = defaultdict(int)
-    for node in graph.ui_nodes:
-        counts[node.id] += 1
-    return tuple(sorted(node_id for node_id, count in counts.items() if count > 1))
-
-
 def extract_book(graph: Graph) -> BookClaims:
     """Use the real graph's normative bullets and existing QA obligation ID spelling.
 
@@ -224,12 +210,13 @@ def extract_book(graph: Graph) -> BookClaims:
     """
     claims: list[BookClaim] = []
     by_id = {node.id: node for node in graph.ui_nodes}
-    duplicates = set(duplicate_node_ids(graph))
-    limitations = tuple(
-        f"Skipped every claim under {node_id}: the book spells that node id more than once, so its "
-        f"claim ids would collide (doctor: duplicate-container-heading). Repair the book, then re-audit."
-        for node_id in sorted(duplicates)
-    )
+    # No node id is spelled twice, so no claim is skipped for colliding with one. Two sections
+    # sharing a heading used to share an id, and every claim under the second was dropped here
+    # with a limitation naming `duplicate-container-heading` — a code that does not fire on the
+    # shape that caused it, so the audit reported a repair nobody could make. `model.document_
+    # anchors` now issues the anchor GitHub renders, which is unique within a document by
+    # construction, and both sections are audited.
+    limitations: tuple[str, ...] = ()
     documents: dict[Path, tuple[markdown.MarkdownDoc, str]] = {}
     cited_paths: set[str] = set()
     cited_symbols: set[str] = set()
@@ -244,8 +231,6 @@ def extract_book(graph: Graph) -> BookClaims:
                 cited_paths.add(path)
                 cited_symbols.add(f"{path}::{ref.symbol}" if ref.symbol else path)
     for node in sorted(graph.ui_nodes, key=lambda node: node.id):
-        if node.id in duplicates:
-            continue
         owner = node
         visited: set[str] = set()
         citations = tuple(refs.code_refs(owner.meta.get("code")))
