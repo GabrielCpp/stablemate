@@ -47,14 +47,21 @@ from workhorse_workflows.okf_builder.shared.schemas import (
     Watermarked,
 )
 
-#: Directories whose contents are never source: build output, vendored trees, caches.
+#: Directories whose contents are never source: build output, vendored trees, caches, and
+#: the test trees — a test is cited by a `tests:` bullet, never covered as a subject.
 SKIP_DIRS = {
-    ".git", ".next", ".react-router", ".venv", "__pycache__", "build", "coverage",
-    "dist", "generated", "mocks", "node_modules", "vendor",
+    ".git", ".next", ".react-router", ".venv", "__pycache__", "__tests__", "_vendor",
+    "build", "coverage", "dist", "generated", "mocks", "node_modules", "test", "tests",
+    "vendor",
 }
 TEST_SUFFIXES = (
     "_test.go", ".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx", "_test.py", "Test.php",
 )
+#: pytest's own convention is a prefix, and a `conftest.py` is a fixture file with no name
+#: pattern at all — a tree that follows it put every test function into the inventory as a
+#: unit to cover, and the re-scan argued about them for six rounds on every Python book.
+TEST_PREFIXES = ("test_",)
+TEST_FILES = ("conftest.py",)
 GENERATED_SUFFIXES = (".gen.go", ".generated.go", ".d.ts")
 
 # --- operational surface (the run-surface inventory, docs/okf-runbook.md §5.3) -------------
@@ -76,7 +83,8 @@ def skipped(path: Path, root: Path, excludes: list[str]) -> bool:
         for pattern in excludes
     )
     return (configured or bool(set(rel.parts) & SKIP_DIRS)
-            or path.name.endswith(TEST_SUFFIXES + GENERATED_SUFFIXES))
+            or path.name.endswith(TEST_SUFFIXES + GENERATED_SUFFIXES)
+            or path.name.startswith(TEST_PREFIXES) or path.name in TEST_FILES)
 
 
 def _unit_path(path: Path, source: Path, repo_root: Path) -> str:
