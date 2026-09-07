@@ -341,22 +341,24 @@ def test_session_models_reads_opencode_export_shape():
             capture._EXPORTERS.pop("acme-cli", None)
 
 
-# --------------------------------------------------------------------------- pruning
-def test_the_archive_keeps_everything_by_default():
-    """Retention is its own clock and its default is *keep*: a transcript is wanted
-    precisely when someone returns to a run long after its spans aged out."""
+# --------------------------------------------------------------------------- retention
+def test_the_archive_has_no_retention_of_its_own_and_the_store_sweep_spares_it():
+    """A transcript is wanted precisely when someone returns to a run long after
+    its spans aged out, so the archive kept everything by default and its own
+    prune was only ever reachable by an operator setting a window. It is gone:
+    the one thing that removes a run's transcripts now is :mod:`groom.archive`
+    moving them into the frozen root, and a store sweep must not touch the index
+    that says where they went."""
     with _DB(), _workspace() as tmp:
         rows = _rows()[:1]
         run_dir = _run_dir(tmp, rows)
         _visit(run_dir, rows[0])
         turns.harvest_run(run_dir, "R1", "coder")
 
-        assert turns.prune(retention_days=0, now=1e12) == 0
+        assert not hasattr(turns, "prune")
+        store.prune(retention_days=0, now=1e12, archived={"R1"})
         assert len(store.query_turns(run="R1")) == 1
-
-        assert turns.prune(retention_days=1, now=1000.0 + 3 * 86400) == 1
-        assert store.query_turns(run="R1") == []
-        assert not (turns.transcripts_root() / "R1" / "001-00001-plan-qa__s1").exists()
+        assert (turns.transcripts_root() / "R1" / "001-00001-plan-qa__s1").exists()
 
 
 if __name__ == "__main__":

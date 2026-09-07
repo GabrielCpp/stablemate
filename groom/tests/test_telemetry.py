@@ -702,14 +702,14 @@ def test_insert_metrics_never_stores_liveness_ticks():
         assert [row["name"] for row in kept] == ["workhorse.turn.idle_s"]
 
 
-def test_prune_expires_legacy_liveness_rows_sooner_than_diagnostic_metrics():
-    """LIVENESS_RETENTION_DAYS is a migration knob: new ticks are never stored,
-    but a database written before the filter shipped still carries them, and the
-    dedicated sweep drains those without touching the gauges."""
+def test_the_never_archived_series_go_on_age_alone_with_no_archive_behind_them():
+    """Every other row waits for :mod:`groom.archive` to have written it out.
+    These do not, because nothing writes them out: the liveness ticks and the
+    per-node activity gauges answer "where is this run right now", which is a
+    question about a live groom and meaningless once the run is over."""
     with _TelemetryEnv():
-        # Two days old: inside the 14-day metric window, outside the 1-day liveness one.
-        now = 10 * 86400
-        old = now - 2 * 86400
+        now = 100 * 86400
+        old = now - 60 * 86400
         _insert_legacy_metric_rows(
             [
                 ("r", "workhorse.run.heartbeat", old, 1),
@@ -717,29 +717,21 @@ def test_prune_expires_legacy_liveness_rows_sooner_than_diagnostic_metrics():
                 ("r", "workhorse.run.heartbeat", now - 60, 2),
             ]
         )
-        # A gauge: its history is how a wedged turn is diagnosed, so it keeps
-        # the full window.
         store.insert_metrics(
-            [{"run_id": "r", "name": "workhorse.turn.idle_s", "ts": old, "value": 42}]
+            [
+                {"run_id": "r", "name": "workhorse.turn.idle_s", "ts": old, "value": 42},
+                # A budget series: archived, so it may not go without one.
+                {"run_id": "r", "name": "workhorse.gas", "ts": old, "value": 7},
+            ]
         )
-        store.prune(retention_days=14, now=now)
+        store.prune(retention_days=30, now=now)
         kept = store._connection().execute(
             "SELECT name, ts FROM metrics ORDER BY name, ts"
         ).fetchall()
         assert [(row["name"], row["ts"]) for row in kept] == [
+            ("workhorse.gas", old),
             ("workhorse.run.heartbeat", now - 60),
-            ("workhorse.turn.idle_s", old),
         ]
-
-
-def test_liveness_retention_never_outlives_the_table_wide_window():
-    with _TelemetryEnv():
-        now = 10 * 86400
-        _insert_legacy_metric_rows([("r", "workhorse.run.heartbeat", now - 7200, 1)])
-        # A retention shorter than the liveness window must still win; the liveness
-        # rule may only ever delete more, never keep a row the table-wide sweep drops.
-        store.prune(retention_days=0.01, now=now)
-        assert store._connection().execute("SELECT COUNT(*) FROM metrics").fetchone()[0] == 0
 
 
 def test_prune_deletes_in_chunks_and_still_drains_everything():
@@ -791,10 +783,16 @@ def test_run_summaries_count_spans_and_errors_without_claiming_liveness():
 def test_prune_drops_only_old_rows():
     with _TelemetryEnv():
         store.insert_spans(
-            otlp.parse_traces(_trace_request([{"name": "old", "start": 10, "end": 20}]))
+            otlp.parse_traces(
+                _trace_request([{"name": "old", "start": 10, "end": 20}])
+                + _trace_request([{"name": "new", "start": 2 * 86400, "end": 2 * 86400 + 5}])
+            )
         )
-        removed = store.prune(retention_days=1, now=20 + 2 * 86400)
-        assert removed == 1 and store.query_spans() == []
+        # `archived` is what authorises the delete; age is what decides which of
+        # that run's rows go. Both spans belong to the archived run, one is inside
+        # the window, and only the expired one may be dropped.
+        removed = store.prune(retention_days=1, now=20 + 2 * 86400, archived={"run-1"})
+        assert removed == 1 and [s["name"] for s in store.query_spans()] == ["new"]
 
 
 # --------------------------------------------------------------------------- #
@@ -2114,16 +2112,17 @@ def test_logs_receiver_rejects_an_undecodable_body():
             client.__exit__(None, None, None)
 
 
-def test_logs_prune_on_their_own_shorter_window():
-    """Logs are one row per line rather than one per node visit, so they outgrow
-    spans by orders of magnitude; holding them for the span retention would let a
-    few chatty week-long runs dominate the file."""
+def test_logs_expire_on_the_same_window_as_everything_else():
+    """Logs used to hold a shorter window of their own, because they are one row
+    per line rather than one per node visit and a few chatty week-long runs would
+    dominate the file. The archive is the answer to that now — a log leaving SQL
+    is a log landing on disk — so one window covers every signal, and a second
+    knob would only decide which half of a run's history goes missing."""
     with _TelemetryEnv():
         now = 100 * 86400
-        store.insert_logs(otlp.parse_logs(_logs_request([{"body": "old", "ts": now - 5 * 86400}])))
+        store.insert_logs(otlp.parse_logs(_logs_request([{"body": "old", "ts": now - 60 * 86400}])))
         store.insert_logs(otlp.parse_logs(_logs_request([{"body": "new", "ts": now - 3600}])))
-        # Span retention (14d) would keep both; the log window (3d) must not.
-        store.prune(retention_days=14, now=now)
+        store.prune(retention_days=30, now=now, archived={"run-1"})
         assert [r["body"] for r in store.query_logs()] == ["new"]
 
 
