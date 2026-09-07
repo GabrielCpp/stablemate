@@ -62,10 +62,52 @@ Empty result from `ls` means the tick hasn't run, this host cannot see the run d
 record only ever existed in the CLI's store. Try `harvest`, then `backfill --dry-run`, in
 that order.
 
-**The archive rides its own clock.** `GROOM_TRANSCRIPT_RETENTION_DAYS` defaults to `0` —
-keep everything — because a transcript is wanted precisely when someone comes back long
-after the spans aged out (`GROOM_RETENTION_DAYS`, 14). Do not assume telemetry and
-transcripts cover the same window; the archive usually reaches further back.
+**The archive has no retention — none, not a knob set to keep-everything.** A transcript
+is wanted precisely when someone comes back long after the run ended, and since the run's
+telemetry is now archived beside it (below), the two no longer cover different windows.
+What ages out is the *database*, not the evidence.
+
+## Telemetry lands beside the transcripts (`groom archive`)
+
+SQLite is the live tier. A run quiet longer than `GROOM_RETENTION_DAYS` (30) has every
+span, every log and the four budget metric series written out as a single
+`telemetry.jsonl`, and only then are its rows pruned — write, move, delete, in that
+order, with prune **fail-closed** on any run the archive has not reported back.
+
+```
+<data dir>/transcripts/<run>/…   live; the only root the harvester writes to
+<data dir>/archives/<run>/       frozen; the same visit dirs + telemetry.jsonl
+```
+
+Two roots on one filesystem, so archival is one `os.rename` of the run's directory.
+**A run under `archives/` is frozen**: never re-archived, never resumed, never written
+again. A later run claiming a frozen name is archived under a derived name
+(`R-a1b2c3d4`) rather than overwriting it — so a name you find there always means the
+run you think it means.
+
+`telemetry.jsonl` is one JSON object per line, ordered by `ts`, discriminated by `kind`
+(`span` / `log` / `metric`); line 1 is a manifest with the run identity and row counts,
+which is also how an interrupted sweep resumes without rewriting the file. Every record
+carries `run_id`, `node`, `generation` and `seq` — the same visit key the transcript
+directories are named by, so telemetry joins its transcript by string equality and
+nothing else. Heartbeats and liveness gauges are absent by design.
+
+There is **no index table**: the archived set is the directory listing under
+`archives/`, which is the authority that outlives a discarded `groom.db`.
+
+```bash
+groom archive status         # root, frozen count, pending, held, last sweep
+groom archive ls [--long]    # what is frozen; --long reads each manifest
+groom archive show RUN       # stream that run's telemetry.jsonl
+groom archive now [--dry-run] [--limit N]
+```
+
+**Reading an old run is a two-step, not a failed query.** `groom logs --run RUN` on a run
+past the window returns nothing and is not evidence the run had no logs — check
+`groom archive ls` first, then `groom archive show RUN`. The sweep runs from
+`groom serve` every `GROOM_ARCHIVE_EVERY_S` (6h), oldest first, at most
+`GROOM_ARCHIVE_RUNS_PER_PASS` (25) per pass; the rest are reported pending, and a run it
+cannot write stays in SQL for the next pass rather than raising.
 
 ## Evaluating a prompt against every session that ran it
 

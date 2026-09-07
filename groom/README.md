@@ -137,7 +137,9 @@ no discovery gate. Spans and metrics persist in an embedded SQLite file
 (`groom.db` in the platform data dir; override with `GROOM_DB`), searchable
 from the dashboard's *Telemetry* pane, via `GET /traces?run=…&node=…&status=…&
 slower_than=…`, or with raw `sqlite3` queries. Rows older than
-`GROOM_RETENTION_DAYS` (14) are pruned at startup and on a periodic tick.
+`GROOM_RETENTION_DAYS` (30) are pruned at startup and on a periodic tick — but
+only for a run whose telemetry is already **archived** to disk (below), so the
+window bounds the *database*, not the evidence.
 
 A batch the store cannot take is answered `503` with a `Retry-After`, not `500`: the
 exporter re-sends it, where an unhandled error would have said "stored" by omission.
@@ -158,13 +160,60 @@ heartbeat alone was 1.77M of 2.21M metric rows, and a later one hit 2.8 GB with
 heartbeats ~80% of 18M rows. Nothing reads their history — the alert rules fold
 them into memory at ingest, and `groom status` asks the running server for that
 in-memory picture over HTTP (`/api/live`) — so persistence bought nothing and
-cost most of the file. (`GROOM_LIVENESS_RETENTION_DAYS`, 1, remains as the prune
-knob that drains rows written before this change.) The gauges
-(`turn.active`, `turn.idle_s`, `wait.active`, `wait.elapsed_s`, `node.elapsed_s`,
-`node.active`) keep the normal window: climbing idle on an active turn diagnoses a
-wedged agent, while an explicit wait is expected parked work.
+cost most of the file. Rows written before this change drain on age alone: the
+never-archived series are swept by the ordinary prune without waiting for an
+archive behind them, because there is none. The seven liveness *gauges*
+(`turn.active`, `turn.idle_s`, `turn.elapsed_s`, `wait.active`, `wait.elapsed_s`,
+`node.active`, `node.elapsed_s`) are stored and read live but not archived, on the
+same reasoning: climbing idle on an active turn diagnoses a wedged agent *now*,
+while an explicit wait is expected parked work, and neither question is asked of a
+run that ended a month ago. `models.UNARCHIVED_DELETABLE_METRICS` names them, in
+one place, because what may be deleted without a copy is a rule that has to be
+readable rather than inferred.
 
-**The pane shows the runs connected right now.** Two weeks of retention means the
+### Archival: SQLite is the live tier, disk is the permanent one
+
+A run's spans and logs are not lost when they age out. Once a run has been quiet
+longer than `GROOM_RETENTION_DAYS`, an archival pass writes everything it holds —
+every span, every log, and the four budget metric series — as one
+`telemetry.jsonl` beside that run's transcripts, and only then does prune delete
+the rows. Write, move, delete, in that order: prune is fail-closed and refuses to
+touch a run the archive has not reported back.
+
+```
+<data dir>/transcripts/<run-id>/…      live runs, the harvester's only target
+<data dir>/archives/<run-id>/          frozen: transcripts + telemetry.jsonl
+```
+
+Two roots on one filesystem, so promotion is a single `os.rename`. **An archived
+run is frozen** — never re-archived, never resumed, never written again. A second
+run claiming a name already under `archives/` is archived under a derived name
+(`R-a1b2c3d4`) rather than overwriting it.
+
+The file is one JSON object per line, ordered by `ts`, discriminated by `kind`
+(`span` / `log` / `metric`), with line 1 a manifest naming the run and its row
+counts. Records carry `run_id`, `node`, `generation` and `seq`, which is exactly
+the key the per-node transcripts are classified by — so the telemetry joins the
+transcripts with no correlation step. The heartbeats and the liveness gauges never
+reach it; they are for the in-memory picture, not for history.
+
+The archive has **no retention of its own** and **no index table**: the set of
+archived runs is what is on disk under `archives/`, read by listing it. A sweep
+interrupted halfway resumes from the manifest rather than rewriting the file.
+
+```bash
+groom archive status         # root, frozen runs, pending, held, last sweep
+groom archive ls             # what is frozen (--long for the manifests)
+groom archive show RUN       # stream one run's telemetry.jsonl
+groom archive now --dry-run  # force a pass; --dry-run writes nothing
+```
+
+The pass runs in its own task at `groom serve` launch, seeded already-expired so
+a restart archives immediately, then every `GROOM_ARCHIVE_EVERY_S` (6h) for at
+most `GROOM_ARCHIVE_RUNS_PER_PASS` (25) runs — oldest first, the rest reported as
+pending. Nothing in it may raise into groom's tick.
+
+**The pane shows the runs connected right now.** A month of retention means the
 unfiltered strip is mostly runs that ended days ago, and a dashboard is for
 watching, so a run card (and its spans — a span table listing a hidden run's nodes
 is telemetry from nowhere) appears only while the run is `live` by the same
@@ -286,9 +335,8 @@ context for the SDK to attach.
 No alert rule fires on logs, deliberately — liveness is already answered by the
 heartbeat metrics, and paging on log *content* would mean guessing which strings
 are worth waking someone for, per workflow. Logs are for reading once a metric has
-told you where to look. They prune on their own shorter window
-(`GROOM_LOG_RETENTION_DAYS`, 3) because they are one row per line rather than one
-per node visit.
+told you where to look. They expire on the same window as everything else and
+are archived with it — one signal, one clock, one file.
 
 ### Test runs are not telemetry
 

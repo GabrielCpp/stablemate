@@ -106,8 +106,9 @@ and its on-disk artifacts with no correlation step. Do not try to join on `trace
 is zeroes, because workhorse never makes its node spans current. Join on `run_id` +
 `node`.
 
-Logs prune on their own short window (`GROOM_LOG_RETENTION_DAYS`, 3) — one row per line,
-so they are the first evidence to disappear. Pull them early in a postmortem.
+Logs expire on the same window as everything else (`GROOM_RETENTION_DAYS`, 30) and are
+archived to disk with the spans before they go — see `references/archive.md`. If the run
+is older than that, read `groom archive show RUN` instead of `groom logs`.
 
 ## Finished: `cost`, `loops`, `profile`
 
@@ -205,13 +206,16 @@ three column semantics that make a wrong answer look right (NULL is not `0.0`;
   deliberate command with a preview rather than in the ingest path, where the same guess
   would discard real evidence unasked.
 
-- **Liveness counters expire in a day** (`GROOM_LIVENESS_RETENTION_DAYS`, 1), not fourteen.
-  `workhorse.run.heartbeat` / `turn.heartbeat` / `cap_wait.heartbeat` tick every ~10s per
-  open node and on a long run outgrow everything else combined — in one real store the run
-  heartbeat alone was 1.77M of 2.21M metric rows. Nothing reads their history, so their
-  absence beyond a day is by design, not a gap. The gauges (`turn.active`, `turn.idle_s`,
-  `wait.active`, `wait.elapsed_s`, `node.elapsed_s`, `node.active`) keep the normal window,
-  and those are the ones a postmortem wants.
+- **Liveness never reaches the disk at all.** `workhorse.run.heartbeat` /
+  `turn.heartbeat` / `cap_wait.heartbeat` tick every ~10s per open node and on a long run
+  outgrow everything else combined — in one real store the run heartbeat alone was 1.77M
+  of 2.21M metric rows — so `insert_metrics` drops them at the door. The liveness *gauges*
+  (`turn.active`, `turn.idle_s`, `turn.elapsed_s`, `wait.active`, `wait.elapsed_s`,
+  `node.active`, `node.elapsed_s`) are stored and answer live questions, but are **not
+  archived**: they expire on age alone with no copy behind them. What survives a run's
+  retention window is the spans, the logs, and the four budget series (`workhorse.gas`,
+  `gas.capacity`, `gas.refuels`, `cap_wait.remaining_s`). Ask an idle-gauge question
+  inside the window or not at all.
 
 - **Don't count a run's age as a problem.** Resumptions reuse a run identity and multi-day
   runs are normal — which is why groom deliberately has no rule on total run age. A hard

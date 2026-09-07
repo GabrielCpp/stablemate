@@ -256,9 +256,10 @@ archive — throw it away and take it again
 after the next harvest. There is no default output directory: where a dataset lands is
 the caller's decision, not groom's.
 
-The archive rides its **own clock**. `GROOM_TRANSCRIPT_RETENTION_DAYS` defaults to
-`0`, meaning keep everything, because a transcript is wanted precisely when someone
-comes back to a run long after its spans aged out. `GROOM_HARVEST_EVERY_S` (default
+The archive **has no retention at all** — not a knob set to keep-everything, no
+knob — because a transcript is wanted precisely when someone comes back to a run
+long after it ended, and a run's telemetry now lands beside it (below) rather than
+expiring out from under it. `GROOM_HARVEST_EVERY_S` (default
 300) is how often the tick copies; it is well under the prune interval because it is
 racing a run dir's lifetime, not groom's disk budget. Harvest is idempotent on a
 content digest, so a live run's growing transcript is re-copied and a finished one is
@@ -276,6 +277,49 @@ the visit key, the digest, what counts as a record — by construction rather th
 second implementation. The last pull is unconditional, at the run's terminal, and drops
 the mirror after it. The sidecar remains non-authoritative: if it never connects, that
 container's records are absent and nothing else degrades.
+
+## Where the telemetry goes when it ages out (`groom archive`)
+
+The SQLite file is the **live tier**; the disk is the permanent one. A run quiet
+longer than `GROOM_RETENTION_DAYS` (30) is archived — every span, every log and the
+four budget metric series written as one `telemetry.jsonl` — and only then are its
+rows pruned. The ordering is write, move, delete, and prune is **fail-closed**: a
+run the archive has not reported back is not deleted, whatever its age.
+
+```
+<data dir>/transcripts/<run>/…   live, and the only thing the harvester writes to
+<data dir>/archives/<run>/       frozen: the same transcripts, plus telemetry.jsonl
+```
+
+Two roots on one filesystem, so promotion is one `os.rename` rather than a copy.
+Immutability is structural rather than a permission bit: a run under `archives/` is
+never re-archived, never resumed and never written again, and a later run claiming
+a name already frozen there is archived under a derived name (`R-a1b2c3d4`).
+
+`telemetry.jsonl` is one JSON object per line, ordered by `ts` and discriminated by
+`kind` (`span` / `log` / `metric`); line 1 is a manifest naming the run and its row
+counts, so an interrupted sweep resumes from it instead of rewriting the file.
+Records carry `run_id`, `node`, `generation` and `seq` — the same visit key the
+transcripts are classified by, so the two join with no correlation step. The
+heartbeats and the liveness gauges are not in it: they answer questions about a run
+that is happening, and nobody asks them of a run that ended.
+
+There is **no index table**. The set of archived runs is the set of directories
+under `archives/`, read by listing it — one authority, and it is the one that
+survives a database that was thrown away.
+
+```bash
+groom archive status         # root, frozen count, pending, held, last sweep
+groom archive ls [--long]    # what is frozen; --long reads each manifest
+groom archive show RUN       # stream that run's telemetry.jsonl
+groom archive now [--dry-run] [--limit N]
+```
+
+The sweep runs in its own task from `groom serve`, seeded already-expired so a
+restart archives at once, then every `GROOM_ARCHIVE_EVERY_S` (6h), taking the
+oldest `GROOM_ARCHIVE_RUNS_PER_PASS` (25) runs and reporting the remainder as
+pending. It never raises into groom's tick: a run it cannot write stays in SQL and
+is retried next pass.
 
 ## What occupied the wall clock (`groom profile`)
 
