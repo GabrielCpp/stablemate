@@ -297,7 +297,23 @@ def _write_evidence(
         source = item if isinstance(item, dict) else {"id": str(item)}
         item_id = str(source["id"])
         records = [record for record in log_records if item_id in record.get("covers", [])]
-        failing = [record for record in records if record.get("result") != "PASS"]
+        # A failing record disproves the item only if the *plan* made it. The harness
+        # synthesizes one over every obligation an aborted scenario claimed (see
+        # `PythonDriver._grade`), and that record reports the scenario stopping, not the
+        # product misbehaving. Counted as a disproof it makes an abort indistinguishable
+        # from a caught defect — `Fail` with non-empty `failing_log_refs` is what a reader
+        # takes for *contradicted* — so it goes to the aborted channel below instead, the
+        # same partition `evidence_map` already makes.
+        failing = [
+            record
+            for record in records
+            if record.get("result") != "PASS" and not record.get("sentinel")
+        ]
+        sentinels = [
+            record
+            for record in records
+            if record.get("result") != "PASS" and record.get("sentinel")
+        ]
         stopped = [
             record
             for record in records
@@ -332,13 +348,14 @@ def _write_evidence(
                 f"{record.get('scenario', '')}:assert:{record.get('action', '?')}"
                 for record in failing
             ]
-        if stopped:
-            # A passing assertion inside a scenario that then stopped early. Kept separate
-            # from `log_refs` so the reason a row is Fail with no failing assertion beside it
-            # is on the artifact rather than only in the run log.
+        if stopped or sentinels:
+            # A passing assertion inside a scenario that then stopped early, plus the
+            # harness's own stop record. Kept separate from `log_refs` so the reason a row is
+            # Fail with no failing assertion beside it is on the artifact rather than only in
+            # the run log.
             row_data["aborted_log_refs"] = [
                 f"{record.get('scenario', '')}:assert:{record.get('action', '?')}"
-                for record in stopped
+                for record in [*stopped, *sentinels]
             ]
         return row_data
 

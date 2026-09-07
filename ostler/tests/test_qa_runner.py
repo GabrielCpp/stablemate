@@ -273,8 +273,13 @@ def test_a_scenario_that_stops_early_claims_nothing_it_covered(tmp_path: Path) -
     row = evidence["obligations"][0]
     assert row["verdict"] == "Fail"
     # The passing assertion is named as one the abort invalidated rather than dropped, so
-    # the reason a row is Fail with a green ref on it is on the artifact.
-    assert row["aborted_log_refs"] == ["api-contract:assert:1"]
+    # the reason a row is Fail with a green ref on it is on the artifact. The harness's own
+    # completion record (assert:2) is on that same list rather than on `failing_log_refs`.
+    assert row["aborted_log_refs"] == ["api-contract:assert:1", "api-contract:assert:2"]
+    # The half that corrupted a benchmark score: `Fail` with a non-empty `failing_log_refs`
+    # is what every reader downstream takes for *contradicted*, so counting the sentinel
+    # there made an abort indistinguishable from a defect the run went and caught.
+    assert row.get("failing_log_refs", []) == []
     assert _qa_evidence_vet(evidence, spec, tmp_path) == []
 
     stop = next(record for record in _records(spec) if record["kind"] == "scenario_stop")
@@ -295,6 +300,21 @@ def test_a_scenario_that_stops_early_claims_nothing_it_covered(tmp_path: Path) -
 
     mapped = build_evidence_map(spec)
     assert [row["status"] for row in mapped["obligations"]] == ["unproven"]
+
+    # The manifest gate still refuses a hand-written `Pass` harvested from the green prefix
+    # — that is what it is for — but it says which of the two things went wrong. Reporting
+    # the harness's stop record as a "failing assertion" sends the reader hunting for a
+    # defect the run never got far enough to observe.
+    tampered = json.loads(json.dumps(evidence))
+    tampered["obligations"][0] = {
+        "id": OBLIGATION,
+        "verdict": "Pass",
+        "log_refs": ["api-contract:assert:1"],
+        "evidence": evidence["obligations"][0]["evidence"] or ["qa/qa-run.ndjson"],
+    }
+    problems = _qa_evidence_vet(tampered, spec, tmp_path)
+    assert any("did not run to completion" in problem for problem in problems), problems
+    assert not any("failing assertions" in problem for problem in problems), problems
 
 
 def test_one_failing_assertion_sinks_the_item_it_covers(tmp_path: Path) -> None:

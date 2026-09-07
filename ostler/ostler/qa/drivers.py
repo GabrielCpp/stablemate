@@ -44,6 +44,32 @@ def _declared(record: Mapping[str, Any]) -> tuple[str, Mapping[str, Any]] | None
     return name, args if isinstance(args, Mapping) else {}
 
 
+def _document(item_id: str) -> str:
+    """The book file an id names, or `""` for an id that names no document.
+
+    Obligation ids arrive as `okf:<path>.md#<anchor>:does:<n>` and component ids as
+    `<path>.md#<anchor>`; both put their document ahead of the first `#`. An acceptance
+    criterion (`ac:1`) names none, and reads as `""` here rather than as a document of its
+    own — the distinction the caller needs.
+    """
+    head = item_id.split("#", 1)[0].removeprefix("okf:")
+    return head if "#" in item_id and head.endswith(".md") else ""
+
+
+def _covers_in(covers: list[str], node_id: str) -> list[str]:
+    """The entries of `covers` a placement verdict about `node_id` can speak to.
+
+    A vet answers for one screen, so an obligation belonging to *another* document is
+    outside what the photograph looked at; billed the scenario's whole list, a misplaced
+    button disproved the API obligations standing beside it. Everything that names no
+    document — an acceptance criterion — is kept: it is the scenario's claim as a whole,
+    and a component sitting where the book does not put it is exactly the way a vet is
+    supposed to make one go red.
+    """
+    document = _document(node_id)
+    return [item for item in covers if _document(item) in ("", document)]
+
+
 @dataclass
 class ScenarioResult:
     status: str
@@ -402,7 +428,13 @@ class PythonDriver(QaDriver):
                         scenario=scenario_id,
                         driver="python",
                         action=action,
-                        covers=covers,
+                        # Only the obligations this screen's own document declares. A vet is
+                        # a placement verdict about one screen; billed to the scenario's whole
+                        # `covers` it made a misplaced button disprove the API obligations
+                        # standing beside it in the same scenario — the same fan-out the
+                        # plan-assertion branch above already had fixed, missed here because
+                        # the plan cannot write a `covers=` on a `qa.vet()` to be narrowed by.
+                        covers=_covers_in(covers, verdict.node_id),
                         step=step,
                     )
                     if not passed:

@@ -195,3 +195,33 @@ def test_a_screen_that_was_gone_by_the_time_it_was_measured_fails(repo: Path) ->
 
     assert result.status == "failed"
     assert "produced no scan" in result.message
+
+
+def test_a_vet_speaks_only_for_the_document_it_photographed(repo: Path) -> None:
+    """The fan-out that made an abort-shaped verdict out of a placement one: a vet was
+    filed against the scenario's whole `covers`, so one misplaced component disproved
+    every API obligation the same scenario happened to claim. The obligations of the
+    screen it photographed still go red; the others were never looked at."""
+    _book(repo)
+    shot = _shot(
+        repo,
+        [
+            _region("article", "article.prose", (1180, 88, 250, 760)),
+            _region("navigation", "nav.toc", (0, 88, 240, 760)),
+        ],
+    )
+    driver = _driver(repo)
+    covers = [
+        f"okf:{SCREEN}#loads:does:1",
+        "okf:docs/features/groom/http/groom.md#get-runs:does:2",
+        "ac:1",
+    ]
+
+    result = driver._grade("s-1", covers, _records(shot), "", 0, timed_out=False)
+
+    assert result.status == "failed"
+    failed = [record for record in _asserts(driver) if record["result"] == "FAIL"]
+    assert len(failed) == 1
+    # The screen's own obligation, plus the criterion that names no document at all —
+    # never the HTTP obligation sitting beside them in the same scenario.
+    assert failed[0]["covers"] == [f"okf:{SCREEN}#loads:does:1", "ac:1"]

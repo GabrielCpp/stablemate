@@ -397,11 +397,22 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
                     # only one that catches the failure this gate kept waving through: a
                     # criterion covered by nine assertions, eight passing, cites one of the
                     # eight and vets clean while the ninth disproves it in the same log.
-                    disproof = _failing_log_refs(item_id, records)
+                    disproof, aborted = _failing_log_refs(item_id, records)
                     if disproof:
                         problems.append(
                             f"{item_id}: marked Pass but the run log records failing "
                             f"assertions covering it ({', '.join(disproof)})."
+                        )
+                    if aborted:
+                        # Still refused — a scenario that did not finish claims nothing, and
+                        # a Pass harvested from its green prefix is the failure this gate
+                        # exists for. Said in its own words, though: the harness's stop
+                        # record is not an assertion that looked at the product and
+                        # disagreed, and reporting it as one sends a reader hunting for a
+                        # defect that the run never got far enough to observe.
+                        problems.append(
+                            f"{item_id}: marked Pass but the scenario covering it did not "
+                            f"run to completion ({', '.join(aborted)})."
                         )
                     evidence = row.get("evidence") or []
                     if isinstance(evidence, str):
@@ -469,20 +480,32 @@ def _passing_log_ref(ref: str, item_id: str, records: list[dict[str, Any]]) -> b
     )
 
 
-def _failing_log_refs(item_id: str, records: list[dict[str, Any]]) -> list[str]:
-    """Every `scenario:assert:action` in the run log that failed while covering `item_id`.
+def _failing_log_refs(
+    item_id: str, records: list[dict[str, Any]]
+) -> tuple[list[str], list[str]]:
+    """The failing `scenario:assert:action` refs covering `item_id`, split in two.
+
+    First the assertions the *plan* made and lost, then the completion sentinels the
+    harness synthesized over a scenario that died mid-run (`PythonDriver._grade`). Both
+    refuse a `Pass`, and neither is the other: one is the product disagreeing with the
+    book, the other is the run never reaching the question.
 
     A missing `result` counts as failing: an assertion record the runner wrote without
     saying it passed has not established anything, and reading it as silence would put the
     benefit of the doubt on the side that is asking to be believed.
     """
-    return [
-        f"{record.get('scenario', '?')}:assert:{record.get('action', '?')}"
-        for record in records
-        if record.get("kind") == "assert"
-        and record.get("result") != "PASS"
-        and item_id in record.get("covers", [])
-    ]
+    failing: list[str] = []
+    aborted: list[str] = []
+    for record in records:
+        if (
+            record.get("kind") != "assert"
+            or record.get("result") == "PASS"
+            or item_id not in record.get("covers", [])
+        ):
+            continue
+        ref = f"{record.get('scenario', '?')}:assert:{record.get('action', '?')}"
+        (aborted if record.get("sentinel") else failing).append(ref)
+    return failing, aborted
 
 
 # ---------------------------------------------------------------------------
