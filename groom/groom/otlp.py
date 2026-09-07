@@ -10,10 +10,22 @@ Spans/metric points come out as flat dicts (see ``parse_traces`` /
 ``parse_metrics``) carrying the workhorse resource identity (run_id, workflow,
 repo, branch) denormalized onto every record, so the store and the alert rules
 never need to re-join resources.
+
+A record whose resource carries no ``run_id`` is **dropped here**, at the single
+door every row arrives through. Such a row belongs to no run directory, joins to
+no transcript and cannot be archived — archival is run-major, so a row with no run
+is a row with nowhere to go. Dropping it at the door rather than storing it is what
+keeps that invariant from having to be a ``CHECK`` constraint, which on four live
+tables means a full rebuild of every existing ``groom.db``. The drops are counted
+(:data:`dropped_no_run_id`) and warned about once per batch, so a misconfigured
+emitter is visible rather than silent.
 """
 
 from __future__ import annotations
 
+import logging
+import threading
+from collections import Counter
 from typing import Any
 
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import (
@@ -25,6 +37,41 @@ from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceRequest,
 )
+
+logger = logging.getLogger(__name__)
+
+#: Records refused for carrying no ``run_id``, by signal — ``traces`` / ``logs`` /
+#: ``metrics``. Cumulative for the life of the process, read by ``groom archive
+#: status``: a producer misconfigured for a week shows up as a number climbing
+#: rather than as telemetry nobody ever went looking for.
+_dropped = Counter()
+_dropped_lock = threading.Lock()
+
+
+def dropped_no_run_id() -> dict[str, int]:
+    """A snapshot of :data:`_dropped` — what has been refused at the door, by signal."""
+    with _dropped_lock:
+        return dict(_dropped)
+
+
+def _note_dropped(signal: str, count: int) -> None:
+    """Count a batch's refusals and say so once, rather than once per record.
+
+    Per batch and not per record because the failure mode this reports is an emitter
+    with no ``run_id`` *at all*, which produces every record in every batch — a
+    per-record line would bury the log it is meant to make visible.
+    """
+    if not count:
+        return
+    with _dropped_lock:
+        _dropped[signal] += count
+        total = _dropped[signal]
+    logger.warning(
+        "groom: dropped %d %s record(s) carrying no run_id (%d so far); the producer's"
+        " OTel resource is missing the run_id attribute",
+        count, signal, total,
+    )
+
 
 _STATUS_NAMES = {0: "UNSET", 1: "OK", 2: "ERROR"}
 _NANOS = 1e9
@@ -72,9 +119,14 @@ def parse_traces(body: bytes) -> list[dict[str, Any]]:
     dict (span attributes, events, status message) the store JSON-encodes.
     Raises on undecodable input — the receiver turns that into a 400."""
     request = ExportTraceServiceRequest.FromString(body)
+    dropped = 0
     records: list[dict[str, Any]] = []
     for resource_spans in request.resource_spans:
         resource = _attrs(resource_spans.resource.attributes)
+        run_id = str(resource.get("run_id", ""))
+        if not run_id:
+            dropped += sum(len(scope.spans) for scope in resource_spans.scope_spans)
+            continue
         for scope_spans in resource_spans.scope_spans:
             for span in scope_spans.spans:
                 attrs = _attrs(span.attributes)
@@ -93,7 +145,7 @@ def parse_traces(body: bytes) -> list[dict[str, Any]]:
                         "trace_id": span.trace_id.hex(),
                         "span_id": span.span_id.hex(),
                         "parent_id": span.parent_span_id.hex(),
-                        "run_id": str(resource.get("run_id", "")),
+                        "run_id": run_id,
                         "workflow": str(resource.get("workflow", "")),
                         "repo": str(resource.get("repo", "")),
                         "branch": str(resource.get("branch", "")),
@@ -119,6 +171,7 @@ def parse_traces(body: bytes) -> list[dict[str, Any]]:
                         "attrs": attrs,
                     }
                 )
+    _note_dropped("traces", dropped)
     return records
 
 
@@ -154,9 +207,14 @@ def parse_logs(body: bytes) -> list[dict[str, Any]]:
     only the explicit attribute correlates (see workhorse's ``otel.current_node``).
     """
     request = ExportLogsServiceRequest.FromString(body)
+    dropped = 0
     records: list[dict[str, Any]] = []
     for resource_logs in request.resource_logs:
         resource = _attrs(resource_logs.resource.attributes)
+        run_id = str(resource.get("run_id", ""))
+        if not run_id:
+            dropped += sum(len(scope.log_records) for scope in resource_logs.scope_logs)
+            continue
         for scope_logs in resource_logs.scope_logs:
             for record in scope_logs.log_records:
                 attrs = _attrs(record.attributes)
@@ -166,7 +224,7 @@ def parse_logs(body: bytes) -> list[dict[str, Any]]:
                 ts = record.time_unix_nano or record.observed_time_unix_nano
                 records.append(
                     {
-                        "run_id": str(resource.get("run_id", "")),
+                        "run_id": run_id,
                         "workflow": str(resource.get("workflow", "")),
                         "run_dir": str(resource.get("run_dir", "")),
                         "node": str(attrs.get("node", "")),
@@ -178,6 +236,7 @@ def parse_logs(body: bytes) -> list[dict[str, Any]]:
                         "attrs": attrs,
                     }
                 )
+    _note_dropped("logs", dropped)
     return records
 
 
@@ -195,10 +254,18 @@ def _points(metric: Any) -> Any:
 def parse_metrics(body: bytes) -> list[dict[str, Any]]:
     """Decode an ``ExportMetricsServiceRequest`` into one dict per data point."""
     request = ExportMetricsServiceRequest.FromString(body)
+    dropped = 0
     records: list[dict[str, Any]] = []
     for resource_metrics in request.resource_metrics:
         resource = _attrs(resource_metrics.resource.attributes)
         run_id = str(resource.get("run_id", ""))
+        if not run_id:
+            dropped += sum(
+                len(_points(metric))
+                for scope in resource_metrics.scope_metrics
+                for metric in scope.metrics
+            )
+            continue
         workflow = str(resource.get("workflow", ""))
         # Denormalized like the spans, because metrics — not spans — are what
         # reaches groom *early* (heartbeats and node.active start at second zero,
@@ -233,4 +300,5 @@ def parse_metrics(body: bytes) -> list[dict[str, Any]]:
                             "attrs": _attrs(point.attributes),
                         }
                     )
+    _note_dropped("metrics", dropped)
     return records

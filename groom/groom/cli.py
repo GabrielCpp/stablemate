@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import sys
+from typing import Any
 
 # Loopback by default: groom has no authentication, and it exposes docker
 # control and gate answers to anything that can reach its port — the safe
@@ -697,6 +698,171 @@ def transcript_export(
     print(f"exported {result['sessions']} session(s) into {result['dir']}")
 
 
+def _format_bytes(count: int) -> str:
+    value = float(count)
+    for unit in ("B", "K", "M", "G"):
+        if value < 1024 or unit == "G":
+            return f"{value:.0f}{unit}" if unit == "B" else f"{value:.1f}{unit}"
+        value /= 1024
+    return f"{value:.1f}G"
+
+
+def archive_ls(run: str = "", long: bool = False, as_json: bool = False) -> None:
+    """List frozen runs.
+
+    The directory name *is* the run id, so the plain listing opens no files at
+    all — which is the point of having no index table: on a tree of thousands of
+    runs, "what is archived" stays a readdir. ``--long`` and a run filter read
+    each manifest, which is one line per file.
+    """
+    import json as _json
+
+    from groom import archive
+
+    dirs = archive.archive_dirs()
+    if run:
+        dirs = [path for path in dirs if path.name == run or path.name.startswith(f"{run}-")]
+    if not (long or run or as_json):
+        for path in dirs:
+            print(path.name)
+        if not dirs:
+            print(f"no archived runs under {archive.archives_root()}.")
+        return
+    rows: list[dict[str, Any]] = []
+    for path in dirs:
+        found = archive.manifest(path)
+        counts = found.get("rows") or {}
+        rows.append({
+            "run": path.name,
+            "dir": str(path),
+            "workflow": found.get("workflow", ""),
+            "repo": found.get("repo", ""),
+            "branch": found.get("branch", ""),
+            "archived_at": found.get("archived_at"),
+            "min_ts": found.get("min_ts"),
+            "max_ts": found.get("max_ts"),
+            "spans": counts.get("span", 0),
+            "logs": counts.get("log", 0),
+            "metrics": counts.get("metric", 0),
+        })
+    if as_json:
+        print(_json.dumps(rows, indent=2))
+        return
+    if not rows:
+        print(f"no archived runs under {archive.archives_root()}.")
+        return
+    import datetime as _dt
+
+    print(f"{'run':<34} {'archived':<17} {'workflow':<20} {'spans':>8} {'logs':>9} {'metrics':>8}")
+    for row in rows:
+        stamp = row["archived_at"]
+        when = (
+            _dt.datetime.fromtimestamp(float(stamp)).strftime("%Y-%m-%d %H:%M")
+            if isinstance(stamp, (int, float))
+            else "-"
+        )
+        print(
+            f"{str(row['run'])[:34]:<34} {when:<17} {str(row['workflow'])[:20]:<20}"
+            f" {row['spans']:>8} {row['logs']:>9} {row['metrics']:>8}"
+        )
+
+
+def archive_show(run: str, limit: int = 0) -> None:
+    """Stream one frozen run's ``telemetry.jsonl`` to stdout.
+
+    Straight through, line by line: the file is the interchange format, and a
+    reader piping it into ``jq`` wants it unaltered. ``--limit`` stops after n
+    records for a look at the shape without a gigabyte of logs.
+    """
+    from groom import archive
+
+    root = archive.archives_root()
+    target = root / run / archive.TELEMETRY_FILE
+    if not target.exists():
+        matches = [path for path in archive.archive_dirs() if path.name.startswith(f"{run}-")]
+        if not matches:
+            print(f"no archived run {run} under {root}.")
+            return
+        target = matches[0] / archive.TELEMETRY_FILE
+    with target.open(encoding="utf-8") as handle:
+        for index, line in enumerate(handle):
+            if limit and index > limit:
+                return
+            print(line.rstrip("\n"))
+
+
+def archive_now(dry_run: bool = False, limit: int = 0, as_json: bool = False) -> None:
+    """Run an archival sweep now, instead of waiting for the six-hour tick.
+
+    What makes the feature testable against a real store, and what lets an
+    operator drain an existing backlog faster than the ticker will.
+    """
+    import json as _json
+
+    from groom import archive
+
+    result = archive.sweep(limit=limit or archive.RUNS_PER_PASS, dry_run=dry_run)
+    if as_json:
+        print(_json.dumps(result.as_dict(), indent=2))
+        return
+    verb = "would archive" if dry_run else "archived"
+    print(
+        f"{verb} {len(result.archived)} run(s): {result.rows} row(s),"
+        f" {_format_bytes(result.bytes)} written"
+    )
+    for name in result.archived[:20]:
+        print(f"  {name}")
+    if len(result.archived) > 20:
+        print(f"  … and {len(result.archived) - 20} more")
+    if result.resumed:
+        print(f"finished {len(result.resumed)} interrupted sweep(s): {', '.join(result.resumed)}")
+    if result.failed:
+        print(f"{len(result.failed)} run(s) failed:")
+        for name, why in result.failed.items():
+            print(f"  {name}: {why}")
+    remaining = result.pending - len(result.archived)
+    if remaining > 0:
+        print(f"{remaining} run(s) still pending; the sweep is bounded per pass.")
+    if result.held:
+        print(
+            f"{len(result.held)} run(s) held: still emitting past the retention window,"
+            " so neither archived nor pruned."
+        )
+
+
+def archive_status(as_json: bool = False) -> None:
+    """What the archive holds, what is waiting for it, and what the last sweep did."""
+    import json as _json
+
+    from groom import archive
+
+    report = archive.status()
+    if as_json:
+        print(_json.dumps(report, indent=2))
+        return
+    print(f"archives:        {report['root']}")
+    print(f"frozen runs:     {report['archived_runs']}")
+    print(f"pending:         {report['pending']} run(s) past {report['retention_days']:.0f}d")
+    print(f"held by activity: {len(report['held_by_activity'])} run(s)")
+    for run_id in report["held_by_activity"][:10]:
+        print(f"  {run_id}")
+    last = report["last_sweep"]
+    if last:
+        import datetime as _dt
+
+        when = _dt.datetime.fromtimestamp(last["started"]).strftime("%Y-%m-%d %H:%M")
+        print(
+            f"last sweep:      {when} — {len(last['archived'])} archived,"
+            f" {last['rows']} row(s), {_format_bytes(last['bytes'])}"
+        )
+    else:
+        print("last sweep:      none in this process")
+    print(f"every:           {report['every_s'] / 3600:.1f}h, {report['runs_per_pass']} runs/pass")
+    print("deletable without an archive:")
+    for name, count in sorted(report["unarchived_deletable"].items()):
+        print(f"  {name:<26} {count}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="groom", description="Local dashboard for workhorse operator gates.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -851,6 +1017,46 @@ def main(argv: list[str] | None = None) -> None:
         "--dry-run", action="store_true", help="Report what would be archived, copy nothing."
     )
 
+    archive_parser = subparsers.add_parser(
+        "archive",
+        help="Frozen runs: the telemetry written out of the database and onto disk, "
+        "beside the transcripts it explains.",
+    )
+    archive_verbs = archive_parser.add_subparsers(dest="verb", required=True)
+
+    ar_ls = archive_verbs.add_parser("ls", help="List frozen runs.")
+    ar_ls.add_argument("--run", default="", help="Limit to one run_id (and its resumes).")
+    ar_ls.add_argument(
+        "--long", action="store_true",
+        help="Read each run's manifest: workflow, when it was frozen, row counts.",
+    )
+    ar_ls.add_argument("--json", action="store_true", dest="as_json", help="Machine-readable.")
+
+    ar_show = archive_verbs.add_parser("show", help="Stream one frozen run's telemetry.jsonl.")
+    ar_show.add_argument("--run", required=True, help="The archived run_id.")
+    ar_show.add_argument(
+        "--limit", type=int, default=0, help="Stop after n records (0 = the whole file)."
+    )
+
+    ar_now = archive_verbs.add_parser(
+        "now", help="Run an archival sweep now instead of waiting for the tick."
+    )
+    ar_now.add_argument(
+        "--dry-run", action="store_true", help="Report what would be archived, write nothing."
+    )
+    ar_now.add_argument(
+        "--limit", type=int, default=0,
+        help="Runs to archive this pass (0 = GROOM_ARCHIVE_RUNS_PER_PASS).",
+    )
+    ar_now.add_argument("--json", action="store_true", dest="as_json", help="Machine-readable.")
+
+    ar_status = archive_verbs.add_parser(
+        "status", help="What is frozen, what is waiting, and what the last sweep did."
+    )
+    ar_status.add_argument(
+        "--json", action="store_true", dest="as_json", help="Machine-readable."
+    )
+
     subparsers.add_parser("db-path", help="Print the telemetry SQLite path and exit.")
 
     purge_parser = subparsers.add_parser(
@@ -909,6 +1115,15 @@ def main(argv: list[str] | None = None) -> None:
             )
         elif args.verb == "backfill":
             transcript_backfill(dry_run=args.dry_run)
+    elif args.command == "archive":
+        if args.verb == "ls":
+            archive_ls(run=args.run, long=args.long, as_json=args.as_json)
+        elif args.verb == "show":
+            archive_show(run=args.run, limit=args.limit)
+        elif args.verb == "now":
+            archive_now(dry_run=args.dry_run, limit=args.limit, as_json=args.as_json)
+        elif args.verb == "status":
+            archive_status(as_json=args.as_json)
     elif args.command == "db-path":
         from groom import store
 

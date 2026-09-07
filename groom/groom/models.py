@@ -19,6 +19,41 @@ LIVENESS_METRICS = (
     "workhorse.cap_wait.heartbeat",
 )
 
+# The metric series a prune may delete with *no archive behind it*.
+#
+# Archival (groom.archive) makes prune fail-closed: a row leaves the database only
+# once a copy of it is on disk. These seven gauges are the deliberate exception.
+# They answer "where is this run right now" — which is only a question while the
+# run is running — and they are emitted per liveness tick, so they dominate the
+# metrics table by volume while being worthless the day after. They keep being
+# *persisted* (a climbing ``idle_s`` is how a wedged turn looks, and that query
+# runs against the last day of a live fleet); they are simply never archived.
+#
+# Written down here, beside LIVENESS_METRICS, rather than implied by control flow
+# in the prune: what may be deleted without a copy is exactly the kind of rule
+# that must be readable in one place, because getting it wrong is silent and
+# permanent.
+UNARCHIVED_DELETABLE_METRICS = (
+    "workhorse.node.active",
+    "workhorse.node.elapsed_s",
+    "workhorse.turn.active",
+    "workhorse.turn.idle_s",
+    "workhorse.turn.elapsed_s",
+    "workhorse.wait.active",
+    "workhorse.wait.elapsed_s",
+)
+
+# The metric series that *are* archived: the run's budget-and-cap history. Small
+# (one point per event, not per tick) and the answer to "what did this cost, and
+# did it run out of gas" long after the fact. Everything workhorse meters is in
+# exactly one of these three tuples.
+ARCHIVED_METRICS = (
+    "workhorse.gas",
+    "workhorse.gas.capacity",
+    "workhorse.gas.refuels",
+    "workhorse.cap_wait.remaining_s",
+)
+
 
 class WorkflowState(str, Enum):
     RUNNING = "running"

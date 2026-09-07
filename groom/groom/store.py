@@ -46,32 +46,26 @@ from typing import Any, ParamSpec, TypeVar
 from platformdirs import user_data_dir
 
 from groom import prices
-from groom.models import LIVENESS_METRICS
+from groom.models import ARCHIVED_METRICS, LIVENESS_METRICS, UNARCHIVED_DELETABLE_METRICS
 
 logger = logging.getLogger(__name__)
 
-# Days of span/metric history to keep; pruned at startup and on a periodic tick.
-RETENTION_DAYS = float(os.environ.get("GROOM_RETENTION_DAYS", "14"))
+# Days a run's telemetry stays queryable in SQL. Not a data-loss dial: a run past
+# this window is written to disk by groom.archive and only then deleted, so the
+# number says how long something is *searchable in SQL*, not how long it exists.
+# One window for spans, logs and metrics together — logs used to have a shorter
+# one of their own because they are the highest-volume table by orders of
+# magnitude and nothing behind them caught what the sweep dropped. With an
+# archive behind them that argument survives and the number does not need to
+# differ: 30 days under archival costs less than 14 did under none, because the
+# rows leave rather than accumulate.
+RETENTION_DAYS = float(os.environ.get("GROOM_RETENTION_DAYS", "30"))
 # How far back the fleet/telemetry views (run_summaries) scan. The whole DB is
 # retained for `RETENTION_DAYS` and stays queryable with raw SQL, but a live-ops
 # dashboard only wants recent runs, and bounding the scan here is what keeps
 # these queries from doing a full-table GROUP BY pass that grows with total
 # history rather than with what's on screen. Default 24h.
 ACTIVE_WINDOW_S = float(os.environ.get("GROOM_ACTIVE_WINDOW_S", "86400"))
-# Logs are one row per line, not one per node visit, so they outgrow spans by
-# orders of magnitude on a long run — hence a separate, shorter default window.
-LOG_RETENTION_DAYS = float(os.environ.get("GROOM_LOG_RETENTION_DAYS", "3"))
-# A migration knob now, not a policy one. The pure-liveness counters
-# (``LIVENESS_METRICS``) stopped being persisted at all — ``insert_metrics``
-# drops them, and the live picture is served from groom.alerts' in-memory cache
-# — but a store written by an older groom still carries millions of their rows
-# (in one real file, 80% of an 18M-row metrics table), and this window is what
-# lets the prune tick drain that backlog. Once a store has been swept clean the
-# sweep matches nothing and costs nothing. The *gauges* (idle_s, elapsed_s,
-# node.active) were never covered: their history is diagnostic (a climbing
-# idle_s is how a wedged turn looks) and they are two orders of magnitude
-# smaller.
-LIVENESS_RETENTION_DAYS = float(os.environ.get("GROOM_LIVENESS_RETENTION_DAYS", "1"))
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS spans (
@@ -124,6 +118,12 @@ CREATE TABLE IF NOT EXISTS metrics (
     attrs_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS metrics_run ON metrics(run_id, name, ts);
+-- Series-major, for the one sweep that is not run-major: prune deletes the
+-- never-archived gauges by name across every run, and metrics_run cannot serve
+-- that — `name` is not its leading column, so the sweep degraded into a full
+-- scan of the largest table in the file, once per chunk. Measured at 350s on a
+-- 1 GB store; an index range scan instead.
+CREATE INDEX IF NOT EXISTS metrics_name_ts ON metrics(name, ts);
 CREATE TABLE IF NOT EXISTS logs (
     run_id   TEXT NOT NULL DEFAULT '',
     workflow TEXT NOT NULL DEFAULT '',
@@ -1894,28 +1894,6 @@ def run_directories() -> list[dict[str, Any]]:
     ]
 
 
-@_reading
-def turns_before(cutoff: float) -> list[dict[str, Any]]:
-    """Index rows for archived turns older than ``cutoff``. ``ts`` of 0 means the turn
-    never recorded one, and an unstamped record is never aged out on a guess."""
-    return [
-        dict(row)
-        for row in _read_connection().execute(
-            "SELECT run_id, workflow, node, session_id, generation, seq, ts, path"
-            " FROM turns WHERE ts > 0 AND ts < ?",
-            (cutoff,),
-        )
-    ]
-
-
-@_resilient
-def delete_turns(cutoff: float) -> int:
-    """Drop the index rows :func:`turns_before` returned; rows removed."""
-    with _STORE.writing() as conn:
-        removed = conn.execute("DELETE FROM turns WHERE ts > 0 AND ts < ?", (cutoff,)).rowcount
-    return removed
-
-
 # Rows per DELETE inside the prune, each chunk its own transaction. An unbounded
 # DELETE over a backlog holds the write lock for the whole sweep — observed as
 # minutes on a store carrying millions of expired heartbeat rows — and every OTLP
@@ -1925,55 +1903,300 @@ def delete_turns(cutoff: float) -> int:
 # one bounds time under the lock.
 _PRUNE_CHUNK = 50_000
 
+# The metric series that leave the store without ever being written to an
+# archive. The seven gauges are exempt by policy (see
+# ``UNARCHIVED_DELETABLE_METRICS``); the three heartbeat counters are rows an
+# older groom persisted before ingest started dropping them, so a current store
+# accumulates none and this half of the sweep matches nothing.
+_NEVER_ARCHIVED_METRICS = UNARCHIVED_DELETABLE_METRICS + LIVENESS_METRICS
+
 
 @_resilient
-def prune(retention_days: float = RETENTION_DAYS, now: float | None = None) -> int:
-    """Drop spans/metrics/logs older than the retention window; rows removed.
+def _delete_chunk(table: str, clause: str, params: tuple[Any, ...]) -> int:
+    """One ``_PRUNE_CHUNK``-row DELETE, in its own transaction; rows removed."""
+    with _STORE.writing() as conn:
+        return conn.execute(
+            f"DELETE FROM {table} WHERE rowid IN"  # noqa: S608 - literal table/clause, bound values
+            f" (SELECT rowid FROM {table} WHERE {clause} LIMIT ?)",
+            (*params, _PRUNE_CHUNK),
+        ).rowcount
 
-    Logs get their own, shorter window (``GROOM_LOG_RETENTION_DAYS``): they are
-    the highest-volume table by a wide margin — one row per log line rather than
-    one per node visit — so holding them for the span retention would let a few
-    chatty week-long runs dominate the file. The liveness sweep drains heartbeat
-    rows an older groom persisted (``GROOM_LIVENESS_RETENTION_DAYS``, see
-    ``LIVENESS_METRICS``) — a current one stores none, so on a swept store it
-    matches nothing.
 
-    ``turns`` is deliberately untouched. It indexes an archive on disk rather than
-    telemetry, and the two are kept on different clocks on purpose: a transcript is
-    wanted precisely when someone comes back to a run long after its spans have aged
-    out. Its own knob is ``GROOM_TRANSCRIPT_RETENTION_DAYS`` (see :mod:`groom.turns`),
-    and it defaults to keeping everything.
+def _chunked_delete(table: str, clause: str, params: tuple[Any, ...]) -> int:
+    """``DELETE FROM <table> WHERE <clause>``, ``_PRUNE_CHUNK`` rows per transaction.
 
-    Deletes run in ``_PRUNE_CHUNK``-row transactions rather than one; a re-run
-    after a mid-sweep failure just resumes deleting what still matches.
+    Undecorated on purpose, so the store lock is taken and released once per
+    chunk rather than held for the whole sweep: a writer arriving mid-sweep
+    interleaves instead of burning its ``busy_timeout`` behind one long DELETE.
+    A re-run after a mid-sweep failure just resumes deleting what still matches.
+    """
+    removed = 0
+    while True:
+        count = _delete_chunk(table, clause, params)
+        removed += count
+        if count < _PRUNE_CHUNK:
+            return removed
+
+
+@_reading
+def _expired_run_ids(cutoff: float) -> set[str]:
+    """Run ids still holding at least one row older than ``cutoff``.
+
+    The prune deletes per run, and the set of runs it is *allowed* to delete
+    grows without bound as the archive fills. Intersecting that set with this
+    one keeps the delete loop proportional to what is actually expired rather
+    than to how long groom has been running.
+    """
+    conn = _read_connection()
+    found: set[str] = set()
+    for sql in (
+        "SELECT DISTINCT run_id FROM spans WHERE end_ts < ?",
+        "SELECT DISTINCT run_id FROM logs WHERE ts < ?",
+        "SELECT DISTINCT run_id FROM metrics WHERE ts < ?",
+    ):
+        found.update(row["run_id"] for row in conn.execute(sql, (cutoff,)))
+    return found
+
+
+def prune(
+    retention_days: float = RETENTION_DAYS,
+    now: float | None = None,
+    archived: set[str] | None = None,
+) -> int:
+    """Drop expired telemetry for runs that are safe to drop; rows removed.
+
+    **Fail-closed.** Age alone no longer authorises a delete: a run's rows go
+    only once :mod:`groom.archive` has written them to disk, and ``archived``
+    is that set of run ids. Passing nothing therefore deletes nothing but the
+    exemptions below — which is the correct behaviour for a groom whose
+    archival sweep is broken or has not run yet. Data that overstays its
+    retention is an operator's disk-space problem; data deleted because the
+    archiver was down is gone.
+
+    Two exemptions delete without an archive behind them:
+
+    * **Scratch runs** (:func:`is_scratch_run_dir`) — a suite's ``mkdtemp``
+      run dir is junk by construction, and archiving it forever would be the
+      bug rather than the safeguard.
+    * **The never-archived metric series** (``_NEVER_ARCHIVED_METRICS``) —
+      per-tick liveness gauges that answer "where is this run right now" and
+      mean nothing once it is not. They are swept for every run regardless of
+      archival, which is what keeps them from dominating the file.
+
+    Rows carrying an empty ``run_id`` are swept too. Ingest refuses them now
+    (see :mod:`groom.otlp`), so these are legacy rows only — and being
+    run-major, the archive has nowhere to put them.
+
+    ``turns`` is deliberately untouched: it indexes transcripts on disk, which
+    :mod:`groom.archive` moves into the frozen run directory rather than
+    deleting.
     """
     stamp = now if now is not None else time.time()
     cutoff = stamp - retention_days * 86400
-    # Never longer than the table-wide window: a liveness setting above it would
-    # otherwise read as "keep these longer", which the metrics sweep cannot honour.
-    liveness_cutoff = stamp - min(LIVENESS_RETENTION_DAYS, retention_days) * 86400
-    placeholders = ",".join("?" * len(LIVENESS_METRICS))
-    sweeps: tuple[tuple[str, tuple[Any, ...]], ...] = (
-        ("spans WHERE end_ts < ?", (cutoff,)),
-        ("metrics WHERE ts < ?", (cutoff,)),
-        (f"metrics WHERE ts < ? AND name IN ({placeholders})", (liveness_cutoff, *LIVENESS_METRICS)),
-        ("logs WHERE ts < ?", (stamp - LOG_RETENTION_DAYS * 86400,)),
-    )
     removed = 0
-    for clause, params in sweeps:
-        table = clause.split(" ", 1)[0]
-        while True:
-            with _STORE.writing() as conn:
-                count = conn.execute(
-                    f"DELETE FROM {table} WHERE rowid IN"  # noqa: S608 - literal clause, bound values
-                    f" (SELECT rowid FROM {clause} LIMIT ?)",
-                    (*params, _PRUNE_CHUNK),
-                ).rowcount
-            removed += count
-            if count < _PRUNE_CHUNK:
-                break
+
+    # Every run, archived or not: these series are never written to an archive,
+    # so nothing is waiting on one before they can go.
+    placeholders = ",".join("?" * len(_NEVER_ARCHIVED_METRICS))
+    removed += _chunked_delete(
+        "metrics",
+        f"ts < ? AND name IN ({placeholders})",
+        (cutoff, *_NEVER_ARCHIVED_METRICS),
+    )
+
+    # Expired first, and nothing else if it is empty: `_test_run_ids` is a
+    # distinct scan over two large tables, and on the common tick — a store whose
+    # oldest run is inside the window — there is nothing for it to authorise.
+    expired = _expired_run_ids(cutoff)
+    deletable = (set(archived) if archived else set()) | {""}
+    if expired:
+        deletable |= _test_run_ids()
+    for run_id in sorted(deletable & expired):
+        removed += _chunked_delete("spans", "run_id = ? AND end_ts < ?", (run_id, cutoff))
+        removed += _chunked_delete("logs", "run_id = ? AND ts < ?", (run_id, cutoff))
+        removed += _chunked_delete("metrics", "run_id = ? AND ts < ?", (run_id, cutoff))
+
     _checkpoint()
     _STORE.note_prune()
+    return removed
+
+
+@dataclass(frozen=True)
+class RunBounds:
+    """What :mod:`groom.archive` needs to decide a run is done and name its file.
+
+    ``max_ts`` is the run's last sign of life across all three tables —
+    liveness gauges included, precisely because a run still ticking has not
+    finished even if no span has closed. ``spans``/``logs``/``metrics`` count
+    only the rows that would actually be *written*, so a run holding nothing
+    but expired gauges reports zero and is never archived into an empty file.
+    """
+
+    run_id: str
+    workflow: str = ""
+    repo: str = ""
+    branch: str = ""
+    run_dir: str = ""
+    min_ts: float = 0.0
+    max_ts: float = 0.0
+    spans: int = 0
+    logs: int = 0
+    metrics: int = 0
+
+    @property
+    def rows(self) -> int:
+        return self.spans + self.logs + self.metrics
+
+
+@_reading
+def run_bounds() -> dict[str, RunBounds]:
+    """Per-run timestamp bounds, archivable row counts and identity.
+
+    One grouped pass per table rather than a query per run: the archiver runs
+    over the whole store every few hours, and a per-run round trip is the shape
+    that stops scaling first.
+    """
+    conn = _read_connection()
+    span: dict[str, tuple[float, float, int]] = {}
+    log: dict[str, tuple[float, float, int]] = {}
+    metric: dict[str, tuple[float, float, int]] = {}
+    identity: dict[str, tuple[str, str, str, str]] = {}
+
+    for row in conn.execute(
+        "SELECT run_id, MIN(start_ts) AS lo, MAX(MAX(start_ts, end_ts)) AS hi,"
+        " COUNT(*) AS n FROM spans WHERE run_id != '' GROUP BY run_id"
+    ):
+        span[row["run_id"]] = (row["lo"] or 0.0, row["hi"] or 0.0, row["n"])
+    for row in conn.execute(
+        "SELECT run_id, MIN(ts) AS lo, MAX(ts) AS hi, COUNT(*) AS n"
+        " FROM logs WHERE run_id != '' GROUP BY run_id"
+    ):
+        log[row["run_id"]] = (row["lo"] or 0.0, row["hi"] or 0.0, row["n"])
+    kept = ",".join("?" * len(ARCHIVED_METRICS))
+    for row in conn.execute(
+        "SELECT run_id, MIN(ts) AS lo, MAX(ts) AS hi,"
+        f" SUM(CASE WHEN name IN ({kept}) THEN 1 ELSE 0 END) AS n"  # noqa: S608 - bound placeholders
+        " FROM metrics WHERE run_id != '' GROUP BY run_id",
+        ARCHIVED_METRICS,
+    ):
+        metric[row["run_id"]] = (row["lo"] or 0.0, row["hi"] or 0.0, row["n"] or 0)
+    # SQLite resolves the bare columns from the row that produced MAX(start_ts),
+    # so this is the newest span's identity rather than an arbitrary one.
+    for row in conn.execute(
+        "SELECT run_id, workflow, repo, branch, run_dir, MAX(start_ts)"
+        " FROM spans WHERE run_id != '' GROUP BY run_id"
+    ):
+        identity[row["run_id"]] = (
+            row["workflow"] or "",
+            row["repo"] or "",
+            row["branch"] or "",
+            row["run_dir"] or "",
+        )
+
+    bounds: dict[str, RunBounds] = {}
+    for run_id in set(span) | set(log) | set(metric):
+        parts = [part for part in (span.get(run_id), log.get(run_id), metric.get(run_id)) if part]
+        stamps = [value for lo, hi, _ in parts for value in (lo, hi) if value]
+        workflow, repo, branch, run_dir = identity.get(run_id, ("", "", "", ""))
+        bounds[run_id] = RunBounds(
+            run_id=run_id,
+            workflow=workflow,
+            repo=repo,
+            branch=branch,
+            run_dir=run_dir,
+            min_ts=min(stamps) if stamps else 0.0,
+            max_ts=max(stamps) if stamps else 0.0,
+            spans=span.get(run_id, (0.0, 0.0, 0))[2],
+            logs=log.get(run_id, (0.0, 0.0, 0))[2],
+            metrics=metric.get(run_id, (0.0, 0.0, 0))[2],
+        )
+    return bounds
+
+
+@_reading
+def unarchived_row_counts() -> dict[str, int]:
+    """What is in the store that :func:`prune` may delete with no archive behind it.
+
+    Computed on demand rather than accumulated: these are the two §2 exemptions
+    plus the legacy rows ingest now refuses, and each is one grouped count. A
+    number that has to be maintained across a restart would be a third source of
+    truth about a store that already has one.
+    """
+    conn = _read_connection()
+    placeholders = ",".join("?" * len(_NEVER_ARCHIVED_METRICS))
+    counts = {
+        "never_archived_metrics": conn.execute(
+            f"SELECT COUNT(*) FROM metrics WHERE name IN ({placeholders})",  # noqa: S608 - bound placeholders
+            _NEVER_ARCHIVED_METRICS,
+        ).fetchone()[0],
+        "scratch_runs": len(_test_run_ids()),
+    }
+    for table in ("spans", "logs", "metrics"):
+        counts[f"no_run_id_{table}"] = conn.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE run_id = ''"  # noqa: S608 - literal table name
+        ).fetchone()[0]
+    return counts
+
+
+# Rows the archiver holds in memory at once, per signal. The archive file is
+# written streaming, so this bounds the reader rather than the output.
+_ARCHIVE_PAGE = 5_000
+
+# kind -> (table, the column the archive orders on)
+_ARCHIVE_STREAMS: dict[str, tuple[str, str]] = {
+    "span": ("spans", "start_ts"),
+    "log": ("logs", "ts"),
+    "metric": ("metrics", "ts"),
+}
+
+
+@_reading
+def archive_page(
+    run_id: str,
+    kind: str,
+    after: tuple[float, int] = (0.0, 0),
+    limit: int = _ARCHIVE_PAGE,
+) -> list[dict[str, Any]]:
+    """One page of a run's archivable rows, keyset-paginated after ``(ts, rowid)``.
+
+    Keyset rather than ``OFFSET`` because the pages are read while the store is
+    live: an OFFSET walk re-scans everything before it and shifts under
+    concurrent inserts, and either one silently drops rows out of an archive
+    that is then treated as complete.
+
+    Each row carries ``_ts`` (the ordering stamp) and ``_rowid`` for the next
+    call's cursor. ``metric`` is filtered to ``ARCHIVED_METRICS``.
+    """
+    table, ts_col = _ARCHIVE_STREAMS[kind]
+    clause = ""
+    params: list[Any] = [run_id]
+    if kind == "metric":
+        clause = f" AND name IN ({','.join('?' * len(ARCHIVED_METRICS))})"
+        params.extend(ARCHIVED_METRICS)
+    stamp, rowid = after
+    params.extend((stamp, stamp, rowid, limit))
+    rows = _read_connection().execute(
+        f"SELECT rowid AS _rowid, {ts_col} AS _ts, * FROM {table}"  # noqa: S608 - literal table/column
+        f" WHERE run_id = ?{clause} AND ({ts_col} > ? OR ({ts_col} = ? AND rowid > ?))"
+        f" ORDER BY {ts_col}, rowid LIMIT ?",
+        params,
+    )
+    return [dict(row) for row in rows]
+
+
+def delete_run_telemetry(run_id: str) -> int:
+    """Drop every span, log and metric belonging to ``run_id``; rows removed.
+
+    Unconditional on age — the archiver calls this once the run's file is on
+    disk, and a row younger than the retention window that was nonetheless
+    written to the archive must leave with the rest of it or the archive stops
+    being the single copy.
+    """
+    if not run_id:
+        return 0
+    removed = 0
+    for table in ("spans", "logs", "metrics"):
+        removed += _chunked_delete(table, "run_id = ?", (run_id,))
     return removed
 
 

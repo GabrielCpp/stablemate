@@ -32,6 +32,7 @@ from litestar.static_files import create_static_files_router
 
 from groom import (
     alerts,
+    archive,
     checkpoints,
     discovery,
     docker_io,
@@ -112,6 +113,11 @@ HARVEST_EVERY_S = float(os.environ.get("GROOM_HARVEST_EVERY_S", "300"))
 # watching. Event-driven broadcasts still fire immediately on a real change; this is
 # the floor, not the mechanism.
 LIVE_TICK_S = float(os.environ.get("GROOM_LIVE_TICK_S", "5"))
+# How often expired runs are written to disk and dropped from the store. Its own,
+# much slower clock than the prune it feeds — a sweep is a large read plus a large
+# delete, and prune can only ever delete what the last sweep archived, so the two
+# are ordered rather than merged. See `groom.archive.ARCHIVE_EVERY_S`.
+ARCHIVE_EVERY_S = archive.ARCHIVE_EVERY_S
 
 
 def _all_workflows() -> list:
@@ -1592,6 +1598,7 @@ async def reload(container_id: str = "") -> dict:
 _scan_task: asyncio.Task | None = None
 _rules_task: asyncio.Task | None = None
 _live_task: asyncio.Task | None = None
+_archive_task: asyncio.Task | None = None
 
 
 async def _rules_loop() -> None:
@@ -1625,8 +1632,12 @@ async def _rules_loop() -> None:
                 await asyncio.to_thread(turns.harvest)
                 last_harvest = time.monotonic()
             if time.monotonic() - last_prune >= PRUNE_EVERY_S:
-                await asyncio.to_thread(store.prune)
-                await asyncio.to_thread(turns.prune)
+                # Fail-closed: prune deletes a run's rows only once the archival
+                # sweep has written them to disk, so what is on disk is the
+                # argument. A wedged archiver shows up as a database that stops
+                # shrinking rather than as rows deleted with no copy behind them.
+                archived = await asyncio.to_thread(archive.archived_run_ids)
+                await asyncio.to_thread(store.prune, store.RETENTION_DAYS, None, archived)
                 last_prune = time.monotonic()
         except Exception:  # noqa: BLE001
             pass
@@ -1681,6 +1692,50 @@ async def _spawn_live() -> None:
 async def _stop_live() -> None:
     if _live_task is not None:
         _live_task.cancel()
+
+
+async def _archive_loop() -> None:
+    """Write expired runs out to disk on a slow clock, forever.
+
+    Seeded already-expired so the first sweep runs as soon as the port is up:
+    an operator restarting ``groom serve`` more often than ``ARCHIVE_EVERY_S``
+    would otherwise never archive anything, and the backlog this exists to drain
+    is exactly what a fresh install has most of.
+
+    Not run *during* startup, for the reason :func:`_spawn_rules` records: a
+    synchronous sweep holds the database before uvicorn binds, and every exporter
+    meanwhile gets connection refused. Off the loop in a thread, because the pass
+    is blocking SQLite and file IO throughout; wrapped per tick, because a store
+    that cannot be archived must not also stop being served.
+    """
+    last = time.monotonic() - ARCHIVE_EVERY_S
+    while True:
+        await asyncio.sleep(RULES_TICK_S)
+        if time.monotonic() - last < ARCHIVE_EVERY_S:
+            continue
+        last = time.monotonic()
+        try:
+            result = await asyncio.to_thread(archive.sweep)
+            if result.archived or result.failed:
+                logger.info(
+                    "groom: archived %d run(s), %d row(s), %d byte(s); %d failed,"
+                    " %d still pending",
+                    len(result.archived), result.rows, result.bytes,
+                    len(result.failed), result.pending,
+                )
+        except Exception:  # noqa: BLE001
+            logger.warning("groom: archival sweep failed", exc_info=True)
+
+
+async def _spawn_archive() -> None:
+    """on_startup hook: start the archival ticker."""
+    global _archive_task
+    _archive_task = asyncio.create_task(_archive_loop())
+
+
+async def _stop_archive() -> None:
+    if _archive_task is not None:
+        _archive_task.cancel()
 
 
 async def _spawn_rules() -> None:
@@ -1752,6 +1807,6 @@ def create_app() -> Litestar:
             reload,
             create_static_files_router(path="/assets", directories=[ASSETS_DIR]),
         ],
-        on_startup=[_spawn_scan, _spawn_rules, _spawn_live],
-        on_shutdown=[_stop_rules, _stop_live, pools.shutdown_all],
+        on_startup=[_spawn_scan, _spawn_rules, _spawn_live, _spawn_archive],
+        on_shutdown=[_stop_rules, _stop_live, _stop_archive, pools.shutdown_all],
     )

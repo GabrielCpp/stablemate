@@ -20,9 +20,11 @@ so it sees the same record many times: a record whose bytes have not changed is 
 on its digest, and one that has grown is re-copied and its index row replaced. Nothing
 here deletes anything a run wrote.
 
-Retention is deliberately its own clock (``GROOM_TRANSCRIPT_RETENTION_DAYS``, default
-*keep everything*) rather than the span window: a transcript is wanted precisely when
-someone comes back to a run long after its telemetry has aged out.
+Nothing here has a retention clock, because nothing here is ever deleted. A run whose
+telemetry ages out of SQL is *archived* rather than dropped: :mod:`groom.archive` moves
+this run's directory whole into ``archives/<run_id>/`` and writes its telemetry beside
+it. So a record is written once under ``transcripts/`` and read afterwards from
+whichever of the two roots holds it — which is what :func:`record_path` resolves.
 
 Nothing here may raise into groom's tick. A record that cannot be copied is a record that
 is not archived, which is a poorer archive and not a broken groom.
@@ -30,12 +32,12 @@ is not archived, which is a poorer archive and not a broken groom.
 
 from __future__ import annotations
 
+import glob
 import hashlib
 import json
 import logging
 import os
 import shutil
-import time
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -46,11 +48,6 @@ from workhorse.turnkey import VisitKey
 from groom import prices, store
 
 logger = logging.getLogger(__name__)
-
-#: Days of archived turn records to keep. ``0`` — the default — keeps everything: the
-#: archive is small next to what it explains, and the whole reason it exists is that the
-#: evidence outlives the run that produced it.
-RETENTION_DAYS = float(os.environ.get("GROOM_TRANSCRIPT_RETENTION_DAYS", "0"))
 
 #: Ceiling on one archived record. The runner already caps what it writes; this bounds
 #: the *backfill* path too, which copies out of a CLI's own store and so has never been
@@ -82,6 +79,18 @@ def transcripts_root() -> Path:
     the bodies with the index instead of writing them into the real archive.
     """
     return store.db_path().parent / "transcripts"
+
+
+def archives_root() -> Path:
+    """Where *frozen* runs live — the sibling of :func:`transcripts_root`.
+
+    A run past its retention window is moved here whole by :mod:`groom.archive`,
+    with its telemetry written alongside its records. Siblings under one parent so
+    the promotion is a single same-filesystem :func:`os.rename`, and so the
+    harvester — which only ever knows :func:`transcripts_root` — structurally
+    cannot write into an archived run.
+    """
+    return store.db_path().parent / "archives"
 
 
 # ------------------------------------------------------------------------ discovery
@@ -577,8 +586,36 @@ def visit_label(row: dict[str, Any]) -> str:
 
 
 def record_path(row: dict[str, Any]) -> Path:
-    """Where an index row's bodies are."""
-    return transcripts_root() / str(row.get("path", ""))
+    """Where an index row's bodies are — live root first, then the frozen one.
+
+    An index row outlives the move into ``archives/``: it is written while the run is
+    live and never rewritten, so its ``path`` is always relative to a root and never
+    says which one. Live is checked first because that is where anything still being
+    written is, and because the frozen copy of a run is only ever reached once the live
+    directory is gone.
+
+    The last resort covers the one case a plain two-root lookup misses: a run id that
+    was archived, resumed and archived again, whose second archive groom minted a
+    derived name for. The bodies are under ``<run_id>-<token>/`` there while the index
+    row still says ``<run_id>/``.
+    """
+    relative = str(row.get("path", ""))
+    live = transcripts_root() / relative
+    if live.exists():
+        return live
+    frozen = archives_root() / relative
+    if frozen.exists():
+        return frozen
+    run_id = str(row.get("run_id", ""))
+    if run_id and relative.startswith(f"{run_id}/"):
+        tail = relative[len(run_id) + 1 :]
+        for sibling in sorted(archives_root().glob(f"{glob.escape(run_id)}-*")):
+            candidate = sibling / tail
+            if candidate.exists():
+                return candidate
+    # Nothing holds it. Report where a reader would expect it rather than raising —
+    # a record that was never harvested reads as an empty one, which is the truth.
+    return live
 
 
 def read_record(row: dict[str, Any]) -> dict[str, Any]:
@@ -595,24 +632,3 @@ def read_record(row: dict[str, Any]) -> dict[str, Any]:
     except OSError:
         pass
     return {**row, "dir": str(directory), "files": files, "prompt": prompt}
-
-
-# -------------------------------------------------------------------------- pruning
-
-
-def prune(retention_days: float = RETENTION_DAYS, now: float | None = None) -> int:
-    """Drop archived records older than the window; records removed.
-
-    A window of zero or less keeps everything, which is the default. Bodies go first and
-    the index rows after, so an interrupted prune leaves rows pointing at directories
-    that are gone — which :func:`read_record` reports as an empty record — rather than
-    orphaned directories nothing can find.
-    """
-    if retention_days <= 0:
-        return 0
-    cutoff = (now if now is not None else time.time()) - retention_days * 86400
-    doomed = store.turns_before(cutoff)
-    root = transcripts_root()
-    for row in doomed:
-        shutil.rmtree(root / str(row["path"]), ignore_errors=True)
-    return store.delete_turns(cutoff)
