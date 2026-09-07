@@ -320,7 +320,7 @@ def a_malformed_row_refuses_the_whole_file_and_leaves_the_ledger_alone(qa: Qa) -
     )
     qa.verify(
         "unchanged",
-        ({"tally.json": before["sha256"]}, {"tally.json": after["sha256"]}),
+        ({"tally.json": qa.field(before, "sha256")}, {"tally.json": qa.field(after, "sha256")}),
         subject="tally.json",
         covers=[
             "ac:3",
@@ -398,7 +398,7 @@ def a_file_under_the_wrong_header_is_refused_whole(qa: Qa) -> None:
     )
     qa.verify(
         "unchanged",
-        ({"tally.json": before["sha256"]}, {"tally.json": after["sha256"]}),
+        ({"tally.json": qa.field(before, "sha256")}, {"tally.json": qa.field(after, "sha256")}),
         subject="tally.json",
         covers=[
             "ac:4",

@@ -64,7 +64,7 @@ def the_plan(qa: Qa) -> dict:
     return json.loads(read.stdout)
 
 
-def resources(planned: dict) -> dict:
+def resources(qa: Qa, planned: dict) -> dict:
     """The plan's steps, keyed by resource name.
 
     A URN's last segment is the resource's name and the one before it is its type token.
@@ -74,8 +74,8 @@ def resources(planned: dict) -> dict:
     engine never promised.
     """
     found = {}
-    for step in planned["steps"]:
-        parts = step["urn"].split("::")
+    for step in qa.field(planned, "steps"):
+        parts = qa.field(step, "urn").split("::")
         found[parts[-1]] = {
             "type": parts[-2],
             "inputs": step.get("newState", {}).get("inputs", {}),
@@ -117,7 +117,7 @@ def resources(planned: dict) -> dict:
 def the_artifact_bucket_is_declared_with_its_safeties_on(qa: Qa) -> None:
     """The store the depot publishes into, and the three properties it does not inherit."""
     planned = the_plan(qa)
-    declared = resources(planned)
+    declared = resources(qa, planned)
 
     qa.require(
         "the plan declares the artifact bucket",
@@ -125,7 +125,7 @@ def the_artifact_bucket_is_declared_with_its_safeties_on(qa: Qa) -> None:
         actual=sorted(declared),
         covers=["ac:2", "okf:docs/features/depot/concepts/artifact-store.md:contract"],
     )
-    bucket = declared["artifacts"]["inputs"]
+    bucket = qa.field(declared, "artifacts.inputs")
 
     qa.check(
         "uniform bucket-level access is on, so the binding is the only thing deciding access",
@@ -163,7 +163,7 @@ def the_artifact_bucket_is_declared_with_its_safeties_on(qa: Qa) -> None:
         covers=["ac:5", "okf:docs/features/depot/ops/depot-stack.md:contract"],
     )
     json.dump(
-        {"changeSummary": planned["changeSummary"], "bucket": bucket, "provider": declared.get("gcp")},
+        {"changeSummary": qa.field(planned, "changeSummary"), "bucket": bucket, "provider": declared.get("gcp")},
         qa.artifact("steps/artifact-bucket.json", kind="json").open("w"),
     )
 
@@ -191,7 +191,7 @@ def the_artifact_bucket_is_declared_with_its_safeties_on(qa: Qa) -> None:
 )
 def only_the_build_group_reads_the_artifact_store(qa: Qa) -> None:
     """Who may read the depot — asserted as the whole list, because a widening adds."""
-    declared = resources(the_plan(qa))
+    declared = resources(qa, the_plan(qa))
 
     qa.require(
         "the plan declares a readers binding on the artifact bucket",
@@ -199,7 +199,7 @@ def only_the_build_group_reads_the_artifact_store(qa: Qa) -> None:
         actual=sorted(declared),
         covers=["ac:4", "okf:docs/features/depot/concepts/artifact-store.md:consistency:4"],
     )
-    binding = declared["artifacts-readers"]["inputs"]
+    binding = qa.field(declared, "artifacts-readers.inputs")
     members = binding.get("members", [])
 
     # The whole list, compared as a whole. `"group:builds@example.com" in members` passes on a

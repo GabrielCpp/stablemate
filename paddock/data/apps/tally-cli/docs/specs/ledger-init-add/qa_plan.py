@@ -116,7 +116,7 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
     after = read(qa, ledger)
     qa.verify(
         "created",
-        (before["text"], after["text"]),
+        (qa.field(before, "text"), qa.field(after, "text")),
         subject="tally.json",
         covers=[
             "ac:1",
@@ -135,7 +135,7 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
 
     # Read back by a process that started after `init` exited: whatever it can parse is what
     # the previous process had finished writing.
-    document = json.loads(after["text"])
+    document = json.loads(qa.field(after, "text"))
     qa.check(
         "the ledger is one JSON object with a currency string and an entries array",
         isinstance(document.get("currency"), str) and isinstance(document.get("entries"), list),
@@ -186,7 +186,7 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
     stood = read(qa, ledger)
     qa.verify(
         "unchanged",
-        ({"tally.json": held["sha256"]}, {"tally.json": stood["sha256"]}),
+        ({"tally.json": qa.field(held, "sha256")}, {"tally.json": qa.field(stood, "sha256")}),
         subject="tally.json",
         covers=[
             "ac:2",
@@ -253,7 +253,7 @@ def the_currency_is_recorded_once_at_init_and_never_moves(qa: Qa) -> None:
     told = read(qa, default)
     qa.verify(
         "json_path",
-        json.loads(told["text"]),
+        json.loads(qa.field(told, "text")),
         path="$.currency",
         equals="EUR",
         covers=[
@@ -277,7 +277,7 @@ def the_currency_is_recorded_once_at_init_and_never_moves(qa: Qa) -> None:
         actual=spent.stderr[-2000:],
         covers=["okf:docs/features/tally/tally.md#currency:semantics:1"],
     )
-    still = json.loads(read(qa, named)["text"])
+    still = json.loads(qa.field(read(qa, named), "text"))
     qa.check(
         "the code the ledger was created with is still the code it holds after an expense",
         qa.field(still, "currency") == "USD",
@@ -361,7 +361,7 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
     held = read(qa, ledger)
     qa.verify(
         "count",
-        json.loads(held["text"])["entries"],
+        qa.field(json.loads(qa.field(held, "text")), "entries"),
         subject="entries in the ledger",
         equals=1,
         covers=[
@@ -412,7 +412,7 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
     stood = read(qa, ledger)
     qa.verify(
         "unchanged",
-        ({"tally.json": held["sha256"]}, {"tally.json": stood["sha256"]}),
+        ({"tally.json": qa.field(held, "sha256")}, {"tally.json": qa.field(stood, "sha256")}),
         subject="tally.json",
         covers=[
             "ac:4",
@@ -588,8 +588,8 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
     )
 
-    trip = json.loads(read(qa, here)["text"])
-    rent = json.loads(read(qa, there)["text"])
+    trip = json.loads(qa.field(read(qa, here), "text"))
+    rent = json.loads(qa.field(read(qa, there), "text"))
     qa.check(
         "the ledger that was written holds the expense",
         len(qa.field(trip, "entries")) == 1,

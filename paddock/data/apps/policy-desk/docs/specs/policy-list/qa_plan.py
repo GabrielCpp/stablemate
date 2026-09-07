@@ -40,19 +40,19 @@ def register_api(qa: Qa) -> None:
     qa.verify("json_path", health.json(), path="status", equals="ok", covers=["okf:docs/features/policy/http/policy-desk-api.md#get-health:does:1"])
     reset = qa.http.delete("/api/policies", expect_status=204)
     qa.verify("http_status", reset, code=204, path="/api/policies", covers=["okf:docs/features/policy/http/policy-desk-api.md#delete-policies:contract", "okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:1"])
-    emptied = qa.http.get("/api/policies", expect_status=200).json()["policies"]
+    emptied = qa.field(qa.http.get("/api/policies", expect_status=200).json(), "policies")
     qa.verify("count", emptied, subject="policies", equals=0, covers=["okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:1"])
     reset_again = qa.http.delete("/api/policies", expect_status=204)
     qa.verify("http_status", reset_again, code=204, path="/api/policies", covers=["okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:2"])
-    still_empty = qa.http.get("/api/policies", expect_status=200).json()["policies"]
+    still_empty = qa.field(qa.http.get("/api/policies", expect_status=200).json(), "policies")
     qa.verify("count", still_empty, subject="policies", equals=0, covers=["okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:2"])
 
     for number in ("PN-1003", "PN-1001", "PN-1002"):
         qa.http.post("/api/policies", json_body=valid_policy(number), expect_status=201)
     listing = qa.http.get("/api/policies", expect_status=200)
-    policies = listing.json()["policies"]
+    policies = qa.field(listing.json(), "policies")
     qa.verify("http_status", listing, code=200, path="/api/policies", covers=["ac:1", "okf:docs/features/policy/http/policy-desk-api.md:contract", "okf:docs/features/policy/http/policy-desk-api.md#get-policies:contract", "okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:1"])
-    numbers = [policy["policy_number"] for policy in policies]
+    numbers = [qa.field(policy, "policy_number") for policy in policies]
     qa.check("every policy on file is listed, ordered by policy number", numbers == ["PN-1001", "PN-1002", "PN-1003"], actual=numbers, expected=["PN-1001", "PN-1002", "PN-1003"], covers=["ac:1", "okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:1"])
     fields = ("id", "policy_number", "holder_email", "coverage_type", "start_date", "end_date", "premium", "status", "version")
     qa.check("each record carries the register's fields without a second request", all(field in policy for policy in policies for field in fields), covers=["okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:2"])

@@ -40,11 +40,11 @@ def the_plan(qa: Qa) -> dict:
     return json.loads(read.stdout)
 
 
-def resources(planned: dict) -> dict:
+def resources(qa: Qa, planned: dict) -> dict:
     """The plan's steps, keyed by resource name; see story 1's plan for why in Python."""
     found = {}
-    for step in planned["steps"]:
-        parts = step["urn"].split("::")
+    for step in qa.field(planned, "steps"):
+        parts = qa.field(step, "urn").split("::")
         found[parts[-1]] = {
             "type": parts[-2],
             "inputs": step.get("newState", {}).get("inputs", {}),
@@ -82,7 +82,7 @@ def resources(planned: dict) -> dict:
 def the_deploy_identity_holds_one_grant_and_it_is_at_the_bucket(qa: Qa) -> None:
     """One identity, one grant — and the enumeration that says there is no second one."""
     planned = the_plan(qa)
-    declared = resources(planned)
+    declared = resources(qa, planned)
 
     qa.require(
         "the plan declares the deploy identity",
@@ -92,7 +92,7 @@ def the_deploy_identity_holds_one_grant_and_it_is_at_the_bucket(qa: Qa) -> None:
     )
     qa.verify(
         "json_path",
-        declared["deployer"],
+        qa.field(declared, "deployer"),
         path="$.inputs.accountId",
         equals="depot-deployer",
         covers=["ac:1", "okf:docs/features/depot/concepts/deploy-identity.md:contract"],
@@ -103,10 +103,10 @@ def the_deploy_identity_holds_one_grant_and_it_is_at_the_bucket(qa: Qa) -> None:
     grants = {
         name: entry
         for name, entry in declared.items()
-        if "iam" in entry["type"].lower()
+        if "iam" in qa.field(entry, "type").lower()
     }
     to_the_deployer = sorted(
-        name for name, entry in grants.items() if entry["inputs"].get("member") == DEPLOYER
+        name for name, entry in grants.items() if qa.field(entry, "inputs").get("member") == DEPLOYER
     )
     qa.check(
         "the deploy identity is named by exactly one grant in the whole plan",
@@ -135,7 +135,7 @@ def the_deploy_identity_holds_one_grant_and_it_is_at_the_bucket(qa: Qa) -> None:
 
     # The negative, over the plan rather than over a name: any IAM resource whose type says
     # `projects/` binds at the project, whichever role it carries and whoever it names.
-    project_level = sorted(name for name, entry in grants.items() if "projects/" in entry["type"])
+    project_level = sorted(name for name, entry in grants.items() if "projects/" in qa.field(entry, "type"))
     qa.check(
         "no IAM resource in the plan binds a role at the project",
         project_level == [],
@@ -152,7 +152,7 @@ def the_deploy_identity_holds_one_grant_and_it_is_at_the_bucket(qa: Qa) -> None:
         covers=["ac:5", "okf:docs/features/depot/ops/depot-stack.md:contract"],
     )
     json.dump(
-        {"grants": grants, "changeSummary": planned["changeSummary"]},
+        {"grants": grants, "changeSummary": qa.field(planned, "changeSummary")},
         qa.artifact("steps/grants.json", kind="json").open("w"),
     )
 
@@ -181,7 +181,7 @@ def the_deploy_identity_holds_one_grant_and_it_is_at_the_bucket(qa: Qa) -> None:
 def the_deploy_token_is_a_secret_everywhere_the_plan_shows_it(qa: Qa) -> None:
     """What a preview prints, which is the only place this token is ever visible."""
     planned = the_plan(qa)
-    declared = resources(planned)
+    declared = resources(qa, planned)
 
     # The config block, because that is where a token stored in the clear surfaces: the
     # resource graph is identical either way, and only the plan's own header differs.
@@ -201,13 +201,13 @@ def the_deploy_token_is_a_secret_everywhere_the_plan_shows_it(qa: Qa) -> None:
     )
     qa.verify(
         "json_path",
-        declared["deploy-token-v1"],
+        qa.field(declared, "deploy-token-v1"),
         path="$.inputs.secretData",
         equals="[secret]",
         covers=["ac:2", "okf:docs/features/depot/concepts/deploy-identity.md:consistency:3"],
     )
     json.dump(
-        {"config": planned["config"], "secretVersion": declared["deploy-token-v1"]},
+        {"config": qa.field(planned, "config"), "secretVersion": qa.field(declared, "deploy-token-v1")},
         qa.artifact("steps/deploy-token.json", kind="json").open("w"),
     )
 
@@ -238,9 +238,9 @@ def the_deploy_token_is_a_secret_everywhere_the_plan_shows_it(qa: Qa) -> None:
 )
 def the_artifact_sweep_is_the_only_job_and_it_runs_nightly_at_three(qa: Qa) -> None:
     """A resource whose absence is a shorter plan and no error at all."""
-    declared = resources(the_plan(qa))
+    declared = resources(qa, the_plan(qa))
 
-    jobs = sorted(name for name, entry in declared.items() if entry["type"] == "gcp:cloudscheduler/job:Job")
+    jobs = sorted(name for name, entry in declared.items() if qa.field(entry, "type") == "gcp:cloudscheduler/job:Job")
     # A count over the plan. Looking the sweep up by name would pass on a plan carrying a
     # second job beside it, which is the half of this criterion that is not about the sweep.
     qa.verify("count", jobs, equals=1, subject="Cloud Scheduler jobs in the plan", covers=["ac:4", "okf:docs/features/depot/concepts/artifact-sweep.md:consistency:1"])
@@ -252,7 +252,7 @@ def the_artifact_sweep_is_the_only_job_and_it_runs_nightly_at_three(qa: Qa) -> N
         covers=["ac:4", "okf:docs/features/depot/concepts/artifact-sweep.md:consistency:1", "okf:docs/features/depot/concepts/artifact-sweep.md:contract"],
     )
 
-    sweep = declared["artifact-sweep"]
+    sweep = qa.field(declared, "artifact-sweep")
     qa.verify("json_path", sweep, path="$.inputs.schedule", equals="0 3 * * *", covers=["ac:4", "okf:docs/features/depot/concepts/artifact-sweep.md:consistency:2"])
     # Asserted beside the schedule rather than after it: `0 3 * * *` in an unstated zone is a
     # different hour on every machine, so the two fields are one claim.

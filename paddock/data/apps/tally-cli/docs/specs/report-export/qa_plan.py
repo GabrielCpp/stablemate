@@ -33,11 +33,16 @@ def read(qa: Qa, path):
     return read_file(qa, path, ["okf:docs/features/tally/tally.md#export:contract"])
 
 
-def lines(record):
-    """The lines of a file read by `read`, or nothing at all when it is not there."""
-    if not record["exists"]:
+def lines(qa: Qa, record):
+    """The lines of a file read by `read`, or nothing at all when it is not there.
+
+    Read through `qa.field` rather than by subscript: a fixture that came back shaped
+    differently would raise here and take the whole scenario down as `unproven`, where
+    `MISSING` lets the assertion downstream go red and say so.
+    """
+    if not qa.field(record, "exists"):
         return []
-    return [line for line in record["text"].splitlines() if line != ""]
+    return [line for line in qa.field(record, "text").splitlines() if line != ""]
 
 
 def trip(qa: Qa, ledger):
@@ -240,7 +245,7 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
     after = read(qa, destination)
     qa.verify(
         "created",
-        (lines(before), lines(after)),
+        (lines(qa, before), lines(qa, after)),
         subject="the exported CSV file",
         covers=[
             "okf:docs/features/tally/tally.md#export:does:1",
@@ -250,7 +255,7 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
         ],
     )
 
-    written = lines(after)
+    written = lines(qa, after)
     qa.check(
         "its first line is the header, read as a line rather than skipped as one",
         written[:1] == ["who,what,amount_cents,spent_on"],
@@ -297,8 +302,8 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
     )
     qa.check(
         "the export of an empty ledger is the header alone",
-        lines(read(qa, empty_csv)) == ["who,what,amount_cents,spent_on"],
-        actual=lines(read(qa, empty_csv)),
+        lines(qa, read(qa, empty_csv)) == ["who,what,amount_cents,spent_on"],
+        actual=lines(qa, read(qa, empty_csv)),
         expected=["who,what,amount_cents,spent_on"],
         covers=["ac:5", "okf:docs/features/tally/tally.md#export-to-csv:consistency:1"],
     )

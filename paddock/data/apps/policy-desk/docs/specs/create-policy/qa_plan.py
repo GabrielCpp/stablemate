@@ -51,7 +51,7 @@ def create_policy_api(qa: Qa) -> None:
     payload = valid_policy("PN-1001")
     created = qa.http.post("/api/policies", json_body=payload, expect_status=201)
     created_body = created.json()
-    policy = created_body["policy"]
+    policy = qa.field(created_body, "policy")
     qa.verify("http_status", created, code=201, path="/api/policies", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:does:1"])
     qa.verify("json_path", created_body, path="$.policy.status", equals="Draft", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:does:1"])
     qa.verify("json_path", created_body, path="$.policy.version", equals="1", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:does:1"])
@@ -69,7 +69,7 @@ def create_policy_api(qa: Qa) -> None:
         # A connection refused during the restart window is "not yet", not a verdict —
         # the harness's `eventually` retries only timeouts, so the swallow lives here.
         try:
-            return qa.http.get("/healthz").json()["status"] == "ok"
+            return qa.field(qa.http.get("/healthz").json(), "status") == "ok"
         except HttpError:
             return False
 
@@ -82,14 +82,14 @@ def create_policy_api(qa: Qa) -> None:
     )
     reread = qa.http.get("/api/policies/pn-1001", expect_status=200)
     reread_body = reread.json()
-    qa.verify("persists", (policy, reread_body["policy"]), subject="policy pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:persistence:1", "okf:docs/features/policy/concepts/policy-ledger.md:contract"])
+    qa.verify("persists", (policy, qa.field(reread_body, "policy")), subject="policy pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:persistence:1", "okf:docs/features/policy/concepts/policy-ledger.md:contract"])
     qa.check("the created policy is readable by its slug", qa.field(reread_body, "policy.policy_number") == "PN-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md:contract"])
     missing = qa.http.get("/api/policies/missing", expect_status=404)
     qa.check("missing policy is refused with its documented title", qa.field(missing.json(), "title") == "Unknown Policy", covers=["ac:2"])
 
     duplicate = qa.http.post("/api/policies", json_body=payload, expect_status=409)
     qa.verify("http_status", duplicate, code=409, title="Duplicate Policy Number", path="/api/policies", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:2"])
-    listing = {"policies": [qa.http.get("/api/policies/pn-1001", expect_status=200).json()["policy"]]}
+    listing = {"policies": [qa.field(qa.http.get("/api/policies/pn-1001", expect_status=200).json(), "policy")]}
     qa.verify("count", listing, subject="policies", equals=1, covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:2"])
 
     invalid = valid_policy("PN-1002")
@@ -126,12 +126,12 @@ def create_policy_api(qa: Qa) -> None:
     # `persistence: policy-record` here and `concurrency: policy-record` on the edit. A change
     # to the shape of that record breaks the editor as surely as the creator, and the editor is
     # in no story's diff, so it is proved here rather than left to whoever touches it next.
-    reading = qa.http.get("/api/policies/pn-1001", expect_status=200).json()["policy"]
-    amended = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(reading, reading["premium"] + 1), expect_status=200)
+    reading = qa.field(qa.http.get("/api/policies/pn-1001", expect_status=200).json(), "policy")
+    amended = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(reading, qa.field(reading, "premium") + 1), expect_status=200)
     qa.verify("http_status", amended, code=200, path="/api/policies/pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:contract"])
     # The version below was spent by the amendment above, and nothing has re-read the policy
     # since — a token re-fetched first is current by construction and refutes nothing.
-    stale = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(reading, reading["premium"] + 2), expect_status=409)
+    stale = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(reading, qa.field(reading, "premium") + 2), expect_status=409)
     qa.verify("conflict_on_stale", stale, subject="policy pn-1001", token="version", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1"])
     qa.verify("http_status", stale, code=409, title="Stale Policy", path="/api/policies/pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1"])
     json.dump({"created": policy, "reread": reread_body, "refused": refused_body}, qa.artifact("steps/api-evidence.json", kind="json").open("w"))
@@ -172,7 +172,7 @@ def create_policy_browser_happy_path(qa: Qa) -> None:
     qa.eventually("the accepted submit lands on a policy summary", detail.is_visible)
     qa.vet("docs/features/policy/gui/screens/policy-detail.md", name="created-detail", components=["policy-summary"])
     qa.screenshot("created-detail")
-    after = qa.http.get("/api/policies/pn-1001", expect_status=200).json()["policy"]
+    after = qa.field(qa.http.get("/api/policies/pn-1001", expect_status=200).json(), "policy")
     qa.check("client navigation uses the slugged policy route", qa.page.url.endswith("/policies/pn-1001"), actual=qa.page.url, expected="/policies/pn-1001", covers=["ac:7", "okf:docs/features/policy/flows/create-policy.md:end:1"])
     qa.verify("visible", detail, locator="heading:Policy PN-1001", covers=["okf:docs/features/policy/flows/create-policy.md:end:1", "okf:docs/features/policy/flows/create-policy.md:end-state", "okf:docs/features/policy/flows/create-policy.md:start:1", "okf:docs/features/policy/gui/screens/new-policy.md#submit-new-policy:contract", "okf:docs/features/policy/gui/screens/new-policy.md#submit-new-policy:does:1", "okf:docs/features/policy/gui/screens/new-policy.md#submit-new-policy:keyboard:1", "okf:docs/features/policy/gui/screens/new-policy.md#submit-new-policy:when:1"])
     qa.verify("visible", detail, locator="text=Draft", covers=["okf:docs/features/policy/flows/create-policy.md:end:1", "okf:docs/features/policy/flows/create-policy.md:end-state", "okf:docs/features/policy/flows/create-policy.md:start:1", "okf:docs/features/policy/gui/screens/new-policy.md#submit-new-policy:contract", "okf:docs/features/policy/gui/screens/new-policy.md#submit-new-policy:does:1", "okf:docs/features/policy/gui/screens/new-policy.md#submit-new-policy:keyboard:1", "okf:docs/features/policy/gui/screens/new-policy.md#submit-new-policy:when:1"])
