@@ -639,7 +639,11 @@ class OkfBuilder(Workflow):
                 f"list beside the worklist under .agents/okf-build/ to see what keeps "
                 f"coming back, then flip this file's `STATUS:` line to `ANSWERED` to "
                 f"resume the re-scan with a fresh {MAX_RESCAN_ROUNDS}-round allowance.",
-                self.rescan_coverage,
+                # The answer goes through `retry_blocked`, not straight back into the
+                # re-scan: a re-grounding row that spent its attempts is what most often
+                # keeps the inventory short, and a fresh round allowance on a worklist
+                # whose rows are still blocked re-scans the same book six more times.
+                self.retry_blocked,
                 rnd=result.round,
                 rescan=0,
                 refuels=refuels,
@@ -788,6 +792,25 @@ class OkfBuilder(Workflow):
         )
 
     @staticmethod
+    def _regrounding_gate_question(recorded: Recorded) -> str:
+        """Every node whose cited source moved spent its re-grounding attempts."""
+        lines = "\n".join(
+            f"  - {b.get('target', '?')} — {b.get('attempts', 0)} attempt(s); last turn said: "
+            f"{b.get('reason') or 'nothing'}"
+            for b in recorded.blocked
+        )
+        return (
+            f"okf-builder cannot re-ground {recorded.blocked_count} node(s) whose cited "
+            f"source moved or changed under them. Each was handed to a repair turn "
+            f"{MAX_TARGET_ATTEMPTS} times and the coverage join still reports the drift, "
+            f"and there is no other work left on the worklist:\n\n{lines}\n\n"
+            f"Re-read each bullet against the symbol it cites (or fix what makes the turn "
+            f"report it undone), then set this file's `STATUS:` line to `ANSWERED` to "
+            f"return those nodes to the drain with a fresh {MAX_TARGET_ATTEMPTS}-attempt "
+            f"allowance."
+        )
+
+    @staticmethod
     def _stalled_gate_question(stall_rounds: int, recorded: Recorded) -> str:
         """The whole-book backstop: the finding set stopped moving while rows are pending.
 
@@ -835,7 +858,9 @@ class OkfBuilder(Workflow):
 
     # --- convergence: the exhaustiveness re-scan ------------------------------
 
-    def rescan_coverage(self, rnd: int = 0, rescan: int = 0, refuels: int = 0) -> Continue:
+    def rescan_coverage(
+        self, rnd: int = 0, rescan: int = 0, refuels: int = 0
+    ) -> Continue | Await:
         """`inventory_source` + `compute_coverage` + `decide_coverage`.
 
         Two nodes in one state because the second consumes the first's only output and
@@ -881,13 +906,32 @@ class OkfBuilder(Workflow):
                 len(coverage.regrounding),
                 extra={"activity": True},
             )
-            return Continue(
-                self.call(record, self.ctx.worklist_path, None, coverage.regrounding),
-                self.select,
+            recorded = self.call(record, self.ctx.worklist_path, None, coverage.regrounding)
+            if recorded.pending_count:
+                return Continue(
+                    recorded,
+                    self.select,
+                    rnd=rnd,
+                    rescan=coverage.rescan_round,
+                    refuels=refuels,
+                ).because("cited source moved: re-ground those nodes")
+            # Every requeue landed on a row already blocked: `record` leaves those alone,
+            # so nothing went back into the drain and a `select` here would run dry
+            # straight into the next re-scan — the same rows, the same verdict, until the
+            # round cap. The uncovered units still get their adjudication first; with
+            # none left, the blocked rows are the operator's.
+            if coverage.missing_count:
+                return Continue(
+                    coverage, self.recheck, rnd=rnd, rescan=coverage.rescan_round, refuels=refuels
+                ).because("re-grounding rows all blocked: adjudicate the uncovered units")
+            return Await(
+                paths.operator_context_path(Path(self.ctx.repo_root), self.service),
+                self._regrounding_gate_question(recorded),
+                self.retry_blocked,
                 rnd=rnd,
                 rescan=coverage.rescan_round,
                 refuels=refuels,
-            ).because("cited source moved: re-ground those nodes")
+            ).because("re-grounding rows all blocked and nothing uncovered: operator gate")
         return Continue(
             coverage, self.recheck, rnd=rnd, rescan=coverage.rescan_round, refuels=refuels
         ).because("uncovered units: ask whether they are units")
