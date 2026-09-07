@@ -15,15 +15,18 @@ repeat: **no two findings share a ``(code, ref)`` pair.** It generalises where a
 test does not — a new check that forgets its index is caught by the same run that catches a
 regression in an old one, and no list has to be kept up to date for that to happen.
 
-Two exemptions, both because the ambiguity is already named somewhere with a remedy:
+One exemption: a finding that links its siblings through ``related`` is deliberately one
+finding about a group — ``competing-implementations`` is the example — and its shared ref is
+the point.
 
-* A finding that links its siblings through ``related`` is deliberately one finding about a
-  group — ``competing-implementations`` is the example — and its shared ref is the point.
-* A node whose **id is not unique in the book** cannot have an unambiguous ref, because the
-  id is the ambiguity. Those are counted and printed rather than passed over in silence: the
-  book states one heading anchor twice, and until that is fixed every address into it — a
-  link, a coverage join, a ``qa context`` obligation id — is ambiguous too, not just a
-  finding's ref.
+There was a second, and its removal is the record of what it was hiding. A node whose **id was
+not unique in the book** could not have an unambiguous ref, so 16 findings were excused and the
+count printed. That was convergence by exception: the id was ambiguous because
+``model.anchor_of`` minted it from the heading title alone, and a repeated heading — the
+per-method ``#### Effects`` shape, 58 ids across this book — gave two nodes one id, unreachable
+past the first. ``model.document_anchors`` issues the anchor GitHub actually renders instead,
+so the case is gone rather than pardoned, and a duplicate reappearing is now this guard's
+failure like any other shared ref.
 """
 
 from __future__ import annotations
@@ -50,65 +53,24 @@ STEER = (
 )
 
 
-def duplicate_node_ids(graph: Graph) -> set[str]:
-    """Node ids the book states more than once — an ambiguity no ref can resolve."""
-    counts = collections.Counter(node.id for node in graph.ui_nodes)
-    return {node_id for node_id, n in counts.items() if n > 1}
-
-
-def _node_of(ref: str) -> str:
-    """The node part of a ref: everything before the key segment doctor appends.
-
-    A trailing bullet index is dropped, so ``…#effects#consistency:1`` and ``…#effects`` name
-    the same node. A code-symbol ref carries no ``#`` and is returned whole; it matches no
-    node id, which is the right answer for one. The result is only ever looked up against the
-    set of duplicated ids, so a ref shape that reduces to nothing real is harmless — it finds
-    no match and the finding is held to the rule.
-    """
-    path, _, rest = ref.partition("#")
-    if not rest:
-        return ref
-    head = rest.split("#")[0]
-    stem, colon, index = head.rpartition(":")
-    if colon and index.isdigit():
-        head = stem
-    return f"{path}#{head}" if head else path
-
-
-def ambiguous_refs(graph: Graph) -> tuple[list[str], int]:
-    """Every ``(code, ref)`` shared by findings that are not linked as a group.
-
-    Returns the problems and the count excused for sitting on a duplicated node id.
-    """
+def ambiguous_refs(graph: Graph) -> list[str]:
+    """Every ``(code, ref)`` shared by findings that are not linked as a group."""
     report = doctor.run(graph)
     groups: dict[tuple[str, str], list[doctor.Finding]] = collections.defaultdict(list)
     for finding in report.findings:
         groups[(finding.code, finding.ref)].append(finding)
 
-    duplicated = duplicate_node_ids(graph)
     problems: list[str] = []
-    excused = 0
     for (code, ref), findings in sorted(groups.items()):
         if len(findings) < 2 or any(f.related for f in findings):
             continue
-        if _node_of(ref) in duplicated:
-            excused += len(findings)
-            continue
         where = ", ".join(sorted({f"{f.path}:{f.line}" for f in findings}))
         problems.append(f"{code}: {len(findings)} findings share ref {ref!r} ({where})")
-    return problems, excused
+    return problems
 
 
 def main(argv: list[str]) -> int:
-    graph = Ostler(REPO).graph
-    problems, excused = ambiguous_refs(graph)
-    if excused:
-        dups = len(duplicate_node_ids(graph))
-        print(
-            f"note: {excused} finding(s) excused — {dups} node id(s) are stated twice in the "
-            f"book, so no ref into them can be unambiguous (`ostler graph --json` lists them)",
-            file=sys.stderr,
-        )
+    problems = ambiguous_refs(Ostler(REPO).graph)
     if not problems:
         return 0
     print("\nFAIL check_finding_refs:", file=sys.stderr)
