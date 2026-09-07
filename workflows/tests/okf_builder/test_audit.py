@@ -18,6 +18,7 @@ from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.pyflow.run import RunInvocation, run_pyflow
 from workhorse.records import parse_checkpoint
+from workhorse.runner.failure import BackendInvocationError
 from workhorse.templates import render
 from workhorse_workflows import okf_builder
 from workhorse_workflows.okf_builder.audit.flow import Audit
@@ -45,13 +46,17 @@ class AuditAgent:
     def __call__(self, node: Any, ctx: Any, workflow_dir: Path, *args: Any, **kwargs: Any) -> Any:
         assert Path(node.prompt).stem == "behavior-audit"
         assert node.power == "medium"
-        assert node.retries == 0
+        assert node.retries == 1
         assert not node.add_dirs
         packet = AuditPacket.model_validate_json(ctx.as_dict()["packet"])
         prompt = render(node.prompt, ctx.as_dict(), workflow_dir)
         assert packet.digest in prompt
         self.packets.append(packet)
         self.prompts.append(prompt)
+        if self.status == "backend_failure":
+            # What the ladder re-raises once its bounded retries are spent — the real
+            # shape of the failure this node meets on a flaky provider.
+            raise BackendInvocationError(f"No result text from opencode for node '{node.id}'")
         if self.status == "invalid_schema":
             return "scripted", {"claims": "not a list"}
         if self.status == "invalid_ids":
@@ -143,6 +148,31 @@ def test_invalid_verdicts_retry_twice_then_checkpoint_await(
     assert not report.scope_clear
     assert report.status == "invalid" and report.error
     assert report.assessed_packets == 0
+
+
+def test_a_spent_reviewer_turn_is_gated_not_fatal(booked: Path, tmp_path: Path) -> None:
+    """The provider giving up is the node's own recorded failure, not the run's death.
+
+    `behavior-audit` runs on a model that returns an empty result on roughly a third of
+    fresh sessions. The ladder is bounded here on purpose, so the case that matters is
+    what reaches the state once the ladder is spent — and until this test, nothing did:
+    the verdict arrived as a `BackendInvocationError`, a name from `workhorse.runner`
+    that a workflow may not import, so the `except` below could not name it and the run
+    ended on a packet the operator was never shown.
+    """
+    agent = AuditAgent("backend_failure")
+    env = audit_env(tmp_path, agent)
+
+    def parked(*args: Any, **kwargs: Any) -> None:
+        raise InterruptedError("parked")
+
+    with patch.object(driver, "wait_for_answer", parked), pytest.raises(InterruptedError):
+        drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
+    assert len(agent.packets) == 2, "one retry on a fresh packet, then the gate"
+    checkpoint = json.loads((env.run_dir / "checkpoint.json").read_text())
+    assert checkpoint["waiting_on"].endswith("behavior-audit-context.md")
+    report = BehaviorAuditOutcome.model_validate_json((env.run_dir / "behavior-audit.json").read_text())
+    assert report.status == "invalid" and "No result text" in (report.error or "")
 
 
 def test_sampling_and_unsupported_source_are_explicit_partial_reports(booked: Path, tmp_path: Path) -> None:

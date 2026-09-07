@@ -5,7 +5,9 @@ from pathlib import Path
 
 from ostler.behavior import AuditVerdicts
 from pydantic import Field
-from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow, WorkflowFailed
+from workhorse.pyflow import (
+    AgentTimeout, AgentTurnFailed, Await, Continue, Done, Workflow, WorkflowFailed,
+)
 
 from workhorse_workflows.okf_builder.shared import audit as audit_nodes
 from workhorse_workflows.okf_builder.shared.audit import (
@@ -64,9 +66,13 @@ class Audit(Workflow):
                 turns += 1
                 verdicts = self.agent(
                     "audit/prompts/behavior-audit.md", returns=AuditVerdicts,
-                    # No reframe and three provider retries: a 5xx storm ends here as a
-                    # recorded failure and an operator gate, not a day of backoff.
-                    power="medium", retries=0, invoke_retries=3, timeout=300,
+                    # Three provider retries and one reframe: a 5xx storm ends here as a
+                    # recorded failure and an operator gate, not a day of backoff. The
+                    # reframe is not politeness — this reviewer runs on a model that
+                    # returns an empty result on roughly a third of FRESH sessions, and a
+                    # reframe is the only rung that starts one, so the same-session
+                    # retries above cannot reach the case that actually fails here.
+                    power="medium", retries=1, invoke_retries=3, timeout=300,
                     cwd=directory / "behavior-audit" / packet.digest,
                     args={"packet": packet.model_dump_json(indent=2), "feedback": feedback,
                           "result_schema": work.result_schema},
@@ -77,7 +83,11 @@ class Audit(Workflow):
             return Await(
                 self.run_dir / "behavior-audit-context.md", str(exc), self.start,
             ).because("review contract changed: operator gate")
-        except (ValueError, WorkflowFailed, AgentTimeout) as exc:
+        # `AgentTurnFailed` is the ladder's verdict on a turn that produced nothing.
+        # It belongs with the others: the packet is recorded, one packet is retried,
+        # and a second failure gates. Without it the run simply died here, on a
+        # provider outage, past the gate this branch exists to open.
+        except (ValueError, WorkflowFailed, AgentTimeout, AgentTurnFailed) as exc:
             self.call(record_audit_error, work.outcome, packet.digest, str(exc))
             if attempts >= 1:
                 return Await(
