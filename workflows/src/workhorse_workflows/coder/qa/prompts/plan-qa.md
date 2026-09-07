@@ -239,8 +239,13 @@ arrangement in which most write bugs are invisible.
   equal to nothing at all, so the check it sits in goes red in the one place that can
   explain it and the rest of the scenario still runs. This is not `payload.get("items", [])`
   — a default of `[]` makes a broken response *pass* over nothing; `MISSING` cannot satisfy
-  an assertion. `ostler qa lint` rejects a named-key subscript in the condition, `actual=`
-  or `expected=` of any `qa.check`/`qa.require`/`qa.eventually`.
+  an assertion. `ostler qa lint` rejects a named-key subscript **anywhere in the plan** —
+  inside an assertion, inside a helper the plan defines for itself, inside a `qa.step`. The
+  raise does not care which line it happened on, so neither does the rule; a private
+  `def _field(obj, path)` walking `obj["a"]["b"]` kills the scenario exactly as the inline
+  subscript would. Indexing or slicing something the plan itself just built (`rows[0]`,
+  `stderr[-2000:]`) is untouched — the hazard is a *name* the product may spell
+  differently, and that always reads as a string literal.
 - Everything a scenario needs is on `qa`, already resolved. `qa.dir` is **the** evidence
   directory (this run's, including a dry run's `--out-dir`), `qa.root` the repo root,
   `qa.spec_dir` the spec directory. Never rebuild any of them from a literal path.
