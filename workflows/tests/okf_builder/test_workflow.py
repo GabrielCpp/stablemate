@@ -740,6 +740,83 @@ def test_answering_the_blocked_gate_returns_the_target_with_a_fresh_allowance(
     assert [(i["status"], i["attempts"]) for i in rows] == [("done", 0)], rows
 
 
+DRIFTED_SOURCE = '''"""The billing service."""
+
+
+def charge(amount):
+    """Charge an amount, in cents."""
+    return amount * 100
+'''
+
+
+def _park_stale_citation(repo: Path) -> None:
+    """A `fix:stale-citation` row for `charge` that has already spent its attempts."""
+    wl = paths.worklist_path(repo, SERVICE)
+    data = json.loads(wl.read_text())
+    data["items"].append({
+        "kind": "fix:stale-citation", "target": f"{BOOK}/concepts/charge.md",
+        "context": "{}", "status": "blocked", "attempts": MAX_TARGET_ATTEMPTS,
+        "blocked_reason": "the last turn reported `partial` and the finding still stands",
+    })
+    wl.write_text(json.dumps(data))
+
+
+def test_a_blocked_regrounding_row_with_nothing_uncovered_parks_on_the_gate(
+    booked: Path, tmp_path: Path
+) -> None:
+    """A requeue that lands on a blocked row is dropped by `record`, on purpose — so the
+    state around it must not hand the drain an empty worklist and let the re-scan lap the
+    same join until its round cap. With no uncovered unit left to adjudicate, the blocked
+    row is the operator's, now, and the gate names it."""
+    _drive(_env(tmp_path), _Agent(booked))  # converges and claims the watermark
+    (booked / "acme/service.py").write_text(DRIFTED_SOURCE, encoding="utf-8")
+    _park_stale_citation(booked)
+    agent = _Agent(booked)
+    seen: list[str] = []
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        _drive(_env(tmp_path / "again"), agent)
+
+    assert len(seen) == 1, seen
+    assert "cannot re-ground 1 node(s)" in seen[0], seen[0]
+    assert "concepts/charge.md" in seen[0], seen[0]
+    assert "recheck-coverage" not in agent.counts(), agent.counts()
+    rows = [i for i in _worklist(booked) if i["kind"] == "fix:stale-citation"]
+    assert [(i["status"], i["attempts"]) for i in rows] == [("blocked", MAX_TARGET_ATTEMPTS)]
+
+
+def test_a_blocked_regrounding_row_does_not_starve_the_uncovered_units(
+    booked: Path, tmp_path: Path
+) -> None:
+    """The other arm: an uncovered unit still gets its adjudication turn while the
+    re-grounding row stays blocked, instead of the recheck being skipped every round."""
+    _drive(_env(tmp_path), _Agent(booked))
+    (booked / "acme/service.py").write_text(
+        DRIFTED_SOURCE + "\n\ndef refund(amount):\n    return -amount\n", encoding="utf-8"
+    )
+    _park_stale_citation(booked)
+    agent = _Agent(booked)
+    seen: list[str] = []
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        _drive(_env(tmp_path / "again"), agent)
+
+    assert agent.counts()["recheck-coverage"] >= 1, agent.counts()
+    assert len(seen) == 1, seen
+
+
+def test_the_rescan_cap_gate_answers_through_the_unblock() -> None:
+    """The cap gate's answer must go through `retry_blocked`: a fresh round allowance on a
+    worklist whose rows are still blocked re-scans the same book six more times."""
+    (checkpoint,) = [s for s in state_graph(OkfBuilder).states if s.name == "checkpoint"]
+    (edge,) = [e for e in checkpoint.edges if "re-scan cap hit" in (e.reason or "")]
+    assert edge.target == "retry_blocked", edge
+
+
 class _Parked(Exception):
     """Raised by the patched `wait_for_answer` to stop a run right at its `Await`.
 
