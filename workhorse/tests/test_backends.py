@@ -874,7 +874,9 @@ def test_opencode_no_model_no_small_model_pin():
             turn.TurnState(result_text="X", session_id="s")
         )
         _run_turn(OpenCodeBackend(fake), "P", "n", None)
-    assert captured["env_extra"] == {}
+    assert captured["env_extra"] == {
+        "OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX": "131072"
+    }
 
 
 def test_opencode_operator_config_content_wins_verbatim():
@@ -894,6 +896,7 @@ def test_opencode_operator_config_content_wins_verbatim():
     assert captured["env_extra"] == {
         "OPENCODE_CONFIG_CONTENT": '{"small_model":"openai/gpt-5.5"}',
         "OPENCODE_DISABLE_AUTOCOMPACT": "1",
+        "OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX": "131072",
     }
 
 
@@ -910,6 +913,32 @@ def test_opencode_pin_composes_with_other_harness_env():
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == {
         "small_model": "openai/gpt-5.6-terra"
     }
+
+
+def test_opencode_lifts_the_32k_output_cap_to_the_models_own_limit():
+    """opencode caps every completion at 32k output tokens, thinking included, unless
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX says otherwise. A reasoning model handed a
+    34k-token audit packet spent all 32k thinking and returned no text — twice, on the
+    same packet — so the adapter exports the override on every turn; opencode clamps it
+    to the model's own limit, so it is safe on every model."""
+    with _config(""):
+        fake, captured = _fake_stream(
+            turn.TurnState(result_text="X", session_id="s")
+        )
+        _run_turn(OpenCodeBackend(fake), "P", "n", None, model="minimax/MiniMax-M3")
+    assert captured["env_extra"]["OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"] == "131072"
+
+
+def test_opencode_operator_output_cap_wins():
+    """An operator who names the cap in [harness.opencode].env has decided; the
+    adapter's default steps aside rather than overriding it."""
+    cfg = '[harness.opencode]\nenv = { OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX = "40000" }\n'
+    with _config(cfg):
+        fake, captured = _fake_stream(
+            turn.TurnState(result_text="X", session_id="s")
+        )
+        _run_turn(OpenCodeBackend(fake), "P", "n", None, model="minimax/MiniMax-M3")
+    assert captured["env_extra"]["OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"] == "40000"
 
 
 def test_opencode_stream_includes_reasoning_parts():

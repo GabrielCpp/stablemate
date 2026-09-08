@@ -192,6 +192,15 @@ the node and slept a run for six days while its coding models were fine). Settin
 `OPENCODE_CONFIG_CONTENT` in `[harness.opencode].env` takes over the whole inline
 config: your value passes through verbatim and the automatic pin steps aside.
 
+A second one it sets itself: `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072`.
+opencode caps every completion at 32 000 output tokens — thinking included —
+regardless of the model's own limit, and this variable is the only override
+(opencode clamps it to the model's limit, so it is safe on every model). 32k is a
+TUI-sized budget: a reasoning model handed a 34k-token review packet spends all of
+it thinking, the completion ends with `reason: length` and no text, and a retry
+re-rolls the same dice. The per-node `timeout` stays the wall-clock bound. Name the
+variable in `[harness.opencode].env` and your value wins.
+
 The worked example is the one above. `opencode` auto-summarizes a long session, and
 each summary rewrites the conversation prefix — so the next turn bills a full-price
 prompt instead of a cache read. On a model whose context window you will never

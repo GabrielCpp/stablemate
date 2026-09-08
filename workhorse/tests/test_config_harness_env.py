@@ -141,9 +141,17 @@ def _with_config(cfg):
     )
 
 
+#: The one variable the opencode adapter exports on its own, whatever the config says
+#: (it lifts opencode's 32k output cap to the model's own limit); an operator's value
+#: for the same name wins. See ``backends.opencode``.
+OPENCODE_OWN = {"OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX": "131072"}
+
+
 def test_configured_env_reaches_the_spawn():
     with _with_config(CONFIG):
-        assert _spawn_env(OpenCodeBackend()) == {"OPENCODE_DISABLE_AUTOCOMPACT": "1"}
+        assert _spawn_env(OpenCodeBackend()) == {
+            "OPENCODE_DISABLE_AUTOCOMPACT": "1", **OPENCODE_OWN
+        }
         assert _spawn_env(ClaudeBackend()) == {"MAX_THINKING_TOKENS": "31999"}
 
 
@@ -159,15 +167,18 @@ def test_every_backend_forwards_its_own_table():
     ):
         marker = {f"{backend.name.upper()}_MARKER": "yes"}
         cfg = {"harness": {backend.name: {"env": marker}}}
+        own = OPENCODE_OWN if isinstance(backend, OpenCodeBackend) else {}
         with _with_config(cfg):
-            assert _spawn_env(backend) == marker, backend.name
+            assert _spawn_env(backend) == {**marker, **own}, backend.name
 
 
 def test_unconfigured_backend_spawns_with_no_extra_env():
     """No config must mean no change to the inherited environment — an empty dict is
-    what ``stream_subprocess`` already treats as a no-op."""
+    what ``stream_subprocess`` already treats as a no-op. opencode is the exception
+    by design: its adapter always exports its own output-cap override."""
     with _with_config({}):
-        assert _spawn_env(OpenCodeBackend()) == {}
+        assert _spawn_env(ClaudeBackend()) == {}
+        assert _spawn_env(OpenCodeBackend()) == OPENCODE_OWN
 
 
 def test_compaction_runs_under_the_same_env():

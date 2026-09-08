@@ -69,6 +69,18 @@ class _OpenCodeEvents:
 # has no opencode variant → leave it unset).
 _OPENCODE_VARIANT = {"low": "minimal", "high": "high", "xhigh": "max", "max": "max"}
 
+# opencode caps every completion at 32 000 output tokens — thinking included — no
+# matter what the model's own limit is, and the only override is this env var (it is
+# read as ``Math.min(model.limit.output, value)``, so a large value is safe on every
+# model). 32k is a TUI-sized budget: a reasoning model handed a 34k-token review
+# packet spends all of it thinking, the completion ends with ``reason: length`` and
+# no text part, and a retry only re-rolls the same dice. A workhorse turn is one
+# batch answer against a schema, so the per-node timeout is the right wall-clock
+# bound and the token cap should be the model's. An operator who names this
+# variable in ``[harness.opencode].env`` keeps their value.
+_OPENCODE_OUTPUT_TOKEN_MAX_ENV = "OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"
+_OPENCODE_OUTPUT_TOKEN_MAX = "131072"
+
 
 # opencode's openai provider is the ChatGPT/Codex OAuth backend. Every response from
 # it carries the subscription's rate-limit state in `x-codex-*` headers — including
@@ -227,6 +239,11 @@ class OpenCodeBackend(JsonlBackend):
         if model and "OPENCODE_CONFIG_CONTENT" not in env_extra:
             env_extra = {
                 "OPENCODE_CONFIG_CONTENT": json.dumps({"small_model": model}),
+                **env_extra,
+            }
+        if _OPENCODE_OUTPUT_TOKEN_MAX_ENV not in env_extra:
+            env_extra = {
+                _OPENCODE_OUTPUT_TOKEN_MAX_ENV: _OPENCODE_OUTPUT_TOKEN_MAX,
                 **env_extra,
             }
         state = self.stream(
