@@ -229,13 +229,13 @@ def _note_alive(run: RunTelemetry) -> None:
 #: Terminals that mean the run stopped on purpose, having reached the workflow's own
 #: end. Everything else — ``fail``, ``aborted``, ``interrupted``, or a terminal
 #: workhorse did not stamp at all — stopped for a reason nobody chose.
-_CLEAN_TERMINALS = frozenset({"terminal", "ended"})
+CLEAN_TERMINALS = frozenset({"terminal", "ended"})
 
 
 def _ended_message(run: RunTelemetry, label: str, attrs: dict[str, Any]) -> str:
     """What the ENDED page says: the verdict first, then the wreckage if there is any."""
     terminal = run.terminal
-    if terminal in _CLEAN_TERMINALS:
+    if terminal in CLEAN_TERMINALS:
         return f"{label}: finished ({terminal}) — nothing is running for it now"
     detail = str(attrs.get("error.class") or "")
     kind = str(attrs.get("error.kind") or "")

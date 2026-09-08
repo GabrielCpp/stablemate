@@ -85,6 +85,14 @@ class GateInfo:
     # A pyflow checkpoint can identify an older gate whose file predates the
     # canonical STATUS header. It remains answerable while that checkpoint is live.
     legacy_headerless: bool = False
+    # Who owes the answer: ``operator`` (a person or an attendant) or ``machine`` (the
+    # run is waiting on something that is not a reply — a measurement, a long external
+    # job). The run's own ``questions`` listing has carried this all along; it used to
+    # be dropped on the way onto the row. :mod:`groom.attend` needs it, because a
+    # 40-hour machine wait is not a human failing to answer a gate and must never be
+    # attended. Empty means a run too old to say, which is read as ``operator`` — the
+    # conservative direction is the one that shows the gate to somebody.
+    kind: str = ""
 
 
 @dataclass

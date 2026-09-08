@@ -33,6 +33,7 @@ from litestar.static_files import create_static_files_router
 from groom import (
     alerts,
     archive,
+    attend,
     checkpoints,
     discovery,
     docker_io,
@@ -50,6 +51,7 @@ from groom import (
 from groom.gates import AWAITING, answer_gate, extract_question, status_of
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 from workhorse import control, inbox
+from workhorse import reload as reload_mod
 
 logger = logging.getLogger(__name__)
 
@@ -447,6 +449,12 @@ async def _project_native_rows(records: list) -> None:
         await _broadcast_notify(
             f"{wf.workflow_type or wf.name} is waiting on {gate.file_path}"
         )
+        # The row's gate came from the checkpoint, which names the file and not who
+        # owes the answer — and an attendant must never be sent at a machine wait. So
+        # this edge is demoted the same way `/push/blocked` is: it triggers the poll,
+        # and the run's own `questions` listing, which does carry `kind`, is what
+        # dispatches.
+        _poll_gate_soon(wf.container_id)
 
 
 @get("/", include_in_schema=False)
@@ -758,6 +766,17 @@ async def push_progress(data: dict) -> dict:
     return {"ok": True}
 
 
+@get("/api/attend/queue", include_in_schema=False)
+async def attend_queue() -> dict:
+    """Every run currently waiting on an attendant, oldest first — the whole fleet.
+
+    The `session` dispatch mode publishes here instead of spawning, so one interactive
+    Claude polls one endpoint rather than stacking a watch loop per run id, which is
+    the actual limit of babysitting a run by hand today.
+    """
+    return {"mode": attend.mode(), "jobs": attend.queue()}
+
+
 @post("/push/blocked", include_in_schema=False)
 async def push_blocked(data: dict) -> dict:
     """Used both by groom-sidecar and by the await_operator.py backstop push
@@ -810,8 +829,40 @@ async def push_exited(data: dict) -> dict:
         exit_code=int(exit_code) if isinstance(exit_code, (int, str)) and str(exit_code).lstrip("-").isdigit() else None,
     )
     wf.gates.clear()
+    attend.release(container_id)
+    if wf.exit_code is not None and wf.exit_code not in _NOT_A_DEATH_EXIT:
+        _attend_death(container_id)
     await _broadcast_shell(container_id)
     return {"ok": True}
+
+
+#: Endings that are not a death to attend. ``RELOAD_EXIT_CODE`` is the supervisor
+#: restarting the run on purpose — the thing an attendant does itself — and an
+#: interrupt is a person who has already decided.
+_NOT_A_DEATH_EXIT = frozenset({0, reload_mod.RELOAD_EXIT_CODE})
+_NOT_A_DEATH_TERMINAL = frozenset(alerts.CLEAN_TERMINALS) | {"interrupted"}
+
+
+def _attend_death(container_id: str) -> None:
+    """Put an attendant on a run that ended without reaching its own end.
+
+    A park and a death are one problem — a run that stopped and cannot restart itself
+    — and differ only in what clears them. A parked run is reloaded and answered; a
+    dead run has no socket, so it is patched and resumed from the checkpoint it still
+    holds. Native rows only, and never raising, for the reasons in :func:`_attend_gates`.
+    """
+    wf = state.WORKFLOWS.get(container_id)
+    if wf is None or not wf.native:
+        return
+    try:
+        attend.attend_death(
+            run_id=wf.container_id,
+            workflow=wf.workflow_type or wf.name,
+            run_dir=wf.runs_volume,
+            workspace=wf.workspace_volume,
+        )
+    except Exception:
+        logger.exception("attend: dead-run dispatch failed for %s", container_id)
 
 
 async def _dispatch_alerts(fired: list[alerts.Alert]) -> None:
@@ -822,6 +873,12 @@ async def _dispatch_alerts(fired: list[alerts.Alert]) -> None:
         state.record_log(
             {"event": "alert", "rule": alert.rule, "run_id": alert.run_id, "message": alert.message}
         )
+        if alert.rule == "DIED" or (
+            alert.rule == "ENDED"
+            and (run := state.RUNS.get(alert.run_id)) is not None
+            and run.terminal not in _NOT_A_DEATH_TERMINAL
+        ):
+            _attend_death(alert.run_id)
         await asyncio.to_thread(notify.push, f"groom: {alert.rule}", alert.message)
         await _broadcast_notify(f"[{alert.rule}] {alert.message}")
 
@@ -1126,10 +1183,13 @@ def _gate_from_question(wf: WorkflowContainer, question: dict) -> GateInfo | Non
     if not run_path:
         return None
     text = extract_question(str(question.get("question", "")))
+    kind = str(question.get("kind", ""))
     if not wf.native:
         # The sidecar's own gate rows are workspace-relative; mirror that.
         file_path = run_path.removeprefix("/workspace/")
-        return GateInfo(workflow_id=wf.container_id, file_path=file_path, question=text)
+        return GateInfo(
+            workflow_id=wf.container_id, file_path=file_path, question=text, kind=kind
+        )
     # Native: same resolution as _native_gate, against the run's exported
     # workspace, falling back to an absolute anchor when the gate lives outside.
     path = Path(run_path)
@@ -1151,6 +1211,7 @@ def _gate_from_question(wf: WorkflowContainer, question: dict) -> GateInfo | Non
         file_path=str(relative),
         base="" if workspace and base == Path(workspace).resolve() else str(base),
         question=text,
+        kind=kind,
     )
 
 
@@ -1212,6 +1273,44 @@ async def _poll_gates_of(container_id: str) -> None:
         await _broadcast_shell(wf.container_id)
     for gate in fresh:
         await _broadcast_notify(f"{wf.name}: {gate.question[:_QUESTION_NOTIFY_LIMIT]}")
+    _attend_gates(wf, fresh)
+
+
+def _attend_gates(wf: WorkflowContainer, fresh: list[GateInfo]) -> None:
+    """Put an attendant on a gate this row did not have a moment ago, or take one off.
+
+    Every announcement path — the immediate poll a ``/push/blocked`` fires, the sidecar
+    hello snapshot, the native block, the reconciling tick — reaches
+    :func:`_apply_questions`, so hooking its ``fresh`` list once covers the fleet. That
+    list is computed against the run's own ``questions`` reply, which is the authority
+    on what it is blocked on: the dedupe is structural, and a gate re-armed after an
+    answer is fresh again.
+
+    Only a native row is attended. A container row's ``runs_volume`` is a docker volume
+    name, not a path — an attendant spawned on this host has nothing to open, and
+    reaching into the container is a different mechanism than this one.
+
+    Never raises: it is reached from the poll the reconciler drives, and the watch on a
+    stopped run must not itself be able to stop.
+    """
+    if not wf.native:
+        return
+    try:
+        if not wf.gates:
+            attend.release(wf.container_id)
+            return
+        for gate in fresh:
+            attend.attend_gate(
+                run_id=wf.container_id,
+                workflow=wf.workflow_type or wf.name,
+                run_dir=wf.runs_volume,
+                workspace=wf.workspace_volume,
+                gate_path=gate.file_path,
+                question=gate.question,
+                kind=gate.kind or attend.ATTENDABLE_KIND,
+            )
+    except Exception:
+        logger.exception("attend: dispatch failed for %s", wf.container_id)
 
 
 async def _poll_gates() -> None:
@@ -1795,6 +1894,7 @@ def create_app() -> Litestar:
             inbox_post,
             refresh,
             push_progress,
+            attend_queue,
             push_blocked,
             push_exited,
             otlp_traces,
