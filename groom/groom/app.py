@@ -1381,6 +1381,13 @@ def _gate_abs_path(wf: WorkflowContainer, gate: GateInfo) -> str:
 
     `base` is set when the gate lives outside the workspace, in which case it is the
     anchor `file_path` was made relative to.
+
+    `workspace_volume` is only a host path on a **native** row — on a container row it is
+    a docker volume name, and joining to it would build a path that opens nothing. That
+    is safe to rely on here rather than re-test: `_attend_gates` returns on a
+    non-native row before it reaches this, because an attendant spawned on this host has
+    nothing to open in a container either. This is the same anchor `answer_gate`'s caller
+    resolves with, and the same one `groom.localfs` takes as its base.
     """
     anchor = gate.base or wf.workspace_volume
     if not anchor:
