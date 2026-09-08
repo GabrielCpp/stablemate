@@ -18,6 +18,9 @@ farrier install                                   # renders it into a repo
 | `packs/stablemate.yml` | the bundle a repo opts into with `packs: [stablemate]` |
 | `agents.example.yml` | a minimal starting `agents.yml` (farrier ships the annotated one) |
 
+[AGENTS.md](AGENTS.md) is the companion to that table: what may be *added* here, and
+what ships with the package that reads it instead.
+
 That's the whole payload: markdown and YAML, with no `__init__.py`,
 `pyproject.toml`, dependencies, or executable code. Workflows are distributed
 separately as [`workhorse-workflows`](../workflows/), and an optional overlay may
