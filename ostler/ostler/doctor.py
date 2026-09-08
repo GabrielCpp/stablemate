@@ -1280,7 +1280,7 @@ def _split_signals(value: str) -> list[str]:
     names = sorted(set(_error_names(value)))
     if len(names) > 1:
         reasons.append(f"it names {len(names)} distinct failures ({', '.join(names)})")
-    if _SEMICOLON_CLAUSE.search(_outside_parentheses(value)):
+    if _SEMICOLON_CLAUSE.search(_outside_parentheses(_prose(value))):
         reasons.append("a semicolon joins two independent clauses")
     if _CLAUSE_AND.search(value) and len(_ANY_AND.findall(value)) > 1:
         reasons.append("`and` joins clauses more than once")

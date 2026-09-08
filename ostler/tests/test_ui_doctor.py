@@ -258,6 +258,15 @@ def test_a_semicolon_inside_an_aside_is_not_compound(repo: Path):
     assert "compound-normative-bullet" not in all_codes(_run(repo))
 
 
+def test_a_semicolon_inside_a_code_span_is_not_compound(repo: Path):
+    # A literal written as code says one thing however it is spelled: the `;` in a MIME type
+    # parameter list is notation, not a clause boundary, and no split of the bullet clears it.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _interaction("returns `\"application/json; charset=utf-8\"` regardless of the "
+                       "ext parameter"))
+    assert "compound-normative-bullet" not in all_codes(_run(repo))
+
+
 def test_a_semicolon_outside_an_aside_is_still_compound(repo: Path):
     # The near-miss: a bullet may carry an aside and still join two obligations around it.
     write(repo / "docs/features/groom/gui/screens/s.md",
