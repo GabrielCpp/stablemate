@@ -196,14 +196,19 @@ checkpoint value carrying all eight research counters and three operator grants.
 ### method: FrozenTarget
 - sig: `FrozenTarget(metric: str = "", dataset: str = "", threshold: str = "", threshold_value: float = 0.0, threshold_count: int = 0, n: int = 0, seeds: list[int] = [], deadline: str = "", baseline_value: float = 0.0, baseline_count: int = 0, baseline_source: str = "") -> FrozenTarget`
 - does: carries the parsed README `Frozen target` table as numbers
+- verify: json_path(path="$.n", equals=1000)
 - does: holds raw threshold cell, threshold as fraction, threshold count from `N/D` form
+- verify: json_path(path="$.threshold_count", equals=93)
 - does: holds baseline value and count as fraction of `n`
+- verify: json_path(path="$.baseline_value", equals=0.75)
 - does: holds where baseline came from (`table`, `prose`, or empty)
+- verify: json_path(path="$.baseline_source", equals="table")
 - code: `workflows/src/workhorse_workflows/research/schemas.py::FrozenTarget`
 
 ### method: GateRow
 - sig: `GateRow(gate_id: str = "", document: str = "", depends_on: str = "", status: str = "", result: str = "", date: str = "") -> GateRow`
 - does: carries one row of a progress status table
+- verify: json_path(path="$.gate_id", equals="")
 - code: `workflows/src/workhorse_workflows/research/schemas.py::GateRow`
 
 ### method: HistoryEvent
