@@ -11,8 +11,8 @@ from workhorse.pyflow import (
 
 from workhorse_workflows.okf_builder.shared import audit as audit_nodes
 from workhorse_workflows.okf_builder.shared.audit import (
-    AuditScope, ReviewContractChanged, assess_audit, record_audit_budget_stop, record_audit_error,
-    record_audit_verdicts,
+    AuditScope, IncompleteVerdicts, ReviewContractChanged, assess_audit, load_repair,
+    record_audit_budget_stop, record_audit_error, record_audit_verdicts, stage_repair,
 )
 
 
@@ -35,6 +35,7 @@ class Audit(Workflow):
 
     def start(
         self, failed_digest: str = "", attempts: int = 0, feedback: str = "", turns: int = 0,
+        repair_digest: str = "",
     ) -> Continue | Done | Await:
         scope = AuditScope(
             docs_path=self.docs_path, source_path=self.source_path, service=self.service,
@@ -55,9 +56,14 @@ class Audit(Workflow):
         contract = work.outcome.review_contract
         assert contract is not None
         if packet.digest != failed_digest:
-            attempts, feedback = 0, ""
+            attempts, feedback, repair_digest = 0, "", ""
+        # A repair carries the reduced packet the last reply left owing. It is dispatched
+        # in place of the full one only while it is still owed against it; `load_repair`
+        # makes that check, because the book may have moved underneath a staged repair.
+        repair = self.call(load_repair, repair_digest, packet.digest, str(directory))
+        dispatched = repair if repair is not None else packet
         try:
-            if not packet.candidates and not packet.claims:
+            if not dispatched.candidates and not dispatched.claims:
                 verdicts = AuditVerdicts(claims=(), candidates=())
             elif self.turn_budget and turns >= self.turn_budget:
                 stopped = self.call(record_audit_budget_stop, work.outcome, turns, self.turn_budget)
@@ -76,16 +82,43 @@ class Audit(Workflow):
                     # it. Compaction is the ladder's own answer to that (see
                     # runner/failure.py); the reframe is what remains when it is not.
                     power="medium", retries=1, invoke_retries=3, timeout=300,
-                    cwd=directory / "behavior-audit" / packet.digest,
-                    args={"packet": packet.model_dump_json(indent=2), "feedback": feedback,
+                    cwd=directory / "behavior-audit" / dispatched.digest,
+                    args={"packet": dispatched.model_dump_json(indent=2), "feedback": feedback,
                           "result_schema": work.result_schema},
                 )
-            self.call(record_audit_verdicts, packet, verdicts, str(directory), contract, prompt_path, scope)
+            self.call(record_audit_verdicts, dispatched, verdicts, str(directory), contract, prompt_path, scope)
         except ReviewContractChanged as exc:
             self.call(record_audit_error, work.outcome, packet.digest, str(exc))
             return Await(
                 self.run_dir / "behavior-audit-context.md", str(exc), self.start,
             ).because("review contract changed: operator gate")
+        # A reply that answered for part of the packet is not a worthless reply. Re-asking
+        # the whole packet is what dropped the same id twice on the run this rung exists
+        # for, so the owing items are reduced into their own packet and asked once, on
+        # their own. One repair per packet: a repair that also comes back short falls
+        # through to the retry below, and then to the gate, which is the budget the
+        # reviewer already had.
+        except IncompleteVerdicts as exc:
+            reduced = (None if repair_digest
+                       else self.call(stage_repair, dispatched, exc.recall, str(directory)))
+            if reduced is None:
+                self.call(record_audit_error, work.outcome, packet.digest, str(exc))
+                if attempts >= 1:
+                    return Await(
+                        self.run_dir / "behavior-audit-context.md",
+                        f"Reviewer failed twice on packet {packet.digest}: {exc}. "
+                        f"Report: {work.outcome.report_path}. No completion is authorized.", self.start,
+                    ).because("invalid verdict budget exhausted: operator gate")
+                return Continue(
+                    None, self.start, failed_digest=packet.digest, attempts=attempts + 1,
+                    feedback=str(exc), turns=turns,
+                ).because("incomplete receipt, nothing salvageable: retry the whole packet")
+            return Continue(
+                None, self.start, failed_digest=packet.digest, attempts=attempts,
+                repair_digest=reduced.digest, turns=turns,
+                feedback=f"A previous reply left these items unanswered: {', '.join(exc.owing)}. "
+                         f"This packet contains only those items; answer for every one of them.",
+            ).because("incomplete receipt: ask again for the items still owed")
         # `AgentTurnFailed` is the ladder's verdict on a turn that produced nothing.
         # It belongs with the others: the packet is recorded, one packet is retried,
         # and a second failure gates. Without it the run simply died here, on a

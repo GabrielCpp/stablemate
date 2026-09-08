@@ -5,6 +5,7 @@ import json
 import shutil
 from dataclasses import replace
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 from unittest.mock import patch
 
@@ -83,7 +84,7 @@ class AuditAgent:
         return prompt, AuditVerdicts(claims=claims, candidates=candidates).model_dump(mode="json")
 
 
-def audit_env(tmp_path: Path, agent: AuditAgent) -> RunEnv:
+def audit_env(tmp_path: Path, agent: Callable[..., Any]) -> RunEnv:
     writer = ArtifactWriter("okf-builder", tmp_path / "runs", run_id="audit")
     return RunEnv(writer=writer, config=RunConfig(), workflow_dir=Path(okf_builder.__file__).parent,
                   session_id_path=writer.run_dir / ".session_id", agent_runner=StubRunner(agent))
@@ -465,3 +466,99 @@ def test_in_flight_contract_change_never_marks_reply_current(
     assert (packet_dir / "raw-2.json").is_file()
     policy = audit_nodes.ReceiptPolicy.model_validate_json((packet_dir / "review-contract.json").read_text())
     assert policy.contract == stable.review_contract
+
+
+#: `booked` documents one function with one candidate, and a packet of one cannot be
+#: short by one. This gives the cited file a branch, so its packet carries two.
+BRANCHING_SOURCE = '''"""The billing service."""
+
+
+def charge(amount):
+    """Charge an amount."""
+    if amount < 0:
+        raise ValueError("negative")
+    return amount
+'''
+
+
+class ShortReviewer:
+    """A reviewer that omits one candidate verdict, for the first *short_turns* turns.
+
+    This is the real failure the repair rung exists for: the reply carried eighteen sound
+    judgements out of nineteen, and `_exact_ids` discarded all eighteen. Which id is
+    dropped is deliberately the *first* one, so the reduced packet is not the tail of the
+    list and a repair that merely truncated would still be wrong.
+    """
+
+    def __init__(self, short_turns: int = 1) -> None:
+        self.short_turns = short_turns
+        self.packets: list[AuditPacket] = []
+        self.feedback: list[str] = []
+
+    def __call__(self, node: Any, ctx: Any, workflow_dir: Path, *args: Any, **kwargs: Any) -> Any:
+        packet = AuditPacket.model_validate_json(ctx.as_dict()["packet"])
+        self.packets.append(packet)
+        self.feedback.append(ctx.as_dict()["feedback"])
+        claims = tuple(ClaimVerdict(id=claim.id, status="unresolved", explanation="Needs more context")
+                       for claim in packet.claims)
+        candidates = tuple(CandidateVerdict(id=candidate.id, status="missing",
+                                            explanation="The return value is not described in the book")
+                           for candidate in packet.candidates)
+        if len(self.packets) <= self.short_turns:
+            candidates = candidates[1:]
+        return "scripted", AuditVerdicts(claims=claims, candidates=candidates).model_dump(mode="json")
+
+
+def test_a_dropped_verdict_is_re_asked_on_its_own_not_by_re_asking_the_packet(
+    booked: Path, tmp_path: Path,
+) -> None:
+    """The pass completes on a reply that answered for all but one candidate.
+
+    Before the repair rung this reached an operator gate: the retry handed the reviewer
+    the identical packet, and it dropped an id a second time. The proof that this is a
+    repair and not a retry is the second packet — it carries only the owed item, and it
+    is a different digest from the first.
+    """
+    (booked / "acme/service.py").write_text(BRANCHING_SOURCE, encoding="utf-8")
+    agent = ShortReviewer()
+    env = audit_env(tmp_path, agent)
+    result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
+    assert isinstance(result, BehaviorAuditOutcome)
+    assert result.status == "assessed" and result.assessed_packets == 1
+    full, repair = agent.packets
+    owed = full.candidates[0].id
+    assert [candidate.id for candidate in repair.candidates] == [owed]
+    assert repair.digest != full.digest
+    assert owed in agent.feedback[1], "the repair turn is told which ids it still owes"
+    # The receipt is the full packet's, because that is what the report is owed on.
+    receipt = BehaviorAuditOutcome.model_validate_json((env.run_dir / "behavior-audit.json").read_text())
+    assert receipt.status == "assessed"
+    parent_dir = env.run_dir / "behavior-audit" / full.digest
+    assert (parent_dir / "report.json").is_file()
+    repair_dir = env.run_dir / "behavior-audit" / repair.digest
+    assert (repair_dir / "packet.json").is_file() and (repair_dir / "parent.json").is_file()
+    assert (repair_dir / "recall.json").is_file(), "the salvaged verdicts the memo cannot yet hold"
+
+
+def test_a_repair_that_also_comes_back_short_still_reaches_the_operator_gate(
+    booked: Path, tmp_path: Path,
+) -> None:
+    """One repair per packet, then the budget the reviewer already had.
+
+    A reviewer that keeps dropping ids is not a reply to salvage; it is a reviewer that
+    cannot answer this packet, which is exactly what the gate is for. The rung must not
+    turn that into an unbounded sequence of ever-smaller packets.
+    """
+    (booked / "acme/service.py").write_text(BRANCHING_SOURCE, encoding="utf-8")
+    agent = ShortReviewer(short_turns=99)
+    env = audit_env(tmp_path, agent)
+
+    def parked(*args: Any, **kwargs: Any) -> None:
+        raise InterruptedError("parked")
+
+    with patch.object(driver, "wait_for_answer", parked), pytest.raises(InterruptedError):
+        drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
+    checkpoint = json.loads((env.run_dir / "checkpoint.json").read_text())
+    assert checkpoint["waiting_on"].endswith("behavior-audit-context.md")
+    report = BehaviorAuditOutcome.model_validate_json((env.run_dir / "behavior-audit.json").read_text())
+    assert report.status == "invalid" and report.error

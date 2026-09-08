@@ -12,7 +12,9 @@ from ostler.behavior import (
     AuditPacket, AuditPreparation, AuditReport, AuditVerdicts,
     build_audit_packets, extract_book, extract_evidence, validate_verdicts,
 )
-from ostler.behavior_memo import VerdictMemo, merge_verdicts, reduce_packet
+from ostler.behavior_memo import (
+    MemoRecall, VerdictMemo, merge_verdicts, reduce_packet, salvage_verdicts,
+)
 from ostler.index import IndexStore
 from ostler.model import load
 from pydantic import BaseModel, ConfigDict, Field
@@ -46,6 +48,22 @@ class ReceiptPolicy(BaseModel):
 
 class ReviewContractChanged(ValueError):
     """The reply cannot be attributed to a stable dispatch contract."""
+
+
+class IncompleteVerdicts(ValueError):
+    """The reply answered for some of the packet and left the rest owing.
+
+    Carries what can be salvaged, so the caller can ask for the gap instead of
+    re-asking the packet — which is the failure mode this exists for: a reviewer that
+    drops one id out of nineteen drops it again when handed the same nineteen.
+    """
+
+    def __init__(self, packet: AuditPacket, recall: MemoRecall, owing: tuple[str, ...],
+                 cause: Exception) -> None:
+        super().__init__(f"{len(owing)} item(s) unanswered: {', '.join(owing)} ({cause})")
+        self.packet = packet
+        self.recall = recall
+        self.owing = owing
 
 
 def review_contract(prompt_path: Path, result_schema: str) -> ReviewContract:
@@ -341,6 +359,108 @@ def assess_audit(
     return AuditWork(outcome=outcome, pending=tuple(pending), result_schema=result_schema)
 
 
+#: Verdicts salvaged from a rejected reply, staged beside a reduced packet. They are
+#: deliberately not written to the memo: the memo holds verdicts of reports that
+#: validated, and these have not been merged into one yet.
+REPAIR_RECALL_FILE = "recall.json"
+
+
+def _staged_recall(directory: Path, recalled: MemoRecall) -> MemoRecall:
+    """The memo's recall for a parent, plus whatever a repair staged beside the reduced packet.
+
+    Both stand for the same thing — an item already judged that the reduced packet
+    therefore omits — so the reviewer's reply outranks either, which ``merge_verdicts``
+    handles. Where they overlap the staged verdict wins: it was salvaged from a reply to
+    *this* packet, while the memo's was recalled from another pass.
+    """
+    path = directory / REPAIR_RECALL_FILE
+    if not path.exists():
+        return recalled
+    staged = MemoRecall.model_validate_json(path.read_bytes())
+    claims = {verdict.id: verdict for verdict in recalled.claims}
+    claims.update({verdict.id: verdict for verdict in staged.claims})
+    candidates = {verdict.id: verdict for verdict in recalled.candidates}
+    candidates.update({verdict.id: verdict for verdict in staged.candidates})
+    return MemoRecall(claims=tuple(claims.values()), candidates=tuple(candidates.values()))
+
+
+@blueprint.node
+def stage_repair(
+    logger: logging.Logger, packet: AuditPacket, recall: MemoRecall, run_dir: str,
+) -> AuditPacket | None:
+    """Lay out the reduced packet a short reply left owing, or ``None`` if it salvaged nothing.
+
+    The layout is the one ``recall_report`` already writes for a memo-reduced packet —
+    ``packet.json`` beside ``parent.json`` — so the record node merges a repair reply by
+    the path it already had. The third file, ``recall.json``, is what the memo cannot
+    supply: verdicts this reply earned that no validated report has yet contained.
+
+    *packet* may itself be a reduced packet, in which case its own parent and staged
+    recall are carried forward, so a repair of a repair still merges against the full
+    packet the receipt is owed on.
+    """
+    artifacts = Path(run_dir) / "behavior-audit"
+    dispatched_dir = artifacts / packet.digest
+    parent_path = dispatched_dir / "parent.json"
+    parent = (AuditPacket.model_validate_json(parent_path.read_bytes())
+              if parent_path.exists() else packet)
+    carried = _staged_recall(dispatched_dir, recall)
+    reduced = reduce_packet(packet, recall)
+    if reduced is None or reduced is packet:
+        logger.info("no repair staged for %s: the reply salvaged nothing reducible", packet.digest)
+        return None
+    reduced_dir = artifacts / reduced.digest
+    reduced_dir.mkdir(parents=True, exist_ok=True)
+    (reduced_dir / "packet.json").write_text(reduced.model_dump_json(indent=2), encoding="utf-8")
+    (reduced_dir / "parent.json").write_text(parent.model_dump_json(indent=2), encoding="utf-8")
+    (reduced_dir / REPAIR_RECALL_FILE).write_text(carried.model_dump_json(indent=2), encoding="utf-8")
+    logger.info("staged repair packet %s for %s: %d claim(s), %d candidate(s) still owed",
+                reduced.digest, packet.digest, len(reduced.claims), len(reduced.candidates))
+    return reduced
+
+
+@blueprint.node
+def load_repair(
+    logger: logging.Logger, repair_digest: str, parent_digest: str, run_dir: str,
+) -> AuditPacket | None:
+    """A staged repair packet, but only if it is still owed against *parent_digest*.
+
+    ``assess_audit`` rebuilds its packets from the book on every re-entry, so a repair
+    staged before an edit can outlive the packet it was owed on. The parent check is
+    what makes that harmless: a repair whose parent is no longer what this pass is
+    holding is ignored, and the full packet is dispatched instead.
+    """
+    if not repair_digest:
+        return None
+    directory = Path(run_dir) / "behavior-audit" / repair_digest
+    packet_path = directory / "packet.json"
+    parent_path = directory / "parent.json"
+    if not packet_path.exists() or not parent_path.exists():
+        return None
+    parent = AuditPacket.model_validate_json(parent_path.read_bytes())
+    if parent.digest != parent_digest:
+        logger.info("discarding repair %s: its parent %s is not the pending packet %s",
+                    repair_digest, parent.digest, parent_digest)
+        return None
+    return AuditPacket.model_validate_json(packet_path.read_bytes())
+
+
+def _owed_or_original(packet: AuditPacket, verdicts: AuditVerdicts, exc: ValueError) -> ValueError:
+    """``IncompleteVerdicts`` when the rejected reply names a repairable gap, else *exc*.
+
+    Salvage decides this rather than the message text: whatever the reply failed on,
+    what matters is whether some item is left without a usable verdict, because that is
+    the set a reduced packet can be built from. An empty owing set means every item
+    answered its own rules and the reply broke a whole-reply rule instead — nothing to
+    re-ask, so the original rejection stands.
+    """
+    try:
+        recall, owing = salvage_verdicts(packet, verdicts)
+    except ValueError:
+        return exc
+    return IncompleteVerdicts(packet, recall, owing, exc) if owing else exc
+
+
 @blueprint.node
 def record_audit_verdicts(
     logger: logging.Logger, packet: AuditPacket, verdicts: AuditVerdicts, run_dir: str,
@@ -360,13 +480,15 @@ def record_audit_verdicts(
     (directory / f"raw-{attempt}.json").write_text(raw, encoding="utf-8")
     memo = verdict_memo(scope, contract) if scope is not None else None
     parent_path = directory / "parent.json"
+    try:
+        report = validate_verdicts(packet, verdicts)
+    except ValueError as exc:
+        raise _owed_or_original(packet, verdicts, exc) from exc
     if memo is not None and parent_path.exists():
         parent = AuditPacket.model_validate_json(parent_path.read_bytes())
-        validate_verdicts(packet, verdicts)
-        report = merge_verdicts(parent, memo.recall(parent), verdicts)
+        report = merge_verdicts(parent, _staged_recall(directory, memo.recall(parent)), verdicts)
     else:
         parent = packet
-        report = validate_verdicts(packet, verdicts)
     try:
         current = review_contract(prompt_path, verdict_schema())
     except OSError as exc:
