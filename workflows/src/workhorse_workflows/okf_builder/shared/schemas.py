@@ -30,7 +30,7 @@ pgid that was never a number — is the value an operator most needs to see.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -249,9 +249,12 @@ class Evidence(OkfResult):
 class Adjudication(OkfResult):
     """The turn's verdict: which side of the correspondence is wrong, and the why-chain."""
 
-    verdict: str = Field(
-        default="", description="One of book, code, or story; empty matches no branch."
-    )
+    #: Required, and constrained to the three branches `apply_verdict` routes on. An
+    #: empty reply — a turn that generated nothing, or generated only reasoning — used
+    #: to validate here on the default and then crash the run three frames later, in
+    #: the node that discovered the verdict named no branch. Declaring the literal set
+    #: moves that to the agent boundary, where an unusable reply is a re-asked turn.
+    verdict: Literal["book", "code", "story"]
     chain: str = Field(
         default="",
         description="The numbered why-chain ending at the property that names the side.",

@@ -66,7 +66,10 @@ import json
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
+from workhorse.pyflow import (
+    AgentTimeout, AgentTurnFailed, Await, Continue, Done, NodeNotRunError, Workflow,
+    WorkflowFailed,
+)
 from workhorse_workflows.okf_builder.audit.flow import Audit
 from workhorse_workflows.okf_builder.main.nodes import (
     advance_watermark,
@@ -84,6 +87,7 @@ from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book, s
 from workhorse_workflows.okf_builder.shared.schemas import (
     Adjudication,
     Discovery,
+    Evidence,
     Investigation,
     Prepared,
     Recheck,
@@ -687,44 +691,40 @@ class OkfBuilder(Workflow):
                 gather_evidence, self.ctx.repo_root, self.ctx.source_root, json.dumps(row)
             )
             story = evidence.story or {}
-            result = self.agent(
-                "main/prompts/adjudicate.md",
-                returns=Adjudication,
-                power="medium",
-                cwd=self.ctx.repo_root,
-                add_dirs=[self.ctx.repo_root, self.ctx.source_root],
-                args={
-                    "item_target": evidence.target,
-                    "item_kind": evidence.kind,
-                    "item_code": evidence.code,
-                    "item_findings": json.dumps(evidence.findings, indent=2),
-                    "nodes": json.dumps(evidence.nodes),
-                    "code_refs": json.dumps(evidence.code_refs),
-                    "story": json.dumps(story) if story else "",
-                    "story_text": evidence.story_text,
-                    "story_resolved": "true" if evidence.story_resolved else "false",
-                    "warnings": json.dumps(evidence.warnings),
-                    "blocked_reason": evidence.blocked_reason,
-                    "result_schema": json.dumps(
-                        Adjudication.model_json_schema(), indent=2, ensure_ascii=False
-                    ),
-                    "service": self.service,
-                    "features_root": self.ctx.features_root,
-                    "repo_root": self.ctx.repo_root,
-                    "source_root": self.ctx.source_root,
-                },
-            )
-            self.call(
-                apply_verdict,
-                self.ctx.repo_root,
-                self.ctx.worklist_path,
-                json.dumps(row),
-                result.verdict,
-                result.chain,
-                result.seed_summary,
-                str(story.get("slug") or ""),
-                str(story.get("epic") or ""),
-            )
+            try:
+                result = self._adjudication(evidence, story)
+                self.call(
+                    apply_verdict,
+                    self.ctx.repo_root,
+                    self.ctx.worklist_path,
+                    json.dumps(row),
+                    result.verdict,
+                    result.chain,
+                    result.seed_summary,
+                    str(story.get("slug") or ""),
+                    str(story.get("epic") or ""),
+                )
+            # An adjudication that cannot be obtained is a block, not a death. The run
+            # used to end here on a `ValueError` three frames down — an empty reply
+            # validated on the schema's defaults and then named no branch — which took
+            # the whole book build with it and left nothing to resume. The row keeps its
+            # attempts and the gate holds the run alive, so the code this turn needs can
+            # be fixed underneath it and the same row re-read on the answer.
+            except (
+                ValueError, RuntimeError, WorkflowFailed, AgentTimeout, AgentTurnFailed,
+            ) as exc:
+                return Await(
+                    paths.operator_context_path(Path(self.ctx.repo_root), self.service),
+                    f"okf-builder could not adjudicate {row.get('target', '?')!r}: {exc}\n\n"
+                    f"The row is still blocked and keeps its attempts. Answering re-reads "
+                    f"this same row, so fix what made the turn unusable before answering — "
+                    f"an answer alone re-asks the turn that already failed.",
+                    self.adjudicate,
+                    rnd=rnd,
+                    rescan=rescan,
+                    signature=signature,
+                    refuels=refuels,
+                ).because("adjudication turn unusable: operator gate")
             return Continue(
                 result,
                 self.adjudicate,
@@ -760,6 +760,41 @@ class OkfBuilder(Workflow):
             recorded, self.checkpoint, rnd=rnd, rescan=rescan, signature=signature,
             refuels=refuels,
         ).because("every row closed: re-read doctor")
+
+    def _adjudication(self, evidence: Evidence, story: dict[str, Any]) -> Adjudication:
+        """The adjudication turn itself, lifted out so its state reads as one branch.
+
+        Nothing here decides anything — it is the `self.agent` call `adjudicate` used to
+        hold inline, and it lives beside its state rather than in a node because it is a
+        turn, not a computation.
+        """
+        return self.agent(
+            "main/prompts/adjudicate.md",
+            returns=Adjudication,
+            power="medium",
+            cwd=self.ctx.repo_root,
+            add_dirs=[self.ctx.repo_root, self.ctx.source_root],
+            args={
+                "item_target": evidence.target,
+                "item_kind": evidence.kind,
+                "item_code": evidence.code,
+                "item_findings": json.dumps(evidence.findings, indent=2),
+                "nodes": json.dumps(evidence.nodes),
+                "code_refs": json.dumps(evidence.code_refs),
+                "story": json.dumps(story) if story else "",
+                "story_text": evidence.story_text,
+                "story_resolved": "true" if evidence.story_resolved else "false",
+                "warnings": json.dumps(evidence.warnings),
+                "blocked_reason": evidence.blocked_reason,
+                "result_schema": json.dumps(
+                    Adjudication.model_json_schema(), indent=2, ensure_ascii=False
+                ),
+                "service": self.service,
+                "features_root": self.ctx.features_root,
+                "repo_root": self.ctx.repo_root,
+                "source_root": self.ctx.source_root,
+            },
+        )
 
     @staticmethod
     def _blocked_gate_question(recorded: Recorded) -> str:

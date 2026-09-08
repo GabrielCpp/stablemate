@@ -1157,6 +1157,33 @@ def test_a_story_verdict_with_no_story_parks_with_the_chain_on_the_gate(
     assert "not excused" in seen[0], seen[0]
 
 
+def test_an_adjudication_that_names_no_side_parks_instead_of_killing_the_run(
+    dirty: Path, tmp_path: Path
+) -> None:
+    """A turn that generates nothing is a block, not a death.
+
+    The reply used to validate on the schema's defaults and crash three frames down, in
+    the node that discovered the verdict named no branch — which ended the run and left a
+    dead process nobody could resume. `verdict` is now a required literal, so the empty
+    reply is rejected at the agent boundary and re-asked; when the re-ask is no better,
+    the state gates. The row keeps its attempts, so answering re-reads this same row.
+    """
+    agent = _Agent(dirty, doc_status="partial", note="the symbol is gone", verdict="")
+    seen: list[str] = []
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        _drive(_env(tmp_path), agent)
+
+    assert seen, "the run parked rather than dying"
+    assert "could not adjudicate" in seen[0], seen[0]
+    rows = _blocked_rows(dirty)
+    # No verdict was applied, so the row carries none — it is exactly the row the
+    # answer will hand back to the same turn.
+    assert [(i["status"], i.get("verdict", "")) for i in rows] == [("blocked", "")], rows
+
+
 def test_every_okf_builder_transition_says_why_it_is_taken() -> None:
     """The diagram's edge labels and the run log's `— why` come from `.because(...)` on
     each transition; a transition landed without one reads as bare plumbing on both."""
