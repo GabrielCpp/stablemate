@@ -1,8 +1,3 @@
----
-description: Attend one stopped run — a parked operator gate or a dead run — by diagnosing it, patching stablemate, and then reloading-and-answering or resuming it
-argument-hint: "<run-id> | (dispatched by groom with the job appended)"
----
-
 # Attend a stopped run
 
 A run that parked on an operator gate, or died, cannot clear itself: it cannot patch the
@@ -16,14 +11,6 @@ is **appended below this prompt**, under `## The run that stopped`. It arrives u
 on purpose: three incompatible gate formats are in the tree (composed `coder`
 escalations, hand-written f-strings, raw validator dumps), and handing the text over
 intact is the only thing that covers all of them. Read it as prose, not as fields.
-
-If you were invoked by hand with a run id instead, resolve the rest yourself:
-
-```bash
-groom status --json     # run_id, workflow, run_dir, workspace
-```
-
-$ARGUMENTS
 
 ## The rules that do not bend
 

@@ -204,6 +204,18 @@ def test_a_job_carries_the_gate_body_verbatim(attending: Configure):
     assert job is not None and body in job.prompt()
 
 
+def test_the_doctrine_ships_with_groom(attending: Configure):
+    """The prompt is groom's own package data, not a base-library lookup: an attendant
+    dispatched on a machine with no library configured must still get the rules, since
+    the facts without the rules is exactly the attendant that answers a gate to move a
+    run."""
+    spawner = attending()
+    job = _gate(spawner=spawner)
+    assert job is not None
+    assert attend.PROMPT_PATH.is_file()
+    assert "Never answer a gate to make the run move" in job.prompt()
+
+
 # ---- the dead half -------------------------------------------------------------
 def _failure_run(tmp_path: Path) -> str:
     run_dir = tmp_path / "run"

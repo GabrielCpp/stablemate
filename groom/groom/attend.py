@@ -54,7 +54,6 @@ from typing import Any, Protocol
 
 from workhorse import inbox
 from workhorse._vendor.stablemate_core import config as core_config
-from workhorse._vendor.stablemate_core.discovery import base_library_dir
 from workhorse.config_run import AgentResilience
 from workhorse.runner.process import ProcessSupervisor
 
@@ -66,8 +65,10 @@ logger = logging.getLogger(__name__)
 #: not a degraded state: an unconfigured groom is exactly the dashboard it was.
 OFF, SESSION, HEADLESS = "off", "session", "headless"
 
-#: The library prompt the headless dispatch carries, relative to the base library.
-PROMPT_SUBPATH = Path("library/prompts/stablemate/attend-gate.md")
+#: The doctrine the headless dispatch carries, shipped as groom's own package data.
+#: It is groom-specific — nothing but the attendant reads it — so it travels in the
+#: wheel rather than in the shared base library, and is present wherever groom is.
+PROMPT_PATH = Path(__file__).parent / "prompts" / "attend-gate.md"
 
 #: What a gate's own ``kind`` must be for the attendant to touch it. A ``machine``
 #: wait is a measurement, not a human failing to answer — a 40-hour one is normal —
@@ -218,31 +219,22 @@ class AttendJob:
         return f"{_doctrine()}\n\n---\n\n{self.facts()}\n"
 
 
-def _strip_frontmatter(text: str) -> str:
-    """Drop a slash-command's YAML header — it addresses the command loader, not a turn."""
-    if not text.startswith("---\n"):
-        return text
-    end = text.find("\n---\n", 3)
-    return text[end + 5 :] if end != -1 else text
-
-
 def _doctrine() -> str:
-    """The attendant prompt from the base library, or a refusal that names its absence.
+    """The attendant prompt shipped with groom, or a refusal that names its absence.
 
-    Failing soft here would be the worst option available: a spawned agent with the
-    facts and none of the rules is exactly the attendant that answers a gate to make a
-    run move. So the fallback text tells it to stop rather than to improvise.
+    It ships in the package, so the fallback covers a mangled install rather than an
+    unconfigured machine. Failing soft would be the worst option available: a spawned
+    agent with the facts and none of the rules is exactly the attendant that answers a
+    gate to make a run move. So the fallback text tells it to stop, not to improvise.
     """
-    base = base_library_dir()
-    if base is not None:
-        path = base / PROMPT_SUBPATH
-        if path.is_file():
-            return _strip_frontmatter(path.read_text())
-    return (
-        "The attendant prompt is not installed on this machine "
-        f"({PROMPT_SUBPATH} is absent from the base library). Do not attempt the "
-        "repair — record what you were handed in the run's inbox.jsonl and stop."
-    )
+    try:
+        return PROMPT_PATH.read_text()
+    except OSError:
+        return (
+            "The attendant prompt is missing from this groom install "
+            f"({PROMPT_PATH} is unreadable). Do not attempt the repair — record what "
+            "you were handed in the run's inbox.jsonl and stop."
+        )
 
 
 class Spawner(Protocol):
