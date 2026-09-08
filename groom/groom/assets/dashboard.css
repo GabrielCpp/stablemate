@@ -57,7 +57,6 @@ body {
 .act-btn:hover { color:var(--text-1); }
 .act-btn.active { color:var(--text-0); border-left-color:var(--accent); }
 .act-btn svg { width:20px; height:20px; }
-.act-spacer { flex:1; }
 
 /* ---- shared bits (filter box, empty/loading states) ---- */
 .filter { background:var(--bg-2); border:1px solid var(--border); border-radius:4px;

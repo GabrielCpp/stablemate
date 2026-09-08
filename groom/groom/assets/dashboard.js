@@ -1260,8 +1260,8 @@ function AttendSetting() {
       <span class="setting-mode">${value.mode}${settings.saving ? " · saving…" : ""}</span>
     </div>
     <p class="setting-why">
-      When a run parks on an operator gate or dies, groom sends an agent at it —
-      <code>headless</code> spawns <code>${value.cli}</code> and owns the process;
+      When a run parks on an operator gate or dies, groom sends an agent at it —${" "}
+      <code>headless</code> spawns <code>${value.cli}</code> and owns the process;${" "}
       <code>session</code> only publishes the job for a terminal you already have open.
       Turning this off leaves every stopped run for you.
     </p>
