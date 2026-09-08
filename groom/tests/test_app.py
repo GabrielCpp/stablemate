@@ -358,10 +358,15 @@ def test_api_state_and_the_socket_push_the_same_payload():
     finally:
         client.__exit__(None, None, None)
 
-    # `ts` is stamped per call, so compare everything the browser renders from.
-    assert {k: v for k, v in pushed["message"].items() if k != "ts"} == {
-        k: v for k, v in body.items() if k != "ts"
-    }
+    # `ts` is stamped per call, and so is the store's own "last time a query
+    # succeeded" — both move between the two calls without either payload saying
+    # anything different. Everything the browser renders from is compared.
+    def _stable(message):
+        rest = {k: v for k, v in message.items() if k != "ts"}
+        rest["store"] = {k: v for k, v in rest["store"].items() if k != "last_ok_ts"}
+        return rest
+
+    assert _stable(pushed["message"]) == _stable(body)
 
 
 # ---- the live clock: absence can't be pushed, so the list is re-rendered on a tick ----

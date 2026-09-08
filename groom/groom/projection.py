@@ -29,7 +29,7 @@ import time
 from datetime import datetime
 from typing import Any
 
-from groom import state, store
+from groom import attend, state, store
 from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 
 # Blocked first, then active, then quiet — used for both tree and fleet order.
@@ -304,6 +304,39 @@ def status_bar(workflows: list[WorkflowContainer]) -> dict[str, Any]:
     return {"counts": counts, "repos": len(repos), "workers": len(workflows)}
 
 
+def attend_summary() -> dict[str, Any]:
+    """The attendant's status, small enough to ride every ``state`` frame.
+
+    Deliberately *not* the pane's 200 rows: the state frame goes out on every rules
+    tick, and a list that large on that cadence would cost more than the whole rest of
+    the payload. What rides here is one entry per run — which is exactly what the
+    fleet needs to draw the *link* from a blocked or dead row to the attendant working
+    it — plus a revision the pane watches to know its own list went stale. The list
+    itself is pulled once, from ``GET /api/attend/sessions``, by whoever has the pane
+    open.
+    """
+    try:
+        latest = store.attend_latest_by_run()
+    except Exception:
+        latest = {}
+    by_run = {
+        run_id: {
+            "job_id": row.get("job_id", ""),
+            "session_id": (list(row.get("session_ids") or []) or [""])[-1],
+            "status": row.get("status", ""),
+            "kind": row.get("kind", ""),
+            "reason": row.get("reason", ""),
+            "started_at": row.get("started_at", 0),
+            "ended_at": row.get("ended_at"),
+        }
+        for run_id, row in latest.items()
+    }
+    rev = 0.0
+    for row in latest.values():
+        rev = max(rev, float(row.get("started_at") or 0), float(row.get("ended_at") or 0))
+    return {"mode": attend.mode(), "by_run": by_run, "rev": rev, "count": len(by_run)}
+
+
 def state_message(
     workflows: list[WorkflowContainer], query: str = "", now: float | None = None
 ) -> dict[str, Any]:
@@ -322,6 +355,7 @@ def state_message(
         # answers every read route 200 with a plausible-looking fleet, so "is groom
         # still storing what it is told" has to be asked separately or not at all.
         "store": store.health_dict(),
+        "attend": attend_summary(),
     }
 
 

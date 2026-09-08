@@ -34,6 +34,7 @@ from groom import (
     alerts,
     archive,
     attend,
+    attend_transcript,
     checkpoints,
     discovery,
     docker_io,
@@ -52,6 +53,7 @@ from groom.gates import AWAITING, answer_gate, extract_question, status_of
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 from workhorse import control, inbox
 from workhorse import reload as reload_mod
+from workhorse._vendor.stablemate_core import config as core_config
 
 logger = logging.getLogger(__name__)
 
@@ -775,6 +777,92 @@ async def attend_queue() -> dict:
     the actual limit of babysitting a run by hand today.
     """
     return {"mode": attend.mode(), "jobs": attend.queue()}
+
+
+@get("/api/attend/sessions", include_in_schema=False)
+async def attend_sessions() -> dict:
+    """The attendance log: the latest 200, newest first. Nothing is ever pruned.
+
+    No paging, no date filter, no refresh button — the pane exists so a season of
+    attendances can be read back at once and a recurring cause spotted, and 200 rows
+    is that season. The rows themselves are cheap; the transcripts they point at are
+    fetched one at a time.
+    """
+    rows = await asyncio.to_thread(store.attend_recent, 200)
+    return {"mode": attend.mode(), "sessions": rows}
+
+
+@get("/api/attend/sessions/{session_id:str}", include_in_schema=False)
+async def attend_session(session_id: str) -> dict:
+    """One attendance, rendered as a conversation — not as JSON.
+
+    The transcript is copied at process exit, and copied here on first read when that
+    did not happen (groom killed mid-attendance, a session recovered from a row). The
+    resume line is handed over ready to paste: the point of keeping these is being
+    able to go *ask* the attendant what it was thinking, and that needs the workspace
+    as much as the session id.
+    """
+    row = await asyncio.to_thread(store.attend_by_session, session_id)
+    await asyncio.to_thread(attend_transcript.ensure_body, session_id)
+    rendered = await asyncio.to_thread(attend_transcript.render_session, session_id)
+    workspace = str((row or {}).get("workspace") or "")
+    resume = f"claude --resume {session_id}"
+    rendered["resume"] = f"cd {workspace} && {resume}" if workspace else resume
+    rendered["record"] = row
+    rendered["attempts"] = list((row or {}).get("session_ids") or [])
+    return rendered
+
+
+@post("/api/attend/sessions/{job_id:str}/stop", include_in_schema=False)
+async def attend_stop(job_id: str) -> dict:
+    """Kill this attendant and hand its run back to the operator's own terminal.
+
+    Not a way to abandon the run — the run is still parked or still dead, and groom
+    will attend it again on a later announcement unless the operator gets there
+    first. What this ends is the *agent*, so that two of them are never in one tree.
+    """
+    stopped = await asyncio.to_thread(attend.stop, job_id)
+    await _broadcast_shell()
+    return {"ok": stopped}
+
+
+@get("/api/settings/attend", include_in_schema=False)
+async def attend_settings_get() -> dict:
+    """The effective attend settings, and where each value came from.
+
+    ``sources`` is not decoration. A key set in the environment is *not* overridden by
+    a toggle that writes the config — the config wins, but only for the keys it
+    carries — so a UI that showed a bare on/off could show a value the running groom
+    is not using. Saying "environment" is what makes that visible.
+    """
+    return (await asyncio.to_thread(attend.settings)).as_dict()
+
+
+@post("/api/settings/attend", include_in_schema=False)
+async def attend_settings_post(data: dict) -> dict:
+    """Turn the attendant on or off, persisted to the unified home config.
+
+    Three-valued on purpose: ``off`` is stored as itself, and ``on`` restores the last
+    non-off mode rather than assuming ``headless`` — an operator who runs ``session``
+    mode and toggles off and on should get ``session`` back, not a claude they did not
+    ask for.
+
+    The response is the freshly re-read effective settings, not an echo of what was
+    sent: a save that silently did not take is the one failure a toggle can hide.
+    """
+    current = await asyncio.to_thread(attend.settings)
+    enabled = bool(data.get("enabled"))
+    wanted = (current.last_mode or attend.HEADLESS) if enabled else attend.OFF
+    updated = core_config.AttendSettings(
+        mode=wanted,
+        last_mode=current.last_mode if wanted == attend.OFF else wanted,
+        cli=current.cli,
+        deny=current.deny,
+    )
+    await asyncio.to_thread(core_config.write_attend_settings, updated)
+    attend.forget_settings()
+    await _broadcast_shell()
+    return (await asyncio.to_thread(attend.settings)).as_dict()
 
 
 @post("/push/blocked", include_in_schema=False)
@@ -1869,6 +1957,24 @@ async def _background_scan() -> None:
         await _broadcast_shell()
 
 
+async def _recover_attend() -> None:
+    """on_startup hook: restart the attendants this groom was holding when it died.
+
+    claude sends no heartbeat and a groom restart kills its children, so a row still
+    saying ``running`` is the only trace one was ever there. Each is restarted on a
+    fresh session against the same row — never a new row, because it is the same
+    attendance of the same stopped run. Off the event loop: it reads the store and
+    spawns processes, and lifespan-startup must still finish and bind the port.
+    """
+    try:
+        restarted = await asyncio.to_thread(attend.recover_orphans)
+    except Exception:
+        logger.exception("attend: boot recovery failed")
+        return
+    if restarted:
+        logger.info("attend: restarted %d attendant(s) left running by a dead groom", restarted)
+
+
 async def _spawn_scan() -> None:
     """on_startup hook: only *schedule* discovery and return immediately, so
     uvicorn finishes lifespan-startup and binds the port right away instead of
@@ -1895,6 +2001,11 @@ def create_app() -> Litestar:
             refresh,
             push_progress,
             attend_queue,
+            attend_sessions,
+            attend_session,
+            attend_stop,
+            attend_settings_get,
+            attend_settings_post,
             push_blocked,
             push_exited,
             otlp_traces,
@@ -1907,6 +2018,6 @@ def create_app() -> Litestar:
             reload,
             create_static_files_router(path="/assets", directories=[ASSETS_DIR]),
         ],
-        on_startup=[_spawn_scan, _spawn_rules, _spawn_live, _spawn_archive],
+        on_startup=[_spawn_scan, _spawn_rules, _spawn_live, _spawn_archive, _recover_attend],
         on_shutdown=[_stop_rules, _stop_live, _stop_archive, pools.shutdown_all],
     )

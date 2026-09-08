@@ -30,6 +30,9 @@
       <button type="button" class="act-btn" data-mode="telemetry" title="Telemetry" aria-label="Telemetry" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>
       </button>
+      <button type="button" class="act-btn" data-mode="attend" title="Attendant" aria-label="Attendant" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/></svg>
+      </button>
       <div class="act-spacer"></div>
       <button type="button" class="act-btn" data-mode="settings" title="Settings" aria-label="Settings" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg>
@@ -106,14 +109,25 @@
         </div>
       </div>
 
+      <!-- 5) ATTENDANT: every claude groom dispatched at a run that stopped.
+           A list and a record, and nothing else: no paging, no date filter, no
+           refresh button. The list is the latest 200, newest first, and nothing is
+           ever pruned from it — the point is reading a season back at once. -->
+      <div id="attend-pane" class="pane">
+        <div id="attend-list-panel">
+          <div class="pane-head">
+            <span>Attendant — runs groom sent a claude at</span>
+          </div>
+          <div class="attend-list" id="attend-list" role="log" aria-live="polite" aria-label="Attendance sessions"></div>
+        </div>
+        <div id="attend-detail"><div class="detail-empty">Select an attendance to read what the agent did.</div></div>
+      </div>
+
       <!-- settings -->
       <div id="settings-pane" class="pane">
         <div class="settings-panel">
           <h2>Settings</h2>
-          <div class="row-set"><button class="btn" id="btn-refresh">Rescan containers</button>
-            <span>Re-run the docker discovery pass.</span></div>
-          <div class="row-set"><button class="btn ghost" id="btn-notify">Enable notifications</button>
-            <span>Browser alerts when a worker blocks.</span></div>
+          <div class="setting" id="setting-attend"></div>
         </div>
       </div>
     </main>

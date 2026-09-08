@@ -58,6 +58,9 @@ const store = {
     files: { status: "idle", paths: [], path: null, view: { status: "idle", path: "", content: "", lang: "" } },
     diff: { status: "idle", files: [], idx: -1 },
     traces: { status: "idle", runs: [], spans: [], ended: false },
+    // the attendant: a per-run summary rides every `state` frame, the log does not
+    attend: { mode: "off", by_run: {}, rev: 0, status: "idle", sessions: [], selected: null, record: null },
+    settings: { status: "idle", attend: null, saving: false },
     palette: { open: false, query: "", active: 0 },
   },
   listeners: new Set(),
@@ -89,6 +92,15 @@ function useStore() {
 /** The single entry point for fleet-wide state, from either delivery path. */
 function applyState(msg) {
   store.set({ runs: msg.runs || [], status: msg.status || store.get().status, scanning: !!msg.scanning });
+  // The frame carries one entry per attended run and a revision, never the log —
+  // 200 rows on a 5s tick would dwarf the fleet itself. A `rev` that moved is what
+  // tells an open Attendant pane its list is stale.
+  const summary = msg.attend;
+  if (!summary) return;
+  const attend = store.get().attend;
+  const stale = attend.status === "ready" && summary.rev !== attend.rev;
+  setIn("attend", { mode: summary.mode || "off", by_run: summary.by_run || {}, rev: summary.rev || 0 });
+  if (stale && store.get().mode === "attend") loadAttend();
 }
 
 /** A single-run delta: same row shape as an entry in `state.runs`, merged in
@@ -601,6 +613,7 @@ function Detail() {
   return html`
     <${RunHead} head=${detail.head} />
     <div class="detail-body">
+      <${AttendLink} runId=${detail.run_id} />
       ${detail.gates.length
         ? detail.gates.map((gate) => html`<${GateBlock} key=${gate.file_path} workflowId=${detail.id} gate=${gate} />`)
         : html`<div class="no-gate">
@@ -1022,6 +1035,263 @@ function loadTraces() {
 }
 
 // --------------------------------------------------------------------------- //
+// Attendant panel — the log of claudes groom sent at a stopped run
+// --------------------------------------------------------------------------- //
+// Two states and no refresh button, by design: a row is written `running` before
+// the process emits a byte and flipped to `completed` by the thread that owns it,
+// so there is nothing here to poll. The list is fetched when the pane opens and
+// again when a `state` frame reports a revision it has not seen.
+function attendWhen(epoch) {
+  if (!epoch) return "";
+  return new Date(epoch * 1000).toLocaleString();
+}
+
+function attendElapsed(row) {
+  const end = row.ended_at || Date.now() / 1000;
+  const secs = Math.max(0, Math.round(end - (row.started_at || 0)));
+  if (secs < 60) return secs + "s";
+  if (secs < 3600) return Math.floor(secs / 60) + "m " + (secs % 60) + "s";
+  return Math.floor(secs / 3600) + "h " + Math.floor((secs % 3600) / 60) + "m";
+}
+
+function AttendRow({ row, selected }) {
+  const running = row.status === "running";
+  const session = (row.session_ids || [])[row.session_ids.length - 1] || "";
+  const outcome = running
+    ? "running"
+    : "completed" +
+      (row.exit_code === null || row.exit_code === undefined ? "" : " · exit " + row.exit_code) +
+      (row.released_state ? " · " + row.released_state : "");
+  return html`<div class=${"attend-row" + (selected ? " active" : "")}>
+    <button
+      type="button"
+      class="attend-open"
+      aria-current=${selected ? "true" : null}
+      onClick=${() => openAttendSession(session, row)}
+      disabled=${!session}
+    >
+      <span class="line1">
+        <${StateDot} state=${running ? "running" : "finished"} />
+        <span class="repo-branch">${row.workflow || "(unknown workflow)"}</span>
+        <span class="wid">${row.run_id}</span>
+        <span class=${"attend-status " + row.status}>${outcome}</span>
+      </span>
+      <span class="attend-reason">${row.reason || row.kind}</span>
+      <span class="attend-meta">${attendWhen(row.started_at)} · ${attendElapsed(row)}${
+        row.node ? " · node " + row.node : ""
+      }</span>
+    </button>
+    ${running
+      ? html`<button
+          type="button"
+          class="attend-stop"
+          title="Kill this attendant and take the run in your own terminal"
+          onClick=${() => stopAttend(row.job_id)}
+        >
+          Stop
+        </button>`
+      : null}
+  </div>`;
+}
+
+function AttendList() {
+  const { attend } = useStore();
+  if (attend.status === "idle" || attend.status === "loading") {
+    return html`<div class="empty loading"><span class="spin"></span>Loading attendances…</div>`;
+  }
+  if (attend.status === "error") return html`<div class="empty">failed to load</div>`;
+  if (!attend.sessions.length) {
+    return html`<div class="empty">
+      No attendance yet — groom has not sent an agent at a parked or dead run.
+    </div>`;
+  }
+  return attend.sessions.map(
+    (row) =>
+      html`<${AttendRow}
+        key=${row.job_id}
+        row=${row}
+        selected=${attend.selected === ((row.session_ids || [])[row.session_ids.length - 1] || "")}
+      />`
+  );
+}
+
+// A tool call is one line plus its arguments and its result, both collapsed: the
+// point of this pane is reading what the agent *said*, with the tool traffic
+// there to be opened when a claim needs checking.
+function AttendTool({ entry }) {
+  const body = [entry.detail, entry.result].filter(Boolean).join("\n\n");
+  const head = html`<span class=${"at-tool-head" + (entry.failed ? " failed" : "")}
+    ><span class="at-tool-name">${entry.name}</span><span class="at-tool-sum">${entry.summary}</span></span
+  >`;
+  if (!body) return html`<div class="at-tool">${head}</div>`;
+  return html`<details class="at-tool">
+    <summary>${head}</summary>
+    <pre class="at-tool-body">${body}</pre>
+  </details>`;
+}
+
+function AttendEntry({ entry }) {
+  if (entry.kind === "divider") return html`<div class="at-divider">${entry.label}</div>`;
+  if (entry.kind === "tool") return html`<${AttendTool} entry=${entry} />`;
+  return html`<div class=${"at-msg " + (entry.role || "assistant") + (entry.sidechain ? " sidechain" : "")}>
+    <span class="at-role">${entry.role || "assistant"}</span>
+    <${Markdown} className="at-text" source=${entry.text} />
+  </div>`;
+}
+
+function AttendDetail() {
+  const { attend } = useStore();
+  const record = attend.record;
+  if (!attend.selected) {
+    return html`<div class="detail-empty">Select an attendance to read what the agent did.</div>`;
+  }
+  if (!record) return html`<div class="detail-empty">Loading…</div>`;
+  if (record.error) return html`<div class="detail-empty">failed to load this transcript</div>`;
+  const row = record.record || {};
+  const attempts = record.attempts || [];
+  return html`
+    <div class="at-head">
+      <div class="at-head-line">
+        <span class="repo-branch">${row.workflow || ""}</span>
+        <span class="wid">${row.run_id || ""}</span>
+        <span class=${"attend-status " + (row.status || "")}>${row.status || ""}</span>
+      </div>
+      ${row.reason ? html`<div class="at-head-reason">${row.reason}</div>` : null}
+      ${row.run_dir ? html`<div class="at-head-dir">${row.run_dir}</div>` : null}
+      <div class="at-resume" title="Resume this session in your own terminal">${record.resume}</div>
+      ${attempts.length > 1
+        ? html`<div class="at-attempts">
+            earlier sessions:
+            ${attempts.slice(0, -1).map((id) => html`<code key=${id}>${id}</code>`)}
+          </div>`
+        : null}
+    </div>
+    ${record.present
+      ? html`<div class="at-body">
+          ${record.entries.map((entry, i) => html`<${AttendEntry} key=${i} entry=${entry} />`)}
+        </div>`
+      : html`<div class="detail-empty">
+          No transcript on disk for this session yet — it is copied when the agent exits.
+        </div>`}
+  `;
+}
+
+function loadAttend() {
+  setIn("attend", { status: store.get().attend.status === "ready" ? "ready" : "loading" });
+  fetch("/api/attend/sessions")
+    .then((r) => r.json())
+    .then((body) =>
+      setIn("attend", { status: "ready", sessions: body.sessions || [], mode: body.mode || "off" })
+    )
+    .catch(() => setIn("attend", { status: "error", sessions: [] }));
+}
+
+function openAttendSession(sessionId, row) {
+  if (!sessionId) return;
+  setIn("attend", { selected: sessionId, record: null });
+  fetch("/api/attend/sessions/" + encodeURIComponent(sessionId))
+    .then((r) => r.json())
+    .then((body) => {
+      if (store.get().attend.selected !== sessionId) return; // a later click won
+      if (!body.record && row) body.record = row;
+      setIn("attend", { record: body });
+    })
+    .catch(() => {
+      if (store.get().attend.selected !== sessionId) return;
+      setIn("attend", { record: { error: true } });
+    });
+}
+
+function stopAttend(jobId) {
+  fetch("/api/attend/sessions/" + encodeURIComponent(jobId) + "/stop", { method: "POST" })
+    .then((r) => r.json())
+    .then((body) => {
+      if (!body.ok) pushToast("blocked", "✗ not stopped", "That attendant was already gone.", 5000);
+      loadAttend();
+    })
+    .catch(() => pushToast("blocked", "✗ not stopped", "groom did not answer the stop.", 7000));
+}
+
+/** The link a blocked or dead run draws to whoever is working it. Reads the
+ *  `state` frame's per-run summary, so it is current without a second fetch. */
+function AttendLink({ runId }) {
+  const { attend } = useStore();
+  const entry = runId ? attend.by_run[runId] : null;
+  if (!entry) return null;
+  const label = entry.status === "running" ? "an attendant is on this run" : "last attendant";
+  return html`<button
+    type="button"
+    class="attend-link"
+    onClick=${() => {
+      setMode("attend");
+      openAttendSession(entry.session_id || "", null);
+    }}
+  >
+    <${StateDot} state=${entry.status === "running" ? "running" : "finished"} />
+    ${label}${entry.reason ? " · " + entry.reason : ""}
+  </button>`;
+}
+
+// --------------------------------------------------------------------------- //
+// Settings panel
+// --------------------------------------------------------------------------- //
+// One toggle for now, and it is deliberately not an echo of what was posted: the
+// server answers with the freshly re-read effective settings, because a save that
+// silently did not take is the one failure a switch can hide. `sources` says where
+// each value actually came from — a mode set in the environment is not something
+// this toggle can overrule, and the operator has to be able to see that.
+function AttendSetting() {
+  const { settings } = useStore();
+  const value = settings.attend;
+  if (!value) return html`<div class="setting-loading">Loading settings…</div>`;
+  const on = value.mode !== "off";
+  const source = (value.sources || {}).mode || "default";
+  return html`
+    <div class="setting-head">
+      <label class="switch">
+        <input
+          type="checkbox"
+          checked=${on}
+          disabled=${settings.saving}
+          onChange=${(e) => saveAttendEnabled(e.target.checked)}
+        />
+        <span class="switch-label">Attend parked and dead runs</span>
+      </label>
+      <span class="setting-mode">${value.mode}${settings.saving ? " · saving…" : ""}</span>
+    </div>
+    <p class="setting-why">
+      When a run parks on an operator gate or dies, groom sends an agent at it —
+      <code>headless</code> spawns <code>${value.cli}</code> and owns the process;
+      <code>session</code> only publishes the job for a terminal you already have open.
+      Turning this off leaves every stopped run for you.
+    </p>
+    <p class="setting-source">value from ${source}${source === "environment" ? " — the config is not carrying this key" : ""}</p>
+  `;
+}
+
+function loadAttendSettings() {
+  fetch("/api/settings/attend")
+    .then((r) => r.json())
+    .then((body) => setIn("settings", { status: "ready", attend: body }))
+    .catch(() => setIn("settings", { status: "error" }));
+}
+
+function saveAttendEnabled(enabled) {
+  setIn("settings", { saving: true });
+  fetch("/api/settings/attend", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ enabled: !!enabled }),
+  })
+    .then((r) => r.json())
+    .then((body) => setIn("settings", { saving: false, attend: body }))
+    .catch(() => {
+      setIn("settings", { saving: false });
+      pushToast("blocked", "✗ not saved", "groom did not accept the setting.", 7000);
+    });
+}
+
+// --------------------------------------------------------------------------- //
 // Activity bar (mode switch)
 // --------------------------------------------------------------------------- //
 function setMode(mode) {
@@ -1036,6 +1306,8 @@ function setMode(mode) {
   if (mode === "files") loadFiles();
   else if (mode === "diff") loadDiff();
   else if (mode === "telemetry") loadTraces();
+  else if (mode === "attend") loadAttend();
+  else if (mode === "settings") loadAttendSettings();
 }
 
 // Manual reconcile: rescan docker (adds + prunes vanished workers). The
@@ -1226,7 +1498,7 @@ function wireEvents() {
       select(node.dataset.workerId);
       return;
     }
-    const refreshBtn = e.target.closest("#btn-refresh, #btn-refresh-bar");
+    const refreshBtn = e.target.closest("#btn-refresh-bar");
     if (refreshBtn) {
       doRefresh(refreshBtn);
       return;
@@ -1236,7 +1508,6 @@ function wireEvents() {
       openPalette(palBtn);
       return;
     }
-    if (e.target.id === "btn-notify" && "Notification" in window) Notification.requestPermission();
   });
 
   palIn.addEventListener("input", (e) => setIn("palette", { query: e.target.value, active: 0 }));
@@ -1314,6 +1585,9 @@ const ISLANDS = [
   ["diff-tree", DiffTree],
   ["diff-view", DiffView],
   ["traces-list", Traces],
+  ["attend-list", AttendList],
+  ["attend-detail", AttendDetail],
+  ["setting-attend", AttendSetting],
   ["palette-results", PaletteResults],
 ];
 ISLANDS.forEach(([id, Component]) => render(html`<${Component} />`, document.getElementById(id)));
