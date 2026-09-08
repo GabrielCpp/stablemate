@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 Nonblank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
@@ -51,6 +51,29 @@ class FileExcerpt(BehaviorModel):
     end_line: int = Field(ge=1)
     text: str = Field(min_length=1)
     source_digest: Nonblank
+
+    @model_validator(mode="after")
+    def _bounds_match_text(self) -> FileExcerpt:
+        """Refuse an excerpt that advertises a span its own text does not carry.
+
+        The bounds are what a reviewer cites; the text is what it can see. When they
+        disagree the honest citation — the whole excerpt — is rejected downstream as
+        "unseen", and no retry can fix it because the packet itself is wrong. Catching
+        it here moves that failure from an operator gate hours later to the extractor
+        that built the excerpt.
+
+        Lines are counted the way ``str.splitlines`` counts them (a trailing newline
+        closes the last line rather than opening a phantom one) but arithmetically, so
+        revalidation of a 60k-char excerpt allocates nothing.
+        """
+        lines = self.text.count("\n") + (0 if self.text.endswith("\n") else 1)
+        span = self.end_line - self.start_line + 1
+        if span != max(1, lines):
+            raise ValueError(
+                f"{self.path}: lines {self.start_line}-{self.end_line} span {span} line(s) "
+                f"but the text carries {lines}"
+            )
+        return self
 
 
 class SourceContext(FileExcerpt):

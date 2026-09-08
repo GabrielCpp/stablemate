@@ -5,11 +5,14 @@ import hashlib
 
 import pytest
 
+from pydantic import ValidationError
+
 from ostler.behavior import (
     AuditPacket, AuditVerdicts, BookClaim, BookClaims, BookEvidenceRef, CandidateVerdict,
     ClaimVerdict, build_audit_packets, exported_symbol, extract_book, extract_claims,
     extract_evidence, validate_verdicts,
 )
+from ostler.behavior_models import BookContext, SourceContext, SourceExcerpt
 from ostler.model import load
 
 
@@ -840,3 +843,37 @@ def test_last_sections_book_evidence_span_is_citable_to_its_final_line(tmp_path:
         claims=tuple(ClaimVerdict(id=claim.id, status="unresolved", explanation="No source selected.")
                      for claim in packet.claims))
     validate_verdicts(packet, receipt)
+
+
+def test_excerpt_bounds_must_match_the_text_the_excerpt_carries() -> None:
+    """An excerpt that advertises a span its own text does not carry cannot be built.
+
+    This is the invariant the last-section defect above broke, hoisted from a docstring
+    into the model. Every citation a reviewer can make is bounded by these numbers, so a
+    packet that lies about them is unanswerable — the honest reading of the whole span
+    is rejected as unseen, and no retry can repair a defect in the question. Refusing it
+    here moves that from an operator gate hours later to the extractor that built it.
+    """
+    with pytest.raises(ValidationError, match=r"lines 1-3 span 3 line\(s\) but the text carries 2"):
+        BookContext(node="items", path="docs/items.md", start_line=1, end_line=3,
+                    text="# Items\n- Returns 20\n", source_digest="d")
+    with pytest.raises(ValidationError, match=r"lines 1-1 span 1 line\(s\) but the text carries 2"):
+        SourceContext(path="api.py", symbol="items", start_line=1, end_line=1,
+                      text="def items():\n    return 20\n", source_digest="d")
+    trailing = BookContext(node="items", path="docs/items.md", start_line=1, end_line=2,
+                           text="# Items\n- Returns 20\n", source_digest="d")
+    assert trailing.text.endswith("\n"), "a trailing newline closes the last line, it does not open one"
+    unterminated = BookContext(node="items", path="docs/items.md", start_line=4, end_line=5,
+                               text="# Items\n- Returns 20", source_digest="d")
+    assert unterminated.end_line == 5
+
+
+def test_an_empty_file_excerpt_still_stands_at_line_one() -> None:
+    """`SourceExcerpt` widens its text to allow an empty file, and documents line 1 as its bound.
+
+    The line count of "" is zero by any arithmetic, so the validator has to floor at one
+    or the shape the extractor emits for an empty file becomes unconstructible.
+    """
+    assert SourceExcerpt(path="empty.py", start_line=1, end_line=1, text="", source_digest="d").text == ""
+    with pytest.raises(ValidationError, match=r"lines 1-2 span 2 line\(s\) but the text carries 1"):
+        SourceExcerpt(path="empty.py", start_line=1, end_line=2, text="", source_digest="d")
