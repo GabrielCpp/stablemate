@@ -43,8 +43,8 @@ class AgentNode(BaseModel):
     # operator maps it; nothing in the engine needs to learn the name.
     #
     # The names the shipped workflows use, cheapest → most capable, are `low` / `medium`
-    # / `high` / `smart` / `extra-smart` — a convention, not a constraint. `smart` and
-    # `extra-smart` sit above `high` because "the strongest model available" stopped
+    # / `high` / `max` / `ultra` — a convention, not a constraint. `max` and
+    # `ultra` sit above `high` because "the strongest model available" stopped
     # being one rung: *frontier reasoning* and *the premium model, spend accordingly*
     # are different decisions, and a node wanting the first should not silently get
     # billed for the second.

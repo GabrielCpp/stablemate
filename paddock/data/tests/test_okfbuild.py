@@ -451,5 +451,5 @@ def test_paired_task_and_profiles_are_native_paddock_declarations() -> None:
     ):
         selected = core_config.select_profile(config, profile)
         assert core_config.profile_backends(selected) == ["opencode"]
-        for tier in ("low", "medium", "high", "smart", "extra-smart"):
+        for tier in ("low", "medium", "high", "max", "ultra"):
             assert core_config.resolve_power(tier, "opencode", selected).model == model

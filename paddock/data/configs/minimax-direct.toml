@@ -80,12 +80,12 @@ model = "minimax/MiniMax-M3"
 effort = "high"
 timeout_scale = 3.0
 
-[power.smart.opencode]
+[power.max.opencode]
 model = "minimax/MiniMax-M3"
 effort = "high"
 timeout_scale = 3.0
 
-[power.extra-smart.opencode]
+[power.ultra.opencode]
 model = "minimax/MiniMax-M3"
 effort = "xhigh"
 timeout_scale = 3.0
@@ -98,6 +98,22 @@ timeout_scale = 3.0
 [power.low.opencode]
 model = "minimax/MiniMax-M2.7"
 effort = "low"
+timeout_scale = 3.0
+
+# The tiers `max`/`ultra` were named `smart`/`extra-smart` until recently. A paddock run
+# pins the stablemate code at a commit while reading this file from the working tree, so a
+# run pinned before the rename asks for the old spellings and would silently fall through
+# to `[default.opencode]` — medium effort — on exactly the nodes that need the most. Both
+# spellings are declared until every pin in flight carries the new names.
+
+[power.smart.opencode]
+model = "minimax/MiniMax-M3"
+effort = "high"
+timeout_scale = 3.0
+
+[power.extra-smart.opencode]
+model = "minimax/MiniMax-M3"
+effort = "xhigh"
 timeout_scale = 3.0
 
 [default.opencode]

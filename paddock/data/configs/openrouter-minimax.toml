@@ -102,12 +102,12 @@ model = "openrouter/minimax/minimax-m3"
 effort = "high"
 timeout_scale = 3.0
 
-[power.smart.opencode]
+[power.max.opencode]
 model = "openrouter/minimax/minimax-m3"
 effort = "high"
 timeout_scale = 3.0
 
-[power.extra-smart.opencode]
+[power.ultra.opencode]
 model = "openrouter/minimax/minimax-m3"
 effort = "xhigh"
 timeout_scale = 3.0

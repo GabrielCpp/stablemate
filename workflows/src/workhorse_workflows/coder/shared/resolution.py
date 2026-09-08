@@ -38,7 +38,7 @@ from workhorse_workflows.kit import find_docs_root
 #: operator's config maps a tier to. It is standing in for the person who would otherwise be
 #: woken, on the most consequential branch in the lane, and it is the one turn in the flow
 #: whose output nothing downstream re-checks — so it is the last place to economize.
-RESOLVER_POWER = "smart"
+RESOLVER_POWER = "max"
 
 
 def resolver_args(

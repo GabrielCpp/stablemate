@@ -44,11 +44,11 @@ default_cli = "opencode"
 model = "openai/gpt-5.6-terra"
 effort = "high"
 
-[power.smart.opencode]
+[power.max.opencode]
 model = "openai/gpt-5.6-sol"
 effort = "high"
 
-[power.extra-smart.opencode]
+[power.ultra.opencode]
 model = "openai/gpt-5.6-sol"
 effort = "xhigh"
 

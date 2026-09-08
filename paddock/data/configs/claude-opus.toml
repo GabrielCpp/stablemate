@@ -34,10 +34,10 @@ model = "claude-opus-5"
 [power.high.claude]
 model = "claude-opus-5"
 
-[power.smart.claude]
+[power.max.claude]
 model = "claude-opus-5"
 
-[power.extra-smart.claude]
+[power.ultra.claude]
 model = "claude-opus-5"
 
 [default.claude]

@@ -779,7 +779,7 @@ class Docs(Workflow):
         result = self.agent(
             "shared/prompts/resolve-operator.md",
             returns=OperatorResolution,
-            # smart, and unbounded: the same reasoning `qa` documents — standing in for the
+            # max, and unbounded: the same reasoning `qa` documents — standing in for the
             # accountable party, with full tool access, on the flow's costliest decision.
             power=RESOLVER_POWER,
             timeout=UNBOUNDED,

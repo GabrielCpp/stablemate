@@ -2126,7 +2126,7 @@ class Qa(Workflow):
         result = self.agent(
             "shared/prompts/resolve-operator.md",
             returns=OperatorResolution,
-            # smart, and unbounded: a full-tool-access investigation ahead of the highest-
+            # max, and unbounded: a full-tool-access investigation ahead of the highest-
             # stakes decision in the flow.
             power=RESOLVER_POWER,
             timeout=UNBOUNDED,

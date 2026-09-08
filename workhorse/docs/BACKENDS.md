@@ -96,11 +96,11 @@ default rather than failing the run. That is the trade for the openness, and it 
 knowing when a workflow seems to be ignoring its tiering.
 
 The convention the shipped workflows follow, cheapest first, is `low` / `medium` / `high`
-/ `smart` / `extra-smart`, and following it means one config serves every workflow. The
+/ `max` / `ultra`, and following it means one config serves every workflow. The
 top of that ladder is three rungs because "the strongest thing available" is not one
 decision. `high` is the good model for real work — the tier most turns in a working
-workflow want. `smart` is frontier reasoning, for the handful of turns whose judgment the
-whole run rests on. `extra-smart` is the premium model, chosen knowing what it costs.
+workflow want. `max` is frontier reasoning, for the handful of turns whose judgment the
+whole run rests on. `ultra` is the premium model, chosen knowing what it costs.
 Collapsing those into one rung forces the operator to price every `high` turn at the rate
 of the rarest one, which in practice means the top tier gets configured down until it is
 no longer a top tier.
@@ -120,11 +120,11 @@ effort = "medium"
 model = "sonnet"
 effort = "high"
 
-[power.smart.claude]
+[power.max.claude]
 model = "opus"
 effort = "high"
 
-[power.extra-smart.claude]
+[power.ultra.claude]
 model = "fable"
 effort = "medium"
 
@@ -138,7 +138,7 @@ effort = "high"
 ```
 
 A tier you leave unmapped for a backend falls through to `[default.<backend>]`, so a
-workflow may name `extra-smart` on a backend where you have not defined it without
+workflow may name `ultra` on a backend where you have not defined it without
 failing the run — it simply runs at that backend's default.
 
 #### Per-backend default model (`[default.<backend>]`)
@@ -307,7 +307,7 @@ farrier config show --profile cheap               # read one back, one dotted li
 
 A profile **replaces** the top-level `power` / `default` tables rather than layering over
 them — nothing outside it is inherited. Power tiers are opaque strings, so "the profile did
-not mention `smart`, so it means the machine's `smart`" is a guess the config cannot state.
+not mention `max`, so it means the machine's `max`" is a guess the config cannot state.
 What is not a model set stays outside a profile and still applies: `[harness.<backend>].env`,
 `library_dir`, `base_dir`, `stablemate_dir`.
 

@@ -464,7 +464,7 @@ class Review(Workflow):
         result = self.agent(
             "shared/prompts/resolve-operator.md",
             returns=OperatorResolution,
-            # smart, and unbounded: standing in for a human, with full tool access, on a
+            # max, and unbounded: standing in for a human, with full tool access, on a
             # finding nobody else could settle.
             power=RESOLVER_POWER,
             timeout=UNBOUNDED,
