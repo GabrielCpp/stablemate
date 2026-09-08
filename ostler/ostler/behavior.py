@@ -198,7 +198,7 @@ def extract_claims(graph: Graph) -> tuple[BookClaim, ...]:
     return extract_book(graph).claims
 
 
-def extract_book(graph: Graph) -> BookClaims:
+def extract_book(graph: Graph, scope: str = "") -> BookClaims:
     """Use the real graph's normative bullets and existing QA obligation ID spelling.
 
     Titles and original same-node text are context, not synthetic semantic claims.
@@ -207,6 +207,15 @@ def extract_book(graph: Graph) -> BookClaims:
     use the nearest citing containment ancestor in the same document; do not inherit
     across documents or replace an explicit but incorrect citation. Citations guide
     file-local retrieval, never prove support. Locations come from the graph parser.
+
+    `scope` is a repo-relative path prefix that limits which nodes are *read*: only
+    documents under it are opened, re-hashed and checked against the graph's line
+    numbers. Filtering the returned claims instead is not the same thing — the context
+    read below re-reads every node's file off disk and raises when a section has moved
+    underneath the graph, so an unscoped read makes one service's audit fail on another
+    service's book while a concurrent writer is authoring it. The citation index above
+    stays whole-graph on purpose: it answers whether *anything* in the book cites a
+    symbol, and narrowing it would demote candidates cited only from a sibling book.
     """
     claims: list[BookClaim] = []
     by_id = {node.id: node for node in graph.ui_nodes}
@@ -241,6 +250,8 @@ def extract_book(graph: Graph) -> BookClaims:
                 break
             citations = tuple(refs.code_refs(owner.meta.get("code")))
         path = node.path.resolve().relative_to(graph.root.resolve()).as_posix()
+        if scope and not path.startswith(scope):
+            continue
         if not any(key in registry.normative_keys(node.type) for key, _, _ in node.bullet_order):
             continue
         if node.path not in documents:

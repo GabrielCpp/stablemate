@@ -769,3 +769,38 @@ def test_book_context_is_windowed_around_the_packets_claims(tmp_path: Path) -> N
     validate_verdicts(packet, receipt)
     with pytest.raises(ValueError, match="context_lines"):
         build_audit_packets(extract_evidence(tmp_path, []), claims, context_lines=0)
+
+
+def test_a_scoped_read_never_opens_another_service_book(tmp_path: Path) -> None:
+    """One service's audit must not fail on another service's documents.
+
+    Two okf-builder runs share a repo and scope themselves to a service each. The scope used
+    to be applied to `extract_book`'s *result*, so the read still opened every document in
+    `docs/features/**` and matched each node's recorded line against a section start — and a
+    sibling run authoring its own book moved those lines underneath the graph, raising here on
+    nodes this run was about to discard. Scoping the read is what makes the two runs
+    independent; the citation index stays whole-graph, so a symbol cited only from the sibling
+    book is still known to be cited.
+    """
+    for service, symbol in (("api", "items"), ("web", "render")):
+        docs = tmp_path / "docs/features" / service
+        docs.mkdir(parents=True)
+        (docs / f"{service}.md").write_text(
+            f"---\ntype: server\ntitle: {service}\n---\n\n# {service}\n\n## Endpoints\n\n### {symbol}\n\n"
+            f"- does: It answers.\n- code: {service}.py::{symbol}\n",
+            encoding="utf-8",
+        )
+        (tmp_path / f"{service}.py").write_text(f"def {symbol}():\n    return 1\n", encoding="utf-8")
+    graph = load(tmp_path)
+    # The sibling run authors its book: every section below the insertion moves down, and the
+    # graph in hand still points at the old offsets.
+    web = tmp_path / "docs/features/web/web.md"
+    web.write_text(web.read_text(encoding="utf-8").replace(
+        "# web\n", "# web\n\nA new paragraph.\n\nAnd another one.\n"), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="docs/features/web/web.md#render"):
+        extract_book(graph)
+
+    book = extract_book(graph, scope="docs/features/api/")
+    assert [claim.node for claim in book.claims] == ["docs/features/api/api.md#items"]
+    assert "web.py::render" in book.cited_symbols
