@@ -26,7 +26,7 @@ import os
 import shutil
 import tomllib
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -340,8 +340,8 @@ def select_profile(cfg: dict[str, Any] | None, name: str) -> dict[str, Any]:
     outside for free, because it is resolved from the *unnarrowed* config.
 
     Inheriting the top level was rejected because power tiers are opaque strings: no
-    schema says which tiers exist, so "the profile did not mention ``smart``, therefore it
-    means the machine's ``smart``" is a guess the config cannot state and the operator
+    schema says which tiers exist, so "the profile did not mention ``max``, therefore it
+    means the machine's ``max``" is a guess the config cannot state and the operator
     cannot see.
 
     An empty ``name`` means "no profile" and returns the config unchanged, so a caller
@@ -598,3 +598,174 @@ def resolve_worktree_dir() -> Path | None:
     if isinstance(configured, str) and configured:
         return Path(configured).expanduser().resolve()
     return None
+
+
+# ---------------------------------------------------------------------------
+# groom's attendant: the one setting a dashboard toggle owns
+# ---------------------------------------------------------------------------
+
+#: The table groom's attendant settings live in: ``[groom.attend]``. Additive, so it does
+#: not bump CONFIG_VERSION — an older reader has no attendant to configure, and
+#: :func:`write_config_section` serializes with a real TOML writer, so a build that has
+#: never heard of this table still preserves it on its own writes.
+ATTEND_SECTION = "groom.attend"
+
+ATTEND_OFF, ATTEND_SESSION, ATTEND_HEADLESS = "off", "session", "headless"
+_ATTEND_MODES = (ATTEND_OFF, ATTEND_SESSION, ATTEND_HEADLESS)
+
+#: The environment spelling that predates the config table. It stays readable as a
+#: *fallback*, so an existing ``GROOM_ATTEND=session groom serve`` keeps working; the
+#: config wins the moment the key is present, which is what makes the toggle authoritative.
+ATTEND_MODE_ENV = "GROOM_ATTEND"
+ATTEND_CLI_ENV = "GROOM_ATTEND_CLI"
+ATTEND_DENY_ENV = "GROOM_ATTEND_DENY"
+
+BUILTIN_ATTEND_CLI = "claude"
+
+#: Where a resolved value came from, per field. The dashboard renders this: a toggle that
+#: silently shadows an environment variable is a control the operator cannot trust.
+CONFIG_SOURCE, ENV_SOURCE, DEFAULT_SOURCE = "config", "environment", "default"
+
+
+@dataclass(frozen=True)
+class AttendSettings:
+    """The effective ``[groom.attend]`` settings, and where each one was read from."""
+
+    mode: str = ATTEND_OFF
+    #: The non-``off`` mode the toggle restores when it is switched back on. Without it a
+    #: `session`-mode operator who toggles off and on again silently gets `headless`.
+    last_mode: str = ATTEND_HEADLESS
+    cli: str = BUILTIN_ATTEND_CLI
+    deny: tuple[str, ...] = ()
+    #: field name -> :data:`CONFIG_SOURCE` / :data:`ENV_SOURCE` / :data:`DEFAULT_SOURCE`.
+    sources: dict[str, str] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "mode": self.mode,
+            "last_mode": self.last_mode,
+            "cli": self.cli,
+            "deny": list(self.deny),
+            "sources": dict(self.sources),
+        }
+
+
+def write_config_section(name: str, values: dict[str, Any]) -> None:
+    """Persist one dotted table (``groom.attend``), preserving every other key.
+
+    The nested-table sibling of :func:`write_config_key`, and it holds the same
+    discipline for the same reasons: a real TOML writer over the loaded config, so a
+    ``[power.*]`` or ``[profiles.*]`` table this build does not understand survives
+    untouched; an older config carried forward first; a newer one refused outright.
+
+    The table is *replaced*, not merged. A settings pane sends the whole table it is
+    showing, and a merge would make a removed deny entry unremovable.
+    """
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cfg = load_config()
+
+    found = config_version_of(cfg)
+    if found > CONFIG_VERSION:
+        raise ConfigVersionError(_too_new_message(found))
+    if found < CONFIG_VERSION:
+        cfg = _migrate_forward(cfg, found, path)
+
+    parts = name.split(".")
+    table = cfg
+    for part in parts[:-1]:
+        nested = table.get(part)
+        if not isinstance(nested, dict):
+            nested = {}
+            table[part] = nested
+        table = nested
+    table[parts[-1]] = dict(values)
+
+    cfg[CONFIG_VERSION_KEY] = CONFIG_VERSION
+    with path.open("wb") as handle:
+        tomli_w.dump(cfg, handle)
+
+
+def _attend_mode(value: Any, fallback: str) -> str:
+    text = str(value).strip().lower() if value is not None else ""
+    return text if text in _ATTEND_MODES else fallback
+
+
+def resolve_attend_settings(cfg: dict[str, Any] | None = None) -> AttendSettings:
+    """The effective attendant settings: the config wins, the environment is the fallback.
+
+    Three tiers per key — the config value when the key is present, else the environment
+    variable when it is set, else the built-in default. So a machine that has never
+    opened the settings pane keeps the behaviour its ``GROOM_ATTEND`` export gave it, and
+    the first save takes ownership of the key for good.
+    """
+    data = cfg if cfg is not None else load_config()
+    table = get_config_value(ATTEND_SECTION, data)
+    section: dict[str, Any] = table if isinstance(table, dict) else {}
+    sources: dict[str, str] = {}
+
+    env_mode = os.environ.get(ATTEND_MODE_ENV)
+    if "mode" in section:
+        mode = _attend_mode(section.get("mode"), ATTEND_OFF)
+        sources["mode"] = CONFIG_SOURCE
+    elif env_mode is not None:
+        mode = _attend_mode(env_mode, ATTEND_OFF)
+        sources["mode"] = ENV_SOURCE
+    else:
+        mode = ATTEND_OFF
+        sources["mode"] = DEFAULT_SOURCE
+
+    if "last_mode" in section:
+        last_mode = _attend_mode(section.get("last_mode"), ATTEND_HEADLESS)
+        sources["last_mode"] = CONFIG_SOURCE
+    elif mode != ATTEND_OFF:
+        # Never configured, but running: whatever is running is what a toggle should
+        # restore.
+        last_mode = mode
+        sources["last_mode"] = sources["mode"]
+    else:
+        last_mode = ATTEND_HEADLESS
+        sources["last_mode"] = DEFAULT_SOURCE
+    if last_mode == ATTEND_OFF:
+        last_mode = ATTEND_HEADLESS
+
+    env_cli = os.environ.get(ATTEND_CLI_ENV)
+    raw_cli = section.get("cli")
+    if isinstance(raw_cli, str) and raw_cli.strip():
+        cli = raw_cli.strip()
+        sources["cli"] = CONFIG_SOURCE
+    elif env_cli is not None and env_cli.strip():
+        cli = env_cli.strip()
+        sources["cli"] = ENV_SOURCE
+    else:
+        cli = BUILTIN_ATTEND_CLI
+        sources["cli"] = DEFAULT_SOURCE
+
+    raw_deny = section.get("deny")
+    if isinstance(raw_deny, list):
+        deny = tuple(str(item).strip().lower() for item in raw_deny if str(item).strip())
+        sources["deny"] = CONFIG_SOURCE
+    elif os.environ.get(ATTEND_DENY_ENV):
+        raw_env = os.environ.get(ATTEND_DENY_ENV, "")
+        deny = tuple(part.strip().lower() for part in raw_env.split(",") if part.strip())
+        sources["deny"] = ENV_SOURCE
+    else:
+        deny = ()
+        sources["deny"] = DEFAULT_SOURCE
+
+    return AttendSettings(
+        mode=mode, last_mode=last_mode, cli=cli, deny=deny, sources=sources
+    )
+
+
+def write_attend_settings(settings: AttendSettings) -> None:
+    """Persist the whole ``[groom.attend]`` table from a resolved settings object."""
+    write_config_section(
+        ATTEND_SECTION,
+        {
+            "mode": settings.mode,
+            "last_mode": settings.last_mode,
+            "cli": settings.cli,
+            "deny": list(settings.deny),
+        },
+    )
