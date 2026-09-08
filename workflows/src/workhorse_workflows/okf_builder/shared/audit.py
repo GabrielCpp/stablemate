@@ -198,13 +198,12 @@ def preparation(scope: AuditScope) -> AuditPreparation:
     if not scope.source_path:
         raise ValueError("source_path is required: choose an explicit source file or directory")
     graph = load(root)
-    prefix = paths.book_scope(root, scope.service)
-    book = extract_book(graph)
-    claims = book.model_copy(update={
-        "claims": tuple(claim for claim in book.claims if claim.path.startswith(prefix)),
-        # A duplicate-heading skip elsewhere in the book is not this service's limitation.
-        "limitations": tuple(note for note in book.limitations if f" {prefix}" in note),
-    })
+    # The scope goes *into* the read, not onto its result. `extract_book` re-reads every node
+    # it visits off disk and raises when the section has moved under the graph, so filtering
+    # afterwards still opens and validates the whole book — which makes this run fail on a
+    # sibling service's documents while that service's own run is authoring them. Scoping the
+    # read also keeps a duplicate-heading skip elsewhere out of this service's limitations.
+    claims = extract_book(graph, scope=paths.book_scope(root, scope.service))
     evidence = extract_evidence(root, [source.as_posix()], context_paths=scope.context_paths)
     failures = [f"{file.path}: {file.status}: {file.message}"
                 for file in evidence.context_files if file.status != "parsed"]
