@@ -1361,18 +1361,37 @@ async def _poll_gates_of(container_id: str) -> None:
         await _broadcast_shell(wf.container_id)
     for gate in fresh:
         await _broadcast_notify(f"{wf.name}: {gate.question[:_QUESTION_NOTIFY_LIMIT]}")
-    _attend_gates(wf, fresh)
+    # Every gate the run just reported, not just the ones new to the row: the
+    # announcement that triggered this poll has already written them, so `fresh`
+    # is empty on exactly the path that matters. See `_attend_gates`.
+    _attend_gates(wf, list(wf.gates.values()))
 
 
-def _attend_gates(wf: WorkflowContainer, fresh: list[GateInfo]) -> None:
-    """Put an attendant on a gate this row did not have a moment ago, or take one off.
+def _attend_gates(wf: WorkflowContainer, gates: list[GateInfo]) -> None:
+    """Put an attendant on the gates this run reports being parked on, or take one off.
 
     Every announcement path — the immediate poll a ``/push/blocked`` fires, the sidecar
     hello snapshot, the native block, the reconciling tick — reaches
-    :func:`_apply_questions`, so hooking its ``fresh`` list once covers the fleet. That
-    list is computed against the run's own ``questions`` reply, which is the authority
-    on what it is blocked on: the dedupe is structural, and a gate re-armed after an
-    answer is fresh again.
+    :func:`_apply_questions`, so hooking it once covers the fleet.
+
+    **These are the run's currently reported gates, not the ones new to the row.** Each
+    announcement writes ``wf.gates`` itself and *then* fires the poll, so by the time
+    this runs the gate is already on the row and ``_apply_questions`` reports nothing
+    fresh — on the primary path, always. Dispatching on freshness meant dispatching
+    only when the hint and the poll happened to key the gate differently or the
+    reconciling tick beat the announcement, which is to say by luck: a run could sit
+    parked on an operator gate indefinitely with no attendant ever sent.
+
+    Freshness was never the dedupe anyway — :func:`attend.attend_gate` is, through its
+    ledger and its ``running`` row, and the ``release`` below is what re-arms a run
+    whose gate cleared. So a still-parked run re-offered on every tick costs one
+    dictionary lookup and dispatches once.
+
+    Only gates from the run's own ``questions`` reply reach here, and that is
+    load-bearing: they carry ``kind``, so a ``machine`` wait is declined by
+    :func:`attend.attend_gate`. The gates the checkpoint walk and the pushes write
+    carry no ``kind``, and dispatching on those would send an attendant at a
+    measurement.
 
     Only a native row is attended. A container row's ``runs_volume`` is a docker volume
     name, not a path — an attendant spawned on this host has nothing to open, and
@@ -1387,7 +1406,7 @@ def _attend_gates(wf: WorkflowContainer, fresh: list[GateInfo]) -> None:
         if not wf.gates:
             attend.release(wf.container_id)
             return
-        for gate in fresh:
+        for gate in gates:
             attend.attend_gate(
                 run_id=wf.container_id,
                 workflow=wf.workflow_type or wf.name,
