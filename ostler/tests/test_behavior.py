@@ -6,8 +6,8 @@ import hashlib
 import pytest
 
 from ostler.behavior import (
-    AuditPacket, AuditVerdicts, BookClaim, BookClaims, CandidateVerdict, ClaimVerdict,
-    build_audit_packets, exported_symbol, extract_book, extract_claims,
+    AuditPacket, AuditVerdicts, BookClaim, BookClaims, BookEvidenceRef, CandidateVerdict,
+    ClaimVerdict, build_audit_packets, exported_symbol, extract_book, extract_claims,
     extract_evidence, validate_verdicts,
 )
 from ostler.model import load
@@ -804,3 +804,39 @@ def test_a_scoped_read_never_opens_another_service_book(tmp_path: Path) -> None:
     book = extract_book(graph, scope="docs/features/api/")
     assert [claim.node for claim in book.claims] == ["docs/features/api/api.md#items"]
     assert "web.py::render" in book.cited_symbols
+
+
+def test_last_sections_book_evidence_span_is_citable_to_its_final_line(tmp_path: Path) -> None:
+    """The file's last section must not advertise a line its own text does not carry.
+
+    A body ending in a newline splits to one more line than it has, so the final
+    section's end_line ran one past the document. A reviewer citing that whole span
+    was then rejected as unseen, which parks the audit on an operator gate over a
+    packet defect no reviewer can answer.
+    """
+    path = tmp_path / "docs/features/api.md"
+    path.parent.mkdir(parents=True)
+    text = (
+        "---\ntype: server\ntitle: API\n---\n# API\n\n## Endpoints\n\n"
+        "### send\n- does: Sends selected items.\n- code: api.py::send\n\n"
+        "### receive\n- does: Receives selected items.\n- code: api.py::receive\n"
+    )
+    path.write_text(text, encoding="utf-8")
+    (tmp_path / "api.py").write_text(
+        "def send(items):\n    if not items:\n        raise ValueError('empty')\n    return len(items)\n\n\n"
+        "def receive(items):\n    if not items:\n        raise ValueError('empty')\n    return len(items)\n",
+        encoding="utf-8")
+    packet = build_audit_packets(extract_evidence(tmp_path, ["api.py"]), extract_claims(load(tmp_path))).packets[0]
+    last = next(context for context in packet.book_context if context.node.endswith("#receive"))
+    assert (last.start_line, last.end_line) == (13, 15)
+    assert last.end_line == len(text.splitlines()), "the span stops at the document's last line"
+    assert len(last.text.splitlines()) == last.end_line - last.start_line + 1
+    covered = CandidateVerdict(id=packet.candidates[0].id, status="covered", explanation="Documented.",
+                               book_evidence=(BookEvidenceRef(node=last.node, start_line=last.start_line,
+                                                              end_line=last.end_line),))
+    receipt = AuditVerdicts(
+        candidates=(covered, *(CandidateVerdict(id=candidate.id, status="unresolved", explanation="Not assessed.")
+                               for candidate in packet.candidates[1:])),
+        claims=tuple(ClaimVerdict(id=claim.id, status="unresolved", explanation="No source selected.")
+                     for claim in packet.claims))
+    validate_verdicts(packet, receipt)

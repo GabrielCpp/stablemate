@@ -263,8 +263,14 @@ def extract_book(graph: Graph, scope: str = "") -> BookClaims:
         if section is None:
             raise ValueError(f"Cannot locate book context for {node.id}; reload the graph from current documents")
         end = min((child.line_start for child in section.children), default=section.line_end)
-        context = BookContext(path=path, node=node.id, start_line=node.line, end_line=doc.body_offset + end,
-                              text="".join(doc.body.splitlines(keepends=True)[section.line_start:end]), source_digest=digest)
+        # end_line counts the lines actually supplied rather than trusting section.line_end:
+        # a body ending in a newline splits to one more line than it has, so the file's last
+        # section would otherwise advertise a line its own text does not carry, and a reviewer
+        # citing that span is rejected as unseen.
+        text = "".join(doc.body.splitlines(keepends=True)[section.line_start:end])
+        context = BookContext(path=path, node=node.id, start_line=node.line,
+                              end_line=node.line + max(1, len(text.splitlines())) - 1,
+                              text=text, source_digest=digest)
         counts: dict[str, int] = defaultdict(int)
         for key, text, position in node.bullet_order:
             if key not in registry.normative_keys(node.type):
