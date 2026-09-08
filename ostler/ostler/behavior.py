@@ -524,6 +524,37 @@ def _exact_ids(actual: Sequence[str], expected: set[str], label: str) -> None:
         raise ValueError(f"{label}: missing IDs {sorted(expected - set(actual))}; foreign IDs {sorted(set(actual) - expected)}")
 
 
+def _check_claim_verdict(claim: ClaimVerdict, candidate_ids: set[str]) -> None:
+    """The rules one claim verdict answers for on its own, apart from the whole reply."""
+    _exact_ids(claim.candidate_ids, set(claim.candidate_ids) & candidate_ids, f"links for {claim.id}")
+    if claim.status != "unresolved" and not claim.candidate_ids:
+        raise ValueError(f"{claim.id}: {claim.status} requires candidate links")
+
+
+def _check_candidate_verdict(packet: AuditPacket, candidate: CandidateVerdict) -> None:
+    """The rules one candidate verdict answers for on its own, apart from the whole reply.
+
+    Every book span it cites has to resolve to exactly one node of this packet's context
+    and land on text that context actually carries. What is deliberately *not* here is
+    the pair of cross-item rules — covered needs a supporting link, implementation_detail
+    forbids one — because neither can be decided from a verdict alone.
+    """
+    if candidate.book_evidence and candidate.status != "covered":
+        raise ValueError(f"{candidate.id}: {candidate.status} cannot carry book evidence")
+    if len(candidate.book_evidence) != len(set(candidate.book_evidence)):
+        raise ValueError(f"{candidate.id}: duplicate book evidence")
+    for ref in candidate.book_evidence:
+        contexts = [context for context in packet.book_context if context.node == ref.node]
+        if len(contexts) != 1:
+            raise ValueError(f"{candidate.id}: book evidence node is absent or ambiguous: {ref.node}")
+        context = contexts[0]
+        if not context.start_line <= ref.start_line <= ref.end_line <= context.end_line:
+            raise ValueError(f"{candidate.id}: book evidence range outside context or reversed: {ref}")
+        lines = context.text.splitlines()[ref.start_line - context.start_line:ref.end_line - context.start_line + 1]
+        if len(lines) != ref.end_line - ref.start_line + 1 or not "\n".join(lines).strip():
+            raise ValueError(f"{candidate.id}: book evidence range is unseen or blank: {ref}")
+
+
 def validate_verdicts(packet: AuditPacket, payload: object) -> AuditReport:
     """Validate external decisions and links against this exact current packet.
 
@@ -544,27 +575,12 @@ def validate_verdicts(packet: AuditPacket, payload: object) -> AuditReport:
     linked_claims: dict[str, set[str]] = defaultdict(set)
     supported_claims = {claim.id for claim in verdicts.claims if claim.status in {"supported", "partial"}}
     for claim in verdicts.claims:
-        _exact_ids(claim.candidate_ids, set(claim.candidate_ids) & candidate_ids, f"links for {claim.id}")
-        if claim.status != "unresolved" and not claim.candidate_ids:
-            raise ValueError(f"{claim.id}: {claim.status} requires candidate links")
+        _check_claim_verdict(claim, candidate_ids)
         for candidate_id in claim.candidate_ids:
             linked_claims[candidate_id].add(claim.id)
     for candidate in verdicts.candidates:
         links = linked_claims[candidate.id]
-        if candidate.book_evidence and candidate.status != "covered":
-            raise ValueError(f"{candidate.id}: {candidate.status} cannot carry book evidence")
-        if len(candidate.book_evidence) != len(set(candidate.book_evidence)):
-            raise ValueError(f"{candidate.id}: duplicate book evidence")
-        for ref in candidate.book_evidence:
-            contexts = [context for context in packet.book_context if context.node == ref.node]
-            if len(contexts) != 1:
-                raise ValueError(f"{candidate.id}: book evidence node is absent or ambiguous: {ref.node}")
-            context = contexts[0]
-            if not context.start_line <= ref.start_line <= ref.end_line <= context.end_line:
-                raise ValueError(f"{candidate.id}: book evidence range outside context or reversed: {ref}")
-            lines = context.text.splitlines()[ref.start_line - context.start_line:ref.end_line - context.start_line + 1]
-            if len(lines) != ref.end_line - ref.start_line + 1 or not "\n".join(lines).strip():
-                raise ValueError(f"{candidate.id}: book evidence range is unseen or blank: {ref}")
+        _check_candidate_verdict(packet, candidate)
         if candidate.status == "covered" and not supported_claims & links and not candidate.book_evidence:
             raise ValueError(f"{candidate.id}: covered requires a supported or partial claim link or book evidence")
         if candidate.status == "implementation_detail" and links:

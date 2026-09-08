@@ -16,7 +16,7 @@ from ostler.behavior import build_audit_packets, extract_evidence, validate_verd
 from ostler.behavior_models import (
     AuditPacket, AuditVerdicts, BookClaim, BookContext, BookEvidenceRef, CandidateVerdict, ClaimVerdict,
 )
-from ostler.behavior_memo import VerdictMemo, merge_verdicts, reduce_packet
+from ostler.behavior_memo import VerdictMemo, merge_verdicts, reduce_packet, salvage_verdicts
 from ostler.index import IndexStore
 
 SOURCE = "def items():\n    return 20\n\ndef total():\n    return 0\n"
@@ -149,3 +149,77 @@ def test_a_damaged_entry_is_a_miss(tmp_path: Path, memo: VerdictMemo) -> None:
     memo.store.put_key(claim_keys["claim:limit"], {"status": "supported"})
     memo.store.put_key(claim_keys["claim:total"], "not a verdict")
     assert memo.recall(packet).claims == ()
+
+
+def test_salvage_keeps_the_verdicts_a_short_reply_did_answer(tmp_path: Path) -> None:
+    """A reply missing one id is eighteen judgements and a gap, not a worthless reply.
+
+    `validate_verdicts` is all-or-nothing on purpose — that is the right rule for a
+    receipt and the wrong one for a recovery, because re-asking the whole packet is how
+    the same id gets dropped a second time. Salvage partitions instead, and what it
+    keeps reduces to a packet carrying only what is still owed.
+    """
+    packet = packet_for(tmp_path)
+    full = judged(packet)
+    dropped = next(candidate for candidate in packet.candidates if candidate.symbol == "items")
+    short = AuditVerdicts(
+        claims=full.claims,
+        candidates=tuple(verdict for verdict in full.candidates if verdict.id != dropped.id))
+    with pytest.raises(ValueError, match="missing IDs"):
+        validate_verdicts(packet, short)
+    recall, owing = salvage_verdicts(packet, short)
+    assert owing == (dropped.id,)
+    assert {verdict.id for verdict in recall.candidates} == {
+        candidate.id for candidate in packet.candidates} - {dropped.id}
+    reduced = reduce_packet(packet, recall)
+    assert reduced is not None
+    assert [candidate.id for candidate in reduced.candidates] == [dropped.id]
+    assert reduced.claims == (), "every claim was answered; only the gap is re-asked"
+
+
+def test_salvage_drops_a_foreign_id_and_an_individually_invalid_verdict(tmp_path: Path) -> None:
+    """Salvage applies the per-item rules and nothing whole-reply.
+
+    A verdict for an id this packet never supplied has nothing to be merged onto, and one
+    that breaks its own rules is not a judgement — both leave their item owing rather
+    than raising, because the point is to name the gap, not to reject the reply twice.
+    """
+    packet = packet_for(tmp_path)
+    full = judged(packet)
+    total = next(candidate for candidate in packet.candidates if candidate.symbol == "total")
+    reply = AuditVerdicts(
+        claims=(*full.claims, ClaimVerdict(id="claim:absent", status="supported", explanation="Not ours.",
+                                           candidate_ids=(total.id,))),
+        candidates=tuple(
+            verdict if verdict.id != total.id else verdict.model_copy(update={"status": "missing"})
+            for verdict in full.candidates))
+    recall, owing = salvage_verdicts(packet, reply)
+    assert owing == (total.id,), "book evidence on a missing status fails its own rule"
+    assert "claim:absent" not in {verdict.id for verdict in recall.claims}
+    assert {verdict.id for verdict in recall.claims} == {"claim:limit", "claim:total"}
+
+
+def test_a_salvaged_recall_merges_back_into_a_report_that_validates(tmp_path: Path) -> None:
+    """The repair's whole point: the reduced reply plus the salvage reconstructs a receipt.
+
+    Nothing is weakened by salvaging optimistically, because `merge_verdicts` re-validates
+    the merged whole against the full packet — the cross-item rules a partial reply
+    cannot be judged on are enforced here, on the complete set, exactly once.
+    """
+    packet = packet_for(tmp_path)
+    full = judged(packet)
+    dropped = next(candidate for candidate in packet.candidates if candidate.symbol == "items")
+    short = AuditVerdicts(
+        claims=full.claims,
+        candidates=tuple(verdict for verdict in full.candidates if verdict.id != dropped.id))
+    recall, owing = salvage_verdicts(packet, short)
+    reduced = reduce_packet(packet, recall)
+    assert reduced is not None
+    repair = AuditVerdicts(claims=(), candidates=(
+        CandidateVerdict(id=owing[0], status="missing", explanation="Book says 50."),))
+    validate_verdicts(reduced, repair)
+    report = merge_verdicts(packet, recall, repair)
+    assert {verdict.id for verdict in report.verdicts.candidates} == {
+        candidate.id for candidate in packet.candidates}
+    assert {verdict.id: verdict.status for verdict in report.verdicts.claims} == {
+        "claim:limit": "contradicted", "claim:total": "supported"}

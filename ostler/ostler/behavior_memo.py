@@ -33,7 +33,9 @@ from collections import defaultdict
 from collections.abc import Mapping
 from typing import Any
 
-from ostler.behavior import packet_digest, validate_verdicts
+from ostler.behavior import (
+    _check_candidate_verdict, _check_claim_verdict, packet_digest, validate_verdicts,
+)
 from ostler.behavior_models import (
     AuditPacket, AuditReport, AuditVerdicts, BehaviorEvidence, BehaviorModel, BookClaim,
     BookEvidenceRef, CandidateVerdict, ClaimVerdict,
@@ -200,6 +202,57 @@ def _candidate_from(candidate_id: str, stored: Any, contexts: Mapping[str, int])
                                 book_evidence=refs)
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def salvage_verdicts(packet: AuditPacket, payload: object) -> tuple[MemoRecall, tuple[str, ...]]:
+    """Partition a short or partly wrong reply into what it did answer and what it owes.
+
+    ``validate_verdicts`` is all-or-nothing by design — one omitted id and its
+    ``_exact_ids`` check discards every other verdict in the reply. That is the right
+    rule for a receipt, and the wrong rule for a recovery: a reply missing one of
+    nineteen candidates is eighteen judgements plus a gap, and re-asking the whole
+    packet is how the same id gets dropped a second time.
+
+    So this applies exactly the per-item rules ``validate_verdicts`` applies — the two
+    ``_check_*`` predicates it shares with it, never a second opinion — and nothing
+    whole-reply. A verdict for an id this packet did not supply, or one that fails its
+    own rules, is not salvaged; its id joins the owing set instead of raising. The
+    cross-item rules are deliberately left out, because they cannot be decided from a
+    partial reply — ``merge_verdicts`` re-validates the merged whole against the full
+    packet and raises if the result does not hold, so nothing is weakened by salvaging
+    optimistically here.
+
+    Returns the recall to reduce the packet against, and the ids still owing, sorted.
+    """
+    if packet.digest != packet_digest(packet):
+        raise ValueError("packet content digest does not match its contents")
+    verdicts = AuditVerdicts.model_validate(payload)
+    claim_ids = {claim.id for claim in packet.claims}
+    candidate_ids = {candidate.id for candidate in packet.candidates}
+    claims: dict[str, ClaimVerdict] = {}
+    for claim in verdicts.claims:
+        if claim.id not in claim_ids or claim.id in claims:
+            continue
+        try:
+            _check_claim_verdict(claim, candidate_ids)
+        except ValueError:
+            continue
+        claims[claim.id] = claim
+    candidates: dict[str, CandidateVerdict] = {}
+    for candidate in verdicts.candidates:
+        if candidate.id not in candidate_ids or candidate.id in candidates:
+            continue
+        try:
+            _check_candidate_verdict(packet, candidate)
+        except ValueError:
+            continue
+        candidates[candidate.id] = candidate
+    owing = tuple(sorted((claim_ids - set(claims)) | (candidate_ids - set(candidates))))
+    recall = MemoRecall(
+        claims=tuple(claims[claim.id] for claim in packet.claims if claim.id in claims),
+        candidates=tuple(candidates[c.id] for c in packet.candidates if c.id in candidates),
+    )
+    return recall, owing
 
 
 def reduce_packet(packet: AuditPacket, recall: MemoRecall) -> AuditPacket | None:
