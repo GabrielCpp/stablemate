@@ -30,7 +30,7 @@ import pytest
 from litestar.testing import TestClient
 
 from groom import app as groom_app
-from groom import attend, attend_transcript, discovery, state, store
+from groom import attend, attend_transcript, discovery, gates, state, store
 from groom.models import GateInfo, WorkflowContainer, WorkflowState
 
 WAIT_S = 5.0
@@ -664,7 +664,7 @@ def test_a_gate_the_hint_already_armed_is_still_attended(attending: Configure):
          patch.object(groom_app, "_broadcast_notify", AsyncMock()):
         asyncio.run(groom_app._poll_gates_of("r1"))
 
-    assert [job["gate_path"] for job in attend.queue()] == ["docs/gate.md"]
+    assert [job["gate_path"] for job in attend.queue()] == ["/repo/docs/gate.md"]
 
 
 def test_the_poll_never_dispatches_at_a_machine_wait(attending: Configure):
@@ -714,3 +714,77 @@ def test_a_run_still_parked_on_the_same_gate_collects_one_attendant(
             asyncio.run(groom_app._poll_gates_of("r1"))
 
     assert len(attend.queue()) == 1
+
+
+def test_the_dispatched_gate_path_is_absolute(attending: Configure):
+    """`GateInfo.file_path` is workspace-relative; the attendant leaves the process with it.
+
+    Two consumers open `gate_path` as a filesystem path — the job body, and `_first_status`
+    at exit for the released `STATUS:`. A relative one resolves against *groom's own* cwd,
+    which is right only when groom happens to serve the repo the run lives in and silently
+    wrong for every other repo in the fleet: the gate reads as empty and the attendance
+    records no outcome.
+    """
+    attending(attend.SESSION)
+    _reset_fleet()
+    row = _native_row()
+    row.state = WorkflowState.BLOCKED
+    state.WORKFLOWS["r1"] = row
+    reply = {
+        "ok": True,
+        "questions": [{"path": "docs/gate.md", "question": "Q?", "kind": "operator"}],
+    }
+    with patch.object(groom_app, "_gate_pollable", return_value=True), \
+         patch.object(groom_app, "_socket_questions", AsyncMock(return_value=reply)), \
+         patch.object(groom_app, "_broadcast_shell", AsyncMock()), \
+         patch.object(groom_app, "_broadcast_notify", AsyncMock()):
+        asyncio.run(groom_app._poll_gates_of("r1"))
+
+    assert [job["gate_path"] for job in attend.queue()] == ["/repo/docs/gate.md"]
+
+
+def test_the_prompt_carries_the_whole_gate_not_the_dashboard_preview(tmp_path):
+    """`extract_question` keeps one section and truncates it to 4000 characters.
+
+    That is the right shape for a row in a table and the wrong shape for the only copy
+    the attendant gets: a long adjudication arrives cut mid-word with most of its
+    findings missing, and an attendant cannot fix a finding it was never shown.
+    """
+    gate = tmp_path / "gate.md"
+    body = "\n".join(f"- finding {i}: {'x' * 200}" for i in range(60))
+    gate.write_text(f"STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\n{body}\n")
+    preview = gates.extract_question(gate.read_text())
+    assert len(preview) == 4000  # the defect: the tail is gone before the job is built
+
+    job = attend.AttendJob(
+        job_id="j1", run_id="r1", kind="gate", workflow="okf-builder",
+        run_dir="/runs/r1", workspace=str(tmp_path), created_at=0.0,
+        gate_path=str(gate), question=preview,
+    )
+    assert "finding 59" in job.facts()
+
+
+def test_the_gate_body_falls_back_to_the_preview_when_the_file_is_gone(tmp_path):
+    """A gate answered or moved between the dispatch and the read still says something."""
+    job = attend.AttendJob(
+        job_id="j1", run_id="r1", kind="gate", workflow="okf-builder",
+        run_dir="/runs/r1", workspace=str(tmp_path), created_at=0.0,
+        gate_path=str(tmp_path / "vanished.md"), question="What now?",
+    )
+    assert job.gate_body() == "What now?"
+
+
+def test_the_prompt_hands_over_the_groom_reads(tmp_path):
+    """The attendant is dispatched by groom and the run's history is already on disk.
+
+    Without the commands it opens source files instead of reading what the run itself
+    recorded while it was failing — which is the half the gate body leaves out.
+    """
+    job = attend.AttendJob(
+        job_id="j1", run_id="r1", kind="gate", workflow="okf-builder",
+        run_dir="/runs/r1", workspace=str(tmp_path), created_at=0.0,
+        gate_path="", question="What now?",
+    )
+    prompt = job.prompt()
+    for read in ("groom logs --run", "groom loops --run", "groom transcript ls --run"):
+        assert read in prompt

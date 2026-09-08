@@ -184,10 +184,34 @@ class AttendJob:
             return f"parked on {self.gate_path or 'an operator gate'}"
         return f"died: {self.failure_class or 'no failure handoff recorded'}"
 
+    def gate_body(self) -> str:
+        """The gate as it is on disk, falling back to what the caller passed down.
+
+        The ``question`` handed in is the **dashboard's preview**, not the gate:
+        :func:`groom.gates.extract_question` keeps only the ``## Questions from the
+        agent`` section and truncates it to 4000 characters. That is the right shape for
+        a row in a table and the wrong shape for the only copy an attendant ever gets —
+        a 20KB adjudication arrives cut mid-word with most of its findings missing, and
+        an attendant cannot fix a finding it was never shown.
+
+        So the file wins when it can be read, and the preview is the fallback for a gate
+        that has since been answered or moved. This is also what the restart path has
+        always done (:func:`_job_from_row` re-reads the file), and the two disagreeing
+        meant a resurrected attendant saw more than the one it replaced.
+        """
+        if self.gate_path:
+            try:
+                text = Path(self.gate_path).read_text(errors="replace").strip()
+            except OSError:
+                text = ""
+            if text:
+                return text
+        return self.question or "(the run's questions listing is authoritative)"
+
     def facts(self) -> str:
         """The job as the attendant reads it: named facts, and the gate body verbatim.
 
-        The question is passed **unparsed**. Three incompatible gate formats are in the
+        The gate is passed **unparsed**. Three incompatible gate formats are in the
         tree — composed escalations, hand-written f-strings, raw validator dumps — and
         the only thing that covers all of them is handing the text over intact.
         """
@@ -202,7 +226,7 @@ class AttendJob:
         ]
         if self.kind == "gate":
             lines += [f"- gate_path: {self.gate_path}", "", "## The gate, verbatim", "",
-                      self.question or "(the run's questions listing is authoritative)"]
+                      self.gate_body()]
         else:
             lines += [
                 f"- failure_class: {self.failure_class or '(none recorded)'}",

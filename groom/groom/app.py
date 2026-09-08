@@ -1367,6 +1367,27 @@ async def _poll_gates_of(container_id: str) -> None:
     _attend_gates(wf, list(wf.gates.values()))
 
 
+def _gate_abs_path(wf: WorkflowContainer, gate: GateInfo) -> str:
+    """The gate's path on this host, for a consumer that has to open the file.
+
+    `GateInfo.file_path` is workspace-relative — that is the row's key, and the two
+    dashboard-side readers resolve it against the workspace themselves. The attendant is
+    the one consumer that leaves the process with it: it reads the gate for the job body
+    and again at exit for the released `STATUS:`, and a relative path there resolves
+    against *groom's own* working directory instead. That is right only when groom
+    happens to be serving from the same repo the run lives in, and silently wrong for
+    every other repo in the fleet — the gate reads as empty and the attendance records
+    no outcome.
+
+    `base` is set when the gate lives outside the workspace, in which case it is the
+    anchor `file_path` was made relative to.
+    """
+    anchor = gate.base or wf.workspace_volume
+    if not anchor:
+        return gate.file_path
+    return str(Path(anchor) / gate.file_path)
+
+
 def _attend_gates(wf: WorkflowContainer, gates: list[GateInfo]) -> None:
     """Put an attendant on the gates this run reports being parked on, or take one off.
 
@@ -1412,7 +1433,7 @@ def _attend_gates(wf: WorkflowContainer, gates: list[GateInfo]) -> None:
                 workflow=wf.workflow_type or wf.name,
                 run_dir=wf.runs_volume,
                 workspace=wf.workspace_volume,
-                gate_path=gate.file_path,
+                gate_path=_gate_abs_path(wf, gate),
                 question=gate.question,
                 kind=gate.kind or attend.ATTENDABLE_KIND,
             )
