@@ -52,6 +52,7 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - verify: json_path(path="$.epic_path", matches=".+")
 - verify: count(subject="prepared explicit epic-author contexts", equals=1)
 - code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.setup`
+- emits: [epic-author-context](../epic-author-context.md)
 
 ### labels
 - sig: `labels() -> dict[str, str]`
@@ -99,6 +100,7 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - returns: returns the validated epic identity, document path, seed count, and resolution count with status `authored`
 - verify: count(subject="completed epic-author results", equals=1)
 - code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic`
+- emits: [epic-author-done](../epic-author-done.md)
 
 ### _context_path
 - sig: `_context_path() -> Path`
@@ -133,7 +135,7 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - sig: `prepare_epic_target(logger: logging.Logger, epic: str, repo_dir: str = "") -> EpicTarget`
 - does: resolves the repository root from `repo_dir`
 - verify: count(subject="epic-author repository resolutions", equals=1)
-- consistency: rejects a blank epic name by raising `WorkflowFailed` with `an explicit epic is required`
+- consistency: epic-name — rejects a blank epic name by raising `WorkflowFailed` with `an explicit epic is required`
 - verify: count(subject="blank epic target failures", equals=1)
 - verify: json_path(path="$.exception.message", equals="an explicit epic is required")
 - does: rejects a name that is absent from the Ostler epic graph
@@ -143,6 +145,7 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - verify: json_path(path="$.epic_path", matches="/epic\\.md$")
 - returns: returns the normalized explicit epic identity and its canonical paths
 - verify: json_path(path="$.epic", matches=".+")
+- emits: [epic-target](../epic-target.md)
 - code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::prepare_epic_target`
 
 ### method: validate_authored_epic
@@ -159,4 +162,5 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - verify: json_path(path="$.ok", equals=True)
 - returns: returns the epic identity, canonical document path, seed count, and newline-separated validation errors
 - verify: json_path(path="$.seed_count", matches=".+")
+- emits: [epic-evidence](../epic-evidence.md)
 - code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::validate_authored_epic`

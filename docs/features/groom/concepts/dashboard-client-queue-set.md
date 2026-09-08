@@ -81,7 +81,7 @@ Adds one websocket outbound queue to the process-local client set. Adding the sa
 
 #### Effects
 
-- consistency: registering the supplied queue creates its membership in `CLIENTS`.
+- consistency: clients-set — registering the supplied queue creates its membership in `CLIENTS`.
 - verify: created(subject="the supplied queue's CLIENTS membership")
 - Preserves: workflow records, gate maps, sidecar connections, logs, queued messages already present on any queue, and websocket transport state.
 - Does not: project payloads, send websocket frames, validate queue ownership, create queues, or persist client membership outside process memory.
@@ -111,9 +111,9 @@ Removes one websocket outbound queue from the process-local client set. Removing
 
 #### Effects
 
-- consistency: unregistering a member queue removes its membership from `CLIENTS`.
+- consistency: clients-set — unregistering a member queue removes its membership from `CLIENTS`.
 - verify: removed(subject="the member queue's CLIENTS membership")
-- consistency: unregistering a queue removes that queue's entry from `WATCHING`.
+- consistency: run-watch-registry — unregistering a queue removes that queue's entry from `WATCHING`.
 - verify: removed(subject="the queue's WATCHING entry")
 - Broadcast consequence: future calls to [broadcast dashboard message](#method-broadcast-dashboard-message) no longer target this queue after successful removal; any broadcast snapshot taken before removal may still contain it.
 - Preserves: queued messages already held by that queue object, all other registered queues, workflow records, gate maps, sidecar connections, logs, and websocket transport state.
@@ -124,8 +124,10 @@ Removes one websocket outbound queue from the process-local client set. Removing
 
 - sig: `async broadcast(message: dict) -> None`
 - abstract: false
-- raises: propagates exceptions from a queued client's `put` operation.
+- raises: propagates exceptions from a queued client's put operation.
+- verify: json_path(path="exception.type", matches=".+")
 - raises: no domain-specific error value is returned.
+- verify: json_path(path="exception.type", equals="RuntimeError")
 - code: groom/groom/state.py::broadcast
 
 Enqueues one already-projected JSON message object for every dashboard websocket queue that is registered at the start of the broadcast pass.

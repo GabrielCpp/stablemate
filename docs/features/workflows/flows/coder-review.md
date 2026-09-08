@@ -28,24 +28,9 @@ title: Coder review flow
 - verify: count(subject="review result completions", equals=1)
 - end: an unreadable story, blocked review, unresolvable settlement, or exhausted rework path is operator-gated rather than silently approved
 - verify: count(subject="review operator-gated paths", equals=1)
+- detail: [coder handoff boundary contract](../concepts/coder-handoff-boundary.md)
+- detail: [coder review package](../concepts/coder-review-package.md)
 - detail: [coder main flow](coder-main.md)
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.setup`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.start`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.resolve_review`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.read_operator`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply_resolved`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.poll_feedback`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply_feedback`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.labels`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.state_labels`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::MUST_FIX_CONFIDENCE`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::MAX_SESSION_TURNS`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::split_on_confidence`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::findings_block`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::require_story_file`
 - tests: `workflows/tests/coder/review/test_flow.py::test_an_approved_review_stamps_the_specs_and_stops`
 - tests: `workflows/tests/coder/review/test_flow.py::test_the_split_is_inclusive_at_the_confidence_line`
 - tests: `workflows/tests/coder/review/test_flow.py::test_a_findings_block_says_none_rather_than_rendering_empty`
@@ -54,6 +39,11 @@ title: Coder review flow
 - tests: `workflows/tests/coder/review/test_flow.py::test_repeated_operator_cycles_never_give_up`
 - tests: `workflows/tests/coder/review/test_flow.py::test_dropped_feedback_buys_exactly_one_rework_pass`
 - tests: `workflows/tests/coder/review/test_flow.py::test_a_run_killed_mid_review_resumes_on_the_review_state`
+
+The implementation is `workflows/src/workhorse_workflows/coder/review/flow.py::Review`.
+
+Its labels and routing controls are defined in the Review class; finding partitioning, rendering,
+and story validation are handled by the same module.
 
 The judging turns run cold in the docs repository with the affected code repositories granted as
 additional directories. Apply turns rejoin the story-derived implementation conversation when
@@ -67,7 +57,7 @@ findings while lower scores remain advisory context.
 
 - kind: prepare
 
-Workspace directories, the story path, and review context are resolved once. The story must exist
+`Review.setup` (via `require_story_file` in `workflows/src/workhorse_workflows/coder/review/flow.py`) resolves workspace directories, the story path, and review context once. The story must exist
 as a file or the flow raises a workflow failure before any agent turn. The resolved docs repository
 is the cwd for all judging turns, and the affected code repositories come from `plan-context.json`
 and the workspace manifest, or from the explicit `repo` input in standalone mode.
@@ -77,12 +67,12 @@ and the workspace manifest, or from the explicit `repo` input in standalone mode
 `Review.state_labels` adds the three `ReviewLoop` counters only after a loop exists.
 
 The optional `branch` and `pr_number` inputs are preserved for the feeder review. `operator_mode`,
-`epic`, and `inherited_turns` control later routing and session accounting. A missing or
-non-file story path is rejected before any agent turn.
+`epic`, and `inherited_turns` control later routing and session accounting.
 
 ### feeder-review
 
 - kind: run
+- detail: [coder code-review prompt](../coder-code-review-prompt.md)
 
 The flow clears the previous cycle's `review-resolution.json` and `review-settlement.json`, resets
 the feeder conversation, and dispatches one medium-power `code-review` turn. It passes the story
@@ -104,6 +94,7 @@ required.
 ### implementation-verdict
 
 - kind: verify
+- detail: [coder review-implementation prompt](../coder-review-implementation-prompt.md)
 
 The high-power `review-implementation` turn receives the story, plan identity, affected paths,
 and two rendered finding lists. The mandatory list contains findings with confidence greater than
@@ -123,6 +114,7 @@ block approval.
 ### settlement
 
 - kind: verify
+- detail: [coder apply-review prompt](../coder-apply-review-prompt.md)
 
 Each apply pass dispatches the shared `apply-review` turn with review notes or operator feedback,
 using the story's implementation conversation when available. The turn must write a structured

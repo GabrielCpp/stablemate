@@ -112,7 +112,7 @@ is spent.
 
 ### resolver_turn
 - sig: `resolver_turn(flow: Dev, block_kind: str, notes: str) -> OperatorResolution`
-- does: asks the shared resolver to investigate the block with the configured smart power and no timeout
+- does: asks the shared resolver to investigate the block with the configured max power and no timeout
 - does: supplies the story workspace and documentation root as resolver context
 - returns: the resolver's structured `OperatorResolution`
 - verify: count(subject="development resolver turns", equals=1)

@@ -37,8 +37,20 @@ invent epic paths or duplicate the graph's story semantics.
 - does: adds a researched seed with source bullet metadata and optional layer/service metadata when the seed is new
 - verify: created(subject="the researched seed for the resolved bullet")
 - verify: persists(subject="the researched seed metadata")
-- does: creates one story covering the seed and returns its epic directory, story paths, bullet id, provenance, and reason
-- verify: count(subject="stories created for one seeded bullet", equals=1)
+- does: creates one story covering the seed
+- verify: created(subject="the story covering the seeded bullet")
+- does: returns the story's epic directory
+- verify: json_path(path="$.epic_dir", matches=".+")
+- does: returns the story's directory
+- verify: json_path(path="$.story_dir", matches=".+")
+- does: returns the story's path
+- verify: json_path(path="$.story_path", matches=".+")
+- does: returns the resolved bullet id
+- verify: json_path(path="$.bullet_id", matches="^[A-Za-z0-9][A-Za-z0-9._-]*$")
+- does: returns whether the resolved bullet came from the backlog
+- verify: json_path(path="$.from_backlog", equals=true)
+- does: returns the creation or reuse reason
+- verify: json_path(path="$.reason", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::seed_story`
 - tests: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`
 
@@ -95,14 +107,22 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: json_path(path="$.ok", equals=false)
 - does: reports an error when the supplied story directory's `story.md` is missing
 - verify: json_path(path="$.ok", equals=false)
-- does: requires the status bullet and every Ostler-declared story section to be present, non-empty, and ordered
-- verify: count(subject="missing or misordered required story sections", equals=0)
+- does: requires the status bullet to be present
+- verify: count(subject="missing required story status bullets", equals=0)
+- does: requires every Ostler-declared story section to be present
+- verify: count(subject="missing required story sections", equals=0)
+- does: requires every Ostler-declared story section to contain content
+- verify: count(subject="empty required story sections", equals=0)
+- does: requires the Ostler-declared story sections to follow their declared order
+- verify: count(subject="misordered required story sections", equals=0)
 - does: requires Technical Notes to contain an existing repository-grounded `path::symbol` pointer or the exact greenfield statement
 - verify: count(subject="grounded Technical Notes contracts", equals=1)
 - does: rejects Technical Notes pointers outside the repository and rejects prose containing unresolved decision phrases or standalone TODO markers
 - verify: count(subject="rejected ungrounded or unresolved story notes", equals=1)
-- does: returns `ok` only when all deterministic checks pass and returns one newline-separated error per finding
+- does: returns `ok` only when all deterministic checks pass
 - verify: json_path(path="$.ok", equals=false)
+- does: returns one newline-separated error per finding
+- verify: json_path(path="$.errors", matches=".+\\n.+")
 - code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::validate_story`
 - tests: `workflows/tests/author/test_story_contract.py::test_technical_notes_require_a_grounded_code_pointer`
 

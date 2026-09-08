@@ -189,7 +189,7 @@ actually bought.
 
 A profile **replaces** the top-level tables; it does not layer over them. Inheriting was
 rejected because power tiers are opaque strings: no schema says which tiers exist, so "the
-profile did not mention `smart`, therefore it means the machine's `smart`" is a guess the
+profile did not mention `max`, therefore it means the machine's `max`" is a guess the
 config cannot state and the operator cannot see. What stays outside a profile stays outside
 for free — `[harness.<backend>].env`, `library_dir`, `stablemate_dir`, `base_dir` and
 `worktree_dir` are resolved from the *unnarrowed* config, because they are properties of the

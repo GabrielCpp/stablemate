@@ -15,7 +15,11 @@ The `volume` argument is passed unchanged as a read-write `/vol` mount to the te
 ## Contract
 
 - purpose: provide one bounded write primitive for callers that already know the target Docker volume, safe volume-relative file path intent, and complete replacement text.
-- consistency: a completed non-zero Docker writer process, including one caused by a missing or unusable supplied volume, returns `false`.
+- consistency: field-return-value — a completed non-zero Docker writer process, including one caused by a missing or unusable supplied volume, resolves to `false`.
+- consistency: field-return-value — a destination whose parent directory does not exist inside the volume is not created by this writer.
+- verify: absent(subject="parent directory creation when parent does not exist")
+- consistency: field-return-value — when the parent directory does not exist, the copy process completes with a non-zero exit status.
+- verify: exit_status(code=1)
 - input rel_path: `rel_path` is the single volume-relative destination path to replace or create; it is validated and normalized by the [workspace volume relative path guard](workspace-volume-relative-path-guard.md) before any writer process starts, then addressed as `/vol/{normalized_rel_path}` inside the throwaway container.
 - input content: `content` is the exact complete replacement text for the destination file; the writer allows empty text, supplies the full value on process standard input, and does not trim, append, parse status lines, redact secrets, or transform line endings.
 - path validation: accepted destination paths are relative, non-empty, contain no empty path segment, contain no parent traversal segment, and use `/` as the normalized separator before they are embedded below `/vol`.
@@ -73,6 +77,7 @@ The `volume` argument is passed unchanged as a read-write `/vol` mount to the te
 - verify: absent(subject="false result for a process-launch or timeout failure")
 - returns: the [field-return-value](#field-return-value) contract: `true` only when the temporary writer process exits `0`, otherwise `false` for completed non-zero processes.
 - code: groom/groom/docker_io.py::write_file
+- detail: [Write-file documentation views](write-file-documentation-views.md)
 - args: `volume`; required; no default; Docker volume mounted read-write at `/vol` for this one write.
 - args: `rel_path`; required; no default; destination path validated by the [workspace volume relative path guard](workspace-volume-relative-path-guard.md) before becoming `/vol/{rel_path}`.
 - args: `content`; required; no default; complete replacement text streamed to the writer process standard input unchanged.
@@ -94,7 +99,7 @@ Writes one caller-selected file inside one Docker volume and gives callers only 
 
 - step: Receive a Docker volume name, caller-selected destination path, and complete replacement text from the caller.
 - step: Validate and normalize `rel_path` with the [workspace volume relative path guard](workspace-volume-relative-path-guard.md).
-- consistency: an unsafe `rel_path` raises `ValueError` before `write_file` invokes the Docker subprocess.
+- consistency: rel-path — an unsafe value raises `ValueError` before `write_file` invokes the Docker subprocess.
 - verify: absent(subject="Docker subprocess invocation for an unsafe relative path")
 - step: Build a read-write Docker volume mount at `/vol` and a destination argument of `/vol/{validated_rel_path}`.
 - step: Run a short-lived Alpine container whose command copies `/dev/stdin` to that destination, supplying `content` as process input through the shared Docker subprocess runner and timeout.
@@ -106,9 +111,9 @@ Unsafe paths are rejected by `safe_relpath` in `groom/groom/docker_io.py::write_
 Docker subprocess is invoked; the Algorithm's `consistency:` rule carries that observable
 contract.
 
-- missing parent directory: returns `false` when the copy process completes with a non-zero status.
-- unreadable or read-only volume: returns `false` when Docker reports the write failure as a completed non-zero process.
-- missing or unusable volume: returns `false` when Docker reports the failure as a completed non-zero process.
+- missing parent directory: not created by this writer; it is one of the non-zero Docker exit causes covered by the [Contract](#contract) consistency rule.
+- An unreadable or read-only volume is not distinguished by this writer from any other Docker failure; it is one of the non-zero Docker exit causes covered by the `output failure:` consistency rule in the [Contract](#contract).
+- A missing or unusable supplied volume is not distinguished by this writer from any other Docker failure; it is one of the non-zero Docker exit causes covered by the `field-return-value` consistency rule in the [Contract](#contract).
 - Docker executable launch failure: propagates the subprocess-layer exception.
 - timeout: propagates the subprocess-layer timeout exception.
 - empty content: writes an empty file when Docker and the destination path allow it; success is still determined only by process exit code.

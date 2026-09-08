@@ -23,8 +23,8 @@ in the browser, per render, for one pane.
 - file: not an on-disk artifact; this is an in-memory browser object derived per render.
 - code: groom/groom/assets/dashboard.js::buildTree
 - detail: [Dashboard tree input selection](concepts/dashboard-tree-input-selection.md)
-- verify: groom/tests/test_tree_builder.py::test_flat_paths_become_directory_nodes_and_file_leaves
-- verify: groom/tests/test_tree_builder.py::test_an_empty_entry_list_yields_an_empty_root
+- tests: `groom/tests/test_tree_builder.py::test_flat_paths_become_directory_nodes_and_file_leaves`
+- tests: `groom/tests/test_tree_builder.py::test_an_empty_entry_list_yields_an_empty_root`
 
 ## Contract
 
@@ -37,8 +37,8 @@ in the browser, per render, for one pane.
 - leaf invariant: every leaf has exactly `name` and `entry`. It carries no children, no selected state, no file content, and no response metadata.
 - collapse state: not here. A directory's open/closed state is local to that directory's component in that tab, keyed by name so it survives re-renders, and is deliberately kept out of both this shape and the client store — nothing else reads it.
 - selection state: not here either. The Files pane holds the selected path and the Diff pane the selected index, both in the client store; a leaf renderer compares against that to mark itself current.
-- consistency: the renderer displays directory names and leaf entries in name order without mutating the constructed path tree: it sorts directory keys and a copied `files` array by leaf `name` at render time.
-- verify: unchanged(subject="the constructed dashboard path tree")
+- consistency: dashboard-path-tree — the renderer displays directory names and leaf entries in name order without mutating the constructed tree: it sorts directory keys and a copied `files` array by leaf `name` at render time.
+- The tree-builder tests cover the renderer's non-mutating ordering behavior.
 - duplicate rule: duplicate paths appear as separate leaves under the same node; nothing is merged.
 - escaping: raw strings are retained and no escaping is applied or needed, because every one of them reaches the document as a text child rather than as markup.
 

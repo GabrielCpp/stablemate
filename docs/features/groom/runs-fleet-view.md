@@ -14,22 +14,20 @@ It is the whole fleet, not a needs-you-now subset. An earlier design showed only
 
 Every row is data. The state dot, the type badge's hue, the liveness chip, the one-line "doing" summary, and the optional [run question preview](concepts/run-question-preview.md) are all fields the server computed; the client assigns them as text and class names and never as markup.
 
-- code: groom/groom/projection.py::fleet_rows
+Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_include_every_instance`, `groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished`, `groom/tests/test_projection.py::test_liveness_is_unknown_without_telemetry`, `groom/tests/test_projection.py::test_finished_row_carries_its_exit_hint`, `groom/tests/test_projection.py::test_query_filters_the_fleet`, `groom/tests/test_projection.py::test_run_message_row_matches_the_same_row_in_the_state_message`, and `groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup`.
+
 - refs: [dashboard state payload](dashboard-state-payload.md), [groom projection module](concepts/groom-projection-module.md), [run question preview](concepts/run-question-preview.md), [workflow state](concepts/workflow-state.md), [dashboard discovery scanning flag](concepts/dashboard-discovery-scanning-flag.md), [dashboard client store](concepts/dashboard-client-store.md)
-- verify: groom/tests/test_projection.py::test_fleet_rows_include_every_instance
-- verify: groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished
-- verify: groom/tests/test_projection.py::test_liveness_is_unknown_without_telemetry
-- verify: groom/tests/test_projection.py::test_finished_row_carries_its_exit_hint
-- verify: groom/tests/test_projection.py::test_query_filters_the_fleet
-- verify: groom/tests/test_projection.py::test_run_message_row_matches_the_same_row_in_the_state_message
-- verify: groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup
 
 ## Contract
 
 - purpose: give a tab everything it needs to draw the fleet list in one JSON array, with no second request per row and no judgement left to the client.
 - source: the caller supplies a snapshot list of workflow containers, commonly the whole in-memory [workflow registry](concepts/workflow-registry.md). Telemetry is looked up per row from the run telemetry hot cache.
-- consistency: every supplied workflow produces a row unless the query excludes it. Gate presence, state, liveness, and exit code affect a row's *content and order*, never its inclusion.
-- verify: count(subject="fleet rows for a mixed-state unfiltered snapshot", equals=4)
+- consistency: fleet-row — every supplied workflow produces a row unless the query excludes it.
+- consistency: gate-presence-inclusion — gate presence affects a row's content and order, never whether the row exists.
+- consistency: state-inclusion — state affects a row's content and order, never whether the row exists.
+- consistency: liveness-inclusion — liveness affects a row's content and order, never whether the row exists.
+- consistency: exit-code-inclusion — exit code affects a row's content and order, never whether the row exists.
+- consistency: fleet-row — a mixed-state unfiltered snapshot with four workflows produces four fleet rows.
 - order: by `(rank, name)` — blocked first, then alive, then presumed-dead, then finished, ties broken by workflow name ascending. Sorting server-side is what keeps a 5-second push from reshuffling the list under the operator's cursor.
 - rank derivation: `blocked` is rank 0 regardless of liveness; a `finished` workflow or one whose telemetry reports terminal is rank 3; otherwise rank 1 when liveness is `live` and rank 2 when it is not.
 - liveness is a telemetry question, and the only one asked is *is this run emitting right now*: a run is `live` when its most recent heartbeat, span, or first-seen stamp is within the server-side liveness window, `dead` when it is observably silent past it, `done` when its own telemetry reported a terminal for the session now running, and `unknown` when it never exported telemetry at all. `dead` must mean *observed silent*, never *unobserved*.
@@ -42,10 +40,8 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - server-side query: `fleet_rows` accepts a query and drops non-matching rows. It is used by [get dashboard state](http/groom.md#get-dashboard-state)'s `q` parameter; the websocket push never passes one, because a filtered push would give every tab one tab's filter.
 - query matching: case-insensitive substring over workflow name, repository name, repository branch, workflow type, current node, run id, activity, and every open gate file path. It is not trimmed, tokenized, globbed, or regex-matched.
 - query exclusions: container id, gate question text, gate status, answer text, and exit-code hints are not server-side haystacks.
-- consistency: an empty workflow snapshot produces no fleet rows.
-- verify: count(subject="fleet rows for an empty workflow snapshot", equals=0)
-- consistency: a query that matches no workflow produces no fleet rows.
-- verify: count(subject="fleet rows for an unmatched workflow query", equals=0)
+- consistency: fleet-row — an empty workflow snapshot produces no fleet rows.
+- consistency: fleet-row — a query that matches no workflow produces no fleet rows.
 - client-side query: the fleet component filters again in the browser over the row's own fields, because the fleet is small and the server pushes the whole thing on every tick — a server-filtered live list would be clobbered by the next push. The two filters are independent by design and neither is the other's fallback.
 - fleet counts: filtering never changes the status counts. Those are fleet-wide, computed from the unfiltered snapshot, because a status bar narrowed by one tab's search box misreports the fleet it claims to describe.
 - empty versus loading: an empty result is rendered as the discovery spinner only when the [dashboard discovery scanning flag](concepts/dashboard-discovery-scanning-flag.md) is true *and* no query is active; a query that matches nothing renders the ordinary empty state even mid-scan, because there an empty result is the honest answer.
@@ -171,6 +167,7 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - raises: none intentionally raised for empty, unmatched, or partially populated snapshots.
 - verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::fleet_rows
+- detail: [fleet rows documentation contexts](concepts/fleet-rows-documentation-contexts.md)
 - step: Resolve the clock once, so every row in the list is labelled against the same instant.
 - step: Project each workflow that satisfies the query, looking its telemetry up from the hot cache by run id.
 - step: Sort by `(rank, name)`.
@@ -239,6 +236,7 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - sig: `row_id(wf: WorkflowContainer) -> str`
 - abstract: false
 - raises: none intentionally raised for empty or short container ids.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::row_id
 - step: Use the full run id, falling back to the container id, for a native run; the helper was renamed from `short_id` because a chosen native run name must not be truncated.
 - step: For a docker run, return the first four characters of the container id, whole if it is shorter, or `----` when it is empty. The `#` prefix is the row component's, not this value's.
@@ -273,6 +271,7 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 - raises: none.
 - verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::type_hue
+- detail: [workflow type badge style rules](concepts/workflow-type-badge-style-rules.md)
 - step: Fold the type string into a stable value in `0`–`359` and return it, so an unknown workflow type is still visually distinct without a stylesheet change.
 
 ## Algorithms
@@ -303,7 +302,7 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 ## Invariants
 
 - whole-fleet: every workflow in the supplied snapshot produces a row unless the query excludes it. Nothing is hidden for lacking gates, telemetry, or a live process.
-- consistency: the same snapshot and clock always produce the same `(rank, name)` row order, so a tick never reshuffles the list.
+- consistency: fleet-row — the same snapshot and clock always produce the same `(rank, name)` row order, so a tick never reshuffles the list.
 - fleet-counts: filtering the rows never redefines the status-bar totals, which stay global to the registry.
 - one-row-shape: the row in a full-state payload and the row in a single-run delta are the same object shape, so the client has one merge rule.
 - data-not-markup: no field is HTML, and no field's safety depends on an escape call being remembered.

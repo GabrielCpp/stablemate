@@ -25,11 +25,11 @@ session advertisement for [sidecar live sessions](../sidecar-live-sessions.md).
   `host.docker.internal` and `8787`.
 - uri: websocket URL `ws://{GROOM_HOST}:{GROOM_PORT}/sidecar`; no path, query,
   authentication header, or request body is added by this layer.
-- consistency: a reload request from the connected session returns the reserved
-  exit code `3`.
+- consistency: sidecar-process — a reload request from the connected session
+  returns the reserved exit code `3`.
 - verify: exit_status(code=3)
-- consistency: the serving loop returns exit code `0` only when the websocket
-  connector's async iterator ends without a reload request.
+- consistency: sidecar-process — the serving loop returns exit code `0` only when
+  the websocket connector's async iterator ends without a reload request.
 - verify: exit_status(code=0)
 - effects: opens outbound websocket client connections to the host groom service,
   delegates each connected socket to the session layer, closes the current socket

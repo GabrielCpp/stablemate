@@ -253,10 +253,10 @@ through to `[default.<backend>]`, so an unmapped or misspelled tier degrades to 
 backend's default rather than failing the run.
 
 The tiers the shipped workflows use, cheapest first, are `low` / `medium` / `high` /
-`smart` / `extra-smart` — a convention worth following so one config serves every workflow.
+`max` / `ultra` — a convention worth following so one config serves every workflow.
 The top of that ladder is three rungs rather than one because it is three decisions:
-`high` is *the good model for real work*, `smart` is *frontier reasoning, for the few turns
-whose judgment the whole run rests on*, `extra-smart` is *the premium model, and you are
+`high` is *the good model for real work*, `max` is *frontier reasoning, for the few turns
+whose judgment the whole run rests on*, `ultra` is *the premium model, and you are
 choosing to spend that*. A turn that needs the first should not be silently billed for the
 third.
 

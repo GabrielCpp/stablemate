@@ -12,5 +12,4 @@ volume read-only, runs `find` below the selected base while pruning the shared s
 keeps only paths below that base, and returns them sorted. It has no deprecation marker, wrapper,
 or call-site selection rule that ranks these documentation views.
 
-- code: groom/groom/docker_io.py::list_files
 - rule: use the module view for the Docker I/O helper catalog and the workspace-volume reader view for the selected checkout file-list contract; neither view supersedes the other.

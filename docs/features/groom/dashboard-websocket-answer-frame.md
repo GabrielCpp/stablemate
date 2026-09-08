@@ -16,8 +16,11 @@ The socket is the only path for this. Answering is the one browser-to-server wri
 - code: groom/groom/assets/dashboard.js::sendCommand
 - detail: [dashboard answer command artifacts](concepts/dashboard-answer-command-artifacts.md)
 - refs: [dashboard websocket receive loop](concepts/dashboard-websocket-receive-loop.md), [gate-answering layer](concepts/gate-answering-layer.md), [dashboard client store](concepts/dashboard-client-store.md), [run watch registry](concepts/run-watch-registry.md)
-- verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event
-- verify: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
+
+The successful state transition and answered broadcast are covered by
+`groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event`;
+the failure path's unchanged state and absent answered dispatch are covered by
+`groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch`.
 
 ## Contract
 
@@ -26,10 +29,12 @@ The socket is the only path for this. Answering is the one browser-to-server wri
 - producer — form: each open gate block in the run detail pane renders one `<form class="answer" data-answer>` carrying hidden `cmd`, hidden `workflow_id`, hidden `file_path`, and an `answer` textarea. The form is markup only; it has no submit action and no framework binding.
 - producer — serialization: one delegated `submit` listener on the document intercepts any `[data-answer]` form, reads its controls with `FormData`, builds a plain object from the control names, and hands it to the socket sender, which serializes it with `JSON.stringify`. No library performs this step; the wire shape is exactly the form's control names.
 - send guard: the sender writes only when the socket exists and its `readyState` is `OPEN`, and reports whether it wrote. A refused send raises the *not sent* toast and **leaves the typed answer in the textarea**, so a disconnected tab loses no work and the operator is told, rather than left with an answer that looks accepted and was dropped.
-- persistence: A half-typed answer in a gate textarea persists across a dashboard push for the same gate.
+- persistence: detail-answer-textarea — a half-typed answer persists across a dashboard push for the same gate.
 - verify: persists(subject="half-typed answer in the same gate textarea across a dashboard push")
-- persistence: A refused send preserves the typed answer in the gate textarea; it clears only after `sendCommand` reports that it wrote the frame.
+- persistence: detail-answer-textarea — a refused send preserves the typed answer.
 - verify: persists(subject="typed answer in a gate textarea after a refused send")
+- persistence: detail-answer-textarea — the textarea is cleared only when `sendCommand` reports the frame was successfully written.
+- verify: absent(subject="answer textarea content after a successful send")
 - consumer: the receive loop passes each decoded JSON value to `_handle_command`; the handler's contract is an object with `.get(...)` lookup semantics, and this format defines no recovery payload for malformed JSON or non-object values.
 - command guard: only frames whose `cmd` value is exactly `"answer"` are handled by this format. Any other value — including the dashboard's own `watch` command, which the same socket carries — is handled elsewhere or ignored, with no gate write, log entry, state change, or acknowledgement frame from here.
 - acceptance boundary: a handled answer command performs no schema validation beyond the command guard; it string-normalizes the target and answer fields and delegates semantic validity to the gate-answering layer.
@@ -51,9 +56,11 @@ The socket is the only path for this. Answering is the one browser-to-server wri
 
 - type: string JSON value emitted by the first-party form; any JSON value is accepted by the handler for comparison.
 - default: absent
-- required: true for the first-party answer command; its wire value is the exact string `"answer"`.
+- required: true for the first-party answer command
+- required: true for handling
+- semantics: for the first-party answer command, its wire value is the exact string `"answer"`.
 - verify: json_path(path="$.cmd", equals="answer")
-- required: true for handling; any value other than exact string `"answer"` — including an absent value — is ignored before workflow lookup, gate answering, logging, or pushing.
+- semantics: any value other than exact string `"answer"` — including an absent value — is ignored before workflow lookup, gate answering, logging, or pushing.
 - verify: absent(subject="side effects from a frame whose cmd is not exactly answer")
 - wire-key: `cmd`
 - producer-control: hidden input `name="cmd" value="answer"`.

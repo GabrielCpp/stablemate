@@ -204,25 +204,16 @@ and the visible workflow row state is stored as a [workflow container](../concep
 - tests: groom/tests/test_app.py::test_diff_prefers_sidecar_socket
 - tests: groom/tests/test_app.py::test_reload_broadcasts_to_all_connected_sidecars
 - tests: groom/tests/test_app.py::test_reload_targets_one_container_when_id_given
-- code: groom/groom/cli.py::sidecar_main
-- code: groom/groom/sidecar.py::run
-- code: groom/groom/sidecar.py::_serve
-- code: groom/groom/sidecar.py::_run_session
-- code: groom/groom/sidecar.py::_hello_frame
-- code: groom/groom/sidecar.py::_classify_event
-- code: groom/groom/sidecar.py::_handle_rpc
-- code: groom/groom/sidecar_hub.py::SidecarConnection
-- code: groom/groom/sidecar_hub.py::register
-- code: groom/groom/sidecar_hub.py::unregister
-- code: groom/groom/app.py::dashboard_sidecar
-- code: groom/groom/app.py::_apply_hello
-- code: groom/groom/app.py::_apply_socket_progress
-- code: groom/groom/app.py::_apply_socket_blocked
-- code: groom/groom/app.py::_sidecar_rpc
-- code: groom/groom/app.py::files
-- code: groom/groom/app.py::file_content
-- code: groom/groom/app.py::diff
-- code: groom/groom/app.py::reload
+The implementation anchors for this journey are `groom/groom/cli.py::sidecar_main`,
+`groom/groom/sidecar.py::run`, `groom/groom/sidecar.py::_serve`,
+`groom/groom/sidecar.py::_run_session`, `groom/groom/sidecar.py::_hello_frame`,
+`groom/groom/sidecar.py::_classify_event`, `groom/groom/sidecar.py::_handle_rpc`,
+`groom/groom/sidecar_hub.py::SidecarConnection`, `groom/groom/sidecar_hub.py::register`,
+`groom/groom/sidecar_hub.py::unregister`, `groom/groom/app.py::dashboard_sidecar`,
+`groom/groom/app.py::_apply_hello`, `groom/groom/app.py::_apply_socket_progress`,
+`groom/groom/app.py::_apply_socket_blocked`, `groom/groom/app.py::_sidecar_rpc`,
+`groom/groom/app.py::files`, `groom/groom/app.py::file_content`,
+`groom/groom/app.py::diff`, and `groom/groom/app.py::reload`.
 - screenshot: docs/features/groom/gui/screenshots/sidecar-live-session-sync-detail-diff.png
 - screenshot: docs/features/groom/gui/screenshots/sidecar-live-session-sync-files-pane.png
 - screenshot: docs/features/groom/gui/screenshots/sidecar-live-session-sync-diff-file-selected.png

@@ -11,6 +11,8 @@ title: workhorse-research
 
 Runs the research gate loop registered by the [research workflow composition root](concepts/research-workflow-composition-root.md). Workhorse provides the shared command parser; this package provides the default Research flow.
 
+The [workhorse-research driver runbook](ops/workhorse-research.md) exercises this CLI in dry-run mode with checkpointed inputs.
+
 ## Commands
 
 

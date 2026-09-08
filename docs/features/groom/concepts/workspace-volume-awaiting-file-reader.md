@@ -10,6 +10,7 @@ Workspace-volume awaiting-file reader is the Docker-volume sweep used by the [wo
 - code: groom/groom/docker_io.py::grep_awaiting_files
 - tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths
 - tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_empty_on_docker_failure
+- detail: [Grep awaiting-files documentation views](grep-awaiting-files-documentation-views.md)
 - refs: [workflow discovery scan](workflow-discovery-scan.md#method-find-awaiting-gates), [Docker subprocess runner](docker-subprocess-runner.md), [operator gate context file](../operator-gate-context-file.md), [gate info](gate-info.md)
 
 ## Contract
@@ -28,9 +29,9 @@ Workspace-volume awaiting-file reader is the Docker-volume sweep used by the [wo
 - candidate boundary: proves only that the file matched the cheap status-line search at sweep time; it does not prove the file is still awaiting when a gate record is created.
 - trust boundary: does not validate or sanitize `volume` or `mount_subdir`; callers provide these values from Docker mount metadata or other already-bounded internal discovery state, and callers that reread returned paths own path safety for that later read.
 - persistence: workspace-volume — does not write the workspace volume, answer gates, update workflow state, mutate the registry, broadcast UI fragments, or start or stop workflow containers.
-- consistency: returns no candidate paths when the Docker process exits with a code other than `0` or `1` because fallback gate recovery is best-effort.
+- consistency: candidate-paths — returns none when the Docker process exits with a code other than `0` or `1` because fallback gate recovery is best-effort.
 - verify: count(subject="candidate paths after Docker exit code 2", equals=0)
-- consistency: returns no candidate paths when `grep` reports no matches with Docker process exit code `1`.
+- consistency: candidate-paths — returns none when `grep` reports no matches with Docker process exit code `1`.
 - verify: count(subject="candidate paths after Docker exit code 1", equals=0)
 
 ## Fields
@@ -97,7 +98,11 @@ Workspace-volume awaiting-file reader is the Docker-volume sweep used by the [wo
 - step: In that container, prune skipped directories and pass every remaining regular file to `grep -lE` with the awaiting-status pattern.
 - step: For each stdout line, strip whitespace and keep only `/vol/`-prefixed paths.
 - step: Remove the `/vol/` prefix from each retained path.
-- step: Return the retained relative paths in observed order.
+
+The sweep's last action hands the retained relative paths back to the caller in the order Docker
+emitted them on stdout; that return-order guarantee is already stated normatively above under
+`ordering rule:` and proved by [method-grep-awaiting-files](#method-grep-awaiting-files)'s
+`returns:`/`verify:` bullets, so this step is a description of the mechanism, not a second promise.
 
 ## Failure behavior
 
@@ -128,7 +133,7 @@ Returns the workspace-volume-relative paths of files that appear to carry an awa
 - input: accepts one Docker volume name and an optional volume-relative subdirectory string.
 - output: returns candidate paths relative to the mounted volume root, including the subdirectory prefix when the scan target is below the root.
 - caller contract: callers that need a live gate must reread each candidate and apply the shared [operator gate context file](../operator-gate-context-file.md) parser before creating state.
-- consistency: returns only Docker stdout lines whose stripped text begins with `/vol/`, removing that prefix from each retained path.
+- consistency: candidate-paths — returns only Docker stdout lines whose stripped text begins with `/vol/`, removing that prefix from each retained path.
 - verify: count(subject="candidate paths after stdout contains two /vol/ paths and one non-/vol/ line", equals=2)
 
 #### Effects
@@ -140,6 +145,17 @@ Returns the workspace-volume-relative paths of files that appear to carry an awa
 
 #### Failure behavior
 
-- Docker no-match return: returns `[]` for return code `1`.
-- Docker failure return: returns `[]` for any return code other than `0` or `1`.
 - Malformed stdout: ignores non-`/vol/` output lines without failing the sweep.
+
+Returning `[]` for any Docker return code other than `0` or `1` is not a second promise:
+it is the same conversion already stated normatively above under this method's `raises:
+converts Docker process return-code failures to an empty list` bullet, so this note
+describes the mechanism rather than minting it again.
+
+Return code `1` (grep matched nothing) is not a distinct failure branch in the
+implementation: it skips the early-exit check at `proc.returncode not in (0, 1)`, and
+`grep`'s empty stdout then parses to no `/vol/`-prefixed lines, so the method reaches `[]`
+through the same line-parsing path as a genuine no-match sweep. That outcome is already
+stated normatively above under `consistency: candidate-paths — returns none when grep
+reports no matches with Docker process exit code 1` and proved by its `verify:` bullet, so
+this note describes the mechanism rather than adding a second promise.

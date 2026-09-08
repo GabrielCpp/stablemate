@@ -104,9 +104,12 @@ instrument, not part of the product surface.
 - end: choosing a pane and answering a gate, the two paths with no mouse-free
   alternative, have been exercised by keyboard.
 - end: on a machine without Chromium or the vendored axe bundle, every check skips
-  with a printed reason and the suite passes without claiming an accessibility result.
+  with a printed reason.
+- end: on a machine without Chromium or the vendored axe bundle, the suite passes
+  without claiming an accessibility result.
 - end: the temporary workspace, the seeded fleet, the server thread, and the browser
-  are all gone; nothing persists between runs.
+  are all gone.
+- end: nothing persists between runs.
 - detail: [application factory usage](../concepts/application-factory-usage.md)
 - tests: groom/tests/test_a11y_dynamic.py::test_runs_pane_with_an_open_gate_is_accessible,
   groom/tests/test_a11y_dynamic.py::test_files_pane_is_accessible,
@@ -115,13 +118,11 @@ instrument, not part of the product surface.
   groom/tests/test_a11y_dynamic.py::test_settings_pane_is_accessible,
   groom/tests/test_a11y_dynamic.py::test_the_activity_rail_is_reachable_and_operable_by_keyboard,
   groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard
-- code: groom/tests/test_a11y_dynamic.py::_workspace
-- code: groom/tests/test_a11y_dynamic.py::_seed
-- code: groom/tests/test_a11y_dynamic.py::_Live
-- code: groom/tests/test_a11y_dynamic.py::_live
-- code: groom/tests/test_a11y_dynamic.py::_open
-- code: groom/tests/test_a11y_dynamic.py::_drive
-- code: groom/tests/test_a11y_dynamic.py::_scan
-- code: groom/tests/test_a11y_dynamic.py::_check_mode
-- code: groom/tests/test_a11y_dynamic.py::teardown_module
-- code: groom/groom/app.py::create_app
+
+The implementation is covered by `groom/tests/test_a11y_dynamic.py::_workspace`,
+`groom/tests/test_a11y_dynamic.py::_seed`, `groom/tests/test_a11y_dynamic.py::_Live`,
+`groom/tests/test_a11y_dynamic.py::_live`, `groom/tests/test_a11y_dynamic.py::_open`,
+`groom/tests/test_a11y_dynamic.py::_drive`, `groom/tests/test_a11y_dynamic.py::_scan`,
+`groom/tests/test_a11y_dynamic.py::_check_mode`,
+`groom/tests/test_a11y_dynamic.py::teardown_module`, and
+`groom/groom/app.py::create_app`.

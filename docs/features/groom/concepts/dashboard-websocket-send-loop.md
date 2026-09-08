@@ -13,11 +13,11 @@ Dashboard websocket send loop is groom's per-browser-tab outbound websocket pump
 
 - sig: `async _send_loop(socket: WebSocket, queue: asyncio.Queue) -> None`
 - purpose: forward every outbound dashboard message accepted by one registered client queue to that same client's websocket connection as a text frame.
-- consistency: A [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-session) registers its newly created queue before starting this loop as a task, then removes that same queue during session cleanup.
+- consistency: clients-set — a [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-session) registers its newly created queue in `CLIENTS` before starting this loop as a task, then removes that same queue from `CLIENTS` during session cleanup.
 - counterpart: [dashboard websocket receive loop](dashboard-websocket-receive-loop.md); receive-side completion or failure can cause the owning session to cancel this send loop.
 - input socket: accepted browser dashboard websocket; required; default none; not created, accepted, closed, or unregistered by this layer.
 - input queue: `asyncio.Queue`; required; default none; normally the [dashboard client queue](dashboard-client-queue-set.md#field-client-queue) registered for exactly one browser tab.
-- payload type: any JSON-serializable value; first-party producers enqueue `dict` messages, and each queue item is JSON-serialized here to form the complete websocket text-frame body. The loop does not validate or discriminate the value before serialization.
+- payload type: first-party producers enqueue `dict` messages, and each queue item is passed directly to `json.dumps` to form the complete websocket text-frame body. The loop does not validate or discriminate the value before serialization; a value that `json.dumps` cannot serialize raises instead of producing a frame.
 - payload producers: [broadcast dashboard message](dashboard-client-queue-set.md#method-broadcast-dashboard-message) enqueues fleet-wide messages and the [run watch registry](run-watch-registry.md) path enqueues per-run `detail` messages; this loop does not know which producer enqueued a particular item, and does not read its `type`.
 - output: no normal return value; the coroutine is intentionally long-running and only stops through cancellation or an exception from queue retrieval, JSON serialization, or websocket sending.
 - ordering: preserves per-queue FIFO delivery because each frame is sent only after the previous `queue.get()` result has been sent.
@@ -33,7 +33,7 @@ Dashboard websocket send loop is groom's per-browser-tab outbound websocket pump
 - does: waits for one queued outbound value when the queue is empty.
 - verify: emitted(event="dashboard websocket text frame", count=1)
 - does: removes one queued outbound value before serializing it.
-- verify: emitted(event="dashboard websocket text frame", count=1)
+- verify: removed(subject="an outbound dashboard message")
 - does: serializes the removed value with `json.dumps` as the complete websocket text payload.
 - verify: emitted(event="dashboard websocket text frame", count=1)
 - does: sends the serialized payload as one text frame before reading the next queue value.
@@ -41,14 +41,14 @@ Dashboard websocket send loop is groom's per-browser-tab outbound websocket pump
 - raises: propagates cancellation from the queue wait or websocket send.
 - raises: propagates queue retrieval failures without emitting a frame for that retrieval.
 - raises: propagates JSON serialization and websocket send failures without retrying or requeueing the removed value.
-- returns: never returns normally; it repeats until cancellation or an exception exits the coroutine.
+- returns: never completes via a normal return statement.
+- returns: repeats indefinitely until the queue wait or websocket send is cancelled or raises an exception.
 - code: groom/groom/app.py::_send_loop
 
 #### Inputs
 
 - queue: `asyncio.Queue`; required; default none; contains already-projected outbound message objects for the same browser session.
 - queue membership: the queue may or may not still be present in the [dashboard client queue set](dashboard-client-queue-set.md) while the loop is waiting; registration affects future broadcasts, not this loop's ability to consume already queued items.
-- item value: each `queue.get()` result must be JSON-serializable for a send to succeed; no first-party validation, schema check, or `type` discrimination occurs before serialization.
 
 #### Algorithm
 
@@ -56,7 +56,7 @@ Dashboard websocket send loop is groom's per-browser-tab outbound websocket pump
 - step: Await one item from the queue.
 - step: Serialize the item with `json.dumps` to produce the outbound websocket text payload.
 - step: Await one websocket text send of that payload.
-- consistency: Returns to waiting for the next queue item only after the current websocket send operation completes.
+- consistency: client-queue — returns to waiting for the next queue item only after the current websocket send operation completes.
 - verify: emitted(event="dashboard websocket text frame", count=1)
 - step: End only when cancellation, queue access, websocket transport, or send operation raises to the owning dashboard websocket session.
 

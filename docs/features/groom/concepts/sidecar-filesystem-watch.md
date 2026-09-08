@@ -11,15 +11,15 @@ When a runs volume has not mounted yet, only filesystem observation degrades; th
 
 It replaces an earlier recursive inotify-watch installer that registered one watch descriptor per directory and maintained a caller-owned descriptor-to-path map. `watchfiles` selects the platform backend itself (inotify on Linux, FSEvents on macOS, `ReadDirectoryChangesW` on Windows) and recurses into newly created subdirectories on its own, so neither the descriptor map nor the create-a-watch-for-a-new-subtree step exists any more. The container keeps inotify; the sidecar and its tests stop being Linux-only.
 
+The watch behavior is covered by `groom/tests/test_sidecar_session.py::test_the_watch_skips_a_mount_that_is_not_mounted_yet` and `groom/tests/test_sidecar_session.py::test_the_watch_reports_a_gate_written_after_it_started`.
+
 - code: groom/groom/sidecar.py::_watch_roots
 - code: groom/groom/sidecar.py::_watch_loop
-- verify: groom/tests/test_sidecar_session.py::test_the_watch_skips_a_mount_that_is_not_mounted_yet
-- verify: groom/tests/test_sidecar_session.py::test_the_watch_reports_a_gate_written_after_it_started
 
 ## Contract
 
 - roots: the configured workspace mount and the configured runs mount, in that order, minus any that is not currently a directory.
-- consistency: a configured mount that does not exist is excluded from the roots handed to `awatch`.
+- consistency: watch-roots — a configured mount that does not exist is excluded from the roots handed to `awatch`.
 - verify: absent(subject="missing configured mount from selected watch roots")
 - empty-root rule: with neither mount present no watch task work is performed and the loop returns immediately; the session continues without filesystem deltas.
 - prune rule: directory names equal to `.git`, `node_modules`, `__pycache__`, or `.venv` — the [sidecar skip directory names](groom-sidecar-module.md#field-skip-dir-names) — are excluded from the watch. The same set is used by the pull-side gate scan, so a gate the scan reports is a gate the watch can fire on.

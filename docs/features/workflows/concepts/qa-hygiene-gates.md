@@ -37,10 +37,16 @@ the supplied `repo_dir`, rather than from the process working directory.
 
 ### check_sentinel_ids
 - sig: `check_sentinel_ids(logger: logging.Logger, story_slug: str = "", repo_dir: str = "") -> QaResult`
-- does: resolves the trunk base and reads only added lines from the `base_ref..HEAD` diff with zero context
+- does: resolves the trunk base before inspecting the branch diff
+- verify: json_path(path="$.notes", matches="Sentinel gate: no added lines in diff \\(.+\\.\\.HEAD\\) — nothing to check\\.")
+- does: reads only added lines from the zero-context `base_ref..HEAD` diff
 - verify: count(subject="added source diff lines scanned by the sentinel gate", equals=1)
-- does: scans only `.go`, `.ts`, `.tsx`, `.js`, and `.jsx` additions, excluding test files and pure comment lines
-- verify: count(subject="eligible shipped-source additions scanned", equals=1)
+- does: scans additions only when their extension is `.go`, `.ts`, `.tsx`, `.js`, or `.jsx`
+- verify: count(subject="added lines with an eligible source extension scanned", equals=1)
+- does: excludes additions in test files from the sentinel scan
+- verify: count(subject="added test-file lines scanned by the sentinel gate", equals=0)
+- does: excludes pure comment-line additions from the sentinel scan
+- verify: count(subject="added pure comment lines scanned by the sentinel gate", equals=0)
 - does: rejects an eligible added line containing an all-zero UUID
 - verify: count(subject="all-zero UUID sentinel additions rejected", equals=1)
 - does: rejects an eligible added line containing an all-zero hexadecimal or UUID string

@@ -7,7 +7,7 @@ title: Application factory usage
 
 `create_app` is the single application factory. It assembles the dashboard,
 HTTP, websocket, OTLP, and static-asset route handlers, and registers the
-discovery, alert-rule, and live-clock lifecycle hooks.
+discovery, alert-rule, live-clock, and archival lifecycle hooks.
 
 The production-serving journey uses that factory to describe the application
 that `groom serve` exposes. The dynamic accessibility-audit journey uses the

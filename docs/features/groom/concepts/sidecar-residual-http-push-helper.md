@@ -15,13 +15,16 @@ plus one event payload into a best-effort JSON POST for [progress push payload](
 After opening a response, it closes that response and completes without inspecting
 its status, headers, or body.
 
+The helper's documented request shapes and failure behavior are covered by
+test_push_progress_posts_expected_shape,
+test_push_blocked_posts_expected_shape,
+test_push_exited_posts_expected_shape,
+test_push_exited_is_silent_when_groom_is_unreachable,
+test_push_is_silent_when_groom_is_unreachable, and
+test_push_is_silent_on_any_unexpected_exception.
+
 - code: groom/groom/sidecar.py::_push
-- verify: groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape
-- verify: groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape
-- verify: groom/tests/test_sidecar.py::test_push_exited_posts_expected_shape
-- verify: groom/tests/test_sidecar.py::test_push_exited_is_silent_when_groom_is_unreachable
-- verify: groom/tests/test_sidecar.py::test_push_is_silent_when_groom_is_unreachable
-- verify: groom/tests/test_sidecar.py::test_push_is_silent_on_any_unexpected_exception
+- tests: groom/tests/test_sidecar.py
 - refs: [sidecar identity data](../sidecar-identity-data.md), [progress push payload](../progress-push-payload.md), [blocked push payload](../blocked-push-payload.md), [exited push payload](../exited-push-payload.md), [sidecar protocol](../sidecar-protocol.md)
 
 ## Contract

@@ -21,6 +21,7 @@ CLI's event vocabulary; that is each adapter's job.
 
 - code: `workhorse/workhorse/runner/process.py::stream_subprocess`
 - code: `workhorse/workhorse/runner/process.py::ProcessSupervisor`
+- code: `workhorse/workhorse/runner/process.py::ActiveProcess`
 - The implementation is covered by `workhorse/tests/test_stream_subprocess.py::test_clean_stream_completes_without_timeout`,
   `workhorse/tests/test_stream_subprocess.py::test_wedged_midline_is_killed_by_watchdog`, and
   `workhorse/tests/test_stream_subprocess.py::test_group_children_are_reaped`.
@@ -84,6 +85,44 @@ and `workhorse/tests/test_stream_subprocess.py::test_an_at_boundary_request_does
 - verify: count(subject="streamed turns receiving the run's AgentResilience", equals=1)
 
 ## Methods
+
+### ActiveProcess
+- sig: `ActiveProcess() -> ActiveProcess`
+- does: creates an empty registry with no active subprocess
+- verify: count(subject="active subprocess handles in a new registry", equals=0)
+- verify: created(subject="active-process registry")
+- returns: an active-process registry whose handle is protected for access from the streaming and interrupt execution contexts
+- code: `workhorse/workhorse/runner/process.py::ActiveProcess`
+
+### set
+- sig: `ActiveProcess.set(proc: subprocess.Popen) -> None`
+- does: registers the supplied subprocess as the currently streaming process
+- verify: created(subject="registered active subprocess handle")
+- returns: `None`
+- verify: json_path(path="return", matches="^None$")
+- code: `workhorse/workhorse/runner/process.py::ActiveProcess.set`
+
+### clear
+- sig: `ActiveProcess.clear() -> None`
+- does: removes the currently registered subprocess
+- verify: removed(subject="registered active subprocess handle")
+- returns: `None`
+- verify: json_path(path="return", matches="^None$")
+- code: `workhorse/workhorse/runner/process.py::ActiveProcess.clear`
+
+### terminate
+- sig: `ActiveProcess.terminate() -> None`
+- does: returns without signalling when no subprocess is registered
+- verify: count(subject="termination signals for an empty active-process registry", equals=0)
+- does: returns without signalling when the registered subprocess has already exited
+- verify: count(subject="termination signals for an exited active subprocess", equals=0)
+- does: sends `SIGTERM` to a live subprocess process group
+- verify: emitted(event="active process group termination", count=1)
+- does: sends `SIGKILL` after five seconds when graceful termination does not reap the process
+- verify: emitted(event="forced active process group termination", count=1)
+- returns: `None` after the live subprocess is reaped
+- verify: removed(subject="live active subprocess and its process group")
+- code: `workhorse/workhorse/runner/process.py::ActiveProcess.terminate`
 
 ### ProcessSupervisor.stream
 - sig: `ProcessSupervisor.stream(cmd, node_id, timeout, on_line, *, resilience, stdin_data=None, cwd=None, env_extra=None, secrets=None) -> tuple[bool, int]`

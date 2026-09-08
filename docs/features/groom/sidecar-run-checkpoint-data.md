@@ -18,13 +18,14 @@ The file is current-node evidence only; missing runs, missing files, unreadable
 or malformed JSON, and absent `current_id` values all mean no current node is
 available from this source.
 
+Reader coverage is exercised by `groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates`,
+`groom/tests/test_sidecar_session.py::test_classify_event_runs_write_is_progress`, and
+`groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run`.
+
 - file: `/runs/<latest-run-directory>/checkpoint.json`
 - code: groom/groom/sidecar.py::_current_node
 - code: groom/groom/discovery.py::_current_run_state
 - detail: [volume run-state evidence](concepts/volume-run-state-evidence.md)
-- verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
-- verify: groom/tests/test_sidecar_session.py::test_classify_event_runs_write_is_progress
-- verify: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
 
 ## Contract
 

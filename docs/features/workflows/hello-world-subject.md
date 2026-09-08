@@ -23,6 +23,7 @@ returns this typed value from its measuring node and carries its letter count in
 - semantics: the workflow subject whose greeting is requested
 - verify: json_path(path="$.name", equals="globex")
 - code: `workflows/src/workhorse_workflows/hello_world/workflow.py::Subject`
+- detail: [Hello-world subject field roles](concepts/hello-world-subject-field-roles.md)
 
 ### letters
 
@@ -36,3 +37,4 @@ returns this typed value from its measuring node and carries its letter count in
 - semantics: the number of characters in name
 - verify: json_path(path="$.letters", equals=6)
 - code: `workflows/src/workhorse_workflows/hello_world/workflow.py::Subject`
+- detail: [Hello-world subject field roles](concepts/hello-world-subject-field-roles.md)

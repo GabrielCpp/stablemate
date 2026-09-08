@@ -33,7 +33,12 @@ The genesis workflow patches this callable at its module boundary with a canned
 - verify: json_path(path="return.stderr", matches=".*")
 - does: returns normally for the child's non-zero status when `check` is `False`
 - verify: json_path(path="return.returncode", equals=1)
-- does: when `check` is `True` and the child exits non-zero, logs the command, exit code, and trimmed standard error if `logger` is supplied
+- does: for a supplied logger on checked command `example arg` that exits with status `1`, logs the command
+- verify: json_path(path="logger.error", matches="^example arg failed.*")
+- does: for a supplied logger on checked command `example arg` that exits with status `1`, logs exit code `1`
+- verify: json_path(path="logger.error", matches=".*exit 1.*")
+- does: for a supplied logger on checked command `example arg` that exits with status `1`, logs trimmed standard error `failure`
+- verify: json_path(path="logger.error", matches=".*failure$")
 - does: when `check` is `True` and the child exits non-zero, raises `RuntimeError` naming the executable and trimmed standard error
 - verify: exit_status(code=1)
 - raises: propagates operating-system or process-launch errors from the subprocess invocation

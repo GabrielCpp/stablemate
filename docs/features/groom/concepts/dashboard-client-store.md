@@ -17,15 +17,17 @@ The store is also the boundary that decides what is fleet-wide and what is per-t
 - code: groom/groom/assets/dashboard.js::setIn
 - code: groom/groom/assets/dashboard.js::useStore
 - refs: [dashboard state payload](../dashboard-state-payload.md), [runs fleet view](../runs-fleet-view.md), [groom projection module](groom-projection-module.md), [dashboard connection state machine](dashboard-connection-state-machine.md), [dashboard resync poller](dashboard-resync-poller.md), [run watch registry](run-watch-registry.md)
-- verify: groom/tests/test_dashboard_client.py::test_the_client_module_parses
-- verify: groom/tests/test_dashboard_client.py::test_every_endpoint_is_read_as_json
-- verify: groom/tests/test_dashboard_client.py::test_no_fragment_swapping_survives
-- verify: groom/tests/test_dashboard_client.py::test_the_only_markup_the_client_sets_comes_from_a_sanitizer_or_a_renderer
+
+The client module's parsing, JSON endpoint handling, resistance to fragment swapping, and markup
+boundary are covered by `groom/tests/test_dashboard_client.py::test_the_client_module_parses`,
+`groom/tests/test_dashboard_client.py::test_every_endpoint_is_read_as_json`,
+`groom/tests/test_dashboard_client.py::test_no_fragment_swapping_survives`, and
+`groom/tests/test_dashboard_client.py::test_the_only_markup_the_client_sets_comes_from_a_sanitizer_or_a_renderer`.
 
 ## Contract
 
 - purpose: hold one snapshot of everything the dashboard displays, and be the only place any of it is written.
-- consistency: Updating a panel slice through [set in slice](#method-set-in) preserves every other dashboard store slice.
+- consistency: dashboard-store-slice — updating a panel slice through [set in slice](#method-set-in) preserves every other dashboard store slice.
 - verify: unchanged(subject="dashboard store slices other than the updated panel")
 - subscription: islands call [use store](#method-use-store), which subscribes on mount and unsubscribes on unmount; every `set` notifies every listener with the new snapshot.
 - immutability by convention: `set` builds a new top-level object rather than mutating in place, so a component comparing snapshots sees a new identity.
@@ -33,7 +35,7 @@ The store is also the boundary that decides what is fleet-wide and what is per-t
 - delta merge: `applyRun()` merges one row in place by id and re-sorts by `(rank, name)` — the same order the server projected — so the other rows are not re-created and do not lose focus.
 - keyed reconciliation: rows are keyed by run id and gate blocks by gate file path. That is what preserves focus, scroll position, and — because Preact then reuses the same `<textarea>` DOM node — a half-typed answer across a 5-second push.
 - detail ownership: `detail` is written by a pushed `detail` frame and by the one fetch a selection issues; the pushed frame is ignored unless its id matches the current selection, so a stale push for a run the operator has moved off cannot overwrite the pane.
-- consistency: A pushed detail frame for an unselected run leaves the dashboard store unchanged, so a race between a selection change and an in-flight push cannot show the wrong run's gates.
+- consistency: detail — a pushed frame for an unselected run leaves the dashboard store unchanged, so a race between a selection change and an in-flight push cannot show the wrong run's gates.
 - verify: unchanged(subject="dashboard store when a detail push targets an unselected run")
 - selection race: `select()` stamps a sequence number and applies its fetch result only if it is still the newest selection *and* no push has already filled the pane. Whichever of the two arrives first wins and the other is dropped, so fast clicking cannot land the wrong run's detail.
 - markup boundary: the store holds data, never markup. The only strings that ever reach `innerHTML` anywhere in the client are the outputs of DOMPurify, diff2html, and highlight.js.

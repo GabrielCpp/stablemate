@@ -5,11 +5,11 @@ title: Coder documentation flow
 ---
 # Coder documentation flow
 
-- The `Docs` machine folds one completed story into the current OKF book. It resolves the story
-  and documentation context, distinguishes an unmanaged book from an unusable one, optionally
-  grounds the code diff locally, asks an author turn to write the graph, gates the result against
-  direct grounding, and then obtains an independent documentation review. It is entered by the
-  Coder main flow or directly with `workhorse-coder run docs`.
+The `Docs` machine folds one completed story into the current OKF book. It resolves the story
+and documentation context, distinguishes an unmanaged book from an unusable one, optionally
+grounds the code diff locally, asks an author turn to write the graph, gates the result against
+direct grounding, and then obtains an independent documentation review. It is entered by the
+Coder main flow or directly with `workhorse-coder run docs`.
 - start: the configured story slug resolves to a readable story before any documentation turn
 - verify: count(subject="resolved documentation story", equals=1)
 - start: the repository has a usable OKF book and a classified documentation context
@@ -32,15 +32,20 @@ title: Coder documentation flow
 - verify: count(subject="malformed documentation result failures", equals=1)
 - end: an unresolved documentation block returns a blocked result
 - verify: count(subject="blocked documentation results", equals=1)
+- detail: [coder handoff boundary contract](../concepts/coder-handoff-boundary.md)
+- detail: [coder docs package](../concepts/coder-docs-package.md)
 - detail: [coder main flow](coder-main.md)
 - detail: [coder docs subflow package](../concepts/coder-docs-subflow.md)
 - detail: [coder shared documentation helpers](../concepts/coder-shared-documentation.md)
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_inside_the_docs_worktree_take_the_local_route`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_outside_the_docs_worktree_take_the_semantic_route`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_failed_gate_reworks_before_the_reviewer_ever_runs`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_block_is_put_to_the_author_before_it_ends_the_flow`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_run_killed_mid_review_resumes_without_re_documenting`
+
+The Python entry is `Docs` in `workflows/src/workhorse_workflows/coder/docs/flow.py`; that
+class declares the labelled checkpoints, the loop counters, and the document/repair/review
+turns the flow orchestrates.
 
 `story`, `docs_path`, `workspace_file`, `epic`, `target_env`, `preexisting`, and `operator_mode`
 are checkpointed inputs. Empty docs and workspace paths use the repository's configured
@@ -86,6 +91,7 @@ pre-author snapshot.
 ### document
 
 - kind: drive
+- detail: [coder document-story prompt](../coder-document-story-prompt.md)
 
 The first author turn uses the `document-story` prompt with medium power and the story, epic,
 features-root, implementation context, workspace directories, and the initial grounding worklist.
@@ -131,6 +137,7 @@ specification first.
 ### review
 
 - kind: verify
+- detail: [coder review-story-documentation prompt](../coder-review-story-documentation-prompt.md)
 
 After a passed gate, the flow dispatches one independent high-power `review-story-documentation`
 turn. The reviewer receives the original, unnarrowed story obligations even after the grounding
@@ -186,3 +193,24 @@ Review findings are rendered one per line as `id [kind] target: issue. Repair: r
 `_format_finding`; `_review_notes` places those lines before an optional summary. A malformed
 revision is a workflow failure, while a malformed author response is rejected by the typed
 result contract before the flow can enter repair. The module exports only `Docs`.
+
+## Invocations
+
+### repair-documentation
+
+- on: [repair step](#repair)
+- trigger: grounding gate failure or reviewer finding requiring node edits
+- does:
+  - edits cited nodes in the OKF graph based on gate or review findings
+- does:
+  - leaves nodes not cited by the current findings unchanged
+- does:
+  - accumulates node identities across repair passes
+- consumes: [coder-repair-documentation-prompt](../coder-repair-documentation-prompt.md)
+- status: returns `DocumentationResult` with status `documented` and authored node list on success
+- verify: json_path(path="$.status", equals="documented")
+- errors: workflow failure if malformed agent result or excessive overrun
+- verify: exit_status(code=1)
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.repair`
+- tests: `workflows/tests/coder/docs/test_flow.py::test_a_failed_gate_reworks_before_the_reviewer_ever_runs`
+

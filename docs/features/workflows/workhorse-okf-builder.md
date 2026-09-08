@@ -10,6 +10,8 @@ title: workhorse-okf-builder
 
 Runs the backfill registry described by the [OKF-builder workflow composition root](concepts/okf-builder-workflow-composition-root.md). `run` starts its default builder or the registered web walkthrough; Workhorse owns parser and execution mechanics.
 
+The [workhorse-okf-builder driver runbook](ops/workhorse-okf-builder.md) exercises this CLI in dry-run mode with checkpointed inputs.
+
 ## Commands
 
 

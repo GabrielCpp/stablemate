@@ -9,6 +9,7 @@ title: Coder dev-fix prompt
 - code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.fix`
 - detail: [coder development flow](flows/coder-dev.md)
 - detail: [failure report](failure-report.md)
+- detail: [dev-fix result](dev-fix-result.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_the_gate_lane_repairs_and_re_runs_until_clean`
 
 The repair envelope gives one failed gate report and the files already changed by the story. It

@@ -14,6 +14,8 @@ the executable surface is `new_program.py`.
 
 - code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
 - detail: [research program manifest](../research-program-manifest.md)
+- detail: [research program scaffolder concerns](research-program-scaffolder-concerns.md)
+- detail: [research program scaffolder documentation scope](research-program-scaffolder-documentation-scope.md)
 
 ## Methods
 
@@ -21,6 +23,7 @@ the executable surface is `new_program.py`.
 
 - sig: `slug(program_dir: str) -> str`
 - does: removes empty, `.` and `specs` path segments from the supplied program directory
+- verify: removed(subject="empty, `.` and `specs` path segments from the derived program slug")
 - verify: json_path(path="$.slug", matches="^[^/]+(-[^/]+)*$")
 - does: joins the remaining segments with hyphens, or replaces `/` with `-` when no segments remain
 - returns: the derived program slug

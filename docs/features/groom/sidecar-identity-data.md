@@ -16,8 +16,8 @@ payloads that merge it may add their own event-specific fields.
 - file: not an on-disk artifact; this is an in-memory JSON object embedded in
   sidecar websocket and residual HTTP messages.
 - code: groom/groom/sidecar.py::_identity
-- verify: groom/tests/test_sidecar_session.py::test_hello_frame_carries_identity_and_snapshot
-- verify: groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape
+- tests: groom/tests/test_sidecar_session.py::test_hello_frame_carries_identity_and_snapshot
+- tests: groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape
 
 ## Contract
 
@@ -28,10 +28,11 @@ payloads that merge it may add their own event-specific fields.
 - producer: every call reads the current process hostname and the current
   `REPO_NAME` and `REPO_BRANCH` environment values at call time; it does not
   cache identity across calls.
-- consistency: websocket hello frames place this object under `identity`.
+- consistency: sidecar-identity-data — websocket hello frames place this object
+  under `identity`.
 - verify: json_path(path="$.identity.repo_name", equals="Acme")
-- consistency: residual HTTP pushes merge this object into the top-level request
-  body before adding event-specific payload fields.
+- consistency: sidecar-identity-data — residual HTTP pushes merge this object
+  into the top-level request body before adding event-specific payload fields.
 - verify: json_path(path="$.repo_branch", equals="fixes/x")
 - collision rule: residual HTTP event payload keys override same-named identity
   keys because the event payload is merged after this object; first-party event

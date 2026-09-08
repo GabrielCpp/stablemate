@@ -131,15 +131,11 @@ in it the socket does not already deliver, in a shape the renderer already knows
 - tests: groom/tests/test_projection.py::test_state_message_reports_whether_discovery_is_still_running
 - tests: groom/tests/test_projection.py::test_status_bar_counts_states
 - tests: groom/tests/test_projection.py::test_state_message_is_json_serializable
-- code: groom/groom/assets/dashboard.js::doRefresh
-- code: groom/groom/assets/dashboard.js::Fleet
-- code: groom/groom/assets/dashboard.js::StatusBar
-- code: groom/groom/app.py::refresh
-- code: groom/groom/app.py::_broadcast_shell
-- code: groom/groom/app.py::_reconcile
-- code: groom/groom/discovery.py::scan
-- code: groom/groom/discovery.py::present_container_ids
-- code: groom/groom/state.py::prune_workflows
-- code: groom/groom/projection.py::state_message
+Implementation anchors for this journey are `groom/groom/assets/dashboard.js::doRefresh`,
+`groom/groom/assets/dashboard.js::Fleet`, `groom/groom/assets/dashboard.js::StatusBar`,
+`groom/groom/app.py::refresh`, `groom/groom/app.py::_broadcast_shell`,
+`groom/groom/app.py::_reconcile`, `groom/groom/discovery.py::scan`,
+`groom/groom/discovery.py::present_container_ids`, `groom/groom/state.py::prune_workflows`,
+and `groom/groom/projection.py::state_message`.
 - screenshot: docs/features/groom/gui/screenshots/operator-refreshes-workflow-fleet-settings-idle.png
 - screenshot: docs/features/groom/gui/screenshots/operator-refreshes-workflow-fleet-post-scan.png

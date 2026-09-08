@@ -16,5 +16,4 @@ reader is navigating the module's public helper surface alongside the other Dock
 Neither view supersedes the other: both describe the same callable for their respective reading
 contexts.
 
-- code: groom/groom/docker_io.py::list_run_dirs
 - rule: use the run-directory reader for listing semantics and discovery context; use the module entry for the public Docker helper inventory; neither is preferred or deprecated

@@ -18,7 +18,7 @@ Answer log entry is the process-local event record appended to the [answer event
 - object shape: each entry is a plain dictionary with exactly the first-party keys `event`, `container_id`, `file_path`, `ok`, and `message` when produced by the dashboard websocket answer handler; there are no optional first-party keys.
 - key names: field names are the exact dictionary keys used inside the process-local entry; this format has no wire aliases, version key, request id, timestamp, or correlation id.
 - storage: entries are appended to the process-local [answer event log](concepts/answer-event-log.md); the same dictionary object is passed to the log without validation, cloning, redaction, timestamping, disk persistence, external sink, acknowledgement frame, or retry path.
-- ordering: append order is the order in which answer attempts complete inside the single groom process, after gate-answering returns and before any successful-answer workflow-state flip or dashboard broadcast for that attempt.
+- consistency: answer-log-entry — entries are appended in the order answer attempts complete inside the single groom process, after gate-answering returns and before any successful-answer workflow-state flip or dashboard broadcast for that attempt.
 - retention: the log deque keeps its configured bounded history; older entries may be discarded when the process exceeds that bound.
 - relation: `ok` and `message` are copied from the [answer result](answer-result.md), while `container_id` and `file_path` are copied from the normalized submitted [dashboard websocket answer frame](dashboard-websocket-answer-frame.md) values.
 - normalization: `container_id`, `file_path`, and the submitted answer text are independently converted with `str(value)` from the inbound websocket frame defaults, but only `container_id` and `file_path` are retained in this entry.
@@ -57,9 +57,8 @@ Answer log entry is the process-local event record appended to the [answer event
 
 - type: `str`
 - default: `""`
-- verify: json_path(path="$.file_path", equals="")
 - required: true
-- verify: json_path(path="$.file_path", absent=false)
+- verify: json_path(path="$.file_path", equals="the submitted gate file path, normalized with str(value)")
 - key: `file_path`
 - source: submitted gate context-file path from the handled [dashboard websocket answer frame](dashboard-websocket-answer-frame.md) after `str(value)` normalization.
 - domain: any string produced by normalization; missing values become the empty string and this format does not enforce path safety or existence.
@@ -70,9 +69,8 @@ Answer log entry is the process-local event record appended to the [answer event
 
 - type: `bool`
 - default: none
-- verify: json_path(path="$.ok", matches="^(true|false)$")
 - required: true
-- verify: json_path(path="$.ok", absent=false)
+- verify: json_path(path="$.ok", matches="^(true|false)$")
 - key: `ok`
 - source: copied from `AnswerResult.ok` in the gate-answering [answer result](answer-result.md).
 - domain: first-party values are `true` or `false`.
@@ -85,7 +83,7 @@ Answer log entry is the process-local event record appended to the [answer event
 - default: `""`
 - verify: json_path(path="$.message", equals="")
 - required: true
-- verify: json_path(path="$.message", absent=false)
+- verify: json_path(path="$.message", equals="answered")
 - key: `message`
 - source: copied from `AnswerResult.message` in the gate-answering [answer result](answer-result.md).
 - domain: first-party values are the success and failure messages defined by [answer result](answer-result.md); the log entry also accepts the empty string or any arbitrary string already present on the result.

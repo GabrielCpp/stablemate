@@ -28,7 +28,7 @@ On a successful Docker command, the reader returns a `set[str]` whose members ar
 ## Effects
 
 The completed process supplies the return code used to select the failure signal and the stdout
-that is parsed into container ids.
+parsed into container ids.
 
 - Calls: the shared [Docker subprocess runner](docker-subprocess-runner.md) once with the tokenized `docker ps -aq` command and the default Docker timeout.
 - Short-circuits: returns `None` immediately when the completed Docker process has a non-zero return code.
@@ -46,11 +46,11 @@ that is parsed into container ids.
 - step: Strip surrounding whitespace from each line.
 - step: Drop every stripped line that is empty.
 - step: Truncate each retained line to its first twelve characters.
-- consistency: returned ids are the retained short ids as a set, so duplicate values collapse and no ordering is exposed.
+- consistency: container-id-set — returned ids are the retained short ids as a set, so duplicate values collapse and no ordering is exposed.
 
 ## Failure behavior
 
-- consistency: a completed Docker listing with a non-zero return code returns `None` rather than a container-id set, preserving the distinction between a failed lookup and a reachable empty fleet.
+- consistency: container-id-set — a completed Docker listing with a non-zero return code returns `None` rather than a container-id set, preserving the distinction between a failed lookup and a reachable empty fleet.
 - verify: absent(subject="returned container-id set")
 - Empty Docker fleet: returns `set()` when Docker exits successfully and stdout contains no retained id lines.
 - Blank stdout lines: ignored without making the listing fail.
@@ -102,7 +102,6 @@ Returns the normalized short-id set for every Docker container currently known t
 #### Effects
 
 - Calls: [Docker subprocess runner](docker-subprocess-runner.md) once.
-- Reads: completed process return code and stdout.
 - Filters: blank stdout lines after whitespace stripping.
 - Normalizes: each retained id to its first twelve characters.
 - Returns: either the normalized id set or the negative-capability `None` signal.

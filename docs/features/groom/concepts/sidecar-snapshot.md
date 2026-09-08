@@ -16,7 +16,7 @@ awaiting gate context files; it does not open network connections, install
 filesystem watches, mutate files, or decide the workflow's state on the host.
 
 - code: groom/groom/sidecar.py::snapshot
-- verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
+- tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
 
 ## Contract
 
@@ -27,12 +27,6 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
   `current_node`, `terminal`, and `gates` keys present on every successful call.
 - effects: performs local file reads only; emits no HTTP request, websocket frame,
   stdout text, filesystem watch, process exit, or filesystem write.
-- current node: reads [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md)
-  from the latest available run directory and maps a present `current_id` value
-  unchanged to snapshot `current_node`; missing run directories, missing
-  checkpoints, `OSError` during checkpoint reading or parsing, malformed JSON,
-  and absent `current_id` values all become `""`. Invalid UTF-8 checkpoint bytes
-  raise `UnicodeDecodeError` instead of returning an empty current node.
 - source shape: parseable non-object checkpoint JSON (arrays, strings, numbers,
   booleans, or null) yields an empty current node. The run metadata reader expects
   a JSON object; non-object metadata can escape as an ordinary attribute error
@@ -50,10 +44,20 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
 - freshness: intended for reconnect/one-shot reconciliation; the returned object
   is current at read time and carries no subscription, cursor, timestamp, or
   durable identity.
-- error handling: the current-node reader normalizes `OSError` from checkpoint
-  reading or parsing and malformed JSON to an empty field, but `UnicodeDecodeError`
-  propagates through the snapshot call. Other delegated errors follow each reader's
-  own normalization contract; the aggregator adds no exception handling.
+
+Reading the current node is [sidecar run checkpoint
+data](../sidecar-run-checkpoint-data.md) from the latest available run
+directory: a present `current_id` value maps unchanged to snapshot
+`current_node`, while missing run directories, missing checkpoints, `OSError`
+during checkpoint reading or parsing, malformed JSON, and an absent
+`current_id` all collapse to `""`. Invalid UTF-8 checkpoint bytes are the one
+exception — they raise `UnicodeDecodeError` rather than falling back to an
+empty current node. This normalization is proved case-by-case at
+[method-_current_node](#method-_current_node) below. The terminal-state reader
+and the gate sweep apply their own normalization independently of this one, as
+documented at [method-_terminal](#method-_terminal) and
+[method-scan_gates](#method-scan_gates); `snapshot` itself is a plain aggregator
+over the three delegated reads and adds no exception handling of its own.
 
 ## Algorithm
 
@@ -115,10 +119,11 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
 
 - sig: `_latest_run_dir() -> Path | None`
 - abstract: false
-- raises: none for a missing runs mount; that case returns `None`.
-- verify: json_path(path="return value", equals=null)
+- raises: none for a missing runs mount.
 - raises: directory iteration errors from an existing runs mount are not absorbed.
 - verify: count(subject="latest run directories returned", equals=1)
+- returns: `None` when the configured runs mount is missing.
+- verify: json_path(path="result_is_none", equals=true)
 - code: groom/groom/sidecar.py::_latest_run_dir
 - tests: groom/tests/test_sidecar.py::test_terminal_reads_latest_run_json
 - input: no call arguments; uses the sidecar's configured runs mount path.
@@ -146,13 +151,13 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
 - abstract: false
 - verify: json_path(path="$.current_node", equals="write_story")
 - raises: none for missing runs, missing checkpoints, `OSError` during checkpoint
-  reading or parsing, or malformed checkpoint JSON; those cases return `""`.
+  reading or parsing, or malformed checkpoint JSON, each of which returns `""`.
 - verify: json_path(path="$.current_node", equals="")
 - raises: none for a parseable non-object checkpoint JSON value (array, string,
   number, boolean, or null), which returns `""`.
 - verify: json_path(path="$", equals="")
 - raises: `UnicodeDecodeError` propagates when checkpoint bytes cannot be decoded
-  as UTF-8; this failure does not return `""`.
+  as UTF-8, so no `""` fallback is returned for this failure.
 - code: groom/groom/sidecar.py::_current_node
 - tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
 - tests: groom/tests/test_checkpoints.py::test_malformed_or_wrongly_typed_position_is_empty
@@ -184,7 +189,7 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
 - abstract: false
 - verify: json_path(path="$.terminal", equals="done")
 - raises: none for missing runs, missing run metadata, unreadable metadata, or
-  malformed metadata JSON; those cases return `""`.
+  malformed metadata JSON, each of which returns `""`.
 - verify: json_path(path="$.terminal", equals="")
 - raises: a parseable non-object JSON value is outside the accepted metadata shape
   and can raise instead of normalizing.
@@ -212,9 +217,12 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
 
 - sig: `scan_gates() -> list[dict]`
 - abstract: false
-- raises: none for a missing workspace mount; that case returns an empty list.
+- raises: none for a missing workspace mount.
+- raises: none for per-file read failures.
+- returns: an empty list when the configured workspace mount is missing.
 - verify: count(subject="awaiting gate entries returned", equals=0)
-- raises: none for per-file read failures; those cases skip the unreadable file.
+- returns: entries that exclude any file whose read failed, without aborting the
+  scan.
 - verify: count(subject="awaiting gate entries returned", equals=1)
 - code: groom/groom/sidecar.py::scan_gates
 - tests: groom/tests/test_sidecar.py::test_scan_gates_finds_awaiting_and_skips_git_and_non_awaiting

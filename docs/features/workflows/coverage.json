@@ -1,11 +1,11 @@
 {
-  "covered": 0,
-  "total": 1831,
-  "waived": 0,
+  "covered": 892,
+  "total": 892,
+  "waived": 54,
   "screens": 0,
   "generated_from": {
     "sourceRoot": "workflows",
     "excludes": [],
-    "commit": "9540ae0a"
+    "commit": "4635203d"
   }
 }

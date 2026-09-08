@@ -24,6 +24,16 @@ return the same JSON bodies whether a live sidecar RPC or a workspace-volume rea
 answered. That is what makes the fallback invisible to the browser: it renders one
 shape, and nothing in it records which side of the fallback produced it.
 
+The implementation anchors for this flow are `groom/groom/cli.py::sidecar_main`,
+`groom/groom/docker_io.py::sidecar_query`, `groom/groom/discovery.py::_resolve_container`,
+`groom/groom/discovery.py::_resolve_via_volumes`, `groom/groom/sidecar.py::snapshot`,
+`groom/groom/sidecar.py::_push`, `groom/groom/sidecar.py::push_progress`,
+`groom/groom/sidecar.py::push_blocked`, `groom/groom/sidecar.py::push_exited`,
+`groom/groom/sidecar.py::_handle_event`, `groom/groom/app.py::push_progress`,
+`groom/groom/app.py::push_blocked`, `groom/groom/app.py::push_exited`,
+`groom/groom/app.py::_sidecar_rpc`, `groom/groom/app.py::files`,
+`groom/groom/app.py::file_content`, and `groom/groom/app.py::diff`.
+
 - start: the host `groom` process is running or starting with access to Docker
 - verify: json_path(path="start.host_groom_process", matches="^(running|starting)$")
 - start: one or more workhorse workflow containers may be running, stopped, legacy, or already connected over the primary [sidecar live session](../flows/sidecar-live-session-sync.md)
@@ -150,7 +160,7 @@ cases usable.
 - verify: emitted(event="notify", count=1)
 - end: dashboard file/diff reads either use a live sidecar RPC result or return
   the documented workspace-volume fallback response.
-- verify: json_path(path="file-list response.paths", equals=["README.md"])
+- verify: json_path(path="file-list response.paths[0]", equals="README.md")
 - verify: json_path(path="file-content response.content", equals="")
 - detail: [live sidecar RPC and volume fallback selection](../concepts/live-sidecar-rpc-and-volume-fallback-selection.md)
 - detail: [blocked push flow contexts](../concepts/blocked-push-flow-contexts.md)
@@ -170,25 +180,8 @@ cases usable.
   groom/tests/test_discovery.py::test_scan_query_terminal_wins_over_gates,
   groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes,
   groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code,
-  groom/tests/test_app.py::test_push_exited_rejects_missing_container_id,
-  groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors,
-  groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path
-- code: groom/groom/cli.py::sidecar_main
-- code: groom/groom/docker_io.py::sidecar_query
-- code: groom/groom/discovery.py::_resolve_container
-- code: groom/groom/discovery.py::_resolve_via_volumes
-- code: groom/groom/sidecar.py::snapshot
-- code: groom/groom/sidecar.py::_push
-- code: groom/groom/sidecar.py::push_progress
-- code: groom/groom/sidecar.py::push_blocked
-- code: groom/groom/sidecar.py::push_exited
-- code: groom/groom/sidecar.py::_handle_event
-- code: groom/groom/app.py::push_progress
-- code: groom/groom/app.py::push_blocked
-- code: groom/groom/app.py::push_exited
-- code: groom/groom/app.py::_sidecar_rpc
-- code: groom/groom/app.py::files
-- code: groom/groom/app.py::file_content
-- code: groom/groom/app.py::diff
+   groom/tests/test_app.py::test_push_exited_rejects_missing_container_id,
+   groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors,
+   groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path
 - screenshot: docs/features/groom/gui/screenshots/residual-sidecar-push-and-query-fallback-files-file-selected.png
 - screenshot: docs/features/groom/gui/screenshots/residual-sidecar-push-and-query-fallback-diff-file-selected.png

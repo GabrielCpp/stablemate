@@ -18,8 +18,7 @@ The frame is broadcast fleet-wide rather than returned to the submitting socket.
 - detail: [dashboard answer command artifacts](concepts/dashboard-answer-command-artifacts.md)
 - detail: [dashboard frame dispatch](concepts/dashboard-frame-dispatch.md)
 - refs: [dashboard websocket answer frame](dashboard-websocket-answer-frame.md), [answer result](answer-result.md), [dashboard toast pusher](concepts/dashboard-toast-pusher.md)
-- verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event
-- verify: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
+The format is covered by `groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event` and `groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch`.
 
 ## Contract
 

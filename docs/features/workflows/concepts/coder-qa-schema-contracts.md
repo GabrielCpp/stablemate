@@ -117,7 +117,7 @@ so an omitted decision is retried rather than silently routed.
 ### method: RegressionSuites
 - sig: `RegressionSuites(suites: list[RegressionSuite] = []) -> RegressionSuites`
 - does: carries every resolved regression suite selected by the current QA plan
-- verify: json_path(path="$.suites", absent=false)
+- verify: json_path(path="$.suites[0].command", equals="run-journeys")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::RegressionSuites`
 
 ### method: FailureAttribution
@@ -259,7 +259,8 @@ so an omitted decision is retried rather than silently routed.
 ### FixWorklist.popped
 - sig: `FixWorklist.popped(self) -> FixWorklist`
 - does: removes the proved head scenario and resets the remaining worklist's per-head rework and problem state
-- verify: json_path(path="$.items", equals=[])
+- verify: removed(subject="the proved head scenario in the FixWorklist")
+- verify: count(subject="remaining FixWorklist items", equals=0)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::FixWorklist.popped`
 
 ### LaneClock.charged
@@ -284,7 +285,7 @@ so an omitted decision is retried rather than silently routed.
 ### QaLoop.update
 - sig: `QaLoop.update(self, **changes: object) -> QaLoop`
 - does: returns a copy of the loop with the named fields replaced
-- verify: json_path(path="$.qa", absent=false)
+- verify: json_path(path="$.context_rework", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.update`
 
 ### QaLoop.with_qa
@@ -296,7 +297,8 @@ so an omitted decision is retried rather than silently routed.
 ### QaLoop.with_lap
 - sig: `QaLoop.with_lap(self, lap: str, **changes: object) -> QaLoop`
 - does: records the latest repair class and adds it once to the tried-lap fingerprint
-- verify: json_path(path="$.tried_laps", equals=["code fix"])
+- verify: created(subject="the QaLoop tried_laps entry for a fresh repair class")
+- verify: json_path(path="$.tried_laps[0]", equals="code fix")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.with_lap`
 
 ### QaLoop.charged

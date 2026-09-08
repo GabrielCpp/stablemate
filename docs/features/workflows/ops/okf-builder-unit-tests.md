@@ -22,6 +22,7 @@ test`; this tier blocks that aggregate CI gate.
 - surfaces: [OKF-builder workflow composition root](../concepts/okf-builder-workflow-composition-root.md)
 - code: `workflows/Makefile::test`
 - working-directory: workflows
+- detail: [Workflow unit-test tiers](../concepts/workflow-unit-test-tiers.md)
 
 ## Steps
 

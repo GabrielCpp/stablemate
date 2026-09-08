@@ -97,7 +97,8 @@ one selectable story.
 ### commit_author
 
 Commits the author-owned documentation and Ostler ID registry on the current branch, using a
-distinct incomplete message on the final-gate failure edge.
+distinct incomplete message on the final-gate failure edge. A verification scenario invokes the
+node in a fixture repository and captures the created commit subject.
 
 - sig: `commit_author(logger: logging.Logger, mode: str = "epic", epic: str = "", bullet: str = "", roadmap: str = "", repo_dir: str = "", docs_dir: str = "docs", id_registry: str = ".agents/ids.json") -> Committed`
 - does: resolves the repository root
@@ -106,8 +107,20 @@ distinct incomplete message on the final-gate failure edge.
 - verify: count(subject="non-git author commits", equals=0)
 - does: scopes the commit to existing `docs_dir` and `id_registry` paths, omitting missing scopes
 - verify: count(subject="author commit scopes", equals=1)
-- does: uses an incomplete marker message for `mode="incomplete"` and otherwise derives the message from the mode, epic, bullet, and roadmap
-- verify: count(subject="author commit message modes", equals=1)
+- does: uses `author: INCOMPLETE — roadmap <roadmap stem>, do not merge` when `mode="incomplete"` has a roadmap
+- verify: json_path(path="commit.subject", equals="author: INCOMPLETE — roadmap account-access, do not merge")
+- does: uses `author: INCOMPLETE — unwritten stories, do not merge (<epic>)` when `mode="incomplete"` has an epic but no roadmap
+- verify: json_path(path="commit.subject", equals="author: INCOMPLETE — unwritten stories, do not merge (accounts)")
+- does: uses `author: INCOMPLETE — unwritten stories, do not merge` when `mode="incomplete"` has neither roadmap nor epic
+- verify: json_path(path="commit.subject", equals="author: INCOMPLETE — unwritten stories, do not merge")
+- does: uses `author: <epic> — <first bullet line>` when `mode="story"` has an epic
+- verify: json_path(path="commit.subject", equals="author: accounts — sign in")
+- does: uses `author: <canonical epic> — <first bullet line>` when `mode="epic-edit"` has an epic
+- verify: json_path(path="commit.subject", equals="author: account-access — define access")
+- does: uses `author: roadmap <roadmap stem>` when a non-incomplete commit has a roadmap
+- verify: json_path(path="commit.subject", equals="author: roadmap account-access")
+- does: uses `author: epic authoring` when no message-specific mode or context is supplied
+- verify: json_path(path="commit.subject", equals="author: epic authoring")
 - does: commits the selected scopes through the shared commit operation
 - verify: persists(subject="author-owned planning documents")
 - returns: returns `Committed` with `committed` indicating whether the scoped commit was created

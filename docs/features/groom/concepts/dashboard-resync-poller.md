@@ -12,9 +12,10 @@ The design constraint that makes it worth a document is that the resync must not
 - code: groom/groom/assets/dashboard.js::resync
 - code: groom/groom/assets/dashboard.js::startConnection
 - refs: [dashboard connection state machine](dashboard-connection-state-machine.md), [dashboard client store](dashboard-client-store.md), [groom projection module](groom-projection-module.md), [dashboard state payload](../dashboard-state-payload.md)
-- verify: groom/tests/test_dashboard_client.py::test_every_endpoint_is_read_as_json
-- verify: groom/tests/test_connection_state.py::test_open_but_silent_socket_goes_stale_and_starts_resyncing
-- verify: groom/tests/test_projection.py::test_state_message_is_json_serializable
+
+The behavior is covered by `groom/tests/test_dashboard_client.py::test_every_endpoint_is_read_as_json`,
+`groom/tests/test_connection_state.py::test_open_but_silent_socket_goes_stale_and_starts_resyncing`,
+and `groom/tests/test_projection.py::test_state_message_is_json_serializable`.
 
 ## Contract
 
@@ -24,8 +25,8 @@ The design constraint that makes it worth a document is that the resync must not
 - payload identity: the response body is byte-identical to what a pushed `state` frame carries. Both are `state_message` output.
 - single entry point: the parsed body goes through `applyState()` — the same function `onFrame` calls for a pushed `state` — so there is one merge rule and one render path.
 - reentrancy: an in-flight resync suppresses another. A slow response cannot stack requests, and a server that is slow rather than dead is not stampeded.
-- consistency: A non-`ok` response is discarded before parsing, so only an `ok` JSON response reaches `applyState()` and an error page cannot be applied as fleet state.
-- consistency: A network failure leaves the connection state and `lastResyncTs` unchanged, so `evaluateConnection()` retries at the next eligible interval.
+- consistency: dashboard-state-payload — a non-`ok` response is discarded before parsing, so only an `ok` JSON response reaches `applyState()` and an error page cannot be applied as fleet state.
+- consistency: field-last-resync-ts — a network failure leaves it, and the connection state, unchanged, so `evaluateConnection()` retries at the next eligible interval.
 - last-resync stamp: recorded only after a successful apply, so a failing fetch does not push the next attempt out by a full interval.
 - visibility resync: returning to a backgrounded tab re-evaluates the connection immediately and forces one resync when the phase is not `live`, instead of showing a stale fleet for up to a full interval.
 - scope: fleet-wide state only. The open run's detail is not resynced here — it is re-delivered by re-declaring the subscription in the [run watch registry](run-watch-registry.md) on the next socket open. Per-selection panels (files, diff, traces, repositories) are fetched by their own handlers on demand and are not part of a resync.
@@ -89,17 +90,17 @@ The design constraint that makes it worth a document is that the resync must not
 - step: The socket goes silent past 15 seconds; the connection state machine returns `stale` with `resyncing` set.
 - step: The chip changes so the operator can see the tab is no longer being pushed to.
 - step: The next evaluation tick past the 5-second spacing calls the poller.
-- consistency: A successful degraded-tab resync passes the `/api/state` response body through `applyState()`, the same state entry point used for pushed frames.
+- consistency: dashboard-state-payload — a successful degraded-tab resync passes the `/api/state` response body through `applyState()`, the same state entry point used for pushed frames.
 - verify: visible(locator="fleet list", text="coder-001")
 - step: When a frame finally does arrive, recency is restored, the phase returns to `live`, and resyncing stops on the next tick. No reload, no lost selection, no second code path.
 
 ## Failure Semantics
 
-- consistency: A rejected `/api/state` fetch applies no fleet state.
-- consistency: A rejected `/api/state` fetch leaves `lastResyncTs` unchanged, so the next eligible interval retries it.
-- consistency: Socket observations that remain unavailable past the offline threshold derive the `offline` connection phase.
-- consistency: An offline dashboard retains its last successfully applied fleet state.
-- consistency: The connection chip labels the offline fleet state `offline` rather than presenting it as current.
+- consistency: field-runs — a rejected `/api/state` fetch applies no fleet state.
+- consistency: field-last-resync-ts — a rejected `/api/state` fetch leaves it unchanged, so the next eligible interval retries it.
+- consistency: field-connection-phase — socket observations that remain unavailable past the offline threshold derive the `offline` connection phase.
+- consistency: field-runs — an offline dashboard retains its last successfully applied fleet state.
+- consistency: connection-chip — the offline fleet state is labeled `offline` rather than presented as current.
 - Error response: a non-`ok` status is discarded before parsing, so an HTML error page cannot be mistaken for a state payload.
 - Slow server: the in-flight guard means at most one outstanding request per tab; requests do not queue behind a slow one.
 - Recovery race: a push and a resync can both apply within the same second. Because both carry the whole fleet and go through the same merge, the later write simply wins and neither can leave a partially-updated list.

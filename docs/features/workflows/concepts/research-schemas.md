@@ -214,29 +214,41 @@ checkpoint value carrying all eight research counters and three operator grants.
 ### method: HistoryEvent
 - sig: `HistoryEvent(date: str = "", event: str = "", gate_id: str = "", note: str = "", source: str = "loop", fingerprint: str = "") -> HistoryEvent`
 - does: carries one line of `history.jsonl` — what the loop did, when, to which gate
+- verify: json_path(path="$.event", equals="")
 - does: `source` is `loop` for lines the workflow wrote, `bootstrap` for lines parsed from prose
+- verify: json_path(path="$.source", equals="loop")
 - code: `workflows/src/workhorse_workflows/research/schemas.py::HistoryEvent`
 
 ### method: JobSummary
 - sig: `JobSummary(gate_id: str = "", finished_at: str = "", exit_code: int = 0, wall_s: float = 0.0, kill_reason: str = "", n_completed: int = 0, n_planned: int = 0, seeds: list[int] = [], families: dict[str, list[float]] = {}, family_mean: dict[str, float] = {}, family_sd: dict[str, float] = {}, scalars: dict[str, float] = {}, flags: list[str] = []) -> JobSummary`
 - does: carries what one `jobs/<gate>/` directory says, per seed family
+- verify: json_path(path="$.gate_id", equals="")
 - does: holds per-seed values extracted from `metrics` and their mean and SD
+- verify: count(subject="per-seed mean values", equals=0)
 - does: holds scalar metrics that are not part of a seed family
+- verify: count(subject="scalar metrics", equals=0)
 - does: holds metric names whose value was truthy and whose name reads as a flag
+- verify: count(subject="flag metric names", equals=0)
 - code: `workflows/src/workhorse_workflows/research/schemas.py::JobSummary`
 
 ### method: MetricPoint
 - sig: `MetricPoint(date: str = "", value: float = 0.0, count: int = 0, n: int = 0, gate_id: str = "", source: str = "") -> MetricPoint`
 - does: carries one dated observation of the frozen metric
+- verify: json_path(path="$.value", equals=0.0)
 - code: `workflows/src/workhorse_workflows/research/schemas.py::MetricPoint`
 
 ### method: Resolvability
 - sig: `Resolvability(required_effect: float = 0.0, pooled_se: float = 0.0, per_seed_required: float = 0.0, per_seed_se: float = 0.0, observed_seed_sd: float = 0.0, ratio: float = 0.0, resolvable: bool = False, statement: str = "") -> Resolvability`
 - does: carries whether the frozen target's effect can be told from seed noise on its own eval
+- verify: json_path(path="$.resolvable", equals=false)
 - does: holds pooled binomial SE at baseline rate over `n`
+- verify: json_path(path="$.pooled_se", equals=0.0)
 - does: holds per-seed required tasks and SE when seeds are known
+- verify: json_path(path="$.per_seed_required", equals=0.0)
 - does: holds observed per-seed spread when a seed family for the metric exists
+- verify: json_path(path="$.observed_seed_sd", equals=0.0)
 - does: holds ratio of required effect to per-seed SE and resolvability verdict
+- verify: json_path(path="$.ratio", equals=0.0)
 - code: `workflows/src/workhorse_workflows/research/schemas.py::Resolvability`
 
 ### method: Dossier
@@ -266,24 +278,30 @@ checkpoint value carrying all eight research counters and three operator grants.
 ### method: ProbeOrder
 - sig: `ProbeOrder(gate_id: str = "", question: str = "", expected_cost_s: int = 0, kill_if: str = "") -> ProbeOrder`
 - does: carries a cheap, decisive measurement the lead orders before any more gate work
+- verify: json_path(path="$.gate_id", equals="")
 - code: `workflows/src/workhorse_workflows/research/schemas.py::ProbeOrder`
 
 ### method: NewTarget
 - sig: `NewTarget(metric: str = "", dataset: str = "", threshold: str = "", threshold_count: int = 0, n: int = 0, seeds: list[int] = [], baseline: str = "", baseline_count: int = 0, deadline: str = "", why_resolvable: str = "") -> NewTarget`
 - does: carries a re-chartered frozen target
+- verify: json_path(path="$.metric", equals="")
 - does: `why_resolvable` is checked in code, not trusted from agent
+- verify: json_path(path="$.why_resolvable", equals="")
 - code: `workflows/src/workhorse_workflows/research/schemas.py::NewTarget`
 
 ### method: ProgramReview
 - sig: `ProgramReview(verdict: str = "", circling: bool = False, triggers_confirmed: list[str] = [], reason: str = "", evidence: list[str] = [], probe: ProbeOrder = ProbeOrder(), cache_gate_id: str = "", cache_dir: str = "", recharter: NewTarget = NewTarget(), operator_question: str = "", confidence: str = "") -> ProgramReview`
 - does: carries the lead's program-level verdict on a dossier
+- verify: json_path(path="$.verdict", equals="")
 - does: `verdict` is one of `continue`, `probe_first`, `score_from_cache`, `recharter`, `bank`, `stop_negative`, `operator`
 - does: default `""` matches no arm and parks
+- verify: json_path(path="$.verdict", equals="")
 - code: `workflows/src/workhorse_workflows/research/schemas.py::ProgramReview`
 
 ### method: RecharterResult
 - sig: `RecharterResult(status: str = "", new_target: NewTarget = NewTarget(), probe_doc_path: str = "", cache_doc_path: str = "", readme_path: str = "", progress_updated: bool = False, reason: str = "") -> RecharterResult`
 - does: carries what `program-recharter` wrote into the program folder
+- verify: json_path(path="$.progress_updated", equals=false)
 - code: `workflows/src/workhorse_workflows/research/schemas.py::RecharterResult`
 
 ## Budget

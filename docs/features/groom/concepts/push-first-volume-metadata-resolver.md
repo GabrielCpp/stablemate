@@ -7,8 +7,11 @@ title: Push-first volume metadata resolver
 
 The push-first volume metadata resolver fills Docker-derived volume fields for a [workflow container](workflow-container.md) that reaches groom through a residual push before a full discovery scan has populated the [workflow registry](workflow-registry.md). The [receive progress push](../http/groom.md#receive-progress-push), [receive blocked push](../http/groom.md#receive-blocked-push), [receive exited push](../http/groom.md#receive-exited-push), and [sidecar hello applier](sidecar-hello-applier.md) paths use it before applying visible state from a first push or sidecar snapshot that lacks Docker-level volume names. It delegates raw Docker metadata retrieval to the [Docker inspection reader](docker-inspection-reader.md), consumes the resulting [Docker inspect container object](../docker-inspect-container-object.md) through the [workflow-container conversion](../docker-inspect-container-object.md#consumer-workflow-container-conversion) implemented by [method-container-from-inspect](workflow-discovery-scan.md#method-container-from-inspect), and writes back through the [workflow registry](workflow-registry.md#method-upsert-workflow) partial-update rule.
 
+Use this resolver for the callable behavior that hydrates missing registry metadata before push- or sidecar-first state updates. Use the [Docker inspect container object's push-first volume hydration consumer](../docker-inspect-container-object.md#consumer-push-first-volume-hydration) for the inspect-object fields it reads and the metadata it emits. These are complementary views of the same helper, not alternative implementations.
+
 - code: groom/groom/app.py::_ensure_volumes
-- verify: groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code
+- rule: use the resolver for push- or sidecar-first metadata-hydration behavior and the Docker inspect consumer for its input-format semantics; neither view supersedes the other.
+- tests: groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code
 - refs: [receive progress push](../http/groom.md#receive-progress-push), [receive blocked push](../http/groom.md#receive-blocked-push), [receive exited push](../http/groom.md#receive-exited-push), [sidecar hello applier](sidecar-hello-applier.md), [Docker inspection reader](docker-inspection-reader.md), [Docker inspect container object](../docker-inspect-container-object.md), [workflow-container conversion](../docker-inspect-container-object.md#consumer-workflow-container-conversion), [method-container-from-inspect](workflow-discovery-scan.md#method-container-from-inspect), [workflow container](workflow-container.md), [workflow registry upsert](workflow-registry.md#method-upsert-workflow)
 
 ## Contract
@@ -27,8 +30,8 @@ The push-first volume metadata resolver fills Docker-derived volume fields for a
 - update scope: only `workspace_volume`, `runs_volume`, and `workflow_type` are supplied to the registry upsert, so name, repository identity, lifecycle state, current node, run id, exit code, gates, and timestamp are never replaced by this resolver.
 - empty-value rule: converted empty strings for `workspace_volume`, `runs_volume`, or `workflow_type` are still non-null values for the registry upsert, so they may be assigned on a newly created record or replace those fields on an existing record that lacked `workspace_volume` and therefore did not short-circuit.
 - observability: normal completion emits no response fragment, log event, notification script, or return payload; downstream endpoint responses and broadcasts come from the caller after its own mutation succeeds.
-- consistency: volume metadata hydration mutates only the workflow registry; it does not broadcast dashboard state or produce an HTTP or websocket response.
-- verify: unchanged(subject="dashboard websocket message queue")
+- consistency: workflow-registry — volume metadata hydration mutates only the workflow registry.
+- consistency: workflow-registry — volume metadata hydration does not broadcast dashboard state, produce HTTP or websocket responses, or alter the message queue.
 
 ## Effects
 
@@ -47,10 +50,12 @@ The push-first volume metadata resolver fills Docker-derived volume fields for a
 
 - sig: `async _ensure_volumes(container_id: str) -> None`
 - abstract: false
+- does: produces no registry mutation when Docker command failure, invalid JSON, or empty inspect output occurs.
+- verify: unchanged(subject="workflow registry after Docker inspect returns command failure, invalid JSON, or empty output")
 - raises: propagates process-launch or timeout failures from Docker inspection, valid-JSON shape errors from the inspection reader, workflow-container conversion errors, thread handoff failures, or registry-upsert assignment errors.
 - verify: unchanged(subject="existing workflow registry fields other than workspace_volume, runs_volume, and workflow_type")
-- raises: does not raise for Docker command failure, invalid JSON, or empty inspect output; these cases produce no registry mutation.
-- verify: unchanged(subject="workflow registry after Docker inspect returns command failure, invalid JSON, or empty output")
+- raises: does not raise for Docker command failure, invalid JSON, or empty inspect output.
+- verify: json_path(path="exception.type", absent=true)
 - returns: immediately when the entry exists and its `workspace_volume` is non-empty.
 - verify: unchanged(subject="workflow registry entry for an existing container with a non-empty workspace volume")
 - code: groom/groom/app.py::_ensure_volumes
@@ -61,8 +66,7 @@ Ensure that the workflow registry entry for one already-normalized container id 
 #### Effects
 
 - Reads: `state.WORKFLOWS[container_id]` when present.
-- Calls: [Docker inspection reader](docker-inspection-reader.md) with the supplied container id when the entry is absent or lacks `workspace_volume`.
-- Returns: without mutation when the inspection reader returns no metadata.
+- Calls: [Docker inspection reader](docker-inspection-reader.md) with the supplied container id when the entry is absent or lacks `workspace_volume`, returning without mutation when that reader finds no metadata (already the method's `raises:` no-mutation claim above, restated here for the call sequence).
 - Calls: [workflow-container conversion](../docker-inspect-container-object.md#consumer-workflow-container-conversion) with the raw inspection object when metadata exists.
 - Calls: [workflow registry upsert](workflow-registry.md#method-upsert-workflow) with the supplied id plus `workspace_volume`, `runs_volume`, and `workflow_type` from the converted workflow container.
 - Creates: a registry entry named from the supplied id when the id was not present before this resolver and Docker inspection returned metadata, because no display name is passed to upsert.
@@ -73,17 +77,26 @@ Ensure that the workflow registry entry for one already-normalized container id 
 
 ### algorithm-push-first-volume-hydration
 
-- step: Receive a container id that the caller has already chosen as the workflow registry key.
-- step: Look up the current workflow registry entry for that id.
-- step: If an entry exists and already has a non-empty workspace-volume field, stop; the resolver treats the existing metadata as authoritative enough for downstream volume operations.
-- step: Ask the Docker inspection reader for raw inspect metadata for the same id on a worker thread so the asynchronous handler does not perform the blocking Docker call on the event loop.
-- step: If Docker returns no usable inspect object, stop without creating a workflow record; the caller continues its own event handling with whatever payload data it has.
-- step: Convert the raw inspect object into a transient workflow-container view using the shared Docker-inspect conversion contract, without first applying the workhorse-container classifier or requiring `/workflow`, `/runs`, and `/workspace` mounts.
-- step: Upsert the registry entry under the caller's id with only the converted workspace volume, runs volume, and workflow type; empty converted strings are still assigned because the registry ignores only `None` values.
+Given a container id the caller has already chosen as the workflow registry key, the resolver
+looks up the current registry entry for that id. If an entry exists and already has a non-empty
+workspace-volume field, it stops there, treating the existing metadata as authoritative enough
+for downstream volume operations — this short-circuit and its scope are the Contract section's
+idempotency and completeness-boundary bullets. Otherwise it asks the Docker inspection reader for
+raw inspect metadata for the same id on a worker thread, so the asynchronous handler does not
+perform the blocking Docker call on the event loop, per the Contract section's thread-boundary
+bullet. If Docker returns no usable inspect object, it stops without creating a workflow record
+and the caller continues its own event handling with whatever payload data it has, per the
+Contract section's missing-inspection bullet. Otherwise it converts the raw inspect object into a
+transient workflow-container view using the shared Docker-inspect conversion contract, without
+first applying the workhorse-container classifier or requiring `/workflow`, `/runs`, and
+`/workspace` mounts, per the Contract section's conversion-scope bullet. Finally it upserts the
+registry entry under the caller's id with only the converted workspace volume, runs volume, and
+workflow type; empty converted strings are still assigned because the registry ignores only
+`None` values, per the Contract section's empty-value-rule bullet.
 
 ## Failure Semantics
 
-- consistency: a Docker inspect command that returns a non-zero status leaves the workflow registry unchanged.
+- consistency: workflow-registry — a Docker inspect command that returns a non-zero status leaves the workflow registry unchanged.
 - verify: unchanged(subject="workflow registry after Docker inspect exits non-zero")
 - invalid-json: invalid Docker inspect JSON is treated as missing inspection data and produces no mutation.
 - empty-inspect-output: a successful Docker inspect command whose parsed JSON array is empty is treated as missing inspection data and produces no mutation.

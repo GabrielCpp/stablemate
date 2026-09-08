@@ -24,3 +24,4 @@ as the workflow result.
 - semantics: the validated friendly sentence returned by the agent turn
 - verify: json_path(path="$.greeting", equals="Hello, globex.")
 - code: `workflows/src/workhorse_workflows/hello_world/workflow.py::Greeting`
+- detail: [hello-world greeting context](concepts/hello-world-greeting-context.md)

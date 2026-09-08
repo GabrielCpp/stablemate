@@ -22,3 +22,4 @@ pane's source data.
 
 - code: groom/groom/assets/dashboard.js::buildTree
 - rule: select workspace file list data as the Files pane's flat path input; select dashboard path tree only as the nested render-time result of `buildTree`; neither format is a replacement for the other.
+- detail: [dashboard tree selection](dashboard-tree-selection.md)

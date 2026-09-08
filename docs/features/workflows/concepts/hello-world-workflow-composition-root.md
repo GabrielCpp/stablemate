@@ -21,6 +21,10 @@ The registry includes the `hello-world` blueprint and supplies a deterministic g
 - tests: `workflows/tests/test_hello_world.py::test_the_documented_command_is_declared`
 - tests: `workflows/tests/test_hello_world.py::test_the_documented_dry_run_walks_the_machine_green`
 - tests: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting`
+- detail: [Workflow kit tools](workflow-kit-tools.md)
+- detail: [Workflow kit git](workflow-kit-git.md)
+- detail: [Hello-world main concept selection](hello-world-main-concept-selection.md)
+- detail: [Hello-world main contexts](hello-world-main-contexts.md)
 
 ## Methods
 

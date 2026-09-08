@@ -16,5 +16,4 @@ when following the discovery fallback: its candidate-only result must be reread 
 before Groom creates a gate record. Neither view supersedes the other because callers invoke
 the same function.
 
-- code: groom/groom/docker_io.py::grep_awaiting_files
 - rule: use the module method for the shared helper contract and the awaiting-file reader method for its workflow-discovery fallback context; both describe the same callable

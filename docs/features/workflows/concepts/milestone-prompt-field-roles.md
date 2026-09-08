@@ -14,3 +14,4 @@ the supplied input rather than a result attribute.
 - code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.start`
 - code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneResult`
 - rule: use `roadmap` to identify the approved source item, `status` to select blocked versus validation routing, and `notes` as the blocked-turn message; no field replaces or ranks another
+- detail: [milestone result field roles](milestone-result-field-roles.md)

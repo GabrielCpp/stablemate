@@ -13,6 +13,8 @@ also requires every listed story document to contain its required prose. A selec
 resolved back to Ostler's numbered directory name before it is passed to later nodes.
 
 - code: `workflows/src/workhorse_workflows/author/main/nodes/epics.py::_pick_epic`
+- detail: [Epic selection and choice roles](epic-selection-and-choice-roles.md)
+- detail: [Epic selection documentation roles](epic-selection-documentation-roles.md)
 - detail: [Author main package](author-main-package.md)
 - detail: [Author shared schemas](author-shared-schemas.md)
 - detail: [Epic choice](../epic-choice.md)

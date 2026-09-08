@@ -8,6 +8,11 @@ title: workhorse-coder
 - binary: `workhorse-coder`
 - code: `workflows/src/workhorse_workflows/coder/workflow.py::main`
 - detail: [coder shared library](concepts/coder-shared-library.md)
+- detail: [operational runbooks index](concepts/ops-runbooks.md)
+
+Runs the Coder registry described by the [Coder workflow composition root](concepts/coder-workflow-composition-root.md). `run` selects its default Coder flow or one of the registered coder flows.
+
+The [workhorse-coder driver runbook](ops/workhorse-coder.md) exercises this CLI in dry-run mode. The [coder unit tests runbook](ops/coder-unit-tests.md) drives the full composition root with real workflow nodes.
 
 ## Commands
 

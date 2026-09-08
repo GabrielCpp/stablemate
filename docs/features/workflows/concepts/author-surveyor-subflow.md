@@ -37,6 +37,11 @@ re-planning completed work.
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_two_components_are_planned_assessed_verified_and_emitted`
 - tests: `workflows/tests/author/surveyor/test_config.py::test_the_config_derives_every_path_from_survey_dir`
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_one_bullet_per_cluster_lands_in_the_fenced_section`
+- detail: [survey plan prompt](../survey-plan-prompt.md)
+- detail: [survey assessment prompt](../survey-assessment-prompt.md)
+- detail: [survey record repair prompt](../survey-record-repair-prompt.md)
+- detail: [survey partition prompt](../survey-partition-prompt.md)
+- detail: [survey operator diagnosis prompt](../survey-operator-diagnosis-prompt.md)
 - detail: [shared survey library](survey-shared-library.md)
 - detail: [author shared paths](author-shared-paths.md)
 - detail: [author shared schemas](author-shared-schemas.md)
@@ -205,6 +210,8 @@ re-planning completed work.
 - code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.emit`
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_the_manifest_carries_every_unit_and_what_covers_it`
 
+## Nodes
+
 ### load_survey_config
 - sig: `load_survey_config(logger: logging.Logger, rubric: str = "docs/survey/rubric.md", survey_dir: str = "docs/survey", repo_dir: str = "") -> SurveyConfig`
 - does: strips blank rubric and survey-directory parameters back to their defaults
@@ -217,12 +224,14 @@ re-planning completed work.
 - verify: count(subject="survey configuration derived artifact paths", equals=1)
 - raises: raises `WorkflowFailed` with the resolved rubric path and parameter guidance when the rubric is absent
 - verify: count(subject="missing survey rubric failures", equals=1)
-- returns: returns a `SurveyConfig` whose survey artifact paths are repository-relative and whose repository root is resolved
+- emits: a `SurveyConfig` whose survey artifact paths are repository-relative
+- verify: count(subject="loaded survey configurations", equals=1)
+- emits: a `SurveyConfig` whose repository root is resolved
 - verify: count(subject="loaded survey configurations", equals=1)
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::load_survey_config`
 - tests: `workflows/tests/author/surveyor/test_config.py::test_a_missing_rubric_halts_the_run`
 
-### check_inventory
+### method: check_inventory
 - sig: `check_inventory(logger: logging.Logger, inventory: str = "docs/survey/inventory.json", rules: str = "docs/survey/units.yml", repo_dir: str = "") -> InventoryCheck`
 - does: strips blank inventory and rules parameters back to their defaults
 - verify: count(subject="inventory check default normalizations", equals=1)
@@ -243,7 +252,7 @@ re-planning completed work.
 - verify: count(subject="partition validation path resolutions", equals=1)
 - does: rejects a missing partition file or a partition file that is not valid YAML
 - verify: count(subject="partition artifact read failures", equals=1)
-- does: rejects an unreadable or invalid JSON inventory
+- consistency rule: survey-inventory — rejects an unreadable or invalid JSON inventory
 - verify: count(subject="partition inventory read failures", equals=1)
 - does: rejects a partition without a non-empty `clusters` list
 - verify: count(subject="empty partition cluster-list failures", equals=1)
@@ -274,7 +283,7 @@ re-planning completed work.
 - verify: count(subject="generated survey backlog bullets", equals=1)
 - does: replaces an existing marker-fenced survey section without changing backlog content outside the markers
 - verify: unchanged(subject="backlog outside the survey markers")
-- does: creates a missing backlog with a `# Backlog` heading and `## Survey findings` section before the generated markers
+- persistence: survey-backlog-section — creates a missing survey backlog with a `# Backlog` heading and `## Survey findings` section before the generated markers when no backlog file exists
 - verify: created(subject="the survey backlog")
 - verify: visible(locator="backlog survey findings", text="## Survey findings")
 - does: writes a version-one unit manifest containing every inventory unit's id, path, kind, status, covering bullet ids, and cluster ids
@@ -292,9 +301,9 @@ re-planning completed work.
 - verify: visible(locator="generated cluster bullet", text="survey-")
 - does: includes the remediation pattern, unit count, and strategy in the bullet hints
 - verify: visible(locator="cluster bullet hints", text="pattern:")
-- does: adds non-empty cluster notes as a single-line hint with embedded newlines flattened to spaces
-- verify: created(subject="the cluster notes hint")
-- verify: visible(locator="cluster notes hint", text=" ")
+- emits: a single-line cluster-notes hint with embedded newlines flattened to spaces, only when the cluster's notes are non-empty
+  - verify: created(subject="the cluster notes hint")
+  - verify: visible(locator="cluster notes hint", text=" ")
 - returns: returns one markdown list item string for the supplied cluster
 - verify: count(subject="rendered cluster bullets", equals=1)
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::bullet_for`
@@ -304,9 +313,10 @@ re-planning completed work.
 - sig: `replace_section(text: str, section: str) -> str`
 - does: replaces the content from the first survey begin marker through the following end marker
 - verify: unchanged(subject="backlog content outside survey markers")
-- does: appends a generated survey section beneath an existing document, or creates the backlog heading when the document is empty
-- verify: created(subject="the survey backlog")
+- persistence: survey-backlog-section — appends a generated survey section beneath an existing document
 - verify: visible(locator="appended survey section", text="## Survey findings")
+- persistence: survey-backlog-section — creates the `# Backlog` heading when the document is empty
+- verify: created(subject="the survey backlog")
 - returns: returns text containing exactly the supplied generated section and preserving unrelated text
 - verify: count(subject="survey section replacements", equals=1)
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::replace_section`

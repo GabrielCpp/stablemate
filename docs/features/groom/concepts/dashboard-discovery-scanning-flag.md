@@ -10,10 +10,12 @@ Dashboard discovery scanning flag is groom's process-local boolean owned by the 
 The flag exists because an empty fleet is two different facts. *Not scanned yet* and *scanned and genuinely empty* look identical in the run list, and only the server knows which one it is holding. Sending the boolean rather than the sentence keeps that judgement on the server and the wording in the browser, which is the same split every other field on the payload obeys.
 
 - code: groom/groom/state.py::SCANNING
-- verify: groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes
-- verify: groom/tests/test_app.py::test_background_scan_clears_scanning_on_error
-- verify: groom/tests/test_projection.py::test_state_message_reports_whether_discovery_is_still_running
-- verify: groom/tests/test_app.py::test_api_state_and_the_socket_push_the_same_payload
+- detail: [scanning flag view precedence](scanning-flag-view-precedence.md)
+
+The behavior is covered by `groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes`,
+`groom/tests/test_app.py::test_background_scan_clears_scanning_on_error`,
+`groom/tests/test_projection.py::test_state_message_reports_whether_discovery_is_still_running`,
+and `groom/tests/test_app.py::test_api_state_and_the_socket_push_the_same_payload`.
 
 ## Contract
 
@@ -56,7 +58,7 @@ The flag exists because an empty fleet is two different facts. *Not scanned yet*
 - startup scan failure: initial reconciliation exceptions do not strand the flag; the cleanup path still sets it to `False` before the exception leaves the background scan coroutine.
 - manual refresh start: [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) sets the flag to `True` before Docker reconciliation starts and before the pre-scan dashboard shell broadcast.
 - manual refresh completion: [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) clears the flag in the reconciliation `finally` path, so success and reconciliation errors both remove the advertised loading state.
-- consistency: a failed pre-scan dashboard shell broadcast leaves the flag `True` because the broadcast occurs before the reconciliation cleanup path.
+- consistency: dashboard-discovery-scanning-flag — a failed pre-scan dashboard shell broadcast leaves the flag `True` because the broadcast occurs before the reconciliation cleanup path.
 - verify: json_path(path="$.scanning", equals=true)
 - failed post-scan broadcast: if the post-scan dashboard shell broadcast raises after successful reconciliation, the flag has already been cleared to `False`.
 - non-effects: reading the flag from renderers does not mutate workflow containers, gate records, websocket queues, Docker state, sidecar state, answer logs, answer files, or gate files.
@@ -65,7 +67,7 @@ The flag exists because an empty fleet is two different facts. *Not scanned yet*
 
 - [state message](groom-projection-module.md#method-state-message): the only direct server-side reader. It copies the flag into the payload's `scanning` field and makes no wording decision from it.
 - [dashboard state payload](../dashboard-state-payload.md#field-scanning): carries the boolean verbatim on the socket push and on the HTTP resync body alike.
-- consistency: [serve dashboard state](../http/groom.md#serve-dashboard-state) returns the projection's current `scanning` value on HTTP resync, so a polling client sees the same flag as a socket client.
+- consistency: dashboard-discovery-scanning-flag — [serve dashboard state](../http/groom.md#serve-dashboard-state) returns the projection's current `scanning` value on HTTP resync, so a polling client sees the same flag as a socket client.
 - verify: json_path(path="$.scanning", equals=true)
 - [dashboard shell broadcaster](dashboard-shell-broadcaster.md): observes the flag through the projection on every broadcast — after startup discovery, manual refresh start and completion, sidecar updates, push updates, answer handling, and every live-clock tick.
 - the browser's fleet island: the only reader that turns the boolean into words, and only when the fleet is empty and the filter box is too.

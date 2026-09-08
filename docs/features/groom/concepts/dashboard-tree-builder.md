@@ -31,12 +31,14 @@ decision, since which directories start open and how siblings sort are questions
 renderer answers. Flat paths are the narrow contract between them.
 
 - code: groom/groom/assets/dashboard.js::buildTree
+- rule: this concept is the one implementation of `buildTree`; [dashboard tree flow selection](dashboard-tree-flow-selection.md) and [dashboard tree input selection](dashboard-tree-input-selection.md) name two orthogonal choices a caller makes before reaching it — which journey (Files vs Diff) and which input shape — not a second implementation of it. No ranking applies among the three; each documents a different question about the same single builder.
 - tests: groom/tests/test_tree_builder.py::test_flat_paths_become_directory_nodes_and_file_leaves
 - tests: groom/tests/test_tree_builder.py::test_paths_sharing_a_prefix_reuse_one_directory_node
 - tests: groom/tests/test_tree_builder.py::test_the_whole_entry_rides_along_on_the_leaf
 - tests: groom/tests/test_tree_builder.py::test_insertion_order_is_preserved_and_nothing_is_deduplicated
 - tests: groom/tests/test_tree_builder.py::test_an_empty_entry_list_yields_an_empty_root
 - tests: groom/tests/test_tree_builder.py::test_a_non_string_path_is_coerced_rather_than_rejected
+- detail: [dashboard tree selection](dashboard-tree-selection.md)
 
 ## Contract
 
@@ -50,9 +52,9 @@ renderer answers. Flat paths are the narrow contract between them.
 - leaf shape: each entry produces exactly one leaf holding `name` — the final segment — and `entry`, the caller's object by reference.
 - duplicate handling: identical paths append independent leaves to the same node. Nothing is deduplicated, overwritten, or merged; a rename legitimately puts the same name on the wire twice.
 - ordering: insertion order is preserved inside each node's `files` array and in directory-key insertion order. Sorting is the renderer's, applied per level to a copy at render time.
-- consistency: every directory name returned by the builder is rendered as a Preact text child, never as a markup string.
+- consistency: dashboard-path-tree — every directory name returned by the builder is rendered as a Preact text child, never as a markup string.
 - verify: visible(locator=".tree-dir-head", text="<script>alert(1)</script>")
-- consistency: every file name returned by the builder is rendered as a Preact text child, never as a markup string.
+- consistency: dashboard-path-tree — every file name returned by the builder is rendered as a Preact text child, never as a markup string.
 - verify: visible(locator=".tree-file", text="<script>alert(1)</script>")
 - validation: repeated slashes, dot segments, traversal-looking names, empty segments, and duplicate paths are all accepted as ordinary strings. The builder is not a path sanitizer; the server-side readers guard the filesystem.
 - failure boundary: `entries` must be array-like enough to provide `forEach`. Invalid caller input raises an ordinary JavaScript error rather than being reported through any domain-specific channel.

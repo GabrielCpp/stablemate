@@ -23,3 +23,4 @@ renderers, not different directory-toggle implementations.
 - code: groom/groom/assets/dashboard.js::buildTree
 - code: groom/groom/assets/dashboard.js::TreeDir
 - rule: use the Files directory toggle while browsing workspace files and the Diff directory toggle while inspecting working-tree changes; neither is preferred because `TreeDir` implements the same local directory expansion for both panes.
+- detail: [dashboard tree selection](dashboard-tree-selection.md)

@@ -27,6 +27,7 @@ JSON matching the [greeting](hello-world-greeting.md) shape without reading or w
 - semantics: the name the agent must greet
 - verify: json_path(path="$.name", equals="globex")
 - code: `workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld.greet`
+- detail: [hello-world greeting prompt input fields](concepts/hello-world-greeting-prompt-input-fields.md)
 
 ### letters
 
@@ -40,6 +41,7 @@ JSON matching the [greeting](hello-world-greeting.md) shape without reading or w
 - semantics: the name character count the agent must mention
 - verify: json_path(path="$.letters", equals=6)
 - code: `workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld.greet`
+- detail: [hello-world greeting prompt input fields](concepts/hello-world-greeting-prompt-input-fields.md)
 
 ### greeting
 
@@ -53,3 +55,4 @@ JSON matching the [greeting](hello-world-greeting.md) shape without reading or w
 - semantics: the one-sentence friendly greeting output after JSON validation
 - verify: json_path(path="$.greeting", equals="Hello, globex.")
 - code: `workflows/src/workhorse_workflows/hello_world/workflow.py::Greeting`
+- detail: [hello-world greeting context](concepts/hello-world-greeting-context.md)

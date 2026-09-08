@@ -22,6 +22,7 @@ The review flow keeps every finding; confidence controls whether it is mandatory
 - semantics: repository-relative location or other target of the review issue
 - verify: json_path(path="$.target", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding`
+- detail: [review finding core fields](concepts/review-finding-core-fields.md)
 
 ### issue
 - type: `str`
@@ -30,6 +31,7 @@ The review flow keeps every finding; confidence controls whether it is mandatory
 - semantics: problem identified by the review
 - verify: json_path(path="$.issue", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding`
+- detail: [review finding core fields](concepts/review-finding-core-fields.md)
 
 ### repair
 - type: `str`
@@ -38,6 +40,7 @@ The review flow keeps every finding; confidence controls whether it is mandatory
 - semantics: smallest change that addresses the review issue
 - verify: json_path(path="$.repair", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding`
+- detail: [review finding core fields](concepts/review-finding-core-fields.md)
 
 ### category
 - type: literal `Bug`, `Standard`, or `Reuse`

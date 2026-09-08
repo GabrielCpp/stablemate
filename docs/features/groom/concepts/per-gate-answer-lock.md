@@ -15,7 +15,7 @@ Per-gate answer lock is groom's process-local serialization primitive for one op
 
 - scope: one in-memory lock registry per groom process; locks coordinate only concurrent asynchronous answer handlers inside that process and do not coordinate with another groom process, Docker, the container's own wait script, or direct file edits outside groom.
 - identity: a lock is scoped to exactly one `(container_id, file_path)` pair, so two submissions for the same gate serialize and submissions for different gates can proceed independently.
-- concurrency: For a pair not yet requested in the current process, the first request creates an unlocked `asyncio.Lock`, records it under the computed lock key before returning, and later requests return that same lock object until it is forgotten or the process exits.
+- concurrency: lock-registry-entry — for a pair not yet requested in the current process, the first request creates an unlocked `asyncio.Lock`, records it under the computed lock key before returning, and later requests return that same lock object until it is forgotten or the process exits.
 - verify: created(subject="lock entry for a new container-and-gate pair")
 - creation atomicity: lookup and first-lock insertion contain no await point, so within groom's single running event loop two same-pair callers cannot interleave between the missing-lock check and storing the new lock.
 - acquisition owner: the caller owns `async with lock`; the lock factory only returns the lock and does not acquire, release, time out, inspect, or mutate any gate file.
@@ -102,7 +102,7 @@ Returns the shared lock for one container-and-gate-file pair, creating it when t
 ### algorithm-answer-serialization
 
 - step: A dashboard answer request reaches the [gate-answering layer](gate-answering-layer.md) with a container id, gate file path, answer text, and workspace volume.
-- concurrency: If the request has no workspace volume, the answer path returns an [answer result](../answer-result.md) failure before asking for a lock, reading files, mutating workflow state, or changing the lock registry.
+- concurrency: answer-result — If the request has no workspace volume, the answer path returns an [answer result](../answer-result.md) failure before asking for a lock, reading files, mutating workflow state, or changing the lock registry.
 - step: The gate-answering layer asks for the per-gate answer lock for that container id and gate file path.
 - step: The answer path enters the returned lock before reading the current gate file from the workspace volume.
 - step: While still holding the lock, it rejects the submission if the gate file cannot be read or unless the freshly-read file status is `AWAITING_OPERATOR`.
@@ -115,5 +115,7 @@ Returns the shared lock for one container-and-gate-file pair, creating it when t
 - step: A discovery reconciliation pass determines the set of Docker container ids still present.
 - step: The [prune workflows](workflow-registry.md#method-prune-workflows) method removes registry entries for ids absent from that set.
 - step: Locks for containers still present are preserved, including locks for gates that may already have been answered.
-- consistency: Pruning a removed workflow container removes every per-gate lock registry entry for that container; `groom/groom/state.py::prune_workflows` selects entries by the container id plus the `::` separator.
-- verify: removed(subject="lock registry entries for removed container aaa")
+- consistency: lock-registry-entry — pruning a removed workflow container removes every per-gate lock registry entry for that container.
+- verify: removed(subject="lock registry entries for removed container")
+- consistency: lock-registry-entry — locks for containers not removed are preserved during pruning.
+- verify: persists(subject="lock registry entries for preserved containers")

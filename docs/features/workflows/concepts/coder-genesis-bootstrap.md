@@ -18,7 +18,10 @@ are input values.
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_repo_skips_git_init_but_still_builds_the_new_service`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_service_skips_the_skeleton_and_never_re_runs_the_init_command`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_blank_target_fails_before_anything_mutates`
+- detail: [coder genesis bootstrap concept selection](coder-genesis-bootstrap-concept-selection.md)
+- detail: [coder genesis bootstrap guide](coder-genesis-bootstrap-guide.md)
 - detail: [coder service contract](coder-service-contract.md)
+- detail: [coder genesis bootstrap scope](coder-genesis-bootstrap-scope.md)
 
 ## Fields
 

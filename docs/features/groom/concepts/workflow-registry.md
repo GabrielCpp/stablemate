@@ -8,15 +8,15 @@ title: Workflow registry
 The workflow registry is groom's process-local map of live [workflow containers](workflow-container.md), keyed by container id and read by the [groom server](../http/groom.md). The [serve dashboard state](../http/groom.md#serve-dashboard-state) invocation reads it through the [all workflows snapshot](#method-all-workflows-snapshot) method before projecting the [runs fleet view](../runs-fleet-view.md); the [receive progress push](../http/groom.md#receive-progress-push), [receive blocked push](../http/groom.md#receive-blocked-push), and [receive exited push](../http/groom.md#receive-exited-push) invocations update entries through the [upsert workflow](#method-upsert-workflow) method; and the [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) invocation updates it through the [reconcile workflow fleet](#method-reconcile-workflow-fleet) method, which consumes the [workflow discovery scan](workflow-discovery-scan.md), replaces discovered entries, and delegates stale-container deletion to [prune workflows](#method-prune-workflows). The [exited push payload](../exited-push-payload.md) terminal path preserves registry membership while marking one workflow finished, storing an accepted exit code, and clearing all open gates on that workflow; removal remains a later discovery-prune concern. The [per-gate answer lock](per-gate-answer-lock.md) registry is cleaned when vanished workflows are pruned, while the [workflow gate clearer](workflow-gate-clearer.md) removes one answered gate from a workflow already stored here. Other server paths use the same registry to populate the [dashboard state payload](../dashboard-state-payload.md), repository picker, file/diff reads, websocket shell updates, sidecar snapshot application, and gate-answer routing.
 
 - code: groom/groom/state.py::WORKFLOWS
-- verify: groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code
-- verify: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
-- verify: groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively
-- verify: groom/tests/test_app.py::test_refresh_prunes_vanished_containers
-- verify: groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
-- verify: groom/tests/test_state.py::test_prune_drops_absent_keeps_present
-- verify: groom/tests/test_state.py::test_prune_empty_present_removes_everything
-- verify: groom/tests/test_state.py::test_prune_also_forgets_gate_locks_of_removed
-- verify: groom/tests/test_state.py::test_prune_is_noop_when_all_present
+- tests: `groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code`
+- tests: `groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate`
+- tests: `groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively`
+- tests: `groom/tests/test_app.py::test_refresh_prunes_vanished_containers`
+- tests: `groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable`
+- tests: `groom/tests/test_state.py::test_prune_drops_absent_keeps_present`
+- tests: `groom/tests/test_state.py::test_prune_empty_present_removes_everything`
+- tests: `groom/tests/test_state.py::test_prune_also_forgets_gate_locks_of_removed`
+- tests: `groom/tests/test_state.py::test_prune_is_noop_when_all_present`
 
 ## Contract
 
@@ -185,7 +185,7 @@ Removes workflow registry entries whose container ids are absent from the caller
 ### algorithm-partial-event-upsert
 
 - step: A push or sidecar applier normalizes or chooses the workflow container id before calling [upsert workflow](#method-upsert-workflow).
-- consistency: An absent container id creates and stores a workflow container under that id, with a supplied truthy `name` or the first twelve id characters as its display name.
+- consistency: workflow-container — an absent container id creates and stores a workflow container under that id, with a supplied truthy `name` or the first twelve id characters as its display name.
 - verify: created(subject="WORKFLOWS entry for the supplied absent container id")
 - step: The registry stores the new workflow before applying remaining field updates, so the same object is returned to the caller for any immediate gate-map mutation.
 - step: For each supplied field, a non-`None` value whose name matches the workflow-container contract replaces the stored value.
@@ -198,7 +198,7 @@ Removes workflow registry entries whose container ids are absent from the caller
 - step: Before the terminal upsert, the handler gives the push-first volume metadata resolver a chance to hydrate missing workspace, runs, and workflow-type metadata for the normalized id.
 - step: The handler calls [upsert workflow](#method-upsert-workflow) with optional identity fields, [workflow state](workflow-state.md) `finished`, and an `exit_code` value only when the payload's value is accepted as integer-like.
 - step: The registry preserves existing identity and exit-code fields for omitted, `None`, or ordinary non-numeric values and creates a placeholder workflow when the normalized id was not already present.
-- consistency: An exited push clears every gate from the stored workflow because a terminal container cannot act on an open gate.
+- consistency: gate-info — an exited push clears every gate info record from the stored workflow because a terminal container cannot act on an open gate.
 - verify: count(subject="gates on workflow after exited push", equals=0)
 - step: The handler broadcasts the refreshed dashboard shell and returns success without deleting the workflow entry; only [prune workflows](#method-prune-workflows) removes vanished containers after Docker presence is known.
 
@@ -212,9 +212,9 @@ The exited-push handler clears the stored workflow's gate map after terminal ups
 - step: Each discovered workflow container replaces the registry value under its own container id.
 - step: The method asks discovery for the set of present Docker container ids after replacement.
 - step: When the present-id result is a set, the method calls [prune workflows](#method-prune-workflows).
-- consistency: When discovery reports a present-id set, every non-native registry entry whose id is absent from that set is removed.
+- consistency: workflow-registry — when discovery reports a present-id set, every non-native registry entry whose id is absent from that set is removed.
 - verify: removed(subject="non-native WORKFLOWS entry absent from discovery present-id set")
-- consistency: Pruning a vanished workflow removes every scoped [per-gate answer lock](per-gate-answer-lock.md).
+- consistency: per-gate-answer-lock — pruning a vanished workflow removes every scoped [per-gate answer lock](per-gate-answer-lock.md).
 - verify: removed(subject="per-gate answer locks scoped to a pruned workflow")
 - step: When the present-id result is `None`, pruning is skipped so a transient Docker outage cannot erase the visible fleet.
 - step: The method returns the number of workflow containers discovered before pruning, leaving scanning flags and broadcasts to its caller.

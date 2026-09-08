@@ -27,7 +27,10 @@ title: Coder main flow
 - verify: count(subject="coder terminal paths", equals=1)
 - end: a blocked documentation, CI, merge, or dirty-worktree condition is checkpointed at an operator gate instead of being silently committed or skipped
 - verify: count(subject="coder operator-gated blocking paths", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder`
+
+The implementation is `workflows/src/workhorse_workflows/coder/main/flow.py::Coder`.
+- detail: [coder handoff boundary contract](../concepts/coder-handoff-boundary.md)
+- detail: [coder main package](../concepts/coder-main-package.md)
 - detail: [coder workflow composition root](../concepts/coder-workflow-composition-root.md)
 - detail: [coder main PR boundary](../concepts/coder-main-pr-boundary.md)
 - tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
@@ -69,6 +72,9 @@ otherwise from the queue selection or the explicit epic parameter.
 ### agent-turn-contract
 
 - kind: drive
+- detail: [coder replan-epic prompt](../coder-replan-epic-prompt.md)
+- detail: [coder settle-worktree prompt](../coder-settle-worktree-prompt.md)
+- detail: [coder fix-merge prompt](../coder-fix-merge-prompt.md)
 
 The main flow hands story implementation, review, documentation, QA, and backlog work to typed
 sub-flows. Their turns receive the story-derived backbone or a lane-specific session according to
@@ -76,8 +82,7 @@ the specialist flow's contract; the main flow preserves returned statuses and co
 reconstructing their conversations. The main flow's own turns are bounded and typed: `replan` uses
 the authoritative operator answer and `ReplanResult` at high power, `settle` uses the story's
 implementation conversation and `WorktreeSettled`, and `fix_merge` uses a separate epic merge
-conversation and `MergeFixResult` at high power. Their prompt formats are [epic replan](../coder-replan-epic-prompt.md),
-[worktree settlement](../coder-settle-worktree-prompt.md), and [merge repair](../coder-fix-merge-prompt.md).
+conversation and `MergeFixResult` at high power.
 
 ### backlog-drain
 

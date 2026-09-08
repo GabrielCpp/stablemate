@@ -18,7 +18,7 @@ The id is the only selection state stored. Everything visible about selection â€
 ## Contract
 
 - producer: the run selector replaces the current value with the id read from a fleet row's `data-worker-id` or from a command-palette result. Nothing else writes it.
-- consistency: selecting a run writes its id and a `null` detail together, so a render never pairs a new selection with the previous run's pane.
+- consistency: dashboard-client-store â€” selecting a run writes its `selected` and `detail` fields in the same `store.set` call, so a render never pairs a new selection with the previous run's pane.
 - consumers: the fleet list compares each row against it; the detail pane renders from it; the run selector fetches [GET /worker/{container_id}](http/groom.md#get-run-detail) with it and sends this tab's watch subscription for it; the keyboard row-movement handler uses it to find the current row index; the pushed-detail handler drops any `detail` frame whose id does not equal it.
 - lifetime: `null` when the dashboard module loads, then retained across fleet ticks, resyncs, connection-state changes, mode switches, repository-menu use, palette open/close cycles, pane loads, and answer broadcasts, until another selection overwrites it or the page unloads.
 - absent state: `null` means nothing is open in this tab. No row is marked current, the detail pane renders its own prompt to select a run, and keyboard row movement starts from the first rendered row.
@@ -37,7 +37,7 @@ The id is the only selection state stored. Everything visible about selection â€
 - type: `str | null`
 - default: `null`
 - required: false before a selection.
-- verify: json_path(path="$.selected", equals=null)
+- verify: json_path(path="$.selected", absent=true)
 - required: true for every run-scoped request after one.
 - verify: json_path(path="$.selected", matches=".+")
 - wire-location: browser-internal; the store's `selected` field.

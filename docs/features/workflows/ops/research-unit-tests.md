@@ -25,6 +25,7 @@ workflows test`, so this tier blocks that aggregate CI gate.
 - surfaces: [Research workflow composition root](../concepts/research-workflow-composition-root.md)
 - code: `workflows/Makefile::test`
 - working-directory: workflows
+- detail: [Workflow unit-test tiers](../concepts/workflow-unit-test-tiers.md)
 
 ## Steps
 

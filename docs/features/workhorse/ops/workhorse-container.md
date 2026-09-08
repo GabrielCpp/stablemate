@@ -15,6 +15,7 @@ title: workhorse container environment
 - local-only: true
 - code: `workhorse/compose.yaml`
 - code: `workhorse/Dockerfile`
+- detail: [container supervisor](../concepts/container-supervisor.md)
 - verify: exit_status(code=0)
 
 This environment is the local Docker harness for isolated, unattended workflow runs. Compose

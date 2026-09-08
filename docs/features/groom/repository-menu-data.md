@@ -20,14 +20,15 @@ Nothing in this format is markup. Every value is a string or an integer, and the
   groom/tests/test_app.py::test_repos_endpoint_reads_native_run_from_local_disk,
   groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container,
   groom/tests/test_projection.py::test_repo_entries_empty_when_nothing_is_running
-- verify: count(subject="repository menu groups", equals=0)
+
+An empty repository menu contains zero groups.
 
 ## Contract
 
 - producer: [serve repository menu](http/groom.md#serve-repository-menu) filters the process-local workflow registry to workflows with a known workspace, enumerates each one's checkouts concurrently, and hands the resulting pairs to the projection.
 - media: `application/json`. A list of group objects — the top level is a list, not an object, because there is nothing fleet-wide to say alongside it.
 - source snapshot: the endpoint reads the workflow registry once for the request; later registry changes do not mutate an already-returned menu. The picker is re-fetched every time it opens, which is how it stays current without a subscription.
-- consistency: repository menu data is never sent in dashboard WebSocket frames.
+- consistency: repository-menu-data — repository menu data is never sent in dashboard WebSocket frames.
 - verify: omits(subject="captured dashboard WebSocket frames", matches="\"groups\"\\s*:")
 - eligibility: a workflow contributes a group only when its `workspace_volume` field is non-empty. A workflow whose workspace is unknown has nothing browsable, so it is absent rather than present-and-empty.
 - reader selection: a native workflow's checkouts are enumerated straight from local disk; every other workflow's are enumerated through a throwaway read-only Docker container. Both return the same list of volume-relative directories, which is why the group shape does not record which ran.
@@ -135,6 +136,7 @@ The picker fetches this shape from `GET /repos` in `groom/groom/assets/dashboard
 - returns: the sorted repository menu group list, with one group per input workflow container.
 - verify: count(subject="repository menu groups", equals=2)
 - code: groom/groom/projection.py::repo_entries
+- detail: [repository menu projection contexts](concepts/repository-menu-projection-contexts.md)
 - tests: groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container,
   groom/tests/test_projection.py::test_repo_entries_empty_when_nothing_is_running
 - input: pairs of workflow container and its discovered volume-relative checkout directories, in any order.

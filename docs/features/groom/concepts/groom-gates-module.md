@@ -10,17 +10,16 @@ Groom gates module is the code boundary that owns Groom's shared operator-gate s
 - code: groom/groom/gates.py
 - tests: groom/tests/test_gates.py::test_apply_answer_flips_status_and_appends_text
 - tests: groom/tests/test_gates.py::test_apply_answer_with_blank_answer_still_flips_status
-- verify: groom/tests/test_gates.py::test_status_of_reads_the_status_line
-- verify: groom/tests/test_gates.py::test_is_awaiting
-- verify: groom/tests/test_gates.py::test_extract_question_pulls_the_named_section
-- verify: groom/tests/test_gates.py::test_extract_question_falls_back_to_whole_text_when_no_header
-- verify: count(subject="STATUS: ANSWERED lines in returned gate text", equals=1)
-- verify: count(subject="submitted non-blank answer occurrences in returned gate text", equals=1)
-- verify: groom/tests/test_gates.py::test_answer_gate_rejects_when_already_answered
-- verify: groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running
-- verify: groom/tests/test_gates.py::test_answer_gate_restarts_when_container_stopped
-- verify: groom/tests/test_gates.py::test_answer_gate_reports_missing_workspace_volume
 - refs: [operator gate context file](../operator-gate-context-file.md), [gate-answering layer](gate-answering-layer.md), [per-gate answer lock](per-gate-answer-lock.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), [workspace volume file writer](workspace-volume-file-writer.md), [workflow gate clearer](workflow-gate-clearer.md), [container running-state check](container-running-state-check.md), [stopped container start fallback](stopped-container-start-fallback.md), [answer result](../answer-result.md)
+
+The module-level test coverage includes `test_status_of_reads_the_status_line`,
+`test_is_awaiting`, `test_extract_question_pulls_the_named_section`,
+`test_extract_question_falls_back_to_whole_text_when_no_header`,
+`test_answer_gate_rejects_when_already_answered`,
+`test_answer_gate_writes_answer_no_restart_when_still_running`,
+`test_answer_gate_restarts_when_container_stopped`, and
+`test_answer_gate_reports_missing_workspace_volume`. The answer-text tests also check that one
+`STATUS: ANSWERED` line and one submitted non-blank answer occur in the returned gate text.
 
 ## Contract
 
@@ -80,6 +79,7 @@ pure text helpers use the fallback outputs specified by their individual method 
 - returns: the uppercased first status token, or `""` when the text has no matching status line.
 - verify: json_path(path="return value", equals="AWAITING_OPERATOR")
 - code: groom/groom/gates.py::status_of
+- detail: [gate status parser documentation contexts](gate-status-parser-documentation-contexts.md)
 - detail: [operator gate context file status parser](../operator-gate-context-file.md#method-status-of)
 - tests: groom/tests/test_gates.py::test_status_of_reads_the_status_line
 
@@ -102,6 +102,7 @@ Parses one supplied gate-file text string into the normalized lifecycle token us
 - verify: json_path(path="return value", equals=true)
 - code: groom/groom/gates.py::is_awaiting
 - detail: [operator gate context file awaiting classifier](../operator-gate-context-file.md#method-is-awaiting)
+- detail: [is awaiting documentation contexts](is-awaiting-documentation-contexts.md)
 - tests: groom/tests/test_gates.py::test_is_awaiting
 
 Classifies whether one supplied gate-file text string is currently answerable by Groom.
@@ -124,7 +125,7 @@ Classifies whether one supplied gate-file text string is currently answerable by
 - verify: count(subject="unrelated context section text in returned question preview", equals=0)
 - verify: count(subject="stripped whole gate text in returned question preview", equals=1)
 - code: groom/groom/gates.py::extract_question
-- detail: [operator gate context file question extractor](../operator-gate-context-file.md#method-extract-question)
+- detail: [gate question extraction contexts](gate-question-extraction-contexts.md)
 - tests: groom/tests/test_gates.py::test_extract_question_pulls_the_named_section
 - tests: groom/tests/test_gates.py::test_extract_question_falls_back_to_whole_text_when_no_header
 
@@ -133,8 +134,8 @@ Extracts the operator-facing question preview from one gate file for gate record
 #### Effects
 
 - reads: only the supplied text string.
-- matches: the first recognized singular or plural question heading described by [field-question-section](../operator-gate-context-file.md#field-question-section).
-- selects: the stripped recognized section body when present, otherwise the stripped whole text string.
+- matches: every recognized singular or plural question heading described by [field-question-section](../operator-gate-context-file.md#field-question-section).
+- selects: the stripped body of the latest recognized section when present, otherwise the stripped whole text string.
 - calls: no other Groom source symbol.
 - does not mutate: gate file text, workspace volumes, Docker containers, in-memory workflow state, gate locks, answer logs, dashboard clients, or rendered fragments.
 
@@ -149,6 +150,7 @@ Extracts the operator-facing question preview from one gate file for gate record
 - verify: count(subject="submitted non-blank answer occurrences in returned gate text", equals=1)
 - code: groom/groom/gates.py::apply_answer
 - detail: [operator gate context file answer applier](../operator-gate-context-file.md#method-apply-answer)
+- detail: [gate answer text mutation](gate-answer-text-mutation.md)
 - tests: groom/tests/test_gates.py::test_apply_answer_flips_status_and_appends_text
 - tests: groom/tests/test_gates.py::test_apply_answer_with_blank_answer_still_flips_status
 
@@ -178,17 +180,15 @@ Builds the answered form of one gate file text string without performing the fil
 - tests: groom/tests/test_gates.py::test_answer_gate_restarts_when_container_stopped
 - tests: groom/tests/test_gates.py::test_answer_gate_reports_missing_workspace_volume
 
-Applies one submitted operator answer to one awaiting gate file in a workspace volume and returns the domain outcome used by the dashboard websocket handler. In `groom/groom/gates.py::answer_gate`, an empty workspace-volume value returns the unknown-volume domain result before the function obtains a lock or performs Docker, file, state, or restart work.
+Applies one submitted operator answer to one awaiting gate file in a workspace volume and returns the domain outcome used by the dashboard websocket handler. In `groom/groom/gates.py::answer_gate`, an empty workspace-volume value returns the unknown-volume domain result before the function obtains a lock or performs Docker, file, state, or restart work. Once the lock is held, the reread text is what a second browser tab racing to answer the same gate would see — a missing file or a reread that no longer satisfies [is-awaiting](#is-awaiting) is the stale case, and the guarded outcomes it produces before any write is attempted are the `"gate file not found"` and `"already answered in another tab"` results recorded in [algorithm-answer-gate-outcomes](#algorithm-answer-gate-outcomes). After the write, the function consults the [container running-state check](container-running-state-check.md): a container it finds still running short-circuits the restart path, while a stopped container routes into the [stopped container start fallback](stopped-container-start-fallback.md) — the resulting `"answered"`, `"answered and restarted"`, and restart-failed outcomes are the same three recorded in [algorithm-answer-gate-outcomes](#algorithm-answer-gate-outcomes).
 
 #### Effects
 
 - locks: obtains and acquires the [per-gate answer lock](per-gate-answer-lock.md#method-gate-lock) scoped to the exact `container_id` and `file_path` pair.
 - reads: rereads the current gate file text through the [workspace volume file-content reader](workspace-volume-file-content-reader.md) while the per-gate lock is held.
-- stale guard: rejects missing files and any current text for which [is-awaiting](#is-awaiting) is false before writing.
 - builds: calls [apply-answer](#apply-answer) to create the updated file text.
 - writes: streams the updated text to the same workspace volume and path through the [workspace volume file writer](workspace-volume-file-writer.md).
 - clears state: after a successful write, calls the [workflow gate clearer](workflow-gate-clearer.md#method-clear-gate) for the same `container_id` and `file_path`.
-- running path: if the [container running-state check](container-running-state-check.md) reports the container is still running, returns success without starting it.
 - stopped fallback: if the running-state check reports stopped, attempts the [stopped container start fallback](stopped-container-start-fallback.md) and reports whether the restart succeeded.
 - calls: `state.gate_lock`, `docker_io.read_file`, [is-awaiting](#is-awaiting), [apply-answer](#apply-answer), `docker_io.write_file`, `state.clear_gate`, `docker_io.is_running`, and `docker_io.docker_start`.
 
@@ -205,10 +205,10 @@ Applies one submitted operator answer to one awaiting gate file in a workspace v
 
 `groom/groom/gates.py::answer_gate` returns the following domain outcomes for its guarded write and restart paths.
 
-- consistency: returns `AnswerResult(ok=False, message="unknown workspace volume for this container")` when no workspace volume is supplied.
-- consistency: returns `AnswerResult(ok=False, message="gate file not found")` when the locked workspace-volume read cannot load the selected file.
-- consistency: returns `AnswerResult(ok=False, message="already answered in another tab")` when the locked reread no longer has the awaiting token.
-- consistency: returns `AnswerResult(ok=False, message="failed to write answer")` when the updated text is built but the workspace-volume writer reports failure.
-- consistency: returns `AnswerResult(ok=True, message="answered")` when the write succeeds and the workflow container is still running.
-- consistency: returns `AnswerResult(ok=True, message="answered and restarted")` when the write succeeds, the container is stopped, and the stopped-container start fallback succeeds.
-- consistency: returns `AnswerResult(ok=True, message="answer written but restart failed — start the container manually")` when the write succeeds but the stopped-container start fallback reports failure.
+- consistency: answer-result — returns `AnswerResult(ok=False, message="unknown workspace volume for this container")` when no workspace volume is supplied.
+- consistency: answer-result — returns `AnswerResult(ok=False, message="gate file not found")` when the locked workspace-volume read cannot load the selected file.
+- consistency: answer-result — returns `AnswerResult(ok=False, message="already answered in another tab")` when the locked reread no longer has the awaiting token.
+- consistency: answer-result — returns `AnswerResult(ok=False, message="failed to write answer")` when the updated text is built but the workspace-volume writer reports failure.
+- consistency: answer-result — returns `AnswerResult(ok=True, message="answered")` when the write succeeds and the workflow container is still running.
+- consistency: answer-result — returns `AnswerResult(ok=True, message="answered and restarted")` when the write succeeds and the stopped container restarts successfully.
+- consistency: answer-result — returns `AnswerResult(ok=True, message="answer written but restart failed — start the container manually")` when the write succeeds but the stopped-container start fallback reports failure.

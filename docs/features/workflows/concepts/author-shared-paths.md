@@ -115,7 +115,7 @@ current directory when no explicit repository was supplied. Git-specific root lo
 ### story_context
 - sig: `story_context(story_dir_rel: str) -> str`
 - does: appends `context.md` to a story directory after removing trailing separators
-- verify: count(subject="author story context paths", equals=1)
+- verify: removed(subject="trailing separators from the supplied story directory path")
 - returns: the story context path
 - verify: count(subject="author story context results", equals=1)
 - code: `workflows/src/workhorse_workflows/author/shared/paths.py::story_context`

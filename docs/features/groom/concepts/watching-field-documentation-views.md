@@ -20,3 +20,4 @@ separate storage mechanism.
 
 - code: groom/groom/state.py::WATCHING
 - rule: use the state-module field view for the public state inventory and the run-watch-registry field view for the selected-run subscription contract; both describe the same map and neither is preferred
+- detail: [WATCHING field documentation views](watching-field-documentation-views.md)

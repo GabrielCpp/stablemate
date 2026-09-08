@@ -19,5 +19,4 @@ to describe an operator-requested reconciliation of an already-running process.
 Neither flow supersedes the other: their different scanning-state transitions and
 initiation conditions are required by their callers.
 
-- code: groom/groom/app.py::_broadcast_shell
 - rule: use startup discovery when process startup schedules the one-shot reconciliation; use manual refresh when an operator requests reconciliation of an already-running fleet; neither context is deprecated

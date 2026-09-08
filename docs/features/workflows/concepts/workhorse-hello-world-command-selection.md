@@ -17,3 +17,4 @@ another because they provide different operations on the same bound workflow.
 
 - code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main`
 - rule: use `run` for execution, `dot` for graph rendering, and `version` for installed-engine identification; no command supersedes another
+- detail: [Hello-world main concept selection](hello-world-main-concept-selection.md)

@@ -16,8 +16,8 @@ globally unique, so survey-specific registrations use names such as `load_survey
 than colliding with the author's `load_config`. The package exports this blueprint alongside the
 shared inventory, unit-walking, and record-validation operations.
 
-- code: `workflows/src/workhorse_workflows/author/shared/survey/blueprint.py::blueprint`
 - tests: `workflows/tests/author/shared/survey/test_inventory.py::test_an_existing_inventory_is_consumed_verbatim`
+- detail: [author shared survey blueprint](author-shared-survey-blueprint.md)
 - detail: [survey record check](../record-check.md)
 - detail: [survey verification result](../verify-result.md)
 
@@ -98,6 +98,7 @@ remain in their respective flow packages and consume these results.
 - does: lowercases a unit id and replaces every non-alphanumeric run with one hyphen
 - verify: count(subject="lowercased finding-record slugs", equals=1)
 - does: removes hyphens from both ends so the result is safe as a finding filename stem
+- verify: removed(subject="leading and trailing hyphens from the normalized finding-record slug")
 - verify: count(subject="trimmed finding-record slugs", equals=1)
 - returns: the normalized stem used beneath the findings directory
 - verify: count(subject="finding-record slug returns", equals=1)

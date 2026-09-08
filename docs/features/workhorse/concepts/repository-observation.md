@@ -16,6 +16,11 @@ to the same Git root.
 - code: `workhorse/workhorse/gitstate.py::DirectoryObservation`
 - code: `workhorse/workhorse/gitstate.py::RepositorySnapshot`
 - code: `workhorse/workhorse/gitstate.py::HeadWatch`
+- detail: [Repository snapshot contexts](repository-snapshot-contexts.md)
+- detail: [Repository snapshot concept selection](repository-snapshot-concept-selection.md)
+- detail: [Repository snapshot documentation context](repository-snapshot-documentation-context.md)
+- detail: [Directory observation context](directory-observation-context.md)
+- detail: [RepoState concept selection](repo-state-concept-selection.md)
 
 ### observe
 - sig: `observe(path: str | Path, *, dirty: bool = True, stash: bool = False) -> RepoState`
@@ -47,6 +52,7 @@ to the same Git root.
 - type: frozen record
 - semantics: one point-in-time observation whose empty values mean that Git did not provide that fact
 - code: `workhorse/workhorse/gitstate.py::RepoState`
+- detail: [RepoState fields](repo-state-fields.md)
 
 #### field: path
 - type: `str`
@@ -55,6 +61,7 @@ to the same Git root.
 - semantics: directory passed to the observation
 - verify: json_path(path="$.path", equals="")
 - code: `workhorse/workhorse/gitstate.py::RepoState`
+- detail: [RepoState fields](repo-state-fields.md)
 
 #### field: root
 - type: `str`
@@ -63,6 +70,7 @@ to the same Git root.
 - semantics: resolved Git worktree root
 - verify: json_path(path="$.root", matches="^.+$")
 - code: `workhorse/workhorse/gitstate.py::RepoState`
+- detail: [RepoState fields](repo-state-fields.md)
 
 #### field: origin
 - type: `str`
@@ -71,6 +79,7 @@ to the same Git root.
 - semantics: exact URL returned for the `origin` remote
 - verify: json_path(path="$.origin", matches="^.+$")
 - code: `workhorse/workhorse/gitstate.py::RepoState`
+- detail: [RepoState fields](repo-state-fields.md)
 
 #### field: head
 - type: `str`
@@ -79,6 +88,7 @@ to the same Git root.
 - semantics: full commit identifier observed at the sample moment
 - verify: json_path(path="$.head", matches="^[0-9a-f]{40}$")
 - code: `workhorse/workhorse/gitstate.py::RepoState`
+- detail: [RepoState fields](repo-state-fields.md)
 
 #### field: branch
 - type: `str`
@@ -87,6 +97,7 @@ to the same Git root.
 - semantics: branch name, empty for a detached HEAD or an unavailable repository
 - verify: json_path(path="$.branch", equals="main")
 - code: `workhorse/workhorse/gitstate.py::RepoState`
+- detail: [RepoState fields](repo-state-fields.md)
 
 #### field: dirty
 - type: `bool | None`
@@ -95,6 +106,7 @@ to the same Git root.
 - semantics: true or false when status was checked, and None when it was not observed
 - verify: json_path(path="$.dirty", equals=false)
 - code: `workhorse/workhorse/gitstate.py::RepoState`
+- detail: [RepoState fields](repo-state-fields.md)
 
 #### field: stash
 - type: `str`
@@ -103,11 +115,13 @@ to the same Git root.
 - semantics: commit identifier created by an explicit WIP snapshot request
 - verify: json_path(path="$.stash", matches="^[0-9a-f]{40}$")
 - code: `workhorse/workhorse/gitstate.py::RepoState`
+- detail: [RepoState fields](repo-state-fields.md)
 
 ### field: DirectoryObservation
 - type: frozen record
 - semantics: one directory in the declared execution scope and its Git identity, if any
 - code: `workhorse/workhorse/gitstate.py::DirectoryObservation`
+- detail: [Directory observation fields](directory-observation-fields.md)
 
 #### field: path
 - type: `str`
@@ -115,6 +129,7 @@ to the same Git root.
 - semantics: expanded and resolved directory path
 - verify: json_path(path="$.path", matches="^.+$")
 - code: `workhorse/workhorse/gitstate.py::DirectoryObservation`
+- detail: [Directory observation fields](directory-observation-fields.md)
 
 #### field: role
 - type: `str`
@@ -122,6 +137,7 @@ to the same Git root.
 - semantics: `cwd` for the primary directory or `add_dir` for an additional directory
 - verify: json_path(path="$.role", matches="^(cwd|add_dir)$")
 - code: `workhorse/workhorse/gitstate.py::DirectoryObservation`
+- detail: [Directory observation fields](directory-observation-fields.md)
 
 #### field: vcs
 - type: `str`
@@ -129,6 +145,7 @@ to the same Git root.
 - semantics: `git` for a Git root and `unversioned` when no Git identity is available
 - verify: json_path(path="$.vcs", matches="^(git|unversioned)$")
 - code: `workhorse/workhorse/gitstate.py::DirectoryObservation`
+- detail: [Directory observation fields](directory-observation-fields.md)
 
 #### field: root
 - type: `str`
@@ -137,6 +154,7 @@ to the same Git root.
 - semantics: resolved Git root, empty for an unversioned directory
 - verify: json_path(path="$.root", equals="")
 - code: `workhorse/workhorse/gitstate.py::DirectoryObservation`
+- detail: [Directory observation fields](directory-observation-fields.md)
 
 #### field: origin
 - type: `str`
@@ -145,6 +163,7 @@ to the same Git root.
 - semantics: exact origin URL for a Git directory
 - verify: json_path(path="$.origin", matches="^.+$")
 - code: `workhorse/workhorse/gitstate.py::DirectoryObservation`
+- detail: [Directory observation fields](directory-observation-fields.md)
 
 #### field: branch
 - type: `str`
@@ -153,6 +172,7 @@ to the same Git root.
 - semantics: observed branch name
 - verify: json_path(path="$.branch", matches="^.+$")
 - code: `workhorse/workhorse/gitstate.py::DirectoryObservation`
+- detail: [Directory observation fields](directory-observation-fields.md)
 
 #### field: head
 - type: `str`
@@ -161,6 +181,7 @@ to the same Git root.
 - semantics: observed full HEAD identifier
 - verify: json_path(path="$.head", matches="^[0-9a-f]{40}$")
 - code: `workhorse/workhorse/gitstate.py::DirectoryObservation`
+- detail: [Directory observation fields](directory-observation-fields.md)
 
 ### field: RepositorySnapshot
 - type: frozen record
@@ -169,6 +190,9 @@ to the same Git root.
 - semantics: immutable ordered collection of distinct declared directories
 - verify: count(subject="directories in an empty repository snapshot", equals=0)
 - code: `workhorse/workhorse/gitstate.py::RepositorySnapshot`
+- detail: [Repository snapshot concept selection](repository-snapshot-concept-selection.md)
+- detail: [Repository snapshot field selection](repository-snapshot-field-selection.md)
+- detail: [Repository snapshot documentation context](repository-snapshot-documentation-context.md)
 
 #### field: directories
 - type: `tuple[DirectoryObservation, ...]`
@@ -177,6 +201,7 @@ to the same Git root.
 - semantics: primary directory followed by additional directories after Git-root deduplication
 - verify: count(subject="directories in a populated repository snapshot", equals=3)
 - code: `workhorse/workhorse/gitstate.py::RepositorySnapshot`
+- detail: [Repository snapshot field selection](repository-snapshot-field-selection.md)
 
 ### field: HeadWatch
 - type: TTL-cached repository observer
@@ -233,7 +258,9 @@ to the same Git root.
 ### HeadWatch.refresh
 - sig: `HeadWatch.refresh() -> str`
 - does: reads HEAD immediately and resets the cache timestamp
+- verify: count(subject="HEAD reads for explicit refresh followed by cached head", equals=1)
 - returns: the current HEAD, or an empty string when Git cannot answer
+- verify: json_path(path="$.head", matches="^[0-9a-f]{40}$")
 - code: `workhorse/workhorse/gitstate.py::HeadWatch.refresh`
 
 ### HeadWatch.state

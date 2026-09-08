@@ -13,12 +13,12 @@ It replaced an HTML fragment pair that was swapped into the page out-of-band. No
 
 - file: not an on-disk artifact; this is a transient JSON payload, delivered over the websocket or as an HTTP response body.
 - code: groom/groom/projection.py::state_message
+- tests: groom/tests/test_projection.py::test_state_message_is_json_serializable
+- tests: groom/tests/test_projection.py::test_state_message_reports_whether_discovery_is_still_running
+- tests: groom/tests/test_projection.py::test_status_bar_counts_states
+- tests: groom/tests/test_projection.py::test_query_filters_the_fleet
+- tests: groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished
 - refs: [groom projection module](concepts/groom-projection-module.md), [runs fleet view](runs-fleet-view.md), [dashboard client store](concepts/dashboard-client-store.md), [dashboard resync poller](concepts/dashboard-resync-poller.md), [dashboard discovery scanning flag](concepts/dashboard-discovery-scanning-flag.md)
-- verify: groom/tests/test_projection.py::test_state_message_is_json_serializable
-- verify: groom/tests/test_projection.py::test_state_message_reports_whether_discovery_is_still_running
-- verify: groom/tests/test_projection.py::test_status_bar_counts_states
-- verify: groom/tests/test_projection.py::test_query_filters_the_fleet
-- verify: groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished
 
 ## Contract
 
@@ -28,10 +28,12 @@ It replaced an HTML fragment pair that was swapped into the page out-of-band. No
 - delivery — pull: returned verbatim as the body of `GET /api/state`, which exists for exactly this reason and documents itself as returning the same payload the websocket pushes.
 - delivery — handshake: the first frame a newly accepted websocket receives is this payload, byte-identical to what `GET /api/state` would have returned at that moment, so a tab starts from a full snapshot rather than from whatever the next change happens to be.
 - consumers: exactly one — the client's `applyState()`. Blocked-push broadcasts, answer broadcasts, sidecar state broadcasts, progress/exited broadcasts, refresh broadcasts, the live clock, and the resync poller all converge on it.
-- consistency: With no query, `runs` contains every workflow in the caller-supplied fleet snapshot.
+- consistency: field-runs — with no query, `runs` contains every workflow in the caller-supplied fleet snapshot.
 - verify: count(subject="state payload runs", equals=2)
-- consistency: A state payload has no `run` field; a single-workflow update uses a separate `run` message whose row has the same shape.
+- consistency: no-run-field — a state payload has no `run` field.
 - verify: json_path(path="$.run", absent=true)
+- consistency: single-workflow-row-shape — a single-workflow update uses the separate [run message](concepts/groom-projection-module.md#method-run-message) instead, whose row is projected through the same `run_row` used for an entry in this payload's `runs`, so the two carry identical keys.
+- verify: keys_unchanged(subject="run row keys, captured from a state-payload runs entry and from a run-message row for the same workflow")
 - query scope: a query narrows `runs` only. `status` always counts the full fleet, because a count narrowed by one tab's filter would misreport the fleet it claims to describe.
 - ordering: `runs` arrives in display order — blocked, then alive, then presumed-dead, then finished, ties broken by name — so a tick does not reshuffle the list and the client does not re-sort on receipt.
 - scanning: `scanning` reports the process-local [dashboard discovery scanning flag](concepts/dashboard-discovery-scanning-flag.md) so the client can show a discovery spinner rather than an empty state; a not-yet-scanned fleet must not read as finished-and-empty.
@@ -132,5 +134,6 @@ It replaced an HTML fragment pair that was swapped into the page out-of-band. No
 - step: A state change, the live clock, or a startup scan reaches the [dashboard shell broadcaster](concepts/dashboard-shell-broadcaster.md), which projects this payload once and broadcasts the same object to every tab.
 - step: The [dashboard websocket send loop](concepts/dashboard-websocket-send-loop.md) serializes it per tab and sends one text frame.
 - step: A tab whose socket has gone quiet instead calls `GET /api/state`.
-- consistency: `GET /api/state` returns the `state_message` payload as its response body.
+- consistency: dashboard-state-payload — `GET /api/state` returns the `state_message` payload as its response body.
+- verify: http_status(200)
 - step: Both land in `applyState()`, so the fleet a resynced tab shows and the fleet a pushed tab shows cannot differ.

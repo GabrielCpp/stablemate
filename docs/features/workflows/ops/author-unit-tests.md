@@ -22,6 +22,7 @@ browser controls, so it does not use book-derived UI locators. The repository `t
 - surfaces: [Author workflow composition root](../concepts/author-workflow-composition-root.md)
 - code: `workflows/Makefile::test`
 - working-directory: workflows
+- detail: [Workflow unit-test tiers](../concepts/workflow-unit-test-tiers.md)
 
 ## Steps
 

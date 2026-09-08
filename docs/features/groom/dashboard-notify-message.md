@@ -21,10 +21,8 @@ The frame is deliberately kept **off** the [dashboard state payload](dashboard-s
 - detail: [blocked push flow contexts](concepts/blocked-push-flow-contexts.md)
 - detail: [dashboard frame dispatch](concepts/dashboard-frame-dispatch.md)
 - refs: [blocked push payload](blocked-push-payload.md), [dashboard state payload](dashboard-state-payload.md), [dashboard answered message](dashboard-answered-message.md), [browser notification permission](concepts/browser-notification-permission.md)
-- verify: groom/tests/test_app.py::test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame
-- verify: groom/tests/test_app.py::test_socket_blocked_delta_sends_the_same_notify_frame_as_the_http_push
-- verify: groom/tests/test_app.py::test_the_notify_message_truncates_the_question_to_the_limit
-- verify: groom/tests/test_telemetry.py::test_v1_traces_receiver_stores_spans_and_fires_alerts
+
+Automated coverage for this format includes `groom/tests/test_app.py::test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame`, `groom/tests/test_app.py::test_socket_blocked_delta_sends_the_same_notify_frame_as_the_http_push`, `groom/tests/test_app.py::test_the_notify_message_truncates_the_question_to_the_limit`, and `groom/tests/test_telemetry.py::test_v1_traces_receiver_stores_spans_and_fires_alerts`.
 
 ## Contract
 
@@ -39,7 +37,8 @@ The dashboard's `onNotify` handler pushes a blocked-variant toast with a seven-s
 - ordering: the blocked paths send this frame *after* the [dashboard state payload](dashboard-state-payload.md) and the accompanying run-detail push, so a tab rendering frames in arrival order raises the alert against already-updated content.
 - delivery is best-effort and once: no acknowledgement, no retry, no replay for a tab that connects later, and no record of the alert anywhere in the state a resync would fetch.
 - state mutation: sending this frame mutates nothing. Any workflow state change has already happened, before the state broadcast that precedes it.
-- consumes: a `notify` frame never requests browser notification permission; it only creates a system notification when permission is already granted.
+- consumes: receiving this frame does not trigger a browser notification permission request
+- consumes: a system notification is created only when `Notification.permission` is already granted
 
 ## Fields
 

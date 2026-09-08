@@ -7,10 +7,12 @@ title: Sidecar-local relative path guard
 
 Sidecar-local relative path guard is the sidecar data-plane validation layer used by [workspace file content data](../workspace-file-content-data.md) before a `getFile` RPC reads from the sidecar container's local workspace mount. It mirrors the path-safety contract of the [workspace volume relative path guard](workspace-volume-relative-path-guard.md) for local sidecar reads: accept one non-empty relative path, normalize Windows separators to `/`, and reject absolute paths, empty path segments, and parent traversal before any local file read can occur. Unsafe paths are raised as `ValueError` by the guard, then surface through the [sidecar websocket frame](../sidecar-websocket-frame.md) RPC failure contract as an `ok=false` `rpc_result` handled by the [sidecar connected session](sidecar-connected-session.md).
 
+The guard and its RPC error propagation are covered by
+`groom/tests/test_sidecar_session.py::test_safe_relpath_accepts_normal_and_rejects_traversal`,
+`groom/tests/test_sidecar_session.py::test_rpc_get_file_rejects_traversal`, and
+`groom/tests/test_sidecar_session.py::test_handle_rpc_get_file_traversal_replies_error`.
+
 - code: groom/groom/sidecar.py::_safe_relpath
-- verify: groom/tests/test_sidecar_session.py::test_safe_relpath_accepts_normal_and_rejects_traversal,
-  groom/tests/test_sidecar_session.py::test_rpc_get_file_rejects_traversal,
-  groom/tests/test_sidecar_session.py::test_handle_rpc_get_file_traversal_replies_error
 - refs: [workspace file content data](../workspace-file-content-data.md), [workspace volume relative path guard](workspace-volume-relative-path-guard.md), [sidecar websocket frame](../sidecar-websocket-frame.md), [sidecar connected session](sidecar-connected-session.md)
 
 ## Contract
@@ -22,7 +24,8 @@ segments with `/`; this gives later local-path construction one separator conven
 - input: `path` is the composed workspace-relative string used by `getFile`; the RPC handler has already converted `repo` and `path` request parameters to strings, combined them, and skipped validation when the composed path is empty.
 - acceptance: accepts non-empty paths that do not begin with `/` or `\\`, and whose separator-normalized segments contain no empty string and no `..` segment.
 - acceptance: accepts ordinary nested relative file paths such as `repo/src/a.py`, Windows-separator equivalents such as `repo\\src\\a.py`, `.` segments, `...` segments, spaces, colons, and shell metacharacters; those characters are not interpreted by this guard.
-- output: returns the normalized relative path string; the returned value never starts with `/`, never starts with `\\`, never contains `//`, never contains an empty segment, and never contains `..` as a segment.
+- consistency: safe-relpath-output — `_safe_relpath` returns a normalized relative path string that never starts with `/`, never starts with `\\`, never contains `//`, never contains an empty segment, and never contains `..` as a segment.
+- verify: count(subject="normalized _safe_relpath outputs confirmed free of leading, doubled, empty, or parent-traversal path segments", equals=1)
 - idempotence: an already-normalized accepted output is accepted unchanged by a later guard call.
 - failure: raises `ValueError` with an `unsafe path: ...` message when the input is empty, begins with `/`, begins with `\\`, contains adjacent separators, ends with a separator, or contains a parent traversal segment exactly equal to `..`.
 - failure: does not convert unsafe input into empty content; the sidecar RPC wrapper converts the raised exception into an error `rpc_result`, allowing the host endpoint to fall back to volume reading when available.
@@ -45,25 +48,25 @@ segments with `/`; this gives later local-path construction one separator conven
 - failure-message: rejected paths use `unsafe path: {path!r}` as the exception message that the RPC wrapper relays in the websocket error result.
 - non-effect: performs no I/O and no mutation.
 - consumer: [workspace file content data](../workspace-file-content-data.md) method `_rpc_get_file` is the first-party caller.
-- consistency: Before a local file read, the sidecar-local guard rejects a composed path that is empty or begins with `/` or `\\`.
+- consistency: composed-path — before a local file read, the sidecar-local guard rejects a composed path that is empty or begins with `/` or `\\`.
 - verify: count(subject="empty and rooted paths rejected by _safe_relpath", equals=3)
 
 ## Algorithm
 
-- step: Receive the already-composed sidecar workspace-relative path string from the file-content RPC handler.
-- step: Convert every `\\` character to `/` so segment checks use one separator model.
-- step: Split the normalized path on `/`.
-- step: Reject the path when any segment is empty, which covers adjacent separators and a trailing separator.
-- step: Reject the path when any segment is exactly `..`, which blocks parent traversal out of the workspace root.
-- step: Return the accepted segments joined by `/`.
+`_safe_relpath` receives the already-composed sidecar workspace-relative path string from the
+file-content RPC handler, converts every `\` character to `/` so segment checks use one
+separator model, and splits the normalized path on `/`. The reject-on-empty-segment and
+reject-on-`..`-segment behaviors, and the accepted-segments-joined-by-`/` return value, are the
+same claims already stated with their own `verify:` obligations in the Contract and Methods
+sections above; this paragraph is the mechanism, not a separate claim.
 
 ## Examples
 
-- consistency: `_safe_relpath` returns `acme/src/a.py` unchanged for the accepted `acme/src/a.py` input.
+- consistency: safe-relpath-output — `_safe_relpath` returns `acme/src/a.py` unchanged for the accepted `acme/src/a.py` input.
 - verify: count(subject="accepted _safe_relpath paths unchanged after normalization", equals=1)
-- consistency: `_safe_relpath` returns `acme/src/a.py` for the accepted `acme\\src\\a.py` input.
+- consistency: safe-relpath-output — `_safe_relpath` returns `acme/src/a.py` for the accepted `acme\\src\\a.py` input.
 - verify: count(subject="accepted backslash-separated _safe_relpath paths normalized to slash separators", equals=1)
-- consistency: `_safe_relpath` preserves the `.` segment in accepted `acme/./a.py` input while returning `acme/./a.py`.
+- consistency: safe-relpath-output — `_safe_relpath` preserves the `.` segment in accepted `acme/./a.py` input while returning `acme/./a.py`.
 - verify: count(subject="accepted _safe_relpath paths retaining current-directory segments", equals=1)
 - rejects: the empty string raises `ValueError` when passed directly to the guard.
 - rejects: `/etc/passwd` raises `ValueError`.
@@ -75,6 +78,6 @@ segments with `/`; this gives later local-path construction one separator conven
 ## Consumers
 
 - uses: [workspace file content data](../workspace-file-content-data.md) calls this guard from `method-_rpc_get_file` after composing a sidecar-local read path and before reading `WORKSPACE_DIR / normalized_path`.
-- consistency: [sidecar connected session](sidecar-connected-session.md) catches the guard's `ValueError` through the RPC dispatch path and emits one [sidecar websocket frame](../sidecar-websocket-frame.md) `rpc_result` error instead of terminating the persistent socket session.
+- consistency: rpc-result-error — when this guard raises `ValueError`, the [sidecar connected session](sidecar-connected-session.md) catches it through [method-_handle_rpc](../sidecar-websocket-frame.md#method-_handle_rpc) and sends one [sidecar websocket frame](../sidecar-websocket-frame.md) `rpc_result` frame with `ok=false` instead of terminating the persistent socket session.
 - verify: emitted(event="rpc_result error for a rejected sidecar path", count=1)
 - compares-with: [workspace volume relative path guard](workspace-volume-relative-path-guard.md) provides the same syntactic path-safety contract for fallback Docker-volume reads and writes outside the sidecar-local filesystem.

@@ -195,11 +195,11 @@ run_sidecar &                             # workhorse stays the foreground/PID-f
   to one container. `groom/groom/app.py::reload` selects the connected sockets, and
   `groom/groom/sidecar.py::_serve` turns each received command into the sidecar's
   intentional exit.
-- consistency: An unscoped reload sends one `reload` frame to every connected sidecar.
+- consistency: sidecar-connection — an unscoped reload sends one `reload` frame to every connected [sidecar connection](concepts/sidecar-connection.md).
 - verify: emitted(event="reload frame", count=2)
-- consistency: A reload scoped to one container reloads only that container's connected sidecar.
+- consistency: sidecar-connection — a reload scoped to one container reloads only that container's [sidecar connection](concepts/sidecar-connection.md).
 - verify: count(subject="sidecars reloaded by a container-scoped request", equals=1)
-- consistency: Reloading a sidecar leaves its foreground workhorse process running.
+- consistency: sidecar-connection — reloading a sidecar leaves its foreground workhorse process running.
 - verify: unchanged(subject="foreground workhorse process for the reloaded sidecar")
 - **Manual timing removes the race.** The operator reloads *after* saving, so the
   restart never re-imports a half-written file.
@@ -214,13 +214,14 @@ run_sidecar &                             # workhorse stays the foreground/PID-f
 - **Non-authoritative sidecar, ephemeral state, resync on connect.** Never make a
   connection or in-memory datum the only copy of something that matters; a
   reconnect must be able to rebuild it. This is what makes every restart cheap.
-- consistency: Residual best-effort pushes time out after the bounded
-  `GROOM_PUSH_TIMEOUT`.
-- consistency: Failures of residual best-effort pushes remain silent.
-- consistency: Residual best-effort pushes neither block a workflow nor change
-  its exit code.
+- consistency: sidecar-residual-http-push-helper — the push times out after the
+  bounded `GROOM_PUSH_TIMEOUT`.
+- consistency: sidecar-residual-http-push-helper — a failed push remains
+  silent.
+- consistency: sidecar-residual-http-push-helper — a push neither blocks a
+  workflow nor changes its exit code.
 
-The residual-push [`_push` implementation](../../../groom/groom/sidecar.py#L108)
+The residual-push [`_push` implementation](../../../groom/groom/sidecar.py::_push)
 enforces these guarantees; see [sidecar-protocol](sidecar-protocol.md) for the
 best-effort channel it retains.
 - **Recopy while down.** The sidecar reload path never copies over its own running
@@ -287,10 +288,12 @@ groom's `dashboard_sidecar` handler accepts it. All frames are JSON with a
 
 **Decisions on the former open questions**
 
-- consistency: `/files`, `/file`, and `/diff` prefer the connected sidecar result and, when `groom/groom/app.py::_sidecar_rpc` returns `None` for an absent connection or `SidecarError`, use their volume readers so stopped, finished, and legacy containers remain browsable.
+- consistency: sidecar-rpc — `/files`, `/file`, and `/diff` prefer its result when a sidecar is connected.
 - verify: json_path(path="$.paths[0]", equals="README.md")
 - verify: json_path(path="$.content", equals="print(1)\n")
 - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
+- consistency: sidecar-rpc — when it returns `None` for an absent connection or `SidecarError`, endpoints fall back to volume readers, so stopped, finished, and legacy containers remain browsable.
+- verify: http_status(code=200)
 - **Liveness is soft.** A socket close unregisters the RPC connection (and fails
   its in-flight RPCs) but does **not** delete the workflow row — the reconcile
   scan still owns removal, so a transient drop or a groom restart doesn't flap

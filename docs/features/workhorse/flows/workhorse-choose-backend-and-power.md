@@ -23,7 +23,7 @@ so pointing one run at cheaper models no longer means editing the file every oth
   table yet required) and a workflow whose [agent turns](../workflow-format.md#the-agent-turn)
   carry an optional [`power`](../workflow-format.md#power) tier — an opaque string, whose
   meaning is whatever the operator's config maps it to (the shipped workflows use
-  `low`/`medium`/`high`/`smart`/`extra-smart`, cheapest first; default unset).
+  `low`/`medium`/`high`/`max`/`ultra`, cheapest first; default unset).
 - steps:
   1. **Populate the power table.** No command writes the nested `power` table
      — [`write_config_key`](../concepts/config.md#write_config_key) sets one top-level key at a
@@ -68,7 +68,7 @@ so pointing one run at cheaper models no longer means editing the file every oth
      ```
      A profile **replaces** the top-level tables rather than layering over them — nothing outside
      it is inherited — because power tiers are opaque strings and "the profile did not mention
-     `smart`, so it means the machine's `smart`" is a guess the config cannot state. What is *not*
+     `max`, so it means the machine's `max`" is a guess the config cannot state. What is *not*
      a model set stays outside and still applies: `[harness.<backend>].env`, `library_dir`,
      `base_dir`, `stablemate_dir`. There is no writer for this table either, for the same reason as
      step 1's.

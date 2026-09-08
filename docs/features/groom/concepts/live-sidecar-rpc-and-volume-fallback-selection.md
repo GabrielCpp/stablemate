@@ -19,3 +19,4 @@ consult the volume reader.
 - code: groom/groom/app.py::_sidecar_rpc
 - rule: prefer the live sidecar RPC for workspace reads; use the volume reader only when the RPC has no current connection or fails with a sidecar error
 - prefers: [sidecar live session sync](../flows/sidecar-live-session-sync.md)
+- detail: [Sidecar RPC documentation scope](sidecar-rpc-documentation-scope.md)

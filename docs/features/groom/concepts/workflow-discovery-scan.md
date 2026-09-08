@@ -20,11 +20,11 @@ reconciliation path.
 
 - code: groom/groom/discovery.py
 - rule: use the refresh flow to request a one-shot fleet reconciliation; use the blocked-gate answer flow only after a gate is visible, regardless of whether discovery, a push, or a sidecar delta made it visible
-- verify: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
-- verify: groom/tests/test_discovery.py::test_scan_uses_sidecar_query_for_running_container
-- verify: groom/tests/test_discovery.py::test_scan_query_terminal_wins_over_gates
-- verify: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
-- verify: groom/tests/test_discovery.py::test_scan_skips_containers_that_are_not_workhorse_containers
+- tests: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
+- tests: groom/tests/test_discovery.py::test_scan_uses_sidecar_query_for_running_container
+- tests: groom/tests/test_discovery.py::test_scan_query_terminal_wins_over_gates
+- tests: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
+- tests: groom/tests/test_discovery.py::test_scan_skips_containers_that_are_not_workhorse_containers
 - refs: [Docker all-container listing reader](docker-all-container-listing-reader.md), [Docker inspection reader](docker-inspection-reader.md), [host-to-container sidecar query](host-to-container-sidecar-query.md), [Docker run-directory reader](docker-run-directory-reader.md), [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), [Docker container-id listing reader](docker-container-id-listing-reader.md)
 
 ## Contract
@@ -42,7 +42,10 @@ reconciliation path.
 - empty fleet: returns an empty list when Docker reports no container entries with an `ID` field or the Docker listing helper reports no entries.
 - filtering: ignores Docker entries without an `ID` and omits any candidate whose per-container resolver returns `None`, including unrelated containers and failed inspections.
 - state source: delegates all per-container state decisions to the [per-container discovery resolver](#method-resolve-container), which prefers a running container sidecar snapshot and falls back to volume reconstruction when needed.
-- persistence: workflow-registry — does not mutate the [workflow registry](workflow-registry.md), write files, broadcast dashboard messages, start or stop containers, answer gates, or persist any scan result outside the returned list.
+- persistence: workflow-container-list — returns the resolved [workflow container](workflow-container.md) list in memory only.
+- verify: absent(subject="persisted discovery scan result")
+- persistence: workflow-container-list — never mutates the [workflow registry](workflow-registry.md), writes files, broadcasts dashboard messages, starts or stops containers, or answers gates.
+- verify: unchanged(subject="workflow registry, files, dashboard messages, containers, and gates")
 
 ## Fields
 
@@ -113,7 +116,7 @@ reconciliation path.
 - step: Create a bounded resolver pool sized to the smaller of the candidate count and the scan worker cap.
 - step: Resolve each candidate id through [method-resolve-container](#method-resolve-container), preserving candidate order in the resolved sequence.
 - step: Drop explicit `None` resolver results from the resolved sequence.
-- consistency: Return the remaining workflow containers in the same relative order as their Docker listing candidates.
+- consistency: workflow-container — the remaining resolved [workflow container](workflow-container.md) records are returned in the same relative order as their Docker listing candidates.
 
 ### algorithm-per-container-resolution
 
@@ -123,7 +126,7 @@ reconciliation path.
 - step: If the inspected container is running, request a sidecar query snapshot using the normalized baseline container id.
 - step: If the sidecar query returns a dictionary snapshot, apply [sidecar snapshot data](../sidecar-snapshot-data.md) through the [sidecar query snapshot transition](workflow-state.md#transition-sidecar-query-or-discovery-snapshot) and skip volume reconstruction.
 - step: If the container is stopped or the sidecar query does not return a dictionary snapshot, reconstruct state from run and workspace volumes through the [volume reconstruction transition](workflow-state.md#transition-volume-reconstruction).
-- consistency: an eligible candidate returns its resolved workflow container to the top-level scan after sidecar or volume state resolution.
+- consistency: workflow-container — an eligible candidate's resolved [workflow container](workflow-container.md) reaches the top-level scan after sidecar or volume state resolution.
 - verify: json_path(path="$.state", equals="FINISHED")
 
 ## Methods
@@ -152,9 +155,9 @@ Runs one bounded discovery pass and returns the ordered workflow-container recor
 - input: no caller-supplied arguments; all evidence comes from the local Docker container listing and the per-container resolver's Docker, sidecar, run-volume, and workspace-volume reads.
 - output: `list[WorkflowContainer]`, preserving Docker listing order after non-workhorse and unresolved candidates are removed.
 - worker limit: uses at most eight concurrent candidate resolvers and no more workers than there are candidate ids.
-- consistency: when no Docker listing entry supplies a non-empty `ID`, `scan` returns no workflow containers.
+- consistency: workflow-container-list — when no Docker listing entry supplies a non-empty `ID`, `scan` returns no workflow containers.
 - verify: count(subject="scan result for an empty Docker listing", equals=0)
-- consistency: when no Docker listing entry supplies a non-empty `ID`, `scan` creates no worker pool.
+- consistency: resolver-worker-pool — when no Docker listing entry supplies a non-empty `ID`, `scan` creates no worker pool.
 - verify: count(subject="worker-pool creations for an empty Docker listing", equals=0)
 - side effects: does not mutate registry state, prune stale containers, broadcast dashboard updates, answer gates, start containers, stop containers, or write files.
 
@@ -171,7 +174,9 @@ Runs one bounded discovery pass and returns the ordered workflow-container recor
 - sig: `container_from_inspect(inspect: dict[str, Any]) -> WorkflowContainer`
 - abstract: false
 - raises: no domain-specific exception for a valid inspect payload.
+- verify: json_path(path="$.container_id", equals="abcdef012345")
 - raises: malformed truthy inspect subtrees or mount rows may propagate ordinary mapping, sequence, or attribute errors from the helpers that read them.
+- verify: json_path(path="exception.type", matches="AttributeError|TypeError")
 - refs: [initial workflow-state transition](workflow-state.md#transition-discovery-initial)
 - refs: [Docker inspect workflow-container consumer](../docker-inspect-container-object.md#consumer-workflow-container-conversion)
 
@@ -222,7 +227,7 @@ Resolves one Docker candidate id into either one [workflow container](workflow-c
 - gate output: non-terminal gate evidence creates [gate info](gate-info.md) entries keyed by file path on the returned workflow container and marks the workflow `blocked` when at least one gate is retained.
 - persistence: workflow-container — returns an in-memory workflow record only.
 - verify: absent(subject="persisted discovery workflow record")
-- persistence: registry replacement, stale pruning, dashboard broadcast, and UI rendering belong to callers.
+- persistence: workflow-container — beyond returning it in memory, registry replacement, stale pruning, dashboard broadcast, and UI rendering belong to callers.
 - verify: unchanged(subject="workflow registry, dashboard messages, and rendered UI")
 
 #### Effects
@@ -242,7 +247,7 @@ Resolves one Docker candidate id into either one [workflow container](workflow-c
 
 #### Failure behavior
 
-- consistency: when `docker_io.docker_inspect` returns no payload, `_resolve_container` returns `None` and the scan drops the candidate without a placeholder.
+- consistency: workflow-container — when `docker_io.docker_inspect` returns no payload, `_resolve_container` returns `None` and the scan drops the candidate without a placeholder.
 - verify: absent(subject="workflow record for a candidate with no Docker inspect payload")
 - Non-workhorse inspect: returns `None`; the scan treats the candidate as unrelated Docker state.
 - Sidecar query failure: represented by the [host-to-container sidecar query](host-to-container-sidecar-query.md) as `None`, causing fallback volume reconstruction rather than a resolver-specific exception.
@@ -254,7 +259,9 @@ Resolves one Docker candidate id into either one [workflow container](workflow-c
 - sig: `is_workhorse_container(inspect: dict[str, Any]) -> bool`
 - abstract: false
 - raises: no domain-specific exception for a valid inspect payload.
+- verify: absent(subject="exception")
 - raises: malformed truthy mount rows may propagate the mount-index helper's ordinary attribute error.
+- verify: json_path(path="exception.type", equals="AttributeError")
 - code: groom/groom/discovery.py::is_workhorse_container
 - tests: groom/tests/test_discovery.py::test_is_workhorse_container_requires_all_three_mounts
 - tests: groom/tests/test_discovery.py::test_is_workhorse_container_ignores_unrelated_containers
@@ -269,7 +276,7 @@ Classifies whether one [Docker inspect container object](../docker-inspect-conta
 - source-of-truth: mount `Destination` values are authoritative for eligibility; mount type, source path, volume name, container name, labels, environment, and running state are not considered.
 - persistence: workhorse-container-classification — returns one boolean.
 - verify: absent(subject="persisted workhorse classification")
-- persistence: does not mutate the inspect object, Docker state, registry state, mounted volumes, sidecar state, dashboard state, or gate files.
+- persistence: workhorse-container-classification — deciding it never mutates the inspect object, Docker state, registry state, mounted volumes, sidecar state, dashboard state, or gate files.
 - verify: unchanged(subject="inspect object, Docker state, workflow registry, mounted volumes, sidecar state, dashboard state, and gate files")
 
 #### Effects
@@ -288,7 +295,7 @@ Classifies whether one [Docker inspect container object](../docker-inspect-conta
 
 #### Failure behavior
 
-- consistency: an inspect payload with no mount list produces an empty mount index and `is_workhorse_container` returns `false`.
+- consistency: workhorse-container-classification — an inspect payload with no mount list produces an empty mount index, so `is_workhorse_container` returns `false`.
 - verify: json_path(path="$.is_workhorse_container", equals=false)
 - Partial mount contract: returns `false` when any one of `/workflow`, `/runs`, or `/workspace` is absent, even if the other two are present.
 - Extra mounts: ignored; a container with the three required destinations remains eligible when additional destinations exist.
@@ -316,7 +323,7 @@ Produces the normalized mount lookup shared by workhorse-container eligibility, 
 - destinationless-row: a row with no `Destination` key is still retained under the `None` key, but Groom's documented consumers ignore it because they look up only `/workflow`, `/runs`, and `/workspace`.
 - persistence: mount-destination-index — returns an in-memory lookup only.
 - verify: absent(subject="persisted mount destination lookup")
-- persistence: never mutates the inspect object, Docker state, workflow registry, mounted volumes, or dashboard state.
+- persistence: mount-destination-index — building it never mutates the inspect object, Docker state, workflow registry, mounted volumes, or dashboard state.
 - verify: unchanged(subject="inspect object, Docker state, workflow registry, mounted volumes, and dashboard state")
 
 #### Effects
@@ -329,7 +336,7 @@ Produces the normalized mount lookup shared by workhorse-container eligibility, 
 
 #### Failure behavior
 
-- consistency: a missing or falsey `Mounts` value makes `_mounts_by_dest` return an empty mapping, so callers classify the container as non-workhorse or derive empty volume metadata.
+- consistency: mount-destination-index — a missing or falsey `Mounts` value makes `_mounts_by_dest` return an empty mapping, so callers classify the container as non-workhorse or derive empty volume metadata.
 - verify: count(subject="mount destination index for an inspect payload without Mounts", equals=0)
 - Partial mount row: absent `Destination`, `Name`, or `Source` fields do not fail this method; destinationless rows are not selected by documented callers, and missing metadata fields fall back in the caller that reads them.
 - Malformed mount row: a non-mapping item inside a truthy `Mounts` iterable is outside the accepted inspect-object shape and is not converted by this helper.
@@ -338,48 +345,63 @@ Produces the normalized mount lookup shared by workhorse-container eligibility, 
 
 - sig: `_workflow_type(inspect: dict[str, Any], mounts: dict[str, dict[str, Any]]) -> str`
 - abstract: Derive the workflow kind string stored on a baseline [workflow container](workflow-container.md) from Docker metadata in a way that is independent of container name and repository identity.
-- raises: no domain-specific exception; absent mount metadata, absent configuration, absent labels, empty strings, and falsey values produce `""` when no supported source exists.
+- raises: no domain-specific exception for an accepted inspect payload.
+- raises: absent mount metadata, absent configuration, absent labels, empty strings, and falsey values produce `""` when no supported source exists.
 - verify: json_path(path="$.workflow_type", equals="")
 - raises: malformed truthy inspect or mount records may propagate their ordinary attribute error.
-- verify: groom/tests/test_discovery.py::test_workflow_type_from_workflow_mount_basename
-- verify: groom/tests/test_discovery.py::test_workflow_type_falls_back_to_compose_service_label
+- returns: a non-empty `Config.Env` `WORKFLOW` value unchanged as the workflow type, taking precedence over legacy mount and compose metadata.
+- verify: json_path(path="$.workflow_type", equals="author")
+- returns: when `WORKFLOW` is absent or empty, a non-empty basename other than the literal generic value `workflow` from the `/workflow` mount `Source` unchanged as the workflow type.
+- verify: json_path(path="$.workflow_type", equals="coder")
+- returns: when neither `WORKFLOW` nor the `/workflow` mount produces a non-generic type, the non-empty `Config.Labels["com.docker.compose.service"]` value unchanged as the workflow type.
+- verify: json_path(path="$.workflow_type", equals="author")
 - code: groom/groom/discovery.py::_workflow_type
+- tests: groom/tests/test_discovery.py::test_the_workflow_type_is_what_the_container_was_told_to_run
+- tests: groom/tests/test_discovery.py::test_a_container_from_an_older_harness_still_types_from_its_mount
+- tests: groom/tests/test_discovery.py::test_the_environment_wins_over_a_leftover_workflow_mount
+- tests: groom/tests/test_discovery.py::test_workflow_type_falls_back_to_compose_service_label
 
-Chooses the workflow type used by the [initial workflow-state transition](workflow-state.md#transition-discovery-initial) and the [workflow container](workflow-container.md#field-workflow-type) field. The method consumes the destination-keyed mount lookup produced by [method-index-mounts-by-destination](#method-index-mounts-by-destination), reads only the `/workflow` mount `Source` and the Docker inspect `Config.Labels` fallback, and returns a display string for workflow kinds such as `coder` or `author` without reading or copying environment variables.
+Chooses the workflow type used by the [initial workflow-state transition](workflow-state.md#transition-discovery-initial) and the [workflow container](workflow-container.md#field-workflow-type) field. The method first reads the `WORKFLOW` value from Docker inspect `Config.Env`, which is the workflow console script the container was told to run. It retains the destination-keyed `/workflow` mount `Source` and Docker inspect `Config.Labels` compose-service name as fallbacks for older containers, returning a display string such as `coder` or `author` without copying unrelated environment variables.
 
 #### Contract
 
 - input-inspect: one [Docker inspect container object](../docker-inspect-container-object.md) or partial inspect-shaped dictionary.
 - input-mounts: destination-keyed mount lookup whose `/workflow` entry, when present, may carry a `Source` string.
-- primary-source: the basename of the `/workflow` mount `Source` after removing trailing slashes.
-- accepted-primary: any non-empty basename other than the literal generic value `workflow` is returned unchanged as the workflow type.
+- primary-source: `Config.Env` entry named `WORKFLOW` from the inspect object.
+- accepted-primary: any non-empty `WORKFLOW` value is returned unchanged as the workflow type.
+- secondary-source: the basename of the `/workflow` mount `Source` after removing trailing slashes.
+- secondary-trigger: the mount basename is used only when `WORKFLOW` is absent or empty.
+- accepted-secondary: any non-empty mount basename other than the literal generic value `workflow` is returned unchanged as the workflow type.
 - fallback-source: `Config.Labels["com.docker.compose.service"]` from the inspect object.
-- fallback-trigger: fallback is used only when the primary basename is empty or exactly `workflow`.
-- missing-fallback: missing `Config`, missing `Labels`, missing compose service label, or an empty label returns `""` when fallback is needed.
+- fallback-trigger: the compose service label is used only when both the `WORKFLOW` value and mount basename are empty or the mount basename is exactly `workflow`.
+- missing-fallback: missing `Config`, missing `Env`, missing `Labels`, missing compose service label, or an empty label returns `""` when fallback is needed.
 - output: `str`; no validation restricts the returned value to a fixed enum because workflow kinds are defined by workhorse workflow directories and compose service names.
-- privacy-boundary: environment variables, repository names, branches, gate content, run artifacts, and volume names are not read by this method.
+- privacy-boundary: reads only the `WORKFLOW` environment value; repository names, branches, gate content, run artifacts, volume names, and unrelated environment variables are not read or copied by this method.
 - persistence: workflow-type — returns an in-memory string only.
 - verify: absent(subject="persisted workflow type")
-- persistence: never mutates the inspect object, mount lookup, Docker state, workflow registry, mounted volumes, sidecar state, dashboard state, or environment variables.
+- persistence: workflow-type — deriving it never mutates the inspect object, mount lookup, Docker state, workflow registry, mounted volumes, sidecar state, dashboard state, or environment variables.
 - verify: unchanged(subject="inspect object, mount lookup, Docker state, workflow registry, mounted volumes, sidecar state, dashboard state, and environment variables")
 
 #### Effects
 
-- Reads: the `/workflow` row from the destination-keyed mount lookup.
+- Reads: the `WORKFLOW` entry from the Docker inspect `Config.Env` list.
+- Returns: the non-empty `WORKFLOW` value before consulting mount or compose metadata.
+- Reads: the `/workflow` row from the destination-keyed mount lookup only when `WORKFLOW` is absent or empty.
 - Reads: the mount row's `Source` value, defaulting to `""` when the mount row or source key is absent.
 - Derives: a candidate workflow type from the final path segment of the source after trailing slashes are ignored.
 - Returns: the candidate when it is non-empty and not the generic `workflow` path segment.
-- Reads: the Docker inspect `Config.Labels` map only when the candidate is empty or generic.
+- Reads: the Docker inspect `Config.Labels` map only when neither the environment nor mount candidate supplies a type.
 - Returns: the compose service label value when fallback is needed and present.
-- Emits: `""` when neither source provides a non-empty workflow type.
+- Emits: `""` when the environment, legacy mount, and compose-label sources provide no non-empty workflow type.
 - Preserves: the supplied inspect dictionary and mount lookup exactly as received.
 
 #### Failure behavior
 
-- Missing `/workflow` mount: primary derivation produces an empty candidate and falls back to the compose service label.
-- Source ending in `/workflow`: primary derivation is considered generic and falls back to the compose service label.
+- Missing or empty `WORKFLOW`: mount-basename derivation is used as the legacy fallback.
+- Missing `/workflow` mount: legacy mount derivation produces an empty candidate and falls back to the compose service label.
+- Source ending in `/workflow`: legacy mount derivation is considered generic and falls back to the compose service label.
 - Source with trailing slash: trailing slashes are ignored before the basename is selected, so `/host/workflows/coder/` emits `coder`.
-- consistency: when fallback is required and `Config.Labels` has no compose service label, `_workflow_type` returns `""`.
+- consistency: workflow-type — when fallback is required and `Config.Labels` has no compose service label, `_workflow_type` returns `""`.
 - verify: json_path(path="$.workflow_type", equals="")
 - Non-string source or label values: outside the documented Docker inspect shape for this method and not normalized by the workflow-type derivation layer.
 
@@ -387,11 +409,13 @@ Chooses the workflow type used by the [initial workflow-state transition](workfl
 
 - sig: `_env_map(inspect: dict[str, Any]) -> dict[str, str]`
 - abstract: Normalize Docker inspect `Config.Env` entries from `KEY=VALUE` strings into a string lookup so discovery can read selected repository identity fields without retaining unrelated environment variables.
-- raises: no domain-specific exception; absent or falsey `Config`/`Env` returns an empty mapping.
-- verify: count(subject="environment mapping for an inspect payload without Config.Env", equals=0)
+- raises: no domain-specific exception when `Config`/`Env` are absent or falsey.
 - raises: a truthy non-mapping `Config` or non-string environment entry is outside the accepted Docker inspect shape and may propagate its ordinary attribute/type error.
-- verify: groom/tests/test_discovery.py::test_container_from_inspect_reads_env_name_and_volumes
+- verify: json_path(path="exception.type", equals="AttributeError")
+- returns: an empty mapping when `Config`/`Env` are absent or falsey.
+- verify: count(subject="environment mapping for an inspect payload without Config.Env", equals=0)
 - code: groom/groom/discovery.py::_env_map
+- tests: groom/tests/test_discovery.py::test_container_from_inspect_reads_env_name_and_volumes
 
 Builds the transient environment lookup used by the [initial workflow-state transition](workflow-state.md#transition-discovery-initial) and baseline [workflow container](workflow-container.md) creation. The method treats the [Docker inspect container object](../docker-inspect-container-object.md) as the source of truth, returns only parsed environment key/value pairs, and leaves the caller responsible for choosing which keys are safe to copy onto the workflow record.
 
@@ -409,7 +433,7 @@ Builds the transient environment lookup used by the [initial workflow-state tran
 - privacy-boundary: secrets and unrelated variables may be present in the returned local mapping, but the baseline workflow-container conversion does not copy them into the public workflow record.
 - persistence: environment-map — returns an in-memory mapping only.
 - verify: absent(subject="persisted environment mapping")
-- persistence: never mutates the inspect object, Docker state, workflow registry, mounted volumes, sidecar state, dashboard state, or environment variables.
+- persistence: environment-map — building it never mutates the inspect object, Docker state, workflow registry, mounted volumes, sidecar state, dashboard state, or environment variables.
 - verify: unchanged(subject="inspect object, Docker state, workflow registry, mounted volumes, sidecar state, dashboard state, and environment variables")
 
 #### Effects
@@ -422,7 +446,7 @@ Builds the transient environment lookup used by the [initial workflow-state tran
 
 #### Failure behavior
 
-- consistency: missing or falsey `Config` or `Config.Env` makes `_env_map` return an empty mapping, causing repository identity fields to default to empty strings in the caller.
+- consistency: environment-map — missing or falsey `Config` or `Config.Env` makes `_env_map` return an empty mapping, causing repository identity fields to default to empty strings in the caller.
 - verify: count(subject="environment mapping for an inspect payload without Config.Env", equals=0)
 - Empty environment list: returns an empty mapping.
 - Entry without equals: silently skips that entry.
@@ -452,7 +476,7 @@ Reads the latest run directory in a workflow's `/runs` volume and returns the tw
 - output: `(current_node, terminal)`, where each element is a string and missing, unreadable, malformed, absent, or falsey data becomes `""` for that element.
 - persistence: run-state-evidence — returns transient state evidence only.
 - verify: absent(subject="persisted run-state evidence")
-- persistence: does not mutate Docker volumes, workflow containers, the registry, sidecar sessions, gate files, or dashboard clients.
+- persistence: run-state-evidence — reading it does not mutate Docker volumes, workflow containers, the registry, sidecar sessions, gate files, or dashboard clients.
 - verify: unchanged(subject="Docker volumes, workflow containers, workflow registry, sidecar sessions, gate files, and dashboard clients")
 
 #### Effects
@@ -467,9 +491,9 @@ Reads the latest run directory in a workflow's `/runs` volume and returns the tw
 
 #### Failure behavior
 
-- consistency: an empty run-directory list makes `_current_run_state` return an empty current-node value.
+- consistency: run-state-evidence — an empty run-directory list makes `_current_run_state` return an empty current-node value.
 - verify: json_path(path="$[0]", equals="")
-- consistency: an empty run-directory list makes `_current_run_state` return an empty terminal value.
+- consistency: run-state-evidence — an empty run-directory list makes `_current_run_state` return an empty terminal value.
 - verify: json_path(path="$[1]", equals="")
 - Missing file content: leaves the corresponding tuple element empty.
 - Malformed JSON: leaves the corresponding tuple element empty and continues with the other file when applicable.
@@ -480,10 +504,12 @@ Reads the latest run directory in a workflow's `/runs` volume and returns the tw
 - sig: `_find_gates(workspace_volume: str) -> list[GateInfo]`
 - abstract: false
 - raises: propagates Docker file-read launch, timeout, and path-guard exceptions from the underlying file-content reader.
-- verify: groom/tests/test_discovery.py::test_find_gates_only_keeps_files_still_awaiting
+- verify: count(subject="retained gate records after a candidate is reread as non-awaiting", equals=1)
 - raises: Docker grep failures are represented by the awaiting-file reader as an empty path list.
-- verify: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
+- verify: count(subject="discovered gate records after the awaiting-file reader returns no paths", equals=0)
 - code: groom/groom/discovery.py::_find_gates
+- tests: groom/tests/test_discovery.py::test_find_gates_only_keeps_files_still_awaiting
+- tests: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
 
 Reconstructs open operator gates from a workflow's `/workspace` volume during discovery fallback. It starts from the host-side awaiting-file sweep, rereads each candidate file, revalidates the current status through the shared gate parser, extracts the operator-facing question, and returns gate records whose workflow id is deliberately blank until a caller attaches the containing workflow id.
 
@@ -498,7 +524,7 @@ Reconstructs open operator gates from a workflow's `/workspace` volume during di
 - workflow-id: emitted gate records have `workflow_id=""`; the volume reconstruction transition assigns the containing workflow container id before storing them on the workflow.
 - persistence: discovered-gate-records — returns in-memory gate records only.
 - verify: absent(subject="persisted discovered gate records")
-- persistence: never writes gate files, answers questions, mutates workflow containers, registers locks, broadcasts dashboard HTML, or persists state.
+- persistence: discovered-gate-records — producing them never writes gate files, answers questions, mutates workflow containers, registers locks, broadcasts dashboard HTML, or persists state.
 - verify: unchanged(subject="gate files, workflow containers, locks, dashboard HTML, and persisted state")
 
 #### Effects
@@ -511,7 +537,7 @@ Reconstructs open operator gates from a workflow's `/workspace` volume during di
 
 #### Failure behavior
 
-- consistency: when the awaiting-file reader returns no candidate paths, `_find_gates` returns an empty gate list.
+- consistency: discovered-gate-records — when the awaiting-file reader returns no candidate paths, `_find_gates` returns an empty gate list.
 - verify: count(subject="discovered gates when the awaiting-file reader returns no candidates", equals=0)
 - Missing reread content: skips that candidate.
 - Stale candidate: skips a candidate whose reread status is no longer `AWAITING_OPERATOR`.
@@ -536,19 +562,23 @@ Returns the local Docker daemon's current container-id set for stale-registry pr
 - output: `set[str] | None`, where a set is the complete current Docker container-id population known to the Docker helper and `None` means Docker was unreachable or the helper could not produce a reliable listing.
 - id scope: includes every Docker container id reported by the helper, not only ids for workhorse-backed containers and not only ids already present in the workflow registry.
 - prune safety: `None` is a negative capability signal that callers must treat differently from an empty set, because pruning on an unreachable Docker daemon would remove valid registry entries.
-- persistence: container-id-set — returns an in-memory value only; it never mutates the [workflow registry](workflow-registry.md), [workflow container](workflow-container.md) records, Docker containers, sidecar sessions, dashboard clients, gate files, answer logs, or mounted volumes.
+- persistence: container-id-set — returns an in-memory value only.
+- verify: absent(subject="persisted container-id set")
+- persistence: container-id-set — never mutates the [workflow registry](workflow-registry.md), [workflow container](workflow-container.md) records, Docker containers, sidecar sessions, dashboard clients, gate files, answer logs, or mounted volumes.
+- verify: unchanged(subject="workflow registry, workflow containers, Docker containers, sidecar sessions, dashboard clients, gate files, answer logs, and mounted volumes")
 
 #### Effects
 
 - Calls: the first-party [Docker container-id listing reader](docker-container-id-listing-reader.md) once.
-- Emits: the returned `set[str]` unchanged when Docker reports container ids; each id is the short normalized id supplied by the Docker container-id listing reader.
+- Emits: the returned `set[str]` unchanged when Docker reports container ids.
+- Emits: each id in that set as the short normalized id supplied by the Docker container-id listing reader.
 - Emits: `None` unchanged when the Docker container-id listing reader receives a failed Docker command result, allowing callers to distinguish an unreachable Docker daemon from an empty Docker fleet.
 - Preserves: workflow registry contents, discovery scan results, gate state, sidecar state, dashboard websocket clients, and Docker containers.
 - Does not: filter to workhorse containers, inspect containers, resolve workflow state, prune registry entries, mutate workflow records, broadcast dashboard HTML, answer gates, start or stop containers, write files, or persist state.
 
 #### Failure behavior
 
-- consistency: when `docker_io.list_container_ids` reports a Docker command failure, `present_container_ids` returns `None` rather than raising a discovery-specific error.
+- consistency: container-id-set — when `docker_io.list_container_ids` reports a Docker command failure, `present_container_ids` returns `None` rather than raising a discovery-specific error.
 - verify: absent(subject="container-id set after a Docker command failure")
 - Empty Docker fleet: returns an empty `set[str]`, which callers may use as a positive signal that no containers are currently present.
 - Process launch or timeout failure: not converted by this wrapper; any exception raised by the Docker I/O helper propagates to the caller.

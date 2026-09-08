@@ -10,10 +10,10 @@ Exited push payload is the JSON request body produced by the residual HTTP sidec
 - file: not an on-disk artifact; this is a best-effort HTTP JSON request body for `POST /push/exited`.
 - code: groom/groom/app.py::push_exited
 - code: groom/groom/sidecar.py::push_exited
-- verify: groom/tests/test_sidecar.py::test_push_exited_posts_expected_shape
-- verify: groom/tests/test_sidecar.py::test_push_exited_is_silent_when_groom_is_unreachable
-- verify: groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code
-- verify: groom/tests/test_app.py::test_push_exited_rejects_missing_container_id
+- tests: groom/tests/test_sidecar.py::test_push_exited_posts_expected_shape
+- tests: groom/tests/test_sidecar.py::test_push_exited_is_silent_when_groom_is_unreachable
+- tests: groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code
+- tests: groom/tests/test_app.py::test_push_exited_rejects_missing_container_id
 
 ## Contract
 
@@ -32,9 +32,13 @@ Exited push payload is the JSON request body produced by the residual HTTP sidec
 - initial-name rule: when a valid payload creates a new workflow, a truthy `name` becomes the initial workflow name; an omitted, `null`, or falsey `name` falls back to the normalized container id.
 - metadata rule: before applying the finish update, the endpoint tries [push-first volume metadata resolver](concepts/push-first-volume-metadata-resolver.md) hydration for workflows that are absent or do not yet have a workspace volume; this can fill `workspace_volume`, `runs_volume`, and `workflow_type` independently of the JSON payload.
 - state result: a valid payload marks the workflow [workflow state](concepts/workflow-state.md) as `finished`, clears all open gates for that workflow, stores a parsed exit code when one was accepted, preserves the previous exit code when the payload omits `exit_code` or supplies an ordinary non-numeric value, preserves current node and run id, preserves workflow type, workspace volume, and runs volume unless Docker metadata resolution fills them first, then broadcasts the refreshed dashboard shell.
+- attend release: a valid payload releases any outstanding [gate-attendant](concepts/exited-push-documentation-scopes.md) job still queued for the container id, so a subsequent park announcement dispatches fresh rather than being deduped against the exited run's own job.
+- verify: json_path(path="attend.queue_after", equals=[])
+- attend death dispatch: after the finish update, a valid payload dispatches a death attendant for a native workflow whose resulting exit code is present and is neither `0` (clean exit) nor the workhorse supervisor's reload exit code — the two endings that are not a death because they are the run succeeding or restarting itself on purpose, not failing. Dispatch reads the run directory's own failure-log entry, when one exists, to seed the attendant with a failure class and node; a non-native workflow or a run with no recorded exit code gets no dispatch.
+- verify: json_path(path="attend.queue_after[0].kind", equals="death")
 - response result: normal handler return is a JSON object `{"ok": bool}`; `false` means the normalized container id was empty, and `true` means metadata resolution, workflow upsert, gate clearing, and dashboard broadcast completed. The response does not echo the exit code, workflow id, cleared gates, workflow state, or rendered shell fragment.
 - error result: malformed JSON, non-object request bodies rejected before handler object lookup, Docker metadata lookup failures, malformed multi-hyphen numeric strings that fail integer conversion, shell rendering failures, and dashboard broadcast failures do not use this format's `ok: false` response; they propagate through the framework error path.
-- non-effects: this payload does not answer a gate file, write a gate file, append a log event, prune workflow registry entries, authenticate a caller, read file contents, update current node, send a browser notification script, retry delivery, or persist data outside the groom process.
+- non-effects: this payload does not answer a gate file, write a gate file, append a log event, prune workflow registry entries, authenticate a caller, update current node, send a browser notification script, retry delivery, or persist data outside the groom process. It reads file contents only incidentally to a death-attendant dispatch: the run directory's failure-log entry, when the exit code signals a death.
 
 ## Fields
 

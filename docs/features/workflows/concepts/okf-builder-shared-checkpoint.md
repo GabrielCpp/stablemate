@@ -41,3 +41,17 @@ to count unchanged stalls.
 - returns: checkpoint status, doctor output, round counters, repair items, and stall signature
 - verify: count(subject="OKF-builder checkpoint results", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/shared/checkpoint.py::checkpoint_book`
+
+### settle_stale
+- sig: `settle_stale(logger: logging.Logger, worklist_path: str, repo_root: str = ".", features_root: str = "", every: int = SETTLE_EVERY) -> Settled`
+- does: closes pending repair rows mid-drain whose findings doctor no longer reports
+- verify: created(subject="closed mid-drain stale OKF-builder repair rows")
+- does: reads doctor on first entry and amortized after every N completed items
+- verify: created(subject="amortized OKF-builder mid-drain doctor reads")
+- does: compares standing repair items against the current doctor report to settle rows
+- verify: created(subject="OKF-builder standing repair items for settlement")
+- does: skips the doctor read when no pending fix items remain, reporting zero settled rows in that case
+- verify: created(subject="OKF-builder settlement watermark update")
+- returns: settlement status, pending item count, standing repair count, and settled count
+- verify: created(subject="OKF-builder settlement results")
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/checkpoint.py::settle_stale`

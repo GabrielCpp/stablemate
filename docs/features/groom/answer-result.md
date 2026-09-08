@@ -9,22 +9,29 @@ Answer result is the in-memory return object from the [gate-answering layer](con
 
 - file: not an on-disk artifact; this is a process-local dataclass value returned by the gate-answering call.
 - code: groom/groom/models.py::AnswerResult
-- consistency: `groom/groom/gates.py::answer_gate` returns an `AnswerResult` for every explicit gate-answering domain outcome.
-- verify: groom/tests/test_gates.py::test_answer_gate_rejects_when_already_answered
-- verify: groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running
-- verify: groom/tests/test_gates.py::test_answer_gate_restarts_when_container_stopped
-- verify: groom/tests/test_gates.py::test_answer_gate_reports_missing_workspace_volume
-- verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_answered_script
-- verify: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
+- consistency: answer-result — `groom/groom/gates.py::answer_gate` returns an `AnswerResult` for every explicit gate-answering domain outcome.
+- consistency: answer-result — construction requires an `ok` argument, as declared by `groom/groom/models.py::AnswerResult`.
+
+Regression coverage for this format includes `groom/tests/test_gates.py::test_answer_gate_rejects_when_already_answered`, `groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running`, `groom/tests/test_gates.py::test_answer_gate_restarts_when_container_stopped`, `groom/tests/test_gates.py::test_answer_gate_reports_missing_workspace_volume`, `groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_answered_script`, and `groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch`.
 
 ## Contract
 
 - consumer: the dashboard websocket command handler reads `ok` and `message` after the gate-answering call completes.
 - medium: process-local Python object; it is not a JSON frame, HTML fragment, persisted log record, or file format.
 - constructor: `AnswerResult(ok: bool, message: str = "")`.
-- construction: callers must supply `ok`; callers may omit `message`, in which case the object exposes `message=""`.
+- construction: callers may omit `message`, in which case the object exposes `message=""`.
 - field order: `ok` is the first constructor and storage field; `message` is second.
-- attributes: exactly `ok` and `message` are part of this return shape; container id, gate file path, submitted answer text, question text, workspace volume, restart status, and exception data are not fields.
+- consistency: answer-result — exposes exactly `ok` and `message` as fields
+- verify: json_path(path="$.ok", matches=".*")
+- verify: json_path(path="$.message", matches=".*")
+- consistency: answer-result — does not expose container id, gate file path, submitted answer text, question text, workspace volume, restart status, or exception data as fields
+- verify: json_path(path="$.container_id", absent=true)
+- verify: json_path(path="$.gate_file_path", absent=true)
+- verify: json_path(path="$.submitted_answer_text", absent=true)
+- verify: json_path(path="$.question_text", absent=true)
+- verify: json_path(path="$.workspace_volume", absent=true)
+- verify: json_path(path="$.restart_status", absent=true)
+- verify: json_path(path="$.exception_data", absent=true)
 - mutability: instances are mutable process-local records; neither field is frozen or computed.
 - validation: the shape itself does not validate or coerce field values; first-party producers pass a boolean `ok` and a string `message`.
 - success meaning: `ok=true` means the gate file write succeeded and the dashboard treats the selected gate as answered, even if the fallback container restart failed after the write.
@@ -54,10 +61,10 @@ Answer result is the in-memory return object from the [gate-answering layer](con
 ### field-message
 
 - type: `str`
-- default: `""`
+- default: an omitted `message` argument exposes `message=""`.
 - verify: json_path(path="$.message", equals="")
-- required: false for construction; callers may omit `message`, and the instance exposes `message=""`.
-- verify: json_path(path="$.message", equals="")
+- required: false for construction.
+- verify: json_path(path="$.constructor.message.required", equals=false)
 - domain: first-party non-empty values are the success and failure strings listed in the contract; the shape itself also permits the empty default and arbitrary caller-supplied strings.
 - producer-use: set by the gate-answering layer to summarize the accepted write, duplicate/stale gate, missing file, missing workspace volume, write failure, or restart fallback outcome.
 - consumer-use: copied verbatim into the [answer log entry](answer-log-entry.md); not used to decide success, not sent in the `groom:answered` event detail, and not parsed by the websocket handler.

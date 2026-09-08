@@ -13,6 +13,7 @@ outputs.
 
 - code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
 - tests: [pyflow tests](../../../../workhorse/tests/test_pyflow.py)
+- detail: [pyflow workflow reading guide](pyflow-workflow-reading-guide.md)
 
 ## Fields
 
@@ -20,8 +21,12 @@ outputs.
 - type: `str`
 - default: empty string
 - required: true
-- semantics: consuming repository root passed to nodes; an empty value leaves repository-root discovery to the node
+- semantics: consuming repository root passed to nodes
+- verify: json_path(path="$.repo_dir", equals="/src")
+- semantics: an empty value leaves repository-root discovery to the node
+- verify: count(subject="repository-root discoveries delegated to nodes", equals=1)
 - code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ### field: library_dirs
 - type: `tuple[str, ...]`
@@ -29,6 +34,7 @@ outputs.
 - required: true
 - semantics: ordered content-library roots available to nodes and prompt resolution
 - code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ### field: injects
 - type: `ClassVar[tuple[str, ...]]`
@@ -36,6 +42,7 @@ outputs.
 - required: true
 - semantics: allowlist of workflow fields eligible for ambient injection into seams
 - code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ### field: INFRA_NODES
 - type: `ClassVar[frozenset[Any]]`
@@ -43,12 +50,14 @@ outputs.
 - required: true
 - semantics: node functions whose spans are classified as infrastructure work
 - code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ### field: states
 - type: `ClassVar[NameIndex[StateSpec]]`
 - required: true
 - semantics: per-subclass index of live state names and aliases
 - code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ### field: start_state
 - type: `ClassVar[str]`
@@ -56,13 +65,18 @@ outputs.
 - required: true
 - semantics: state entered when no resume checkpoint selects another state
 - code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ### field: max_transitions
 - type: `ClassVar[int]`
 - default: `0`
 - required: true
-- semantics: transition ceiling before the run's configured budget is used; zero delegates to the run
+- semantics: a non-zero transition ceiling overrides the run's configured budget
+- verify: count(subject="transitions before a workflow-specific budget failure", equals=4)
+- semantics: zero delegates the transition budget to the run's configured budget
+- verify: count(subject="transitions before a run-configured budget failure", equals=3)
 - code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ### field: REFUEL_ON
 - type: `ClassVar[frozenset[str]]`
@@ -70,6 +84,7 @@ outputs.
 - required: true
 - semantics: state-parameter names whose changed value refills the transition budget
 - code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ## Methods
 
@@ -130,7 +145,7 @@ outputs.
 ### run_dir
 - sig: `run_dir -> Path`
 - raises: `WorkflowDefinitionError` when the workflow is not bound to a run
-- verify: exists(subject="the bound run directory")
+- verify: json_path(path="exception.type", equals="WorkflowDefinitionError")
 - returns: the bound run artifact directory
 - code: `workhorse/workhorse/pyflow/workflow.py::Workflow.run_dir`
 
@@ -153,6 +168,7 @@ outputs.
 - sig: `agent(prompt: str, *, returns: type[T], args=None, power=None, timeout=None, retries=None, invoke_retries=None, cwd=None, add_dirs=None, session=None) -> T`
 - does: renders a prompt, runs one agent turn, and validates the reply against `returns`
 - raises: `AgentTimeout` when the turn's recovery ladder ends because of timeout
+- raises: `AgentTurnFailed` when the turn's recovery ladder ends without an answer
 - returns: the validated reply model or value
 - verify: count(subject="validated agent replies", equals=1)
 - code: `workhorse/workhorse/pyflow/workflow.py::Workflow.agent`
@@ -172,7 +188,7 @@ outputs.
 ### reset_session
 - sig: `reset_session(key: str) -> None`
 - does: removes a named session chain so its next turn starts a fresh conversation
-- verify: absent(subject="reset session chain file")
+- verify: removed(subject="the session chain file for key")
 - code: `workhorse/workhorse/pyflow/workflow.py::Workflow.reset_session`
 
 ### handoff

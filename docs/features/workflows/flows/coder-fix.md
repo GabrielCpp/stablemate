@@ -5,9 +5,10 @@ title: Coder standalone fix flow
 ---
 # Coder standalone fix flow
 
-- The `coder.fix` package exports `Fix` and the shared `BLOCKED_NOTE` marker. It is the directly
-  runnable copy of the drain; the main coder graph has a separate nested copy and does not hand
-  off to this package.
+- The `coder.fix` package exports `Fix` (defined at
+  `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix`) and the shared `BLOCKED_NOTE`
+  marker. It is the directly runnable copy of the drain; the main coder graph has a separate
+  nested copy and does not hand off to this package.
 - The standalone `Fix` machine drains only items filed in the coder backlog. Each selected
   bullet becomes a one-acceptance-criterion fix story, is implemented in one agent turn, judged
   against the repositories that actually changed, sent through one QA retry at most, documented,
@@ -84,24 +85,9 @@ title: Coder standalone fix flow
 - verify: count(subject="operator-gated implementation blocks", equals=1)
 - end: an exhausted gate-repair budget waits for an operator
 - verify: count(subject="operator-gated standalone fixes", equals=1)
+- detail: [coder fix package](../concepts/coder-fix-package.md)
 - detail: [coder main flow](coder-main.md)
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.setup`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.start`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.item`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.gates`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.read_operator_impl`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.check`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.apply_once`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.recheck`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.document`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.commit`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix._changed_dirs`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix._prune`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix._flag`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix._gate_impl`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix._gate_red`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix._qa`
+
 - tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_pruned_and_committed`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_a_red_gate_buys_a_repair_lap_and_hands_the_turn_its_output`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_qa_gets_exactly_one_retry_and_the_fixer_is_handed_the_first_verdict`
@@ -117,10 +103,6 @@ title: Coder standalone fix flow
 - tests: `workflows/tests/coder/fix/test_flow.py::test_the_commits_land_on_the_branch_the_repos_were_already_on`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_the_first_pass_is_handed_the_item_and_no_gate_report_at_all`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_the_drain_keeps_going_until_the_section_is_empty`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::render_gate`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::BLOCKED_NOTE`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::MAX_FIX_LAPS`
-- code: `workflows/src/workhorse_workflows/coder/fix/__init__.py::__all__`
 
 The flow resolves its workspace once because no story exists at setup time. Each iteration then
 selects without mutating the backlog, creates the `fixes` story bucket when needed, and guards the
@@ -150,7 +132,7 @@ the rendered failing command, working directory, and output through `fix-item-re
 
 - kind: verify
 
-`gates` asks every changed repository to run each gate in `GATE_ORDER`, using the repository's own
+`gates` calls `render_gate` (defined at `workflows/src/workhorse_workflows/coder/fix/flow.py::render_gate`) to format the gate failure report. It asks every changed repository to run each gate in `GATE_ORDER`, using the repository's own
 `make <gate>` fallback when no service-specific command is configured. Clean or skipped gates pass.
 A dirty gate produces a `FailureReport`; up to `MAX_FIX_LAPS` repair laps re-enter implementation,
 and the still-red final lap enters the operator gate with the failure output preserved.

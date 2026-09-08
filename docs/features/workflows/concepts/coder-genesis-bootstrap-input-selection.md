@@ -19,3 +19,6 @@ steps.
 
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
 - rule: supply the cumulative inputs required by the target and stack; use `markers` for an explicit complete marker list, otherwise use `marker` as its fallback
+- detail: [coder genesis bootstrap concept selection](coder-genesis-bootstrap-concept-selection.md)
+- detail: [coder genesis bootstrap guide](coder-genesis-bootstrap-guide.md)
+- detail: [coder genesis bootstrap scope](coder-genesis-bootstrap-scope.md)

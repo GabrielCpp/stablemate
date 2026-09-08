@@ -11,20 +11,21 @@ The sidecar websocket frame is the JSON message format exchanged on the [websock
 - code: groom/groom/app.py::dashboard_sidecar
 - code: groom/groom/sidecar.py::_hello_frame
 - code: groom/groom/sidecar.py::_classify_event
-- verify: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate,
-  groom/tests/test_app.py::test_apply_hello_running_when_no_gates,
-  groom/tests/test_app.py::test_apply_hello_finished_when_terminal,
-  groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively,
-  groom/tests/test_sidecar_session.py::test_hello_frame_carries_identity_and_snapshot,
-  groom/tests/test_sidecar_session.py::test_classify_event_runs_write_is_progress,
-  groom/tests/test_sidecar_session.py::test_classify_event_awaiting_gate_is_blocked,
-  groom/tests/test_sidecar_session.py::test_handle_rpc_get_tree_replies_ok,
-  groom/tests/test_sidecar_session.py::test_handle_rpc_unknown_method_replies_error,
-  groom/tests/test_sidecar_session.py::test_handle_rpc_get_file_traversal_replies_error,
-  groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises,
-  groom/tests/test_sidecar_hub.py::test_rpc_sends_request_and_returns_resolved_data,
-  groom/tests/test_sidecar_hub.py::test_rpc_error_result_raises_sidecar_error,
-  groom/tests/test_sidecar_hub.py::test_send_reload_emits_reload_frame
+
+The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate`,
+`groom/tests/test_app.py::test_apply_hello_running_when_no_gates`,
+`groom/tests/test_app.py::test_apply_hello_finished_when_terminal`,
+`groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively`,
+`groom/tests/test_sidecar_session.py::test_hello_frame_carries_identity_and_snapshot`,
+`groom/tests/test_sidecar_session.py::test_classify_event_runs_write_is_progress`,
+`groom/tests/test_sidecar_session.py::test_classify_event_awaiting_gate_is_blocked`,
+`groom/tests/test_sidecar_session.py::test_handle_rpc_get_tree_replies_ok`,
+`groom/tests/test_sidecar_session.py::test_handle_rpc_unknown_method_replies_error`,
+`groom/tests/test_sidecar_session.py::test_handle_rpc_get_file_traversal_replies_error`,
+`groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises`,
+`groom/tests/test_sidecar_hub.py::test_rpc_sends_request_and_returns_resolved_data`,
+`groom/tests/test_sidecar_hub.py::test_rpc_error_result_raises_sidecar_error`, and
+`groom/tests/test_sidecar_hub.py::test_send_reload_emits_reload_frame`.
 
 ## Contract
 
@@ -33,7 +34,7 @@ The sidecar websocket frame is the JSON message format exchanged on the [websock
 - discriminator: top-level `type` string selects the variant.
 - direction: `hello`, `progress`, `blocked`, and `rpc_result` are sidecar-to-groom frames; `rpc` and `reload` are groom-to-sidecar frames.
 - variants: `hello` is a full-state advertise sent immediately on every sidecar connect or reconnect; `progress` is a current-node liveness delta; `blocked` is a single open-gate delta; `rpc` is a host request for sidecar-local file tree, file content, or diff data; `rpc_result` is the sidecar reply to one `rpc`; `reload` is a host request to reload the sidecar process.
-- consistency rule: receiving a `reload` frame makes the sidecar end its websocket session and exit with reload status `3`, as implemented by `groom/groom/sidecar.py::_serve`.
+- consistency rule: sidecar-serving-loop — receiving a `reload` frame makes the [sidecar serving loop](concepts/sidecar-serving-loop.md) end its websocket session and exit with reload status `3`, as implemented by `groom/groom/sidecar.py::_serve`.
 - serialization: the sidecar serializes outbound frames with ordinary JSON text and parses inbound host frames from JSON text; the host endpoint accepts decoded websocket JSON values and sends host-originated `rpc` and `reload` frames as JSON objects through the accepted socket.
 - message object rule: every first-party frame is a JSON object; the host endpoint explicitly ignores non-object decoded sidecar frames, while the sidecar session defines only object-shaped host frames as valid input after JSON parsing.
 - ordering: frames are processed in socket receive order; a useful `hello` must establish the connection before non-hello sidecar-to-groom frames have effects.

@@ -18,7 +18,8 @@ Docker inspection reader is the [Groom Docker I/O module](groom-docker-io-module
 - command: invokes the Docker CLI as `docker inspect <container_id>` through the shared subprocess runner.
 - argv contract: constructs exactly three argv tokens, `docker`, `inspect`, and the supplied id; no shell expansion, concatenated command string, stdin payload, or caller-provided Docker flag is used.
 - timeout: inherits the Docker subprocess runner's default twenty-second timeout; callers do not pass a per-call timeout to this reader.
-- stdout contract: reads standard output only when the Docker process return code is zero; stderr is never parsed or surfaced as a Groom-domain value.
+- consistency: docker-inspect-container-object — a non-zero Docker process result returns `None` without parsing stdout or surfacing stderr as a Groom-domain value.
+- verify: json_path(path="result_is_none", equals=true)
 - success output: returns the first item from the parsed Docker JSON value when the command exits successfully and the parsed value is truthy.
 - return type boundary: the public type contract is `dict[str, Any] | None`, but the reader itself does not runtime-check that the first truthy decoded item is a mapping; consumers own the accepted inspect-object shape.
 - absent output: returns `None` when the Docker CLI exits non-zero, stdout is not valid JSON, or the parsed JSON value is falsey, including Docker's expected empty inspect array.
@@ -33,7 +34,7 @@ Docker inspection reader is the [Groom Docker I/O module](groom-docker-io-module
 
 - Calls: the [Docker subprocess runner](docker-subprocess-runner.md) with argv `docker inspect <container_id>` and no stdin.
 - Reads: Docker daemon metadata visible to the host-side Groom process for the supplied id.
-- Parses: standard output as JSON only when the Docker command exits with status `0`.
+- consistency: docker-inspect-container-object — standard output is parsed as JSON only when the Docker command exits with status `0`.
 - Returns: the first parsed element when the parsed value is truthy.
 - Returns: `None` for Docker command failure, malformed JSON stdout, or a falsey parsed value.
 - Preserves: the supplied id string exactly as the Docker selector token.
@@ -60,11 +61,11 @@ Docker inspection reader is the [Groom Docker I/O module](groom-docker-io-module
 - returns: the first decoded Docker inspect element for a zero-exit, valid-JSON, truthy response.
 - verify: json_path(path="result.Id", equals="container-123")
 - returns: `None` for non-zero Docker exit.
-- verify: json_path(path="result", equals=null)
+- verify: json_path(path="result_is_none", equals=true)
 - returns: `None` for invalid JSON.
-- verify: json_path(path="result", equals=null)
+- verify: json_path(path="result_is_none", equals=true)
 - returns: `None` for falsey decoded JSON.
-- verify: json_path(path="result", equals=null)
+- verify: json_path(path="result_is_none", equals=true)
 - code: groom/groom/docker_io.py::docker_inspect
 - detail: [Docker inspect documentation scope](docker-inspect-documentation-scope.md)
 - args: `container_id`; required string; passed unchanged as the only Docker inspect selector token.
@@ -87,7 +88,7 @@ The method is the only public Docker-inspection reader in Groom's Docker I/O lay
 
 - step: Receive a caller-supplied Docker container id string.
 - step: Invoke the Docker subprocess runner with `docker inspect` and the id as separate argv tokens.
-- consistency: A non-zero Docker command status returns `None` before stdout parsing and without reading or classifying stderr.
+- consistency: docker-inspect-container-object — a non-zero Docker command status returns `None` before stdout parsing and without reading or classifying stderr.
 - step: Decode stdout as JSON.
 - step: If stdout is not valid JSON, return `None`.
 - step: If the decoded JSON value is falsey, return `None`.

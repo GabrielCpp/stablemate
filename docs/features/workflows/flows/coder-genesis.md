@@ -5,7 +5,8 @@ title: Coder genesis flow
 ---
 # Coder genesis flow
 
-- The directly-entered [Genesis workflow](../../../../workflows/src/workhorse_workflows/coder/genesis/flow.py)
+- The directly-entered [Genesis workflow](../../../../workflows/src/workhorse_workflows/coder/genesis/flow.py),
+  implemented by `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`,
   bootstraps a target directory into the repository and service preconditions expected by the
   Coder and Author workflows. It contains deterministic tooling only: no agent turn, product
   decision, or repair branch occurs in this flow. Stack-specific packs, scaffolds, init command,
@@ -25,7 +26,6 @@ title: Coder genesis flow
 - verify: exit_status(code=0)
 - detail: [coder workflow composition root](../concepts/coder-workflow-composition-root.md)
 - detail: [coder genesis bootstrap](../concepts/coder-genesis-bootstrap.md)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_repo_skips_git_init_but_still_builds_the_new_service`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_service_skips_the_skeleton_and_never_re_runs_the_init_command`

@@ -132,6 +132,7 @@ both sides must share the host path.
 - verify: count(subject="invalid worktree source errors", equals=1)
 - does: prunes registrations for deleted worktrees before adding a new one
 - verify: absent(subject="stale deleted worktree registration")
+- verify: created(subject="the source repository's worktree registration for dest")
 - does: creates a detached worktree at `dest` from `ref`, sharing the source repository's objects and refs
 - verify: created(subject="detached worktree at the destination")
 - verify: json_path(path="$.worktree.head", equals="detached")
@@ -206,6 +207,7 @@ both sides must share the host path.
 - does: selects service repository names that exist in the resolved repository map
 - verify: count(subject="affected repositories present in workspace", equals=1)
 - does: removes duplicates and sorts the selected names
+- verify: removed(subject="duplicate selected repository name")
 - verify: json_path(path="$.affected", equals="sorted unique repository names")
 - returns: the sorted, deduplicated repository-name list
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::get_affected_repos`

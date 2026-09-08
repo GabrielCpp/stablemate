@@ -20,3 +20,5 @@ operator's decision, so `decision` does not select a different resolver outcome.
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution`
 - code: `workflows/src/workhorse_workflows/author/shared/prompts/resolve-operator.md`
 - rule: supply the four named resolver inputs together, then interpret each diagnostic report field by its named role; do not substitute or rank fields
+- detail: [operator resolution documentation context](operator-resolution-documentation-context.md)
+- detail: [author resolve-operator documentation selection](author-resolve-operator-documentation-selection.md)

@@ -10,6 +10,8 @@ title: workhorse-hello-world
 
 Runs the single-machine greeting example registered by the [hello-world workflow composition root](concepts/hello-world-workflow-composition-root.md). Its command parser is supplied by Workhorse; this package supplies the registry and its default flow.
 
+The [workhorse-hello-world driver runbook](ops/workhorse-hello-world.md) exercises this CLI in dry-run mode with checkpointed inputs.
+
 ## Commands
 
 

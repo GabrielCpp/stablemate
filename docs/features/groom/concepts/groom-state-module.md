@@ -9,10 +9,8 @@ The Groom state module is groom's process-local mutable-state boundary: it owns 
 
 - code: groom/groom/state.py
 - refs: [workflow registry](workflow-registry.md), [answer event log](answer-event-log.md), [dashboard client queue set](dashboard-client-queue-set.md), [run watch registry](run-watch-registry.md), [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md), [per-gate answer lock](per-gate-answer-lock.md), [workflow gate clearer](workflow-gate-clearer.md), [workflow container](workflow-container.md)
-- verify: groom/tests/test_state.py::test_prune_drops_absent_keeps_present
-- verify: groom/tests/test_state.py::test_prune_empty_present_removes_everything
-- verify: groom/tests/test_state.py::test_prune_also_forgets_gate_locks_of_removed
-- verify: groom/tests/test_state.py::test_prune_is_noop_when_all_present
+
+The workflow-pruning contract is covered by `groom/tests/test_state.py::test_prune_drops_absent_keeps_present`, `groom/tests/test_state.py::test_prune_empty_present_removes_everything`, `groom/tests/test_state.py::test_prune_also_forgets_gate_locks_of_removed`, and `groom/tests/test_state.py::test_prune_is_noop_when_all_present`.
 
 ## Contract
 
@@ -20,9 +18,9 @@ The Groom state module is groom's process-local mutable-state boundary: it owns 
 - import behavior: importing the module allocates empty in-memory containers for workflows, answer logs, dashboard clients, run-watch subscriptions, telemetry, and gate locks, sets discovery scanning to true, and binds helper functions; it does not inspect Docker, read or write files, open sockets, project payloads, create background tasks, or start the web server.
 - public data members: the public mutable containers are exactly `WORKFLOWS`, `LOG`, `CLIENTS`, `WATCHING`, `RUNS`, and `SCANNING`.
 - public function members: the public helper functions are exactly `gate_lock`, `upsert_workflow`, `clear_gate`, `prune_workflows`, `evict_runs`, `record_log`, `add_client`, `remove_client`, `watch`, `watchers_of`, `watched_ids`, `send`, and `broadcast`.
-- consistency: public `gate_lock` creates a private `_gate_locks` entry for a previously unseen workflow and gate-path pair.
+- consistency: per-gate-answer-lock — public `gate_lock` creates a private `_gate_locks` entry for a previously unseen workflow and gate-path pair.
 - verify: created(subject="private gate lock for a workflow and gate path")
-- consistency: public `prune_workflows` deletes private `_gate_locks` entries for each vanished workflow it removes.
+- consistency: per-gate-answer-lock — public `prune_workflows` deletes private `_gate_locks` entries for each vanished workflow it removes.
 - verify: removed(subject="private gate locks for a pruned workflow")
 - process scope: every value in this module is local to one Python process and one event loop; no Redis, database, broker, filesystem persistence, cross-process lock, or framework `app.state` participates.
 - mutation boundary: callers own validation, normalization, I/O, rendering, websocket acceptance/sending, sidecar communication, and durable gate-file writes before or after calling these helpers.
@@ -114,6 +112,7 @@ Returns the shared same-gate answer lock for one workflow container id and gate 
 - raises: ordinary dataclass construction or attribute-assignment errors propagate; no domain-specific error is returned.
 - code: groom/groom/state.py::upsert_workflow
 - detail: [workflow registry](workflow-registry.md#method-upsert-workflow)
+- detail: [workflow upsert documentation contexts](workflow-upsert-documentation-contexts.md)
 - create default: when the workflow id is not already present and no non-empty `name` field is supplied, the new [workflow container](workflow-container.md) uses the first twelve characters of `container_id` as its display name.
 - update rule: only supplied fields whose value is not `None` and whose name already exists on the stored [workflow container](workflow-container.md) are assigned; omitted fields, explicit `None` values, and unknown field names leave the stored container unchanged.
 
@@ -235,8 +234,20 @@ Enqueues one already-projected JSON message object to every dashboard client que
 ### algorithm-module-initialization
 
 - step: Importing the module imports standard-library async and bounded-sequence helpers and the first-party [workflow container](workflow-container.md) model type.
-- consistency: a fresh `groom.state` import creates empty `WORKFLOWS`, bounded `LOG`, `CLIENTS`, `WATCHING`, `RUNS`, `_gate_locks`, and `SCANNING` set to `True`.
-- verify: created(subject="groom.state initialized state containers")
+- consistency: workflow-registry — a fresh `groom.state` import creates an empty `WORKFLOWS` registry.
+- verify: created(subject="empty WORKFLOWS registry")
+- consistency: answer-event-log — a fresh `groom.state` import creates an empty, `maxlen=200`-bounded `LOG` deque.
+- verify: created(subject="bounded empty LOG deque")
+- consistency: dashboard-client-queue-set — a fresh `groom.state` import creates an empty `CLIENTS` set.
+- verify: created(subject="empty CLIENTS set")
+- consistency: run-watch-registry — a fresh `groom.state` import creates an empty `WATCHING` mapping.
+- verify: created(subject="empty WATCHING mapping")
+- consistency: runs-telemetry-cache — a fresh `groom.state` import creates an empty `RUNS` telemetry hot-cache mapping.
+- verify: created(subject="empty RUNS mapping")
+- consistency: per-gate-answer-lock — a fresh `groom.state` import creates an empty `_gate_locks` mapping.
+- verify: created(subject="empty _gate_locks mapping")
+- consistency: dashboard-discovery-scanning-flag — a fresh `groom.state` import sets `SCANNING` to `True`.
+- verify: created(subject="SCANNING flag set to True")
 - step: The module exposes helper functions that mutate only those in-memory objects and the workflow containers stored inside them.
 - step: The import completes without starting discovery, accepting clients, loading templates, inspecting containers, reading gate files, or broadcasting dashboard messages.
 
@@ -244,7 +255,8 @@ Enqueues one already-projected JSON message object to every dashboard client que
 
 - step: External callers decide which workflow id, gate path, queue object, log event, or projected JSON message should be passed to the state module.
 - step: The state module performs only the local lookup, insertion, deletion, append, or queue-put operation documented by the selected helper.
-- consistency: the state module returns the stored workflow, removed id list, lock object, or `None` according to the selected helper contract.
+- consistency: workflow-registry — a helper that mutates or prunes `WORKFLOWS` returns the stored workflow container or the removed-id list produced by that mutation, per the selected helper's own contract.
+- consistency: per-gate-answer-lock — `gate_lock` returns the shared lock object for the selected container and gate-path pair.
 - step: External callers retain responsibility for rendering, persistence, Docker and sidecar I/O, websocket frame transmission, user-visible errors, and any post-mutation broadcasts.
 
 ## Non-Responsibilities

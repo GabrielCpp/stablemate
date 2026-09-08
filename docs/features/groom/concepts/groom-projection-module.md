@@ -15,10 +15,10 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 
 - code: groom/groom/projection.py
 - refs: [workflow container](workflow-container.md), [gate info](gate-info.md), [dashboard state payload](../dashboard-state-payload.md), [runs fleet view](../runs-fleet-view.md), [dashboard client store](dashboard-client-store.md), [dashboard shell broadcaster](dashboard-shell-broadcaster.md), [run watch registry](run-watch-registry.md)
-- verify: groom/tests/test_projection.py::test_state_message_is_json_serializable
-- verify: groom/tests/test_projection.py::test_run_message_row_matches_the_same_row_in_the_state_message
-- verify: groom/tests/test_projection.py::test_detail_message_matches_the_fetched_detail
-- verify: groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup
+
+The projection tests cover JSON serializability, consistency between a run message and its
+state message, consistency between pushed detail and fetched detail, and the rule that gate
+questions travel as data rather than markup.
 
 ## Contract
 
@@ -28,7 +28,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - output type: plain JSON-serializable `dict`/`list` built from `str`, `int`, `float`, `bool`, and `None`; no dataclass, enum, `datetime`, or set escapes into a payload.
 - no markup: the module emits data only. A gate's question travels as its text, and the client decides how to display it — which is what stopped operator-supplied question text from ever being interpolated into server-rendered HTML.
 - discriminator: every pushed message carries a `type` field — `state`, `run`, `detail` — and the client dispatches on it. Panel-endpoint payloads are bodies of a known request and carry no discriminator.
-- consistency: a projected value that a human reads as a judgement is accompanied by the raw input it was derived from, so re-formatting in the browser never requires re-deciding. For example, `run_row` emits `live_label` with its `silence_s` duration.
+- consistency: fleet-row — a projected value that a human reads as a judgement is accompanied by the raw input it was derived from, so re-formatting in the browser never requires re-deciding. For example, `run_row` emits `live_label` with its `silence_s` duration.
 - verify: json_path(path="$.runs[0].live_label", equals="silent 13m 00s")
 - verify: json_path(path="$.runs[0].silence_s", equals=780.0)
 - thresholds: liveness classification reads `store.LIVE_AFTER_S`; the log trail is capped at `LOG_TRAIL_LIMIT`; severity coloring comes from `SEVERITY_CLASS`. All three are server-side policy and are not duplicated in the client.
@@ -39,7 +39,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 
 - fleet broadcast and resync: [dashboard shell broadcaster](dashboard-shell-broadcaster.md) and [get dashboard state](../http/groom.md#get-dashboard-state) both call `state_message`, which is what makes push and resync the same payload.
 - websocket handshake: the [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-session) sends `state_message` as its first frame, so a newly opened tab starts from the same snapshot a resync would have given it.
-- consistency rule: `detail_message` embeds the complete `run_detail` body in its `detail` frame, so the [run watch registry](run-watch-registry.md) push and [get run detail](../http/groom.md#get-run-detail) fetch cannot project different detail payloads (`groom/groom/projection.py::detail_message`).
+- consistency rule: run-detail-payload — `detail_message` embeds the complete `run_detail` body in its `detail` frame, so the [run watch registry](run-watch-registry.md) push and [get run detail](../http/groom.md#get-run-detail) fetch cannot project different detail payloads (`groom/groom/projection.py::detail_message`).
 - verify: json_path(path="$.detail.id", equals="blk")
 - panels: the repository picker, file viewer, and telemetry endpoints call `repo_entries`, `file_lang`, and `traces_view`.
 
@@ -129,6 +129,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::fleet_rows
+- detail: [fleet rows documentation contexts](fleet-rows-documentation-contexts.md)
 - step: Project each matching container through `run_row`, attaching its telemetry from the hot cache.
 - step: Sort by `(rank, name)` so the order is stable across ticks.
 
@@ -158,6 +159,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::repo_entries
+- detail: [repository menu projection contexts](repository-menu-projection-contexts.md)
 - step: Emit one group per container carrying the checkouts found on its volume — grouped rather than flat because that is the shape the server actually has, and because a picker row's label is derived from both halves.
 - step: Give a workflow with no discoverable repository a single volume-root entry so it can still be browsed.
 
@@ -207,8 +209,12 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 
 - sig: `fmt_ts(ts: float) -> str`
 - abstract: false
-- does: Formats a nonzero epoch timestamp as month-day and local time, or returns an em dash for an absent timestamp.
+- does: Formats a nonzero epoch timestamp as month-day and local time in MM-DD HH:MM:SS format.
+- verify: json_path(path="$.result", matches="^\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$")
+- does: Returns an em dash for an absent or zero timestamp.
+- verify: json_path(path="$.result", equals="—")
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::fmt_ts
 - tests: groom/tests/test_projection.py::test_run_card_live_comes_from_the_hot_cache_not_the_span_history
 
@@ -216,8 +222,12 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 
 - sig: `fmt_clock(ts: float) -> str`
 - abstract: false
-- does: Formats a nonzero epoch timestamp as local time-of-day, or returns an em dash for an absent timestamp.
+- does: Formats a nonzero epoch timestamp as local time-of-day in HH:MM:SS format.
+- verify: json_path(path="$.result", matches="^\\d{2}:\\d{2}:\\d{2}$")
+- does: Returns an em dash for an absent or zero timestamp.
+- verify: json_path(path="$.result", equals="—")
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::fmt_clock
 - tests: groom/tests/test_projection.py::test_log_trail_newest_first_with_severity_classes
 
@@ -225,8 +235,12 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 
 - sig: `fmt_duration(seconds: float) -> str`
 - abstract: false
-- does: Clamps a negative duration to zero before formatting seconds below one minute, minute-second pairs below one hour, or decimal hours otherwise.
+- does: Clamps negative durations to zero.
+- verify: json_path(path="$.result", equals="0.0s")
+- does: Formats durations as decimals in seconds below one minute, minute-second pairs below one hour, or decimal hours otherwise.
+- verify: json_path(path="$.result", matches="^(\\d+\\.\\d s|\\d+m \\d{2}s|\\d+\\.\\d h)$")
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::fmt_duration
 - tests: groom/tests/test_projection.py::test_run_metrics_merges_hot_cache_and_durable_facts
 
@@ -234,8 +248,12 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 
 - sig: `run_id_of(wf: WorkflowContainer) -> str`
 - abstract: false
-- does: Selects a workflow's run id when present, otherwise its container id, as the telemetry lookup key.
+- does: Returns the workflow's run id when present, as the telemetry lookup key.
+- verify: json_path(path="$.result", matches="^[a-z0-9-]+$")
+- does: Returns the workflow's container id when run id is absent, as the telemetry lookup key.
+- verify: json_path(path="$.result", equals="blk")
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::run_id_of
 - tests: groom/tests/test_projection.py::test_detail_message_matches_the_fetched_detail
 
@@ -244,7 +262,9 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `telemetry_for(wf: WorkflowContainer) -> RunTelemetry | None`
 - abstract: false
 - does: Reads the telemetry hot-cache entry addressed by the workflow's telemetry key.
+- verify: json_path(path="$.result.run_id", matches=".+")
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::telemetry_for
 - tests: groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished
 
@@ -252,8 +272,12 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 
 - sig: `silence_of(tel: RunTelemetry | None, now: float) -> float`
 - abstract: false
-- does: Returns zero for missing telemetry, otherwise the nonnegative age of its newest heartbeat, span, or first-seen timestamp.
+- does: Returns zero when telemetry is missing.
+- verify: json_path(path="$.result", equals=0.0)
+- does: Returns the nonnegative age of the newest heartbeat, span, or first-seen timestamp when telemetry is present.
+- verify: json_path(path="$.result", matches="^\\d+(\\.\\d+)?$")
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::silence_of
 - tests: groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished
 
@@ -261,8 +285,15 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 
 - sig: `gate_dict(gate: GateInfo) -> dict[str, Any]`
 - abstract: false
-- does: Projects a gate's path, source question, derived preview, and status as data without rendering its question as markup.
+- does: Projects the gate's file path, question, derived preview, and status as dict fields.
+- verify: json_path(path="$.file_path", matches=".+")
+- verify: json_path(path="$.question", matches=".*")
+- verify: json_path(path="$.preview", matches=".*")
+- verify: json_path(path="$.status", matches=".+")
+- does: Carries the question as raw untranslated text without HTML-entity encoding or markup processing.
+- verify: json_path(path="$.question", matches="[^&]*<")
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::gate_dict
 - tests: groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup
 
@@ -271,7 +302,10 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `gates_of(wf: WorkflowContainer) -> list[GateInfo]`
 - abstract: false
 - does: Orders a workflow's open gates lexically by file path before any payload projects them.
+- verify: json_path(path="$[0].file_path", equals="docs/a.md")
+- verify: json_path(path="$[1].file_path", equals="docs/b.md")
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::gates_of
 - tests: groom/tests/test_projection.py::test_run_detail_lists_every_open_gate
 
@@ -280,7 +314,10 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `handle(wf: WorkflowContainer) -> str`
 - abstract: false
 - does: Returns the whole chosen run id for a native workflow and Docker's twelve-character container-id form for a container workflow.
+- verify: json_path(path="$.result", matches="^[a-f0-9-]{36}$")
+- verify: json_path(path="$.result", matches="^[0-9a-f]{12}$")
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::handle
 - tests: groom/tests/test_projection.py::test_the_head_carries_the_whole_run_id_not_a_fragment
 
@@ -289,7 +326,10 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `cli_label(tel: RunTelemetry | None) -> str`
 - abstract: false
 - does: Returns the reported agent backend and model as one label, or an empty label until the backend is known.
+- verify: json_path(path="$.cli", equals="claude claude-sonnet-5")
+- verify: json_path(path="$.cli", equals="")
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::cli_label
 - tests: groom/tests/test_projection.py::test_the_head_names_the_cli_that_ran_the_last_turn
 
@@ -298,7 +338,17 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `head(wf: WorkflowContainer, tel: RunTelemetry | None = None, now: float | None = None) -> dict[str, Any]`
 - abstract: false
 - does: Projects the detail pane's identity, workflow state, repository, liveness verdict, active node, process id, agent label, exit verdict, and activity.
+- verify: json_path(path="$.id", matches=".+")
+- verify: json_path(path="$.state", matches=".+")
+- verify: json_path(path="$.repo", matches=".+")
+- verify: json_path(path="$.live", matches=".+")
+- verify: json_path(path="$.node", matches=".*")
+- verify: json_path(path="$.pid", matches=".*")
+- verify: json_path(path="$.cli", matches=".*")
+- verify: json_path(path="$.exit_hint", matches=".+")
+- verify: json_path(path="$.activity", matches=".*")
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::head
 - tests: groom/tests/test_projection.py::test_the_head_names_the_cli_that_ran_the_last_turn
 
@@ -307,8 +357,11 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `metrics(wf: WorkflowContainer, tel: RunTelemetry | None = None, facts: dict[str, Any] | None = None, now: float | None = None) -> dict[str, Any]`
 - abstract: false
 - does: Returns an explicit empty metrics panel when neither telemetry nor durable facts exist.
+- verify: json_path(path="$.empty", equals=true)
 - does: Merges hot telemetry with durable facts into an ordered cell list, fired alerts, and run directory when either source exists.
+- verify: json_path(path="$.empty", equals=false)
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::metrics
 - tests: groom/tests/test_projection.py::test_run_metrics_merges_hot_cache_and_durable_facts
 
@@ -316,8 +369,12 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 
 - sig: `log_lines(logs: list[dict[str, Any]] | None) -> list[dict[str, Any]]`
 - abstract: false
-- does: Projects at most `LOG_TRAIL_LIMIT` supplied log records into timestamped, severity-classified detail-trail lines.
+- does: Limits output to the newest `LOG_TRAIL_LIMIT` log records.
+- verify: count(subject="result", equals=60)
+- does: Formats each record with its timestamp, severity level, and color classification.
+- verify: json_path(path="$.result[0].ts", matches="^\\d{2}:\\d{2}:\\d{2}$")
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::log_lines
 - tests: groom/tests/test_projection.py::test_log_trail_newest_first_with_severity_classes
 
@@ -326,7 +383,11 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `run_live(wf: WorkflowContainer, tel: RunTelemetry | None = None, facts: dict[str, Any] | None = None, logs: list[dict[str, Any]] | None = None, now: float | None = None) -> dict[str, Any]`
 - abstract: false
 - does: Combines the clock-refreshable detail head, metrics, and log trail without including editable gate state.
+- verify: json_path(path="$.result.head", matches=".*")
+- verify: json_path(path="$.result.metrics", matches=".*")
+- verify: json_path(path="$.result.logs", matches=".*")
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::run_live
 - tests: groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs
 
@@ -335,7 +396,14 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 - sig: `span_row(span: dict[str, Any]) -> dict[str, Any]`
 - abstract: false
 - does: Projects a telemetry span into its formatted start time, run identity, node, name, elapsed duration, and defaulted status.
+- verify: json_path(path="$.started", matches=".*")
+- verify: json_path(path="$.run_id", matches=".*")
+- verify: json_path(path="$.node", matches=".*")
+- verify: json_path(path="$.name", matches=".*")
+- verify: json_path(path="$.duration", matches=".*")
+- verify: json_path(path="$.status", matches=".+")
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::span_row
 - tests: groom/tests/test_projection.py::test_traces_view_shows_only_connected_runs_by_default
 
@@ -344,7 +412,7 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 ### algorithm-one-shape-two-paths
 
 - step: A state change or the live clock reaches the [dashboard shell broadcaster](dashboard-shell-broadcaster.md); it calls `state_message` and broadcasts the result.
-- consistency rule: `GET /api/state` returns the `state_message` payload rather than a separately projected resync shape.
+- consistency rule: dashboard-state-payload — `GET /api/state` returns the same `state_message` payload the socket push sends, rather than a separately projected resync shape.
 - verify: json_path(path="$.type", equals="state")
 - step: Both payloads reach the client's single `applyState()`, so the resync path is not a second rendering path that can rot unobserved — it is the only path, reached a different way.
 
@@ -352,6 +420,6 @@ Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sor
 
 - Missing telemetry: a container with no cached `RunTelemetry` projects `unknown` liveness and empty metrics rather than raising or omitting the row.
 - Missing durable facts: `run_detail` accepts `facts=None` and `logs=None` and projects the run without them, which is what lets a detail be pushed before the two SQLite reads have happened.
-- consistency: `file_lang` returns `""` for an unmapped extension, so the `/file/{container_id}` payload defers to highlight.js auto-detection rather than guessing.
+- consistency: ext-lang — an unmapped extension projects `""` from `file_lang`, so the `/file/{container_id}` payload defers to highlight.js auto-detection rather than guessing.
 - verify: json_path(path="$.lang", equals="")
 - No error type of its own: the module raises nothing on groom's behalf. A malformed dataclass surfaces as an ordinary attribute or key error at the call site.

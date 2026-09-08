@@ -11,6 +11,8 @@ This runbook operates the `agent` Compose job in the
 `workhorse/supervisor.py::main`; the environment node owns the Compose and image definitions.
 The job is intentionally one-shot rather than an HTTP service: its workflow exit status and the
 supervisor log are its completion signal.
+The supervisor exit-code behavior is covered by
+`workhorse/tests/test_supervisor.py::test_run_exit_code_is_the_containers_with_no_observer`.
 
 - driver: cli
 - environment: [workhorse container environment](workhorse-container.md)
@@ -22,13 +24,14 @@ supervisor log are its completion signal.
 - boot-timeout: 120
 - stop: `docker compose -f workhorse/compose.yaml down`
 - working-directory: .
-- tests: `workhorse/tests/test_supervisor.py::test_run_exit_code_is_the_containers_with_no_observer`
 
 The image is built from the workspace root, where its `pyproject.toml` and `uv.lock` are available.
 Before starting a workflow, the supervisor validates writable persistent mounts, prepares Claude
 authentication and Git configuration, materializes the requested checkout, writes environment-derived
 workflow parameters, and then starts the selected `workhorse-<name> run` command. Its final exit code
 is the container exit code; an unavailable or failed optional groom observer never changes that result.
+The `agent` service is therefore ready when the workflow completes successfully, not while a network
+listener is accepting connections.
 
 Select an installed workflow with `WORKFLOW` (default `coder`). Supply a distinct `AGENT_RUN_ID` for
 each concurrent fresh launch so their run directories do not collide; Docker restart preserves the
@@ -42,7 +45,9 @@ The container has no HTTP health endpoint. Completion is observable through the
 under `/runs`. Rebuild the image after changes to copied engine code or image dependencies. When the
 optional groom source mount exists, the supervisor stages it into a complete generation before starting
 the observer; reload requests refresh that generation, while a failed refresh leaves the prior installed
-generation available.
+generation available. `docker compose ... down` stops the one-shot service while retaining its named
+`workspace`, `claude-state`, and `runs` volumes; use Compose teardown with `-v` only when deliberately
+discarding that run's persistent state.
 
 ## Steps
 

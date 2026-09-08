@@ -50,6 +50,12 @@ relative roots.
 - verify: count(subject="OKF-builder pick schema results", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Pick`
 
+### method: Settled
+- sig: `Settled(...) -> Settled`
+- does: reports whether a mid-drain doctor consultation ran, and the repair rows it closed as stale versus left standing
+- verify: count(subject="OKF-builder settle schema results", equals=1)
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Settled`
+
 ### method: Watermarked
 - sig: `Watermarked(advanced: list[str] = [], watermark_error: str = "") -> Watermarked`
 - does: reports source files whose stale-citation watermark advanced and any watermark error
@@ -60,6 +66,8 @@ relative roots.
 - sig: `Recorded(...) -> Recorded`
 - does: reports worklist counts, newly added rows, and the standing blocked-row set
 - verify: count(subject="OKF-builder recorded schema results", equals=1)
+- does: reports pending `fix:` rows closed as `stale` because the checkpoint's doctor report no longer names them
+- verify: count(subject="OKF-builder recorded settled-row counts", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Recorded`
 
 ### method: BlockedRows

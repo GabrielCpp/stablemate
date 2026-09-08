@@ -8,7 +8,7 @@ title: Workflow gate clearer
 Workflow gate clearer is the [Groom state module](groom-state-module.md) operation that removes one answered [gate info](gate-info.md) entry from one tracked [workflow container](workflow-container.md) in the [workflow registry](workflow-registry.md). The [gate-answering layer](gate-answering-layer.md) calls it only after the matching operator gate context file has been successfully rewritten to `STATUS: ANSWERED`, so failed, stale, or unwritable answer attempts leave the visible in-memory gate untouched. It is a synchronous helper with no return payload; completion means only that its local no-op-or-delete attempt finished. It is intentionally narrower than the [per-gate answer lock](per-gate-answer-lock.md): callers serialize and durably answer a gate first, then use this operation only to update groom's visible process-local state.
 
 - code: groom/groom/state.py::clear_gate
-- verify: groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running
+- tests: groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running
 
 ## Contract
 
@@ -16,7 +16,7 @@ Workflow gate clearer is the [Groom state module](groom-state-module.md) operati
 - caller: [gate-answering layer](gate-answering-layer.md) invokes this operation with the submitted workflow container id and gate file path after a successful workspace-volume file write.
 - input: `container_id` identifies the workflow registry entry to mutate; it is used as supplied and is not normalized or validated by this operation.
 - input: `file_path` identifies the gate map entry to remove from the selected workflow container; it is used as supplied and is not path-normalized or validated by this operation.
-- storage shape: the selected workflow's gate map is a mutable `dict[str, GateInfo]` keyed by exact gate file path strings; this operation deletes at most one key from that map and never rewrites the stored [gate info](gate-info.md) value before deletion.
+- consistency: gate-info — deletion is a single-key removal from the selected workflow's `gates` map (a mutable `dict[str, GateInfo]` keyed by exact gate file path string): at most one entry is removed, and the stored [gate info](gate-info.md) value under that key is never rewritten before it is deleted.
 - data dependency: the selected registry value must expose a mutable `gates` mapping compatible with the [workflow container](workflow-container.md) contract; an incompatible object is outside the supported state shape and may fail during mutation.
 - lookup: reads `WORKFLOWS.get(container_id)` from the [workflow registry](workflow-registry.md), so a missing workflow is observed as absent data rather than creating or upserting a registry entry.
 - mutation: when the workflow exists, removes the gate stored at `workflow.gates[file_path]` if present, using exact key equality on the supplied `file_path` and mutating the stored [workflow container](workflow-container.md) object in place.
@@ -69,7 +69,7 @@ inspection.
 
 ## Algorithm
 
-The [`clear_gate` implementation](../../../../groom/groom/state.py#L64-L69) looks up the supplied
+The [`clear_gate` implementation](../../../../groom/groom/state.py::clear_gate) looks up the supplied
 `container_id` in the process-local [workflow registry](workflow-registry.md). A missing workflow
 ends the operation without mutation; otherwise, the implementation removes the exact `file_path`
 key from the workflow's mutable `gates` mapping when present. Missing gate keys leave that mapping

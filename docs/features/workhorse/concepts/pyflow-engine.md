@@ -81,6 +81,7 @@ All infrastructure dependencies and substitutions are shared by one drive invoca
 - verify: json_path(path="$.runner.validation_error", matches="count")
 - does: coerces the runner's raw reply to the requested return type
 - raises: `AgentTimeout` when a timed-out backend invocation exhausts recovery
+- raises: `AgentTurnFailed` when a backend invocation that did not time out exhausts recovery
 - returns: the validated reply value
 - verify: persists(subject="agent visit output artifact")
 - code: `workhorse/workhorse/pyflow/engine.py::Engine.agent`

@@ -8,7 +8,7 @@ title: Sidecar connection
 Sidecar connection is the host-side object for one live [workflow container](workflow-container.md) sidecar socket. The [groom server](../http/groom.md#websocket-sidecar) creates it after a useful `hello` [sidecar websocket frame](../sidecar-websocket-frame.md), the [sidecar connection registry](sidecar-connection-registry.md) keeps the current connection per container id, file/diff/reload handlers use it as the data plane for [sidecar live sessions](../sidecar-live-sessions.md), [run-sidecar-websocket-session](../http/groom.md#run-sidecar-websocket-session) resolves returned RPC frames through `resolve`, and [sidecar error](sidecar-error.md) is its soft-failure signal for callers that can fall back.
 
 - code: groom/groom/sidecar_hub.py::SidecarConnection
-- verify: groom/tests/test_sidecar_hub.py::test_rpc_sends_request_and_returns_resolved_data,
+- tests: groom/tests/test_sidecar_hub.py::test_rpc_sends_request_and_returns_resolved_data,
   groom/tests/test_sidecar_hub.py::test_rpc_error_result_raises_sidecar_error,
   groom/tests/test_sidecar_hub.py::test_rpc_times_out_when_no_reply,
   groom/tests/test_sidecar_hub.py::test_correlation_ids_increment_per_connection,
@@ -22,7 +22,7 @@ Sidecar connection is the host-side object for one live [workflow container](wor
 - sender boundary: the socket only needs to satisfy the service-owned `_Sender` protocol (`groom/groom/sidecar_hub.py::_Sender`): one async `send_json(data)` operation that accepts a JSON-compatible frame and returns after the transport accepts or rejects the send. Receiving frames, accepting the websocket, and disconnect cleanup belong to the `/sidecar` endpoint.
 - correlation: RPC ids are monotonically increasing strings scoped to this connection.
 - default timeout: host-issued RPC calls wait `5.0` seconds unless the caller supplies a shorter or longer timeout for that call.
-- concurrency: sends are serialized so concurrent panel reads and reload requests do not write overlapping frames to the same socket.
+- concurrency: sidecar-socket-write — sends are serialized so concurrent panel reads and reload requests do not write overlapping frames to the same socket.
 - failure: send failures, RPC timeouts, sidecar error results, socket closure, and registry displacement reject pending RPCs as sidecar errors so callers can fall back.
 - lifecycle: construction only binds the accepted socket; registration, replacement, unregister cleanup, workflow-state mutation, and dashboard broadcasts are owned by the endpoint and [sidecar connection registry](sidecar-connection-registry.md).
 - authority: the connection is a non-authoritative acceleration path for sidecar-local file and diff reads; absence or failure of the socket must not remove the [workflow container](workflow-container.md) or suppress volume-read fallbacks.
@@ -111,10 +111,15 @@ Sidecar connection is the host-side object for one live [workflow container](wor
 - abstract: false
 - does:
   - Advances only this connection's correlation counter from its current integer value to the next integer value.
-  - Returns the advanced counter value as a decimal string correlation id; the first id after construction is `"1"`.
+  - verify: json_path(path="counter_incremented_by", equals=1)
+  - Returns the advanced counter value as a decimal string correlation id.
+  - verify: json_path(path="id", equals="1")
+  - Returns `"1"` as the first correlation id issued after construction.
+  - verify: json_path(path="first_id", equals="1")
   - Leaves the pending-RPC map, socket sender, send lock, and registry state unchanged.
-  - Calls no groom-owned symbol and bottoms out at integer increment plus string conversion.
+  - verify: unchanged(subject="connection_state", except_fields=["counter"])
 - raises: none intentionally.
+- verify: json_path(path="exception", absent=true)
 - code: groom/groom/sidecar_hub.py::SidecarConnection._next_id
 - tests: groom/tests/test_sidecar_hub.py::test_correlation_ids_increment_per_connection
 - output: decimal string correlation id scoped to this connection.
@@ -159,11 +164,12 @@ Sidecar connection is the host-side object for one live [workflow container](wor
   - Sends one `rpc` [sidecar websocket frame](../sidecar-websocket-frame.md) with `type`, `id`, `method`, and `params` through [method-send](#method-send), so the frame shares the connection's serialized host-to-sidecar write path with reload frames.
   - Waits up to the timeout for `resolve` or `fail_all` to complete the future, returns the resolved data unchanged on success, propagates [sidecar error](sidecar-error.md) placed on the future, and converts send failure or timeout to [sidecar error](sidecar-error.md).
   - Always removes the pending future before returning or raising, including send failure before a result wait begins, sidecar-reported failure, registry displacement, socket-close failure, timeout, and caller cancellation.
-- verify: count(subject="resolved RPC data paths", equals=2)
+  - verify: removed(subject="pending RPC future for the correlation id")
 - raises: `SidecarError` when the websocket send fails, the sidecar returns an error result, the connection is displaced or closed while the RPC is pending, or the timeout expires before a result is resolved.
 - verify: emitted(event="RPC failure raised as SidecarError", count=1)
 - raises: propagates caller cancellation while still removing the pending entry.
 - verify: emitted(event="caller cancellation propagated from RPC", count=1)
+- verify: removed(subject="pending RPC future for the correlation id")
 - code: groom/groom/sidecar_hub.py::SidecarConnection.rpc
 - tests: groom/tests/test_sidecar_hub.py::test_rpc_sends_request_and_returns_resolved_data,
   groom/tests/test_sidecar_hub.py::test_rpc_error_result_raises_sidecar_error,
@@ -193,10 +199,12 @@ Sidecar connection is the host-side object for one live [workflow container](wor
 - does:
   - Looks up exactly one pending RPC future by the supplied correlation id without creating a future or mutating the pending map.
   - Returns with no effect when the id is unknown, was already removed after timeout, or points at a future that is already complete, so late and duplicate sidecar replies cannot raise or overwrite a caller result.
-  - When `ok` is true, completes the waiting future with `data` unchanged; the awaiting `rpc` call returns that value and then removes the pending entry in its own cleanup path.
-  - When `ok` is false, completes the waiting future with [sidecar error](sidecar-error.md), using `error` when non-empty and `sidecar reported an error` otherwise; the awaiting `rpc` call observes that exception and then removes the pending entry in its own cleanup path.
-- raises: none intentionally; unknown, late, duplicate, or completed correlation ids are ignored.
-- verify: emitted(event="rpc result delivered to waiting caller", count=1)
+  - When `ok` is true, completes the waiting future's result with `data` unchanged, which the awaiting `rpc` call then returns to its caller and clears from the pending map in its own cleanup path.
+  - verify: emitted(event="rpc result delivered to waiting caller", count=1)
+  - When `ok` is false, completes the waiting future's exception with [sidecar error](sidecar-error.md), using `error` when non-empty and `sidecar reported an error` otherwise, which the awaiting `rpc` call then observes and clears from the pending map in its own cleanup path.
+  - verify: emitted(event="rpc failure delivered to waiting caller", count=1)
+- raises: none intentionally, including for an unknown, late, duplicate, or already-complete correlation id.
+- verify: json_path(path="exception", absent=true)
 - code: groom/groom/sidecar_hub.py::SidecarConnection.resolve
 - tests: groom/tests/test_sidecar_hub.py::test_rpc_sends_request_and_returns_resolved_data,
   groom/tests/test_sidecar_hub.py::test_rpc_error_result_raises_sidecar_error,

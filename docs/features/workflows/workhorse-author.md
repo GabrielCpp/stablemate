@@ -10,6 +10,8 @@ title: workhorse-author
 
 Runs the author registry described by the [author workflow composition root](concepts/author-workflow-composition-root.md). `run` selects its default Author flow or one of the registered authoring flows; Workhorse owns parsing and execution mechanics.
 
+The [workhorse-author driver runbook](ops/workhorse-author.md) exercises this CLI in dry-run mode with checkpointed inputs.
+
 ## Commands
 
 
@@ -29,6 +31,8 @@ Runs the author registry described by the [author workflow composition root](con
   - starts the selected registered authoring flow
 - verify: exit_status(code=0)
 - code: `workflows/src/workhorse_workflows/author/workflow.py::main`
+- detail: [author surveyor flow](flows/author-surveyor.md)
+- detail: [author parity surveyor flow](flows/author-parity-surveyor.md)
 - detail: [author epic edit flow](flows/author-epic-edit.md)
 - detail: [author story edit flow](flows/author-story-edit.md)
 - detail: [workhorse-author command selection](concepts/workhorse-author-command-selection.md)

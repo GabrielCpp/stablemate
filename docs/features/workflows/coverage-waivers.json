@@ -1,0 +1,340 @@
+{
+  "waivers": [
+    {
+      "code": "workflows/src/workhorse_workflows/research/scaffold/__init__.py",
+      "reason": "declares no symbols beyond a module docstring; the docstring itself states this was deliberately never made a graph node (the human-run-once program scaffolder, ported verbatim). The actual scaffolding unit is `new_program.py`, documented in research-program-scaffolder.md."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld",
+      "reason": "folded into concepts/hello-world-workflow-composition-root.md, which cites both of the class's methods directly (`HelloWorld.start`, `HelloWorld.greet`); the bare class symbol carries no behaviour beyond its cited methods."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::CoderResult",
+      "reason": "folded into concepts/coder-result-routing.md, which cites `CoderResult.blocked` and `CoderResult.actionable`; the bare class symbol carries no behaviour beyond its cited methods."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/shared/backlog.py::BacklogBullet",
+      "reason": "folded into concepts/coder-backlog-contract.md, which cites `BacklogBullet.blocked`; the bare class symbol carries no behaviour beyond its cited method."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/shared/backlog.py::Seen",
+      "reason": "folded into concepts/coder-backlog-contract.md, which cites `Seen.add` and `Seen.duplicate`; the bare class symbol carries no behaviour beyond its cited methods."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/research/nodes/program.py::parse_flat_yaml",
+      "reason": "private helper of `load_program`; folded into concepts/research-deterministic-nodes.md, whose `load_program` does:/verify: bullets exhaustively describe the fallback chain (explicit selection, launch-directory manifest, repository agents.yml, legacy pointer, ledger reading) these helpers implement."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/research/nodes/program.py::slug",
+      "reason": "private helper of `load_program`; folded into concepts/research-deterministic-nodes.md's `load_program` spec, same as the module's other program-resolution helpers."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/research/nodes/program.py::launch_dir",
+      "reason": "private helper of `load_program`; folded into concepts/research-deterministic-nodes.md's `load_program` spec, same as the module's other program-resolution helpers."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/research/nodes/program.py::resolve_repo_root",
+      "reason": "private helper of `load_program`; folded into concepts/research-deterministic-nodes.md's `load_program` spec, same as the module's other program-resolution helpers."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/research/nodes/program.py::detect_program_from_launch",
+      "reason": "private helper of `load_program`; folded into concepts/research-deterministic-nodes.md's `load_program` spec (launch-directory manifest fallback bullet)."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/research/nodes/program.py::read_agents_yaml_program",
+      "reason": "private helper of `load_program`; folded into concepts/research-deterministic-nodes.md's `load_program` spec (repository agents.yml fallback bullet)."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/research/nodes/program.py::read_pointer",
+      "reason": "private helper of `load_program`; folded into concepts/research-deterministic-nodes.md's `load_program` spec (legacy `.agents/program` pointer fallback bullet)."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/research/nodes/program.py::ledger_path",
+      "reason": "private helper of `load_program`; folded into concepts/research-deterministic-nodes.md's `load_program` spec (ledger reading bullets)."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/research/nodes/program.py::read_ledger",
+      "reason": "private helper of `load_program`; folded into concepts/research-deterministic-nodes.md's `load_program` spec (ledger status/concluded-program reading bullets)."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/epic_author/__init__.py::EpicAuthor",
+      "reason": "thin re-export of `epic_author.flow::EpicAuthor`; the flow class is documented in concepts/author-epic-author-subflow.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/epic_edit/__init__.py::EpicEdit",
+      "reason": "thin re-export of `epic_edit.flow::EpicEdit`; the flow class is documented in concepts/author-epic-edit-subflow.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/epic_split/__init__.py::EpicSplit",
+      "reason": "thin re-export of `epic_split.flow::EpicSplit`; the flow class is documented in concepts/author-epic-split-subflow.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/finalize/__init__.py::Finalize",
+      "reason": "thin re-export of `finalize.flow::Finalize`; the flow class is documented in concepts/author-finalize-subflow.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/milestone/__init__.py::Milestone",
+      "reason": "thin re-export of `milestone.flow::Milestone`; the flow class is documented in concepts/author-milestone-subflow.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/parity_surveyor/__init__.py::ParitySurveyor",
+      "reason": "thin re-export of `parity_surveyor.flow::ParitySurveyor`; folded into author-workflow-composition-root.md prose which names it as an exposed named subflow; the flow class is documented in the corresponding flow node; the bare re-export carries no behaviour beyond the imported class."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/story_author/__init__.py::StoryAuthor",
+      "reason": "thin re-export of `story_author.flow::StoryAuthor`; the flow class is documented in concepts/author-story-author-subflow.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/story_edit/__init__.py::StoryEdit",
+      "reason": "thin re-export of `story_edit.flow::StoryEdit`; the flow class is documented in concepts/author-story-edit-subflow.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/story_split/__init__.py::StorySplitFlow",
+      "reason": "thin re-export of `story_split.flow::StorySplitFlow`; the flow class is documented in the flow node; the bare re-export carries no behaviour beyond the imported class."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/story_split/__init__.py::StorySplitDone",
+      "reason": "thin re-export of `story_split.schemas::StorySplitDone`; the schema class is documented in the flow's output schema; the bare re-export carries no behaviour beyond the imported class."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/surveyor/__init__.py::Surveyor",
+      "reason": "thin re-export of `surveyor.flow::Surveyor`; the flow class is documented in concepts/author-surveyor-subflow.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/shared/__init__.py",
+      "reason": "declares no public symbols; serves as a package marker for `shared/` submodules (paths, schemas, survey) documented separately in author-shared-paths.md and author-shared-schemas.md."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/main/__init__.py::Coder",
+      "reason": "thin re-export of `main.flow::Coder`; the flow class is documented in flows/coder-main.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class. Symbol reachable through coder-workflow-composition-root.md detail links."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/dev/__init__.py::Dev",
+      "reason": "thin re-export of `dev.flow::Dev`; the flow class is documented in flows/coder-dev.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class. Symbol reachable through coder-workflow-composition-root.md detail links."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/docs/__init__.py::Docs",
+      "reason": "thin re-export of `docs.flow::Docs`; the flow class is documented in flows/coder-docs.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class. Symbol also documented in concepts/coder-docs-subflow.md; reachable through coder-workflow-composition-root.md detail links."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/fix/__init__.py::Fix",
+      "reason": "thin re-export of `fix.flow::Fix`; the flow class is documented in flows/coder-fix.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class. Symbol reachable through coder-workflow-composition-root.md detail links."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/fix/__init__.py::BLOCKED_NOTE",
+      "reason": "thin re-export of `fix.flow::BLOCKED_NOTE`, a string constant; documented in coder-fix.md; the bare re-export carries no behaviour beyond the imported constant. Symbol reachable through coder-workflow-composition-root.md detail links."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/fix_ci/__init__.py::FixCi",
+      "reason": "thin re-export of `fix_ci.flow::FixCi`; the flow class is documented in flows/fix-ci-remediation.md, which cites the flow class; the bare re-export carries no behaviour beyond the imported class. Symbol reachable through coder-workflow-composition-root.md detail links."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/genesis/__init__.py::Genesis",
+      "reason": "thin re-export of `genesis.flow::Genesis`; the flow class is documented in concepts/coder-genesis-bootstrap.md and linked concepts, which cite the flow class's public methods; the bare re-export carries no behaviour beyond the imported class. Symbol reachable through coder-workflow-composition-root.md detail links."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/qa/__init__.py::Qa",
+      "reason": "thin re-export of `qa.flow::Qa`; the flow class is documented in flows/coder-qa.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class. Symbol also documented in concepts/coder-qa-subflow.md; reachable through coder-workflow-composition-root.md detail links."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/review/__init__.py::Review",
+      "reason": "thin re-export of `review.flow::Review`; the flow class is documented in flows/coder-review.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class. Symbol reachable through coder-workflow-composition-root.md detail links."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/main/nodes/__init__.py",
+      "reason": "declares five node functions (flag_ci_failure, flag_merge_failure, merge_pr, open_pr, open_story_pr) all documented with code: bullets in concepts/coder-main-pr-boundary.md. Reachable through coder-workflow-composition-root.md detail link to coder-main-pr-boundary.md."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/qa/nodes/__init__.py",
+      "reason": "declares fourteen node symbols distributed across nodes/qa.py, nodes/evidence.py, nodes/hygiene.py, and nodes/regression.py; all documented with code: bullets in concepts/qa-node-operations.md, concepts/qa-evidence-gate.md, concepts/qa-hygiene-gates.md, and concepts/coder-qa-regression.md. Reachable through coder-workflow-composition-root.md detail link to coder-qa-subflow.md."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/epic_author/nodes/_blueprint.py",
+      "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `_blueprint.py::blueprint`) in concepts/author-epic-author-subflow.md; the bare module path carries no behaviour beyond that citation."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/epic_edit/nodes/_blueprint.py",
+      "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `_blueprint.py::blueprint`) in concepts/author-epic-edit-subflow.md; the bare module path carries no behaviour beyond that citation."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/epic_split/nodes/_blueprint.py",
+      "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `_blueprint.py::blueprint`) in concepts/author-epic-split-subflow.md; the bare module path carries no behaviour beyond that citation."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/milestone/nodes/_blueprint.py",
+      "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `_blueprint.py::blueprint`) in concepts/author-milestone-subflow.md; the bare module path carries no behaviour beyond that citation."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/story_author/nodes/_blueprint.py",
+      "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `_blueprint.py::blueprint`) in concepts/author-story-author-subflow.md; the bare module path carries no behaviour beyond that citation."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/story_split/nodes/_blueprint.py",
+      "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `_blueprint.py::blueprint`) in concepts/story-split-subflow.md; the bare module path carries no behaviour beyond that citation."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py",
+      "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `_blueprint.py::blueprint`) in concepts/author-main-package.md; the bare module path carries no behaviour beyond that citation."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/shared/survey/blueprint.py",
+      "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `blueprint.py::blueprint`) in concepts/author-shared-survey-blueprint.md; the bare module path carries no behaviour beyond that citation."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/epic_author/__init__.py",
+      "reason": "package init re-exporting EpicAuthor for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-epic-author-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/epic_edit/__init__.py",
+      "reason": "package init re-exporting EpicEdit for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-epic-edit-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/epic_split/__init__.py",
+      "reason": "package init re-exporting EpicSplit for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-epic-split-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/finalize/__init__.py",
+      "reason": "package init re-exporting Finalize for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-finalize-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/milestone/__init__.py",
+      "reason": "package init re-exporting Milestone for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-milestone-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/parity_surveyor/__init__.py",
+      "reason": "package init re-exporting ParitySurveyor for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-parity-surveyor-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/story_author/__init__.py",
+      "reason": "package init re-exporting StoryAuthor for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-story-author-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/story_edit/__init__.py",
+      "reason": "package init re-exporting StoryEdit for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-story-edit-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/story_split/__init__.py",
+      "reason": "package init re-exporting StorySplitFlow/StorySplitDone for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/story-split-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/surveyor/__init__.py",
+      "reason": "package init re-exporting Surveyor for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-surveyor-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/surveyor/nodes/__init__.py",
+      "reason": "package init re-exporting check_inventory/load_survey_config/emit_artifacts/validate_partition for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-surveyor-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/epic_author/nodes/__init__.py",
+      "reason": "package init re-exporting prepare_epic_target/validate_authored_epic for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-epic-author-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/epic_split/nodes/__init__.py",
+      "reason": "package init re-exporting prepare_epic_split/validate_epic_split for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-epic-split-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/milestone/nodes/__init__.py",
+      "reason": "package init re-exporting prepare_milestone/validate_milestone for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-milestone-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/story_author/nodes/__init__.py",
+      "reason": "package init re-exporting prepare_story/record_story_audit for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-story-author-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/story_split/nodes/__init__.py",
+      "reason": "package init re-exporting record_story_split_review for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/story-split-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/__init__.py",
+      "reason": "the workspace's top-level package docstring, describing the one-directory-per-workflow layout and import direction; a repo-level convention with no executable behaviour of its own to cite, and not itself part of any workflow's graph."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/__init__.py",
+      "reason": "the `author` package docstring describing the workflow's directory layout; the layout it describes (main/, surveyor/, shared/, \u2026) is documented per-package in concepts/author-workflow-composition-root.md and each subflow's own concept doc."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/main/__init__.py",
+      "reason": "declares `__getattr__`, already cited in concepts/author-main-package.md (`author/main/__init__.py::__getattr__`); the bare module path carries no behaviour beyond that lazy-import shim, which the citation covers."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/shared/schemas/__init__.py",
+      "reason": "package aggregator re-exporting the author workflow's schema models from their owning submodules (`_base`, `edit`, `main`, `parity`, `survey`); each model is documented individually as a `format`/field-roles concept (e.g. concepts/author-shared-schemas.md, concepts/author-schemas-exports.md). The bare module path adds no behaviour beyond the aggregation the docstring already explains."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/shared/survey/__init__.py",
+      "reason": "package aggregator re-exporting the shared survey library's blueprint and node functions; fully documented in concepts/survey-shared-library.md, which cites the module's blueprint and describes the inventory/unit-walk/record-check operations it exports. The bare module path adds no behaviour beyond that aggregation."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/kit/__init__.py",
+      "reason": "declares `__getattr__` and `__dir__`, both cited in concepts/workflow-kit-export-surface.md, which documents the facade's lazy-attribute-resolution contract and every re-exported name. The bare module path adds no behaviour beyond that facade, which the citations already cover."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/okf_builder/__init__.py",
+      "reason": "package docstring describing the workflow's per-machine directory layout (workflow.py/main/walkthrough_web/shared); the layout it describes is documented in concepts/okf-builder-workflow-composition-root.md and each machine's own concept docs. No behaviour of its own beyond the docstring."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/okf_builder/audit/__init__.py",
+      "reason": "empty package marker with no docstring or exports; the audit machine's behaviour lives in okf_builder/shared/audit.py, documented in concepts/okf-builder-audit-module.md."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/okf_builder/main/__init__.py",
+      "reason": "package marker for the main build machine; its flow/nodes are documented individually in concepts/okf-builder-workflow-composition-root.md and the main machine's flow docs."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/okf_builder/main/nodes/__init__.py",
+      "reason": "package aggregator re-exporting the main machine's node functions (adjudicate/coverage/finalize/prepare submodules); each function is documented individually with `code:` bullets at its owning flow/concept doc. The bare module path adds no behaviour beyond the aggregation its docstring explains."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/okf_builder/shared/__init__.py",
+      "reason": "package marker for what a second okf-builder machine also reaches (blueprint, paths, schemas, stubs, worklist/checkpoint nodes); each is documented individually at its own module's concept doc."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/okf_builder/shared/blueprint.py",
+      "reason": "declares only the module-level `blueprint = Blueprint(\"okf-builder\")` registry instance, already cited via `path::blueprint` in concepts/okf-builder-workflow-composition-root.md; the bare module path carries no behaviour beyond that citation."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/okf_builder/walkthrough_web/__init__.py",
+      "reason": "package marker for the walkthrough-web sub-flow reached via `self.handoff(...)`; its flow and nodes are documented individually in the walkthrough-web flow doc."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/__init__.py",
+      "reason": "package aggregator re-exporting the walkthrough-web flow's node functions, each documented individually with `code:` bullets at its owning flow doc. The bare module path adds no behaviour beyond the aggregation."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/okf_builder/workflow.py",
+      "reason": "the okf-builder composition root; already cited via `path::symbol` bullets (blueprint, flow table, dry-run stubs) in concepts/okf-builder-workflow-composition-root.md and workhorse-okf-builder.md. The bare module path adds no behaviour beyond what those citations already ground."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/genesis/__init__.py",
+      "reason": "package marker for the coder genesis sub-flow; its flow and nodes are documented individually at their owning concept/flow docs."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/shared/__init__.py",
+      "reason": "package marker for what the coder workflow's flows share (blueprint, backlog, schemas); each is documented individually at its own module's concept doc."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/shared/backlog.py",
+      "reason": "every public function and class in this module is already cited individually with `code:` bullets in concepts/coder-backlog-contract.md (`backlog_bullets`, `file_backlog_items`, `select_fix_item`, `seed_fix_story`, `prune_fix_item`, `mark_fix_blocked`, `kebab`, `norm_desc`, `id_token_set`, `Seen.add`, `Seen.duplicate`, `BacklogBullet.blocked`). The bare module path adds no behaviour beyond those citations."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/shared/blueprint.py",
+      "reason": "declares only the module-level `blueprint = Blueprint(\"coder\")` registry instance, already cited via `path::blueprint` in concepts/coder-workflow-composition-root.md; the bare module path carries no behaviour beyond that citation."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/shared/schemas/__init__.py",
+      "reason": "package aggregator re-exporting the coder workflow's schema models from their owning submodules (_base, backlog, ci, dev, \u2026); each model is documented individually as a format concept (e.g. finding.md, coder-result-routing.md). The bare module path adds no behaviour beyond the aggregation its docstring explains."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/shared/schemas/_base.py",
+      "reason": "every public class and field in this module is already cited individually with `code:` bullets across finding.md, coder-result-routing.md, review-finding-core-fields.md, and coder-code-review-prompt.md (`Finding`, `Finding.target`, `Finding.issue`, `Finding.repair`, `Finding.actionable`, `CoderResult`, `CoderResult.blocked`, `CoderResult.actionable`, `BLOCKED_STATUSES`, `__all__`). The bare module path adds no behaviour beyond those citations."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/coder/workflow.py",
+      "reason": "the coder composition root; already cited via `path::symbol` bullets in concepts/coder-workflow-composition-root.md, coder-entry-point-responsibilities.md, coder-command-selection.md, and workhorse-coder.md. The bare module path adds no behaviour beyond what those citations already ground."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/hello_world/workflow.py",
+      "reason": "already cited symbol-by-symbol (`blueprint`, `workflow`, `main`, `measure`, `HelloWorld.start`, `HelloWorld.greet`) in concepts/hello-world-workflow-composition-root.md; the bare module path adds no behaviour beyond those citations."
+    }
+  ]
+}

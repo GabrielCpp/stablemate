@@ -31,6 +31,8 @@ backend or the clock, which reach the CLI through `turn`.
 | `model: str | None` | Passes straight through to `turn`. |
 | `prompt_path: Path | None` (keyword-only) | Passes the already-persisted rendered-prompt path through to `turn` for backend inspection. |
 | `timeout: float` (keyword-only) | The per-turn wall-clock budget, resolved once by the caller. |
+| `budget_scale: float` (keyword-only, default `1.0`) | Passes straight through to `turn`, which emits a `budget_scaled` telemetry event when it differs from `1.0` — the active power tier's `timeout_scale`, so a scaled run is distinguishable from one whose `timeout` was simply edited. |
+| `base_timeout_s: float | None` (keyword-only) | Passes straight through to `turn`; the pre-scale timeout, carried only for that same `budget_scaled` telemetry event. |
 | `cwd: str | None`, `add_dirs: list[str] | None`, `effort: str | None` (keyword-only) | Pass straight through to `turn`. |
 | `validate` (keyword-only) | An optional callback that accepts the extracted outputs and checks the caller's result shape; a validation exception becomes an `OutputParseError` and follows the same corrective retry path as malformed output. |
 
@@ -49,7 +51,8 @@ through unchanged from `turn`, so a failed invocation ends this parse-retry loop
 max_output_retries = self.resilience.max_output_retries
 for attempt in 0 .. max_output_retries:
     result_text = self.turn(prompt, node.id, session_id_path, model=model, timeout=timeout,
-                            prompt_path=prompt_path, cwd=cwd, add_dirs=add_dirs, effort=effort,
+                            prompt_path=prompt_path, budget_scale=budget_scale, base_timeout_s=base_timeout_s,
+                            cwd=cwd, add_dirs=add_dirs, effort=effort,
                             invoke_retries=node.invoke_retries)
     try:
         outputs = extract_outputs(result_text, node)

@@ -8,6 +8,7 @@ title: Dashboard shell broadcaster
 Dashboard shell broadcaster is the shared groom server helper that turns the current [workflow registry](workflow-registry.md) snapshot into a [dashboard state payload](../dashboard-state-payload.md) through the [groom projection module](groom-projection-module.md) and offers that payload to every connected [websocket-dashboard](../http/groom.md#websocket-dashboard) client through the [dashboard client queue set](dashboard-client-queue-set.md). When the caller names the one run that changed, it also pushes that run's detail payload to the tabs that declared themselves watchers in the [run watch registry](run-watch-registry.md) — both halves of a state change travel together, because a gate opening changes the row *and* the pane the operator has open. The [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet), [receive progress push](../http/groom.md#receive-progress-push), [receive blocked push](../http/groom.md#receive-blocked-push), [receive exited push](../http/groom.md#receive-exited-push), [sidecar hello applier](sidecar-hello-applier.md), [sidecar progress applier](sidecar-progress-applier.md), [sidecar blocked applier](sidecar-blocked-applier.md), and [startup background discovery scan](startup-background-discovery-scan.md) paths use it when they need dashboard tabs to converge on the current fleet and status-bar state without directly handling projection or client-queue details.
 
 - code: groom/groom/app.py::_broadcast_shell
+- detail: [dashboard shell broadcast contexts](dashboard-shell-broadcast-contexts.md)
 - refs: [workflow registry](workflow-registry.md), [groom projection module](groom-projection-module.md), [dashboard state payload](../dashboard-state-payload.md), [dashboard client queue set](dashboard-client-queue-set.md), [run watch registry](run-watch-registry.md), [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md)
 
 ## Contract
@@ -24,7 +25,8 @@ push has been enqueued.
 - client scope: the fleet half targets only browser dashboard websocket clients registered in the process-local [dashboard client queue set](dashboard-client-queue-set.md); it does not send to sidecar websockets and does not create a websocket connection for absent clients.
 - call graph: the helper calls exactly the local workflow snapshot helper, [state message](groom-projection-module.md#method-state-message), [broadcast dashboard message](dashboard-client-queue-set.md#method-broadcast-dashboard-message), and — for a named change — the run-detail push; it has no direct Docker, gate-file, HTTP-response, sidecar-RPC, or browser-session logic.
 - snapshot consistency: the run list and the status-bar counts are projected from the same workflow-list snapshot returned by [all workflows snapshot](workflow-registry.md#method-all-workflows-snapshot) for this broadcast pass.
-- query rule: always uses the projection's default empty query, so broadcasts show the whole fleet rather than preserving or applying one browser tab's search text. Filtering is a per-tab concern the client applies to the pushed list.
+- consistency: dashboard-state-payload — broadcasts use the projection's default empty query, so every broadcast state payload contains the whole workflow fleet rather than one browser tab's search-filtered subset. Filtering is a per-tab concern the client applies to the pushed list.
+- verify: json_path(path="$.runs[0].id", equals="abc123")
 - transport rule: the payload is a `dict`, not a string. Serialization to JSON text belongs to the [dashboard websocket send loop](dashboard-websocket-send-loop.md), so nothing in this helper knows what a tab will do with a `state` frame.
 - call cardinality: each helper invocation projects exactly one state payload and performs exactly one dashboard-client broadcast call, plus at most one watcher push pass; it does not debounce, coalesce, retry, or schedule a later broadcast.
 - empty-client rule: when no dashboard clients are registered, projection still happens and the broadcast queue pass completes after enqueueing to zero queues.
@@ -99,11 +101,12 @@ push has been enqueued.
 - sig: `async _broadcast_shell(changed: str = "") -> None`
 - abstract: false
 - raises: propagates exceptions from workflow snapshot creation, projection, dashboard client queue snapshotting, or queue `put` calls.
-- returns: no helper-specific error value to the caller.
-- verify: json_path(path="return", equals=null)
+- verify: json_path(path="exception.type", matches=".+")
+- returns: `None` — the method completes synchronously with respect to the caller: the enqueue operations are awaited, so completion confirms all queues have been offered the payload.
+- verify: count(subject="dashboard client queues that received the broadcast payload", equals=2)
 - code: groom/groom/app.py::_broadcast_shell
 
-Project and enqueue the current dashboard state for browser dashboard websocket clients after a caller has already changed, or is about to expose, workflow fleet state — and refresh the open pane for whoever is watching the run that changed.
+Project and enqueue the current dashboard state for browser dashboard websocket clients after a caller has already changed, or is about to expose, workflow fleet state — and refresh the open pane for whoever is watching the run that changed. The return value carries no error signal of its own: whether the pass fully succeeded or failed partway through, the coroutine yields `None`, so a caller distinguishes a full success from an incomplete broadcast only by whether an exception propagated, never by the return.
 
 #### Effects
 

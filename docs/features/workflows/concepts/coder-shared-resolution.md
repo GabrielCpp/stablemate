@@ -20,7 +20,7 @@ grounding settles the block.
 
 ### RESOLVER_POWER
 - type: string
-- default: `smart`
+- default: `max`
 - required: true
 - semantics: model-power tier requested for the resolver turn
 - verify: count(subject="resolver power setting", equals=1)

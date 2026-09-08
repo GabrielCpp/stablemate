@@ -11,10 +11,15 @@ Browser notification permission is browser-owned state requested by the dashboar
 - code: groom/groom/assets/dashboard.js::onNotify
 - rule: Use the first-body-click request only as the one-time bootstrap registered at dashboard initialization when the Notification API is available and permission is `default`; use the settings request for an explicit activation of `#btn-notify` whenever the API is available. The paths are context-specific rather than replacements, and the same settings activation can invoke both while the bootstrap listener remains registered.
 - detail: [blocked notification delivery](blocked-notification-delivery.md)
+- detail: [dashboard event wiring interaction contexts](dashboard-event-wiring-interaction-contexts.md)
+- detail: [dashboard wire events scope](dashboard-wire-events-scope.md)
 
 ## Contract
 
-- availability guard: every groom access to the Notification API first checks that `"Notification" in window`; browsers without the API never receive a permission request and never create a system notification.
+- consistency: notification-permission-request — When `"Notification" in window` is false, groom makes no `Notification.requestPermission()` calls.
+- verify: count(subject="Notification.requestPermission calls when Notification is unavailable", equals=0)
+- consistency: notify-frame-system-notification — When `"Notification" in window` is false, groom creates no system `Notification` objects.
+- verify: count(subject="system Notification objects when Notification is unavailable", equals=0)
 - first-click request path: when the dashboard script loads and the browser reports both Notification API availability and `Notification.permission === "default"`, groom registers one body click listener that calls `Notification.requestPermission()` on the first body click and then removes itself.
 - settings request path: the settings `Enable notifications` button asks for permission on activation when `window.Notification` exists; the delegated handler requires the event target itself to have `id="btn-notify"`.
 - double-request edge: if the first eligible body click is the settings button activation while permission is still `default`, the one-time first-click listener may call `Notification.requestPermission()` before the delegated settings branch calls it again because the first-click listener is registered before the delegated body-click handler.

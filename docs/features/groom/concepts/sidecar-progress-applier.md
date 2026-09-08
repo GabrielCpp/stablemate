@@ -8,6 +8,7 @@ title: Sidecar progress applier
 The sidecar progress applier is the groom server layer that folds a connected sidecar's live `progress` [sidecar websocket frame](../sidecar-websocket-frame.md) into the process-local [workflow registry](workflow-registry.md) during the [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) invocation. It marks the connected [workflow container](workflow-container.md) as [workflow state](workflow-state.md) `running`, optionally updates its current-node field through [upsert workflow](workflow-registry.md#method-upsert-workflow), and finishes by calling the [dashboard shell broadcaster](dashboard-shell-broadcaster.md) so browser dashboard tabs converge on the latest running-state snapshot. The websocket session derives the non-empty, truncated container id from a useful `hello` frame before this layer receives it; the applier uses that supplied registry key without further identity handling.
 
 - code: groom/groom/app.py::_apply_socket_progress
+- detail: [sidecar progress documentation contexts](sidecar-progress-documentation-contexts.md)
 
 ## Contract
 
@@ -16,7 +17,12 @@ The sidecar progress applier is the groom server layer that folds a connected si
 - current-node rule: an absent or JSON `null` `current_node` preserves the workflow's existing current-node field through registry upsert semantics; any non-`None` value, including an empty string or non-string JSON value, is assigned to the workflow's `current_node` field as supplied.
 - state rule: every call sets the workflow state to `RUNNING`, even when the progress frame omits `current_node` and even when the workflow previously had open gate records.
 - gate rule: existing gate records are preserved; a progress frame is a liveness/current-node delta, not an authoritative gate snapshot and not a gate-clear signal.
-- output: no return value; completion means registry mutation and shell broadcast have completed or an upstream exception has interrupted the operation.
+
+The coroutine returns nothing. Its two effects — the registry upsert and the dashboard shell
+broadcast — run one after the other with no exception handling in between, so either both
+finish or an exception raised by either one propagates to the caller instead of completing the
+remaining step. That propagation is the obligation captured by the `raises:` claim under
+[Methods](#methods) below, with its own `verify:`.
 
 ## Inputs
 
@@ -67,8 +73,10 @@ The sidecar progress applier is the groom server layer that folds a connected si
 ## Routing Boundaries
 
 - Caller: [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) invokes this applier only for object frames whose `type` is `progress` and only after a prior useful `hello` has registered a sidecar connection.
-- consistency: a progress frame received before `hello` is ignored by the websocket session and never reaches this layer; the session establishes the connection before it routes `progress` frames to the applier.
+- consistency: sidecar-websocket-frame — a `progress` frame received before `hello` is ignored by the websocket session and never reaches this layer.
 - verify: count(subject="workflow registry entries", equals=0)
+- consistency: sidecar-connection — the session establishes it before routing `progress` frames to this layer.
+- verify: created(subject="sidecar connection")
 - Frame validation boundary: the applier does not inspect `data["type"]`, require `current_node`, or validate the value type; its entire frame-specific read is `data.get("current_node")`.
 - Callee: the applier writes through [upsert workflow](workflow-registry.md#method-upsert-workflow), relying on registry partial-update semantics for placeholder creation and `None` preservation.
 - Callee: the applier then calls [dashboard shell broadcaster](dashboard-shell-broadcaster.md) exactly once to publish the current shell state.

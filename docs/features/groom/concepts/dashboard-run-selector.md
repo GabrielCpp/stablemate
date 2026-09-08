@@ -16,6 +16,7 @@ The fetch and the subscription are both issued because they answer different que
 - code: groom/groom/assets/dashboard.js::select
 - code: groom/groom/assets/dashboard.js::RunRow
 - rule: choose the direct row, keyboard traversal, or command palette for its input context; all three select through the same run selector, and no ranking exists among them
+- detail: [dashboard run select authority](dashboard-run-select-authority.md)
 - refs: [dashboard selected worker state](../dashboard-selected-worker-state.md), [run watch registry](run-watch-registry.md), [dashboard client store](dashboard-client-store.md)
 
 ## Contract
@@ -26,9 +27,11 @@ The fetch and the subscription are both issued because they answer different que
 - loading state: `detail: null` against a non-null `selected` is what the pane renders as `Loading…`. The two fields are written together precisely so that state cannot be mistaken for *nothing selected*.
 - subscription: sends this tab's watch command for the id over the dashboard websocket, replacing whatever it was watching. A tab watches at most one run — the pane shows one — and a refused send is not retried, because the next selection or reconnect re-sends it anyway.
 - detail fetch: requests [GET /worker/{container_id}](../http/groom.md#get-run-detail) and stores the parsed body as the pane's detail.
-- consistency: A detail response for a superseded selection must not replace the current selection's detail.
+- consistency: detail — a response for a superseded selection must not replace the current selection's detail.
 - verify: unchanged(subject="dashboard detail for the current selection")
-- consistency: A fetched detail response must not overwrite a `detail` frame received after that fetch began. A frame that arrives first is the fresher truth.
+- consistency: detail — a fetched response must not overwrite a frame received after that fetch began.
+- verify: unchanged(subject="dashboard detail after a newer pushed detail")
+- consistency: detail — a frame arriving after a fetch begins is treated as fresher than the eventual fetch response.
 - verify: unchanged(subject="dashboard detail after a newer pushed detail")
 - fetch failure: a rejected fetch is swallowed. The pane stays in its loading state and is filled by the watch subscription's next push, so a transient failure costs a tick rather than an error message.
 - selection styling: rendered, not applied. The fleet row component receives whether it is selected and emits the `selected` class and `aria-current="true"` from that; no code walks the document toggling classes.

@@ -17,3 +17,5 @@ mode switch has no legacy branch, deprecation marker, or preference between them
 
 - code: groom/groom/assets/dashboard.js::setMode
 - rule: use Files to browse workspace files and Diff to inspect working-tree changes; neither mode supersedes the other
+- detail: [dashboard activity mode selection](dashboard-activity-mode-selection.md)
+- detail: [Dashboard mode selection documentation scope](dashboard-mode-selection-documentation-scope.md)

@@ -15,3 +15,4 @@ the currently active Files or Diff pane rather than both panes.
 
 - code: groom/groom/assets/dashboard.js::loadActivePane
 - rule: use the workspace-file flow in Files mode and the working-tree-diff flow in Diff mode; neither flow is ranked over the other
+- detail: [Dashboard active-pane documentation scope](dashboard-active-pane-documentation-scope.md)

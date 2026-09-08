@@ -13,6 +13,7 @@ The map is keyed by the tab's outbound queue, not by a session id or a socket ob
 
 - code: groom/groom/state.py::WATCHING
 - code: groom/groom/app.py::_push_detail
+- detail: [WATCHING field documentation views](watching-field-documentation-views.md)
 - refs: [dashboard client queue set](dashboard-client-queue-set.md), [dashboard websocket receive loop](dashboard-websocket-receive-loop.md), [dashboard shell broadcaster](dashboard-shell-broadcaster.md), [groom projection module](groom-projection-module.md), [dashboard client store](dashboard-client-store.md)
 
 ## Contract
@@ -25,9 +26,10 @@ The map is keyed by the tab's outbound queue, not by a session id or a socket ob
 - disconnect: [unregister dashboard client](dashboard-client-queue-set.md#method-unregister-dashboard-client) pops the queue's entry as part of removing the client. Forgetting the subscription there rather than in the caller is what makes it impossible for a disconnect to leave a subscription pointing at a queue nobody reads — an entry that would otherwise survive for the life of the process.
 - durability: purely process-local. A restarted server knows nothing about any tab's selection; the tab re-declares it on the next socket open, which is what makes reconnect self-healing.
 - lifetime: starts empty at import, is mutated only through [record watch](#method-record-watch) and client removal, and is lost on process exit.
-- concurrency: run-watch-registry — a plain dict mutated from one event loop; no lock, version, or transaction.
+- concurrency: run-watch-registry — a plain dict mutated from one event loop.
+- concurrency: run-watch-registry — no lock, version, or transaction guards a read or write.
 - concurrency: run-watch-registry — reads return only the comprehension-built snapshot from each query.
-- consistency: An addressed detail update asks for its target watcher queues and, when none exist, returns before detail projection, performing none of the two SQLite-backed detail reads.
+- consistency: run-watch-registry — an addressed detail update asks it for the run's watcher queues and, when none exist, returns before detail projection, performing none of the two SQLite-backed detail reads.
 - verify: count(subject="SQLite-backed detail reads for an addressed update with no watcher queues", equals=0)
 - excluded: the map holds no query string, mode, scroll position, repository selection, or any other per-tab UI state. Those stay in the browser's [dashboard client store](dashboard-client-store.md) and never round-trip to the server.
 
@@ -85,7 +87,9 @@ effect until a matching run is pushed, including when that run appears after the
 
 #### Effects
 
-- consistency: watcher queries return only the queues whose recorded id exactly equals the requested run id; prefix, short-handle, and case-insensitive matches are excluded.
+- consistency: field-watching-map — watcher queries return only the queues whose recorded id exactly equals the requested run id
+- verify: count(subject="watcher queues returned for run id 'run-1' when one tab watches 'run-1', one watches 'run-10', and one watches 'RUN-1'", equals=1)
+- consistency: run-watch-registry — prefix, short-handle, and case-insensitive matches are excluded
 - verify: count(subject="watcher queues returned for run id 'run-1' when one tab watches 'run-1', one watches 'run-10', and one watches 'RUN-1'", equals=1)
 - Returns: a new list, so the caller may enqueue to it while further watch commands mutate the map.
 - Empty result: an unwatched run yields an empty list, which callers treat as "skip the work entirely" rather than as an error.
@@ -95,6 +99,7 @@ effect until a matching run is pushed, including when that run appears after the
 - sig: `watched_ids() -> set[str]`
 - abstract: false
 - raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/state.py::watched_ids
 
 #### Effects
@@ -107,11 +112,16 @@ effect until a matching run is pushed, including when that run appears after the
 
 ### algorithm-address-one-run-detail
 
-- step: A tab selects a run and sends `{"cmd": "watch", "run_id": …}` on its socket.
-- step: The command handler records the subscription against that tab's queue and pushes the run's current detail back on the same queue.
-- step: On any later state change to that run, the detail push asks for the run's watchers.
-- step: For each watcher queue, the projected `detail` message is enqueued directly — never through a fleet-wide broadcast pass.
-- step: On disconnect, removing the client also drops its subscription, so the next push for that run does not address a dead queue.
+Addressing one run's detail to the right tabs, end to end: a tab selects a run and sends
+`{"cmd": "watch", "run_id": …}` on its socket; the command handler records the subscription
+against that tab's queue and pushes the run's current detail back on the same queue (see
+[Callers > subscription](#callers)); on any later state change to that run, the detail push
+asks [watchers of run](#method-watchers-of-run) for that run's watcher queues; and on
+disconnect, removing the client also drops its subscription, so the next push for that run
+does not address a dead queue (see [Contract > disconnect](#contract)).
+
+- consistency: detail — `_push_detail` enqueues the projected `detail` message to each watcher queue with a direct per-queue send, never through the fleet-wide broadcast function.
+- verify: count(subject="calls to the fleet-wide broadcast function while pushing an addressed detail update to active watcher queues", equals=0)
 
 ## Failure Semantics
 

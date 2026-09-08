@@ -24,14 +24,14 @@ then rereads and reclassifies each candidate before creating gate info.
 
 - file: arbitrary workspace-relative path inside a workflow container's `/workspace` tree; common paths vary by workflow node and are not fixed by groom.
 - code: groom/groom/gates.py::status_of
-- verify: groom/tests/test_gates.py::test_status_of_reads_the_status_line
-- verify: groom/tests/test_gates.py::test_is_awaiting
-- verify: groom/tests/test_gates.py::test_extract_question_pulls_the_named_section
-- verify: groom/tests/test_gates.py::test_extract_question_falls_back_to_whole_text_when_no_header
-- verify: groom/tests/test_gates.py::test_apply_answer_flips_status_and_appends_text
-- verify: groom/tests/test_gates.py::test_apply_answer_with_blank_answer_still_flips_status
-- verify: groom/tests/test_discovery.py::test_find_gates_only_keeps_files_still_awaiting
-- verify: groom/tests/test_sidecar.py::test_scan_gates_finds_awaiting_and_skips_git_and_non_awaiting
+- tests: groom/tests/test_gates.py::test_status_of_reads_the_status_line
+- tests: groom/tests/test_gates.py::test_is_awaiting
+- tests: groom/tests/test_gates.py::test_extract_question_pulls_the_named_section
+- tests: groom/tests/test_gates.py::test_extract_question_falls_back_to_whole_text_when_no_header
+- tests: groom/tests/test_gates.py::test_apply_answer_flips_status_and_appends_text
+- tests: groom/tests/test_gates.py::test_apply_answer_with_blank_answer_still_flips_status
+- tests: groom/tests/test_discovery.py::test_find_gates_only_keeps_files_still_awaiting
+- tests: groom/tests/test_sidecar.py::test_scan_gates_finds_awaiting_and_skips_git_and_non_awaiting
 
 ## Contract
 
@@ -42,7 +42,7 @@ then rereads and reclassifies each candidate before creating gate info.
 - awaiting rule: only the normalized status token `AWAITING_OPERATOR` is answerable and discoverable as an open gate.
 - answered rule: accepting an answer replaces at most the first matched `STATUS:` line with `STATUS: ANSWERED`; when no status line matches, the file body is preserved and only a non-blank answer append can change the returned text.
 - consumed rule: the normalized status token `CONSUMED` is recognized as a non-awaiting state; groom does not write it when answering.
-- question rule: the operator-facing question is the stripped body of a `## Question from the agent` or `## Questions from the agent` section, matched case-insensitively with flexible whitespace and ending before the next heading marker that begins with at least two `#` characters or end of file.
+- question rule: the operator-facing question is the stripped body of the latest `## Question from the agent` or `## Questions from the agent` section, matched case-insensitively with flexible whitespace and ending before the next heading marker that begins with at least two `#` characters or end of file.
 - question heading rule: the recognized question marker is searched anywhere in the text and is not required to be the first heading; a same-line body after the heading marker is not a recognized section body because the parser requires at least one newline before captured question content.
 - fallback question rule: when no recognized question section exists, the stripped whole file is used as the question text.
 - preview limit: extracted question text is truncated to 4000 characters before it enters gate records or snapshot data.
@@ -120,6 +120,7 @@ then rereads and reclassifies each candidate before creating gate info.
 - verify: json_path(path="return value", equals="UNRECOGNIZED")
 - verify: json_path(path="return value", equals="AWAITING_OPERATOR")
 - code: groom/groom/gates.py::status_of
+- detail: [gate status parser documentation contexts](concepts/gate-status-parser-documentation-contexts.md)
 - tests: groom/tests/test_gates.py::test_status_of_reads_the_status_line
 
 Parses one operator gate context file text into the normalized lifecycle token that consumers use for discovery, stale-answer checks, and non-awaiting filtering.
@@ -132,8 +133,7 @@ Parses one operator gate context file text into the normalized lifecycle token t
 - Search scope: scans the whole supplied string under multiline line-start semantics; callers that pass only a prefix receive a prefix-only classification.
 - Token boundary: captures exactly the first non-whitespace run after `STATUS:` and ignores any later words, punctuation, sections, or additional status-like lines.
 - Normalizes: uppercases the captured token before returning it, so `consumed` and `CONSUMED` classify identically while preserving non-letter characters as part of the token.
-- Return contract: always returns a string and never `None`.
-- Fallback: returns the empty string when no line has `STATUS:` followed by a token.
+- Return shape: the value is a string (an empty string when no line has `STATUS:` followed by a token); `None` is not produced.
 - Used by: [method-scan_gates](concepts/sidecar-snapshot.md#method-scan_gates) passes each file's initial 512-character prefix through this classifier and retains only the exact `AWAITING_OPERATOR` result.
 - Calls: no other groom source symbols.
 - Does not mutate: file text, workspace-volume files, gate records, workflow state, answer locks, dashboard clients, or sidecar sessions.
@@ -145,6 +145,7 @@ Parses one operator gate context file text into the normalized lifecycle token t
 - raises: none intentionally raised for any string input.
 - verify: json_path(path="return value", equals=true)
 - code: groom/groom/gates.py::is_awaiting
+- detail: [is awaiting documentation contexts](concepts/is-awaiting-documentation-contexts.md)
 - tests: groom/tests/test_gates.py::test_is_awaiting
 
 Classifies whether one operator gate context file is currently answerable by comparing its normalized lifecycle token to the sole open-gate value.
@@ -170,6 +171,7 @@ Classifies whether one operator gate context file is currently answerable by com
 - verify: json_path(path="return value", equals="Should the fallback default to \"unknown\" or raise?")
 - verify: json_path(path="return value", equals="STATUS: AWAITING_OPERATOR\n\njust a blob, no section header")
 - code: groom/groom/gates.py::extract_question
+- detail: [gate question extraction contexts](concepts/gate-question-extraction-contexts.md)
 - tests: `groom/tests/test_gates.py::test_extract_question_pulls_the_named_section`
 - tests: `groom/tests/test_gates.py::test_extract_question_falls_back_to_whole_text_when_no_header`
 
@@ -178,8 +180,8 @@ Extracts the operator-facing prompt text from one gate file for [gate info](conc
 #### Effects
 
 - Reads: the supplied text only.
-- Matches: the first occurrence of a two-hash marker followed by `Question from the agent` or `Questions from the agent`, case-insensitively, with flexible whitespace before `Question`, between the words, and after `agent`.
-- Marker scope: the marker does not have to begin at the start of a line; any earlier text is ignored once the marker is found, and if multiple recognized markers exist only the first one is used.
+- Matches: every occurrence of a two-hash marker followed by `Question from the agent` or `Questions from the agent`, case-insensitively, with flexible whitespace before `Question`, between the words, and after `agent`.
+- Marker scope: the marker does not have to begin at the start of a line; if multiple recognized markers exist, only the latest section is used.
 - Requires after heading: at least one newline after the recognized heading before
   the body starts; a same-line question after the heading is not a recognized
   section body and therefore falls back to whole-file extraction.
@@ -206,6 +208,7 @@ Extracts the operator-facing prompt text from one gate file for [gate info](conc
 - verify: count(subject="STATUS: ANSWERED lines in returned gate text", equals=1)
 - verify: count(subject="answer paragraphs in returned gate text", equals=0)
 - code: groom/groom/gates.py::apply_answer
+- detail: [gate answer text mutation](concepts/gate-answer-text-mutation.md)
 - tests: groom/tests/test_gates.py::test_apply_answer_flips_status_and_appends_text
 - tests: groom/tests/test_gates.py::test_apply_answer_with_blank_answer_still_flips_status
 
@@ -218,8 +221,7 @@ Builds the answered form of one operator gate context file from the current file
 - Mutates text: replaces at most one matched status line with exactly `STATUS: ANSWERED`; if no line matches, the status portion of the returned text is unchanged.
 - Preserves: all unmatched file content, section ordering, headings, and non-status text before any optional answer append.
 - Normalizes: strips leading and trailing whitespace from the submitted answer before deciding whether an answer paragraph exists.
-- Skips append: when the stripped answer is empty, returns the status-updated file text without adding an answer paragraph or trimming trailing content.
-- Output shape: a non-blank answer always produces text ending with exactly one newline after the answer paragraph; a blank answer preserves whatever trailing whitespace was present after the status replacement.
+- Blank-answer path: when the stripped answer is empty, the status-updated file text is the result, with no answer paragraph added and no trailing content trimmed — the counterpart to the `returns:` bullet above, which obliges the non-blank case's trailing newline.
 - Calls: no other groom source symbols.
 - Does not mutate: workspace-volume files, Docker containers, workflow containers, in-memory gate records, per-gate answer locks, dashboard websocket queues, sidecar connections, or browser DOM state.
 

@@ -27,6 +27,7 @@ requires an operator because the missing evidence or decision is outside the rep
 - semantics: `blocked` bypasses repair and goes to operator resolution
 - verify: json_path(path="$.status", equals="blocked")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.status`
+- detail: [review verdict status roles](concepts/review-verdict-status-roles.md)
 
 ### notes
 - type: `str`
@@ -36,3 +37,4 @@ requires an operator because the missing evidence or decision is outside the rep
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.notes`
 - tests: `workflows/tests/coder/review/test_flow.py::test_an_approved_review_stamps_the_specs_and_stops`
+- detail: [review verdict notes context](concepts/review-verdict-notes-context.md)

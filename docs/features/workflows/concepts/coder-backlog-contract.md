@@ -171,6 +171,7 @@ story that covers that id is re-authored only in empty sections and reused.
 
 - sig: `seed_fix_story(logger: logging.Logger, bullet_id: str = "", bullet_text: str = "", epics_dir: str = "", epic: str = "", docs_path: str = "", repo_dir: str = "") -> FixStorySeed`
 - does: resolves or self-creates the selected epic bucket, defaulting to the perpetual `fixes` bucket without registering it in the epic queue
+- verify: created(subject="the selected epic bucket")
 - verify: count(subject="resolved fix story buckets", equals=1)
 - does: reuses an existing story covering the bullet id and fills only empty required sections
 - verify: count(subject="idempotent fix story reuses", equals=1)

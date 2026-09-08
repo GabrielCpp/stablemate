@@ -8,19 +8,19 @@ title: Workflow container
 Workflow container is the in-memory record for one workhorse-backed container that `groom` can show, query, and update. The [groom server](../http/groom.md) stores these records in its process-local [workflow registry](workflow-registry.md), creates and refreshes them from Docker discovery, [sidecar snapshot data](../sidecar-snapshot-data.md), [progress push payloads](../progress-push-payload.md), [blocked push payloads](../blocked-push-payload.md), and [exited push payloads](../exited-push-payload.md), exposes them through dashboard endpoints such as the [search fragment](../http/groom.md#get-dashboard-state), [worker detail](../http/groom.md#get-run-detail), and [repository menu](../http/groom.md#get-repository-menu), records open [gate info](gate-info.md) entries for blocked gates, and renders them into controls such as the [inbox worker row](../gui/screens/groom-dashboard.md#run-row) and [repository menu option](../gui/screens/groom-dashboard.md#repository-menu-option). The [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md) targets a workflow container by id so the answer path can find the workflow's workspace volume and open gate map.
 
 - code: groom/groom/models.py::WorkflowContainer
-- verify: groom/tests/test_discovery.py::test_container_from_inspect_reads_env_name_and_volumes
-- verify: groom/tests/test_discovery.py::test_workflow_type_from_workflow_mount_basename
-- verify: groom/tests/test_discovery.py::test_workflow_type_falls_back_to_compose_service_label
-- verify: groom/tests/test_discovery.py::test_container_from_inspect_marks_stopped_container_idle
-- verify: groom/tests/test_discovery.py::test_container_from_inspect_falls_back_to_id_when_unnamed
-- verify: groom/tests/test_discovery.py::test_scan_uses_sidecar_query_for_running_container
-- verify: groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code
-- verify: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_answered_script
-- verify: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
-- verify: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
-- verify: groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively
-- verify: groom/tests/test_render.py::test_inbox_shows_only_workers_with_open_gates
-- verify: groom/tests/test_render.py::test_worker_detail_has_ws_send_answer_form
+- tests: groom/tests/test_discovery.py::test_container_from_inspect_reads_env_name_and_volumes
+- tests: groom/tests/test_discovery.py::test_workflow_type_from_workflow_mount_basename
+- tests: groom/tests/test_discovery.py::test_workflow_type_falls_back_to_compose_service_label
+- tests: groom/tests/test_discovery.py::test_container_from_inspect_marks_stopped_container_idle
+- tests: groom/tests/test_discovery.py::test_container_from_inspect_falls_back_to_id_when_unnamed
+- tests: groom/tests/test_discovery.py::test_scan_uses_sidecar_query_for_running_container
+- tests: groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code
+- tests: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_answered_script
+- tests: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
+- tests: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
+- tests: groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively
+- tests: groom/tests/test_render.py::test_inbox_shows_only_workers_with_open_gates
+- tests: groom/tests/test_render.py::test_worker_detail_has_ws_send_answer_form
 
 ## Contract
 
@@ -90,6 +90,7 @@ Workflow container is the in-memory record for one workhorse-backed container th
 - meaning: workflow kind badge text, for example author or coder, when supplied by discovery or sidecar state.
 - source: discovery derives it through the [workflow-type derivation method](workflow-discovery-scan.md#method-derive-workflow-type), reading the `/workflow` mount source basename first and falling back to the compose service label when the basename is empty or generic; push-first volume hydration can fill it for records first seen through sidecar or residual push events.
 - constraints: empty suppresses the type badge; non-empty values are rendered as escaped text and may be any workflow kind string.
+- detail: [workflow type badge style rules](workflow-type-badge-style-rules.md)
 
 ### field-state
 

@@ -16,5 +16,4 @@ callable's Docker-listing behavior and prune-safety distinction, and read the mo
 navigating the adapter's public helpers and their relationships. Both describe the same function
 and must remain consistent rather than being chosen as alternative implementations.
 
-- code: groom/groom/docker_io.py::list_container_ids
 - rule: select the documentation context by the question being answered; `list_container_ids` has one current implementation and no ranking between the dedicated reader and module-wide views

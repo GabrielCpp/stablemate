@@ -16,6 +16,8 @@ is the authoritative spec of that ladder.
 whole run shares — the backend to drive, the [`AgentResilience`](#the-runner) knobs to drive it
 with, the [`Clock`](#the-runner) to wait on — so what varies per node is a parameter of `run` and
 no caller forwards the run's configuration field by field.
+The live model-set name is held in a shared [`ProfileSelection`](profile-selection.md) box, so a
+`control switch-profile` request changes every copied runner reference together.
 
 The ladder delegates to a set of lower-level concept nodes documented on their own: a finished
 turn is classified by [`classify_turn`](classify-turn.md) (called directly for Claude, or via the
@@ -39,13 +41,18 @@ and backend usage is normalized by [TurnUsage](usage-normalization.md). The shar
 also applies [secret redaction](secret-redaction.md), while [failure classification](failure-classification.md)
 is the single source of recovery flags.
 
+- code: `workhorse/workhorse/runner/ladder.py::AgentRunner`
 - code: `workhorse/workhorse/runner/ladder.py::AgentRunner.run`
+- code: `workhorse/workhorse/runner/ladder.py::ProfileSelection`
+- code: `workhorse/workhorse/runner/ladder.py::resolved_profile`
+- code: `workhorse/workhorse/runner/ladder.py::switch_profile`
 - tests: `workhorse/tests/test_agent_recovery.py::test_success_on_first_attempt_returns_outputs`,
   `workhorse/tests/test_agent_recovery.py::test_reframe_count_then_default`,
   `workhorse/tests/test_agent_recovery.py::test_overflow_compacts_then_continues_same_prompt`,
   `workhorse/tests/test_agent_recovery.py::test_non_recoverable_backend_error_aborts_without_reframe`,
   `workhorse/tests/test_agent_recovery.py::test_rendered_prompt_is_written_and_only_path_is_printed`,
   `workhorse/tests/test_node_timeout.py::test_timeout_defaults_to_1_hour`
+- detail: [ProfileSelection selection guidance](profile-selection-guidance.md)
 
 ## The runner
 
@@ -67,11 +74,54 @@ or sleep through an eight-day cap window in microseconds.
   node's rendered-prompt **path** to the console.
 - `model_override: str | None` — the run-level `AGENT_MODEL`/`AGENT_CLAUDE_MODEL` fallback, already
   resolved from the environment.
+- `profile: ProfileSelection` (default name `""`) — the shared selected profile name. Each turn
+  re-reads that profile's current tables; a selected profile replaces, rather than layers over,
+  the top-level tables.
 
 `AgentRunner.from_config(config, *, clock=SYSTEM_CLOCK)` is **the one construction point**: it turns
 the run's `RunConfig` (`workhorse/workhorse/config_run.py`, built once from the environment at the
 CLI boundary) into the service the engine calls. Tests build the dataclass directly, or substitute
 a stand-in entirely via `RunEnv(agent_runner=...)` — see [testing](testing.md).
+
+## Profile API
+
+The profile helpers read configuration at call time: a corrected profile file can affect the next
+turn without restarting the run, while a deleted profile resolves to an empty mapping and warns
+once rather than moving silently to the machine's top-level models.
+
+### from_config
+- sig: `AgentRunner.from_config(config: RunConfig, *, clock: Clock = SYSTEM_CLOCK) -> AgentRunner`
+- does: construct the runner from the supplied backend, resilience settings, prompt-print setting, model override, and profile name
+- returns: an `AgentRunner` whose profile box starts with `config.profile`
+- code: `workhorse/workhorse/runner/ladder.py::AgentRunner.from_config`
+- verify: json_path(path="$.profile.name", equals="")
+- tests: `workhorse/tests/test_backends.py::test_agentless_run_fails_its_first_agent_node_with_a_sentence`
+
+### resolved_profile
+- sig: `resolved_profile(profile: str) -> dict[str, Any]`
+- does: read the selected profile's current tables from the loaded configuration
+- consistency: profile-config — an unselected or disappeared profile resolves to an empty mapping
+- returns: the exact profile tables used for the run's profile provenance record
+- consistency: profile-config — the returned profile tables are recorded verbatim in the run's profile provenance
+- verify: json_path(path="$.profile_config.power.high.claude.model", equals="sonnet")
+- code: `workhorse/workhorse/runner/ladder.py::resolved_profile`
+- verify: persists(subject="run.json profile_config")
+- tests: `workhorse/tests/test_artifacts_fresh.py::test_the_profile_and_what_it_held_are_recorded_on_the_run`
+
+### switch_profile
+- sig: `switch_profile(runner: AgentRunner | None, name: str) -> dict[str, object]`
+- does: refuse the request when no agent runner exists
+- does: refuse an unknown profile without changing the current selection
+- does: refuse a profile with model or default entries but no mapping for the active backend
+- does: accept a profile with no model entries, because it makes no backend claim
+- does: assign the accepted name to the shared profile selection box
+- does: re-stamp the root telemetry attribute with the accepted profile name
+- returns: `{ok: true, profile: name, was: previous_name}` after acceptance
+- returns: `{ok: false, error: message}` after refusal
+- code: `workhorse/workhorse/runner/ladder.py::switch_profile`
+- verify: json_path(path="$.ok", equals=true)
+- verify: json_path(path="$.profile", equals="cheap")
+- tests: `workhorse/tests/test_model_resolution.py::test_a_switch_is_one_assignment_that_the_next_turn_reads`, `workhorse/tests/test_model_resolution.py::test_an_unknown_profile_is_refused_rather_than_applied`, `workhorse/tests/test_model_resolution.py::test_a_profile_that_maps_nothing_for_this_runs_backend_is_refused`, `workhorse/tests/test_model_resolution.py::test_a_profile_carrying_no_models_at_all_is_allowed_through`, `workhorse/tests/test_model_resolution.py::test_a_run_that_drives_no_agent_is_told_so_rather_than_crashing`
 
 ## Contract
 
@@ -82,11 +132,17 @@ a stand-in entirely via `RunEnv(agent_runner=...)` — see [testing](testing.md)
   - `workflow_dir: Path` — base dir the prompt template path is resolved against.
   - `session_id_path: Path | None` — the run's [`.session_id`](../run-artifacts.md#session_id)
     file; `None` disables session persistence/resume entirely.
-  - `resume_session: bool` (keyword-only, default `False`) — set only by the driver when
-    re-entering a node that was killed mid-turn (not fast-forwarded); see [Sessions](#sessions).
+  - `resume_session: bool` (keyword-only, default `False`) — set by the driver when re-entering
+    a node that was killed mid-turn (not fast-forwarded), and for a named session chain; see
+    [Sessions](#sessions).
+  - `session_chain: str` (keyword-only, default `""`) — the named session-chain key, retained
+    only to identify an unresumable chained session in the recovery log.
   - `run_dir: Path | None` (keyword-only, default `None`) — where to persist the rendered prompt
     before invoking, as `<run_dir>/<node.id>/prompt.md`. `None` skips both the write and the
     console echo.
+  - `validate` (keyword-only, default `None`) — an optional callable that validates the extracted
+    output dict against the caller's result model. A validation failure is retried as an output
+    parse failure in the same session before it can reach the reframe layer.
 - **Output:** `tuple[str, dict[str, Any]]` — `(rendered_prompt, outputs)`, the fully-rendered
   prompt text and the node's extracted output dict (for `output.json` and the context
   merge) — see [run artifacts](../run-artifacts.md#node-idpromptmd).
@@ -106,7 +162,8 @@ of `pyflow/run.py`'s driver call without passing either of that module's two cle
 
 The counters the ladder is tuned by are **not** parameters — they are `resilience` fields:
 `max_output_retries`, `max_invoke_retries`, `max_rephrase_attempts`, `max_compact_attempts`,
-`result_timeout_s`.
+`result_timeout_s`. A node can override the reframe and transient-invocation budgets with its
+own `retries` and `invoke_retries` declarations.
 
 ## Setup (once, before the ladder)
 
@@ -141,8 +198,8 @@ The counters the ladder is tuned by are **not** parameters — they are `resilie
    passes `cwd` as the subprocess working directory, so re-granting it via `--add-dir` is
    redundant.
 6. **Resolve the model, effort and clock scale.** `model, node_effort, timeout_scale =
-   _resolve_power_settings(node.power, self.backend.name, self.model_override)` maps the node's
-   abstract
+   _resolve_power_settings(node.power, self.backend.name, self.model_override, self.profile.name)`
+   maps the node's abstract
    [`power:`](../workflow-format.md#power) tier through
    [config](config.md#resolve_power), falling back per field to the run-level `model_override`
    then the config's `[default.<backend>]` table, and finally to `backend.default_model`. The
@@ -207,7 +264,8 @@ loop:
    starts a **fresh** session (the prior, unhelpful exchange must not bias the retry), pausing
    `min(10 * (rephrase + 1), 60)` seconds first — on the **injected clock**, so this pause costs a
    test nothing — so a struggling service isn't hammered back-to-back. Up to
-   `resilience.max_rephrase_attempts` times, with an otel `reframe` event each.
+    `resilience.max_rephrase_attempts` times, unless the node's `retries` declaration overrides
+    that budget, with an otel `reframe` event each.
 
 Returning a null verdict would cause every downstream state to do real work on a value the agent
 never supplied while the run reported success. Stopping at the checkpoint instead leaves the run
@@ -224,14 +282,21 @@ Each node runs its agent CLI with a **clean context** by default — node *N* ne
 *N − 1*'s conversation. `session_id_path` (the run's
 [`.session_id`](../run-artifacts.md#session_id)) is:
 
-- **dropped** before a node's first attempt, unless `resume_session=True` — the driver sets
-  this only to continue *this same node* after a crash mid-node (a checkpointed-but-unfinished
-  node re-entered on restart, not a normal forward move);
+- **dropped** before a node's first attempt, unless `resume_session=True` — the driver sets this
+  to continue *this same node* after a crash mid-node (a checkpointed-but-unfinished node
+  re-entered on restart, not a normal forward move), and a named session chain sets it to retain
+  that chain's conversation;
 - **dropped again** on every reframe (Layer 3) — a reframed attempt is a deliberately fresh start;
 - **preserved and reused** across a compaction retry (Layer 2) — that's the point of compacting
   instead of reframing: the node's in-session progress survives;
 - **written** by the invocation layer (`classify_turn`) after every successful turn and after an
   overflow is detected (so the overflowing session can still be compacted).
+
+A node that names a session chain instead resumes that chain's dedicated file under `.sessions/`.
+If its CLI reports that the saved session has expired, been pruned, or belongs to another machine,
+the ladder drops that file and retries the same prompt once on a fresh session without spending a
+reframe, compaction, or transient-retry budget. Removing the file bounds this recovery: the same
+unresumable session cannot trigger it again.
 
 ## Related pieces
 

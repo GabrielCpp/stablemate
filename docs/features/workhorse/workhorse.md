@@ -41,10 +41,17 @@ The pyflow implementation contracts are [blueprints](concepts/pyflow-blueprints.
 [registry](concepts/pyflow-registry.md), [transitions](concepts/pyflow-transitions.md),
 [engine seams](concepts/pyflow-engine.md), [name indexes](concepts/pyflow-names.md),
 [errors](concepts/pyflow-errors.md), [run invocation](concepts/pyflow-run.md), and
-[activity tracking](concepts/pyflow-activity.md).
+[activity tracking](concepts/pyflow-activity.md). The complete import contract is
+[pyflow public exports](concepts/pyflow-public-exports.md).
+The shared NDJSON backend transport is the [JSONL backend](concepts/jsonl-backend.md), which
+separates its supervised stream from each provider adapter's event vocabulary. The
+[argv prompt transport](concepts/prompt-transport.md) keeps oversized prompts out of subprocess
+arguments for the backends that cannot receive them through stdin.
 The complete executable test-module inventory is [test evidence](concepts/test-evidence-inventory.md).
-Engine contributors use the [local development runbook](ops/workhorse-local-development.md) for the
-package-local Make drivers.
+Engine contributors use the [root Make drivers](ops/workhorse-root-make-drivers.md) for workspace-wide
+setup, gates, builds, and release dispatch, and the [local development runbook](ops/workhorse-local-development.md)
+for package-local Make drivers. Operators running an installed workflow in the isolated Docker harness use
+the [container agent runbook](ops/workhorse-container-agent.md).
 
 **Workhorse ships no executable.** It is a library, and the only command line it owns is
 the one a *workflow* binds: a distribution declares `workhorse-<name> =
@@ -302,15 +309,15 @@ there is nothing declared to pin.
 
 ### version
 - usage: `workhorse-<name> version`
+- flags: none; `add_arguments` registers no options
+- args: none; the command accepts no positional arguments
 - does:
-  - run: read the installed version of the `workhorse-agent` distribution via
-    `importlib.metadata.version("workhorse-agent")` (the PyPI/installed package name; the
-    import package is `workhorse`) and print it to stdout. It reports the **engine's**
-    version, not the workflow distribution's — every workflow's command answers the same
-  - run: return with no explicit `sys.exit` (exit `0`)
-  - run: raise uncaught if `workhorse-agent` isn't installed as a package, since no fallback is
-    attempted
+  - run: read the installed `workhorse-agent` distribution version with
+    `importlib.metadata.version("workhorse-agent")`
+  - run: print the engine distribution version to stdout
+  - run: report the engine version rather than the workflow distribution version
 - verify: exit_status(code=0)
+- errors: let `importlib.metadata.PackageNotFoundError` propagate when the `workhorse-agent` distribution is not installed
 - verify: exit_status(code=1)
 - code: `workhorse/workhorse/cli/version.py::run`
 - code: `workhorse/workhorse/cli/version.py::add_arguments`
@@ -704,3 +711,15 @@ End-to-end journeys across these commands:
 - code: `workhorse/workhorse/cli/inbox.py::run`
 - detail: [run inbox](concepts/run-inbox.md)
 - tests: `workhorse/tests/test_inbox_command.py::test_reply_persists_and_is_read_back_as_answered`
+
+### version
+- on: [version](#version)
+- trigger: a human invokes the workflow console script with the `version` token
+- does:
+  - print the installed `workhorse-agent` distribution version to stdout
+  - return successfully after the version has been printed
+- errors: propagate `importlib.metadata.PackageNotFoundError` when the `workhorse-agent` distribution is absent
+- auth: the operator able to invoke the installed workflow console script
+- verify: exit_status(code=0)
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/version.py::run`

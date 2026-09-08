@@ -42,9 +42,10 @@ Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server]
 - write boundary: only [write-file](#write-file) writes a workspace volume, and it writes exactly one caller-selected safe relative path from stdin through a temporary container.
 - path-safety boundary: helpers that accept file paths inside a volume call [safe-relpath](#safe-relpath) before constructing `/vol/...`; helpers that accept Docker-derived volume names, container ids, or repository directories assume those values have already been bounded by upstream Docker metadata or UI selection.
 - failure model: Docker process non-zero exits are converted per helper into `[]`, `set()`, `None`, `False`, or `""` as documented by each method; process launch and timeout exceptions generally propagate except for [sidecar-query](#sidecar-query), which treats expected Docker/subprocess failures as sidecar-unavailable.
-- JSON failure model: malformed Docker JSON listing rows are skipped by [docker-ps-all](#docker-ps-all); invalid inspect JSON and invalid sidecar JSON make [docker-inspect](#docker-inspect) and [sidecar-query](#sidecar-query) return `None`.
 - state ownership: the module stores no workflow containers, gate records, sidecar sessions, client queues, answer logs, or dashboard state.
 - external boundary: the standard library JSON and subprocess runtimes, the local Docker CLI, Docker images, Docker daemon, and mounted volumes are below this module; they are not Groom concepts to descend into.
+
+Malformed JSON is never fatal to a caller: [docker-ps-all](#docker-ps-all) skips an unparseable listing row and keeps the rest, while [docker-inspect](#docker-inspect) and [sidecar-query](#sidecar-query) treat unparseable output as the unavailable case each already returns for a failed Docker call.
 
 ## Public Helper Matrix
 
@@ -52,8 +53,9 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 
 - live container operations: [docker-exec](#docker-exec) runs a caller-selected command in a live container; [sidecar-query](#sidecar-query) uses that exec path to request sidecar state; [docker-inspect](#docker-inspect) reads one inspect object; [docker-start](#docker-start) starts one existing container; [is-running](#is-running) derives a boolean from inspect state.
 - workspace path validation: [safe-relpath](#safe-relpath) is the only exported validator for caller-selected workspace-relative file paths.
-- workspace-volume reads: [grep-awaiting-files](#grep-awaiting-files) finds awaiting gate files; [list-files](#list-files) lists repo-relative files; [list-run-dirs](#list-run-dirs) lists run directories; [list-repo-dirs](#list-repo-dirs) lists git checkout roots; [find-repo-dir](#find-repo-dir) selects the first checkout root; [git-diff](#git-diff) returns one checkout diff; [read-file](#read-file) returns file text.
 - workspace-volume write: [write-file](#write-file) writes one safe relative file path by streaming the new content through stdin.
+
+Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-files), [list-files](#list-files), [list-run-dirs](#list-run-dirs), [list-repo-dirs](#list-repo-dirs), [find-repo-dir](#find-repo-dir), [git-diff](#git-diff), and [read-file](#read-file); what each one returns is the normative `returns:`/`verify:` claim under that helper's own entry in [Methods](#methods), not restated here.
 
 ## Argument Ownership
 
@@ -66,13 +68,13 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - mount_subdir: optional volume-relative subdirectory for [grep-awaiting-files](#grep-awaiting-files); when empty the search target is `/vol`, otherwise `/vol/<mount_subdir>` with trailing slash removed.
 - repo_dir: optional volume-relative repository root for [list-files](#list-files) and [git-diff](#git-diff); empty means volume root for file listing and first discovered repository for diff extraction.
 - rel_path: caller-selected workspace-relative path for [read-file](#read-file) and [write-file](#write-file).
-- consistency: [read-file](#read-file) and [write-file](#write-file) accept a caller-selected `rel_path` only after [safe-relpath](#safe-relpath) accepts it, so an unsafe path never reaches a Docker argv.
+- consistency: rel-path — [read-file](#read-file) and [write-file](#write-file) accept a caller-selected `rel_path` only after [safe-relpath](#safe-relpath) accepts it, so an unsafe path never reaches a Docker argv.
 - verify: omits(subject="Docker argv for read-file and write-file with unsafe relative-path inputs", matches="/vol/.*\\.\\./")
 - content: text payload for [write-file](#write-file); passed as subprocess stdin and never as a command-line token.
 
 ## Return Conventions
 
-- consistency: Docker discovery and volume-scan helpers return sorted or parsed lists and use `[]` for Docker command failure, no matches, or no applicable entries as documented by each method.
+- consistency: discovery-scan-result — Docker discovery and volume-scan helpers return sorted or parsed lists and use `[]` for Docker command failure, no matches, or no applicable entries as documented by each method.
 - verify: count(subject="Docker discovery and volume-scan result after Docker failure or no matches", equals=0)
 - set result: [list-container-ids](#list-container-ids) returns `set()` for a successful no-container listing and `None` only when Docker cannot provide the listing.
 - optional dictionary result: [sidecar-query](#sidecar-query) and [docker-inspect](#docker-inspect) return dictionaries only for parseable object payloads; all expected unavailable or invalid states return `None`.
@@ -121,8 +123,11 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - verify: json_path(path="exception.type", matches="FileNotFoundError|TimeoutExpired")
 - returns: parseable rows from Docker's all-container JSON-line listing, or `[]` when Docker reports the listing command failed.
 - verify: count(subject="parseable rows from a successful Docker all-container JSON-line listing", equals=2)
+- returns: a listing line that fails JSON parsing is skipped individually rather than aborting or dropping the whole listing.
+- verify: count(subject="parseable rows from a Docker all-container listing where one of three lines is malformed JSON", equals=2)
 - code: groom/groom/docker_io.py::docker_ps_all
 - detail: [Docker all-container listing reader](docker-all-container-listing-reader.md)
+- detail: [Docker ps-all documentation scope](docker-ps-all-documentation-scope.md)
 
 ### list-container-ids
 
@@ -166,6 +171,7 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - verify: absent(subject="sidecar snapshot data after a sidecar query timeout")
 - code: groom/groom/docker_io.py::sidecar_query
 - detail: [host-to-container sidecar query](host-to-container-sidecar-query.md)
+- detail: [sidecar query source selection](sidecar-query-source-selection.md)
 - tests: groom/tests/test_docker_io.py::test_sidecar_query_parses_snapshot_json
 - tests: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_nonzero_exit
 - tests: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_non_json_output
@@ -181,11 +187,11 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - returns: the first parsed [Docker inspect container object](../docker-inspect-container-object.md) for a zero-exit, valid-JSON, truthy response.
 - verify: json_path(path="result.Id", equals="container-123")
 - returns: `None` for Docker failure.
-- verify: json_path(path="result", equals=null)
+- verify: absent(subject="Docker inspect object after Docker failure")
 - returns: `None` for invalid JSON.
-- verify: json_path(path="result", equals=null)
+- verify: absent(subject="Docker inspect object after invalid JSON")
 - returns: `None` for an empty inspect array.
-- verify: json_path(path="result", equals=null)
+- verify: absent(subject="Docker inspect object after an empty inspect array")
 - code: groom/groom/docker_io.py::docker_inspect
 - detail: [Docker inspection reader](docker-inspection-reader.md)
 - detail: [Docker inspect documentation scope](docker-inspect-documentation-scope.md)
@@ -212,6 +218,7 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - verify: json_path(path="result", equals=true)
 - code: groom/groom/docker_io.py::is_running
 - detail: [container running-state check](container-running-state-check.md)
+- detail: [Is-running documentation scope](is-running-documentation-scope.md)
 
 ### safe-relpath
 
@@ -244,7 +251,10 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - sig: `list_files(volume: str, repo_dir: str = "") -> list[str]`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
+- verify: json_path(path="exception.type", matches="^(FileNotFoundError|TimeoutExpired)$")
 - returns: sorted repo-relative [workspace file list data](../workspace-file-list-data.md), or `[]` for Docker failure or an empty tree.
+- verify: count(subject="repo-relative file paths from successful listing", equals=1)
+- verify: count(subject="file paths after Docker failure or empty tree", equals=0)
 - code: groom/groom/docker_io.py::list_files
 - detail: [List-files documentation views](list-files-documentation-views.md)
 - detail: [workspace volume file-list reader](workspace-volume-file-list-reader.md)
@@ -259,9 +269,10 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
 - verify: json_path(path="exception.type", matches="^(FileNotFoundError|TimeoutExpired)$")
 - returns: sorted top-level directory names under a `/runs` volume.
-- verify: json_path(path="result", equals=["older-run", "newer-run"])
+- verify: count(subject="run directory names from /runs", equals=2)
+- verify: json_path(path="result[0]", equals="older-run")
 - returns: `[]` for Docker failure.
-- verify: json_path(path="result", equals=[])
+- verify: count(subject="run directories after Docker failure", equals=0)
 - code: groom/groom/docker_io.py::list_run_dirs
 - detail: [Docker run-directory reader](docker-run-directory-reader.md)
 - detail: [Docker run-directory listing documentation views](docker-run-directory-listing-documentation-views.md)
@@ -287,7 +298,11 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - sig: `find_repo_dir(volume: str) -> str`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from [list-repo-dirs](#list-repo-dirs) can propagate.
-- returns: the first sorted repository directory from [list-repo-dirs](#list-repo-dirs), or `""` when none exists.
+- verify: json_path(path="exception.type", matches="^(FileNotFoundError|TimeoutExpired)$")
+- returns: the first sorted repository directory from [list-repo-dirs](#list-repo-dirs).
+- verify: json_path(path="result", matches="^.+$")
+- returns: `""` when no repository is found.
+- verify: json_path(path="result", equals="")
 - code: groom/groom/docker_io.py::find_repo_dir
 - detail: [first-repository lookup](workspace-volume-repository-directory-reader.md#find-repo-dir)
 - detail: [Repository-directory lookup documentation scope](repository-directory-lookup-documentation-scope.md)
@@ -321,7 +336,7 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - verify: json_path(path="exception.type", matches="FileNotFoundError|TimeoutExpired")
 - returns: text [workspace file content data](../workspace-file-content-data.md), or `None` when Docker cannot read the selected safe path.
 - verify: json_path(path="result", equals="print(1)\n")
-- verify: json_path(path="result", equals=null)
+- verify: absent(subject="file content when Docker cannot read the selected safe path")
 - code: groom/groom/docker_io.py::read_file
 - detail: [workspace volume file-content reader](workspace-volume-file-content-reader.md)
 - detail: [read-file documentation scope](read-file-documentation-scope.md)
@@ -338,6 +353,7 @@ Container fleet reads include [docker-ps-all](#docker-ps-all), which returns par
 - verify: json_path(path="result", equals=true)
 - code: groom/groom/docker_io.py::write_file
 - detail: [workspace volume file writer](workspace-volume-file-writer.md)
+- detail: [Write-file documentation views](write-file-documentation-views.md)
 
 ## Folded Internal Members
 
@@ -382,7 +398,7 @@ the caller.
 
 ## Failure Behavior
 
-- consistency: Docker CLI non-zero exits are converted by each public helper into its documented empty, false, or unavailable return value unless the helper intentionally returns the raw completed process.
+- consistency: field-completed-process — a non-zero return code on the completed process is converted by each public helper into its documented empty, false, or unavailable return value unless the helper intentionally returns the raw completed process.
 - Docker CLI missing or timeout: propagates from most helpers, but [sidecar-query](#sidecar-query) catches expected operating-system and subprocess failures and returns `None` so discovery can fall back to volume reads.
 - Malformed JSON: ignored per line by [docker-ps-all](#docker-ps-all), converted to `None` by [docker-inspect](#docker-inspect), and converted to `None` by [sidecar-query](#sidecar-query).
 - Unsafe relative file path: [safe-relpath](#safe-relpath), [read-file](#read-file), and [write-file](#write-file) raise `ValueError` before Docker receives the path.

@@ -30,10 +30,9 @@ support a survey, `baseline_inventory` and `parity_survey_dir` support a parity 
 - detail: [author finalize subflow](../concepts/author-finalize-subflow.md)
 - tests: workflows/tests/author/test_workflow.py::test_epic_mode_authors_one_roadmap_milestone_and_commits_it
 - tests: workflows/tests/author/test_config.py::test_roadmap_must_source_exactly_one_nonempty_milestone
-The flow is implemented by `workflows/src/workhorse_workflows/author/main/flow.py::Author.setup`,
-`workflows/src/workhorse_workflows/author/main/flow.py::Author.start`, and
-`workflows/src/workhorse_workflows/author/main/flow.py::Author.next_stage`; configuration,
-planning, and roadmap validation are implemented by
+
+The machine itself is implemented by `workflows/src/workhorse_workflows/author/main/flow.py::Author`.
+Configuration, planning, and roadmap validation are implemented by
 `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`,
 `workflows/src/workhorse_workflows/author/main/nodes/planner.py::plan_author_step`,
 `workflows/src/workhorse_workflows/author/main/nodes/intake.py::validate_roadmap_milestone`, and

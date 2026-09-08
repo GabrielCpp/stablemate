@@ -12,11 +12,11 @@ The residual helper in `groom/groom/sidecar.py::_push` makes a synchronous HTTP 
 - file: not an on-disk artifact; this is a best-effort HTTP JSON request body for `POST /push/progress`.
 - code: groom/groom/app.py::push_progress
 - code: groom/groom/sidecar.py::push_progress
-- verify: groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape
-- verify: groom/tests/test_sidecar.py::test_handle_event_under_runs_triggers_progress_push
-- verify: groom/tests/test_sidecar.py::test_push_is_silent_when_groom_is_unreachable
-- verify: groom/tests/test_sidecar.py::test_push_is_silent_on_any_unexpected_exception
-- verify: groom/tests/test_sidecar_session.py::test_classify_event_runs_write_is_progress
+- tests: groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape
+- tests: groom/tests/test_sidecar.py::test_handle_event_under_runs_triggers_progress_push
+- tests: groom/tests/test_sidecar.py::test_push_is_silent_when_groom_is_unreachable
+- tests: groom/tests/test_sidecar.py::test_push_is_silent_on_any_unexpected_exception
+- tests: groom/tests/test_sidecar_session.py::test_classify_event_runs_write_is_progress
 
 ## Contract
 
@@ -32,7 +32,8 @@ The residual helper in `groom/groom/sidecar.py::_push` makes a synchronous HTTP 
 - null rule: explicit JSON `null` for `container_id` is converted to the text `"None"` and is therefore accepted by the endpoint; explicit JSON `null` for `name`, `repo_name`, `repo_branch`, or `current_node` means preserve the existing in-memory field for existing workflows.
 - success guard: an empty normalized `container_id` is invalid and yields `ok: false` with no Docker metadata resolution, no workflow create/update, and no dashboard broadcast.
 - overwrite rule: optional identity and current-node fields update the workflow only when their value is not `null`; omitted or `null` values preserve the existing in-memory field, while empty strings and non-string JSON values are non-null and therefore are passed through to the registry fields that accept them.
-- initial-name rule: if the payload creates a new workflow, a truthy `name` becomes the initial workflow name; an omitted, `null`, or empty-string `name` falls back to the normalized container id.
+- consistency rule: field-name — if the payload creates a new workflow with a truthy `name`, it becomes the initial workflow name
+- consistency rule: field-name — if the payload creates a new workflow with an omitted, `null`, or empty-string `name`, it falls back to the normalized container id
 - metadata rule: before applying the visible progress update, the endpoint tries push-first Docker metadata hydration for workflows that are absent or do not yet have a workspace volume; this can fill `workspace_volume`, `runs_volume`, and `workflow_type` independently of the JSON payload.
 - state result: a valid payload marks the workflow as `running` and preserves open gates, exit code, run id, and any existing type/volume metadata unless Docker metadata resolution fills type/volume fields first.
 - broadcast result: after a successful workflow upsert, the endpoint broadcasts a fresh dashboard shell fragment to connected dashboard clients and then returns `ok: true`.

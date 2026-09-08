@@ -7,20 +7,23 @@ title: Sidecar hello applier
 
 The sidecar hello applier is the groom server layer that folds a connected sidecar's useful `hello` [sidecar websocket frame](../sidecar-websocket-frame.md) into the process-local [workflow registry](workflow-registry.md) during the [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) invocation. It treats the embedded [sidecar snapshot data](../sidecar-snapshot-data.md) as authoritative for the connected container's current gates, uses the [push-first volume metadata resolver](push-first-volume-metadata-resolver.md) before applying workflow identity, writes [workflow container](workflow-container.md) state through [upsert workflow](workflow-registry.md#method-upsert-workflow), creates [gate info](gate-info.md) records for retained snapshot gates, and finishes by calling the [dashboard shell broadcaster](dashboard-shell-broadcaster.md).
 
+The [method contract](groom-app-module.md#method-apply-hello) and [sidecar hello state transition](workflow-state.md#transition-sidecar-hello) document the same implementation from different contexts; neither supersedes the other. Use the method contract for its callable interface and propagated failures. Use the transition for lifecycle-state inputs and outcomes. `_apply_hello` clears the existing gate map before inspecting the snapshot, then selects `finished` for a terminal marker or `blocked`/`running` from the rebuilt gates, so the two views must remain aligned.
+
 - code: groom/groom/app.py::_apply_hello
-- verify: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
-- verify: groom/tests/test_app.py::test_apply_hello_running_when_no_gates
-- verify: groom/tests/test_app.py::test_apply_hello_finished_when_terminal
-- verify: groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively
+- rule: use [method-apply-hello](groom-app-module.md#method-apply-hello) for the callable contract and [transition-sidecar-hello](workflow-state.md#transition-sidecar-hello) for lifecycle-state semantics; neither is a replacement for the other.
+- tests: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
+- tests: groom/tests/test_app.py::test_apply_hello_running_when_no_gates
+- tests: groom/tests/test_app.py::test_apply_hello_finished_when_terminal
+- tests: groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively
 
 ## Contract
 
 - sig: `async _apply_hello(container_id: str, data: dict) -> None`
 - input: `container_id` is the non-empty, already-normalized workflow container id established by the sidecar websocket handler from `identity.container_id`; this layer does not re-truncate or reject it.
 - input: `data` is the decoded sidecar `hello` frame object.
-- consistency: missing or falsey `identity` is treated as an empty object, preserving existing workflow identity fields.
+- consistency: workflow-container — missing or falsey `identity` is treated as an empty object, preserving existing workflow identity fields.
 - verify: unchanged(subject="existing workflow identity fields")
-- consistency: missing or falsey `snapshot` is treated as an empty object, leaving the workflow running when no gates remain.
+- consistency: workflow-container — missing or falsey `snapshot` is treated as an empty object, leaving the workflow running when no gates remain.
 - verify: json_path(path="$.state", equals="RUNNING")
 - nested-object rule: truthy `identity` and `snapshot` values must expose object-style `get` lookup; this layer tolerates absent or falsey nested objects but does not coerce truthy non-mapping values.
 - identity fields: `identity.name`, `identity.repo_name`, and `identity.repo_branch` are passed to workflow upsert as optional replacements; omitted or `None` values preserve the current workflow field through the registry upsert semantics.

@@ -14,6 +14,7 @@ Host-to-container sidecar query is the discovery-time Docker I/O pull path that 
 - tests: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_when_docker_missing
 - tests: groom/tests/test_docker_io.py::test_sidecar_query_returns_none_on_timeout
 - tests: groom/tests/test_discovery.py::test_scan_uses_sidecar_query_for_running_container
+- detail: [sidecar query source selection](sidecar-query-source-selection.md)
 
 ## Contract
 
@@ -25,11 +26,10 @@ Host-to-container sidecar query is the discovery-time Docker I/O pull path that 
 - environment: sets `HOME=/claude-state` for the exec process so the sidecar command resolves its tool environment consistently with the workflow entrypoint.
 - timeout: inherits the [Docker exec runner](docker-exec-runner.md)'s default Docker I/O timeout of twenty seconds, enforced by the [Docker subprocess runner](docker-subprocess-runner.md).
 - output: `dict[str, Any] | None`; a dictionary is the decoded stdout JSON object and is intended to satisfy the [sidecar snapshot data](../sidecar-snapshot-data.md) contract.
-- success boundary: accepts only top-level JSON objects; arrays, strings, numbers, booleans, `null`, malformed JSON, non-zero Docker exits, and caught process exceptions all return `None`.
 - fallback signal: `None` means the host could not obtain a usable sidecar query object; it does not distinguish stopped containers, missing Docker, timeout, legacy images, non-zero exits, malformed stdout, or non-object JSON.
 - validation boundary: does not validate snapshot fields, gate entry shape, terminal precedence, or current-node semantics; the discovery state transition validates and applies the returned object.
 - scope boundary: performs no Docker inspect, running-state check, sidecar websocket registration, volume reconstruction, or workflow-state mutation; callers decide when the query is allowed and how to apply or ignore the result.
-The query is read-only with respect to Docker metadata, named volumes, the workflow registry, gate files, dashboard clients, and the sidecar's durable state; the only process it starts is the short-lived exec process inside the already-running target container.
+The query is read-only with respect to Docker metadata, named volumes, the workflow registry, gate files, dashboard clients, and the sidecar's durable state; the only process it starts is the short-lived exec process inside the already-running target container. Only a top-level JSON object is treated as a successful result; arrays, strings, numbers, booleans, `null`, malformed JSON, non-zero Docker exits, and caught process exceptions all fall through to `None`, per the discriminating branch documented under [Algorithm](#algorithm).
 
 ## Effects
 
@@ -47,13 +47,17 @@ The query is read-only with respect to Docker metadata, named volumes, the workf
 ## Algorithm
 
 - step: Invoke the [Docker exec runner](docker-exec-runner.md) for the target container with the sidecar query command, `nobody` user, and sidecar home environment.
-- consistency: Docker exec `OSError` or `subprocess.SubprocessError` returns `None`, allowing discovery to fall back to volume reconstruction.
+- consistency: sidecar-query-result — Docker exec `OSError` is caught and returns `None`, allowing discovery to fall back to volume reconstruction.
+- verify: absent(subject="sidecar query result")
+- consistency: sidecar-query-result — Docker exec `subprocess.SubprocessError` is caught and returns `None`, allowing discovery to fall back to volume reconstruction.
 - verify: absent(subject="sidecar query result")
 - step: If the completed process return code is non-zero, return `None`.
 - step: Decode the completed process stdout as JSON.
 - step: If decoding fails, return `None`.
 - step: If the decoded value is a dictionary, return it unchanged.
 - step: Return `None` for every decoded value that is not a dictionary.
+- consistency: sidecar-query-result — a decoded top-level JSON value that is not a dictionary (an array, string, number, boolean, or `null`) returns `None`, so the discovery resolver never receives a non-object value as a sidecar snapshot.
+- verify: absent(subject="sidecar query result")
 
 ## Methods
 
@@ -68,8 +72,9 @@ The query is read-only with respect to Docker metadata, named volumes, the workf
 - returns: decoded [sidecar snapshot data](../sidecar-snapshot-data.md) as a dictionary when the in-container query command exits successfully and stdout is a JSON object; otherwise `None`.
 - verify: json_path(path="$.current_node", equals="n1")
 - code: groom/groom/docker_io.py::sidecar_query
+- detail: [sidecar query source selection](sidecar-query-source-selection.md)
 - arg: `container_id`; type `str`; required; no default; identifies the running workflow container targeted by Docker exec.
-- calls: [Docker exec runner](docker-exec-runner.md#docker_exec) with `args=["uv", "run", "groom-sidecar", "--query"]`, `user="nobody"`, and `env={"HOME": "/claude-state"}`.
+- calls: [Docker exec runner](docker-exec-runner.md#method-docker_exec) with `args=["uv", "run", "groom-sidecar", "--query"]`, `user="nobody"`, and `env={"HOME": "/claude-state"}`.
 - returns-none-when: Docker exec raises a caught `OSError` or subprocess exception, Docker exec returns a non-zero code, stdout is not JSON, or stdout decodes to a non-dictionary JSON value.
 - returns-dict-when: Docker exec exits with return code `0` and stdout decodes to a top-level JSON object.
 

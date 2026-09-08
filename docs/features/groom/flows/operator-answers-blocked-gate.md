@@ -167,11 +167,10 @@ with the same command has already replaced the pane's gate list, so no tab re-fe
   groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup,
   groom/tests/test_projection.py::test_run_detail_lists_every_open_gate,
   groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard
-- code: groom/groom/app.py::push_blocked
-- code: groom/groom/discovery.py::scan
-- code: groom/groom/app.py::dashboard_ws
-- code: groom/groom/app.py::_handle_command
-- code: groom/groom/gates.py::answer_gate
-- code: groom/groom/projection.py::detail_message
-- code: groom/groom/assets/dashboard.js::wireAnswerForm
-- code: groom/groom/assets/dashboard.js::select
+
+The implementation covered by this flow is `groom/groom/app.py::push_blocked`,
+`groom/groom/discovery.py::scan`, `groom/groom/app.py::dashboard_ws`,
+`groom/groom/app.py::_handle_command`, `groom/groom/gates.py::answer_gate`,
+`groom/groom/projection.py::detail_message`,
+`groom/groom/assets/dashboard.js::wireAnswerForm`, and
+`groom/groom/assets/dashboard.js::select`.

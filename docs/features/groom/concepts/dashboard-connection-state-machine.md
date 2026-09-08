@@ -16,12 +16,13 @@ The rule is a pure function of observations, so it can be asserted against synth
 - code: groom/groom/assets/dashboard.js::evaluateConnection
 - code: groom/groom/assets/dashboard.js::ConnectionChip
 - refs: [dashboard resync poller](dashboard-resync-poller.md), [dashboard client store](dashboard-client-store.md), [groom dashboard](../gui/screens/groom-dashboard.md)
-- verify: groom/tests/test_connection_state.py::test_open_socket_receiving_frames_is_live
-- verify: groom/tests/test_connection_state.py::test_open_but_silent_socket_goes_stale_and_starts_resyncing
-- verify: groom/tests/test_connection_state.py::test_a_closed_socket_reconnects_then_goes_offline
-- verify: groom/tests/test_connection_state.py::test_the_full_live_to_stale_to_offline_progression
-- verify: groom/tests/test_connection_state.py::test_backoff_grows_and_is_capped
-- verify: groom/tests/test_connection_state.py::test_source_defines_the_thresholds_the_harness_extracts
+
+The connection-state behavior is exercised by `groom/tests/test_connection_state.py::test_open_socket_receiving_frames_is_live`,
+`groom/tests/test_connection_state.py::test_open_but_silent_socket_goes_stale_and_starts_resyncing`,
+`groom/tests/test_connection_state.py::test_a_closed_socket_reconnects_then_goes_offline`,
+`groom/tests/test_connection_state.py::test_the_full_live_to_stale_to_offline_progression`,
+`groom/tests/test_connection_state.py::test_backoff_grows_and_is_capped`, and
+`groom/tests/test_connection_state.py::test_source_defines_the_thresholds_the_harness_extracts`.
 
 ## Contract
 
@@ -29,8 +30,10 @@ The rule is a pure function of observations, so it can be asserted against synth
 - input: an observation object `{now, socketOpen, lastMessageTs, closedSince}` — four numbers and a boolean, all supplied by the caller.
 - output: `{phase, resyncing}`; nothing else is returned and nothing is mutated.
 - purity: `deriveConnection` reads no clock, no socket, and no store. The evaluator that calls it every second is what supplies wall time.
-- consistency: an open socket whose last frame is older than `STALE_AFTER_MS` is `stale`, not `live`; socket openness alone never establishes that it is working.
+- consistency: field-connection-phase — an open socket whose last frame is older than `STALE_AFTER_MS` is `stale`, not `live`
 - verify: json_path(path="$.phase", equals="stale")
+- consistency: field-connection-phase — an open socket receiving frames within `STALE_AFTER_MS` transitions to `live`
+- verify: json_path(path="$.phase", equals="live")
 - threshold derivation: `STALE_AFTER_MS` (15s) is three ticks of the server's 5s clock and `OFFLINE_AFTER_MS` (60s) is twelve. Both are generous multiples so one slow push or one dropped frame cannot flap the chip. Both are exported from the module, and the test harness extracts them from the source rather than restating them, so a change to the constants cannot leave the tests asserting the old policy.
 - resyncing semantics: anything but `live` sets `resyncing`. The flag means "the socket is not a trustworthy source of truth", not "the socket is closed" — which is why `stale`, whose socket is still open, resyncs too.
 - reconnect policy: on close, a reconnect is scheduled with exponential backoff — `500ms × 2^attempt`, capped at 30s — and the attempt counter resets to zero on a successful open.

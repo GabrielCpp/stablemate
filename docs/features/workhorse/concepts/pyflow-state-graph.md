@@ -114,26 +114,33 @@ explored.
 ### field: Edge
 - type: frozen dataclass
 - required: true
-- semantics: one statically discovered transition from a state; `target` is empty for `done`
+- semantics: one statically discovered transition from a state
+- verify: count(subject="transitions discovered from a state with one transition", equals=1)
+- semantics: `target` is empty for a `done` edge
+- verify: json_path(path="$.target", equals="")
 - code: `workhorse/workhorse/pyflow/graph.py::Edge`
+- detail: [Edge transition record](edge-transition-record.md)
 
 ### field: Step
 - type: frozen dataclass
 - required: true
 - semantics: one source-ordered node call, agent turn, or sub-workflow handoff in a state
 - code: `workhorse/workhorse/pyflow/graph.py::Step`
+- detail: [Step field selection](step-field-selection.md)
 
 ### field: StateNode
 - type: frozen dataclass
 - required: true
 - semantics: one live workflow state together with its discovered edges and source steps
 - code: `workhorse/workhorse/pyflow/graph.py::StateNode`
+- detail: [StateNode field selection](state-node-field-selection.md)
 
 ### field: FlowGraph
 - type: frozen dataclass
 - required: true
 - semantics: one workflow class represented as a static machine graph
 - code: `workhorse/workhorse/pyflow/graph.py::FlowGraph`
+- detail: [FlowGraph fields](flow-graph-fields.md)
 
 ## Edge Fields
 
@@ -143,6 +150,7 @@ explored.
 - required: true
 - semantics: the statically named destination state
 - code: `workhorse/workhorse/pyflow/graph.py::Edge`
+- detail: [Edge transition record](edge-transition-record.md)
 
 ## StateNode Fields
 
@@ -151,6 +159,7 @@ explored.
 - required: true
 - semantics: live workflow state name represented by the node
 - code: `workhorse/workhorse/pyflow/graph.py::StateNode`
+- detail: [StateNode field selection](state-node-field-selection.md)
 
 ### field: StateNode.edges
 - type: `tuple[Edge, ...]`
@@ -158,6 +167,7 @@ explored.
 - required: true
 - semantics: unique transitions discovered in the state's source
 - code: `workhorse/workhorse/pyflow/graph.py::StateNode`
+- detail: [StateNode field selection](state-node-field-selection.md)
 
 ### field: StateNode.steps
 - type: `tuple[Step, ...]`
@@ -165,6 +175,7 @@ explored.
 - required: true
 - semantics: unique engine seams discovered in source order
 - code: `workhorse/workhorse/pyflow/graph.py::StateNode`
+- detail: [StateNode field selection](state-node-field-selection.md)
 
 ### field: StateNode.opaque
 - type: `bool`
@@ -172,6 +183,7 @@ explored.
 - required: true
 - semantics: source inspection failed, so the state's transitions and steps are unknown
 - code: `workhorse/workhorse/pyflow/graph.py::StateNode`
+- detail: [StateNode field selection](state-node-field-selection.md)
 
 ## FlowGraph Fields
 
@@ -180,6 +192,7 @@ explored.
 - required: true
 - semantics: workflow class name represented by the graph
 - code: `workhorse/workhorse/pyflow/graph.py::FlowGraph`
+- detail: [FlowGraph fields](flow-graph-fields.md)
 
 ### field: FlowGraph.names
 - type: `tuple[str, ...]`
@@ -187,6 +200,7 @@ explored.
 - required: true
 - semantics: registry flow names mapped to this workflow class
 - code: `workhorse/workhorse/pyflow/graph.py::FlowGraph`
+- detail: [FlowGraph fields](flow-graph-fields.md)
 
 ### field: FlowGraph.start
 - type: `str`
@@ -194,6 +208,7 @@ explored.
 - required: true
 - semantics: state name from which reachability is explored
 - code: `workhorse/workhorse/pyflow/graph.py::FlowGraph`
+- detail: [FlowGraph fields](flow-graph-fields.md)
 
 ### field: FlowGraph.states
 - type: `tuple[StateNode, ...]`
@@ -201,6 +216,7 @@ explored.
 - required: true
 - semantics: statically read live states in stable name order
 - code: `workhorse/workhorse/pyflow/graph.py::FlowGraph`
+- detail: [FlowGraph fields](flow-graph-fields.md)
 
 ### field: Edge.kind
 - type: `str`
@@ -208,6 +224,7 @@ explored.
 - required: true
 - semantics: `continue`, `await`, or `done`
 - code: `workhorse/workhorse/pyflow/graph.py::Edge`
+- detail: [Edge transition record](edge-transition-record.md)
 
 ### field: Edge.params
 - type: `tuple[str, ...]`
@@ -215,6 +232,7 @@ explored.
 - required: true
 - semantics: names of parameters bound on the destination state
 - code: `workhorse/workhorse/pyflow/graph.py::Edge`
+- detail: [Edge transition record](edge-transition-record.md)
 
 ### field: Edge.reason
 - type: `str`
@@ -222,6 +240,7 @@ explored.
 - required: true
 - semantics: literal reason supplied to `.because()`, or empty when it is not statically knowable
 - code: `workhorse/workhorse/pyflow/graph.py::Edge`
+- detail: [Edge transition record](edge-transition-record.md)
 
 ### field: Edge.dynamic
 - type: `bool`
@@ -229,6 +248,7 @@ explored.
 - required: true
 - semantics: the target expression was not a plain `self.<state>` reference
 - code: `workhorse/workhorse/pyflow/graph.py::Edge`
+- detail: [Edge transition record](edge-transition-record.md)
 
 ### field: Edge.dangling
 - type: `bool`
@@ -236,20 +256,23 @@ explored.
 - required: true
 - semantics: a plain target names no live state
 - code: `workhorse/workhorse/pyflow/graph.py::Edge`
+- detail: [Edge transition record](edge-transition-record.md)
 
-## Step Fields
+## Fields of Step
 
 ### field: Step.kind
 - type: `str`
 - required: true
 - semantics: `call`, `agent`, or `handoff`
 - code: `workhorse/workhorse/pyflow/graph.py::Step`
+- detail: [Step field selection](step-field-selection.md)
 
 ### field: Step.name
 - type: `str`
 - required: true
 - semantics: node name, literal prompt path, or child workflow class name according to `kind`
 - code: `workhorse/workhorse/pyflow/graph.py::Step`
+- detail: [Step field selection](step-field-selection.md)
 
 ### field: Step.summary
 - type: `str`
@@ -257,12 +280,13 @@ explored.
 - required: true
 - semantics: first line of a node docstring or prompt title when available
 - code: `workhorse/workhorse/pyflow/graph.py::Step`
+- detail: [Step field selection](step-field-selection.md)
 
 ### method: Step.file
+- code: `workhorse/workhorse/pyflow/graph.py::Step.file`
 - sig: `file -> str`
 - returns: the final path component of the step name
 - verify: json_path(path="$.file", equals="review.md")
-- code: `workhorse/workhorse/pyflow/graph.py::Step.file`
 
 ## Contract
 

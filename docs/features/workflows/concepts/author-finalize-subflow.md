@@ -107,6 +107,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - returns: returns the resolver's operator resolution
 - verify: json_path(path="$.decision", equals="answered")
 - code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity`
+- detail: [author resolve-integrity prompt](../author-resolve-integrity-prompt.md)
 
 ### _fail_validation
 - sig: `_fail_validation(heading: str, errors: str) -> None`
@@ -191,6 +192,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - returns: returns an integrity continuation or an operator await state
 - verify: count(subject="graph resolution outcomes", equals=1)
 - code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_graph`
+- detail: [author resolve-integrity prompt](../author-resolve-integrity-prompt.md)
 
 ### roadmap_milestone
 - sig: `roadmap_milestone(resolves: int = 0) -> Continue | Await`
@@ -221,6 +223,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - returns: returns a milestone continuation or an operator await state
 - verify: count(subject="milestone resolution outcomes", equals=1)
 - code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_milestone`
+- detail: [author resolve-integrity prompt](../author-resolve-integrity-prompt.md)
 
 ### close
 - sig: `close() -> Done`
@@ -243,3 +246,81 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - returns: returns Done with the commit result
 - verify: json_path(path="$.committed", equals=True)
 - code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.close`
+
+## Nodes
+
+### load_config
+The returned `Config` carries the resolved repository root, the repo-relative backlog and roadmap paths, the epics and features directories, and the layers configured in `agents.yml`'s `localInstructions:`.
+
+- sig: `load_config(logger: logging.Logger, repo_dir: str = "", mode: str = "epic") -> Config`
+- does: resolve the author's paths and prove the selected intake exists
+- verify: count(subject="finalize configuration loads", equals=1)
+- verify: json_path(path="$.repo_root", matches=".+")
+- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`
+- detail: [author load_config documentation roles](author-load-config-documentation-roles.md)
+
+### verify_reconcile
+- sig: `verify_reconcile(logger: logging.Logger, ref: str = "HEAD", repo_dir: str = "") -> VerifyReport`
+- does: measure scope this run silently dropped against the last committed epics
+- verify: count(subject="finalize reconciliation checks", equals=1)
+- does: detect dropped seed items and dropped stories that were in the baseline
+- verify: count(subject="dropped scope detections", equals=1)
+- consistency: reconcile-report-status — the returned VerifyReport sets holds=True when no scope was dropped, skipped=True when there is no git repository, no epics directory, or no epic with a committed baseline, and errors carrying one dropped-seed or dropped-story line per silent removal otherwise
+- verify: count(subject="reconciliation reports", equals=1)
+- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_reconcile`
+
+### verify_integrity
+- sig: `verify_integrity(logger: logging.Logger, epic: str = "", repo_dir: str = "") -> VerifyReport`
+- does: run ostler doctor over the whole graph as a blocking gate
+- verify: count(subject="finalize integrity checks", equals=1)
+- does: treat an unloadable graph as a skipped integrity gate
+- verify: count(subject="fail-open integrity skips", equals=1)
+- consistency: integrity-error-report — when ostler doctor reports error-level findings, the returned VerifyReport.errors carries each finding's code, optional scope, and message
+- verify: json_path(path="$.errors", matches=".+\\].+")
+- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_integrity`
+
+### validate_roadmap_milestone
+- sig: `validate_roadmap_milestone(logger: logging.Logger, roadmap: str, repo_dir: str = "") -> Defects`
+- does: prove the roadmap owns exactly one non-empty milestone
+- verify: count(subject="roadmap milestone validations", equals=1)
+- consistency: roadmap-milestone-cardinality — rejects a roadmap with zero or multiple source milestones
+- verify: count(subject="roadmap milestone cardinality checks", equals=1)
+- returns: returns whether validation holds with zero or more validation errors
+- verify: count(subject="roadmap milestone validation results", equals=1)
+- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::validate_roadmap_milestone`
+
+### validate_artifacts
+- sig: `validate_artifacts(logger: logging.Logger, repo_dir: str = "") -> Defects`
+- does: prove that coder engine can walk what this run produced
+- verify: count(subject="artifact validations", equals=1)
+- does: validate every queued epic is loadable with at least one authored story
+- verify: count(subject="epic-story-coverage checks", equals=1)
+- does: require at least one story remain selectable for coder to run
+- verify: count(subject="selectable story checks", equals=1)
+- consistency: validate-artifacts-return — the returned Defects carries one error when any queued epic is unloadable, has no stories, or has an unauthored story.md
+- verify: count(subject="artifact validation results", equals=1)
+- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::validate_artifacts`
+
+### mark_roadmap_authored
+
+The node advances one validated roadmap from `approved` to `authored` (idempotently — a roadmap already in `authored` returns without rewriting) and returns a `RoadmapStatus` carrying the roadmap path and the new status.
+
+- sig: `mark_roadmap_authored(logger: logging.Logger, roadmap: str, repo_dir: str = "") -> RoadmapStatus`
+- does: advance one validated roadmap from approved to authored idempotently
+- verify: count(subject="roadmap status advances", equals=1)
+- does: update the roadmap's frontmatter status field from `approved` to `authored`
+- verify: json_path(path="$.status", equals="authored")
+- verify: count(subject="authored roadmap results", equals=1)
+- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::mark_roadmap_authored`
+
+### commit_author
+- sig: `commit_author(logger: logging.Logger, mode: str = "epic", epic: str = "", bullet: str = "", roadmap: str = "", repo_dir: str = "", docs_dir: str = "docs", id_registry: str = ".agents/ids.json") -> Committed`
+- does: commit the epic/story docs this run wrote to the current branch
+- verify: count(subject="finalize commits", equals=1)
+- does: scope commits to the docs directory and id registry, skipping paths that do not exist
+- verify: count(subject="scoped commit paths", equals=1)
+- does: format the commit message with the mode, epic, and bullet for human readability
+- verify: count(subject="authored commit messages", equals=1)
+- returns: a `Committed` carrying the success flag — `committed=True` when `commit_paths` produced a commit, `committed=False` when the repository has no git root, the configured scope is empty, or `commit_paths` did not produce a commit
+- verify: persists(subject="authored planning documents")
+- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::commit_author`

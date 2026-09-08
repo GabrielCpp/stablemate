@@ -16,5 +16,4 @@ issues one `docker start` command, while `is_running` identifies the normal path
 that skips a start for running containers. Neither node is deprecated or preferred globally; select
 the detail that matches whether the question is about the helper contract or the gate-answer fallback.
 
-- code: groom/groom/docker_io.py::docker_start
 - rule: use the Docker I/O method for the helper contract and the stopped-container fallback for the gate-answering context; neither is a replacement for the other

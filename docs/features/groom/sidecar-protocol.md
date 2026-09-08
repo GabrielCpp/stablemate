@@ -26,9 +26,12 @@ up to groom, and groom queries the container's sidecar back down.
 
 ## Container → host (fire-and-forget push)
 
-- Every push is best-effort: a short (1.0s) timeout wrapped in a broad
-  `except: pass`. It never retries and never raises — a container with no groom
-  listening behaves exactly as it would without groom.
+The residual HTTP push goes through `_push`, which builds a POST to the
+host's `/push/*` endpoint, opens it with a one-second timeout, and silently
+swallows any exception — no retry loop, no re-raise. A container with no
+groom listening on the host therefore behaves the same as one running with
+no groom at all.
+
 - The `await_operator.py` wait script fires the same `blocked` push as an
   idempotent backstop when it shows a gate banner.
 
@@ -47,11 +50,11 @@ The residual HTTP push behavior is implemented by
 `groom/groom/sidecar.py::_push` and exercised by
 `groom/tests/test_sidecar.py::test_push_is_silent_when_groom_is_unreachable`.
 
-- consistency: A residual HTTP push uses `PUSH_TIMEOUT`, which defaults to 1.0 seconds.
+- consistency: residual-http-push — uses `PUSH_TIMEOUT`, which defaults to 1.0 seconds.
 - verify: json_path(path="$.timeout", equals=1.0)
-- consistency: A residual HTTP push makes exactly one request attempt when the host is unavailable.
+- consistency: residual-http-push — makes exactly one request attempt when the host is unavailable.
 - verify: count(subject="HTTP request attempts", equals=1)
-- consistency: A failed residual HTTP push leaves the workflow exit status unchanged.
+- consistency: residual-http-push — a failed attempt leaves the workflow exit status unchanged.
 - verify: exit_status(0)
 - **Linux networking gotcha:** the compose `host-gateway` maps to the docker
   bridge, not the host loopback. groom must therefore bind a bridge-reachable

@@ -74,43 +74,55 @@ The Groom sidecar hub module is the host-process side of persistent sidecar sess
 - sig: `register(conn: SidecarConnection) -> None`
 - abstract: false
 - raises: none intentionally.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/sidecar_hub.py::register
-- detail: [sidecar connection registry register](sidecar-connection-registry.md#method-register).
+- detail: [sidecar register documentation scope](sidecar-register-documentation-scope.md).
 
 ### method-unregister
 
 - sig: `unregister(conn: SidecarConnection) -> None`
 - abstract: false
 - raises: none intentionally.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/sidecar_hub.py::unregister
-- detail: [sidecar connection registry unregister](sidecar-connection-registry.md#method-unregister).
+- detail: [sidecar unregister documentation scope](sidecar-unregister-documentation-scope.md).
 
 ### method-get
 
 - sig: `get(container_id: str) -> SidecarConnection | None`
 - abstract: false
 - raises: none intentionally.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/sidecar_hub.py::get
-- detail: [sidecar connection registry get](sidecar-connection-registry.md#method-get).
+- detail: [sidecar get documentation scope](sidecar-get-documentation-scope.md).
 
 ### method-connected-ids
 
 - sig: `connected_ids() -> list[str]`
 - abstract: false
 - raises: none intentionally.
+- verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/sidecar_hub.py::connected_ids
-- detail: [sidecar connection registry connected ids](sidecar-connection-registry.md#method-connected-ids).
+- detail: [sidecar connected ids documentation scope](sidecar-connected-ids-documentation-scope.md).
 
 ### method-ask-questions
 
 - sig: `async ask_questions(container_id: str, run: str = "") -> dict[str, Any]`
 - abstract: false
-- does:
-  - Looks up the current sidecar connection for `container_id`.
-  - Raises [sidecar error](sidecar-error.md) with `no sidecar connected for <container_id>` when no connection is registered.
-  - Sends one `getQuestions` RPC with `{run: run}` through the connection's normal correlation, timeout, and cleanup behavior.
-  - Rejects a successful RPC result that is not a dictionary with [sidecar error](sidecar-error.md), naming the returned value.
-  - Returns a dictionary reply unchanged; it does not read gate files, alter workflow state, or interpret the questions.
+- does: Looks up the current sidecar connection for `container_id` and uses it to send the RPC.
+- does: Raises [sidecar error](sidecar-error.md) with `no sidecar connected for <container_id>` when no connection is registered.
+- verify: json_path(path="exception.type", equals="SidecarError")
+- verify: json_path(path="exception.message", matches="no sidecar connected")
+- does: Sends one `getQuestions` RPC with `{run: run}` through the connection's normal correlation, timeout, and cleanup behavior.
+- verify: emitted(event="rpc", count=1)
+- does: Rejects a successful RPC result that is not a dictionary with [sidecar error](sidecar-error.md), naming the returned value.
+- verify: json_path(path="exception.type", equals="SidecarError")
+- verify: json_path(path="exception.message", matches="non-dict")
+- does: Returns a dictionary reply unchanged.
+- verify: persists(subject="rpc_reply")
+- does: Does not read gate files, alter workflow state, or interpret the questions.
+- verify: unchanged(subject="gate_files")
+- verify: unchanged(subject="workflow_state")
 - raises: [sidecar error](sidecar-error.md) when no sidecar is registered, the RPC fails, or the reply is not a dictionary.
 - code: groom/groom/sidecar_hub.py::ask_questions
 - input-container-id: exact registry key for the container's current sidecar connection; this function does not normalize or truncate it.
@@ -130,7 +142,15 @@ The Groom sidecar hub module is the host-process side of persistent sidecar sess
   - Looks up the current sidecar connection and raises [sidecar error](sidecar-error.md) if none is registered.
   - Sends one `answerGate` RPC through the connection's normal correlation, timeout, and cleanup behavior.
   - Rejects a successful RPC result that is not a dictionary with [sidecar error](sidecar-error.md), naming the returned value.
-  - Returns the dictionary reply unchanged; persistence and acceptance decisions remain with the run's control socket.
+  - Returns the dictionary reply unchanged.
+  - Leaves persistence and acceptance decisions with the run's control socket.
+- verify: json_path(path="path", absent=false)
+- verify: json_path(path="exception.type", equals="SidecarError")
+- verify: json_path(path="ok", absent=false)
+- verify: json_path(path="exception.type", equals="SidecarError")
+- verify: json_path(path="exception.message", matches=".*dict.*")
+- verify: unchanged(subject="rpc_result")
+- verify: unchanged(subject="workflow_state")
 - raises: [sidecar error](sidecar-error.md) when no sidecar is registered, the RPC fails, or the reply is not a dictionary.
 - code: groom/groom/sidecar_hub.py::answer_gate
 - input-container-id: exact registry key for the container's current sidecar connection; this function does not normalize or truncate it.

@@ -23,3 +23,4 @@ as a separate flag.
 
 - code: groom/groom/state.py::SCANNING
 - rule: use the semantic, module-inventory, or payload-input view according to the boundary being examined; none is a separate implementation or a preferred replacement
+- detail: [scanning flag view precedence](scanning-flag-view-precedence.md)

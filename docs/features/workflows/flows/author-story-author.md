@@ -30,6 +30,7 @@ title: Author story author
 - verify: created(subject="audit-receipt.json")
 - verify: json_path(path="$.status", equals="authored")
 - detail: [author story-author subflow](../concepts/author-story-author-subflow.md)
+- detail: [author story-author prompt contracts](../concepts/author-story-author-prompt-contracts.md)
 - tests: `workflows/tests/author/story_author/test_flow.py::test_flow_prepares_explicit_story_before_authoring_without_git_side_effects`
 
 ## Steps

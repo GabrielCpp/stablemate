@@ -107,8 +107,8 @@ container itself** (installed into the agent image via `stablemate`'s shared Doc
   (relative path + extracted question) to `/push/blocked`;
 - targets the host's `groom` process at a fixed address (`http://host.docker.internal:8787/...`,
   `GROOM_HOST`/`GROOM_PORT` overridable via env);
-- consistency: A residual HTTP push returns normally when the configured `groom` host is
-  unreachable.
+- consistency: sidecar-residual-http-push-helper — a residual HTTP push returns normally when the
+  configured `groom` host is unreachable (see [sidecar residual HTTP push helper](concepts/sidecar-residual-http-push-helper.md)).
 - verify: json_path(path="exception", absent=true)
 
 Residual HTTP pushes are fire-and-forget: each uses one short-timeout `urllib.request` call (1.0s
@@ -220,10 +220,11 @@ order:
 ### method: write_file
 
 - sig: `write_file(volume: str, /, rel_path: str, content: str) -> bool`
-- consistency: The Docker write command omits `sh -c`, so operator-provided content is never
-  interpolated into a shell command.
+- consistency: docker-write-command — the Docker write command omits `sh -c`, so operator-provided
+  content is never interpolated into a shell command.
 - code: `groom/groom/docker_io.py::write_file`
 - verify: omits(subject="Docker write command", text="sh -c")
+- detail: [Write-file documentation views](concepts/write-file-documentation-views.md)
 
 **Notifications**: a `blocked` event (from either the sidecar push or the `await_operator.py`
 backstop push) triggers a websocket OOB swap carrying a `<script>` that dispatches a client-side

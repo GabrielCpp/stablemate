@@ -23,6 +23,9 @@ registry remains bound in the closure that invokes `main`.
 - code: `workhorse/workhorse/cli/parser.py::build_parser`
 - tests: `workhorse/tests/test_console_script.py::test_console_script_returns_the_callable_without_running_it`
 - tests: `workhorse/tests/test_console_script.py::test_a_bare_name_is_not_enough_to_build_a_script`
+- detail: [Console script documentation selection](console-script-documentation-selection.md)
+- detail: [Main dispatcher concept scope](main-dispatcher-concept-scope.md)
+- detail: [Console script concept scope](console-script-concept-scope.md)
 
 ## Methods
 
@@ -35,6 +38,8 @@ registry remains bound in the closure that invokes `main`.
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
 - code: `workhorse/workhorse/cli/__init__.py::console_script`
+- detail: [Console script import selection](console-script-import-selection.md)
+- detail: [Console script concept scope](console-script-concept-scope.md)
 
 ### main
 - sig: `main(argv: list[str] | None, *, workflow: str, registry: Registry) -> None`
@@ -45,6 +50,7 @@ registry remains bound in the closure that invokes `main`.
 - does: dispatch through the selected `Command` row
 - verify: exit_status(code=0)
 - code: `workhorse/workhorse/cli/__init__.py::main`
+- detail: [Main import selection](main-import-selection.md)
 
 ### build-parser
 - sig: `build_parser(prog: str, workflow: str) -> argparse.ArgumentParser`

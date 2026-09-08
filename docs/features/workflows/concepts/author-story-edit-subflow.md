@@ -53,11 +53,12 @@ on one package-local blueprint, which the author composition root imports into i
 ### resolve_story_intent
 - sig: `resolve_story_intent(logger: logging.Logger, action: str, epic: str = "", story: str = "", bullet: str = "", reason: str = "", force: bool = False, repo_dir: str = "") -> EditIntent`
 - does: for `add`, strips the epic input before storing it
-- consistency: for `add`, rejects a blank epic with `WorkflowFailed`
+- consistency: edit-intent — for `add`, rejects a blank epic with `WorkflowFailed`
 - verify: json_path(path="exception.type", equals="WorkflowFailed")
 - does: for `add`, strips the bullet input before resolving it
 - does: for `add`, rejects a blank bullet
 - does: for `add`, resolves a backlog id, backlog text, or literal bullet through `resolve_bullet`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::resolve_bullet`
 - does: for `add`, logs the resolved bullet id with the target epic
 - does: for `add`, strips the reason before storing it
 - does: for `add`, uses `Add a story for <source_bullet>` when the stripped reason is empty

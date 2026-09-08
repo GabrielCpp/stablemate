@@ -12,11 +12,12 @@ Blocked push payload is the JSON request body accepted by the [receive blocked p
 - code: groom/groom/sidecar.py::push_blocked
 - code: groom/groom/state.py::upsert_workflow
 - detail: [blocked push flow contexts](concepts/blocked-push-flow-contexts.md)
-- verify: groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape
-- verify: groom/tests/test_sidecar.py::test_handle_event_on_awaiting_gate_triggers_blocked_push
-- verify: groom/tests/test_sidecar.py::test_push_is_silent_when_groom_is_unreachable
-- verify: groom/tests/test_sidecar.py::test_push_is_silent_on_any_unexpected_exception
-- verify: groom/tests/test_sidecar_session.py::test_classify_event_awaiting_gate_is_blocked
+
+The payload contract is covered by `groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape`,
+`groom/tests/test_sidecar.py::test_handle_event_on_awaiting_gate_triggers_blocked_push`,
+`groom/tests/test_sidecar.py::test_push_is_silent_when_groom_is_unreachable`,
+`groom/tests/test_sidecar.py::test_push_is_silent_on_any_unexpected_exception`, and
+`groom/tests/test_sidecar_session.py::test_classify_event_awaiting_gate_is_blocked`.
 
 ## Contract
 
@@ -34,7 +35,10 @@ Blocked push payload is the JSON request body accepted by the [receive blocked p
 - null rule: explicit JSON `null` for `container_id`, `file_path`, or `question` is converted to the text `"None"`; explicit JSON `null` for `name`, `repo_name`, or `repo_branch` means do not update that optional identity field.
 - success guard: an empty normalized `container_id` or empty normalized `file_path` is invalid and yields `ok: false` with no Docker metadata lookup, workflow update, gate record, dashboard broadcast, browser notification, or retry.
 - overwrite rule: optional identity fields update the workflow only when their value is not `null`; omitted or `null` values preserve the existing in-memory field, while an empty string is still a non-null update for existing records.
-- consistency rule: when a valid payload creates a new workflow, a truthy `name` becomes the initial workflow name; an omitted, `null`, or falsey `name` falls back to the normalized container id.
+- consistency rule: workflow-container — when a valid payload creates a new workflow with a truthy `name`, it becomes the initial workflow name
+- verify: json_path(path="$.runs[0].name", equals="workflow-name")
+- consistency rule: workflow-container — when a valid payload creates a new workflow without a truthy `name`, it falls back to the normalized container id
+- verify: json_path(path="$.runs[0].name", equals="abc123abc123")
 - metadata rule: before applying the blocked update, the endpoint tries [push-first volume metadata resolver](concepts/push-first-volume-metadata-resolver.md) hydration for workflows that are absent or do not yet have a workspace volume; this can fill `workspace_volume`, `runs_volume`, and `workflow_type` independently of the JSON payload.
 - gate replacement: a valid payload inserts or replaces the one gate keyed by normalized `file_path` and preserves any other open gates on the same workflow.
 - state result: a valid payload marks the workflow as `blocked`, stores one gate for `file_path`, preserves current node, exit code, run id, workflow type, workspace volume, and runs volume unless Docker metadata resolution fills the volume/type fields first, then broadcasts the refreshed shell plus a blocked notification script.

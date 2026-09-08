@@ -7,9 +7,10 @@ title: Stopped container start fallback
 
 Stopped container start fallback is Groom's post-answer recovery path for a workflow container that is no longer running after the [gate-answering layer](gate-answering-layer.md) has successfully written an operator answer and cleared the in-memory [gate info](gate-info.md). The [container running-state check](container-running-state-check.md) selects this path by returning `False`; containers it reports as running continue through the normal in-place wake path without a Docker start. The fallback performs exactly one Docker `start` attempt through the [Docker subprocess runner](docker-subprocess-runner.md) owned by the [Groom Docker I/O module](groom-docker-io-module.md), then reports the outcome through an [answer result](../answer-result.md). It is intentionally narrower than workflow recreation: removed containers, compose services, missing environment, and cached launch metadata are outside this fallback.
 
+Focused coverage for the running-container and stopped-container answer paths is provided by `groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running` and `groom/tests/test_gates.py::test_answer_gate_restarts_when_container_stopped`.
+
 - code: groom/groom/docker_io.py::docker_start
-- verify: groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running
-- verify: groom/tests/test_gates.py::test_answer_gate_restarts_when_container_stopped
+- detail: [Docker start documentation scope](docker-start-documentation-scope.md)
 - refs: [Gate-answering layer](gate-answering-layer.md), [Container running-state check](container-running-state-check.md), [Docker subprocess runner](docker-subprocess-runner.md), [Groom Docker I/O module](groom-docker-io-module.md), [Answer result](../answer-result.md)
 
 ## Contract
@@ -23,13 +24,12 @@ Stopped container start fallback is Groom's post-answer recovery path for a work
 - command effect: runs exactly one `docker start <container_id>` attempt through the [Docker subprocess runner](docker-subprocess-runner.md) with argv `['docker', 'start', container_id]` and Groom's Docker command timeout.
 - timeout: the start attempt uses the shared Docker command timeout of 20 seconds.
 - process I/O: the start attempt sends no stdin, captures stdout and stderr as text through the subprocess runner, and discards those streams after reading the exit status.
-- output: returns `True` only when Docker runs to completion and exits with status `0`; the helper returns no structured stdout, stderr, or diagnostic message.
-- output: returns `False` when Docker runs to completion and exits with any non-zero status, including already-running, missing-container, permission, or daemon-level failures reported as command failures.
-- success effect: if the Docker start command exits with status `0`, the gate-answering result remains successful and uses message `answered and restarted`.
 - failure effect: if the Docker start command exits non-zero, the gate-answering result still reports `ok=true` because the answer file was already written, but uses message `answer written but restart failed — start the container manually`.
 - exception boundary: subprocess launch failures, timeout failures, and unexpected Docker wrapper exceptions are not converted to `False` or to an answer result by this fallback helper; they propagate through the gate-answering call.
 - retry behavior: performs no retry, backoff, second running-state check, or post-start inspection; the command exit status is the entire success signal.
 - non-effect: does not recreate removed containers, run `docker compose up`, rebuild images, infer compose service names, restore environment variables, reattach volumes, rescan gates, broadcast dashboard HTML, or mutate in-memory workflow state.
+
+On completion, the helper's boolean return value follows the contract documented under the [docker-start method](#docker-start) below: it discards Docker's stdout, stderr, and any diagnostic message rather than surfacing why a start failed, so a `False` result covers already-running, missing-container, permission, and daemon-level failures alike, all reported only as a non-zero exit status. A zero exit leaves the gate-answering result successful with the `answered and restarted` message described below; the [Caller Outcomes](#caller-outcomes) section carries the checkable obligation for that outcome, not this overview.
 
 ## Fields
 
@@ -90,7 +90,7 @@ Attempts to start one existing Docker container id and returns only whether Dock
 #### Effects
 
 - calls: the [Docker subprocess runner](docker-subprocess-runner.md#run) with argv `['docker', 'start', container_id]`, timeout `DOCKER_TIMEOUT`, and no stdin payload.
-- consistency: the completed process return code determines the boolean success signal.
+- consistency: field-started — the completed process return code determines the boolean success signal.
 - ignores: stdout and stderr content for the returned value.
 - propagates: subprocess launch and timeout exceptions instead of converting them to `False`.
 - does not call: [container running-state check](container-running-state-check.md), workspace-volume readers or writers, workflow-state mutation helpers, or dashboard broadcast helpers.
@@ -99,18 +99,18 @@ Attempts to start one existing Docker container id and returns only whether Dock
 
 - step: Receive a `container_id` that the caller has already decided is stopped.
 - step: Invoke the [Docker subprocess runner](docker-subprocess-runner.md) with argv `docker`, `start`, and the exact `container_id`, using the shared Docker command timeout and no stdin.
-- consistency: `docker_start` returns `True` when its `docker start` command exits with status `0`.
+- consistency: field-started — `docker_start` returns `True` when its `docker start` command exits with status `0`.
 - verify: json_path(path="$.message", equals="answered and restarted")
 - step: Return `False` when Docker runs but exits with any non-zero status; do not inspect stdout or stderr before making this decision.
 - step: Leave subprocess launch and timeout exceptions for the caller to handle; the fallback does not map them to a manual-recovery answer result.
 
 ## Caller Outcomes
 
-- consistency: When the gate-answering layer's running-state check reports `true`, it returns `AnswerResult(ok=True, message="answered")` without calling this fallback.
+- consistency: answer-result — When the gate-answering layer's running-state check reports `true`, it returns `AnswerResult(ok=True, message="answered")` without calling this fallback.
 - verify: json_path(path="$.message", equals="answered")
-- consistency: When this fallback returns `true`, the gate-answering layer returns `AnswerResult(ok=True, message="answered and restarted")`.
+- consistency: answer-result — When this fallback returns `true`, the gate-answering layer returns `AnswerResult(ok=True, message="answered and restarted")`.
 - verify: json_path(path="$.message", equals="answered and restarted")
-- consistency: When this fallback returns `false`, the gate-answering layer returns `AnswerResult(ok=True, message="answer written but restart failed — start the container manually")` because the answer file was already written successfully.
+- consistency: answer-result — When this fallback returns `false`, the gate-answering layer returns `AnswerResult(ok=True, message="answer written but restart failed — start the container manually")` because the answer file was already written successfully.
 - verify: json_path(path="$.message", equals="answer written but restart failed — start the container manually")
 
 If Docker subprocess launch or timeout raises, no fallback boolean is produced; the exception propagates through the gate-answering layer after any already-completed answer-file write and in-memory gate clear.

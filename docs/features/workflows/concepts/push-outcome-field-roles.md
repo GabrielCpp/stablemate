@@ -9,7 +9,7 @@ title: Push outcome field roles
 `pushed` confirms the remote head advanced, `unavailable` means a push could not be attempted, and
 `failed` records an attempted push that did not land or could not be verified. `notes` carries the
 reason and branch or checkout context needed to interpret that classification. The source
-[`PushOutcome` docstring](../../../workflows/src/workhorse_workflows/coder/shared/schemas/ci.py)
+[`PushOutcome` docstring](../../../../workflows/src/workhorse_workflows/coder/shared/schemas/ci.py)
 defines `unavailable` as tolerated and `failed` as an attempted but unverified push.
 
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::PushOutcome`

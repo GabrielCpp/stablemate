@@ -31,8 +31,11 @@ the server app itself is produced by the [Groom app module](groom-app-module.md)
 - defaults: `groom serve` binds to [field-default-host](#field-default-host) and
   [field-default-port](#field-default-port) unless the operator supplies command
   flags.
-- consistency: an unacknowledged non-loopback host emits the exposure warning
-  and remains eligible for server startup on the selected address.
+- consistency: exposure-warning — an unacknowledged non-loopback host emits the
+  warning to stderr.
+- verify: emitted(event="exposure-warning")
+- consistency: startup-continues — [method-serve](#method-serve) constructs and
+  starts the server on the selected address despite the exposure warning.
 - verify: exit_status(code=0)
 - parser failure model: unknown flags, invalid integer values, missing required
   commands, and unexpected positional arguments exit through the parser before
@@ -93,26 +96,21 @@ the server app itself is produced by the [Groom app module](groom-app-module.md)
 
 - sig: `serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, *, allow_non_loopback: bool = False) -> None`
 - abstract: false
-- raises: server app construction, bind, startup, and runtime failures propagate;
-  a racing second `KeyboardInterrupt` during server shutdown is swallowed.
+- raises: server app construction, bind, startup, and runtime failures propagate
+- raises: a racing second `KeyboardInterrupt` during server shutdown is swallowed
+- verify: exit_status(code=0)
 - code: groom/groom/cli.py::serve
 - command: [`serve`](../groom-cli.md#serve)
 - invocation: [`groom-serve`](../groom-cli.md#groom-serve)
 - refs: [loopback host classifier](loopback-host-classifier.md)
 - refs: [Groom app module](groom-app-module.md#method-create-app)
-- does:
-  - Classifies `host` with the [loopback host classifier](loopback-host-classifier.md).
-  - Writes the documented non-loopback exposure warning to stderr when `host` is
-    not loopback and `allow_non_loopback` is false.
-  - Constructs one [groom server](../http/groom.md) app through
-    [method-create-app](groom-app-module.md#method-create-app).
-  - Starts one server runner on the selected host and port with info-level server
-    logging.
-  - Sets the graceful-shutdown timeout to three seconds so persistent dashboard
-    websocket connections do not require a second interrupt to terminate the
-    process.
-  - Returns after the server runner stops; it does not add authentication, TLS,
-    worker fan-out, hot reload, or access controls around the server app.
+- does: Classifies `host` with the [loopback host classifier](loopback-host-classifier.md) to determine whether to emit a non-loopback exposure warning.
+- does: Writes the documented non-loopback exposure warning to stderr when `host` is not loopback and `allow_non_loopback` is false.
+- does: Constructs one [groom server](../http/groom.md) app through [method-create-app](groom-app-module.md#method-create-app).
+- verify: created(subject="groom server application")
+- does: Starts one server runner on the selected host and port with info-level server logging.
+- does: Sets the graceful-shutdown timeout to three seconds so persistent dashboard websocket connections do not require a second interrupt to terminate the process.
+- does: Returns after the server runner stops.
 
 ### method-sidecar-main
 
@@ -148,19 +146,21 @@ the server app itself is produced by the [Groom app module](groom-app-module.md)
 - does: gives query mode precedence over exit-notice mode when both `--query`
   and `--exit-code` are supplied.
 
-## Private Members
+## Methods
 
 ### method-_is-loopback
 
 This private helper implements the public [loopback host classifier](loopback-host-classifier.md).
+The function never raises exceptions; it classifies any input string as either loopback or
+non-loopback, returning `false` for unparseable hosts.
 
 - sig: `_is_loopback(host: str) -> bool`
 - abstract: false
-- raises: none for ordinary host strings; unparsable hosts are classified as
-  non-loopback.
-- code: groom/groom/cli.py::_is_loopback
-- detail: [loopback host classifier](loopback-host-classifier.md)
-- does: returns `true` for the literal string `localhost` and for parseable
+- returns: `true` for the literal string `localhost` and for parseable
   loopback IP address literals.
-- does: returns `false` for non-loopback IP address literals and host strings
+- verify: json_path(path="result", equals=true)
+- returns: `false` for non-loopback IP address literals and host strings
   that are not parseable as IP addresses.
+- verify: json_path(path="result", equals=false)
+- code: groom/groom/cli.py::_is_loopback
+- detail: [loopback classifier authority](loopback-classifier-authority.md)

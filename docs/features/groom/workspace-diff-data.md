@@ -19,7 +19,7 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 - code: groom/groom/sidecar.py::_git_diff
 - code: groom/groom/sidecar.py::_repo_base
 - detail: [dashboard diff representation selection](concepts/dashboard-diff-representation-selection.md)
-- verify: groom/tests/test_app.py::test_diff_prefers_sidecar_socket,
+- tests: groom/tests/test_app.py::test_diff_prefers_sidecar_socket,
   groom/tests/test_app.py::test_diff_endpoint_passes_repo_through,
   groom/tests/test_docker_io.py::test_git_diff_returns_stdout_on_success,
   groom/tests/test_docker_io.py::test_git_diff_returns_empty_when_no_repo_found,
@@ -29,9 +29,9 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 
 ## Contract
 
-- consistency: `GET /diff/{container_id}` returns [field-json-body](#field-json-body) as `application/json`.
-- consistency: when sidecar RPC returns data, `GET /diff/{container_id}` uses that data for its response.
-- consistency: when sidecar RPC returns no data, `GET /diff/{container_id}` reads from the workflow container's known workspace volume when available.
+- consistency: workspace-diff-data — `GET /diff/{container_id}` returns [field-json-body](#field-json-body) as `application/json`.
+- consistency: workspace-diff-data — when sidecar RPC returns data, `GET /diff/{container_id}` uses that data for its response.
+- consistency: workspace-diff-data — when sidecar RPC returns no data, `GET /diff/{container_id}` reads from the workflow container's known workspace volume when available.
 - sidecar producer: a live sidecar handling `rpc` method `getDiff` returns `{"diff": text}` as the `data` object in a successful `rpc_result` frame after running a working-tree-versus-`HEAD` diff against its local `/workspace` checkout.
 - fallback producer: the Docker-volume fallback runs a read-only throwaway git container against one checkout in the selected workflow's workspace volume and returns its stdout as the same raw diff text; a native workflow instead runs git locally against the checkout root through the local-filesystem reader. Both return the same shape, so the endpoint's caller cannot tell which ran.
 - sidecar request: the sidecar data-plane request uses [sidecar websocket frame](sidecar-websocket-frame.md) method `getDiff` with `params.repo` as the only meaningful parameter; missing `repo` defaults to `""`.
@@ -118,6 +118,7 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 - verify: json_path(path="exception.type", matches="Error$")
 - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
 - code: groom/groom/app.py::diff
+- detail: [diff documentation scopes](concepts/diff-documentation-scopes.md)
 - tests: groom/tests/test_app.py::test_diff_prefers_sidecar_socket
 - tests: groom/tests/test_app.py::test_diff_endpoint_passes_repo_through
 - input: `container_id` is the required HTTP path variable; `repo` is the optional query value forwarded unchanged to both producers.

@@ -9,6 +9,8 @@ Workspace file list data is the file-tree contract used by the [serve workspace 
 
 The list stays flat on the wire. Nesting is a pure function of the paths and a display decision the browser is already making — it decides which directories start collapsed — so projecting a tree here would put half a rendering choice on the wire.
 
+The path-list contract, including endpoint source selection, sidecar handling, pruning, relative paths, empty results, and failure behavior, is covered by the tests below.
+
 - file: not an on-disk artifact; this is a websocket RPC data object, HTTP response body, and sidecar/fallback handoff shape.
 - code: groom/groom/sidecar.py::_rpc_get_tree
 - code: groom/groom/sidecar.py::_list_tree
@@ -18,7 +20,7 @@ The list stays flat on the wire. Nesting is a pure function of the paths and a d
 - code: groom/groom/assets/dashboard.js::loadFiles
 - code: groom/groom/assets/dashboard.js::buildTree
 - detail: [Dashboard tree input selection](concepts/dashboard-tree-input-selection.md)
-- verify: groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
+- tests: groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
   groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
   groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors,
   groom/tests/test_sidecar_session.py::test_rpc_get_tree_lists_files_skipping_vendor_dirs,
@@ -31,7 +33,7 @@ The list stays flat on the wire. Nesting is a pure function of the paths and a d
 
 The sidecar's `getTree` handler delegates path discovery to its local tree reader; `groom/groom/sidecar.py::_handle_rpc` places that result in the successful `rpc_result` frame.
 
-- consistency: a live sidecar handling `rpc` method `getTree` returns `{"paths": [...]}` as the `data` object in a successful `rpc_result` frame, as constructed by `groom/groom/sidecar.py::_rpc_get_tree`.
+- consistency: sidecar-websocket-frame — a live sidecar handling `rpc` method `getTree` returns `{"paths": [...]}` as the `data` object in a successful `rpc_result` frame, as constructed by `groom/groom/sidecar.py::_rpc_get_tree`.
 - endpoint producer: the `/files/{container_id}` endpoint first asks the live sidecar for a `getTree` result through the [sidecar RPC helper](concepts/sidecar-rpc-helper.md) and otherwise asks the fallback reader — the local-filesystem one for a native run, the Docker-volume one otherwise — for the same path list; both branches return only the final path list, not producer metadata.
 - websocket consumer: the host-side sidecar RPC resolver delivers the successful `data` object unchanged to the `/files/{container_id}` endpoint, while an absent connection or expected sidecar RPC error becomes `None` so the endpoint can use the fallback volume reader.
 - HTTP consumer: the dashboard parses the JSON body, reads its `paths` member, and builds the collapsible Files panel tree from those path strings. There is no line splitting, trimming, or blank-line filtering step — the list arrives as a list.
@@ -120,7 +122,9 @@ The sidecar's `getTree` handler delegates path discovery to its local tree reade
 - raises: exceptions from the delegated tree reader can propagate to the RPC wrapper, which converts them into a failed `rpc_result` frame.
 - verify: json_path(path="exception.type", matches=".+")
 - returns: JSON-compatible object with exactly the first-party `paths` member for the requested selected root.
-- verify: json_path(path="$.paths", equals=["README.md", "src/a.py"])
+- verify: count(subject="returned paths", equals=2)
+- verify: json_path(path="$.paths[0]", equals="README.md")
+- verify: json_path(path="$.paths[1]", equals="src/a.py")
 - code: groom/groom/sidecar.py::_rpc_get_tree
 - tests: groom/tests/test_sidecar_session.py::test_rpc_get_tree_lists_files_skipping_vendor_dirs
 - input: decoded sidecar RPC params object for method `getTree`.

@@ -16,3 +16,4 @@ implementations: both routes use the same selection, subscription, and detail-lo
 
 - code: groom/groom/assets/dashboard.js::select
 - rule: call `select(id)` for every dashboard run selection; choose the row or command-palette entry path by the operator's current context
+- detail: [dashboard run select authority](dashboard-run-select-authority.md)

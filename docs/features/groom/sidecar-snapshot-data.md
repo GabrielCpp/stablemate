@@ -17,14 +17,16 @@ records from local run metadata and [operator gate context files](operator-gate-
 - file: not an on-disk artifact; this is an in-memory object serialized as JSON
   for sidecar query stdout and websocket `hello` frames.
 - code: groom/groom/sidecar.py::snapshot
-- verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
-- verify: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch
-- verify: groom/tests/test_discovery.py::test_scan_uses_sidecar_query_for_running_container
-- verify: groom/tests/test_discovery.py::test_scan_query_terminal_wins_over_gates
-- verify: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
-- verify: groom/tests/test_app.py::test_apply_hello_running_when_no_gates
-- verify: groom/tests/test_app.py::test_apply_hello_finished_when_terminal
-- verify: groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively
+
+The implementation is covered by `groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates`
+and `groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch`.
+Discovery coverage is in
+`groom/tests/test_discovery.py::test_scan_uses_sidecar_query_for_running_container` and
+`groom/tests/test_discovery.py::test_scan_query_terminal_wins_over_gates`. Websocket consumer
+coverage is in `groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate`,
+`groom/tests/test_app.py::test_apply_hello_running_when_no_gates`,
+`groom/tests/test_app.py::test_apply_hello_finished_when_terminal`, and
+`groom/tests/test_app.py::test_apply_hello_reconnect_rebuilds_gates_authoritatively`.
 
 ## Contract
 

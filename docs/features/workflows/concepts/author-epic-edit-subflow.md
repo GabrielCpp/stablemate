@@ -12,9 +12,14 @@ only after coverage and integrity checks pass. The package-local node registry i
 separate from the parent workflow registry: `blueprint` is the single registration target for
 the deterministic nodes owned by this subflow.
 
+For the direct-versus-handoff entry context, see [epic edit invocation
+selection](epic-edit-invocation-selection.md).
+
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit`
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/__init__.py`
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/_blueprint.py::blueprint`
 - tests: `workflows/tests/author/epic_edit/test_edit.py::test_plan_requires_force_for_removals_beyond_requested_story`
+- detail: [epic edit concept selection](epic-edit-concept-selection.md)
 
 ## Fields
 
@@ -223,11 +228,26 @@ the deterministic nodes owned by this subflow.
 - verify: count(subject="completed epic edits", equals=1)
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.finish`
 
-## Edit Nodes
+## Nodes
+
+The deterministic nodes owned by the epic-edit package are registered with the `blueprint` instance. These nodes handle snapshot capture, plan validation, application, and result verification in the edit workflow.
 
 ### method: snapshot_epic
 - sig: `snapshot_epic(logger: logging.Logger, epic: str = "", repo_dir: str = "") -> EpicSnapshot`
-- does: captures epic metadata, seed metadata, story metadata and body hashes, frozen identities, and referencing milestones
+- does: captures epic metadata
+- verify: json_path(path="$.epic_hash", matches="^[0-9a-f]{64}$")
+- does: captures seed metadata
+- verify: json_path(path="$.seeds", matches=".*")
+- does: captures story metadata
+- verify: json_path(path="$.stories", matches=".*")
+- does: captures story body hashes
+- verify: json_path(path="$.stories[*].body_hash", matches="^[0-9a-f]{64}$")
+- does: captures frozen seed identities
+- verify: json_path(path="$.seeds[*].frozen", matches="^(true|false)$")
+- does: captures frozen story identities
+- verify: json_path(path="$.stories[*].frozen", matches="^(true|false)$")
+- does: captures referencing milestones
+- verify: json_path(path="$.milestones", matches=".*")
 - raises: raises `WorkflowFailed` when the epic does not exist
 - returns: returns the baseline used to validate planning and application
 - verify: created(subject="an epic edit snapshot")
@@ -258,6 +278,7 @@ This validation returns `Defects(ok=True)` when the on-disk graph matches the ap
 - does: requires every unaffected story body to remain byte-stable
 - verify: unchanged(subject="unaffected story bodies")
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_applied_edit`
+- detail: [applied edit validation](applied-edit-validation.md)
 
 ### method: validate_epic_document
 - sig: `validate_epic_document(logger: logging.Logger, epic_dir: str = "", repo_dir: str = "") -> Defects`
@@ -270,9 +291,10 @@ This validation returns `Defects(ok=True)` when the on-disk graph matches the ap
 ### select_affected_story
 - sig: `select_affected_story(logger: logging.Logger, epic: str, affected_stories: list[str], index: int, repo_dir: str = "") -> StoryChoice`
 - does: resolves the indexed affected story through Ostler
-- consistency: when the index reaches the approved affected-story list length, returns `StoryChoice(has_story=False, reason="every affected story is authored")`
+- consistency: affected-story-list — when the index reaches the approved affected-story list length, returns `StoryChoice(has_story=False, reason="every affected story is authored")`
 - verify: json_path(path="$.has_story", equals=False)
 - raises: raises `WorkflowFailed` when an approved affected story no longer exists
 - returns: returns the story path, slug, directory, progress, and remaining count
 - verify: count(subject="selected affected stories", equals=1)
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::select_affected_story`
+- detail: [affected story selection](affected-story-selection.md)

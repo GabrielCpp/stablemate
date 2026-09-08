@@ -41,11 +41,13 @@ Container running-state check is the `is_running` public member of the [Groom Do
 - returns: `False` for absent metadata, absent `State`, absent `Running`, or falsey `Running`.
 - verify: json_path(path="return value", equals=false)
 - code: groom/groom/docker_io.py::is_running
+- detail: [Is-running documentation scope](is-running-documentation-scope.md)
 
 ## Algorithm
 
 - step: Request Docker inspection metadata for `container_id` through the [Docker inspection reader](docker-inspection-reader.md).
-- step: If no inspection metadata is returned, return `False`.
+- consistency: running-state-answer — when the Docker inspection reader returns no metadata, the running-state answer is `False`.
+- verify: json_path(path="return value", equals=false)
 - step: Read the metadata's `State` mapping, using an empty mapping only when the `State` key is absent.
 - step: Read the `Running` value from that state mapping and convert it to a boolean; truthy non-boolean values are treated as running, falsey non-boolean values are treated as not running, and a present `State` value that does not expose mapping-style lookup propagates that shape error.
 
@@ -54,7 +56,7 @@ The function returns the resulting boolean as the running-state answer.
 ## Callers
 
 - used by: [Gate-answering layer](gate-answering-layer.md) calls this check after the answered gate file has been written and the in-memory gate has been cleared.
-- consistency: after a successful answer-file write and gate clear, a `True` running-state answer makes the gate-answering layer return `ok=true` with message `answered` without calling Docker start.
-- consistency: after a successful answer-file write and gate clear, a `False` running-state answer makes the gate-answering layer attempt the [stopped container start fallback](stopped-container-start-fallback.md).
+- consistency: answer-result — after a successful answer-file write and gate clear, a `True` running-state answer makes the gate-answering layer return `ok=true` with message `answered` without calling Docker start.
+- consistency: answer-result — after a successful answer-file write and gate clear, a `False` running-state answer makes the gate-answering layer attempt the [stopped container start fallback](stopped-container-start-fallback.md).
 - caller coverage: `groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running` verifies the no-restart branch when this check reports running.
 - caller coverage: `groom/tests/test_gates.py::test_answer_gate_restarts_when_container_stopped` verifies the fallback-start branch when this check reports not running.

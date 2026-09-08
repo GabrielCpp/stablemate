@@ -21,7 +21,7 @@ Nothing here escapes anything, and nothing needs to: the value is JSON, the clie
 - input: `question` is a string from [gate info](gate-info.md) `question`; callers pass an already string-normalized gate question.
 - output: plain text; the empty string when no line contains visible content after normalization.
 - line selection: scans source lines in their original order and selects the first line that remains non-empty after whitespace and marker trimming.
-- consistency: normalization trims surrounding whitespace, removes any leading run made only of Markdown heading (`#`), quote (`>`), list (`*` or `-`), backtick, and space characters, then trims again before selecting a non-empty line. This is character trimming, not Markdown parsing.
+- consistency: preview-text — normalization trims surrounding whitespace, removes any leading run made only of Markdown heading (`#`), quote (`>`), list (`*` or `-`), backtick, and space characters, then trims again before selecting a non-empty line. This is character trimming, not Markdown parsing.
 - verify: json_path(path="$.gates[0].preview", equals="Choose one")
 - marker stripping: every leading character in the marker set is removed until the first character outside it; a line that intentionally begins with those characters loses them the same way a Markdown marker does.
 - length cap: at most the first 140 code points of the selected line, with no ellipsis or other truncation marker.
@@ -104,7 +104,7 @@ Builds the text preview for one gate question. Each source line is treated indep
 
 ## Failure Semantics
 
-- consistency: an empty, whitespace-only, marker-only, or blank multiline question produces an empty preview.
+- consistency: field-preview-text — an empty, whitespace-only, marker-only, or blank multiline question produces an empty preview.
 - verify: json_path(path="$.gates[0].preview", equals="")
 - Long input: a useful line longer than the cap returns only its first 140 code points; there is no error, ellipsis, or length metadata.
 - Markup-like input: HTML- or markdown-like characters travel through unchanged. That is safe because the value is JSON the client renders as text, not markup — no escaping step has to be remembered for it to hold.
@@ -114,7 +114,7 @@ Builds the text preview for one gate question. Each source line is treated indep
 ## Invariants
 
 - first-useful-line: at most one source line contributes to the preview.
-- consistency: the returned preview is always plain text data, never server-rendered markup, rendered Markdown, or a DOM fragment.
+- consistency: field-preview-text — the returned preview is always plain text data, never server-rendered markup, rendered Markdown, or a DOM fragment.
 - verify: json_path(path="$.gates[0].preview", equals="<script>alert(1)</script>")
 - deterministic-preview: the same question string always returns the same preview and does not depend on workflow state, selection, registry membership, browser state, time, filesystem state, or network state.
 - consumer-owned-visibility: whether a preview is shown is decided by the client component; this concept only computes the text.

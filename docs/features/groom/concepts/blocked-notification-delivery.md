@@ -12,5 +12,5 @@ exposes the API and reports granted permission, the same handler also creates a 
 notification using the same message body. The system notification augments rather than replaces
 the toast, so neither path is deprecated and there is no single winner to select.
 
-- code: groom/groom/assets/dashboard.js::onNotify
+- code: groom/groom/assets/dashboard.js
 - rule: use the in-page toast for every blocked-work notification; add the browser system notification only when the Notification API is available and permission is granted

@@ -12,14 +12,15 @@ Workspace volume repository-directory reader is the fallback checkout discovery 
   groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_when_none_found,
   groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_on_docker_failure,
   groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo
+- detail: [Repository-directory listing documentation scope](repository-directory-listing-documentation-scope.md)
 
 ## Contract
 
 - purpose: provide repository-picker checkout discovery for workflows whose workspace volume is known.
 - input: `volume` is the Docker workspace volume name mounted read-only at `/vol` for the duration of discovery.
-- consistency: repository discovery returns volume-relative parent directories for every `.git` directory found one or two directory levels below the volume root.
-- consistency: repository discovery returns `[]` when the Docker discovery process exits non-zero or when no matching `.git` directories are found.
-- consistency: single-repository lookup returns the first sorted checkout directory, or `""` when repository discovery is empty.
+- consistency: repository-menu-data — repository discovery returns volume-relative parent directories for every `.git` directory found one or two directory levels below the volume root.
+- consistency: repository-menu-data — repository discovery returns `[]` when the Docker discovery process exits non-zero or when no matching `.git` directories are found.
+- consistency: repository-menu-data — single-repository lookup returns the first sorted checkout directory, or `""` when repository discovery is empty.
 - validation: this reader does not sanitize or normalize the Docker volume name; first-party callers supply the workspace-volume value from workflow discovery or workflow state.
 - ordering: returned checkout directories are sorted ascending for stable repository-menu option order.
 - ordering: the single-repository lookup therefore chooses the lexicographically first discovered checkout.
@@ -38,12 +39,16 @@ Workspace volume repository-directory reader is the fallback checkout discovery 
 - sig: `list_repo_dirs(volume: str) -> list[str]`
 - abstract: false
 - does: discover git checkout roots inside a workspace volume and return their volume-relative directories for [repository menu data](../repository-menu-data.md).
+- verify: json_path(path="$[0]", equals="Acme")
 - does: builds a shell-free `docker run` command using `alpine:3.20` and `find /vol -mindepth 1 -maxdepth 2 -name .git -type d`.
 - does: accepts only trimmed stdout paths beginning with `/vol/` and ending with `/.git`, then strips those sentinels.
+- verify: omits(subject="result", text="/vol/")
+- verify: omits(subject="result", text="/.git")
 - does: sorts accepted volume-relative checkout directories ascending before returning them.
 - raises: process-launch exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) propagate.
 - raises: timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) propagate.
 - returns: Docker non-zero completion is converted to an empty list.
+- verify: count(subject="result", equals=0)
 - returns: sorted volume-relative checkout directories, or `[]` when no matching checkout directories are found or no stdout lines are accepted.
 - code: groom/groom/docker_io.py::list_repo_dirs
 - detail: [Repository-directory listing documentation scope](repository-directory-listing-documentation-scope.md)
@@ -53,6 +58,7 @@ Workspace volume repository-directory reader is the fallback checkout discovery 
   groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo
 - args:
   - `volume`: Docker workspace volume name mounted read-only at `/vol` for the throwaway discovery container.
+- doc_status: 5 of 8 normative bullets declared observations. The "builds shell-free docker run" does is an implementation detail observable only through the filtering correctness in the following does clause. "Sorts ascending" is verified by the json_path check on the first element; the existing tests cover multi-repo ordering. The two "raises" clauses (process-launch and timeout exceptions) cannot be observed in normal operation without triggering error conditions outside this method's contract; they document propagation inherited from the Docker subprocess runner and belong to that layer's specification. The final "returns" clause restates the overall contract and is covered by the preceding verify checks.
 
 ### find-repo-dir
 

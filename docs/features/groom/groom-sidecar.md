@@ -7,8 +7,6 @@ title: groom-sidecar
 
 - binary: groom-sidecar
 - code: groom/groom/cli.py::sidecar_main
-- verify: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch
-- verify: groom/tests/test_sidecar_session.py::test_cli_sidecar_default_runs_session
 
 The `groom-sidecar` CLI is the in-container companion executable for the
 [groom dashboard service](groom.md). It is separate from the host-side
@@ -22,6 +20,11 @@ post-workflow exited notice. The executable delegates those runtime modes to the
 [Groom sidecar module](concepts/groom-sidecar-module.md), which owns the local
 snapshot readers, residual push producers, websocket session, sidecar RPC data
 plane, and reload exit handoff.
+
+Its query behavior is exercised by
+`groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch`,
+and its default session behavior by
+`groom/tests/test_sidecar_session.py::test_cli_sidecar_default_runs_session`.
 
 Invalid flags, non-integer `--exit-code` values, and unexpected positional
 arguments are rejected by the argument parser before any sidecar work starts and
@@ -159,6 +162,11 @@ exit through argparse's standard usage/error path.
     exit with exactly that code.
   - The reserved reload code reaches the container entrypoint without CLI
     dispatcher translation.
+  - Query mode returns normally after stdout is written.
+  - Exit-notice mode returns normally after the push handler returns.
+  - Default live-session mode returns only if the live session handler returns.
+  - A sidecar reload request exits the process through that handler's reserved
+    reload exit code, bypassing this bullet's normal-return path.
 - emits:
   - Query mode writes exactly one JSON object followed by stdout's normal print
     newline.
@@ -186,9 +194,3 @@ exit through argparse's standard usage/error path.
 - tests: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch
 - tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
 - tests: groom/tests/test_sidecar_session.py::test_cli_sidecar_default_runs_session
-- exits:
-  - Query mode returns normally after stdout is written.
-  - Exit-notice mode returns normally after the push handler returns.
-  - Default live-session mode returns only if the live session handler returns;
-    a sidecar reload request exits the process through that handler's reserved
-    reload exit code.

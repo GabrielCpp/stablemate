@@ -155,22 +155,32 @@ in [research workflow schemas](research-schemas.md).
 - verify: count(subject="research invalid program manifest failures", equals=1)
 - does: rejects a selected program whose README ladder is absent
 - verify: absent(subject="selected program without its README ladder")
-- does: reads the program ledger and preserves its non-negative extension, lead-review, and status values
-- verify: json_path(path="$.extensions_spent", equals=0)
+- does: reads the program ledger's non-negative extension spend
+  - verify: json_path(path="$.extensions_spent", equals=2)
+- does: reads the program ledger's non-negative lead-review spend
+  - verify: json_path(path="$.lead_reviews_spent", equals=0)
+- does: reads the program ledger's non-negative program-review spend
+  - verify: json_path(path="$.program_reviews_spent", equals=0)
+- does: reads the program ledger's non-negative recharter spend
+  - verify: json_path(path="$.recharters_spent", equals=0)
+- does: reads the program ledger's status unless a concluded program is reauthorized
+  - verify: json_path(path="$.status", equals="active")
 - does: rejects a concluded program unless `reauthorize` is true
 - verify: count(subject="research concluded-program authorization failures", equals=1)
 - returns: a `Program` containing resolved paths, manifest settings, ledger spend, and active run status
 - verify: json_path(path="$.status", equals="active")
 - code: `workflows/src/workhorse_workflows/research/nodes/program.py::load_program`
+- detail: [research program load authority](research-program-load-authority.md)
 - tests: `workflows/tests/research/test_workflow.py::test_a_concluded_program_needs_a_human_before_it_runs_again`
 
 ### record_spend
-- sig: `record_spend(logger: logging.Logger, repo_dir: str, program_dir: str, extensions: int = 0, lead_reviews: int = 0, status: str = "active") -> Ledger`
-- does: writes the program status and cumulative spend to `<program_dir>/ledger.yml`
+- sig: `record_spend(logger: logging.Logger, repo_dir: str, program_dir: str, extensions: int = 0, lead_reviews: int = 0, status: str = "active", program_reviews: int = 0, recharters: int = 0) -> Ledger`
+- does: writes the program status and the four spend counters (extensions, lead_reviews, program_reviews, recharters) to `<program_dir>/ledger.yml`
 - verify: persists(subject="research program spend ledger")
-- does: returns the exact path and values written to the ledger
+- does: returns the path and the four counters just written
 - verify: json_path(path="$.path", matches="ledger\\.yml$")
 - code: `workflows/src/workhorse_workflows/research/nodes/program.py::record_spend`
+- detail: [research record spend authority](research-record-spend-authority.md)
 
 ### check_envelope
 - sig: `check_envelope(logger: logging.Logger, memory_mb: int = 0, cpus: int = 0, gpu: str = "none", disk_gb: int = 0, envelope_ram_gb: int = 0, envelope_cpus: int = 0, envelope_gpu: str = "none", envelope_disk_gb: int = 0) -> EnvelopeCheck`
@@ -216,7 +226,7 @@ in [research workflow schemas](research-schemas.md).
 - does: adopts a live job in the requested directory instead of launching a duplicate
 - verify: count(subject="research live-job adoptions", equals=1)
 - does: removes a stale result from the experiment working directory before a new attempt
-- verify: absent(subject="previous attempt result in experiment working directory")
+- verify: removed(subject="previous attempt result in experiment working directory")
 - does: returns tooling and repository launch failures with their fault locus instead of raising them
 - verify: json_path(path="$.fault_locus", matches="repo|tooling")
 - returns: a `Job` carrying submission, process, wake-file, containment-tier, and estimate metadata

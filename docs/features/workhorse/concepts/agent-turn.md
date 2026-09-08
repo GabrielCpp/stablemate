@@ -48,6 +48,12 @@ resolves any of them.
       straight through to `backend.run_turn`.
     - `invoke_retries: int | None` (keyword-only) — when set, replaces
       `resilience.max_invoke_retries` for this turn's short-transient retry budget.
+    - `budget_scale: float` (keyword-only, default `1.0`) — the active power tier's
+      [`timeout_scale`](../workflow-format.md#power), already folded into `timeout` by the caller.
+      Carried here only so a scaled turn can be told apart from one whose `timeout` was hand-edited
+      in the workflow, a distinction `timeout` alone cannot make.
+    - `base_timeout_s: float | None` (keyword-only, default `None`) — the unscaled node timeout
+      `timeout` was multiplied by, recorded alongside `budget_scale`.
 - **From `self`:** `backend` (the injected adapter), `resilience` (`max_invoke_retries`,
   `max_cap_waits`, `invoke_backoff_base_s`, `invoke_backoff_cap_s`, and the cap knobs the helpers
   read), `clock` (every `sleep` in this method and every `now` under it).
@@ -55,7 +61,10 @@ resolves any of them.
   [`extract_outputs`](extract-outputs.md) to parse.
 - consistency: backend-invocation-error — `BackendInvocationError` propagates immediately for non-transient failures, after
   `resilience.max_invoke_retries` short retries, or after `resilience.max_cap_waits` cap waits
-  (default `48`, the backstop against a cap that never actually clears).
+  (default `128`, the backstop against a cap that never actually clears).
+- emits: `budget_scaled` otel event, carrying `scale` and `base_timeout_s`, when `budget_scale` is
+  not `1.0` — silent on an unscaled turn, so an unscaled run says nothing about scaling at all.
+- verify: emitted(event="budget_scaled", count=1)
 
 ## Algorithm
 
@@ -64,6 +73,7 @@ short_attempt = 0; cap_waits = 0; attempt_prompt = prompt
 loop:
     try:
         otel.turn_start(...)
+        if budget_scale != 1.0: otel.turn_event("budget_scaled", scale=budget_scale, base_timeout_s=base_timeout_s)
         result = self.backend.run_turn(attempt_prompt, node_id, session_id_path, model,
                                        prompt_path=prompt_path, timeout=timeout, resilience=self.resilience,
                                        cwd=cwd, add_dirs=add_dirs, effort=effort)
@@ -93,7 +103,10 @@ loop:
 ```
 
 1. **Invoke.** One `backend.run_turn`, bracketed by an otel agent-turn span. A clean return is the
-    only exit that isn't an exception.
+    only exit that isn't an exception. When `budget_scale` differs from `1.0`, a `budget_scaled`
+    event carrying `scale` and `base_timeout_s` opens the span first, so a benchmark comparing a
+    scaled tier against an unscaled one can tell "this node's timeout was multiplied by its tier"
+    from "somebody edited the number in the workflow" — a distinction `timeout` alone can't make.
 2. **Reload interruption → re-enter immediately.** A `ReloadRequested` raised during an invocation
    closes its otel turn span cleanly and escapes without consuming a short retry, cap wait, backoff,
    or recovery-wait budget. The partially completed turn's recorded cost and duration remain part of
@@ -122,10 +135,10 @@ loop:
 - consistency: short-attempt — a cap wait leaves `short_attempt` unchanged, so it consumes none of
    `resilience.max_invoke_retries`
 7. **Short transient → bounded backoff.** `min(invoke_backoff_base_s * 2**short_attempt,
-   invoke_backoff_cap_s)` (defaults `15s` doubling to a `300s` ceiling) is consumed from the active
+   invoke_backoff_cap_s)` (defaults `15s` doubling to a `1800s` ceiling) is consumed from the active
    recovery-wait budget and slept through [`sleep_with_notice`](sleep-with-notice.md), which can be
    cut by a reload. It retries up to `invoke_retries` when the node sets it, otherwise
-   `resilience.max_invoke_retries` (default `4`), before re-raising to the ladder's compact/reframe
+   `resilience.max_invoke_retries` (default `60`), before re-raising to the ladder's compact/reframe
    layers.
 
 Every wait in this method goes through the injected clock, which is why a test can exercise a cap

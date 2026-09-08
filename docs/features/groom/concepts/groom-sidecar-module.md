@@ -21,7 +21,7 @@ without owning host workflow registry state or deciding the workflow process'
 exit result.
 
 - code: groom/groom/sidecar.py
-- verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates,
+- tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates,
   groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape,
   groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape,
   groom/tests/test_sidecar.py::test_push_exited_posts_expected_shape,
@@ -45,9 +45,9 @@ exit result.
   groom service at `WS /sidecar`, sends a full `hello` state advertisement on
   every connection, streams `progress` and `blocked` deltas from filesystem
   events, and handles host-issued `rpc` frames.
-- consistency: a host `reload` frame is the only live-session command that makes
-  the sidecar exit with the reserved reload status `3`.
-- verify: exit_status(3)
+- consistency: reload-requested — a host `reload` frame is the only live-session
+  command that raises the [`ReloadRequested`](#concept-reloadrequested) signal,
+  which the serving loop maps to the reserved reload status `3`.
 - residual transport: exposes fire-and-forget HTTP push wrappers for progress,
   blocked, and exited notices; the live websocket is primary, while residual HTTP
   remains for the post-workflow exit notice and backstop paths described by the
@@ -234,10 +234,13 @@ its caller.
 
 - sig: `scan_gates() -> list[dict]`
 - abstract: false
-- raises: none for a missing workspace mount or per-file read failures; those
-  cases return an empty list or skip the unreadable file.
-- code: groom/groom/sidecar.py::scan_gates
+- raises: none for a missing workspace mount
+- verify: json_path(path="exception.type", absent=true)
+- returns: empty list when the workspace mount is missing
 - verify: count(subject="gates reported for an absent workspace mount", equals=0)
+- raises: none for a per-file read failure
+- verify: json_path(path="exception.type", absent=true)
+- verify: absent(subject="gates from files that could not be read")
 - tests: groom/tests/test_sidecar.py::test_scan_gates_finds_awaiting_and_skips_git_and_non_awaiting
 - detail: [sidecar snapshot](sidecar-snapshot.md#method-scan_gates)
 - refs: [operator gate context file](../operator-gate-context-file.md), [sidecar snapshot data](../sidecar-snapshot-data.md)
@@ -249,6 +252,8 @@ its caller.
     candidate file before deciding whether it is awaiting operator input.
   - Reads full content only for awaiting files so the operator question can be
     extracted.
+  - Skips files that could not be read, so they are absent from the returned
+    gate list.
   - Returns workspace-relative file paths when possible and observed path strings
     when relativization fails.
 
@@ -270,7 +275,7 @@ its caller.
 - does:
   - Reads the latest current graph-node id from the latest checkpoint.
   - Reads the latest terminal marker from the latest run metadata.
-  - Calls [method-scan-gates](#method-scan-gates) for all currently awaiting gate
+  - Calls [method-scan_gates](#method-scan_gates) for all currently awaiting gate
     entries.
   - Performs no network I/O, watch subscription, stdout write, process exit, or
     filesystem mutation.
@@ -292,16 +297,15 @@ websocket reconnect path, closes the current socket best-effort, and returns
 [field-reload-exit-code](#field-reload-exit-code) to the sidecar runner. The
 signal carries no success or failure data and does not acknowledge the host,
 perform a residual HTTP push, mutate workspace files, decide workflow status,
-or change the host registry.
+or change the host registry. It is an internal in-process exception, never
+serialized on the websocket or exposed through the CLI or HTTP API.
 
 - sig: `class ReloadRequested(Exception)`
 - abstract: false
 - code: groom/groom/sidecar.py::ReloadRequested
-- verify: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises,
+- tests: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises,
   groom/tests/test_sidecar_session.py::test_serve_returns_reload_code_when_session_requests_reload
 - refs: [sidecar connected session](sidecar-connected-session.md), [sidecar serving loop](sidecar-serving-loop.md), [sidecar websocket frame](../sidecar-websocket-frame.md)
-- role: internal exception class used only as an in-process control signal; it is
-  not serialized on the websocket and is not exposed through the CLI or HTTP API.
 - trigger: raised only by a connected sidecar session after decoding an inbound
   websocket message whose `type` field is `reload`.
 - base: standard-library `Exception`; no Groom-specific base concept is created
@@ -322,8 +326,9 @@ the caller.
 
 - sig: `run() -> None`
 - abstract: false
-- consistency: a non-zero serving-loop return code raises `SystemExit` with the
-  same numeric code.
+- consistency: reload-exit-code — the only non-zero value the serving loop
+  returns is [field-reload-exit-code](#field-reload-exit-code), and `run()`
+  raises `SystemExit` with that same numeric code rather than swallowing it.
 - code: groom/groom/sidecar.py::run
 - verify: groom/tests/test_sidecar_session.py::test_run_maps_reload_code_to_systemexit
 - detail: [sidecar live session runner](sidecar-live-session-runner.md)

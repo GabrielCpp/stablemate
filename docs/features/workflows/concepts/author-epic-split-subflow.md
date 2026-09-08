@@ -19,6 +19,10 @@ is limited to two turns, and review rework is limited to three turns. Human oper
 automatic resolution. A successful split does not commit, author prose, or create seeds or stories.
 
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit`
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.start`
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.review`
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.rework`
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.resolve`
 - code: `workflows/src/workhorse_workflows/author/epic_split/nodes/_blueprint.py::blueprint`
 - tests: `workflows/tests/author/epic_split/test_flow.py::test_creates_only_ordered_epic_skeletons_after_review_rework`
 - detail: [epic split context](../epic-split-context.md)
@@ -26,6 +30,11 @@ automatic resolution. A successful split does not commit, author prose, or creat
 - detail: [epic split review](../epic-split-review.md)
 - detail: [epic split validation](../epic-split-validation.md)
 - detail: [operator resolution](../operator-resolution.md)
+- detail: [author split-epics prompt](../author-split-epics-prompt.md)
+- detail: [author review-epic-split prompt](../author-review-epic-split-prompt.md)
+- detail: [author rework-epic-split prompt](../author-rework-epic-split-prompt.md)
+- detail: [author resolve-epic-split prompt](../author-resolve-epic-split-prompt.md)
+- detail: [epic split resolve documentation scope](epic-split-resolve-documentation-scope.md)
 
 ## Fields
 
@@ -82,26 +91,20 @@ automatic resolution. A successful split does not commit, author prose, or creat
 - sig: `review(reworks: int = 0, resolves: int = 0) -> Continue | Await | Done`
 - does: asks a high-power independent agent to review the ordered epic skeletons
 - verify: count(subject="epic-split review turns", equals=1)
-- does: validates an approved review before completing
+- does: when the review status is `approved`, validates the split result before completing
 - verify: json_path(path="$.ok", equals=True)
-- does: passes validation errors back as review notes when an approved review fails validation
+- does: when an approved review fails deterministic validation, replaces the review notes with the validation errors
 - verify: json_path(path="$.notes", matches=".+")
-- does: sends a non-blocked review failure to rework while fewer than three reworks have occurred
+- does: when the review status is not `blocked` and fewer than three reworks have occurred, continues to `rework`
 - verify: count(subject="epic-split rework continuations", equals=1)
-- does: sends blocked or rework-exhausted review work to automatic resolution while automatic resolution remains available
+- does: when the review is blocked, or three reworks are exhausted, while operator mode is `auto` and fewer than two resolutions have occurred, continues to `resolve`
 - verify: count(subject="epic-split resolution turns", equals=1)
-- does: sends blocked or exhausted review work to the operator gate in human mode or after two resolutions
+- does: when operator mode is `human` or two automatic resolutions have occurred, continues to the operator gate
 - verify: visible(locator="operator-awaiting context", text="blocked")
-- does: sends a non-blocked review to the operator gate after the rework and resolution budgets are exhausted
+- does: when a non-blocked review has exhausted three reworks and automatic resolution is unavailable, continues to the operator gate
 - verify: visible(locator="operator-awaiting context", text="blocked")
 - returns: returns `Done` only after validation succeeds, otherwise a rework or await continuation
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.review`
-- when: the review status is `approved`, validates the split result before completing
-- when: an approved review fails deterministic validation, replaces the review notes with the validation errors
-- when: the review status is not `blocked` and fewer than three reworks have occurred, continues to `rework`
-- when: the review is blocked, or three reworks are exhausted, while operator mode is `auto` and fewer than two resolutions have occurred, continues to `resolve`
-- when: operator mode is `human` or two automatic resolutions have occurred, continues to the operator gate
-- when: a non-blocked review has exhausted three reworks and automatic resolution is unavailable, continues to the operator gate
 
 ### rework
 - sig: `rework(notes: str, reworks: int = 0, resolves: int = 0) -> Continue`
@@ -145,7 +148,7 @@ automatic resolution. A successful split does not commit, author prose, or creat
 - verify: count(subject="roadmap-owned epic-split milestones", equals=1)
 - does: snapshots milestone documents, epic documents, seed identities, and story identities
 - verify: created(subject="an epic-split graph snapshot")
-- consistency: returns the [epic split context](../epic-split-context.md) with the selected milestone path to bound later mutations
+- consistency: epic-split-context — returns the [epic split context](../epic-split-context.md) with the selected milestone path to bound later mutations
 - verify: json_path(path="$.milestone_path", equals="docs/milestones/account-access.md")
 - code: `workflows/src/workhorse_workflows/author/epic_split/nodes/epics.py::prepare_epic_split`
 
@@ -157,13 +160,13 @@ automatic resolution. A successful split does not commit, author prose, or creat
 - verify: unchanged(subject="ordered milestone epics", except_fields=[])
 - does: requires every milestone epic to have an epic skeleton
 - verify: count(subject="milestone epics with skeletons", equals=1)
-- consistency: rejects mutations to seed identities captured in the prepared context
+- consistency: seed-identities — rejects mutations to seed identities captured in the prepared context
 - verify: json_path(path="$.errors", matches=".*must not create, remove, or edit seeds in '.+'.*")
-- consistency: rejects mutations to story identities captured in the prepared context
+- consistency: story-identities — rejects mutations to story identities captured in the prepared context
 - verify: json_path(path="$.errors", matches=".*must not create, remove, or edit stories in '.+'.*")
-- consistency: rejects mutations to milestone documents other than the selected milestone
+- consistency: milestone-documents — rejects mutations to milestone documents other than the selected milestone
 - verify: json_path(path="$.errors", matches=".*must not edit unrelated milestone '.+'.*")
-- consistency: rejects mutations to pre-existing epic documents
+- consistency: epic-documents — rejects mutations to pre-existing epic documents
 - verify: json_path(path="$.errors", matches=".*must not edit existing epic '.+'.*")
 - does: rejects prose, seeds, or stories inside a newly created epic skeleton
 - verify: absent(subject="authored content inside new epic skeletons")

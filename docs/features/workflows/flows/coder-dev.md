@@ -7,7 +7,8 @@ title: Coder development flow
 
 - The `Dev` machine plans one story, validates the plan's service paths, dispatches each planned
   service layer, and repairs implementation changes against the layer's declared gates. It is
-  entered by the Coder main flow or directly with `workhorse-coder run dev`.
+  entered by the Coder main flow or directly with `workhorse-coder run dev`. Implementation lives
+  at `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev`.
 
 - start: the configured story slug resolves to a readable authored story
 - verify: exit_status(code=0)
@@ -17,6 +18,7 @@ title: Coder development flow
   - [setup](#setup)
   - [plan](#plan)
   - [path-validation](#path-validation)
+  - [replan-with-answer](#replan-with-answer)
   - [dispatch](#dispatch)
   - [layer-selection](#layer-selection)
   - [implementation](#implementation)
@@ -27,7 +29,8 @@ title: Coder development flow
 - verify: exit_status(code=0)
 - end: an epic-scoped operator answer leaves the development flow with the answer for queue-level replanning
 - verify: count(subject="epic-scoped development replans", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev`
+- detail: [coder handoff boundary contract](../concepts/coder-handoff-boundary.md)
+- detail: [coder dev package](../concepts/coder-dev-package.md)
 - detail: [coder main flow](coder-main.md)
 - detail: [coder development nodes](../concepts/coder-dev-nodes.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`
@@ -55,6 +58,7 @@ rejected before planning begins.
 ### plan
 
 - kind: run
+- detail: [coder plan-story prompt](../coder-plan-story-prompt.md)
 
 The high-power `plan-story` turn receives the story, epic, spec directory, workspace markers, and
 story-derived conversation. It snapshots code worktrees first, writes the plan artifacts in the
@@ -69,6 +73,17 @@ The recorded plan is projected and checked against the workspace. A valid or sil
 result advances to dispatch. An invalid service or plan-file path receives at most three low-power
 path-repair turns; an unresolved result then enters the plan operator gate. A successful repair
 resets the repair conversation before validation resumes.
+
+### replan-with-answer
+
+- kind: run
+- detail: [coder replan-with-answer prompt](../coder-replan-with-answer-prompt.md)
+
+A plan blocked at the validation gate receives an operator answer from the story context. The
+`replan-with-answer` turn re-plans the story around the operator's decision, using a fresh
+conversation scoped to the `block-repair` worklist. If the re-plan is still blocked, the revised
+plan re-enters the validation gate. If the re-plan succeeds, the repair conversation is reset and
+validation resumes with the revised plan.
 
 ### dispatch
 
@@ -89,6 +104,7 @@ implementation.
 ### implementation
 
 - kind: run
+- detail: [coder implement-plan prompt](../coder-implement-plan-prompt.md)
 
 Each selected layer starts a fresh story implementation conversation on the first entry, spends a
 session turn, and runs one high-power `implement-plan` turn with the layer plan, service path and
@@ -107,6 +123,7 @@ The clean result advances the cursor to the next layer.
 ### repair
 
 - kind: run
+- detail: [coder dev-fix prompt](../coder-dev-fix-prompt.md)
 
 A dirty status or gate is converted into a `FailureReport`. While the shared three-lap repair
 budget remains, a `dev-fix` turn receives the report, changed files, service identity, and story
@@ -123,3 +140,25 @@ acceptance criterion; otherwise the flow awaits the operator on the story `conte
 the current implementation layer with the answer and consumes the context; an epic-scoped answer
 returns `DevResult(status="replan")` to the queue. Resolver turns are capped at three per gate,
 but the underlying block is never abandoned.
+
+## Invocations
+
+### repair-plan-paths
+
+- on: [path-validation step](#path-validation)
+- trigger: invalid service path or plan-file path in validated plan structure
+- does:
+  - corrects repository path, service path, implementation order, or plan-file values
+- does:
+  - leaves plan design and narrative text unchanged
+- does:
+  - returns full replacement `PlanResult` structure
+- consumes: [coder-repair-plan-paths-prompt](../coder-repair-plan-paths-prompt.md)
+- status: returns `PlanResult` with status `rework` when paths are corrected and re-validated
+- verify: json_path(path="$.status", equals="rework")
+- errors: workflow failure if validator continues to reject paths after correction
+- verify: exit_status(code=1)
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::refine`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_an_unresolvable_service_path_reworks_the_plan`
+- tests:
+

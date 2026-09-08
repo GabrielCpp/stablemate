@@ -14,11 +14,12 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 - code: groom/groom/discovery.py::is_workhorse_container
 - code: groom/groom/app.py::_ensure_volumes
 - code: groom/groom/docker_io.py::is_running
-- verify: groom/tests/test_discovery.py::test_is_workhorse_container_requires_all_three_mounts, groom/tests/test_discovery.py::test_is_workhorse_container_ignores_unrelated_containers, groom/tests/test_discovery.py::test_container_from_inspect_reads_env_name_and_volumes, groom/tests/test_discovery.py::test_workflow_type_from_workflow_mount_basename, groom/tests/test_discovery.py::test_workflow_type_falls_back_to_compose_service_label, groom/tests/test_discovery.py::test_container_from_inspect_marks_stopped_container_idle, groom/tests/test_discovery.py::test_container_from_inspect_falls_back_to_id_when_unnamed, groom/tests/test_discovery.py::test_scan_uses_sidecar_query_for_running_container, groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
+- tests: groom/tests/test_discovery.py::test_is_workhorse_container_requires_all_three_mounts, groom/tests/test_discovery.py::test_is_workhorse_container_ignores_unrelated_containers, groom/tests/test_discovery.py::test_container_from_inspect_reads_env_name_and_volumes, groom/tests/test_discovery.py::test_workflow_type_from_workflow_mount_basename, groom/tests/test_discovery.py::test_workflow_type_falls_back_to_compose_service_label, groom/tests/test_discovery.py::test_container_from_inspect_marks_stopped_container_idle, groom/tests/test_discovery.py::test_container_from_inspect_falls_back_to_id_when_unnamed, groom/tests/test_discovery.py::test_scan_uses_sidecar_query_for_running_container, groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
 
 ## Contract
 
-- consistency: Docker CLI `docker inspect <container_id>` emits a JSON array of container objects, and Groom's inspection reader returns the first array item when the command succeeds and the JSON parses.
+- consistency: docker-inspect-container-object — Docker CLI `docker inspect <container_id>` emits a JSON array of container objects.
+- consistency: docker-inspect-container-object — Groom's inspection reader returns the first array item when the command succeeds and the JSON parses.
 - accepted top-level type: `dict[str, Any]` for every documented consumer; absent inspection metadata is represented before this format as `None`, not as a special object field.
 - consumers: discovery classifies workhorse containers, converts this object into a workflow-container record, and uses `State.Running` to choose live sidecar query versus volume reconstruction; the push-first resolver uses the conversion to fill volume and workflow-type metadata; running-state checks read only the nested `State.Running` value.
 - object identity: `Id` is the only Docker identity field Groom reads; all stored workflow-container ids derived from this object are the first twelve characters of `Id`.
@@ -233,6 +234,7 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 ### consumer-workflow-container-conversion
 
 - code: groom/groom/discovery.py::container_from_inspect
+- detail: [workflow container conversion contexts](concepts/workflow-container-conversion-contexts.md)
 - input: one Docker inspect container object or partial inspect-shaped dictionary.
 - reads: `Id`, `Name`, `State.Running`, `Config.Env`, `Config.Labels`, `Mounts[].Destination`, `Mounts[].Name`, and `Mounts[].Source`.
 - emits: one [workflow container](concepts/workflow-container.md) value with normalized id, display name, repository identity, workflow type, initial workflow state, workspace volume, and runs volume.
@@ -258,6 +260,7 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 ### consumer-push-first-volume-hydration
 
 - code: groom/groom/app.py::_ensure_volumes
+- detail: [push-first volume metadata resolver](concepts/push-first-volume-metadata-resolver.md)
 - input: one Docker inspect container object returned for the caller-supplied workflow id after a push or sidecar path sees a container before discovery has supplied Docker volume metadata.
 - reads: the [workflow-container conversion](#consumer-workflow-container-conversion) output derived from `Mounts[].Destination`, `Mounts[].Name`, `Mounts[].Source`, and `Config.Labels.com.docker.compose.service`.
 - emits: registry metadata for the caller's id containing only `workspace_volume`, `runs_volume`, and `workflow_type` from the converted object.

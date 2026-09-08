@@ -11,11 +11,17 @@ It exists because the picker is shared. One repository menu serves both reposito
 
 - code: groom/groom/assets/dashboard.js::loadActivePane
 - refs: [dashboard client store](dashboard-client-store.md), [dashboard selected repository state](../dashboard-selected-repository-state.md), [workspace file list data](../workspace-file-list-data.md), [workspace diff data](../workspace-diff-data.md)
+- detail: [Dashboard active-pane documentation scope](dashboard-active-pane-documentation-scope.md)
 
 ## Contract
 
 - purpose: route a newly selected checkout to the data loader for the currently active repository-backed pane.
-- consistency: repository-menu selection writes the chosen entry's container, checkout directory, and label into [dashboard selected repository state](../dashboard-selected-repository-state.md), and updates every picker label, before synchronously calling this loader. The loader therefore sees the new pair rather than the previous one.
+- consistency: dashboard-selected-repository-state — repository-menu selection writes the chosen entry's container, checkout directory, and label into [dashboard selected repository state](../dashboard-selected-repository-state.md) before synchronously calling this loader.
+- verify: persists(subject="selected repository state")
+- consistency: repo-picker-label — repository-menu selection updates every picker label to reflect the selection before calling this loader.
+- verify: visible(locator="picker label")
+- consistency: dashboard-selected-repository-state — this loader observes the newly selected repository pair, not the previously selected pair.
+- verify: json_path(path="exception.type", absent=true)
 - input: no parameters. The mode is read from the [dashboard client store](dashboard-client-store.md), and the delegated loaders read the selected pair from the same store.
 - mode source: the store's `mode` value, which is the same value the mode buttons write. It is store state rather than a DOM attribute read, so a mode change and a selection change cannot disagree about what is open.
 - output: no return value; completion means either one pane loader has been invoked or no repository-backed pane matched.

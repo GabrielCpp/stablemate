@@ -9,12 +9,16 @@ The default `OkfBuilder` machine turns a service source tree into a complete OKF
 reached from the [OKF-builder composition root](okf-builder-workflow-composition-root.md) and
 is invoked by the [workhorse-okf-builder CLI](../workhorse-okf-builder.md). The machine owns
 preparation, surface seeding, one-item-at-a-time investigation, doctor repair, coverage
-reconciliation, optional web walkthrough handoff, and the scoped book commit.
+reconciliation, a two-way semantic audit of source against book, optional web walkthrough
+handoff, and the scoped book commit.
 
 Its checkpointed inputs are `service` (the features-book service, empty for the whole tree),
 `source_path` (defaulting to `service`), `source_excludes` (comma-separated source-relative
 exclusions), `docs_path` (defaulting to the run checkout's docs root), `max_items` (zero means
-no per-run investigation ceiling), `since` (optional revision for a diff-scoped crawl),
+no per-run investigation ceiling), `runtime_walkthrough` (opt-in live web app walk; the
+semantic source/book audit always runs), `audit_turn_budget` (reviewer turns one audit pass may
+spend; zero runs the pass to the end of the source tree), `audit_max_passes` (audit passes
+before a budget-partial audit ships), `since` (optional revision for a diff-scoped crawl),
 `story` (optional commit provenance), `workspace_file`, and `sources`. `recheck_only` and
 `diff_base` remain accepted for in-flight runs but are retired, ignored inputs.
 
@@ -37,14 +41,17 @@ and records `known-defect:`, and `story` records a story conflict or parks when 
 Clean doctor proceeds to a computed source-inventory join. Missing units are rechecked by the
 agent, while stale citations are re-grounded. Six coverage re-scans are allowed before an
 operator gate; this is a budget stop, not successful convergence. A completed full-scope join
-writes the source watermark, hands a complete book to the web walkthrough, and commits only the
-service feature directory. No web surface makes the walkthrough a no-op.
+writes the source watermark and hands a complete book to a two-way semantic audit of source
+against book. An audit that surfaces repairs queues each as a `behavior-repair` item and returns
+to the drain; a clear or budget-partial audit optionally hands off to the web walkthrough — a
+no-op when the book has no web surface — and then commits only the service feature directory.
 
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder`
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::investigation_power`
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::repair_power`
 - detail: [OKF-builder workflow composition root](okf-builder-workflow-composition-root.md)
 - detail: [workhorse-okf-builder](../workhorse-okf-builder.md)
+- detail: [source inventory filtering](source-inventory-filter.md)
 
 ## Methods
 
@@ -118,7 +125,7 @@ service feature directory. No web surface makes the walkthrough a no-op.
 ### investigate
 
 - sig: `investigate(current_item: dict, item_kind: str, item_target: str, item_context: str, item_code: str = "", progress: str = "", rnd: int = 0, rescan: int = 0, stall: int = 0, signature: str = "", refuels: int = 0) -> Continue`
-- does: selects the investigation prompt for discovery items and the repair prompt for `fix:` items
+- does: selects the investigation prompt for discovery items, the repair prompt for `fix:` items, and the behavior-repair prompt for `behavior-repair` items
 - verify: count(subject="OKF-builder investigation prompt selections", equals=1)
 - does: supplies the source scope, grammar, check vocabulary, worklist inventory, and item context to the agent
 - verify: count(subject="OKF-builder investigation prompt inputs", equals=1)
@@ -141,6 +148,8 @@ service feature directory. No web surface makes the walkthrough a no-op.
 - verify: count(subject="OKF-builder doctor checkpoints", equals=1)
 - does: queues repair work for a dirty book and parks unchanged findings after the stall limit
 - verify: visible(locator="OKF-builder stalled-finding gate")
+- does: closes a pending `fix:` row as stale when the standing doctor report no longer names it, leaving blocked rows alone
+- verify: count(subject="OKF-builder stale fix-item closures", equals=1)
 - does: parks a clean but non-converging coverage scan after the rescan limit
 - verify: visible(locator="OKF-builder coverage-rescan gate")
 - does: routes a clean checkpoint to computed coverage
@@ -180,8 +189,8 @@ service feature directory. No web surface makes the walkthrough a no-op.
 - verify: count(subject="OKF-builder stale-citation requeues", equals=1)
 - does: routes computed missing units to the coverage recheck prompt
 - verify: count(subject="OKF-builder missing-unit rechecks", equals=1)
-- does: hands a complete coverage result to the web walkthrough
-- verify: count(subject="OKF-builder walkthrough handoffs", equals=1)
+- does: hands a complete coverage result to the semantic audit
+- verify: count(subject="OKF-builder semantic audit dispatches", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.rescan_coverage`
 - tests: `workflows/tests/okf_builder/test_regrounding.py::test_a_symbol_that_changed_under_its_citation_is_queued_not_converged`
 
@@ -201,22 +210,48 @@ service feature directory. No web surface makes the walkthrough a no-op.
 - verify: count(subject="OKF-builder coverage gap seeds", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.seed_recheck`
 
+### semantic_audit
+
+- sig: `semantic_audit() -> Continue | Await`
+- does: hands the current source and book to the two-way behavior audit, spending at most `audit_turn_budget` reviewer turns this pass
+- verify: count(subject="OKF-builder audit passes", equals=1)
+- does: queues each audited repair as a `behavior-repair` worklist item and returns to the drain
+- verify: count(subject="OKF-builder behavior repair seeds", equals=1)
+- does: parks on an operator gate when queued behavior repairs exhaust their attempts
+- verify: visible(locator="OKF-builder behavior-repair gate")
+- does: runs another pass when the turn budget is spent short of `audit_max_passes`, otherwise proceeds with the unaudited packets listed as a budget-partial audit
+- verify: count(subject="OKF-builder audit pass continuations", equals=1)
+- does: parks on an operator gate when the audit reports unresolved evidence or an incomplete scope
+- verify: visible(locator="OKF-builder unresolved-audit gate")
+- does: routes a clear or budget-partial audit to the web walkthrough when requested, otherwise straight to commit
+- verify: count(subject="OKF-builder post-audit routes", equals=1)
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.semantic_audit`
+- detail: [OKF-builder audit workflow](../flows/okf-builder-audit.md)
+- tests: `workflows/tests/okf_builder/test_workflow.py::test_behavior_repair_changes_book_and_reaudits_before_commit`
+
 ### walkthrough
 
 - sig: `walkthrough() -> Continue`
-- does: hands a complete OKF book to the web walkthrough sub-flow, which no-ops when the book has no web surface
+- does: continues straight to the semantic audit without a live walk when `runtime_walkthrough` was not requested
+- verify: count(subject="OKF-builder walkthrough skips", equals=1)
+- does: hands a complete OKF book to the web walkthrough sub-flow when requested, which no-ops when the book has no web surface
 - verify: count(subject="OKF-builder walkthrough handoffs", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.walkthrough`
 
 ### commit
 
-- sig: `commit(walked: WebApp) -> Done`
+- sig: `commit(walked: WebApp) -> Done | Continue`
+- does: returns to the semantic audit instead of committing when the scope is not clear and the gap is not a spent turn-budget of unaudited-only packets
+- verify: count(subject="OKF-builder pre-commit audit re-checks", equals=1)
+- does: proceeds to commit a scope left only with unaudited packets once the audit pass cap has been reached, without requiring a further clear pass
+- verify: count(subject="OKF-builder budget-partial commit proceeds", equals=1)
 - does: commits only the completed service feature directory with optional `Story:` provenance
 - verify: persists(subject="completed OKF service book")
 - returns: a done result carrying the walkthrough outcome
 - verify: count(subject="completed OKF-builder runs", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.commit`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_a_completed_book_is_committed_with_optional_story_provenance`
+- tests: `workflows/tests/okf_builder/test_workflow.py::test_budget_partial_audit_ships_after_the_pass_cap`
 
 ## Node Modules
 
@@ -290,7 +325,7 @@ of blocked correspondence and routes verdicts; `finalize` performs the scoped co
 ### apply_verdict
 
 - sig: `apply_verdict(logger, repo_root: str = "", worklist_path: str = "", row_json: str = "", verdict: str = "", chain: str = "", seed_summary: str = "", story_slug: str = "", story_epic: str = "") -> Applied`
-- consistency: raises `ValueError` when the adjudication verdict is not `book`, `code`, or `story`
+- consistency: adjudication-verdict — raises `ValueError` when the adjudication verdict is not `book`, `code`, or `story`
 - verify: json_path(path="$.exception.type", equals="ValueError")
 - does: requeues a `book` verdict with its adjudication chain and fresh attempts
 - verify: count(subject="book-side OKF-builder requeues", equals=1)

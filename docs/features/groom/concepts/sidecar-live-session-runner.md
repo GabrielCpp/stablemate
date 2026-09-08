@@ -20,8 +20,8 @@ workflow-container entrypoint.
 - input: no call arguments; host, port, workspace, runs, and timeout settings are
   inherited from the sidecar process environment and consumed by the async serving
   layer it starts.
-- consistency: the runner returns normally only when the async serving layer returns
-  exit code `0`.
+- consistency: sidecar-exit-code — the runner returns normally only when the async
+  serving layer returns exit code `0`.
 - verify: exit_status(code=0)
 - effects: starts and owns one blocking run of the async sidecar serving layer for
   the current process; performs no filesystem reads, network I/O, or websocket

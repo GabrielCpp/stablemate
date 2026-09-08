@@ -18,3 +18,4 @@ filtered result of the former, not a competing listing source.
 
 - code: `groom/groom/docker_io.py::docker_ps_all`
 - rule: use the command field for Docker invocation, stdout lines for successful raw output, and parsed entries for the retained decoded result; no field supersedes another.
+- detail: [Docker ps-all documentation scope](docker-ps-all-documentation-scope.md)

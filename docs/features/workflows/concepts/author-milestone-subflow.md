@@ -19,14 +19,53 @@ validation returns to the same agent state through an operator-awaiting context 
 - detail: [milestone result](../milestone-result.md)
 - detail: [milestone validation](../milestone-validation.md)
 
-## Methods
+## Nodes
 
 ### blueprint
 - sig: `Blueprint("author-milestone") -> Blueprint`
 - does: provides the registration target for the milestone nodes
-- returns: returns a blueprint named `author-milestone`
+- emits: a blueprint named `author-milestone`
 - verify: json_path(path="$.name", equals="author-milestone")
 - code: `workflows/src/workhorse_workflows/author/milestone/nodes/_blueprint.py::blueprint`
+
+### method: prepare_milestone
+- sig: `prepare_milestone(logger: logging.Logger, repo_dir: str = "") -> MilestoneContext`
+- does: resolves the repository root and requires an approved roadmap
+- verify: count(subject="approved roadmap resolutions", equals=1)
+- does: rejects intake when the roadmap already sources more than one milestone
+- verify: count(subject="duplicate-roadmap preparation failures", equals=1)
+- does: snapshots every milestone document fingerprint
+- verify: count(subject="snapshotted milestone documents", equals=1)
+- does: snapshots every epic document fingerprint
+- verify: count(subject="snapshotted epic documents", equals=1)
+- returns: returns the approved roadmap and resolved epic directory
+- verify: json_path(path="$.roadmap", matches=".+")
+- verify: json_path(path="$.epics_dir", matches=".+")
+- returns: returns the existing milestone identity and epic list
+- verify: json_path(path="$.milestone_path", matches="^(|docs/.+)$")
+- verify: json_path(path="$.milestone_epics", matches="^\\[.*\\]$")
+- returns: returns the milestone and epic fingerprint maps
+- verify: json_path(path="$.milestone_fingerprints", matches="^\\{.*\\}$")
+- verify: json_path(path="$.epic_fingerprints", matches="^\\{.*\\}$")
+- code: `workflows/src/workhorse_workflows/author/milestone/nodes/milestone.py::prepare_milestone`
+
+### method: validate_milestone
+- sig: `validate_milestone(logger: logging.Logger, context: MilestoneContext) -> MilestoneValidation`
+- does: requires exactly one milestone sourced by the prepared roadmap
+- verify: count(subject="roadmap-owned milestones", equals=1)
+- does: requires the roadmap to be the milestone's sole source item
+- verify: json_path(path="$.sourceItems", matches="^\\['docs/roadmaps/account-access\\.md'\\]$")
+- does: requires the milestone epic list to preserve the prepared order
+- verify: unchanged(subject="milestone epics", except_fields=[])
+- does: rejects creation or modification of unrelated milestone documents
+- verify: unchanged(subject="unrelated milestone documents", except_fields=[])
+- does: rejects creation or modification of epic documents
+- verify: unchanged(subject="epic documents", except_fields=[])
+- returns: returns `ok`, the authored milestone path, whether it was reused, and newline-separated errors
+- verify: json_path(path="$.ok", equals=True)
+- code: `workflows/src/workhorse_workflows/author/milestone/nodes/milestone.py::validate_milestone`
+
+## Methods
 
 ### setup
 - sig: `setup() -> MilestoneContext`
@@ -64,40 +103,3 @@ validation returns to the same agent state through an operator-awaiting context 
 - returns: returns `Done` with the [milestone validation](../milestone-validation.md) when validation succeeds, otherwise `Await` resuming `start`
 - verify: json_path(path="$.ok", equals=True)
 - code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.start`
-
-### prepare_milestone
-- sig: `prepare_milestone(logger: logging.Logger, repo_dir: str = "") -> MilestoneContext`
-- does: resolves the repository root and requires an approved roadmap
-- verify: count(subject="approved roadmap resolutions", equals=1)
-- does: rejects intake when the roadmap already sources more than one milestone
-- verify: count(subject="duplicate-roadmap preparation failures", equals=1)
-- does: snapshots every milestone document fingerprint
-- verify: count(subject="snapshotted milestone documents", equals=1)
-- does: snapshots every epic document fingerprint
-- verify: count(subject="snapshotted epic documents", equals=1)
-- returns: returns the approved roadmap and resolved epic directory
-- verify: json_path(path="$.roadmap", matches=".+")
-- verify: json_path(path="$.epics_dir", matches=".+")
-- returns: returns the existing milestone identity and epic list
-- verify: json_path(path="$.milestone_path", matches="^(|docs/.+)$")
-- verify: json_path(path="$.milestone_epics", matches="^\\[.*\\]$")
-- returns: returns the milestone and epic fingerprint maps
-- verify: json_path(path="$.milestone_fingerprints", matches="^\\{.*\\}$")
-- verify: json_path(path="$.epic_fingerprints", matches="^\\{.*\\}$")
-- code: `workflows/src/workhorse_workflows/author/milestone/nodes/milestone.py::prepare_milestone`
-
-### validate_milestone
-- sig: `validate_milestone(logger: logging.Logger, context: MilestoneContext) -> MilestoneValidation`
-- does: requires exactly one milestone sourced by the prepared roadmap
-- verify: count(subject="roadmap-owned milestones", equals=1)
-- does: requires the roadmap to be the milestone's sole source item
-- verify: json_path(path="$.sourceItems", matches="^\\['docs/roadmaps/account-access\\.md'\\]$")
-- does: requires the milestone epic list to preserve the prepared order
-- verify: unchanged(subject="milestone epics", except_fields=[])
-- does: rejects creation or modification of unrelated milestone documents
-- verify: unchanged(subject="unrelated milestone documents", except_fields=[])
-- does: rejects creation or modification of epic documents
-- verify: unchanged(subject="epic documents", except_fields=[])
-- returns: returns `ok`, the authored milestone path, whether it was reused, and newline-separated errors
-- verify: json_path(path="$.ok", equals=True)
-- code: `workflows/src/workhorse_workflows/author/milestone/nodes/milestone.py::validate_milestone`

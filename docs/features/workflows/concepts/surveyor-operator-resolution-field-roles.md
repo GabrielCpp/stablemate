@@ -14,3 +14,4 @@ does not repeat them. No ranking exists because each field has a distinct role.
 
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution`
 - rule: read `notes` for current diagnostic findings and `tried` for ruled-out actions; retain `decision` only for the legacy reply shape and do not use it to decide the gate
+- detail: [operator resolution documentation context](operator-resolution-documentation-context.md)

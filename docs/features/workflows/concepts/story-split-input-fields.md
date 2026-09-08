@@ -16,3 +16,5 @@ choices retain the selected epic and neither changes the story-split scope.
 
 - code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow`
 - rule: provide a non-empty `epic` for every run, then choose `operator_mode` as `auto` for bounded automatic resolution or `human` for immediate operator escalation
+- detail: [story-split flow inputs](story-split-flow-inputs.md)
+- detail: [story-split flow concept selection](story-split-flow-concept-selection.md)

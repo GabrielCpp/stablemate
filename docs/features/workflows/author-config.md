@@ -16,6 +16,7 @@ loading does not create a surface inventory.
 - detail: [author shared paths](concepts/author-shared-paths.md)
 - detail: [approved roadmap](concepts/approved-roadmap.md)
 - detail: [author story-split subflow](concepts/story-split-subflow.md)
+- detail: [author load_config documentation roles](concepts/author-load-config-documentation-roles.md)
 
 ## Fields
 

@@ -35,7 +35,7 @@ The repo may put `prompts:` at the top level or under `workflow:`.
 
 - type: `dict[str, Any]`
 - required: true
-- verify: json_path(path="$.result_schema", absent=false)
+- verify: json_path(path="$.result_schema", matches="^Produce a JSON document that complies with this schema:")
 - semantics: always contains the rendered `result_schema`
 - verify: json_path(path="$.result_schema", matches="^Produce a JSON document that complies with this schema:")
 - semantics: when a body override is found, contains its parent directory as `_body_dir`
@@ -65,7 +65,7 @@ The repo may put `prompts:` at the top level or under `workflow:`.
 - does: renders the supplied reply model into the `result_schema` argument
 - verify: json_path(path="$.args.result_schema", matches="^Produce a JSON document that complies with this schema:")
 - does: adds body override arguments only when a valid repo or library body exists
-- verify: json_path(path="$.args.body_template", absent=true)
+- verify: created(subject="the turn's body override arguments")
 - raises: `WorkflowFailed` for an unregistered role or a flow class defined outside `workhorse_workflows.coder`
 - verify: json_path(path="$.exception.type", equals="WorkflowFailed")
 - returns: a `Turn` containing the envelope path, render arguments, and supplied reply model

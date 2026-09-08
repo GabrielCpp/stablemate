@@ -24,7 +24,7 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - ordering: newer toasts are appended after older toasts in DOM order; the CSS host stacks them as a fixed vertical column.
 - lifetime: each toast schedules its own removal with `setTimeout`; no shared queue, cancellation, deduplication, persistence, or maximum-count trimming exists.
 - content safety: title and body values are assigned through `textContent`, so markup-like message text is displayed as text rather than interpreted as HTML.
-- consistency: a `{"type": "notify", "message": …}` frame always pushes one `blocked` toast titled `⛔ worker blocked` with the frame's message or fallback body `A workflow needs your input.` and a 7000 ms lifetime, independent of Notification API availability or permission state.
+- consistency: notify-frame-blocked-toast — a `{"type": "notify", "message": …}` frame always pushes one `blocked` toast titled `⛔ worker blocked` with the frame's message or fallback body `A workflow needs your input.` and a 7000 ms lifetime, independent of Notification API availability or permission state.
 - answered frame behavior: a `{"type": "answered", …}` frame always pushes one `ok` toast titled `✓ answer sent`, omits a body node, and uses a 3500 ms lifetime. It does not refresh the detail pane: the same server command that produced the frame also pushed a `detail` frame to the tabs watching that run, so the pane is already current.
 - send-failure behavior: when `sendCommand` reports that there was no open socket, the answer-form handler pushes one `blocked` toast titled `✗ not sent` with a 7000 ms lifetime and leaves the operator's typed answer in the textarea.
 - visual placement: the toast host is fixed at the lower-right of the viewport with a high z-index; individual toasts are 300 px wide cards with a dark background, border, left accent stripe, small title, optional single-line body, shadow, and slide-in animation.
@@ -118,6 +118,7 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - sig: `onAnswered() -> void`
 - abstract: false
 - raises: none intentionally caught or transformed by groom.
+- verify: absent(subject="a groom-transformed exception from onAnswered")
 - code: groom/groom/assets/dashboard.js::onAnswered
 - step: Receive a `{"type": "answered", "id": …, "file_path": …}` frame, dispatched by the socket frame handler to every connected tab.
 - step: Call `pushToast("ok", "✓ answer sent", "", 3500)` to append a success toast with no body node.

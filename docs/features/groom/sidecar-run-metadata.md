@@ -20,10 +20,10 @@ falsey `terminal` values all mean no terminal marker is available.
 - code: groom/groom/sidecar.py::_terminal
 - code: groom/groom/discovery.py::_current_run_state
 - detail: [volume run-state evidence](concepts/volume-run-state-evidence.md)
-- verify: groom/tests/test_sidecar.py::test_terminal_reads_latest_run_json
-- verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
-- verify: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
-- verify: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
+- tests: groom/tests/test_sidecar.py::test_terminal_reads_latest_run_json
+- tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
+- tests: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
+- tests: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
 
 ## Contract
 

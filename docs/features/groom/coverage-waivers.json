@@ -1,0 +1,8 @@
+{
+  "waivers": [
+    {
+      "code": "groom/groom/app.py::stamp_assets",
+      "reason": "folded into groom-app-module.md's field-dashboard-html contract, which already names this helper as the asset-stamping step applied at import time"
+    }
+  ]
+}

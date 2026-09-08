@@ -15,3 +15,5 @@ commands are complementary rather than replacements, so no command supersedes an
 
 - code: `workflows/src/workhorse_workflows/author/workflow.py::main`
 - rule: select the command for the required operation: execution with `run`, graph rendering with `dot`, or engine identification with `version`; no command is preferred or deprecated
+- detail: [author entry point responsibilities](author-entry-point-responsibilities.md)
+- detail: [author main view selection](author-main-view-selection.md)

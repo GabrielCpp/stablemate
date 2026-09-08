@@ -9,22 +9,18 @@ Workspace file content data is the file-viewer contract used by the [serve works
 
 The HTTP body carries more than the sidecar result object does, and deliberately. `path` echoes what was asked for, so a viewer that fired two requests can drop the loser instead of showing the wrong file's text under the right file's heading. `lang` is the highlight.js grammar the file name implies, decided on the server so the extension table lives in one place next to the rest of the presentation policy rather than being duplicated in the viewer.
 
+The sidecar and HTTP behaviors described here are covered by `test_file_content_prefers_sidecar_socket`, `test_file_endpoint_joins_repo_and_path_and_returns_content`, `test_file_endpoint_swallows_unsafe_path`, `test_rpc_get_file_reads_local_file`, `test_rpc_get_file_rejects_traversal`, and `test_handle_rpc_get_file_traversal_replies_error`.
+
 - file: not an on-disk artifact; this is a websocket RPC data object, HTTP response body, and sidecar/fallback handoff shape.
 - code: groom/groom/app.py::file_content
 - code: groom/groom/sidecar.py::_rpc_get_file
 - code: groom/groom/projection.py::file_lang
 - code: groom/groom/assets/dashboard.js::openFile
 - code: groom/groom/assets/dashboard.js::FileView
-- verify: groom/tests/test_app.py::test_file_content_prefers_sidecar_socket,
-  groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content,
-  groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path,
-  groom/tests/test_sidecar_session.py::test_rpc_get_file_reads_local_file,
-  groom/tests/test_sidecar_session.py::test_rpc_get_file_rejects_traversal,
-  groom/tests/test_sidecar_session.py::test_handle_rpc_get_file_traversal_replies_error
 
 ## Contract
 
-- consistency rule: a live sidecar handling `rpc` method `getFile` returns `{"content": text}` as the `data` object in a successful `rpc_result` frame after reading the selected file from its local `/workspace` mount.
+- consistency rule: workspace-file-content-data — a live sidecar handling `rpc` method `getFile` returns `{"content": text}` as the `data` object in a successful `rpc_result` frame after reading the selected file from its local `/workspace` mount.
 - verify: json_path(path="$.content", equals="print(1)\n")
 - endpoint producer: the `/file/{container_id}` endpoint first asks the live sidecar for a `getFile` result and otherwise asks the fallback volume reader for the selected path's text.
 - sidecar request boundary: the host request is a [sidecar websocket frame](sidecar-websocket-frame.md) with method `getFile` and `params` containing `repo` plus `path`; the returned `data` object is this format's object envelope, not the final HTTP body.
@@ -186,6 +182,7 @@ The HTTP body carries more than the sidecar result object does, and deliberately
 - raises: unexpected HTTP framework failures or fallback reader exceptions other than `ValueError` can propagate.
 - verify: json_path(path="exception.type", matches="^(?!ValueError$).+")
 - code: groom/groom/app.py::file_content
+- detail: [file content documentation scopes](concepts/file-content-documentation-scopes.md)
 - tests: `groom/tests/test_app.py::test_file_content_prefers_sidecar_socket`
 - tests: `groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content`
 - tests: `groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path`

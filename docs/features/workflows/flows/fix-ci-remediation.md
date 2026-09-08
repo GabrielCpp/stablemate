@@ -46,6 +46,8 @@ the complete run, shared across repositories.
 - verify: count(subject="CI remediation fixer terminal failures", equals=1)
 - end: a push that is not pushed or unavailable returns a `failed` CI result without another poll
 - verify: count(subject="CI remediation push terminal failures", equals=1)
+- detail: [coder handoff boundary contract](../concepts/coder-handoff-boundary.md)
+- detail: [coder fix-ci package](../concepts/coder-fix-ci-package.md)
 - detail: [coder main flow](coder-main.md)
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_every_workspace_repo_is_checked_once_and_the_loop_ends`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_red_branch_is_fixed_pushed_and_re_polled_until_it_is_green`
@@ -54,7 +56,6 @@ the complete run, shared across repositories.
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_push_that_does_not_land_ends_the_loop_instead_of_spending_an_attempt`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_the_attempt_budget_is_shared_across_repos_not_reset_per_repo`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_run_killed_in_the_fixer_resumes_on_that_turn_alone`
-- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi`
 
 The workflow inputs are `repo` (empty means every workspace repository), `branch` (the full epic
 branch name), `pr_number` (optional explicit pull request selector), `docs_path`, and
@@ -67,6 +68,8 @@ The flow's terminal result is always a `Done` carrying the last `CiChecks` statu
 cannot read an existing CI surface and raises `WorkflowFailed`. A terminal reason replaces the last
 poll summary, while each repository recorded in `unread` is appended to that summary. If no poll ran,
 the status is `unavailable`.
+
+The flow is implemented by `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi`.
 
 ## Steps
 

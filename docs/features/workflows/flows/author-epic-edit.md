@@ -49,6 +49,7 @@ includes the `reworks` counter in state labels. Direct invocation uses `epic`, `
 - verify: removed(subject="the epic under the configured epics root")
 - verify: removed(subject="the interrupted epic's milestone and backlog references")
 - detail: [author workflow composition root](../concepts/author-workflow-composition-root.md)
+- detail: [author epic edit prompt contracts](../concepts/author-epic-edit-prompt-contracts.md)
 - tests: workflows/tests/author/test_workflow.py::test_epic_edit_static_findings_drive_a_replacement_plan
 - tests: ostler/tests/test_crud.py::test_update_story_rewrites_only_the_dependencies_section
 - tests: ostler/tests/test_crud.py::test_delete_epic_removes_its_milestone_reference
@@ -76,9 +77,9 @@ and feature-book paths. It returns a complete typed replacement plan without edi
 files. The plan contains journey changes, seed changes, story changes, deletion choice, and the
 affected-story rewrite list.
 
-The initial turn uses `plan-epic-edit.md`; a rejected plan is replaced by
-`refine-epic-edit-plan.md` with the validation findings and prior plan. Both turns return the
-complete plan shape, not a patch.
+The initial turn uses the [plan-epic-edit prompt](../concepts/author-epic-edit-prompt-contracts.md#plan-turns);
+a rejected plan is replaced by the [refine-epic-edit-plan prompt](../concepts/author-epic-edit-prompt-contracts.md#plan-turns)
+with the validation findings and prior plan. Both turns return the complete plan shape, not a patch.
 
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.plan_edit`
 
@@ -110,6 +111,7 @@ The review turn is read-only and returns `approved`, `needs_rework`, or `blocked
 the plan or repository.
 
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.review_plan`
+- detail: [review-epic-edit-plan prompt](../concepts/author-epic-edit-prompt-contracts.md#review-and-rewrite-turns)
 
 ### Apply and verify graph mutations
 Ostler removes requested stories and seeds, adds or updates seed metadata and story metadata, updates
@@ -120,6 +122,7 @@ seed/story sets and metadata with the plan and hashes every unaffected story bod
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.apply_plan`
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::apply_edit_plan`
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_applied_edit`
+- detail: [applied edit validation](../concepts/applied-edit-validation.md)
 
 ### Rewrite epic prose
 For a surviving epic, a model rewrites only human-owned prose. Parsed-document validation requires
@@ -131,6 +134,7 @@ The rewrite turn preserves the `Seeds` and `Stories` sections and returns either
 
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.rewrite_epic`
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_epic_document`
+- detail: [rewrite-epic-edit prompt](../concepts/author-epic-edit-prompt-contracts.md#review-and-rewrite-turns)
 
 ### Author affected stories
 The approved affected list is consumed in order. Each existing or newly added story may receive a
@@ -149,6 +153,8 @@ artifact and passes only when its findings list is empty.
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_story`
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.audit_story`
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.rework_story`
+- detail: [affected story selection](../concepts/affected-story-selection.md)
+- detail: [story authoring prompts](../concepts/author-epic-edit-prompt-contracts.md#story-turns)
 
 ### Validate coverage and commit
 The surviving epic must pass deterministic coverage and semantic coverage review, then whole-graph
@@ -162,3 +168,4 @@ commit and returns the applied edit.
 
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_coverage`
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.finish`
+- detail: [coverage review prompt](../concepts/author-epic-edit-prompt-contracts.md#coverage-turn)

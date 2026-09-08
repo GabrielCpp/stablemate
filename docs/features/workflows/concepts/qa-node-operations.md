@@ -176,9 +176,17 @@ controls the runner's credential boundary.
 - verify: removed(subject="freshly minted QA secret environment variables")
 - does: invokes Ostler QA run once and ignores its process return code because the payload status is authoritative
 - verify: count(subject="Ostler QA plan runs", equals=1)
-- does: maps runner statuses `passed`, `failed`, and `blocked` directly and maps any unrecognized status to `invalid`
-- verify: count(subject="normalized QA plan run statuses", equals=4)
-- returns: a `QaPlanRun` with normalized status, notes, and the Ostler payload when the runner executes, or a blocked result with secret-refresh notes before execution
+- does: maps each recognized runner status (`passed`, `failed`, or `blocked`) to the identical `QaPlanRun` status
+- verify: json_path(path="$.status", matches="^(passed|failed|blocked)$")
+- does: maps any unrecognized runner status to `invalid`
+- verify: json_path(path="$.status", equals="invalid")
+- returns: a `QaPlanRun` with the runner status normalized to `passed`, `failed`, `blocked`, or `invalid` when the runner executes
+- verify: json_path(path="$.status", matches="^(passed|failed|blocked|invalid)$")
+- returns: a `QaPlanRun` with notes derived from the runner outcome when the runner executes
 - verify: json_path(path="$.notes", matches=".+")
+- returns: a `QaPlanRun` carrying the Ostler payload when the runner executes
+- verify: json_path(path="$.ostler.runId", matches=".+")
+- returns: a blocked `QaPlanRun` with secret-refresh notes when minting fails before runner execution
+- verify: json_path(path="$.status", equals="blocked")
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::run_qa_plan`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_through_every_gate`

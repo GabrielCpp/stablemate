@@ -11,6 +11,8 @@ The scenario may include a [workflow container](../concepts/workflow-container.m
 
 Every response on this path is JSON — a `paths` array, and a `{path, content, lang}` object. The server sends no markup and picks no colours; the browser builds the tree, and the highlighter runs client-side against the language name the server derived from the path. That is the whole reason the same two endpoints serve a sidecar-backed read and a volume-backed one identically: neither one is rendering anything.
 
+The dashboard implementation uses `groom/groom/assets/dashboard.js::setMode`, `groom/groom/assets/dashboard.js::openRepoMenu`, `groom/groom/assets/dashboard.js::selectRepo`, `groom/groom/assets/dashboard.js::loadActivePane`, `groom/groom/assets/dashboard.js::loadFiles`, `groom/groom/assets/dashboard.js::buildTree`, `groom/groom/assets/dashboard.js::FilesTree`, `groom/groom/assets/dashboard.js::openFile`, and `groom/groom/assets/dashboard.js::FileView`; the server-side path uses `groom/groom/app.py::repos`, `groom/groom/app.py::files`, `groom/groom/app.py::file_content`, and `groom/groom/projection.py::file_lang`.
+
 - start: the groom server is running
 - verify: http_status(code=200, title="Groom Dashboard", path="/")
 - start: the browser has loaded the [groom dashboard](../gui/screens/groom-dashboard.md)
@@ -59,19 +61,6 @@ Every response on this path is JSON — a `paths` array, and a `{path, content, 
   groom/tests/test_dashboard_client.py::test_every_endpoint_is_read_as_json,
   groom/tests/test_a11y_dynamic.py::test_files_pane_is_accessible,
   groom/tests/test_sidecar_session.py::test_rpc_get_tree_lists_files_skipping_vendor_dirs,
-  groom/tests/test_sidecar_session.py::test_rpc_get_file_reads_local_file
-- code: groom/groom/assets/dashboard.js::setMode
-- code: groom/groom/assets/dashboard.js::openRepoMenu
-- code: groom/groom/assets/dashboard.js::selectRepo
-- code: groom/groom/assets/dashboard.js::loadActivePane
-- code: groom/groom/assets/dashboard.js::loadFiles
-- code: groom/groom/assets/dashboard.js::buildTree
-- code: groom/groom/assets/dashboard.js::FilesTree
-- code: groom/groom/assets/dashboard.js::openFile
-- code: groom/groom/assets/dashboard.js::FileView
-- code: groom/groom/app.py::repos
-- code: groom/groom/app.py::files
-- code: groom/groom/app.py::file_content
-- code: groom/groom/projection.py::file_lang
+ groom/tests/test_sidecar_session.py::test_rpc_get_file_reads_local_file
 - screenshot: docs/features/groom/gui/screenshots/operator-browses-workspace-file-repo-menu-open.png
 - screenshot: docs/features/groom/gui/screenshots/operator-browses-workspace-file-file-loaded.png

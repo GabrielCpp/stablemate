@@ -78,12 +78,12 @@ needs it, then restores the caller's prior process state even when that callee f
 ### scoped_env
 
 - sig: `scoped_env(name: str, value: str) -> Iterator[None]`
-- does: sets `name` to `value` for the duration of the context block
-- does: removes `name` when the block exits if it had no prior value
-- verify: removed(subject="the environment variable named by name")
-- does: restores the prior value of `name` when the block exits if one existed
-- does: restores or removes `name` when the block exits through an exception
-- verify: count(subject="scoped environment restoration cases", equals=4)
+- does:
+  - sets `name` to `value` for the duration of the context block
+  - removes `name` when the block exits if it had no prior value
+  - restores the prior value of `name` when the block exits if one existed
+  - restores or removes `name` when the block exits through an exception
+- verify: removed(subject="the environment variable")
 - code: `workflows/src/workhorse_workflows/kit/credentials.py::scoped_env`
 - tests: `workflows/tests/test_kit_credentials.py::test_scoped_env_sets_the_value_for_the_block_and_clears_it_after`
 - tests: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_a_prior_value_rather_than_clearing_it`

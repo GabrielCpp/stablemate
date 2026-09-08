@@ -20,12 +20,24 @@ epic-author, story-author, and story-split node blueprints. It exposes ten named
 reply for each prompt role, including approval/complete outcomes for planning and review turns,
 an answered decision for resolver turns, and the explicit `design-mockup` skipped outcome.
 
+- code: `workflows/src/workhorse_workflows/author/workflow.py`
 - code: `workflows/src/workhorse_workflows/author/workflow.py::workflow`
 - code: `workflows/src/workhorse_workflows/author/workflow.py::main`
 - code: `workflows/src/workhorse_workflows/author/workflow.py::__all__`
 - tests: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
-- detail: [author epic split subflow](author-epic-split-subflow.md)
-- detail: [author story-author subflow](author-story-author-subflow.md)
+- detail: [Author roadmap intake flow](../flows/author-roadmap-intake.md)
+- detail: [Author epic-edit flow](../flows/author-epic-edit.md)
+- detail: [Author story-edit flow](../flows/author-story-edit.md)
+- detail: [Author story-split flow](../flows/author-story-split.md)
+- detail: [Author story-author flow](../flows/author-story-author.md)
+- detail: [author main composition layers](author-main-composition-layers.md)
+- detail: [author shared survey blueprint](author-shared-survey-blueprint.md)
 - detail: [author shared paths](author-shared-paths.md)
 - detail: [author shared schemas](author-shared-schemas.md)
+- detail: [author entry point responsibilities](author-entry-point-responsibilities.md)
+- detail: [author main view selection](author-main-view-selection.md)
+- detail: [author epic split subflow](author-epic-split-subflow.md)
+- detail: [author story-split subflow](story-split-subflow.md)
+- detail: [author story-author subflow](author-story-author-subflow.md)
 - detail: [author main dry-run stubs](author-main-dry-run-stubs.md)
+- detail: [workflow kit export surface](workflow-kit-export-surface.md)

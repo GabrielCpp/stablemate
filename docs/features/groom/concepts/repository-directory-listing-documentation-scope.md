@@ -21,3 +21,4 @@ role in the workspace-volume flow.
 - tests: groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git,
   groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_when_none_found,
   groom/tests/test_docker_io.py::test_find_repo_dir_returns_empty_on_docker_failure
+- detail: [Repository-directory listing documentation scope](repository-directory-listing-documentation-scope.md)

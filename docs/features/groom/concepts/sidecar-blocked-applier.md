@@ -8,6 +8,8 @@ title: Sidecar blocked applier
 The sidecar blocked applier is the groom server layer that folds a connected sidecar's live `blocked` [sidecar websocket frame](../sidecar-websocket-frame.md) into the process-local [workflow registry](workflow-registry.md) during the [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) invocation. It requires a non-empty gate file path, marks the connected [workflow container](workflow-container.md) as [workflow state](workflow-state.md) `BLOCKED`, creates or replaces one [gate info](gate-info.md) record for that file path, broadcasts the fleet's current [dashboard state payload](../dashboard-state-payload.md) plus that run's refreshed detail through the [dashboard shell broadcaster](dashboard-shell-broadcaster.md#method-broadcast-shell), and then sends one separate [dashboard notify message](../dashboard-notify-message.md) built with the [question notification limit](groom-app-module.md#field-question-notify-limit) to every dashboard browser client through the [dashboard client queue set](dashboard-client-queue-set.md#method-broadcast-dashboard-message). It is the websocket delta counterpart of the HTTP [blocked push payload](../blocked-push-payload.md): both apply one gate-file delta, replace only that gate key, and keep unrelated open gates visible.
 
 - code: groom/groom/app.py::_apply_socket_blocked
+- detail: [sidecar blocked update context](sidecar-blocked-update-context.md)
+- detail: [sidecar blocked documentation scope](sidecar-blocked-documentation-scope.md)
 
 ## Contract
 
@@ -16,8 +18,10 @@ The sidecar blocked applier is the groom server layer that folds a connected sid
 - input: `container_id` is the non-empty, already-normalized workflow container id held on the registered sidecar connection; this layer uses it exactly as supplied and does not read any container id from the blocked frame.
 - input: `data` is the decoded sidecar `blocked` frame object; the layer reads only `file_path` and `question`, ignores every other field, and does not inspect the frame `type` because dispatch has already selected the blocked path.
 - file-path rule: `file_path` is read as `str(data.get("file_path", ""))`; an absent key becomes `""`, JSON `null` becomes `"None"`, and an empty normalized path stops the layer with no registry mutation, gate creation, rendering, notification script, broadcast, acknowledgement frame, or error result.
-- consistency: a non-empty sidecar file path is retained exactly as reported as the gate key and dashboard `gate_path`; this layer does not canonicalize it, validate workspace scope, inspect the filesystem, reject traversal-looking text, or require that the gate file exists.
+- consistency: gate-info — a non-empty sidecar file path is retained exactly as reported as the gate key and dashboard `gate_path`.
 - verify: json_path(path="$.runs[0].gate_path", equals="../gates/blocked.md")
+- consistency: gate-info — this layer does not canonicalize the file path, validate workspace scope, inspect the filesystem, reject traversal-looking text, or require that the gate file exists.
+- verify: json_path(path="$.runs[0].gate_path", matches="^\\.\\..*")
 - question rule: `question` is read as `str(data.get("question", ""))`; missing values become `""`, JSON `null` becomes `"None"`, and the full normalized text is stored on the gate record.
 - gate rule: a non-empty file path creates or replaces exactly one gate record keyed by that path on the connected workflow; existing gates at other file paths are preserved.
 - workflow creation rule: if no registry entry exists for the connected container id, the applier creates a placeholder workflow via [upsert workflow](workflow-registry.md#method-upsert-workflow) using the id-derived default name, then applies the blocked state and gate to that new record.

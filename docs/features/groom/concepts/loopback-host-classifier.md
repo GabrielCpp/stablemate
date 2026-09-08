@@ -17,7 +17,9 @@ change the address passed to the server runner.
 
 - input: `host` is the exact string selected for `groom serve --host`, after argparse applies the
   command default when the operator omits the flag.
-- consistency: the classifier returns `true` only for hosts it explicitly recognizes as loopback.
+- consistency: loopback-classification — the classifier returns `true` only for hosts it explicitly
+  recognizes as loopback: the literal string `localhost`, or a parseable IP address whose
+  address-family loopback property is true.
 - verify: omits(subject="groom serve stderr for localhost", text="warning: binding non-loopback host")
 - loopback names: the literal host string `localhost` is accepted as loopback without DNS lookup.
 - loopback IPs: parseable IP addresses use their address-family loopback property, so IPv4 and IPv6
@@ -38,6 +40,7 @@ change the address passed to the server runner.
 - raises: unparsable hosts are classified as non-loopback.
 - verify: json_path(path="$", equals=false)
 - code: groom/groom/cli.py::_is_loopback
+- detail: [loopback classifier authority](loopback-classifier-authority.md)
 - algorithm:
   1. Return `true` when `host` is exactly `localhost`.
   2. Otherwise, attempt to interpret `host` as an IP address.

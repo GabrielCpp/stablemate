@@ -41,8 +41,12 @@ initializer; the individual modules below own the behavior and models they provi
 - detail: [coder shared development helpers](coder-shared-dev.md)
 - detail: [coder shared documentation helpers](coder-shared-documentation.md)
 - detail: [coder QA run log](../qa-run-log.md)
+- detail: [coder dev-fix result](../dev-fix-result.md)
 - detail: [story status persistence](story-status.md)
 - detail: [coder conversation lifecycle](coder-conversation.md)
+- detail: [coder schemas exports](coder-schemas-exports.md)
+- detail: [coder shared commit messages](coder-shared-commit-messages.md)
+- detail: [coder shared scenarios](coder-shared-scenarios.md)
 
 `blueprint` is the single node-registration namespace. `paths` derives repository, document,
 story, operator-gate, and decision paths from explicit workflow inputs and Ostler's configured
@@ -158,6 +162,16 @@ permissive result models that ignore unknown keys and drop null values before ap
 - returns: non-empty ledger lines in file order, or an empty list when the run directory, ledger, or file is unreadable
 - verify: count(subject="returned set-aside epics", equals=0)
 - code: `workflows/src/workhorse_workflows/coder/shared/queue.py::epics_set_aside`
+
+### legacy_queue
+
+- sig: `legacy_queue(root: Path) -> Path`
+- does: returns the path to the legacy JSON queue sidecar for backward compatibility with repos and sandboxes that have no doc graph
+- returns: the `epics-todo.json` file path beside the ostler-managed `index.md` in the documentation root
+- verify: json_path(path="$.path", matches=".*epics-todo\\.json")
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::legacy_queue`
+
+The legacy queue is used as a fallback by `select_epic` and `prune_epic` when Ostler is unavailable or cannot return an epic list from the documentation graph. It is not read or maintained by the workflow when Ostler is working — Ostler's queue is authoritative when present.
 
 ### init_base
 

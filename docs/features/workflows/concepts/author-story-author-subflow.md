@@ -183,6 +183,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - does: returns the authored story result after recording the passing audit
 - verify: json_path(path="$.status", equals="authored")
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.story_feedback`
+- emits: [story-author-done](../story-author-done.md)
 
 ### apply_feedback
 - sig: `apply_feedback(target: StoryTarget, notes: str, mockup: str = "", reworks: int = 0, resolves: int = 0) -> Continue`
@@ -222,7 +223,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 
 ### prepare_story
 - sig: `prepare_story(logger: logging.Logger, epic: str = "", story: str = "", repo_dir: str = "") -> StoryTarget`
-- consistency: rejects blank epic or story inputs
+- consistency: story-target — rejects blank epic or story inputs
 - raises: raises `WorkflowFailed` stating that explicit non-empty `epic` and `story` inputs are required
 - verify: count(subject="blank story-author target failures", equals=1)
 - does: resolves the named story only within the requested epic through Ostler
@@ -232,6 +233,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: count(subject="story-author missing-section scaffolds", equals=1)
 - returns: returns normalized epic, story, epic directory, story directory, and story document paths
 - verify: json_path(path="$.story_path", matches="/story\\.md$")
+- emits: [story-author-target](../story-author-target.md)
 - code: `workflows/src/workhorse_workflows/author/story_author/nodes/story.py::prepare_story`
 
 ### record_story_audit
@@ -240,6 +242,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: json_path(path="$.story_digest", matches="^[0-9a-f]{64}$")
 - does: writes a passing `audit-receipt.json` beside the story document containing the digest
 - verify: created(subject="audit-receipt.json")
-- consistency: returns an `AuditReceipt` containing the SHA-256 digest and repository-relative receipt path
+- consistency: audit-receipt — returns an `AuditReceipt` containing the SHA-256 digest and repository-relative receipt path
 - verify: json_path(path="$.path", matches="audit-receipt\\.json$")
+- emits: [story-author-audit-receipt](../story-author-audit-receipt.md)
 - code: `workflows/src/workhorse_workflows/author/story_author/nodes/story.py::record_story_audit`

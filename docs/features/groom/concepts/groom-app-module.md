@@ -5,16 +5,14 @@ title: Groom app module
 ---
 # Groom app module
 
-The Groom app module is the HTTP and websocket composition point for the [groom server](../http/groom.md): it owns the Litestar route table, loads the static dashboard entry document used by the [groom dashboard](../gui/screens/groom-dashboard.md), connects browser and sidecar transports to the process-local [workflow registry](workflow-registry.md) owned by the [Groom state module](groom-state-module.md), and schedules startup discovery through the [startup background discovery scan](startup-background-discovery-scan.md). At import, `groom/groom/app.py` resolves package-local paths and preloads the dashboard HTML; `groom/groom/app.py::create_app` configures route handlers plus discovery, alert-rule, and live-state startup routines, with discovery scheduling its scan task without delaying application startup. Its public route handlers are the code anchors for the server's endpoints and invocations; its private helpers are folded into the module contract through linked helper concepts such as the [dashboard shell broadcaster](dashboard-shell-broadcaster.md), [sidecar RPC helper](sidecar-rpc-helper.md), [push-first volume metadata resolver](push-first-volume-metadata-resolver.md), [sidecar hello applier](sidecar-hello-applier.md), [sidecar progress applier](sidecar-progress-applier.md), and [sidecar blocked applier](sidecar-blocked-applier.md). The module consumes [progress push payload](../progress-push-payload.md), [blocked push payload](../blocked-push-payload.md), [exited push payload](../exited-push-payload.md), [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md), and [sidecar websocket frame](../sidecar-websocket-frame.md) formats while emitting HTML fragments, plain workspace data, JSON status objects, browser websocket frames, and sidecar websocket frames through the server surface.
+The Groom app module is the HTTP and websocket composition point for the [groom server](../http/groom.md): it owns the Litestar route table, loads the static dashboard entry document used by the [groom dashboard](../gui/screens/groom-dashboard.md), connects browser and sidecar transports to the process-local [workflow registry](workflow-registry.md) owned by the [Groom state module](groom-state-module.md), and schedules startup discovery through the [startup background discovery scan](startup-background-discovery-scan.md). At import, `groom/groom/app.py` resolves package-local paths and preloads the asset-stamped dashboard HTML; `groom/groom/app.py::create_app` configures route handlers plus discovery, alert-rule, live-state, and archival startup routines, with discovery scheduling its scan task without delaying application startup. Its public route handlers are the code anchors for the server's endpoints and invocations; its private helpers are folded into the module contract through linked helper concepts such as the [dashboard shell broadcaster](dashboard-shell-broadcaster.md), [sidecar RPC helper](sidecar-rpc-helper.md), [push-first volume metadata resolver](push-first-volume-metadata-resolver.md), [sidecar hello applier](sidecar-hello-applier.md), [sidecar progress applier](sidecar-progress-applier.md), and [sidecar blocked applier](sidecar-blocked-applier.md). The module consumes [progress push payload](../progress-push-payload.md), [blocked push payload](../blocked-push-payload.md), [exited push payload](../exited-push-payload.md), [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md), and [sidecar websocket frame](../sidecar-websocket-frame.md) formats while emitting HTML fragments, plain workspace data, JSON status objects, browser websocket frames, and sidecar websocket frames through the server surface. Its behavior is covered by `groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo`, `groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list`, `groom/tests/test_app.py::test_refresh_prunes_vanished_containers`, `groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes`, `groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected`, `groom/tests/test_app.py::test_reload_broadcasts_to_all_connected_sidecars`, and `groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate`.
 
 - code: groom/groom/app.py
-- verify: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
-  groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
-  groom/tests/test_app.py::test_refresh_prunes_vanished_containers,
-  groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes,
-  groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
-  groom/tests/test_app.py::test_reload_broadcasts_to_all_connected_sidecars,
-  groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
+
+Endpoint validation is handler-local: the push handlers return compact `{"ok": false}` responses
+for missing required identifiers, while their other exceptions propagate rather than passing through
+a module-wide error envelope (`groom/groom/app.py::push_progress`,
+`groom/groom/app.py::push_blocked`, and `groom/groom/app.py::push_exited`).
 
 ## Contract
 
@@ -22,7 +20,6 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 - surface: [groom server](../http/groom.md), whose route table is fixed by [create app](#method-create-app).
 - state owner: mutable workflow, client, answer-log, and scanning state live in the [Groom state module](groom-state-module.md), while sidecar-connection state lives in a sibling sidecar module; this module reads and mutates them through documented state, sidecar, discovery, render, Docker, and gate-answering concepts rather than owning separate persistence.
 - transport scope: serves browser HTTP, browser websocket, sidecar websocket, and residual sidecar/backstop HTTP pushes; no handler in this module exposes authentication, external OpenAPI schema entries, or durable database writes.
-- failure model: endpoint-specific validation returns small success/failure JSON only where documented; unexpected render, Docker, sidecar, websocket, or discovery exceptions are not converted into module-wide error envelopes.
 - fallback model: workspace reads prefer a connected sidecar RPC response when one exists, then fall back to Docker-volume reads only for missing or failed sidecar RPCs and only when the selected workflow has a known workspace volume.
 - static assets: static asset serving is delegated to the framework router mounted from [field-assets-dir](#field-assets-dir), while first-party dynamic route behavior remains documented under [groom server](../http/groom.md).
 
@@ -39,8 +36,9 @@ The Groom app module is the HTTP and websocket composition point for the [groom 
 ### field-dashboard-html
 
 - type: `bytes`
-- default: contents of package file `groom/groom/templates/dashboard.html` loaded when the module is imported
+- default: contents of package file `groom/groom/templates/dashboard.html`, loaded and passed through `groom/groom/app.py::stamp_assets` when the module is imported.
 - required: true
+- semantics: the `stamp_assets` helper rewrites every `/assets/...` URL in the HTML to carry the referenced file's mtime and size, so a browser's asset cache is busted whenever the underlying file changes rather than reused heuristically.
 - code: groom/groom/app.py::_DASHBOARD_HTML
 - meaning: immutable browser entry document returned by [serve root dashboard html](../http/groom.md#serve-root-dashboard-html) for `GET /`.
 
@@ -72,12 +70,12 @@ The factory assembles application configuration only: it does not run discovery,
 - code: groom/groom/app.py::create_app
 - does: Constructs the Litestar application for the [groom server](../http/groom.md).
 - verify: created(subject="Litestar application")
-- does: Registers 24 route handlers, including the package-static `/assets` router.
-- verify: count(subject="Litestar application's route handlers", equals=24)
-- does: Registers `_spawn_scan`, `_spawn_rules`, and `_spawn_live` as startup callbacks.
-- verify: count(subject="Litestar application's startup callbacks", equals=3)
-- does: Registers `_stop_rules` and `_stop_live` as shutdown callbacks.
-- verify: count(subject="Litestar application's shutdown callbacks", equals=2)
+- does: Registers 25 route handlers, including the package-static `/assets` router.
+- verify: created(subject="Litestar application's route handlers")
+- does: Registers `_spawn_scan`, `_spawn_rules`, `_spawn_live`, and `_spawn_archive` as startup callbacks.
+- verify: created(subject="Litestar application's startup callbacks")
+- does: Registers `_stop_rules`, `_stop_live`, `_stop_archive`, and `pools.shutdown_all` as shutdown callbacks.
+- verify: created(subject="Litestar application's shutdown callbacks")
 - tests: groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes
 
 ### method-index
@@ -93,22 +91,22 @@ The dashboard entry response leaves fleet, gate, file, diff, and websocket state
 - returns: [field-dashboard-html](#field-dashboard-html) as a `text/html` response for the dashboard entry page.
 - verify: visible(locator="#main")
 
-### method-search
+### method-api-state
 
-- sig: `async search(q: str = "") -> Response`
+- sig: `async api_state(q: str = "") -> dict`
 - abstract: false
 - raises: propagates renderer failures.
-- code: groom/groom/app.py::search
+- code: groom/groom/app.py::api_state
 - endpoint: [get search fragment](../http/groom.md#get-dashboard-state)
 - invocation: [serve search fragment](../http/groom.md#serve-dashboard-state)
 - does:
   - Reads a [workflow registry](workflow-registry.md) snapshot.
-  - Renders the [runs fleet view](../runs-fleet-view.md) message-list fragment for query `q` with out-of-band swap markup.
-  - Does not mutate workflow state, run discovery, or scope dashboard status counts to the search query.
+  - Renders the same fleet-state JSON object the dashboard websocket's initial frame carries, filtered to query `q`; fleet-wide status counts stay unfiltered.
+  - Does not mutate workflow state or run discovery.
 
 ### method-repos
 
-- sig: `async repos() -> Response`
+- sig: `async repos() -> list[dict]`
 - abstract: false
 - raises: propagates repository-directory reader or renderer failures.
 - code: groom/groom/app.py::repos
@@ -122,7 +120,7 @@ The dashboard entry response leaves fleet, gate, file, diff, and websocket state
 
 ### method: files
 
-- sig: `async files(container_id: str, repo: str = "") -> Response`
+- sig: `async files(container_id: str, repo: str = "") -> dict`
 - abstract: false
 - raises: propagates unexpected sidecar-registry, Docker, or response-construction failures.
 - code: groom/groom/app.py::files
@@ -138,49 +136,57 @@ For a connected sidecar, the method reads the selected repository through `getTr
   groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
   groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors
 
-### method-file-content
+### method: file-content
 
-- sig: `async file_content(container_id: str, repo: str = "", path: str = "") -> Response`
+- sig: `async file_content(container_id: str, repo: str = "", path: str = "") -> dict`
 - abstract: false
-- raises: propagates unexpected sidecar-registry, Docker, or response-construction failures; unsafe fallback paths are converted to an empty text response.
+- raises: propagates unexpected sidecar-registry, Docker, or response-construction failures.
 - code: groom/groom/app.py::file_content
-- verify: groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content,
-  groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path,
-  groom/tests/test_app.py::test_file_content_prefers_sidecar_socket
+- detail: [file content documentation scopes](file-content-documentation-scopes.md)
 - endpoint: [get workspace file content](../http/groom.md#get-workspace-file-content)
 - invocation: [serve workspace file content](../http/groom.md#serve-workspace-file-content)
 - does:
   - Requests `getFile` over the [sidecar RPC helper](sidecar-rpc-helper.md) for the selected repository and path.
-  - Falls back to the [workspace volume file-content reader](workspace-volume-file-content-reader.md) with a combined repository-relative path when the sidecar path is unavailable; skips the fallback and returns empty text when the workflow, volume, or relative path is missing.
+  - Falls back to the [workspace volume file-content reader](workspace-volume-file-content-reader.md) with a combined repository-relative path when the sidecar path is unavailable.
+  - Skips the fallback and returns empty text when the workflow, volume, or relative path is missing.
+  - Converts unsafe fallback paths to an empty text response instead of raising.
+- returns: the requested file's content or empty text without raising.
+- verify: http_status(code=200, path="/repos/{container_id}/file", title="Workspace File Content")
+- verify: json_path(path="$.content", absent=false)
+- tests: groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content,
+  groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path,
+  groom/tests/test_app.py::test_file_content_prefers_sidecar_socket
 
 ### method-worker-detail
 
-- sig: `async worker_detail(container_id: str) -> Response`
+- sig: `async worker_detail(container_id: str) -> dict`
 - abstract: false
 - raises: propagates registry-lookup or response-construction failures.
 - code: groom/groom/app.py::worker_detail
 - endpoint: [get worker detail](../http/groom.md#get-run-detail)
 - invocation: [serve worker detail](../http/groom.md#serve-run-detail)
 - does: Looks up the selected [workflow container](workflow-container.md) by id in the [workflow registry](workflow-registry.md).
-- returns: The selected run's detail projected through [detail message](groom-projection-module.md#method-detail-message) as JSON with `found` set to `true`.
+- returns: The selected run's detail projected through [run detail](groom-projection-module.md#method-run-detail) as JSON with `found` set to `true`.
 - verify: json_path(path="$.found", equals=true)
 - does: Does not broadcast, mutate registry state, or overwrite typed answer text; it is a read of one run, addressed to the one tab that asked.
 - tests: groom/tests/test_app.py::test_worker_detail_and_pushed_slices
 
 ### method: diff
 
-- sig: `async diff(container_id: str, repo: str = "") -> Response`
+- sig: `async diff(container_id: str, repo: str = "") -> dict`
 - abstract: false
 - raises: propagates unexpected sidecar-registry, Docker, or response-construction failures.
 - code: groom/groom/app.py::diff
-- verify: groom/tests/test_app.py::test_diff_endpoint_passes_repo_through,
-  groom/tests/test_app.py::test_diff_prefers_sidecar_socket
-- endpoint: [get workspace diff](../http/groom.md#get-working-tree-diff)
-- invocation: [serve workspace diff](../http/groom.md#serve-working-tree-diff)
+- detail: [diff documentation scopes](diff-documentation-scopes.md)
 - does:
   - Requests `getDiff` over the [sidecar RPC helper](sidecar-rpc-helper.md) for the selected repository.
   - Falls back to the [workspace volume diff reader](workspace-volume-diff-reader.md) when the sidecar cannot serve the diff and the workflow has a known workspace volume.
   - Returns [workspace diff data](../workspace-diff-data.md) as plain text for client-side diff rendering.
+- verify: json_path(path="$.diff", matches=".+")
+- tests: groom/tests/test_app.py::test_diff_endpoint_passes_repo_through,
+  groom/tests/test_app.py::test_diff_prefers_sidecar_socket
+- endpoint: [get workspace diff](../http/groom.md#get-working-tree-diff)
+- invocation: [serve workspace diff](../http/groom.md#serve-working-tree-diff)
 
 ### method: refresh
 
@@ -203,12 +209,13 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - tests: groom/tests/test_app.py::test_refresh_prunes_vanished_containers,
   groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
 
-### method-push-progress
+### method: push-progress
 
 - sig: `async push_progress(data: dict) -> dict`
 - abstract: false
 - raises: propagates volume metadata lookup, registry upsert, render, or broadcast failures after input validation succeeds.
 - code: groom/groom/app.py::push_progress
+- detail: [progress push documentation contexts](progress-push-documentation-contexts.md)
 - endpoint: [post push progress](../http/groom.md#post-push-progress)
 - invocation: [receive progress push](../http/groom.md#receive-progress-push)
 - does:
@@ -225,12 +232,14 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - abstract: false
 - raises: propagates volume metadata lookup, registry upsert, render, notification rendering, or broadcast failures after input validation succeeds.
 - code: groom/groom/app.py::push_blocked
+- detail: [blocked push documentation scopes](blocked-push-documentation-scopes.md)
 - endpoint: [post push blocked](../http/groom.md#post-push-blocked)
 - invocation: [receive blocked push](../http/groom.md#receive-blocked-push)
 - does:
   - Consumes [blocked push payload](../blocked-push-payload.md), requiring a non-empty normalized container id and gate file path.
   - Upserts the workflow as blocked and stores one [gate info](gate-info.md) record for the supplied gate path.
   - Broadcasts a [dashboard state payload](../dashboard-state-payload.md) plus that run's refreshed detail to its watchers, then one separate [dashboard notify message](../dashboard-notify-message.md) whose text truncates the question to [field-question-notify-limit](#field-question-notify-limit).
+  - Schedules an immediate gate poll for the container afterward, since the push is treated as a hint and the run's own gate listing is the authority that reconciles the fuller question text.
 
 ### method-push-exited
 
@@ -238,6 +247,7 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - abstract: false
 - raises: propagates volume metadata lookup, registry upsert, render, or broadcast failures after input validation succeeds.
 - code: groom/groom/app.py::push_exited
+- detail: [exited push documentation scopes](exited-push-documentation-scopes.md)
 - verify: groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code,
   groom/tests/test_app.py::test_push_exited_rejects_missing_container_id
 - endpoint: [post push exited](../http/groom.md#post-push-exited)
@@ -245,6 +255,7 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - does:
   - Consumes [exited push payload](../exited-push-payload.md), requiring a non-empty normalized container id.
   - Upserts the workflow as finished, stores a numeric exit code only when the payload value is integer-like, clears all open gates, and broadcasts the dashboard shell.
+  - Releases any active attend claim on the container, then dispatches an attendant to it when the stored exit code is present and signals a death rather than a clean exit (`0`) or a supervisor-triggered reload.
 
 ### method-dashboard-ws
 
@@ -258,7 +269,7 @@ For a connected sidecar, the method reads the selected repository through `getTr
   - Accepts one browser dashboard websocket connection.
   - Sends an initial shell snapshot and runs paired send/receive loops.
   - Delegates inbound [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md) objects to the [dashboard websocket receive loop](dashboard-websocket-receive-loop.md) and command handler.
-- consistency: Each accepted browser dashboard websocket session registers one outbound queue in the [dashboard client queue set](dashboard-client-queue-set.md) for the duration of the session and unregisters it when the session ends.
+- consistency: dashboard-client-queue-set — each accepted browser dashboard websocket session registers one outbound queue in the [dashboard client queue set](dashboard-client-queue-set.md) for the duration of the session and unregisters it when the session ends.
 
 ### method-dashboard-sidecar
 
@@ -266,6 +277,7 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - abstract: false
 - raises: propagates non-disconnect websocket, state-application, registry, RPC-resolution, or broadcast failures after current-connection cleanup.
 - code: groom/groom/app.py::dashboard_sidecar
+- detail: [sidecar session and workflow state](sidecar-session-and-workflow-state.md)
 - verify: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate,
   groom/tests/test_app.py::test_apply_hello_running_when_no_gates,
   groom/tests/test_app.py::test_apply_hello_finished_when_terminal,
@@ -274,8 +286,10 @@ For a connected sidecar, the method reads the selected repository through `getTr
   groom/tests/test_sidecar_hub.py::test_unregister_only_removes_current_connection
 - endpoint: [websocket sidecar](../http/groom.md#websocket-sidecar)
 - invocation: [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session)
-- does: Accepts one sidecar websocket connection and waits for a `hello` [sidecar websocket frame](../sidecar-websocket-frame.md) with a non-empty container id before registering a [sidecar connection](sidecar-connection.md).
-- does: Ignores non-object frames, ignores frames without a usable `hello` identity before registration, applies `hello`, `progress`, and `blocked` frames through sidecar applier concepts, and resolves `rpc_result` frames against pending host-to-sidecar RPC calls.
+- does: Accepts one sidecar websocket connection and waits for a `hello` [sidecar websocket frame](../sidecar-websocket-frame.md) with a non-empty container id.
+- consistency: sidecar-connection — a sidecar websocket connection is registered as a [sidecar connection](sidecar-connection.md) only after its `hello` frame supplies a non-empty container id.
+- verify: created(subject="sidecar connection for the hello container id")
+- does: Ignores non-object frames, ignores frames without a usable `hello` identity before registration, applies `hello`, `progress`, and `blocked` frames through sidecar applier concepts, resolves `rpc_result` frames against pending host-to-sidecar RPC calls, and, for a `turn` frame, pulls the named turn record from the container rather than accepting the frame's own body.
 - does: Unregisters the current sidecar connection on disconnect or exit so pending RPC callers fail fast and future data-plane requests can fall back.
 
 ### method-reload
@@ -305,10 +319,11 @@ For a connected sidecar, the method reads the selected repository through `getTr
 
 ### method-broadcast-shell
 
-- sig: `async _broadcast_shell() -> None`
+- sig: `async _broadcast_shell(changed: str = "") -> None`
 - abstract: false
 - raises: propagates snapshot, render, or client-queue broadcast failures.
 - code: groom/groom/app.py::_broadcast_shell
+- does: When `changed` names a container id, also pushes that run's detail slices to the tabs watching it, after the fleet-wide broadcast.
 - detail: [dashboard shell broadcaster](dashboard-shell-broadcaster.md)
 
 ### method-ensure-volumes
@@ -335,19 +350,21 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - code: groom/groom/app.py::_reconcile
 - detail: [reconcile workflow fleet](workflow-registry.md#method-reconcile-workflow-fleet)
 
-### method-handle-command
+### method: handle-command
 
-- sig: `async _handle_command(data: dict) -> None`
+- sig: `async _handle_command(data: dict, queue: asyncio.Queue | None = None) -> None`
 - abstract: false
 - raises: propagates gate-answering, logging, render, or broadcast failures for answer commands.
 - code: groom/groom/app.py::_handle_command
 - detail: [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md)
-- does:
-  - Ignores any browser websocket frame whose `cmd` field is not `answer`.
-  - Reads `workflow_id`, `file_path`, and `answer` from the frame, supplies the selected workflow's workspace volume when available, and calls the [gate answering layer](gate-answering-layer.md).
-  - Records one [answer log entry](../answer-log-entry.md) for every answer attempt.
-  - When the answer succeeds and clears the last gate from a blocked workflow, moves the workflow to the running state before broadcasting.
-  - Broadcasts the [dashboard state payload](../dashboard-state-payload.md) after every answer attempt, pushes the run's detail to the tabs watching it, and sends a [dashboard answered message](../dashboard-answered-message.md) only for successful answers.
+- detail: [dashboard command handling](dashboard-command-handling.md)
+- does: Ignores any browser websocket frame whose `cmd` field is neither `watch` nor `answer`.
+- verify: unchanged(subject="workflow state")
+- does: For a `watch` command, registers the caller's `queue` as watching the named run, then immediately pushes that run's detail to it.
+- verify: created(subject="queue watch registration")
+- verify: emitted(event="detail message")
+- does: For an `answer` command, delegates to `_answer` with the frame data.
+- verify: emitted(event="answer response broadcast")
 
 ### method-send-loop
 
@@ -359,13 +376,13 @@ For a connected sidecar, the method reads the selected repository through `getTr
 
 ### method-recv-loop
 
-- sig: `async _recv_loop(socket: WebSocket) -> None`
+- sig: `async _recv_loop(socket: WebSocket, queue: asyncio.Queue) -> None`
 - abstract: false
 - raises: propagates websocket receive and command-handler exceptions.
 - code: groom/groom/app.py::_recv_loop
 - detail: [dashboard websocket receive loop](dashboard-websocket-receive-loop.md)
 - does:
-  - Repeatedly receives one JSON browser websocket frame and delegates it to [method-handle-command](#method-handle-command).
+  - Repeatedly receives one JSON browser websocket frame and delegates it, along with the connection's `queue`, to [method-handle-command](#method-handle-command).
   - Does not send responses directly; all browser-visible effects are produced by the delegated command handler and dashboard broadcaster.
 
 ### method-apply-hello
@@ -374,7 +391,7 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - abstract: false
 - raises: propagates volume metadata, registry, render, or broadcast failures.
 - code: groom/groom/app.py::_apply_hello
-- detail: [sidecar hello applier](sidecar-hello-applier.md)
+- detail: [sidecar hello application contract](sidecar-hello-applier.md)
 
 ### method-apply-socket-progress
 
@@ -382,7 +399,7 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - abstract: false
 - raises: propagates registry, render, or broadcast failures.
 - code: groom/groom/app.py::_apply_socket_progress
-- detail: [sidecar progress applier](sidecar-progress-applier.md)
+- detail: [sidecar progress documentation contexts](sidecar-progress-documentation-contexts.md)
 
 ### method-apply-socket-blocked
 
@@ -390,7 +407,7 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - abstract: false
 - raises: propagates registry, render, notification-rendering, or broadcast failures.
 - code: groom/groom/app.py::_apply_socket_blocked
-- detail: [sidecar blocked applier](sidecar-blocked-applier.md)
+- detail: [sidecar blocked update context](sidecar-blocked-update-context.md)
 
 ### method-background-scan
 
@@ -422,4 +439,5 @@ When Litestar starts, [schedule startup discovery scan](../http/groom.md#schedul
 - step: Residual push endpoints and sidecar websocket frames normalize or select one workflow container id.
 - step: The module ensures volume metadata when the path needs fallback workspace access, then upserts [workflow state](workflow-state.md) and gate records through the [workflow registry](workflow-registry.md).
 - step: The module renders current shell fragments through linked renderer concepts and broadcasts them to the [dashboard client queue set](dashboard-client-queue-set.md).
-- step: Browser dashboard websockets receive shell fragments as out-of-band HTML; answer submissions return over the same websocket as [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md) objects and re-enter the gate-answering path.
+
+Browser dashboard websockets receive shell fragments as out-of-band HTML. Their receive loop routes [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md) objects through the answer command handler and into the shared gate-answering path (`groom/groom/app.py::dashboard_ws`, `groom/groom/app.py::_handle_command`, and `groom/groom/app.py::_answer`).

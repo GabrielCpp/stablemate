@@ -27,7 +27,14 @@ over [GET /api/state](../http/groom.md#get-dashboard-state), and both routes end
 the same [apply-state](../concepts/dashboard-client-store.md#method-apply-state)
 call. That is the whole point of serving a fixed document: the startup path and the
 resync path are not two renderers that can drift apart, and the first frame a fresh
-tab receives is byte-identical to the body a recovering tab polls.
+ tab receives is byte-identical to the body a recovering tab polls. The implementation of this journey is
+ distributed across `groom/groom/cli.py::serve`, `groom/groom/app.py::create_app`,
+ `groom/groom/app.py::_spawn_scan`, `groom/groom/app.py::_background_scan`,
+ `groom/groom/app.py::_spawn_rules`, `groom/groom/app.py::_spawn_live`,
+ `groom/groom/app.py::_live_loop`, `groom/groom/app.py::index`,
+ `groom/groom/app.py::dashboard_ws`, `groom/groom/app.py::_broadcast_shell`,
+ `groom/groom/projection.py::state_message`, `groom/groom/assets/dashboard.js::startConnection`,
+ `groom/groom/assets/dashboard.js::connect`, and `groom/groom/assets/dashboard.js::applyState`.
 
 - start: an operator invokes `groom serve` on a trusted host with a parseable
   host and port.
@@ -165,18 +172,4 @@ tab receives is byte-identical to the body a recovering tab polls.
   groom/tests/test_connection_state.py::test_open_but_silent_socket_goes_stale_and_starts_resyncing,
   groom/tests/test_dashboard_client.py::test_the_client_module_parses,
   groom/tests/test_dashboard_client.py::test_htmx_is_gone_from_the_shipped_surface
-- code: groom/groom/cli.py::serve
-- code: groom/groom/app.py::create_app
-- code: groom/groom/app.py::_spawn_scan
-- code: groom/groom/app.py::_background_scan
-- code: groom/groom/app.py::_spawn_rules
-- code: groom/groom/app.py::_spawn_live
-- code: groom/groom/app.py::_live_loop
-- code: groom/groom/app.py::index
-- code: groom/groom/app.py::dashboard_ws
-- code: groom/groom/app.py::_broadcast_shell
-- code: groom/groom/projection.py::state_message
-- code: groom/groom/assets/dashboard.js::startConnection
-- code: groom/groom/assets/dashboard.js::connect
-- code: groom/groom/assets/dashboard.js::applyState
 - screenshot: docs/features/groom/gui/screenshots/serve-dashboard-and-startup-discovery-post-discovery.png

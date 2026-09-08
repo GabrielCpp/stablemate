@@ -21,6 +21,10 @@ only composes them for one story-split run.
 - code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow`
 - code: `workflows/src/workhorse_workflows/author/story_split/nodes/_blueprint.py::blueprint`
 - tests: `workflows/tests/author/story_split/test_flow.py::test_accepts_one_epic_graph_without_selecting_authoring_or_git`
+- detail: [story-split prompt](../story-split-prompt.md)
+- detail: [coverage review prompt](../coverage-review-prompt.md)
+- detail: [story-split flow concept selection](story-split-flow-concept-selection.md)
+- detail: [story-split flow inputs](story-split-flow-inputs.md)
 - detail: [story split completion](../story-split-done.md)
 - detail: [story split review receipt](../story-split-receipt.md)
 - detail: [story split agent result](../story-split-agent-result.md)
@@ -197,6 +201,7 @@ documented by the linked shared concepts and formats.
 - code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`
 - code: `workflows/src/workhorse_workflows/author/main/nodes/coverage.py::validate_coverage`
 - detail: [author coverage validator](coverage-validator.md)
+- detail: [author load_config documentation roles](author-load-config-documentation-roles.md)
 
 ## Nodes
 
@@ -204,7 +209,7 @@ documented by the linked shared concepts and formats.
 - sig: `record_story_split_review(logger: logging.Logger, epic: str, repo_dir: str = "") -> StorySplitReceipt`
 - does: resolves the repository root and locates the named epic in the Ostler graph
 - verify: count(subject="story-split receipt epic resolutions", equals=1)
-- consistency: rejects an absent epic
+- consistency: epic — rejects an absent epic
 - verify: count(subject="missing story-split receipt epic failures", equals=1)
 - raises: raises `WorkflowFailed` stating that no epic with the requested name exists
 - does: rejects an epic without a persisted `epic.md`

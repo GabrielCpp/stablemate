@@ -20,8 +20,11 @@ splitting, or clustering stage.
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/parity.py::ParityConfig`
 - tests: `workflows/tests/author/parity_surveyor/test_flow.py::test_a_two_surface_baseline_surveys_both_and_emits_only_the_unowned_one`
 - tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_expand_freezes_one_unit_per_baseline_surface`
+- detail: [parity configuration documentation roles](parity-config-documentation-roles.md)
 - detail: [parity configuration](../parity-config.md)
 - detail: [shared survey library](survey-shared-library.md)
+- detail: [parity surveyor concern boundaries](parity-surveyor-concern-boundaries.md)
+- detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 The workflow is entered by the author composition root as the named `parity-surveyor` handoff.
 Its `baseline_inventory` input is required in practice; `survey_dir` defaults to
@@ -59,6 +62,7 @@ directory and keeps derived paths repository-relative.
 - returns: returns [parity configuration](../parity-config.md) containing all resolved comparison paths
 - verify: count(subject="parity configuration results", equals=1)
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.setup`
+- detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### labels
 - sig: `labels() -> dict[str, str]`
@@ -67,6 +71,7 @@ directory and keeps derived paths repository-relative.
 - returns: returns a mapping containing `work_id` and `progress` when a selection exists
 - verify: count(subject="parity survey label snapshots", equals=1)
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.labels`
+- detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### start
 - sig: `start() -> Continue`
@@ -75,6 +80,7 @@ directory and keeps derived paths repository-relative.
 - returns: continues to `pick` with the successful expansion result
 - verify: count(subject="parity inventory freezes", equals=1)
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.start`
+- detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### pick
 - sig: `pick() -> Continue`
@@ -83,6 +89,7 @@ directory and keeps derived paths repository-relative.
 - returns: continues to `assess` with the unit id, path, kind, record path, and progress
 - verify: count(subject="parity unit selections", equals=1)
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.pick`
+- detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### assess
 - sig: `assess(unit_id: str, unit_path: str, unit_kind: str, record_path: str, progress: str = "") -> Continue`
@@ -93,6 +100,7 @@ directory and keeps derived paths repository-relative.
 - returns: continues to `mark` with the agent assessment, unit id, and record path
 - verify: count(subject="parity unit assessments", equals=1)
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.assess`
+- detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### mark
 - sig: `mark(unit_id: str, record_path: str) -> Continue`
@@ -102,6 +110,7 @@ directory and keeps derived paths repository-relative.
 - returns: continues to `pick`
 - verify: count(subject="parity finding records marked", equals=1)
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.mark`
+- detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### verify
 - sig: `verify() -> Continue`
@@ -110,6 +119,7 @@ directory and keeps derived paths repository-relative.
 - returns: continues to `emit` only when coverage holds
 - verify: count(subject="parity coverage gates", equals=1)
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.verify`
+- detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### emit
 - sig: `emit() -> Done`
@@ -119,6 +129,7 @@ directory and keeps derived paths repository-relative.
 - returns: returns `Done` with the emission result, including bullet count and suppression note
 - verify: count(subject="parity artifact emissions", equals=1)
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.emit`
+- detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### parity_slug
 - sig: `parity_slug(value: str) -> str`

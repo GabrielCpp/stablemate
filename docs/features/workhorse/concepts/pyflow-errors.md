@@ -27,6 +27,12 @@ failure remains resumable unless the outer run policy explicitly marks it termin
 - verify: json_path(path="exception.type", equals="AgentTimeout")
 - code: `workhorse/workhorse/pyflow/errors.py::AgentTimeout`
 
+### field: AgentTurnFailed
+- type: `PyflowError`
+- semantics: an agent turn exhausted its recovery ladder without producing an answer, and is deliberately not a supertype of `AgentTimeout`
+- verify: json_path(path="exception.type", equals="AgentTurnFailed")
+- code: `workhorse/workhorse/pyflow/errors.py::AgentTurnFailed`
+
 ### field: RunBudgetExceeded
 - type: `PyflowError`
 - semantics: the run-wide wall-clock budget expired and the checkpoint must remain resumable
@@ -63,9 +69,14 @@ failure remains resumable unless the outer run policy explicitly marks it termin
 - verify: json_path(path="$.error.type", equals="WorkflowFrozenError")
 - code: `workhorse/workhorse/pyflow/errors.py::WorkflowFrozenError`
 
-The package re-exports these classes, the transition values, `Blueprint`, `Registry`,
+The package re-exports `PyflowError`, `WorkflowFailed`, `AgentTimeout`,
+`AgentTurnFailed`,
+`WorkflowDefinitionError`, `UnknownStateError`, `UnknownNodeError`, `NodeNotRunError`,
+and `WorkflowFrozenError`, along with the transition values, `Blueprint`, `Registry`,
 `Workflow`, `state`, `NodeSpec`, `StateSpec`, and `Transition` from `pyflow.__init__`.
-The `run` module is intentionally not imported by that package initializer, keeping a
-workflow's lightweight declaration import separate from the run engine.
+`RunBudgetExceeded` remains available from `workhorse.pyflow.errors` but is not a
+`pyflow` package export. The `run` module is intentionally not imported by that package
+initializer, keeping a workflow's lightweight declaration import separate from the run
+engine.
 
 - code: `workhorse/workhorse/pyflow/__init__.py::__all__`

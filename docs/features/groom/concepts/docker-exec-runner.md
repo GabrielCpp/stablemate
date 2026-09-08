@@ -9,6 +9,7 @@ Docker exec runner is Groom's host-to-container command helper for executing one
 
 - code: groom/groom/docker_io.py::docker_exec
 - tests: `groom/tests/test_docker_io.py::test_docker_exec_builds_user_and_env_flags`
+- detail: [Docker exec documentation scope](docker-exec-documentation-scope.md)
 - refs: [host-to-container sidecar query](host-to-container-sidecar-query.md), [Docker subprocess runner](docker-subprocess-runner.md), [workflow container](workflow-container.md)
 
 ## Contract
@@ -23,7 +24,8 @@ Docker exec runner is Groom's host-to-container command helper for executing one
 - input timeout: integer seconds; defaults to Groom's shared Docker I/O timeout of 20 seconds and is forwarded unchanged to the [Docker subprocess runner](docker-subprocess-runner.md).
 - nonzero exit policy: does not convert non-zero Docker exits to `None`, booleans, or exceptions; callers interpret the returned process result according to their own fallback contract.
 - exception policy: does not catch process launch failures or timeout exceptions from the subprocess runner; callers that need fallback behavior catch them at the call site.
-- security: never invokes a shell and never concatenates the command into a shell string; shell expansion, command injection through token text, and host-side redirection are outside this helper's behavior.
+- consistency: docker-exec-argv — invoked with a list-form argv and no subprocess shell option, preserving caller-provided command tokens as individual arguments rather than a shell command string.
+- verify: json_path(path="kwargs.shell", absent=true)
 - state: does not mutate Groom's workflow registry, gate files, sidecar session table, dashboard clients, or Docker volumes; observable container effects are limited to whatever short-lived process Docker starts inside the target container.
 
 ## Effects
@@ -35,7 +37,7 @@ Docker exec runner is Groom's host-to-container command helper for executing one
 - Adds: the in-container command tokens after the container id in their caller-provided order.
 - Calls: the [Docker subprocess runner](docker-subprocess-runner.md) once with the completed argv and the supplied timeout.
 - Returns: the subprocess runner's completed process result unchanged.
-- consistency: Returns the completed process result from the [Docker subprocess runner](docker-subprocess-runner.md) unchanged, including argv, return code, stdout text, and stderr text.
+- consistency: completed-process-result — returned from the [Docker subprocess runner](docker-subprocess-runner.md) unchanged, including argv, return code, stdout text, and stderr text.
 - verify: unchanged(subject="Docker subprocess runner completed process result")
 
 ## Algorithm
@@ -51,7 +53,7 @@ The implementation returns the Docker subprocess runner result directly from
 
 ## Failure behavior
 
-- consistency: A Docker non-zero exit is returned unchanged in the completed process result's return code and stdout/stderr streams rather than converted to `None`, a boolean, or an exception.
+- consistency: completed-process-result — a Docker non-zero exit is returned unchanged in the completed process result's return code and stdout/stderr streams rather than converted to `None`, a boolean, or an exception.
 - verify: unchanged(subject="Docker subprocess runner completed process result")
 - Missing Docker binary: surfaces as the subprocess runner's launch exception unless the caller catches it.
 - Timeout: surfaces as the subprocess runner's timeout exception unless the caller catches it.
@@ -67,9 +69,9 @@ The implementation returns the Docker subprocess runner result directly from
 - does: constructs one `docker exec` argv beginning with `docker`, `exec` and ending with the supplied container id followed by the supplied command tokens in their original order.
 - verify: count(subject="Docker exec invocations", equals=1)
 - does: adds `-u` followed by the supplied user before the container id only when `user` is truthy.
-- verify: json_path(path="argv", matches="-u")
+- verify: created(subject="the Docker exec user flag")
 - does: adds one `-e KEY=VALUE` pair before the container id for each supplied environment mapping item, preserving mapping iteration order.
-- verify: json_path(path="argv", matches="-e")
+- verify: created(subject="the Docker exec environment flags")
 - does: delegates the completed argv and supplied timeout once to the [Docker subprocess runner](docker-subprocess-runner.md) without shell parsing or Docker-result interpretation.
 - verify: count(subject="Docker subprocess runner calls", equals=1)
 - raises: surfaces process launch failures from the [Docker subprocess runner](docker-subprocess-runner.md).

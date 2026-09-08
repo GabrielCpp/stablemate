@@ -43,21 +43,24 @@ title: Coder QA flow
 - verify: count(subject="passed QA flow results", equals=1)
 - end: a product failure, rescope, development-target report, replan, or operator-gated block is returned without silently approving the story
 - verify: count(subject="non-passing QA flow results", equals=1)
+- detail: [coder handoff boundary contract](../concepts/coder-handoff-boundary.md)
+- detail: [coder qa package](../concepts/coder-qa-package.md)
 - detail: [coder main flow](coder-main.md)
 - detail: [coder QA subflow](../concepts/coder-qa-subflow.md)
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_through_every_gate`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_an_unmappable_packet_is_repaired_and_rebuilt`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_failing_run_is_fixed_one_scenario_at_a_time`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_audit_refuting_on_a_product_test_gap_sends_the_fixer_not_the_planner`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_run_killed_mid_audit_resumes_on_the_audit`
 
-The checkpointed `QaLoop` carries the QA result, context and plan diagnostics, assessment and
-audit records, repair counters, failure fingerprints, setup-problem bundles, regression flags,
-operator escalations, and docs-recheck state. The loop is rebuilt at `build_context` after any
-product, feedback, regression, or grounding change, so the plan always answers the current diff.
-The QA and plan wall-clock budgets are advisory telemetry; bounded repair ceilings, repeated
-refusal detection, and operator gates decide whether work continues.
+The flow class `Qa` and the assessment-routing tuple `RoutedFindings` are declared in
+`workflows/src/workhorse_workflows/coder/qa/flow.py`. The checkpointed `QaLoop` carries the QA
+result, context and plan diagnostics, assessment and audit records, repair counters, failure
+fingerprints, setup-problem bundles, regression flags, operator escalations, and docs-recheck
+state. The loop is rebuilt at `build_context` after any product, feedback, regression, or
+grounding change, so the plan always answers the current diff. The QA and plan wall-clock
+budgets are advisory telemetry; bounded repair ceilings, repeated refusal detection, and
+operator gates decide whether work continues.
 
 ## Steps
 

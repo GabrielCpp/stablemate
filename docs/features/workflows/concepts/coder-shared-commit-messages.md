@@ -35,6 +35,7 @@ formats.
 - does: replaces every run of characters outside lowercase letters, digits, dot, underscore, and hyphen with a hyphen
 - verify: json_path(path="$.scope", equals="api-service")
 - does: removes leading and trailing dots and hyphens, returning an empty scope when no valid name remains
+- verify: removed(subject="the normalized package name's leading and trailing dots and hyphens")
 - verify: json_path(path="$.scope", absent=true)
 - returns: the cleaned package scope without adding Conventional Commit punctuation
 - code: `workflows/src/workhorse_workflows/coder/shared/commits.py::scope`
@@ -44,9 +45,10 @@ formats.
 
 - sig: `describe(text: str) -> str`
 - does: collapses all whitespace runs to single spaces and removes surrounding whitespace
+- verify: removed(subject="the description's surrounding whitespace")
 - verify: json_path(path="$.description", equals="spaced out")
-- does: removes one trailing period from the normalized text
-- verify: removed(subject="the input description's trailing period")
+- does: removes trailing periods from the normalized text
+- verify: removed(subject="the normalized description's trailing periods")
 - verify: json_path(path="$.description", equals="add password reset")
 - does: lowercases the first character when the remainder of the first word is lowercase or empty
 - verify: json_path(path="$.description", equals="add password reset")
@@ -80,6 +82,7 @@ formats.
 - verify: created(subject="the message's Epic trailer")
 - verify: json_path(path="$.lines[2]", equals="Epic: checkout")
 - does: adds a `Story:` trailer after the epic trailer when story is non-empty
+- verify: created(subject="the message's Story trailer")
 - verify: json_path(path="$.lines[3]", equals="Story: guest-cart")
 - does: returns only the subject when neither provenance value is supplied
 - verify: count(subject="message lines without provenance trailers", equals=1)

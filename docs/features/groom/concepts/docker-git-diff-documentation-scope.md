@@ -16,5 +16,4 @@ fallback reader's request context and read-only behavior, and [the workspace dif
 for its role in the data handoff. These views are complementary; source code records no preference
 or deprecation among them because they name the one callable at different documentation scopes.
 
-- code: groom/groom/docker_io.py::git_diff
 - rule: choose the node by the documentation question, not as an implementation selection; all three describe the same Docker-volume `git_diff` callable

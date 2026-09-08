@@ -9,6 +9,8 @@ This journey covers the as-built operator path through the [groom dashboard](../
 
 The wire carries the raw unified diff as one JSON string — `{"diff": "…"}` — and nothing else. Diff2Html both parses that text and renders it, and it escapes what it emits, which is why the diff rides through unsplit rather than having half a parser reimplemented server-side. Parsing and rendering happen in the browser, once per load; selecting a file afterwards costs no request.
 
+The implementation is anchored by `groom/groom/assets/dashboard.js::DiffDisclosure`, `groom/groom/assets/dashboard.js::setMode`, `groom/groom/assets/dashboard.js::openRepoMenu`, `groom/groom/assets/dashboard.js::selectRepo`, `groom/groom/assets/dashboard.js::loadActivePane`, `groom/groom/assets/dashboard.js::loadDiff`, `groom/groom/assets/dashboard.js::buildTree`, `groom/groom/assets/dashboard.js::DiffTree`, `groom/groom/assets/dashboard.js::DiffView`, `groom/groom/assets/dashboard.js::diffMarkup`, `groom/groom/app.py::repos`, and `groom/groom/app.py::diff`.
+
 - start: the groom server is running, the browser has loaded the [groom dashboard](../gui/screens/groom-dashboard.md), and at least one [workflow container](../concepts/workflow-container.md) may have a known `workspace_volume`. For the detail-disclosure path, a run is selected in the Runs pane detail. For the Diff pane path, the dashboard may start with no selected repository, or with [dashboard selected repository state](../dashboard-selected-repository-state.md) already populated from an earlier Files or Diff pane selection.
 - steps:
   1. Optional detail entry: the operator expands [toggle detail working tree diff](../gui/screens/groom-dashboard.md#toggle-detail-working-tree-diff) from the selected run's detail pane. The disclosure is a component with its own local loaded/failed state rather than wiring re-attached after each push — it ignores closing events and an already-loaded body, shows `Loading diff…` on first expansion, and sends `GET /diff/{container_id}` without a `repo` query so the endpoint uses its default checkout selection. Because that state is component-local and the pane is keyed, a detail push arriving mid-read neither re-fetches the diff nor collapses the disclosure.
@@ -62,18 +64,6 @@ The wire carries the raw unified diff as one JSON string — `{"diff": "…"}` �
   groom/tests/test_a11y_dynamic.py::test_diff_pane_is_accessible,
   groom/tests/test_sidecar_session.py::test_git_diff_reports_working_tree_changes,
   groom/tests/test_sidecar_session.py::test_git_diff_empty_when_no_repo
-- code: groom/groom/assets/dashboard.js::DiffDisclosure
-- code: groom/groom/assets/dashboard.js::setMode
-- code: groom/groom/assets/dashboard.js::openRepoMenu
-- code: groom/groom/assets/dashboard.js::selectRepo
-- code: groom/groom/assets/dashboard.js::loadActivePane
-- code: groom/groom/assets/dashboard.js::loadDiff
-- code: groom/groom/assets/dashboard.js::buildTree
-- code: groom/groom/assets/dashboard.js::DiffTree
-- code: groom/groom/assets/dashboard.js::DiffView
-- code: groom/groom/assets/dashboard.js::diffMarkup
-- code: groom/groom/app.py::repos
-- code: groom/groom/app.py::diff
-- screenshot: docs/features/groom/gui/screenshots/operator-inspects-working-tree-diff-detail-disclosure-expanded.png
+ - screenshot: docs/features/groom/gui/screenshots/operator-inspects-working-tree-diff-detail-disclosure-expanded.png
 - screenshot: docs/features/groom/gui/screenshots/operator-inspects-working-tree-diff-diff-pane-tree-loaded.png
 - screenshot: docs/features/groom/gui/screenshots/operator-inspects-working-tree-diff-file-selected.png

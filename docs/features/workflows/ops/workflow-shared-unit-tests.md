@@ -25,6 +25,7 @@ and blocks the aggregate CI gate.
 - surfaces: [hello-world workflow composition root](../concepts/hello-world-workflow-composition-root.md)
 - code: `workflows/Makefile::test`
 - working-directory: workflows
+- detail: [Workflow unit-test tiers](../concepts/workflow-unit-test-tiers.md)
 
 ## Steps
 

@@ -29,3 +29,4 @@ describe different contexts that converge on the same endpoint.
 
 - code: groom/groom/app.py::push_blocked
 - rule: use the blocked push payload to report a gate to `push_blocked`; consume the dashboard notify message only as the resulting server-to-browser interruption
+- detail: [blocked push documentation index](blocked-push-documentation-index.md)

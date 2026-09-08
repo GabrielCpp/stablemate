@@ -82,13 +82,13 @@ workflow-format file or a backend request.
 - required: false
 - semantics: opaque operator-configured model capacity tier resolved through `[power.<level>.<backend>]` mappings rather than a closed enum
 - verify: json_path(path="$.power", matches=".+")
-- semantics: `low`, `medium`, `high`, `smart`, and `extra-smart` are the shipped cheapest-to-most-capable convention
+- semantics: `low`, `medium`, `high`, `max`, and `ultra` are the shipped cheapest-to-most-capable convention
 - verify: json_path(path="$.power", equals="high")
-- semantics: `smart` requests frontier reasoning
-- verify: json_path(path="$.power", equals="smart")
-- semantics: `extra-smart` requests the premium model
-- verify: json_path(path="$.power", equals="extra-smart")
-- semantics: neither `smart` nor `extra-smart` constrains the tiers an operator configures
+- semantics: `max` requests frontier reasoning
+- verify: json_path(path="$.power", equals="max")
+- semantics: `ultra` requests the premium model
+- verify: json_path(path="$.power", equals="ultra")
+- semantics: neither `max` nor `ultra` constrains the tiers an operator configures
 - verify: json_path(path="$.power", equals="cheap-bulk")
 - semantics: an unmapped or misspelled tier falls through to `[default.<backend>]` rather than failing the run
 - verify: json_path(path="$.model", matches=".+")
@@ -96,10 +96,10 @@ workflow-format file or a backend request.
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### timeout
-- type: `float | None`
-- default: `3600`
+- type: `float | None` — per-turn seconds
+- default: `None`
 - required: false
-- semantics: per-turn seconds
+- semantics: unset falls back to the engine default, `resilience.result_timeout_s` (3600s unless overridden)
 - verify: json_path(path="$.timeout", equals=3600)
 - semantics: numeric strings are accepted as seconds
 - verify: json_path(path="$.timeout", equals=5000)
@@ -165,22 +165,21 @@ workflow-format file or a backend request.
 - default: `None`
 - verify: json_path(path="$.activity", absent=true)
 - required: false
-- verify: json_path(path="$.activity", absent=true)
-- semantics: optional Jinja-rendered human activity label stamped as `wf.activity` telemetry before the node runs
-- semantics: lets a monitor display the run's current activity without knowing the workflow's vocabulary
-- semantics: an empty rendered activity label is not published
-- verify: emitted(event="wf.activity", count=1)
+- semantics: accepted on the model as a carry-over from the retired YAML engine's per-node `activity:` label
+- verify: json_path(path="$.activity", matches=".+")
+- semantics: the pyflow runner never reads this field, so setting it has no effect on a node's turn
+- semantics: a running node's current activity is instead derived from a flagged log record (`extra={"activity": True}`) and published as the `activity` telemetry label — see [pyflow activity labels](pyflow-activity.md)
 - code: `workhorse/workhorse/runner/spec.py::AgentNode`
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### next
 - type: `str | None`
 - default: `None`
-- verify: json_path(path="$.next", matches="^None$")
-- required: false
 - verify: json_path(path="$.next", absent=true)
-- semantics: optional following node identifier carried by the node specification
+- required: false
+- semantics: accepted on the model as a carry-over from the retired YAML engine, which read a node's declared `next:` both to advance to the following node and, when the recovery ladder gave up on a node, to fall back to it with fabricated outputs
 - verify: json_path(path="$.next", equals="next_node")
+- semantics: the pyflow runner reads neither use — normal advancement is derived from the state's own return value (see [pyflow state graph](pyflow-state-graph.md)), and a node the ladder exhausts now raises instead of defaulting to a next node (see [agent resilience tuning](agent-resilience-tuning.md)) — so setting `next` has no effect on a node's turn
 - code: `workhorse/workhorse/runner/spec.py::AgentNode`
 - detail: [Agent node field selection](agent-node-field-selection.md)
 

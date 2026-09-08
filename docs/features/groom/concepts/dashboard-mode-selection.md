@@ -19,3 +19,5 @@ control they need.
 
 - code: groom/groom/assets/dashboard.js::setMode
 - rule: use Runs for fleet and selected-run activity, Files for workspace-file browsing, Diff for working-tree changes, Telemetry for run spans, and Settings for dashboard controls; keyboard or palette run selection switches to Runs only to reveal the selected row, and no mode supersedes another
+- detail: [dashboard activity mode selection](dashboard-activity-mode-selection.md)
+- detail: [Dashboard mode selection documentation scope](dashboard-mode-selection-documentation-scope.md)

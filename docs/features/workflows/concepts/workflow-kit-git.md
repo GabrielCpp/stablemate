@@ -48,7 +48,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - does: returns the URL of the remote named `origin`
 - verify: json_path(path="$.result", equals="https://example.com/repo.git")
 - returns: `None` when the repository is invalid, Git fails, or no `origin` remote exists
-- verify: json_path(path="$.result", equals=None)
+- verify: json_path(path="$.result", matches="^None$")
 - code: `workflows/src/workhorse_workflows/kit/git.py::origin_url`
 
 ### local_branch_exists
@@ -95,6 +95,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - does: creates `branch` with `-b` when `create` is true
 - verify: created(subject="the requested branch")
 - does: creates or resets `branch` to the current HEAD with `-B` when `reset` is true, taking precedence over `create`
+- verify: created(subject="the requested branch")
 - verify: json_path(path="$.result", equals=true)
 - returns: `true` after checkout succeeds, otherwise `false`
 - code: `workflows/src/workhorse_workflows/kit/git.py::checkout`
@@ -107,7 +108,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - returns: the owning worktree path when a worktree holds `branch`
 - verify: json_path(path="$.result", matches="^/.+")
 - returns: `None` when no matching worktree or Git result exists
-- verify: json_path(path="$.result", equals=None)
+- verify: json_path(path="$.result", absent=true)
 - code: `workflows/src/workhorse_workflows/kit/git.py::branch_owner`
 
 ### branch_merged
@@ -197,9 +198,10 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 
 - sig: `default_branch(path: str | Path) -> str | None`
 - does: resolves `origin/HEAD` and removes its `origin/` prefix
-- verify: json_path(path="$.result", equals="main")
+- verify: removed(subject="the origin/ prefix from the resolved default branch reference")
+- verify: json_path(path="$.result", matches="^main$")
 - returns: the remote default branch name, or `None` when the symbolic ref is unavailable
-- verify: json_path(path="$.result", equals=None)
+- verify: json_path(path="$.result", absent=true)
 - code: `workflows/src/workhorse_workflows/kit/git.py::default_branch`
 
 ### merge_base
@@ -208,7 +210,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - does: resolves the best common ancestor of all supplied refs
 - verify: json_path(path="$.result", matches="^[0-9a-f]{40}$")
 - returns: the merge-base SHA, or `None` when Git cannot resolve one
-- verify: json_path(path="$.result", equals=None)
+- verify: json_path(path="$.result", matches="^None$")
 - code: `workflows/src/workhorse_workflows/kit/git.py::merge_base`
 
 ### trunk_base
@@ -247,7 +249,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - sig: `show_file(path: str | Path, ref: str, relpath: str) -> str | None`
 - does: reads `relpath` from the tree identified by `ref`
 - returns: the file contents, or `None` when the file or ref cannot be read
-- verify: json_path(path="$.result", equals=None)
+- verify: json_path(path="$.result", absent=true)
 - code: `workflows/src/workhorse_workflows/kit/git.py::show_file`
 
 ### diff_text
@@ -263,20 +265,24 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 
 - sig: `list_tracked_files(path: str | Path, *pathspecs: str) -> list[str]`
 - does: lists tracked repository-relative files, optionally constrained by pathspecs
-- verify: json_path(path="$.result", equals=["tracked/README.md"])
+- verify: count(subject="tracked files", equals=1)
+- verify: json_path(path="$.result[0]", equals="tracked/README.md")
 - returns: non-empty output lines, or an empty list when Git fails
-- verify: json_path(path="$.result", equals=[])
+- verify: count(subject="tracked files", equals=0)
 - code: `workflows/src/workhorse_workflows/kit/git.py::list_tracked_files`
 
 ### remote_urls
 
 - sig: `remote_urls(path: str | Path, name: str = "origin") -> list[str]`
 - does: reads the push URL and fetch URL for `name` in that order
-- verify: json_path(path="$.result", equals=["https://push.example/repo.git", "https://fetch.example/repo.git"])
+- verify: count(subject="remote URLs", equals=2)
+- verify: json_path(path="$.result[0]", equals="https://push.example/repo.git")
+- verify: json_path(path="$.result[1]", equals="https://fetch.example/repo.git")
 - does: de-duplicates non-empty URLs while preserving their first-seen order
-- verify: json_path(path="$.result", equals=["https://example.com/repo.git"])
+- verify: count(subject="remote URLs", equals=1)
+- verify: json_path(path="$.result[0]", equals="https://example.com/repo.git")
 - returns: the ordered URL list, or an empty list when the remote or repository is unavailable
-- verify: json_path(path="$.result", equals=[])
+- verify: count(subject="remote URLs", equals=0)
 - code: `workflows/src/workhorse_workflows/kit/git.py::remote_urls`
 
 ### set_identity
@@ -292,9 +298,10 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 
 - sig: `allow_all_directories() -> None`
 - does: best-effort adds `*` to Git's global `safe.directory` list
+- verify: created(subject="Git's global safe.directory wildcard")
 - verify: json_path(path="$.safe_directory_wildcard", equals=true)
 - returns: `None` whether or not Git accepts the global configuration change
-- verify: json_path(path="$.result", equals=None)
+- verify: json_path(path="$.result", absent=true)
 - code: `workflows/src/workhorse_workflows/kit/git.py::allow_all_directories`
 
 ### clone
@@ -320,9 +327,10 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 ### push_to_origin
 
 - sig: `push_to_origin(path: str | Path, branch: str, *, remote: str = "origin", force_with_lease: bool = False) -> bool`
-- does: pushes `branch` to `remote` using the checkout's ambient credentials
+- does: updates the named remote branch tip from `branch` using the checkout's ambient credentials
 - verify: persists(subject="remote branch tip")
 - does: adds `--force-with-lease` only when `force_with_lease` is true
+- verify: created(subject="the `--force-with-lease` push option")
 - verify: conflict_on_stale(subject="remote branch", token="expected remote tip")
 - returns: `true` on a successful push, otherwise `false`
 - verify: json_path(path="$.result", equals=true)

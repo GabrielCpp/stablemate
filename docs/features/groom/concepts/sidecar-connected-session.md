@@ -9,7 +9,6 @@ Sidecar connected session is the per-websocket runtime owned by the [sidecar ser
 
 - code: groom/groom/sidecar.py::_run_session
 - tests: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises
-- verify: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises
 
 ## Contract
 
@@ -17,7 +16,8 @@ Sidecar connected session is the per-websocket runtime owned by the [sidecar ser
 - input: `ws` is one already-connected websocket session object that supports `send(str)` and async iteration over inbound text frames.
 - initial frame: sends exactly one `hello` [sidecar websocket frame](../sidecar-websocket-frame.md) before starting the watch task or consuming inbound frames.
 - watched roots: asks the [sidecar filesystem watch](sidecar-filesystem-watch.md) to watch the configured workspace mount and configured runs mount recursively; absent roots are dropped rather than treated as session failure.
-- outbound queue: creates one in-memory FIFO outbox for filesystem-derived `progress` and `blocked` frames and starts the [sidecar outbound sender](sidecar-outbound-sender.md) task that serializes each queued frame as websocket JSON text.
+- concurrency: outbox — filesystem-derived `progress` and `blocked` frames pass through one in-memory FIFO outbox shared between the watch task and the session, so frames reach the outbound sender in the order they were enqueued.
+- concurrency: outbox — the [sidecar outbound sender](sidecar-outbound-sender.md) task owns draining the outbox and writing to the websocket, serializing each queued frame as JSON text independently of the inbound RPC/reload loop.
 - inbound loop: consumes inbound websocket messages until the socket closes, ignoring raw payloads that fail JSON parsing and dispatching only mapping-like decoded messages whose `type` is `rpc` or `reload`.
 - rpc behavior: a `rpc` frame is handled by [method-_handle_rpc](../sidecar-websocket-frame.md#method-_handle_rpc) against the same websocket before the next inbound frame is processed; the reply is a correlated `rpc_result` frame.
 - reload behavior: a `reload` frame raises the reload control exception immediately; no `rpc_result`, acknowledgement, or terminal frame is sent for reload.

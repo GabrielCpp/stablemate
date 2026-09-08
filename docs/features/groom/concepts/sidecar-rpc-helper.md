@@ -8,13 +8,17 @@ title: Sidecar RPC helper
 Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers ask a connected [sidecar connection](sidecar-connection.md) for workspace data without knowing registry or socket failure details. The [groom server](../http/groom.md) file-list, file-content, and diff invocations call it before falling back to local-filesystem or Docker-volume readers, and it uses the [sidecar connection registry](sidecar-connection-registry.md#method-get) plus the [sidecar connection RPC method](sidecar-connection.md#method-rpc) to exchange [sidecar websocket frame](../sidecar-websocket-frame.md) messages. Successful helper results bridge sidecar `rpc_result.data` objects into [workspace file list data](../workspace-file-list-data.md), [workspace file content data](../workspace-file-content-data.md), and [workspace diff data](../workspace-diff-data.md) endpoint responses; unavailable or failed sockets preserve those endpoints' fallback paths.
 
 - code: groom/groom/app.py::_sidecar_rpc
+- detail: [Sidecar RPC documentation scope](sidecar-rpc-documentation-scope.md)
 
 ## Contract
 
 - purpose: perform one best-effort host-to-sidecar data-plane RPC for a workflow container and collapse socket-unavailable outcomes to `None` so the endpoint handler can choose its Docker-volume fallback.
 - callers: file-list, file-content, and diff endpoint invocations call this helper before their fallback readers.
 - scope: one container id, one method name, and one params object per call.
-- consistency: generic pass-through: the helper accepts method names beyond the current first-party `getTree`, `getFile`, and `getDiff` calls; it forwards the supplied method and params unchanged and returns successful connection data unchanged.
+- consistency: rpc-method — the helper accepts method names beyond the current first-party `getTree`, `getFile`, and `getDiff` calls
+- consistency: rpc-method — it forwards the supplied method unchanged
+- consistency: rpc-params — it forwards the supplied params unchanged
+- consistency: rpc-result — it returns successful connection data unchanged
 - first-party method mapping: file-list handlers pass `getTree` with `{repo}` and expect a result object whose `paths` member feeds [workspace file list data](../workspace-file-list-data.md); file-content handlers pass `getFile` with `{repo, path}` and expect `content` for [workspace file content data](../workspace-file-content-data.md); diff handlers pass `getDiff` with `{repo}` and expect `diff` for [workspace diff data](../workspace-diff-data.md).
 - transport shape: the helper never serializes frames itself; it delegates to the connection RPC method, which emits a host-to-sidecar `rpc` frame with a connection-local id, the supplied method string, and the supplied params object, then resolves with the matching `rpc_result.data` value.
 - availability boundary: a missing connection and an expected sidecar RPC failure both mean "not served by the live socket"; they do not mean the workflow is gone or the endpoint should fail.

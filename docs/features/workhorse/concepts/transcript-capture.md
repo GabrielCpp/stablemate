@@ -130,11 +130,35 @@ capture failure is deliberately best-effort and never fails the turn.
 
 ### Tee.write
 - sig: `Tee.write(line: str) -> None`
-- does: writes stream lines until the byte ceiling and appends a truncation marker at the boundary
+- does: writes the supplied stream line while the tee is open and has remaining byte budget
+- verify: created(subject="tee stream transcript")
+- does: when the line crosses the byte ceiling, writes the available fragment and a JSON truncation marker
 - verify: json_path(path="$.truncated", equals=true)
+- does: ignores writes after the tee is closed or after truncation
+- verify: unchanged(subject="tee transcript after ignored write")
 - returns: `None`
 - verify: json_path(path="$.result", equals="None")
 - code: `workhorse/workhorse/runner/transcript.py::Tee.write`
+
+### Tee.__init__
+- sig: `Tee(path: Path, max_bytes: int) -> Tee`
+- does: creates or replaces the destination file as a UTF-8 text transcript
+- verify: created(subject="tee destination file")
+- returns: an open tee with zero bytes written and no truncation state
+- verify: json_path(path="$.truncated", equals=false)
+- code: `workhorse/workhorse/runner/transcript.py::Tee.__init__`
+
+### Tee.path
+- sig: `Tee.path -> Path`
+- returns: the destination path supplied when the tee was created
+- verify: json_path(path="$.path", matches=".+")
+- code: `workhorse/workhorse/runner/transcript.py::Tee.path`
+
+### Tee.truncated
+- sig: `Tee.truncated -> bool`
+- returns: `true` after the byte ceiling is reached, otherwise `false`
+- verify: json_path(path="$.truncated", equals=true)
+- code: `workhorse/workhorse/runner/transcript.py::Tee.truncated`
 
 ### Tee.close
 - sig: `Tee.close() -> None`

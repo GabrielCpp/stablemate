@@ -68,6 +68,7 @@ available repository and story context.
 - semantics: approval when no Critical or Major finding remains, required changes when one exists, or an external block
 - verify: json_path(path="$.status", matches="^(approved|needs_changes|blocked)$")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.status`
+- detail: [review verdict status roles](concepts/review-verdict-status-roles.md)
 
 ### notes
 - type: `str`
@@ -76,3 +77,4 @@ available repository and story context.
 - semantics: brief covering automated, reuse, and self-review findings, including required repairs or the block reason
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.notes`
+- detail: [review verdict notes context](concepts/review-verdict-notes-context.md)
