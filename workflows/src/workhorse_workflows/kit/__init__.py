@@ -70,6 +70,12 @@ _NAMES: dict[str, str] = {
         "trunk_base",
     )
 } | {
+    name: "workhorse_workflows.kit.worklist"
+    for name in (
+        "build_worklist",
+        "BuildWorklist",
+    )
+} | {
     name: "workhorse_workflows.kit.github"
     for name in (
         "find_open_pr",
@@ -158,6 +164,10 @@ if TYPE_CHECKING:  # the names above, for a reader and a type checker
         short_sha,
         show_file,
         trunk_base,
+    )
+    from workhorse_workflows.kit.worklist import (  # noqa: F401
+        BuildWorklist,
+        build_worklist,
     )
     from workhorse_workflows.kit.github import (  # noqa: F401
         find_open_pr,
