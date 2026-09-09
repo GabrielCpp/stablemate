@@ -89,7 +89,9 @@ Schema is versioned via `_ADDED_*_COLUMNS` so a new groom can backfill columns o
 
 - sig: `query_turns(run: str = "", node: str = "", session: str = "", workflow: str = "", limit: int = 200) -> list[dict[str, Any]]`
 - does: index and query archived transcript metadata (file path, size, hash) without reading transcript bodies
+- verify: json_path(path="$[0].path", matches=".+")
 - does: order by visit key (generation, seq) to preserve run sequence across generations — this survives checkpoint rewinds where wall-clock order would not
+- verify: json_path(path="$[0].generation", matches="^\\d+$")
 - returns: newest visit last (so `[1:]` is "every pass after the first" for loop analysis)
 - code: `groom/groom/store.py::query_turns`
 - tests: `groom/tests/test_store.py::test_turns_ordered_by_visit_across_generations`
@@ -98,8 +100,11 @@ Schema is versioned via `_ADDED_*_COLUMNS` so a new groom can backfill columns o
 
 - sig: `run_summaries(limit: int = 50, now: float | None = None, run: str = "") -> list[dict[str, Any]]`
 - does: GROUP BY run_id over the active window (last 24h by default, `ACTIVE_WINDOW_S`) to fetch fleet telemetry without scanning retained history
+- verify: count(subject="result rows for a single run with multiple spans", equals=1)
 - does: return workflow, repo, span/error counts, and timestamp bounds for the fleet view
+- verify: json_path(path="$[0].first_ts", matches="^\\d+(\\.\\d+)?$")
 - does: explicitly does not report whether a run is currently running (that is liveness, not durable history)
+- verify: absent(subject="is_running field in result")
 - code: `groom/groom/store.py::run_summaries`
 - tests: `groom/tests/test_store.py::test_fleet_view_respects_active_window`
 - limit: clamped to max 500 rows
@@ -108,9 +113,13 @@ Schema is versioned via `_ADDED_*_COLUMNS` so a new groom can backfill columns o
 
 - sig: `run_profile(run: str) -> dict[str, Any] | None`
 - does: partition one run's wall time by activity: agent, deterministic, infra, waits, resume gaps
+- verify: json_path(path="$.time_s", matches="\\{.*\\}")
 - does: aggregate rework statistics by attempting node and gate verdict
+- verify: json_path(path="$.attempt_groups", matches="^\\[.*\\]$")
 - does: sum metrics and spans to bound the wall clock (gauges only for metrics, since heartbeat ticks are not stored)
+- verify: json_path(path="$.observed_start_ts", matches="^\\d+(\\.\\d+)?$")
 - returns: time partitions, work summary (turns per work item, zero-cost-output turns), verdict and attempt groupings (how many times each gate reached each verdict, how many times each attempt number was reached)
+- verify: json_path(path="$.work.turns", matches="^\\d+$")
 - code: `groom/groom/store.py::run_profile`
 - tests: `groom/tests/test_store.py::test_run_profile_partitions_wall_time_by_activity`
 
@@ -159,9 +168,16 @@ Schema is versioned via `_ADDED_*_COLUMNS` so a new groom can backfill columns o
 
 - sig: `reprice(run: str = "", missing_only: bool = True) -> dict[str, Any]` and `apply_estimates(updates: list[tuple[float, str, str]]) -> int
 - does: recompute estimated cost for `agent_turn` spans with token counts, using newly-added or corrected rates from `groom.prices
-- does: with `missing_only=True` (default) only reprice turns with NULL `est_cost_usd` — for backfilling after adding a model to the rate card
-- does: with `missing_only=False` reprice every turn, overwriting old estimates — for correcting a rate
+- verify: persists(subject="estimated cost in repriced span")
+- does: with `missing_only=True` only reprice spans with NULL `est_cost_usd`
+- verify: unchanged(subject="span with pre-existing est_cost_usd", except_fields=[])
+- does: with `missing_only=False` reprice all spans, overwriting existing estimates
+- verify: unchanged(subject="span record except est_cost_usd", except_fields=["est_cost_usd", "priced_model"])
 - returns: count of considered/priced turns and unpriced models (the answer to "what models do I need to add to the override file")
+- verify: json_path(path="$.considered", matches="^\\d+$")
+- verify: json_path(path="$.priced", matches="^\\d+$")
+- verify: json_path(path="$.unpriced", matches="^\\{")
+- verify: json_path(path="$.est_cost_usd", matches="^\\d+(\\.\\d+)?$")
 - code: `groom/groom/store.py::reprice`
 - code: `groom/groom/store.py::apply_estimates`
 - tests: `groom/tests/test_store.py::test_reprice_identifies_unpriced_models`
@@ -234,7 +250,9 @@ Schema is versioned via `_ADDED_*_COLUMNS` so a new groom can backfill columns o
 
 - sig: `reset() -> None`
 - does: close the connection and clear all failure counters (used between tests to switch $GROOM_DB without residual state)
+- verify: json_path(path="$.failure_count", equals=0)
 - does: retire every thread's read connection (they are thread-local and must not outlive the DB file they point to)
+- verify: json_path(path="$.ok", equals=true)
 - code: `groom/groom/store.py::reset`
 - tests: `groom/tests/test_store.py::test_reset_clears_connection_state`
 
@@ -324,8 +342,11 @@ Schema is versioned via `_ADDED_*_COLUMNS` so a new groom can backfill columns o
 
 - sig: `test_run_ids() -> set[str]`
 - does: query distinct run_ids whose run_dir matches `is_scratch_run_dir` — all test runs in the store
+- verify: absent(subject="non-scratch run_ids")
 - returns: set of run_ids only (run_dir is queried but not returned)
+- verify: json_path(path="$[0]", matches=".+")
 - returns: empty set if none found
+- verify: count(subject="run_ids when no test runs exist", equals=0)
 - code: `groom/groom/store.py::test_run_ids`
 - code: `groom/groom/store.py::_test_run_ids`
 - tests: `groom/tests/test_store.py::test_test_run_ids_discovers_scratch_runs`
@@ -360,17 +381,23 @@ Schema is versioned via `_ADDED_*_COLUMNS` so a new groom can backfill columns o
 
 - sig: `unpriced_models(run: str = "") -> dict[str, int]`
 - does: models with agent_turn spans reporting tokens but no rate in `groom.prices`, and how many turns each has
-- does: answers "what would I gain by adding a rate" without writing anything — safe to print from `groom prices
+- verify: json_path(path="$", matches="^\\{.+\\}")
+- does: query the store read-only without any database modifications — safe to print from `groom prices`
+- verify: unchanged(subject="spans table", except_fields=[])
 - returns: dict mapping model name to turn count, ordered most-common first
+- verify: json_path(path="$", matches="^\\{.*\\}")
 - code: `groom/groom/store.py::unpriced_models`
-- tests: `groom/tests/test_store.py::test_unpriced_models_finds_gaps_in_rate_card`
+- tests: `groom/tests/test_prices.py::test_a_known_model_is_priced_at_ingest`
 
 ### unpriceable_turns
 
+Input to any recovery that goes looking outside the span for what the model really was — the turn's own attributes have already been shown not to answer.
+
 - sig: `unpriceable_turns(run: str = "") -> list[dict[str, Any]]`
 - does: turns with tokens, no estimate, and a model the rate card does not cover
-- does: input to any recovery that goes looking outside the span for what the model really was
+- verify: json_path(path="$[0].est_cost_usd", equals=null)
 - returns: list of turn records with span_id, model, session_id, and token counts for recovery attempts
+- verify: json_path(path="$[0].span_id", matches=".+")
 - code: `groom/groom/store.py::unpriceable_turns`
 - tests: `groom/tests/test_store.py::test_unpriceable_turns_lists_turn_details_for_recovery`
 
