@@ -198,18 +198,13 @@ class OkfBuilder(Workflow):
     #: Audit passes before a budget-partial audit ships. Repairs the audit queues drain in
     #: between, so a pass after the first mostly reads re-keyed packets.
     audit_max_passes: int = 3
-    #: Narrow the run to what changed since this revision — every path differing from its
-    #: merge base with HEAD, working tree and untracked included. `""` reconciles the whole
-    #: book. A narrowing that cannot be computed blocks the run rather than silently
-    #: widening to a full scan or narrowing to nothing.
-    since: str = ""
 
     #: Retired as selectors, kept declared for one release. They selected between two prepare
     #: functions and three ways of computing what was stale; one reconcile against the
-    #: book's own watermark answers all of them, so `since` is the only narrowing left and
-    #: `recheck_only` falls out of the book already existing. Deleting a field kills every
-    #: in-flight run on reload with a bare pydantic `extra_forbidden`, so a run that passes
-    #: one gets a warning out of `prepare`, not a crash.
+    #: book's own watermark answers all of them. Deleting a field kills every in-flight run
+    #: on reload with a bare pydantic `extra_forbidden`, so a run that passes one gets a
+    #: warning out of `prepare`, not a crash.
+    since: str = ""
     recheck_only: bool = False
     diff_base: str = ""
     #: Retained only as optional provenance on the completed book's commit.
@@ -231,7 +226,6 @@ class OkfBuilder(Workflow):
             self.service,
             self.source_path,
             self.source_excludes,
-            since=self.since,
             recheck_only=self.recheck_only,
             diff_base=self.diff_base,
             story=self.story,
@@ -305,8 +299,6 @@ class OkfBuilder(Workflow):
                 "repo_root": self.ctx.repo_root,
                 "source_root": self.ctx.source_root,
                 "source_excludes": self.ctx.source_excludes,
-                "diff_scope_path": self.ctx.diff_scope_path,
-                "diff_scope_count": self.ctx.diff_scope_count,
             },
         )
         return Continue(result, self.seed_surfaces, discovered=result.discovered).because("entry surfaces discovered")
@@ -918,7 +910,6 @@ class OkfBuilder(Workflow):
             str(paths.source_inventory_path(self.ctx.worklist_path)),
             self.ctx.source_excludes,
             self.ctx.repo_root,
-            self.ctx.diff_scope_path,
         )
         coverage = self.call(
             compute_coverage,
@@ -928,7 +919,6 @@ class OkfBuilder(Workflow):
             inventory.source_inventory_path,
             str(paths.waivers_path(self.ctx.features_root)),
             rescan,
-            scoped=bool(self.ctx.diff_scope_path),
         )
         # One gap left to test here. The other — every cited node declaring what observing
         # it looks like — used to be re-read at this point because the checkpoint drained

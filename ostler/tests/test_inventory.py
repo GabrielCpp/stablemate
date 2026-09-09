@@ -653,3 +653,91 @@ def test_the_indexed_accessor_is_empty_for_an_unread_language(tmp_path):
     target = tmp_path / "x.rb"
     target.write_text("class Renderer; end\n", encoding="utf-8")
     assert inventory.symbol_digests_at(target) == {}
+
+
+# ── the import walk: one hop is the bound the worklist builder crosses ────────────────
+
+
+PY_IMPORTS = '''\
+"""A module that imports three others in three shapes."""
+import a.b
+import c.d as dd
+from .relative import sibling
+from far.upstream import something
+from ..package.neighbour import thing
+'''
+
+
+GO_IMPORTS = '''\
+package acme
+
+import (
+    "fmt"
+    "github.com/example/widget"
+    "acme/internal/charges"
+)
+
+var _ = fmt.Sprintf
+'''
+
+
+TS_IMPORTS = '''\
+import x from "./local";
+import y from "@scope/pkg";
+import "./side-effect";
+const z = require("./cjs");
+'''
+
+
+def test_python_imports_return_dotted_module_paths():
+    assert inventory.imports_of("mod.py", PY_IMPORTS) == [
+        "a.b",
+        "c.d",
+        ".relative",
+        "far.upstream",
+        "..package.neighbour",
+    ]
+
+
+def test_go_imports_return_path_literals():
+    assert inventory.imports_of("mod.go", GO_IMPORTS) == [
+        "fmt",
+        "github.com/example/widget",
+        "acme/internal/charges",
+    ]
+
+
+def test_typescript_imports_capture_quire_and_side_effects():
+    assert inventory.imports_of("mod.ts", TS_IMPORTS) == [
+        "./local",
+        "@scope/pkg",
+        "./side-effect",
+        "./cjs",
+    ]
+
+
+def test_imports_dedup_preserve_source_order():
+    text = "import a\nimport b\nimport a\n"
+    assert inventory.imports_of("m.py", text) == ["a", "b"]
+
+
+def test_imports_for_an_unread_language_is_empty():
+    assert inventory.imports_of("m.rb", "require 'x'\n") == []
+
+
+def test_imports_for_an_empty_file_is_empty():
+    assert inventory.imports_of("m.py", "") == []
+
+
+def test_a_half_typed_python_file_yields_what_can_be_read():
+    """The recovery path: a file `ast` refused still reports the imports the parser could see.
+
+    The point of the function's design is that one hop walks the import graph, and one
+    hop is the bound — losing some imports on a half-typed file is acceptable, losing all
+    of them on every such file is not.
+    """
+    # Missing module: `from .relative imp` — parser cannot see `import` or its module name.
+    text = "import a.b\nfrom .relative imp\nimport c\n"
+    out = inventory.imports_of("m.py", text)
+    assert "a.b" in out
+    assert "c" in out

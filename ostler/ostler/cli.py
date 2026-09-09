@@ -258,11 +258,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     bfp.add_argument("--waivers", metavar="PATH", help="adjudicated non-units, as `coverage`")
     bfp.add_argument(
-        "--since", metavar="REV",
-        help="narrow to files changed since REV (its merge base with HEAD). Omit to reconcile "
-             "against the book's own catalog, which is the ordinary case",
-    )
-    bfp.add_argument(
         "--scope", action="append", default=[], metavar="PATH",
         help="narrow to a subtree; repeatable",
     )
@@ -1098,7 +1093,6 @@ def _cmd_backfill(graph, args) -> int:
         print(f"ostler backfill: unreadable source catalog: {exc}", file=sys.stderr)
         return 2
 
-    changed = source_snapshots.changed_since(graph.root, args.since) if args.since else None
     report = doctor.run(graph, check_schema=False)
     result = backfill_mod.plan(
         graph, data, catalog,
@@ -1106,7 +1100,6 @@ def _cmd_backfill(graph, args) -> int:
         waivers=coverage.load_waivers(args.waivers),
         findings=report.findings,
         scope=tuple(args.scope),
-        changed=changed,
     )
     _out(json.dumps(result.as_dict(), indent=2) if args.json
          else backfill_mod.render(result))

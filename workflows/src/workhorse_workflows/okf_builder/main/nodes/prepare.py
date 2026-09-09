@@ -11,7 +11,7 @@ import json
 import logging
 from pathlib import Path
 
-from ostler import Ostler, source_snapshots
+from ostler import Ostler
 from workhorse.manifest import BACKEND_SKILL_DIR
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared import stubs
@@ -100,21 +100,27 @@ def prepare(
     Every unusable setting comes back as a `Prepared` with `ostler_ok` false and a
     `prepare_error` saying which one — `start()` is where that becomes a failed run.
 
+    `since` is the diff-scope narrowing: it asks for what a branch has touched, narrows
+    the worklist to that, and refuses the run if git cannot answer. With scope gone, a
+    whole-tree reconcile is the run's reading of where it is, and the digest skip in
+    ``sources.json`` makes a rebase free.
+
     `recheck_only`, `diff_base`, `workspace_file` and `sources` are **retired and unread**.
     `story` remains only as commit provenance. These inputs selected between two prepare
-    functions and three ways of computing what
-    was stale; one reconcile against the book's own watermark answers all of them, `since`
-    is the only narrowing left, and `recheck_only` falls out of the book already existing.
-    They stay declared for one release because deleting a field kills every in-flight run
-    on reload, so a run that passes one gets a warning, not a crash.
+    functions and three ways of computing what was stale; one reconcile against the
+    book's own watermark answers all of them, and `recheck_only` falls out of the book
+    already existing. They stay declared for one release because deleting a field kills
+    every in-flight run on reload, so a run that passes one gets a warning, not a crash.
     """
     root = paths.docs_root(docs_path, repo_dir)
-    for name, value in (("recheck_only", recheck_only), ("diff_base", diff_base),
-                        ("workspace_file", workspace_file), ("sources", sources)):
+    for name, value in (("since", since), ("recheck_only", recheck_only),
+                        ("diff_base", diff_base), ("workspace_file", workspace_file),
+                        ("sources", sources)):
         if value:
             logger.warning(
-                "%s is retired and ignored — a run reconciles the book to HEAD, and "
-                "`since` is the only narrowing (%s=%r)", name, name, value
+                "%s is retired and ignored — a run reconciles the book to HEAD, and the "
+                "digest skip in `sources.json` is what carries a rebase (%s=%r)",
+                name, name, value,
             )
     source_rel = source_path or service
     source = (root / source_rel).resolve() if source_rel else root.resolve()
@@ -160,38 +166,9 @@ def prepare(
         len(data["items"]),
         baseline,
     )
-    scope_path = ""
-    scope_count = 0
-    scope_error = ""
-    if since:
-        changed = source_snapshots.changed_since(root, since)
-        if changed is None:
-            # A narrowing that was asked for but cannot be computed blocks the run — a
-            # build that silently widened to a full scan would claim a measurement it
-            # never took, and one that silently narrowed to nothing would claim a clean
-            # book it never read.
-            scope_error = (
-                f"cannot compute what changed since {since!r} — git could not resolve it "
-                f"in {root}"
-            )
-        else:
-            scope_file = paths.diff_scope_path(root, service)
-            scope_file.write_text(
-                json.dumps({"base": since, "paths": sorted(changed)}, indent=2) + "\n",
-                encoding="utf-8",
-            )
-            scope_path = str(scope_file)
-            scope_count = len(changed)
-            logger.info(
-                "narrowed to what changed since %r: %d path(s) → %s",
-                since, scope_count, scope_file,
-            )
     ostler_ok, why = _ostler_loads(root)
     if ostler_ok:
         ostler_ok, why = _references_ok(root)
-    if ostler_ok and scope_error:
-        ostler_ok, why = False, scope_error
-        logger.warning("refusing to widen a narrowed build to a full scan: %s", why)
     if not ostler_ok:
         logger.warning("the build cannot start and will branch away: %s", why)
     return Prepared(
@@ -205,8 +182,6 @@ def prepare(
         book_exists=book_has_docs(features),
         done_baseline=baseline,
         worklist_reset=reset,
-        diff_scope_path=scope_path,
-        diff_scope_count=scope_count,
         prepare_error=why,
     )
 

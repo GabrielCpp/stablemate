@@ -101,14 +101,6 @@ class Prepared(OkfResult):
     #: `recheck_only` used to ask for by hand), an empty one is filled top-down from the
     #: code's entry surfaces.
     book_exists: bool = False
-    #: The changed-paths file a `since`-narrowed build filters its inventory through.
-    #: Empty on a whole-book reconcile. Zero paths in it is a real answer — sitting on the
-    #: base itself, the merge base is HEAD and a clean tree has moved no file — and it is
-    #: not the same thing as no narrowing at all.
-    diff_scope_path: str = ""
-    #: How many paths that scope holds. Zero is a real answer (an empty diff), not
-    #: an unset one — `diff_scope_path` is what says whether a scope exists.
-    diff_scope_count: int = 0
     #: Why the run cannot proceed, when it cannot.
     prepare_error: str = ""
     #: Stable identity of this build's scope, and the worklist's compatibility stamp.
@@ -129,6 +121,8 @@ class Prepared(OkfResult):
     source_roots: tuple[str, ...] = ()
     baseline_doctor_errors: tuple[str, ...] = ()
     initial_items: tuple[dict[str, Any], ...] = ()
+    diff_scope_path: str = ""
+    diff_scope_count: int = 0
 
 
 class Committed(OkfResult):
@@ -181,9 +175,13 @@ class Settled(OkfResult):
 
 
 class Watermarked(OkfResult):
-    """What a closed regrounding item retired: the files whose watermark moved to now."""
+    """What a closed regrounding item retired: the files whose watermark moved to now,
+    and any path that no longer exists on disk."""
 
     advanced: list[str] = Field(default_factory=list)
+    #: Paths that were in the catalog but are gone from the tree — every citation into
+    #: them is now dangling and the worklist builder retires them as a `trim` row.
+    trimmed: list[str] = Field(default_factory=list)
     watermark_error: str = ""
 
 

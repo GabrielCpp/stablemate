@@ -949,3 +949,173 @@ def symbol_digests_at(path: str | Path) -> dict[str, str]:
     and computing them apart paid for that parse twice.
     """
     return dict(_table_at(path).digests)
+
+
+# ── the import graph: one hop is the bound the worklist builder walks ──────
+#
+# Neither digest (file nor symbol) closes the case where file A's documented contract
+# depended on a function in file B and B was rewritten. A's bytes are unchanged and its
+# declared names are unchanged, so both digests skip it — and a stale contract ships in the
+# next run's book.
+#
+# The bound applied here is **one hop**: when file B changes, every file that imports B is
+# treated as changed too, so its cited units are re-grounded rather than silently skipped.
+# Unbounded propagation is not an option — any edit to a core utility reaches the whole
+# repository and the digest skip stops skipping anything, which is the three-day recompute
+# this design exists to avoid. One hop is defensible because a documented claim about a
+# function usually describes that function's own behaviour, and a callee change most often
+# surfaces in its direct caller's contract. Drift deeper than one hop is residual risk,
+# carried by the book's link structure (the neighbour-review rows the worklist builder
+# also queues on every node that linked to something trimmed).
+#
+# This module answers the *parsed* half: the import specifiers a file carries. Resolving a
+# specifier to a file in the tree is the caller's job — a Python ``acme.billing`` could be
+# ``acme/billing.py`` or ``acme/billing/__init__.py``, a Go import is a path, a TS import
+# is either — and the resolution rule differs per language in ways the worklist builder
+# already owns.
+
+
+def _py_imports(text: str) -> list[str]:
+    """Python's imports as dotted module paths, in source order.
+
+    `import a.b` and `from a.b import c` both name `a.b`; `from .relative import c` is
+    left as the relative specifier because only the calling package knows what it is
+    relative to, and the worklist builder resolves it against the file's path.
+
+    A file `ast` refuses — a half-typed edit, the normal state during a build — is read
+    with tree-sitter's recovery; the recovered tree yields the same import names it would
+    have, modulo the broken region.
+    """
+    module = parse_python(text)
+    if module is None:
+        return _py_recovered_imports(text)
+    out: list[str] = []
+    for node in ast.walk(module):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name:
+                    out.append(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            module_name = node.module or ""
+            if node.level:
+                module_name = f"{'.' * node.level}{module_name}" if module_name else "." * node.level
+            if module_name:
+                out.append(module_name)
+    return out
+
+
+def _py_recovered_imports(text: str) -> list[str]:
+    """Python imports from a recovered tree, when `ast` refused the file.
+
+    The recovery is best-effort — a half-typed `from .broken import x` may yield nothing
+    here, and the worklist builder reads that as "no 1-hop propagation through this
+    file". An empty answer is the safe one; the file's stale citations are caught by the
+    next run's own digest comparison.
+    """
+    out: list[str] = []
+    for node in syntax.walk(syntax.parse("python", text)):
+        if node.type == "import_statement":
+            for child in node.named_children:
+                if child.type == "dotted_name":
+                    out.append(syntax.text_of(child))
+                elif child.type == "aliased_import":
+                    inner = child.child_by_field_name("name")
+                    if inner is not None:
+                        out.append(syntax.text_of(inner))
+        elif node.type == "import_from_statement":
+            module_name = ""
+            level = 0
+            for child in node.children:
+                if child.type == "import_prefix":
+                    level += 1
+                elif child.type == "dotted_name" and not module_name:
+                    module_name = syntax.text_of(child)
+            if level:
+                out.append(f"{'.' * level}{module_name}" if module_name else "." * level)
+            elif module_name:
+                out.append(module_name)
+    return out
+
+
+def _go_imports(text: str) -> list[str]:
+    """Go's imports: every `import "path"` and `import (...)` member, verbatim.
+
+    A Go import path is the file's *repo-relative* path with the suffix dropped, so the
+    worklist builder can resolve it directly against the tree without language-specific
+    heuristics.
+    """
+    out: list[str] = []
+    for node in syntax.walk(syntax.parse("go", text)):
+        if node.type == "import_spec":
+            path = node.child_by_field_name("path")
+            if path is not None:
+                value = syntax.text_of(path).strip('"').strip("`")
+                if value:
+                    out.append(value)
+        elif node.type == "import_spec_list":
+            continue  # parent already emits its children
+    return out
+
+
+def _ts_imports(text: str) -> list[str]:
+    """TypeScript's imports: `import x from "y"`, side-effect `import "y"`, `require("y")`.
+
+    The module specifier is what matters — the binding name is incidental. Returns the
+    specifier as written, including the leading ``./`` / ``../`` / ``@scope/`` prefixes;
+    the worklist builder knows which prefixes are repo-local.
+    """
+    out: list[str] = []
+    for node in syntax.walk(syntax.parse("typescript", text)):
+        if node.type == "import_statement":
+            source = node.child_by_field_name("source")
+            if source is not None:
+                value = syntax.text_of(source).strip('"').strip("'")
+                if value:
+                    out.append(value)
+        elif node.type == "call_expression":
+            function = node.child_by_field_name("function")
+            args = node.child_by_field_name("arguments")
+            if function is not None and args is not None and syntax.text_of(function) == "require":
+                if args.named_children and args.named_children[0].type == "string":
+                    value = syntax.text_of(args.named_children[0]).strip('"').strip("'")
+                    if value:
+                        out.append(value)
+    return out
+
+
+def imports_of(path: str | Path, text: str, *,
+               language: str | None = None) -> list[str]:
+    """The module specifiers a file imports, in source order, deduplicated.
+
+    One step of the one-hop propagation: every file whose imports here include another
+    file's path becomes a "1-hop changed" target when that other file's bytes change, and
+    the worklist builder queues its cited units for re-grounding.
+
+    The returned specifiers are *as written*, not resolved. Python's ``acme.billing`` is
+    left dotted, Go's `./internal/foo` is left as the relative path, TypeScript's
+    ``./foo`` is left with its prefix — the caller resolves them against the tree, which
+    is the only place the resolution rule (package layout, base url, jsconfig paths)
+    lives.
+
+    Languages the front end cannot read return ``[]``: a tree-sitter grammar is a parse
+    dependency, and a file outside the inventory's set of languages is also outside the
+    propagation graph.
+    """
+    grammar = language or syntax.language_for(path)
+    if grammar is None or not text:
+        return []
+    if grammar == "python":
+        raw = _py_imports(text)
+    elif grammar == "go":
+        raw = _go_imports(text)
+    elif grammar in {"typescript", "tsx"}:
+        raw = _ts_imports(text)
+    else:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for spec in raw:
+        if spec and spec not in seen:
+            seen.add(spec)
+            out.append(spec)
+    return out

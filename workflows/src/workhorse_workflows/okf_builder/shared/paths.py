@@ -97,16 +97,6 @@ def worklist_path(root: Path, service: str, scope_id: str = "") -> Path:
     return build_dir(root) / f"{name}{suffix}.worklist.json"
 
 
-def diff_scope_path(root: Path, service: str) -> Path:
-    """The changed-paths list a `since`-narrowed build filters its inventory through.
-
-    Run state like the worklist beside it: re-derived from git at every `prepare`, so a
-    resume recomputes the scope against the branch as it stands rather than trusting a
-    stale snapshot.
-    """
-    return build_dir(root) / f"{service or 'all'}.diff-scope.json"
-
-
 def operator_context_path(root: Path, service: str, scope_id: str = "") -> Path:
     """Where a budget stop parks its questions, and where an answer resumes the run.
 
@@ -159,7 +149,6 @@ __all__ = [
     "BUILD_DIRNAME",
     "book_scope",
     "build_dir",
-    "diff_scope_path",
     "docs_root",
     "features_root",
     "operator_context_path",

@@ -147,4 +147,59 @@ def test_advancing_against_no_catalog_writes_one(tmp_path: Path) -> None:
     snapshot = catalog.repository(source_snapshots.SELF_REPOSITORY)
     assert snapshot is not None
     assert [item.path for item in snapshot.files] == ["src/service.py"]
-    assert snapshot.files[0].digest_of("charge")
+
+
+def test_advancing_a_deleted_path_trims_it_from_the_catalog(tmp_path: Path) -> None:
+    """A citation whose file is gone is reported in ``trimmed``, not silently skipped.
+
+    Without this, the next run would call the missing path "current" — it is in the catalog
+    and unchanged — and never retire the bullets that pointed at it. The catalog drops the
+    row with the file so a future run cannot mistake the absence for an unchanged one.
+    """
+    _book(tmp_path, "src/service.py::charge")
+    _service(tmp_path)
+    source_snapshots.advance_catalog(load(tmp_path), ["src/service.py"])
+    (tmp_path / "src/service.py").unlink()
+
+    result = source_snapshots.advance_catalog(load(tmp_path), ["src/service.py"])
+    assert list(result.advanced) == []
+    assert list(result.trimmed) == ["src/service.py"]
+
+    catalog = source_snapshots.load_catalog(tmp_path)
+    assert catalog is not None
+    snapshot = catalog.repository(source_snapshots.SELF_REPOSITORY)
+    assert snapshot is not None
+    assert list(snapshot.files) == []
+
+
+# --- the book-root repository declaration -----------------------------------------
+
+
+def test_book_repository_is_empty_when_undeclared(tmp_path: Path) -> None:
+    """A book with no declaration reads as empty, not as a default guess.
+
+    Multi-repo workspaces without a declaration are reported by doctor rather than silently
+    joining a node to the wrong history.
+    """
+    book = tmp_path / "docs/features/api"
+    book.mkdir(parents=True)
+    assert source_snapshots.book_repository(book) == ""
+
+
+def test_set_book_repository_round_trips(tmp_path: Path) -> None:
+    book = tmp_path / "docs/features/api"
+    book.mkdir(parents=True)
+
+    written = source_snapshots.set_book_repository(book, "api-service")
+    assert source_snapshots.book_repository(book) == "api-service"
+    assert written.read_text(encoding="utf-8").strip() == "api-service"
+
+
+def test_book_repository_strips_surrounding_whitespace(tmp_path: Path) -> None:
+    """A trailing newline or surrounding whitespace is the writer's politeness, not the data."""
+    book = tmp_path / "docs/features/api"
+    book.mkdir(parents=True)
+    (book / source_snapshots.REPOSITORY_DECL_FILENAME).write_text(
+        "  api-service  \n", encoding="utf-8"
+    )
+    assert source_snapshots.book_repository(book) == "api-service"

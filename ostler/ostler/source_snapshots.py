@@ -31,6 +31,42 @@ from ostler.qa.source_context import SourceRepository, SourceScope
 #: The graph's own repository, as `refs.parse_code_ref` spells it for an unqualified ref.
 SELF_REPOSITORY = ""
 
+#: A book declares the repository its unqualified ``code:`` refs resolve to, by writing a
+#: single-line file of this name inside the book root. A missing or empty file means "no
+#: declaration" — a multi-repo workspace hitting that case today silently drops the join,
+#: and doctor will report the absence rather than the join going quiet.
+REPOSITORY_DECL_FILENAME = "repository.txt"
+
+
+def book_repository(features_root: Path) -> str:
+    """The repository a book declares its unqualified ``code:`` refs resolve to.
+
+    A single-line file at ``<features_root>/repository.txt`` whose trimmed contents are the
+    repository id. Empty when absent or unreadable — the caller treats that as "no
+    declaration" and reports it through doctor rather than silently widening the join.
+    """
+    path = Path(features_root) / REPOSITORY_DECL_FILENAME
+    if not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
+def set_book_repository(features_root: Path, repository_id: str) -> Path:
+    """Write the book's repository declaration. Returns the path it was written to.
+
+    Used by ``okf-builder`` at the run that converges: the join has just been confirmed
+    consistent, and the book itself is the right place to record which repository its
+    unqualified refs resolved against. Re-running the build after a repository rename is
+    the operator's decision, not a silent rewrite.
+    """
+    path = Path(features_root) / REPOSITORY_DECL_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(repository_id.strip() + "\n", encoding="utf-8")
+    return path
+
 
 class SourceSymbol(BaseModel):
     """One declaration in a cited file, and the digest that says whether it has moved."""
@@ -86,6 +122,22 @@ class SourceCatalog(BaseModel):
         return next((item for item in self.repositories if item.id == identifier), None)
 
 
+class AdvancedCatalog(BaseModel):
+    """What one `advance_catalog` call wrote: re-watermarked paths and trimmed (deleted) ones.
+
+    A re-watermarked path has its bytes re-snapshotted. A trimmed one was on disk when last
+    seen and is gone now — its row has been removed from the catalog so a future run cannot
+    mistake its absence for an unchanged file, and `trimmed` lists it so the caller can
+    queue a `trim` worklist row that retires the bullets and nodes citing it.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    path: Path
+    advanced: tuple[str, ...] = ()
+    trimmed: tuple[str, ...] = ()
+
+
 def catalog_path(root: Path) -> Path:
     return path_mod.features_root_in(root) / "sources.json"
 
@@ -123,38 +175,6 @@ def _git(repository: SourceRepository, *args: str) -> bytes | None:
     except (OSError, subprocess.SubprocessError):
         return None
     return result.stdout if result.returncode == 0 else None
-
-
-def changed_since(root: Path, revision: str) -> set[str] | None:
-    """Repo-relative paths that differ from *revision*'s merge base with HEAD.
-
-    `None` when git cannot answer — an unreadable diff must widen the caller to the whole
-    book rather than silently narrow it to nothing, which is what an empty set would mean.
-    An empty set is therefore a real answer and only ever means *nothing changed*: sitting
-    on the base itself, the merge base is HEAD and a clean tree has moved no file.
-
-    It lives here rather than in either caller because there are two — `ostler backfill
-    plan --since` and okf-builder's `prepare` — and a second implementation of "what did
-    this branch touch" is the drift the one stale set exists to stop.
-    """
-    def git(*args: str) -> str | None:
-        try:
-            done = subprocess.run(["git", *args], cwd=root, capture_output=True,
-                                  text=True, timeout=60)
-        except (OSError, subprocess.SubprocessError):
-            return None
-        return done.stdout if done.returncode == 0 else None
-
-    base = git("merge-base", revision, "HEAD")
-    if base is None:
-        base = git("rev-parse", "--verify", f"{revision}^{{commit}}")
-    if base is None:
-        return None
-    listed = git("diff", "--name-only", base.strip(), "--")
-    untracked = git("ls-files", "--others", "--exclude-standard")
-    if listed is None:
-        return None
-    return {line for line in (listed + (untracked or "")).splitlines() if line}
 
 
 def resolved_sha(repository: SourceRepository, revision: str) -> str:
@@ -302,7 +322,7 @@ def write_catalog(graph: Graph, repositories: tuple[SourceRepository, ...]) -> P
     return path
 
 
-def advance_catalog(graph: Graph, paths: Iterable[str]) -> Path:
+def advance_catalog(graph: Graph, paths: Iterable[str]) -> AdvancedCatalog:
     """Re-watermark just *paths* in the graph's own repository, leaving every other row alone.
 
     A whole-catalog write is only honest at convergence, when every citation has been read
@@ -315,12 +335,20 @@ def advance_catalog(graph: Graph, paths: Iterable[str]) -> Path:
     It is also what stops the drain looping. A `fix:stale-citation` item that closes without
     advancing its own row is reported drifted again by the very next join, forever, because
     the comparison it fails is against a watermark nobody moved.
+
+    A *deleted* path is reported in `trimmed` rather than silently skipped. The whole reason
+    the catalog carried that path was that something cited it; the citation is still in the
+    book and now points at nothing. The caller queues a `trim` row that retires the bullets
+    and, if no bullets remain, removes the node — and the catalog itself drops the row, so
+    a future run cannot mistake it for an unchanged file that still exists.
     """
     catalog = load_catalog(graph.root) or SourceCatalog()
     fresh: dict[str, SourceFile] = {}
+    trimmed: list[str] = []
     for path in sorted(set(paths)):
         target = graph.root / path
         if not target.is_file():
+            trimmed.append(path)
             continue
         try:
             text = target.read_text(encoding="utf-8")
@@ -331,7 +359,8 @@ def advance_catalog(graph: Graph, paths: Iterable[str]) -> Path:
     own = catalog.repository(SELF_REPOSITORY) or RepositorySnapshot(
         id=SELF_REPOSITORY, base="", head="WORKTREE"
     )
-    merged = {file.path: file for file in own.files} | fresh
+    kept_files = tuple(file for file in own.files if file.path not in trimmed)
+    merged = {file.path: file for file in kept_files} | fresh
     others = tuple(item for item in catalog.repositories if item.id != SELF_REPOSITORY)
     updated = SourceCatalog(repositories=(
         own.model_copy(update={"files": tuple(merged[key] for key in sorted(merged))}),
@@ -340,20 +369,25 @@ def advance_catalog(graph: Graph, paths: Iterable[str]) -> Path:
     path = catalog_path(graph.root)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(updated.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    return path
+    return AdvancedCatalog(
+        path=path, advanced=tuple(sorted(fresh)), trimmed=tuple(trimmed),
+    )
 
 
 __all__ = [
+    "AdvancedCatalog",
+    "REPOSITORY_DECL_FILENAME",
     "SELF_REPOSITORY",
     "RepositorySnapshot",
     "SourceCatalog",
     "SourceFile",
     "SourceSymbol",
     "advance_catalog",
+    "book_repository",
     "build_catalog",
     "catalog_path",
-    "changed_since",
     "load_catalog",
+    "set_book_repository",
     "resolved_sha",
     "source_fingerprint",
     "write_catalog",

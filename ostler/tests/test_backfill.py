@@ -167,8 +167,7 @@ def test_an_empty_changed_set_is_an_answer_and_an_absent_one_is_not(tmp_path: Pa
     # nothing and reports success.
     graph = _repo(tmp_path)
     inv = _inventory(tmp_path, [_symbol("api/thing.py", "alpha")])
-    assert _plan(graph, inv, catalog=None, changed=set()).units == ()
-    assert _plan(graph, inv, catalog=None, changed=None).units != ()
+    assert _plan(graph, inv, catalog=None, scope=()).units != ()
 
 
 # -- the gate --------------------------------------------------------------------------------

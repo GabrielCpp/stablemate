@@ -2,9 +2,9 @@
 
 Two behaviours, one loop. The **watermark** is the record of what the book was written
 against, and it is claimed at exactly one moment: the verdict that says every unit is
-covered *and* nothing has drifted under it, on a full scan. Anywhere earlier — the clean
-checkpoint, which runs before this join — would stamp symbols nobody re-read as current
-and erase, in the same pass, the drift the join exists to report.
+covered *and* nothing has drifted under it. Anywhere earlier — the clean checkpoint,
+which runs before this join — would stamp symbols nobody re-read as current and erase, in
+the same pass, the drift the join exists to report.
 
 **Regrounding** is the other half: when a cited symbol's bytes change under a node, the
 join queues that node as `fix:stale-citation` rather than calling the book complete. The
@@ -41,7 +41,7 @@ def charge(amount):
 '''
 
 
-def _verdict(book: Path, logger: logging.Logger, *, scoped: bool = False):
+def _verdict(book: Path, logger: logging.Logger):
     out = book / "inventory.json"
     inventory_source(logger, str(book / SERVICE), str(out), "", str(book))
     return compute_coverage(
@@ -50,7 +50,6 @@ def _verdict(book: Path, logger: logging.Logger, *, scoped: bool = False):
         str(paths.features_root(book, SERVICE)),
         SERVICE,
         str(out),
-        scoped=scoped,
     )
 
 
@@ -79,16 +78,6 @@ def test_a_complete_verdict_leaves_a_watermark_the_next_run_can_read(
     assert file["path"] == SOURCE_FILE
     assert [s["name"] for s in file["declarations"]] == ["charge"]
     assert file["declarations"][0]["content_sha256"]
-
-
-def test_a_scoped_verdict_claims_no_watermark(booked: Path, logger: logging.Logger) -> None:
-    """A scoped run read a subset of the source, so its "complete" is about that subset.
-
-    Stamping the whole catalog off it would mark every unvisited symbol current — the same
-    reason a scoped run does not overwrite `coverage.json`.
-    """
-    assert _verdict(booked, logger, scoped=True).coverage_complete
-    assert not catalog_path(booked).exists()
 
 
 def test_an_incomplete_verdict_claims_no_watermark(
@@ -153,6 +142,7 @@ def test_a_closed_regrounding_row_retires_its_own_watermark(
         logger, str(booked), item["kind"], item["context"], "documented"
     )
     assert result.advanced == [SOURCE_FILE]
+    assert result.trimmed == []
     assert not result.watermark_error
 
     after = _catalog(booked)["repositories"][0]["files"][0]["declarations"][0]
@@ -174,4 +164,29 @@ def test_a_partial_turn_advances_nothing(booked: Path, logger: logging.Logger) -
         logger, str(booked), item["kind"], item["context"], "partial"
     )
     assert result.advanced == []
+    assert result.trimmed == []
     assert _verdict(booked, logger).regrounding
+
+
+def test_a_deleted_citation_is_trimmed_not_advanced(
+    booked: Path, logger: logging.Logger
+) -> None:
+    """A cited path the tree no longer carries is reported as trimmed.
+
+    The citation's referent is gone; the catalog drops the row with the file, and the
+    worklist builder reads `trimmed` to retire the bullets and nodes that pointed at it.
+    A run that called the same path "advanced" would have it stamped current on the next
+    round and would not know its own coverage was describing a file that does not exist.
+    """
+    _verdict(booked, logger)
+    (booked / SOURCE_FILE).unlink()
+
+    result = advance_watermark(
+        logger, str(booked), "fix:stale-citation",
+        json.dumps({"citation": CITATION}), "documented",
+    )
+    assert result.advanced == []
+    assert result.trimmed == [SOURCE_FILE]
+
+    assert SOURCE_FILE not in {file["path"]
+                               for file in _catalog(booked)["repositories"][0]["files"]}

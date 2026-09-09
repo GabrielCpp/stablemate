@@ -281,18 +281,44 @@ def node_provenance(
     return [{"node": _node_row(graph, node) if node else {"id": node_id}, "stories": stories}]
 
 
-def _checkout_for(repository: str, checkouts: dict[str, Path]) -> Path | None:
+def _checkout_for(repository: str, checkouts: dict[str, Path],
+                  *, default: str = "") -> Path | None:
     """The checkout a ``code:`` target lives in.
 
     A qualified ref (``repo://api-service/...``) names its repository. A bare one predates
-    qualification and can only mean "the" checkout — honoured when exactly one was supplied,
-    because guessing among several would join a node to another repository's history.
+    qualification and can only mean "the" checkout — honoured when exactly one was
+    supplied, because guessing among several would join a node to another repository's
+    history.
+
+    A multi-repo workspace with a *declared* default repository uses that one instead of
+    failing closed. The declaration lives at the book root (see
+    :mod:`ostler.source_snapshots`'s ``book_repository``), so a book that documents one
+    service in one repository of a workspace names that repository once and every
+    unqualified ref resolves through it. A multi-repo workspace *without* a declaration
+    still returns ``None``, so a missing declaration is reported through doctor rather
+    than silently joining a node to the wrong history.
     """
     if repository:
         return checkouts.get(repository)
+    if default and default in checkouts:
+        return checkouts[default]
     if len(checkouts) == 1:
         return next(iter(checkouts.values()))
     return None
+
+
+def default_repository(graph: Graph) -> str:
+    """The repository a book's unqualified ``code:`` refs resolve to, if it declared one.
+
+    A book that documents one service in one repository of a workspace writes the id at
+    its root; a multi-repo workspace that has not declared one has no default here, and
+    :func:`_checkout_for` falls back to the single-checkout heuristic or returns ``None``.
+    The function reads the declaration from the graph's *own* features root — the book
+    the graph loads — because the declaration is per-book, not per-graph.
+    """
+    from ostler import source_snapshots
+    features = path_mod.features_root_in(graph.root)
+    return source_snapshots.book_repository(features)
 
 
 def story_for_node(
@@ -321,7 +347,8 @@ def story_for_node(
         except ValueError:
             warnings.append(f"malformed code ref {ref!r}")
             continue
-        checkout = _checkout_for(parsed.repository, checkouts)
+        checkout = _checkout_for(parsed.repository, checkouts,
+                                 default=default_repository(graph))
         if checkout is None:
             warnings.append(
                 f"no checkout supplied for repository {parsed.repository or '(unqualified)'!r}"

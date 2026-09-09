@@ -183,23 +183,6 @@ def operational_units(source: Path, repo_root: Path, excludes: list[str],
     return units
 
 
-def _load_scope(scope_path: str, errors: list[str]) -> set[str] | None:
-    """The diff scope as a set of repo-relative paths, or `None` for an unscoped run.
-
-    An unreadable scope file is an **error**, never an implicit full scan — the same
-    loudness rule as an unreadable tree: a run that was told to measure a diff must not
-    quietly measure everything and report the wider number as the narrower claim.
-    """
-    if not scope_path:
-        return None
-    try:
-        data = json.loads(Path(scope_path).read_text(encoding="utf-8"))
-        return {str(p) for p in data["paths"]}
-    except (OSError, ValueError, KeyError, TypeError) as exc:
-        errors.append(f"unreadable diff scope {scope_path}: {exc}")
-        return set()
-
-
 @blueprint.node
 def inventory_source(
     logger: logging.Logger,
@@ -207,7 +190,6 @@ def inventory_source(
     output_path: str = "",
     source_excludes: str = "",
     repo_root: str = "",
-    scope_path: str = "",
 ) -> SourceInventory:
     """Materialize a deterministic multi-language source inventory for OKF coverage.
 
@@ -228,12 +210,6 @@ def inventory_source(
       the repo root and inside the source tree. This is the forcing function for the runbook
       profile (docs/okf-runbook.md §5.3): an undocumented run surface is a coverage unit, so
       the book is not complete until it is a `runbook`.
-
-    With a `scope_path` — a diff-scoped build — both inventories keep only the units
-    whose file the squashed diff touched, so the coverage floor is the change, not the
-    tree. An empty scoped inventory is then a real answer (the diff touched no source
-    here), not the blindness the whole-tree census below guards against — the census
-    still runs over the full tree, because language support does not shrink with a diff.
     """
     source = Path(source_root).resolve() if source_root else Path.cwd().resolve()
     output = Path(output_path).resolve() if output_path else source / ".source-inventory.json"
@@ -241,12 +217,7 @@ def inventory_source(
     root = Path(repo_root).resolve() if repo_root.strip() else source
     errors: list[str] = []
     units: list[dict[str, str]] = []
-    scope = _load_scope(scope_path, errors)
     operational = operational_units(source, root, excludes, errors)
-    if scope is not None:
-        # `evidence` is `<repo-relative file>:<name>`, and the file part holds no colon
-        # for any evidence kind emitted above, so the first colon is the boundary.
-        operational = [u for u in operational if u["evidence"].split(":", 1)[0] in scope]
     if not source.is_dir():
         logger.warning("source root is not a directory: %s — the inventory will be empty", source)
         errors.append(f"source root is not a directory: {source}")
@@ -277,8 +248,6 @@ def inventory_source(
             if skipped(path, source, excludes):
                 continue
             rel = _unit_path(path, source, root)
-            if scope is not None and rel not in scope:
-                continue
             try:
                 text = path.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError) as exc:
@@ -394,7 +363,6 @@ def compute_coverage(
     inventory_path: str = "",
     waivers_path: str = "",
     prev_rescan: int = 0,
-    scoped: bool = False,
 ) -> Coverage:
     """Compute the book's coverage — the verdict the agent used to emit.
 
@@ -455,10 +423,7 @@ def compute_coverage(
     missing_path = str(missing_file)
 
     coverage_path = ""
-    # A diff-scoped run measured a subset, and `coverage.json` claims the whole book:
-    # writing the narrower number under the wider name would let one branch build mark
-    # the entire book fresh. The committed artifact belongs to full scans only.
-    if features_root and not scoped:
+    if features_root:
         try:
             anchor = short_sha(repo_root)
         except (OSError, ValueError, RuntimeError):
@@ -491,7 +456,7 @@ def compute_coverage(
                 "%d to reground → complete=%s", service or "(whole book)", result["covered"],
                 result["total"], result["waived"], screens, len(result["missing"]),
                 len(regrounding), "yes" if complete else "no")
-    if complete and not scoped:
+    if complete:
         _watermark(logger, okf)
     return Coverage(
         coverage_complete=complete,
@@ -524,6 +489,10 @@ def advance_watermark(
     happened while this gate spelled the verdict `complete`, a word no turn ever emits. And a
     `partial` turn must *not* advance: the citation still describes bytes nobody reconciled,
     and stamping it current would hide the gap under a clean verdict.
+
+    A path that no longer exists is reported in `trimmed` rather than `advanced`. The
+    citation's referent is gone, the catalog row drops with it, and the worklist builder
+    reads `trimmed` to queue a `trim` row that retires the bullets citing the deleted file.
     """
     if item_kind != "fix:stale-citation" or doc_status not in ("", "documented"):
         return Watermarked()
@@ -536,14 +505,18 @@ def advance_watermark(
     if not path:
         return Watermarked()
     try:
-        source_snapshots.advance_catalog(Ostler(repo_root).graph, [path])
+        result = source_snapshots.advance_catalog(Ostler(repo_root).graph, [path])
     except (OSError, ValueError, RuntimeError) as exc:
         # Not fatal: the row comes back on the next join, which is the same behaviour as
         # before the watermark existed. Losing the run over a cache write would be worse.
         logger.warning("could not advance the watermark for %s: %s", path, exc)
         return Watermarked(watermark_error=str(exc))
+    if result.trimmed:
+        logger.info("trimmed %d path(s) whose citations now dangle: %s",
+                    len(result.trimmed), ", ".join(result.trimmed))
+        return Watermarked(advanced=list(result.advanced), trimmed=list(result.trimmed))
     logger.info("watermark advanced for %s", path)
-    return Watermarked(advanced=[path])
+    return Watermarked(advanced=list(result.advanced))
 
 
 def _watermark(logger: logging.Logger, okf: Ostler) -> None:
@@ -552,9 +525,7 @@ def _watermark(logger: logging.Logger, okf: Ostler) -> None:
     Taken here and only here: on the one verdict that says the book covers its source and no
     citation has drifted under it. Anywhere earlier — the clean checkpoint, say, which runs
     *before* this join — would stamp symbols nobody re-read as current and erase the drift
-    this node exists to detect, in the same pass that was supposed to report it. Scoped runs
-    are excluded for the reason `coverage.json` is: a subset measurement must not be written
-    under a name that claims the whole book.
+    this node exists to detect, in the same pass that was supposed to report it.
 
     A failure is logged and dropped. The catalog only ever makes the next run's plan cheaper,
     never more correct, and a book that converged must not be reported as failed because a

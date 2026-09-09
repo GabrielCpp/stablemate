@@ -253,15 +253,13 @@ def _file_digest(snapshot: SourceFile) -> str:
                      for item in sorted(snapshot.declarations, key=lambda i: i.name))
 
 
-def _in_scope(unit: StaleUnit, scope: Sequence[str], changed: set[str] | None) -> bool:
-    """Whether a row survives `--scope` and `--since`.
+def _in_scope(unit: StaleUnit, scope: Sequence[str]) -> bool:
+    """Whether a row survives `--scope`.
 
     Both narrow by path and neither widens: a row outside the scope is not *absent*, it is
     simply not this run's work, and the next unscoped run will still report it.
     """
     path = unit.path
-    if changed is not None and path not in changed:
-        return False
     if scope and not any(path == part or path.startswith(part.rstrip("/") + "/")
                          for part in scope):
         return False
@@ -270,14 +268,11 @@ def _in_scope(unit: StaleUnit, scope: Sequence[str], changed: set[str] | None) -
 
 def plan(graph: Graph, inventory: dict, catalog: SourceCatalog | None, *,
          surface: str | None = None, waivers: dict[str, str] | None = None,
-         findings: Iterable[Finding] = (), scope: Sequence[str] = (),
-         changed: set[str] | None = None) -> BackfillPlan:
+         findings: Iterable[Finding] = (), scope: Sequence[str] = ()) -> BackfillPlan:
     """The stale set: what the book owes the code at this moment.
 
     *inventory* is the artifact `ostler coverage` reads, *catalog* the watermark
-    `sources.json` holds, *findings* doctor's own. *changed* is `--since`'s path set, and
-    `None` — not the empty set — means "no revision was named": an empty set is a real
-    answer (nothing changed) and must produce an empty plan rather than a full one.
+    `sources.json` holds, *findings* doctor's own.
     """
     root = Path(str(inventory.get("repoRoot") or graph.root))
     cited = coverage_mod.citations(graph, surface)
@@ -297,7 +292,7 @@ def plan(graph: Graph, inventory: dict, catalog: SourceCatalog | None, *,
 
     order = {reason: n for n, reason in enumerate(REASON_ORDER)}
     kept = sorted(
-        (row for row in rows if _in_scope(row, scope, changed)),
+        (row for row in rows if _in_scope(row, scope)),
         key=lambda row: (order.get(row.reason, len(order)), row.unit),
     )
     return BackfillPlan(surface=surface or "", units=tuple(kept),
