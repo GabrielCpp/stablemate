@@ -35,6 +35,10 @@ farrier did before and a config key that must be set before hooks work at all wo
 silently turn them off for every repo already installed. `none` is the opt-out; deleting
 the fence is not one, since `agents.yml` is the authority on what is installed and the
 next `farrier install` puts it back.
+
+The runner (`.agents/hooks/pre-commit`) is a per-repo render output that lists every
+skill-declared hook in selection order — `install_runner` writes it, mirroring the same
+`dry_run` contract `install_manager` follows.
 """
 
 from __future__ import annotations
@@ -263,8 +267,16 @@ def _set_hooks_path(repo: Path, value: str) -> None:
     )
 
 
-def install_manager(repo: Path, manager: str) -> list[str]:
-    """Splice (or strip) farrier's fence. Returns the lines to print."""
+def install_manager(
+    repo: Path, manager: str, *, dry_run: bool = False
+) -> list[str]:
+    """Splice (or strip) farrier's fence. Returns the lines to print.
+
+    Under ``dry_run=True`` nothing is written, the executable bit is not set, and
+    ``core.hooksPath`` is left alone — every action the verb would have taken is
+    reported with a ``[dry-run]`` prefix instead. The format mirrors the run-path
+    messages so a dry-run and a real run can be diffed line by line.
+    """
     if manager == "none":
         removed = []
         for rel in _FENCE_FILES.values():
@@ -274,9 +286,13 @@ def install_manager(repo: Path, manager: str) -> list[str]:
             existing = path.read_text(encoding="utf-8")
             stripped = unsplice(existing)
             if stripped != existing:
-                path.write_text(stripped, encoding="utf-8")
+                if not dry_run:
+                    path.write_text(stripped, encoding="utf-8")
                 removed.append(rel)
-        return [f"Removed farrier's hook entry from {rel}" for rel in removed]
+        prefix = "[dry-run] " if dry_run else ""
+        return [
+            f"{prefix}Removed farrier's hook entry from {rel}" for rel in removed
+        ]
 
     rel = _FENCE_FILES[manager]
     path = repo / rel
@@ -297,14 +313,54 @@ def install_manager(repo: Path, manager: str) -> list[str]:
 
     messages: list[str] = []
     if desired != (path.read_text(encoding="utf-8") if path.is_file() else None):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(desired, encoding="utf-8")
-        messages.append(f"Wired `{HOOK_COMMAND}` into {rel}")
+        prefix = "[dry-run] " if dry_run else ""
+        if not dry_run:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(desired, encoding="utf-8")
+        messages.append(f"{prefix}Wired `{HOOK_COMMAND}` into {rel}")
     if manager in ("husky", "githooks"):
-        _make_executable(path)
+        if dry_run:
+            messages.append(f"[dry-run] would set executable bit on {rel}")
+        else:
+            _make_executable(path)
     if manager == "githooks":
-        _set_hooks_path(repo, ".githooks")
+        if dry_run:
+            messages.append("[dry-run] would set core.hooksPath to .githooks")
+        else:
+            _set_hooks_path(repo, ".githooks")
     return messages
+
+
+def install_runner(
+    repo: Path,
+    hooks: list[SkillHook] | None,
+    *,
+    dry_run: bool = False,
+) -> list[str]:
+    """Regenerate ``.agents/hooks/pre-commit`` from the declared hooks.
+
+    *hooks=None* signals "no library was resolvable": the function is silent
+    without ``--dry-run`` (the next ``farrier install`` will regenerate), and
+    under ``--dry-run`` prints the line that names the cause so the operator can
+    see why the regeneration step was skipped.
+    """
+    path = repo / HOOK_RUNNER
+    if hooks is None:
+        if dry_run:
+            return [
+                f"[dry-run] would regenerate {HOOK_RUNNER} "
+                "(no library — run 'farrier install' to refresh)"
+            ]
+        return []
+    text = runner_text(hooks)
+    if path.is_file() and path.read_text(encoding="utf-8") == text:
+        return []
+    if dry_run:
+        return [f"[dry-run] would regenerate {HOOK_RUNNER}"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    _make_executable(path)
+    return [f"Wrote {HOOK_RUNNER}"]
 
 
 def fence_drift(repo: Path, manager: str) -> list[str]:

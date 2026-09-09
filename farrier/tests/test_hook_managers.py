@@ -5,7 +5,8 @@ refuse — which is why this repo's own staged-files gate was never installed: s
 else was already there, so farrier declined, and every report still said the install
 succeeded. Owning a marked region instead is what makes both halves of that file
 possible at once, and what these pin is that the user's half comes through untouched
-in each of the five managers.
+in each of the five managers. The runner-regeneration cases below pin the same
+contract for the per-repo runner that lives on farrier's side of the fence.
 
     ./.venv/bin/python -m pytest tests/test_hook_managers.py
 """
@@ -22,12 +23,14 @@ from farrier.hook_managers import (
     FENCE_END,
     FENCE_START,
     HOOK_COMMAND,
+    HOOK_RUNNER,
     LEFTHOOK_INCLUDE,
     LEGACY_HOOK_MARKER,
     configured_manager,
     detect_manager,
     fence_drift,
     install_manager,
+    install_runner,
     runner_text,
     splice,
     unsplice,
@@ -257,24 +260,83 @@ def test_a_repo_whose_skills_declare_nothing_still_gets_a_runner():
 
 
 # ---------------------------------------------------------------------------
+# install_runner + dry_run on install_manager
+# ---------------------------------------------------------------------------
+
+
+def test_install_runner_writes_when_text_differs(repo: Path):
+    """`install_runner` regenerates `.agents/hooks/pre-commit` from the declared
+    hooks, marking the runner executable so git will pick it up via `core.hooksPath`."""
+    hooks = [SkillHook(skill="acme-ostler", stage="pre-commit", run="scripts/g.py")]
+
+    messages = install_runner(repo, hooks)
+
+    assert messages == [f"Wrote {HOOK_RUNNER}"]
+    runner = repo / HOOK_RUNNER
+    assert runner.is_file()
+    assert runner.stat().st_mode & 0o111
+
+
+def test_install_runner_is_silent_when_runner_is_current(repo: Path):
+    """Re-running the verb on a repo whose runner is already up to date is a
+    no-op — no message, no rewrite, no `mtime` change to chase in CI logs."""
+    hooks = [SkillHook(skill="acme-ostler", stage="pre-commit", run="scripts/g.py")]
+    install_runner(repo, hooks)
+
+    assert install_runner(repo, hooks) == []
+
+
+def test_install_runner_dry_run_prints_without_writing(repo: Path):
+    """`--dry-run` reports what the verb would write and never touches disk."""
+    hooks = [SkillHook(skill="acme-ostler", stage="pre-commit", run="scripts/g.py")]
+
+    messages = install_runner(repo, hooks, dry_run=True)
+
+    assert messages == [f"[dry-run] would regenerate {HOOK_RUNNER}"]
+    assert not (repo / HOOK_RUNNER).exists()
+
+
+def test_install_runner_with_none_signals_no_library(repo: Path):
+    """`hooks=None` is the no-library signal: silent without `--dry-run`, the
+    cause-named note under `--dry-run`. The next `farrier install` regenerates."""
+    assert install_runner(repo, None) == []
+    assert install_runner(repo, None, dry_run=True) == [
+        f"[dry-run] would regenerate {HOOK_RUNNER} "
+        "(no library — run 'farrier install' to refresh)"
+    ]
+    assert not (repo / HOOK_RUNNER).exists()
+
+
+def test_install_manager_dry_run_prints_with_prefix_and_writes_nothing(repo: Path):
+    """`--dry-run` on the manager writes nothing and prefixes every action
+    message so a dry-run and a real run can be diffed line by line."""
+    (repo / "agents.yml").write_text("hooks:\n  manager: githooks\n", encoding="utf-8")
+
+    messages = install_manager(repo, "githooks", dry_run=True)
+
+    assert any(line.startswith("[dry-run]") for line in messages)
+    assert not (repo / ".githooks" / "pre-commit").exists()
+
+
+# ---------------------------------------------------------------------------
 # `farrier hooks` — the wiring without the render
 # ---------------------------------------------------------------------------
 
 
-def test_the_hooks_command_wires_a_repo_whose_packs_do_not_resolve(repo: Path):
+def test_hooks_install_wires_when_packs_dont_resolve(repo: Path):
     """The clone most likely to trip a guard is the one that cannot render.
 
     A public contributor has no overlay, so `farrier install` raises on the first pack
-    it cannot resolve and never reaches the wiring at the end of it. `farrier hooks`
-    reads `agents.yml` for the manager name and nothing else, so the hook still gets
-    installed on the machine that has no library to install from.
+    it cannot resolve and never reaches the wiring at the end of it. `farrier hooks
+    install` reads `agents.yml` for the manager name and nothing else, so the hook
+    still gets installed on the machine that has no library to install from.
     """
     (repo / "agents.yml").write_text(
         "packs:\n  - a-pack-that-is-not-anywhere\nhooks:\n  manager: githooks\n",
         encoding="utf-8",
     )
 
-    assert cli.main(["hooks", "--repo", str(repo)]) == 0
+    assert cli.main(["hooks", "install", "--repo", str(repo)]) == 0
 
     hook = repo / ".githooks" / "pre-commit"
     assert HOOK_COMMAND in hook.read_text(encoding="utf-8")
@@ -290,10 +352,54 @@ def test_the_hooks_command_wires_a_repo_whose_packs_do_not_resolve(repo: Path):
     assert configured == ".githooks"
 
 
-def test_the_hooks_command_falls_back_to_detection_with_no_agents_yml(repo: Path):
-    assert cli.main(["hooks", "--repo", str(repo)]) == 0
+def test_hooks_install_falls_back_to_detection_with_no_agents_yml(repo: Path):
+    assert cli.main(["hooks", "install", "--repo", str(repo)]) == 0
 
     assert HOOK_COMMAND in (repo / ".githooks" / "pre-commit").read_text(encoding="utf-8")
+
+
+def test_hooks_install_dry_run_writes_nothing(repo: Path):
+    """Every action that would have written, set, or changed a file is reported
+    with a `[dry-run]` prefix and nothing is touched on disk."""
+    (repo / "agents.yml").write_text("hooks:\n  manager: githooks\n", encoding="utf-8")
+
+    assert cli.main(["hooks", "install", "--dry-run", "--repo", str(repo)]) == 0
+
+    assert not (repo / ".githooks" / "pre-commit").exists()
+    configured = subprocess.run(
+        ["git", "config", "--get", "core.hooksPath"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    assert configured == ""
+
+
+def test_hooks_install_dry_run_with_no_library_prints_runner_note(
+    capsys, repo: Path, monkeypatch
+):
+    """When no library resolves, `--dry-run` reports the cause-named line so the
+    operator can see why the runner regeneration step was skipped."""
+    from farrier import cli as cli_module
+
+    monkeypatch.setattr(cli_module, "LAYERS", [])
+
+    (repo / "agents.yml").write_text("hooks:\n  manager: githooks\n", encoding="utf-8")
+
+    assert cli.main(["hooks", "install", "--dry-run", "--repo", str(repo)]) == 0
+
+    out = capsys.readouterr().out
+    assert "[dry-run] would regenerate .agents/hooks/pre-commit (no library" in out
+
+
+def test_bare_hooks_is_a_subcommand_error(capsys, repo: Path):
+    """Breaking change: the bare `farrier hooks` form no longer maps to the
+    install verb — argparse rejects it because the subparser is required."""
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main(["hooks", "--repo", str(repo)])
+
+    assert excinfo.value.code != 0
 
 
 if __name__ == "__main__":

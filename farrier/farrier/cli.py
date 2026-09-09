@@ -1,7 +1,7 @@
 """Argument parsing and command dispatch — the ``farrier`` entry point.
 
 Wires the config/layers/sources/renderer/outputs/scaffolds modules together behind
-the subcommands (init, install, config, source, scaffold, version).
+the subcommands (init, install, config, source, scaffold, version, hooks).
 """
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ import argparse
 import importlib.metadata
 import os
 import sys
+
+import yaml
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +38,12 @@ from farrier.frontmatter import (
     mapping_skill_names,
     read_yaml,
 )
-from farrier.hook_managers import configured_manager, install_manager
+from farrier.hook_managers import (
+    configured_manager,
+    install_manager,
+    install_runner,
+)
+from farrier.skill_hooks import STAGES, SkillHook
 from farrier.init import default_config
 from farrier.layers import (
     LAYERS,
@@ -53,9 +60,11 @@ from farrier.naming import repo_prefix
 from farrier.outputs import (
     USER_MANAGED,
     check_outputs,
+    check_selection,
     install_outputs,
     render_expected,
     render_user_expected,
+    selected_hooks,
     write_text,
 )
 from farrier.renderer import Renderer
@@ -719,16 +728,40 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Repository root to diagnose (default: cwd)",
     )
 
-    # hooks
+    # hooks (subcommand group — `install` and `list`)
     hooks_p = sub.add_parser(
         "hooks",
+        help="Wire or list the git hooks farrier manages in this repo",
+    )
+    hooks_sub = hooks_p.add_subparsers(
+        dest="hooks_action", required=True,
+    )
+
+    install_p = hooks_sub.add_parser(
+        "install",
         help="Wire this repo's git hooks through the manager agents.yml names",
     )
-    hooks_p.add_argument(
+    install_p.add_argument(
         "--repo",
         type=Path,
         default=Path.cwd(),
         help="Repository root to wire hooks for (default: cwd)",
+    )
+    install_p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print every action the verb would take, with no writes",
+    )
+
+    list_p = hooks_sub.add_parser(
+        "list",
+        help="List the hooks the selected skills declare",
+    )
+    list_p.add_argument(
+        "--repo",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository root to list hooks for (default: cwd)",
     )
 
     sub.add_parser("version", help="Print the installed farrier version")
@@ -736,23 +769,118 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_hooks(args: argparse.Namespace) -> int:
-    """`farrier hooks` — the wiring half of an install, and nothing else.
+def _run_hooks_install(args: argparse.Namespace) -> int:
+    """`farrier hooks install` — wire this repo's git hooks and (when a library
+    resolves) regenerate the per-repo runner, with no other outputs touched.
 
     `farrier install` already does this at the end of a render, which is enough for a
     repo whose every selection resolves. It is not enough for the clone that has no
     overlay: the render raises there, and hooks that a contributor cannot install are
-    hooks that never run for the contributor most likely to trip one. So the wiring is
-    reachable on its own — no library resolution, no rendering, just the fence, the mode
-    bit and `core.hooksPath`.
+    hooks that never run for the contributor most likely to trip one. The verb is
+    reachable on its own — no library required to wire the fence, library required to
+    regenerate the runner, and the runner being stale is reported under ``--dry-run``
+    as the cause-named line the operator needs to see.
     """
     repo = args.repo.resolve()
     config_path = repo / "agents.yml"
     config = read_yaml(config_path) if config_path.is_file() else {}
     manager = configured_manager(config, repo)
-    for line in install_manager(repo, manager):
+    dry_run = bool(getattr(args, "dry_run", False))
+
+    runner_hooks: list[SkillHook] | None = None
+    try:
+        set_layers(resolve_library_dir(None))
+    except SystemExit:
+        set_layers(None)
+    if LAYERS:
+        try:
+            prefix = repo_prefix(repo)
+            include_skills, _, _, _ = collect_selection(config)
+            exclude = config.get("exclude") or {}
+            all_skills = load_layered_sources("skill", "library", "skills")
+            skills = selected_sources(
+                all_skills, include_skills, set(exclude.get("skills", []) or [])
+            )
+            runner_hooks = selected_hooks(prefix, skills)
+        except SystemExit:
+            runner_hooks = None
+    else:
+        runner_hooks = None
+
+    messages = list(install_manager(repo, manager, dry_run=dry_run))
+    if manager != "none":
+        messages.extend(install_runner(repo, runner_hooks, dry_run=dry_run))
+    for line in messages:
         print(line)
     print(f"hooks wired through: {manager}")
+    return 0
+
+
+def _run_hooks_list(args: argparse.Namespace) -> int:
+    """`farrier hooks list` — every hook the selected skills declare, grouped by stage.
+
+    Read from the same selection the installer uses, never from disk: a runner that
+    doesn't exist yet still has hooks the selection promises, and a runner that's
+    stale is misleading. The verb's question is "what will run here", not "what is
+    wired right now"; drift is `install --check`'s job.
+    """
+    repo = args.repo.resolve()
+    config_path = repo / "agents.yml"
+    if not config_path.is_file():
+        print(
+            f"error: no agents.yml in {repo} — run 'farrier init' to write one.",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        config = read_yaml(config_path)
+    except (OSError, yaml.YAMLError) as exc:
+        print(f"error: agents.yml could not be read: {exc}", file=sys.stderr)
+        return 1
+    if not isinstance(config, dict):
+        print("error: agents.yml is not a YAML mapping.", file=sys.stderr)
+        return 1
+
+    manager = configured_manager(config, repo)
+
+    try:
+        set_layers(resolve_library_dir(None))
+    except SystemExit:
+        set_layers(None)
+    if not LAYERS:
+        print(
+            "no library available — set one with 'farrier config set-library <dir>'.",
+        )
+        return 0
+
+    prefix = repo_prefix(repo)
+    include_skills, _, _, _ = collect_selection(config)
+    exclude = config.get("exclude") or {}
+    all_skills = load_layered_sources("skill", "library", "skills")
+    # Match `install`'s validation: a literal selection that names a file which does
+    # not exist is a typo and hard-fails, a glob that matches nothing is a warning.
+    check_selection([("skills", all_skills, include_skills)])
+    skills = selected_sources(
+        all_skills, include_skills, set(exclude.get("skills", []) or [])
+    )
+    hooks = selected_hooks(prefix, skills)
+
+    by_stage: dict[str, list[SkillHook]] = {stage: [] for stage in STAGES}
+    for hook in hooks:
+        if hook.stage in by_stage:
+            by_stage[hook.stage].append(hook)
+
+    if manager == "none":
+        print("manager: none — these hooks are not wired")
+
+    for stage in STAGES:
+        print(f"{stage}:")
+        stage_hooks = by_stage[stage]
+        if not stage_hooks:
+            print("  (none)")
+            continue
+        for hook in stage_hooks:
+            print(f"  {hook.skill}  {hook.run}")
     return 0
 
 
@@ -945,7 +1073,13 @@ def main(argv: list[str] | None = None) -> int:
         return _run_library(args)
 
     if args.command == "hooks":
-        return _run_hooks(args)
+        if args.hooks_action == "install":
+            return _run_hooks_install(args)
+        if args.hooks_action == "list":
+            return _run_hooks_list(args)
+        # The subparser is `required=True`; argparse already exits with a usage error
+        # before we get here. The fallback is for type-checkers that can't see that.
+        return 2
 
     if args.command == "doctor":
         return doctor.report(args.repo)
