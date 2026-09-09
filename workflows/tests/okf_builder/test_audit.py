@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import shutil
 from dataclasses import replace
 from pathlib import Path
@@ -538,6 +539,95 @@ def test_a_dropped_verdict_is_re_asked_on_its_own_not_by_re_asking_the_packet(
     repair_dir = env.run_dir / "behavior-audit" / repair.digest
     assert (repair_dir / "packet.json").is_file() and (repair_dir / "parent.json").is_file()
     assert (repair_dir / "recall.json").is_file(), "the salvaged verdicts the memo cannot yet hold"
+
+
+class ClaimDroppingReviewer:
+    """A reviewer that omits one claim verdict, then answers only what it is told it owes.
+
+    The live shape of the repair rung's failure: with a claim owed, ``reduce_packet``
+    keeps every candidate in the reduced packet as linking context, and a reviewer that
+    takes the feedback at its word answers the owed ids alone. Holding that reply to the
+    reduced packet rejected it for every candidate it was told was settled.
+    """
+
+    def __init__(self) -> None:
+        self.packets: list[AuditPacket] = []
+        self.feedback: list[str] = []
+
+    def __call__(self, node: Any, ctx: Any, workflow_dir: Path, *args: Any, **kwargs: Any) -> Any:
+        packet = AuditPacket.model_validate_json(ctx.as_dict()["packet"])
+        feedback = ctx.as_dict()["feedback"]
+        self.packets.append(packet)
+        self.feedback.append(feedback)
+        claims = [ClaimVerdict(id=claim.id, status="unresolved", explanation="Needs more context")
+                  for claim in packet.claims]
+        candidates = [CandidateVerdict(id=candidate.id, status="missing",
+                                       explanation="The return value is not described in the book")
+                      for candidate in packet.candidates]
+        if packet.digest == self.packets[0].digest:
+            claims = claims[1:]
+        else:
+            claims = [claim for claim in claims if claim.id in feedback]
+            candidates = [candidate for candidate in candidates if candidate.id in feedback]
+        return "scripted", AuditVerdicts(claims=tuple(claims), candidates=tuple(candidates)).model_dump(mode="json")
+
+
+def test_a_repair_answered_for_exactly_the_owed_items_completes_the_pass(
+    booked: Path, tmp_path: Path,
+) -> None:
+    """A reply to a reduced packet is held to the parent, not to the reduced packet.
+
+    With a claim owed the reduced packet still carries every candidate, so a reply that
+    answers only the owed claim is complete once merged over the salvaged recall — and
+    the feedback that names the owed ids must not claim the packet holds nothing else.
+    """
+    (booked / "acme/service.py").write_text(BRANCHING_SOURCE, encoding="utf-8")
+    doc = booked / "docs/features/acme/concepts/charge.md"
+    doc.write_text(doc.read_text() + "\n- consistency: Charge always returns zero.\n"
+                   "- idempotency: Charging twice charges once.\n")
+    agent = ClaimDroppingReviewer()
+    env = audit_env(tmp_path, agent)
+    result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
+    assert isinstance(result, BehaviorAuditOutcome)
+    assert result.assessed_packets == 1 and not result.unaudited_packets and not result.error
+    full, repair = agent.packets
+    owed = full.claims[0].id
+    assert [claim.id for claim in repair.claims] == [owed]
+    assert len(repair.candidates) == len(full.candidates), "an owed claim keeps every candidate in view"
+    assert owed in agent.feedback[1] and "only those items" not in agent.feedback[1]
+    report = json.loads((env.run_dir / "behavior-audit" / full.digest / "report.json").read_text())
+    assert {claim["id"] for claim in report["verdicts"]["claims"]} == {claim.id for claim in full.claims}
+    assert {c["id"] for c in report["verdicts"]["candidates"]} == {c.id for c in full.candidates}
+
+
+def test_a_repair_naming_a_foreign_id_is_rejected_not_remembered(
+    booked: Path, tmp_path: Path,
+) -> None:
+    """Holding a reduced reply to the parent must not let a mangled id through.
+
+    The reply that started the live failure spelled one candidate's digest wrong; the
+    parent merge validates every id it is given against the packet, and reports what is
+    still owed, so a wrong spelling is a rejection and never a remembered verdict.
+    """
+    (booked / "acme/service.py").write_text(BRANCHING_SOURCE, encoding="utf-8")
+    doc = booked / "docs/features/acme/concepts/charge.md"
+    doc.write_text(doc.read_text() + "\n- consistency: Charge always returns zero.\n"
+                   "- idempotency: Charging twice charges once.\n")
+    agent = ClaimDroppingReviewer()
+    env = audit_env(tmp_path, agent)
+    result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
+    assert isinstance(result, BehaviorAuditOutcome)
+    full, repair = agent.packets
+    repair_dir = env.run_dir / "behavior-audit" / repair.digest
+    reply = json.loads((repair_dir / "raw-1.json").read_text())
+    reply["claims"][0]["id"] = reply["claims"][0]["id"] + "-mangled"
+    contract = audit_nodes.review_contract(audit_nodes.AUDIT_PROMPT, audit_nodes.verdict_schema())
+    scope = audit_nodes.AuditScope(docs_path=str(booked), source_path="acme", service="acme")
+    with pytest.raises(ValueError, match="foreign IDs"):
+        audit_nodes.record_audit_verdicts(
+            logging.getLogger("test"), repair, AuditVerdicts.model_validate(reply), str(env.run_dir),
+            contract, audit_nodes.AUDIT_PROMPT, scope,
+        )
 
 
 def test_a_repair_that_also_comes_back_short_still_reaches_the_operator_gate(

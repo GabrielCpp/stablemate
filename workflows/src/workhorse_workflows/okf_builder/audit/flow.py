@@ -116,8 +116,15 @@ class Audit(Workflow):
             return Continue(
                 None, self.start, failed_digest=packet.digest, attempts=attempts,
                 repair_digest=reduced.digest, turns=turns,
+                # The reduced packet still shows every candidate an owed claim might link
+                # to (see ``reduce_packet``), so the feedback must not call it "only
+                # those items": told that, a reviewer answers the owed ids alone, and a
+                # validator holding it to the reduced packet gates it. The record node
+                # holds the reply to the parent instead, so what is said here is true.
                 feedback=f"A previous reply left these items unanswered: {', '.join(exc.owing)}. "
-                         f"This packet contains only those items; answer for every one of them.",
+                         f"Answer for every one of them. Any other item shown in this packet "
+                         f"was already judged and is here only as context for links; you may "
+                         f"leave it unanswered or judge it again.",
             ).because("incomplete receipt: ask again for the items still owed")
         # `AgentTurnFailed` is the ladder's verdict on a turn that produced nothing.
         # It belongs with the others: the packet is recorded, one packet is retried,

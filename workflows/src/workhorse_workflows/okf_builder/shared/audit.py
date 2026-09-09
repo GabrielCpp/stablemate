@@ -461,6 +461,44 @@ def _owed_or_original(packet: AuditPacket, verdicts: AuditVerdicts, exc: ValueEr
     return IncompleteVerdicts(packet, recall, owing, exc) if owing else exc
 
 
+def _merge_reduced_reply(
+    directory: Path, parent: AuditPacket, memo: VerdictMemo, verdicts: AuditVerdicts,
+) -> AuditReport:
+    """The full packet's report from a reply to its reduced packet, held to the parent.
+
+    A reduced packet is not the whole of what the reviewer is asked to judge, and it is
+    not only that either: ``reduce_packet`` keeps every candidate in front of the reviewer
+    while a claim is owed, because the candidate that supports it may be one already
+    judged. Validating the reply against the reduced packet therefore demanded a verdict
+    for every candidate shown — the very items the repair feedback said were settled —
+    and a reviewer that answered exactly what it was told it owed was rejected twice,
+    then gated. So the reply is held to the *parent*: what it answers wins, what it
+    omits is taken from the recall, and the merged whole is validated against the full
+    packet the receipt is owed on. Ids this packet never supplied are still rejected
+    outright, because the memo would otherwise remember a verdict for nothing.
+
+    A merge that does not hold raises ``IncompleteVerdicts`` when some parent item is
+    left without a usable verdict, so the flow can decide between a repair and a retry
+    on the same evidence a short full reply gives it.
+    """
+    recall = _staged_recall(directory, memo.recall(parent))
+    claim_ids = {claim.id for claim in parent.claims}
+    candidate_ids = {candidate.id for candidate in parent.candidates}
+    foreign = sorted(({verdict.id for verdict in verdicts.claims} - claim_ids)
+                     | ({verdict.id for verdict in verdicts.candidates} - candidate_ids))
+    claims = {verdict.id: verdict for verdict in recall.claims}
+    claims.update({verdict.id: verdict for verdict in verdicts.claims})
+    candidates = {verdict.id: verdict for verdict in recall.candidates}
+    candidates.update({verdict.id: verdict for verdict in verdicts.candidates})
+    filled = AuditVerdicts(claims=tuple(claims.values()), candidates=tuple(candidates.values()))
+    try:
+        if foreign:
+            raise ValueError(f"verdicts for ids this packet did not supply: foreign IDs {foreign}")
+        return merge_verdicts(parent, recall, verdicts)
+    except ValueError as exc:
+        raise _owed_or_original(parent, filled, exc) from exc
+
+
 @blueprint.node
 def record_audit_verdicts(
     logger: logging.Logger, packet: AuditPacket, verdicts: AuditVerdicts, run_dir: str,
@@ -469,7 +507,8 @@ def record_audit_verdicts(
     """Persist the typed raw reply before checking its exact IDs and reciprocal links.
 
     A reply to a reduced packet is merged over what the memo recalled and validated
-    against the full packet in ``parent.json``; the receipt is the full packet's. Every
+    against the full packet in ``parent.json``, never against the reduced packet alone;
+    the receipt is the full packet's (see ``_merge_reduced_reply``). Every
     verdict of the resulting report is then remembered, so the next pass over the same
     bytes is a whole hit. Without a *scope* there is no memo, which is the standalone
     shape a checkpoint written before the memo existed still resumes into.
@@ -480,15 +519,15 @@ def record_audit_verdicts(
     (directory / f"raw-{attempt}.json").write_text(raw, encoding="utf-8")
     memo = verdict_memo(scope, contract) if scope is not None else None
     parent_path = directory / "parent.json"
-    try:
-        report = validate_verdicts(packet, verdicts)
-    except ValueError as exc:
-        raise _owed_or_original(packet, verdicts, exc) from exc
     if memo is not None and parent_path.exists():
         parent = AuditPacket.model_validate_json(parent_path.read_bytes())
-        report = merge_verdicts(parent, _staged_recall(directory, memo.recall(parent)), verdicts)
+        report = _merge_reduced_reply(directory, parent, memo, verdicts)
     else:
         parent = packet
+        try:
+            report = validate_verdicts(packet, verdicts)
+        except ValueError as exc:
+            raise _owed_or_original(packet, verdicts, exc) from exc
     try:
         current = review_contract(prompt_path, verdict_schema())
     except OSError as exc:
