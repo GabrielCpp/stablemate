@@ -13,7 +13,7 @@ import json
 import posixpath
 import tokenize
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -471,9 +471,10 @@ def build_audit_packets(
         pending = [(candidates, chunk) for candidates in candidate_chunks for chunk in claim_chunks]
         while pending:
             candidates, chunk = pending.pop(0)
-            source_context = tuple(context for context in inventory.source_context if context.path == module
-                                   and any(context.symbol == "<module>" or candidate.symbol == context.symbol
-                                           or candidate.symbol.startswith(context.symbol + ".") for candidate in candidates))
+            source_context = _outermost_contexts(
+                context for context in inventory.source_context if context.path == module
+                and any(context.symbol == "<module>" or candidate.symbol == context.symbol
+                        or candidate.symbol.startswith(context.symbol + ".") for candidate in candidates))
             book_context = _windowed_book_context(chunk, context_lines)
             packet = AuditPacket(module=module, symbol="", scope=(module,) if module else (),
                                  group="source_file" if module else "ungrounded_book" if local_claims else "empty_scope",
@@ -497,6 +498,33 @@ def build_audit_packets(
     return AuditPreparation(inventory=inventory, packets=tuple(packets), undocumented=tuple(undocumented),
                             tier=tier, deferred_candidates=sum(deferred.values()), out_of_scope_claims=out_of_scope,
                             selected_candidates=selected, selected_claims=len(ordered_claims))
+
+
+def _outermost_contexts(contexts: Iterable[SourceContext]) -> tuple[SourceContext, ...]:
+    """*contexts* minus any whose lines another of them already spans, in inventory order.
+
+    An enclosing declaration's excerpt is the text of every declaration nested in it, so a
+    packet holding both — a test function and each closure it passes to ``t.Run`` — carried
+    the same lines twice or more, and one long function was enough to push a single-candidate
+    packet over its budget. Nothing is lost: the reviewer reads the nested lines inside the
+    excerpt that survives. Two excerpts over identical lines keep the first, which is the
+    enclosing declaration, because the extractors record a declaration before its members.
+    """
+    kept: list[SourceContext] = []
+    ordered = list(contexts)
+    for index, context in enumerate(ordered):
+        enclosed = any(
+            other.path == context.path
+            and other.start_line <= context.start_line and context.end_line <= other.end_line
+            and (other.start_line, other.end_line) != (context.start_line, context.end_line)
+            for other in ordered
+        ) or any(
+            other.path == context.path and (other.start_line, other.end_line) == (context.start_line, context.end_line)
+            for other in ordered[:index]
+        )
+        if not enclosed:
+            kept.append(context)
+    return tuple(kept)
 
 
 def _windowed_book_context(chunk: Sequence[BookClaim], context_lines: int) -> tuple[BookContext, ...]:

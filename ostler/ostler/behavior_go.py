@@ -40,7 +40,7 @@ class GoEvidence:
         self.occurrences: Counter[str] = Counter()
         self.literals: Counter[str] = Counter()
 
-    def emit(self, node: Node, kind: str, *, text: str = "", framework: str = "go") -> None:
+    def emit(self, node: Node, kind: str, *, text: str = "", snippet: str = "", framework: str = "go") -> None:
         symbol = ".".join(self.symbols) or "<module>"
         identity = json.dumps((self.path, symbol, kind, _tokens(node)), ensure_ascii=True)
         self.occurrences[identity] += 1
@@ -49,7 +49,7 @@ class GoEvidence:
             "id": f"evidence:{ident}", "path": self.path, "symbol": symbol,
             "start_line": node.start_point.row + 1, "end_line": node.end_point.row + 1,
             "start_column": node.start_point.column, "end_column": node.end_point.column,
-            "kind": kind, "text": text or syntax.text_of(node), "snippet": syntax.text_of(node),
+            "kind": kind, "text": text or syntax.text_of(node), "snippet": snippet or syntax.text_of(node),
             "conditions": tuple(self.conditions), "source_digest": self.digest, "framework": framework,
         }))
 
@@ -87,8 +87,11 @@ class GoEvidence:
             self.context(node)
             # Bodies with only effects still need an audit candidate. Include private
             # declarations too: visibility alone cannot decide externally used behavior.
+            # The contract's snippet is its signature, not the body: the body already travels
+            # as this declaration's source context, and repeating it doubled a long function
+            # inside every packet holding its contract — past the packet budget for one item.
             signature = self.source.encode()[node.start_byte:body.start_byte].decode().strip()
-            self.emit(node, "function_contract", text=signature)
+            self.emit(node, "function_contract", text=signature, snippet=signature)
             for child in node.named_children:
                 self.visit(child)
             self.symbols.pop()

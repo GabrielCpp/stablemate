@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -188,3 +189,40 @@ def test_go_signature_struct_fields_are_evidence_not_just_context(tmp_path: Path
     assert fields[0].text == 'Name string `json:"name"`'
     assert fields[0].symbol == "Accept"
     assert packet.source_context[0].text == source.splitlines(keepends=True)[1]
+
+
+def test_go_function_contract_snippet_is_the_signature_not_the_body(tmp_path: Path) -> None:
+    body = "".join(f'\t_ = "{"x" * 60}"\n' for _ in range(500))
+    source = f"package api\n\nfunc Long(limit int) error {{\n{body}\treturn nil\n}}\n"
+    (tmp_path / "api.go").write_text(source, encoding="utf-8")
+    inventory = extract_evidence(tmp_path, ["api.go"])
+    contract = next(item for item in inventory.candidates if item.kind == "function_contract")
+    assert contract.snippet == contract.text == "func Long(limit int) error"
+    assert contract.start_line == 3 and contract.end_line == 505
+    # The body travels once, as the declaration's context, so a packet holding the contract
+    # fits a budget the body alone leaves room in — where two copies of it did not.
+    encoded = len(json.dumps(source))
+    prepared = build_audit_packets(inventory, [], max_chars=encoded + encoded // 2, skip_undocumented=False)
+    assert len(prepared.packets) == 1
+    assert {item.kind for item in prepared.packets[0].candidates} == {"function_contract", "return"}
+    assert [context.symbol for context in prepared.packets[0].source_context] == ["Long"]
+
+
+def test_go_packet_context_keeps_only_the_outermost_enclosing_excerpt(tmp_path: Path) -> None:
+    source = (
+        "package api\n\n"
+        "func TestRun(t *testing.T) {\n"
+        '\tt.Run("a", func(t *testing.T) {\n'
+        "\t\tif t == nil {\n\t\t\treturn\n\t\t}\n"
+        '\t\tt.Run("b", func(t *testing.T) {\n\t\t\treturn\n\t\t})\n'
+        "\t})\n"
+        "}\n"
+    )
+    (tmp_path / "api_test.go").write_text(source, encoding="utf-8")
+    inventory = extract_evidence(tmp_path, ["api_test.go"])
+    symbols = {context.symbol for context in inventory.source_context}
+    assert symbols == {"TestRun", "TestRun.<literal:1>", "TestRun.<literal:1>.<literal:1>"}
+    packet = build_audit_packets(inventory, [], skip_undocumented=False).packets[0]
+    assert [context.symbol for context in packet.source_context] == ["TestRun"]
+    for item in packet.candidates:
+        assert item.snippet in packet.source_context[0].text

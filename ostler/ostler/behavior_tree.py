@@ -193,7 +193,7 @@ class TreeEvidence:
         self.handlers = 0
         """Depth inside a route registration call; its literal argument is the handler."""
 
-    def emit(self, node: Node, kind: str, *, text: str = "", framework: str = "") -> None:
+    def emit(self, node: Node, kind: str, *, text: str = "", snippet: str = "", framework: str = "") -> None:
         symbol = ".".join(self.symbols) or "<module>"
         identity = json.dumps((self.path, symbol, kind, _tokens(node, self.table.skip)), ensure_ascii=True)
         self.occurrences[identity] += 1
@@ -202,7 +202,7 @@ class TreeEvidence:
             "id": f"evidence:{ident}", "path": self.path, "symbol": symbol,
             "start_line": node.start_point.row + 1, "end_line": node.end_point.row + 1,
             "start_column": node.start_point.column, "end_column": node.end_point.column,
-            "kind": kind, "text": text or syntax.text_of(node), "snippet": syntax.text_of(node),
+            "kind": kind, "text": text or syntax.text_of(node), "snippet": snippet or syntax.text_of(node),
             "conditions": tuple(self.conditions), "source_digest": self.digest,
             "framework": framework or self.table.framework,
             "exported": None if symbol == "<module>" else all(self.exported),
@@ -262,7 +262,10 @@ class TreeEvidence:
         self.context(node)
         # Bodies with only effects still need an audit candidate. Include private
         # declarations too: visibility alone cannot decide externally used behavior.
-        self.emit(node, "function_contract", text=self._header(node, stop=body))
+        # Signature only, as in the Go extractor: the body is already the declaration's
+        # source context, and a second copy in the snippet overflowed one-item packets.
+        header = self._header(node, stop=body)
+        self.emit(node, "function_contract", text=header, snippet=header)
         for child in node.named_children:
             self.visit(child)
         self._close()
