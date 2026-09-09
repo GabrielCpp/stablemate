@@ -89,3 +89,129 @@ def test_a_tree_git_will_not_answer_for_reads_as_absent(
     bare.mkdir()
     monkeypatch.setattr(public, "REPO", bare)
     assert public._installed_hook() == bare / ".git" / "hooks" / "pre-commit"
+
+
+# ── commit-message guard ────────────────────────────────────────────────────
+#
+# The hook reads ``.git/COMMIT_EDITMSG`` (which git writes before the hook runs) and
+# greps it for private names. Two properties matter:
+#
+#   * Subject AND body are scanned. A name can hide in either; the pre-commit hook
+#     cannot see either until the user has typed it.
+#   * ``#`` lines (git's editor template hints) are skipped. A template hint that
+#     happens to mention a name should not block every commit.
+#
+# The ``PRIVATE_NAMES`` env var drives the resolver; with it set, the test owns what
+# counts as "private". A public contributor who has not configured any list sees the
+# same no-op the hook sees — the function returns ``[]`` and the commit proceeds.
+
+
+def test_a_commit_message_with_a_private_name_is_flagged(
+    public: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STABLEMATE_PRIVATE_NAMES", "acme,globex")
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text("feat(core): integrate the acme client\n", encoding="utf-8")
+
+    offenders = public.check_no_private_names_in_commit_message(msg)
+
+    assert any("acme" in o for o in offenders), offenders
+
+
+def test_a_private_name_in_the_body_is_flagged_too(
+    public: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The subject is what most reviewers read; the body is what the leak looks like."""
+    monkeypatch.setenv("STABLEMATE_PRIVATE_NAMES", "globex")
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text(
+        "feat(core): tidy the dashboard\n\n"
+        "Wires the globex metrics endpoint into the status page.\n",
+        encoding="utf-8",
+    )
+
+    offenders = public.check_no_private_names_in_commit_message(msg)
+
+    assert any("globex" in o for o in offenders), offenders
+
+
+def test_git_editor_hint_comments_are_ignored(
+    public: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``# Please enter the commit message...`` is git's template, not a leak."""
+    monkeypatch.setenv("STABLEMATE_PRIVATE_NAMES", "acme")
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text(
+        "# Please enter the commit message for your changes. Lines starting\n"
+        "# with '#' will be ignored, and an empty message aborts the commit.\n"
+        "#\n"
+        "# On branch main\n"
+        "# Changes to be committed:\n"
+        "#\tmodified:   core/x.py\n"
+        "\n"
+        "feat: clean diff\n",
+        encoding="utf-8",
+    )
+
+    offenders = public.check_no_private_names_in_commit_message(msg)
+
+    assert offenders == [], offenders
+
+
+def test_no_names_configured_makes_the_check_a_no_op(
+    public: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A public contributor cannot leak what they do not have on file."""
+    monkeypatch.delenv("STABLEMATE_PRIVATE_NAMES", raising=False)
+    # Also clear the .git/private-names file path if the test machine has one — the
+    # resolver consults both; with either set, names are loaded.
+    monkeypatch.setattr(public._private_names_module(), "load", lambda: [])
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text("feat: mention acme just to be sure\n", encoding="utf-8")
+
+    assert public.check_no_private_names_in_commit_message(msg) == []
+
+
+def test_a_missing_commit_message_file_is_silently_skipped(
+    public: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fresh repo's first commit may not have COMMIT_EDITMSG yet — absent is OK."""
+    monkeypatch.setenv("STABLEMATE_PRIVATE_NAMES", "acme")
+    msg = tmp_path / "does-not-exist"
+
+    assert public.check_no_private_names_in_commit_message(msg) == []
+
+
+def test_the_cli_flag_drives_a_clean_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End-to-end: ``--commit-message PATH`` reads, scans, and exits 0 on a clean file."""
+    monkeypatch.setenv("STABLEMATE_PRIVATE_NAMES", "acme")
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text("feat: clean diff\n", encoding="utf-8")
+
+    proc = subprocess.run(
+        ["python3", str(SCRIPT), "--commit-message", str(msg)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_the_cli_flag_drives_a_failure_on_a_leak(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End-to-end: a leak in the proposed message makes the hook exit 1."""
+    monkeypatch.setenv("STABLEMATE_PRIVATE_NAMES", "acme")
+    msg = tmp_path / "COMMIT_EDITMSG"
+    msg.write_text("feat: integrate acme client\n", encoding="utf-8")
+
+    proc = subprocess.run(
+        ["python3", str(SCRIPT), "--commit-message", str(msg)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "acme" in proc.stderr, proc.stderr

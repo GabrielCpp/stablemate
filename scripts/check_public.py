@@ -40,10 +40,17 @@ the paths objects live at, and each unique blob's content once — so removal wi
 rewrite can never read as clean again.
 
 Run:
-    uv run python scripts/check_public.py                 # everything
-    python3 scripts/check_public.py --names-only          # what the hook runs (tree only)
-    python3 scripts/check_public.py --history             # history alone; stdlib-only,
-                                                          # runs in a bare fresh clone
+    uv run python scripts/check_public.py                              # everything
+    python3 scripts/check_public.py --names-only                       # tree sweep alone
+    python3 scripts/check_public.py --commit-message <path>            # commit-message sweep
+                                                                       # alone; <path> is the
+                                                                       # file git writes the
+                                                                       # proposed message to
+                                                                       # (typically
+                                                                       # ``.git/COMMIT_EDITMSG``)
+    python3 scripts/check_public.py --history                          # history alone;
+                                                                       # stdlib-only, runs in a
+                                                                       # bare fresh clone
 """
 
 from __future__ import annotations
@@ -287,6 +294,58 @@ def check_no_private_names_in_history() -> list[str]:
     return offenders
 
 
+def check_no_private_names_in_commit_message(path: Path) -> list[str]:
+    """No private name in a proposed commit message. The hook passes ``.git/COMMIT_EDITMSG``.
+
+    Git writes the in-progress message to this file *before* running the pre-commit
+    hook, so the hook can read what the user is about to commit. The file holds the
+    proposed message verbatim — including the editor's hint comments (``#`` lines
+    like ``# Please enter the commit message...``) — and those hint lines must be
+    filtered out before scanning, otherwise a stale ``# acme`` in a default git
+    comment would block every commit on this machine.
+
+    The function is intentionally minimal: it does not walk history (the ``--history``
+    flag already does that), and it does not look at the tree (the tree sweep
+    already does that). What it does is read one file and grep it for names — the
+    cost is one file read per commit, which is what a hook can afford.
+
+    Empty file or absent file: no scan, no offenders. The very first commit on a
+    fresh repo may not have a ``COMMIT_EDITMSG`` yet (``git commit --allow-empty``
+    creates it), and ``--amend`` with an unchanged message may leave a zero-byte
+    file; both cases are silent no-ops.
+    """
+    private_names = _private_names_module()
+    pattern = private_names.pattern(private_names.load())
+    if pattern is None:
+        # No list configured: a public contributor cannot leak what they don't know.
+        return []
+
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        # The file may not exist yet on the very first commit of a fresh repo. The hook
+        # is allowed to be inert there — it catches the case it exists, not the case
+        # it doesn't.
+        return []
+
+    # Lines starting with `#` are git's hint comments (editor template), not the
+    # message. Strip them before scanning; also strip blank lines because a comment
+    # line that happens to mention a name in the hint text would otherwise match.
+    body = "\n".join(
+        line for line in text.splitlines() if line.strip() and not line.startswith("#")
+    )
+    if not body.strip():
+        return []
+
+    offenders: list[str] = []
+    for number, line in enumerate(body.splitlines(), start=1):
+        if pattern.search(line):
+            offenders.append(f"{path}:{number}: {line.strip()}")
+    if not offenders:
+        print(f"ok: no private project names in {path}")
+    return offenders
+
+
 def _installed_hook() -> Path:
     """The pre-commit hook git would run here, asked of git rather than assembled.
 
@@ -407,22 +466,45 @@ def check_base_stands_alone() -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    # --names-only is the pre-commit hook's entry point: the tree sweep alone, which is
-    # pure stdlib and needs no venv — the history walk would put seconds on the critical
-    # path of every commit for a state a commit cannot even create. --history is the
-    # standalone history walk, also stdlib-only, so it can verify a bare fresh clone
-    # (post-rewrite, pre-push) where no venv exists. The default run does everything.
-    unknown = [a for a in argv if a not in ("--names-only", "--history")]
+    # The mode flags select which check(s) run. The pre-commit hook uses two:
+    # ``--names-only`` for the tree sweep and ``--commit-message PATH`` for the
+    # proposed commit message. ``--history`` is the standalone history walk,
+    # stdlib-only, so it can verify a bare fresh clone (post-rewrite, pre-push)
+    # where no venv exists. The default run does everything.
+    valid_flags = ("--names-only", "--history", "--commit-message")
+
+    # ``--commit-message PATH`` consumes the next argument as its path, so skip
+    # it when validating — otherwise the path looks like an unknown flag.
+    msg_path: Path | None = None
+    if "--commit-message" in argv:
+        i = argv.index("--commit-message")
+        if i + 1 >= len(argv):
+            print("--commit-message requires a path argument", file=sys.stderr)
+            return 2
+        msg_path = Path(argv[i + 1])
+        unknown = [a for j, a in enumerate(argv) if a not in valid_flags
+                   and not a.startswith("--commit-message=")
+                   and not (j == i + 1)]  # the path argument
+    elif any(a.startswith("--commit-message=") for a in argv):
+        msg_path = Path(next(a for a in argv if a.startswith("--commit-message=")).split("=", 1)[1])
+        unknown = [a for a in argv if a not in valid_flags and not a.startswith("--commit-message=")]
+    else:
+        unknown = [a for a in argv if a not in valid_flags]
+
     if unknown:
         print(
-            f"usage: check_public.py [--names-only | --history]  (got {unknown})",
+            f"usage: check_public.py [--names-only | --history | --commit-message <path>]  "
+            f"(got {unknown})",
             file=sys.stderr,
         )
         return 2
+
     if "--names-only" in argv:
         checks = (check_no_private_names,)
     elif "--history" in argv:
         checks = (check_no_private_names_in_history,)
+    elif msg_path is not None:
+        checks = (lambda p=msg_path: check_no_private_names_in_commit_message(p),)
     else:
         checks = (
             check_no_private_names,
@@ -447,8 +529,16 @@ def main(argv: list[str]) -> int:
                 "To commit anyway: git commit --no-verify",
                 file=sys.stderr,
             )
+        if msg_path is not None:
+            print(
+                "\nstablemate is public: the proposed commit message carries a "
+                "private overlay name. Replace it with a neutral reference\n"
+                "(acme, globex, api-service, web-app, mobile-app, example.com).\n"
+                "To commit anyway: git commit --no-verify",
+                file=sys.stderr,
+            )
         return 1
-    if "--names-only" not in argv:
+    if "--names-only" not in argv and msg_path is None:
         print("\nthe public/private split holds")
     return 0
 

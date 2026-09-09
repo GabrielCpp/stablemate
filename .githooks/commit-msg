@@ -1,17 +1,41 @@
 #!/usr/bin/env bash
-# Enforce Conventional Commits on the subject line.
+# Two guards run on the commit message:
 #
-# Under release-please the type is not a style preference — it is the input that
-# decides whether a package is released and at what version. A `chore:` that should
-# have been `fix:` ships nothing, silently, and the omission is only visible weeks
-# later when someone reports a bug against a version that never shipped the fix.
-# A prompt (Zed's generate-message, an agent's) can only bias; this decides.
+# 1. Conventional Commits format on the subject line (this script). Under
+#    release-please the type is not a style preference — it is the input that decides
+#    whether a package is released and at what version. A `chore:` that should have
+#    been `fix:` ships nothing, silently, and the omission is only visible weeks later
+#    when someone reports a bug against a version that never shipped the fix. A prompt
+#    (Zed's generate-message, an agent's) can only bias; this decides.
+#
+# 2. No private overlay project names — the same denylist the tree sweep in
+#    `.githooks/pre-commit` checks, against the message text instead of the staged
+#    files. The names live in `scripts/private_names.py` and are untracked, so a CI
+#    runner has none configured and the check is inert there — which is what the
+#    pre-commit script also says, and for the same reason. A name leaked through a
+#    commit message ships in `git log` for every clone that pulls the commit, which
+#    is exactly how a name removed from the tree survives; this is the message half
+#    of the same defense.
+#
+# The two guards share the file but each has its own pass: the bash side does the
+# Conventional Commits regex, then the python side does the private-name grep.
+# Either one failing blocks the commit (bash `set -e`, python exits non-zero on a
+# hit). Run order matters: if the private-name guard runs first and fails, the
+# Conventional Commits guard never gets a chance to suggest a correct type — a name
+# in the subject is a leak first and a typo second, so the message above the leak
+# is the right thing to lead with.
 #
 # Enable:  make hooks     (sets core.hooksPath to .githooks)
 # Bypass:  git commit --no-verify
-set -uo pipefail
+set -euo pipefail
 
 msg_file="$1"
+
+repo_root="$(git rev-parse --show-toplevel)"
+# Block 2 first: a private name in the message is the more serious problem and the
+# one release-please will not catch. Stop before the Conventional Commits pass would
+# complain about a subject that is about to be replaced anyway.
+python3 "$repo_root/scripts/check_public.py" --commit-message "$msg_file"
 
 # Git's own comment lines, and everything below the `--verbose` scissors, are not
 # part of the message. Strip both, then drop leading blanks so `head -n1` is the

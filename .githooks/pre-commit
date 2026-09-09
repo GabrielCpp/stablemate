@@ -21,6 +21,13 @@
 # `git ls-files` reads the index, so a file `git add`ed for this very commit is
 # already in the scan set.
 #
+# Commit-message guarding lives in `.githooks/commit-msg` rather than here: git
+# writes ``.git/COMMIT_EDITMSG`` *after* pre-commit runs for ``-m`` commits, so
+# pre-commit cannot read the message. commit-msg is invoked with the message file
+# as its single argument and always sees the final message — which is the seam
+# for that sweep. `scripts/check_public.py --commit-message <path>` is what
+# commit-msg calls.
+#
 # Farrier appends its own fenced region below this script and `farrier install`
 # rewrites it, so nothing here may `exec`: the sweep runs as a plain command and the
 # fence runs after it. `set -eu` is what stops on a failure.
