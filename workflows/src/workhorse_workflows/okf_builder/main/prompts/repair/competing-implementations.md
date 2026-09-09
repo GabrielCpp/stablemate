@@ -24,3 +24,19 @@ competitors. Repair from what the **source** already says about the preference:
   as fact, and say plainly that no ranking exists. A competition the source does not
   settle is recorded as a competition, **not resolved by invention**; picking a winner
   yourself plants a selection rule nobody made.
+
+Two shapes that look like the repair and are not — both seen leaving 13 groups standing across
+three turns each:
+
+- **A judgment concept that cites the competitors' symbol.** When the competitors are
+  themselves `concept` nodes (a port concept and the selection concept written for it), a
+  `code:` on the new concept naming the same `path::symbol` makes it a *third competitor* of
+  the same type, and the group is now the port plus the concept meant to settle it. A judgment
+  concept links the competitors; it does not need to own their symbol. Either leave that
+  `code:` off, or declare the relation the checker already exempts:
+  `- extends: [<port concept>](<port>.md)` on the selection concept, which says it specializes
+  the port's concept rather than rivalling it.
+- **Reciprocal `detail:` links.** Port → selection and selection → port is two one-way edges;
+  the test is a `detail:` target *shared by every competitor* (the intersection of their
+  resolved `detail:` sets), and `{selection}` ∩ `{port}` is empty. Every member of `related`
+  has to point at the *same* node.

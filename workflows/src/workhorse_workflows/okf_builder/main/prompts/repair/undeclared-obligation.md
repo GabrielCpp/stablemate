@@ -5,6 +5,32 @@ Every normative bullet on this node (`does:`, `when:`, `returns:`, `raises:`, `s
 `default:`, `semantics:`) is one QA obligation. This node has some and declares no `verify:` at all,
 so nothing downstream can bind a scenario to any of them.
 
+**Only a top-level `- verify:` counts.** The parser reads a node's checks off its top-level
+bullets; a `verify:` indented under a `does:` sub-bullet (`  - state: …` / `    - verify: …`) is
+flattened into that sub-bullet's prose and declares nothing — doctor keeps reporting "no
+`verify:` at all" on a node that visibly has six of them, and three repair turns that each add
+another nested one leave the count at zero. Restate each sub-bullet as its own top-level claim
+and put its check directly beneath it:
+
+```markdown
+# unread — the checks are prose inside the does: block
+- does:
+  - state: registers one `DeleteCustomer` expectation.
+    - verify: created(subject="a DeleteCustomer expectation in the mock's call registry")
+  - emit: returns the typed expectation handle.
+    - verify: json_path(path="$", equals="the same `*Mock_DeleteCustomer_Call` receiver")
+
+# read — one top-level claim, its check right under it
+- does: registers one `DeleteCustomer` expectation.
+- verify: created(subject="a DeleteCustomer expectation in the mock's call registry")
+- does: returns the typed expectation handle.
+- verify: json_path(path="$", equals="the same `*Mock_DeleteCustomer_Call` receiver")
+```
+
+Repeating `- does:` is the documented way to state several claims (the ostler-okf skill's
+`references/bullet-grammar.md`, "repeat the key"); the one-`does:`-block rule above is about not
+scattering a *single* nested block across the node, not a ban on one claim per line.
+
 **One check per normative bullet, in the bullets' own order.** That ordering is the only pairing the
 book records, so it is what a reader uses to tell which check belongs to which claim.
 
