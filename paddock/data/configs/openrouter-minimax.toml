@@ -12,7 +12,7 @@
 # an OpenRouter account, and a round that runs out stops mid-flight with a 402 rather
 # than a quota error.
 
-config_version = 1
+config_version = 2
 default_cli = "opencode"
 
 # --- the endpoint pin, which is the reason this file names a tag ------------------------
@@ -97,32 +97,35 @@ default_cli = "opencode"
 # trial; they decide nothing, and making them model-aware means threading a param the
 # workflow package is forbidden to read from the environment.
 
-[power.high.opencode]
+[profiles.opencode]
+cli = "opencode"
+
+[profiles.opencode.powers.high]
 model = "openrouter/minimax/minimax-m3"
 effort = "high"
 timeout_scale = 3.0
 
-[power.max.opencode]
+[profiles.opencode.powers.max]
 model = "openrouter/minimax/minimax-m3"
 effort = "high"
 timeout_scale = 3.0
 
-[power.ultra.opencode]
+[profiles.opencode.powers.ultra]
 model = "openrouter/minimax/minimax-m3"
 effort = "xhigh"
 timeout_scale = 3.0
 
-[power.medium.opencode]
+[profiles.opencode.powers.medium]
 model = "openrouter/minimax/minimax-m3"
 effort = "medium"
 timeout_scale = 3.0
 
-[power.low.opencode]
+[profiles.opencode.powers.low]
 model = "openrouter/minimax/minimax-m2.7"
 effort = "low"
 timeout_scale = 3.0
 
-[default.opencode]
+[profiles.opencode.default]
 model = "openrouter/minimax/minimax-m3"
 effort = "medium"
 timeout_scale = 3.0

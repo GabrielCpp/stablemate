@@ -1,8 +1,8 @@
-"""Tests for per-harness environment config (``[harness.<backend>].env``).
+"""Tests for per-CLI environment config (``[cli.<backend>].env``).
 
 Some agent-CLI knobs exist only as environment variables — no flag, no config key
-workhorse could pass through. ``[harness.<backend>].env`` is the generic seam for
-them: the operator names the variables, workhorse forwards them to that harness's
+workhorse could pass through. ``[cli.<backend>].env`` is the generic seam for
+them: the operator names the variables, workhorse forwards them to that CLI's
 subprocess and to nothing else.
 
 Two properties matter and are what this file pins:
@@ -35,12 +35,17 @@ from workhorse.runner.backends.opencode import OpenCodeBackend
 
 
 CONFIG = {
-    "harness": {
+    "cli": {
         "opencode": {"env": {"OPENCODE_DISABLE_AUTOCOMPACT": "1"}},
         "claude": {"env": {"MAX_THINKING_TOKENS": "31999"}},
     },
     # A sibling top-level table, to prove the lookup is scoped and not a broad scan.
-    "power": {"high": {"opencode": {"model": "openai/gpt-5.5"}}},
+    "profiles": {
+        "opencode": {
+            "cli": "opencode",
+            "powers": {"high": {"model": "openai/gpt-5.5"}},
+        },
+    },
 }
 
 
@@ -61,13 +66,13 @@ def test_missing_sections_never_raise():
     """Every shape a hand-edited config can take degrades to {}, not an exception."""
     for cfg in (
         {},                                            # nothing configured at all
-        {"harness": {}},                               # table present, no backends
-        {"harness": {"opencode": {}}},                 # backend present, no env
-        {"harness": {"opencode": {"env": {}}}},        # env present, empty
-        {"harness": "opencode"},                       # harness is a string
-        {"harness": {"opencode": "env"}},              # backend is a string
-        {"harness": {"opencode": {"env": "FOO=1"}}},   # env is a string, not a table
-        {"harness": {"opencode": {"env": ["FOO"]}}},   # env is an array
+        {"cli": {}},                                   # table present, no backends
+        {"cli": {"opencode": {}}},                     # backend present, no env
+        {"cli": {"opencode": {"env": {}}}},            # env present, empty
+        {"cli": "opencode"},                           # cli table is a string
+        {"cli": {"opencode": "env"}},                  # backend is a string
+        {"cli": {"opencode": {"env": "FOO=1"}}},       # env is a string, not a table
+        {"cli": {"opencode": {"env": ["FOO"]}}},       # env is an array
     ):
         assert resolve_harness_env("opencode", cfg) == {}, cfg
 
@@ -76,7 +81,7 @@ def test_non_string_values_are_dropped():
     """``FOO = 1`` is a TOML integer. Coercing it would make the config lie about
     what the process received, so it is dropped and the string keys still resolve."""
     cfg = {
-        "harness": {
+        "cli": {
             "opencode": {
                 "env": {
                     "GOOD": "1",
@@ -166,7 +171,7 @@ def test_every_backend_forwards_its_own_table():
         ClineBackend(),
     ):
         marker = {f"{backend.name.upper()}_MARKER": "yes"}
-        cfg = {"harness": {backend.name: {"env": marker}}}
+        cfg = {"cli": {backend.name: {"env": marker}}}
         own = OPENCODE_OWN if isinstance(backend, OpenCodeBackend) else {}
         with _with_config(cfg):
             assert _spawn_env(backend) == {**marker, **own}, backend.name

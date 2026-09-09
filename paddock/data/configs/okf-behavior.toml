@@ -1,19 +1,22 @@
 # Match the default variant actually used by the recorded v1/v2 evaluations.
 # Omit effort rather than requesting an adapter-unsupported spelling.
-config_version = 1
+
+# This config is unusual: there are no power tiers and no auto-default profile for the
+# active CLI. A run under it resolves every node as bare-CLI for opencode — the CLI's
+# own default model, no --model or --variant flags from the workflow. The `default`
+# table here is a hint for operators reading the file (and a no-op for the resolver),
+# not a per-tier model set the workflow draws from.
+#
+# Every node in the recorded evaluations carried `power: unset` on purpose, so the
+# measurement is "what does opencode pick when the workflow says nothing". Promoting
+# any of those defaults into a `[profiles.opencode.powers.<tier>]` would change the
+# measurement to "what does this pinned model pick", which is `configs/opencode.toml`.
+
+config_version = 2
 default_cli = "opencode"
 
-[default.opencode]
-model = "openai/gpt-5.6-terra"
+[profiles.opencode]
+cli = "opencode"
 
-[power.low.opencode]
-model = "openai/gpt-5.6-terra"
-
-[power.medium.opencode]
-model = "openai/gpt-5.6-terra"
-
-[power.high.opencode]
-model = "openai/gpt-5.6-terra"
-
-[power.max.opencode]
+[profiles.opencode.default]
 model = "openai/gpt-5.6-terra"

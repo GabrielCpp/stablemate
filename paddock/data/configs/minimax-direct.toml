@@ -20,7 +20,7 @@
 # reports under this file is rate-card multiplication against models.dev, not an invoice,
 # and must not be compared against the OpenRouter arm's real spend as if both were bills.
 
-config_version = 1
+config_version = 2
 default_cli = "opencode"
 
 # --- no endpoint pin, and that is the point ---------------------------------------------
@@ -28,8 +28,8 @@ default_cli = "opencode"
 # `configs/openrouter-minimax.toml` carries thirty lines of provider routing because an
 # OpenRouter slug is a fan-out: the prompt cache lives on the endpoint, so a silent
 # failover starts a cold prefix and bills the next ~175k-token prompt at full input rate,
-# and two of m3's endpoints report `tools=false`, which fails an agent turn in a way that
-# reads as a model result when it is a config one.
+# and two of m3's endpoints report `tools=false`, which fails an agent turn in a way
+# that reads as a model result when it is a config one.
 #
 # None of that applies here. `minimax/MiniMax-M3` is opencode's built-in provider
 # namespace, authenticated by the `minimax` entry in `~/.local/share/opencode/auth.json`,
@@ -45,15 +45,15 @@ default_cli = "opencode"
 #
 # `low` is the one rung that changes model rather than effort: it is the tier workflows
 # reach for when the decision is mechanical, it is where the turn count lives, and M2.7
-# is sufficient for it. If a round fails on context there, move it to M3 and note that
-# the round measured something else.
+# is sufficient for it. If a round fails on context there, move it to M3 and note that the
+# round measured something else.
 
 # --- the clock, which is a property of the model and not of the node ---------------------
 #
 # Every `timeout:` under workflows/ states the *shape* of the work — "a QA plan is about
 # twenty minutes" — which is true whatever model does it. What differs is how fast this
-# endpoint executes a unit of that work, so the scalar rides the power table beside the
-# model it belongs to and multiplies every budget resolved at that rung.
+# endpoint executes a unit of that work, so the scalar rides the power table beside
+# the model it belongs to and multiplies every budget resolved at that rung.
 #
 # 3.0 is carried over from the OpenRouter arm, where it was measured (~340s per turn
 # against ~115s for the subscription models on the same nodes; ~2.95 for m3 at n=20).
@@ -75,48 +75,35 @@ default_cli = "opencode"
 # trial; they decide nothing, and making them model-aware means threading a param the
 # workflow package is forbidden to read from the environment.
 
-[power.high.opencode]
+[profiles.opencode]
+cli = "opencode"
+
+[profiles.opencode.powers.high]
 model = "minimax/MiniMax-M3"
 effort = "high"
 timeout_scale = 3.0
 
-[power.max.opencode]
+[profiles.opencode.powers.max]
 model = "minimax/MiniMax-M3"
 effort = "high"
 timeout_scale = 3.0
 
-[power.ultra.opencode]
+[profiles.opencode.powers.ultra]
 model = "minimax/MiniMax-M3"
 effort = "xhigh"
 timeout_scale = 3.0
 
-[power.medium.opencode]
+[profiles.opencode.powers.medium]
 model = "minimax/MiniMax-M3"
 effort = "medium"
 timeout_scale = 3.0
 
-[power.low.opencode]
+[profiles.opencode.powers.low]
 model = "minimax/MiniMax-M2.7"
 effort = "low"
 timeout_scale = 3.0
 
-# The tiers `max`/`ultra` were named `smart`/`extra-smart` until recently. A paddock run
-# pins the stablemate code at a commit while reading this file from the working tree, so a
-# run pinned before the rename asks for the old spellings and would silently fall through
-# to `[default.opencode]` — medium effort — on exactly the nodes that need the most. Both
-# spellings are declared until every pin in flight carries the new names.
-
-[power.smart.opencode]
-model = "minimax/MiniMax-M3"
-effort = "high"
-timeout_scale = 3.0
-
-[power.extra-smart.opencode]
-model = "minimax/MiniMax-M3"
-effort = "xhigh"
-timeout_scale = 3.0
-
-[default.opencode]
+[profiles.opencode.default]
 model = "minimax/MiniMax-M3"
 effort = "medium"
 timeout_scale = 3.0

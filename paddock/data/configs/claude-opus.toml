@@ -7,7 +7,7 @@
 # What makes this file different from `opencode.toml` is that it deliberately throws the
 # power ladder away: all five tiers resolve to the same (model, effort) pair. Under any
 # other question that would be a defect — the ~40 `power=` sites under workflows/ each
-# carry a written reason for the rung they ask for, and a table that flattens them bills
+# carry a written reason for the rung they pick, and a table that flattens them bills
 # every node at one tier and cannot say whether a tier choice was right.
 #
 # Here it is the measurement. The number this config exists to be compared against is a
@@ -22,25 +22,28 @@
 # `--effort`, so the trials must not either. The claude backend appends `--effort` only
 # when a tier names one.
 
-config_version = 1
+config_version = 2
 default_cli = "claude"
 
-[power.low.claude]
+[profiles.claude]
+cli = "claude"
+
+[profiles.claude.powers.low]
 model = "claude-opus-5"
 
-[power.medium.claude]
+[profiles.claude.powers.medium]
 model = "claude-opus-5"
 
-[power.high.claude]
+[profiles.claude.powers.high]
 model = "claude-opus-5"
 
-[power.max.claude]
+[profiles.claude.powers.max]
 model = "claude-opus-5"
 
-[power.ultra.claude]
+[profiles.claude.powers.ultra]
 model = "claude-opus-5"
 
-[default.claude]
+[profiles.claude.default]
 model = "claude-opus-5"
 
 # The QA tools this app's `agents.yml` may reach for. Copied from `opencode.toml` rather

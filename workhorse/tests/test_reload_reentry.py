@@ -209,7 +209,7 @@ def test_a_profile_switch_is_applied_in_place_and_the_run_carries_on():
             ran.append("start")
             return Done("finished")
 
-    cfg = {"profiles": {"cheap": {"power": {"high": {"fake": {"model": "haiku"}}}}}}
+    cfg = {"profiles": {"cheap": {"cli": "fake", "powers": {"high": {"model": "haiku"}}}}}
     with tempfile.TemporaryDirectory() as tmp:
         env = dataclasses.replace(
             _env(tmp), agent_runner=ladder.AgentRunner(backend=FakeBackend(None))

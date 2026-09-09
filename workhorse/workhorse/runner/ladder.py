@@ -125,9 +125,11 @@ def switch_profile(runner: "AgentRunner | None", name: str) -> dict[str, object]
     that landed would leave a week-long run spending on the models nobody chose.
 
     Both refusals are the ones the CLI boundary makes at startup, applied to the run as it
-    now is: an unknown profile, and a profile that maps nothing for the backend this run
-    is actually driving — which would not fail, it would quietly resolve through
-    `[default.<backend>]` to the machine's models.
+    now is: an unknown profile, and a profile whose `cli` field disagrees with the CLI
+    this run is actually driving. Under v2 the CLI is the profile's CLI by construction
+    (--profile and --cli are mutually exclusive), so a successful switch-cli moves the
+    run to a profile whose `cli` matches the new backend — what `profile_has_backend`
+    reads.
     """
     if runner is None:
         return {"ok": False, "error": "this run drives no agent, so it resolves no models"}
@@ -136,14 +138,12 @@ def switch_profile(runner: "AgentRunner | None", name: str) -> dict[str, object]
     except UnknownProfileError as exc:
         return {"ok": False, "error": str(exc)}
     backend = runner.backend.name
-    if (tables.get("power") or tables.get("default")) and not profile_has_backend(
-        tables, backend
-    ):
+    if not profile_has_backend(tables, backend):
         return {
             "ok": False,
-            "error": f"profile {name!r} has no entries for the CLI backend {backend!r} "
-            f"this run is driving; switch-cli first, or give the profile a "
-            f"[power.<tier>.default] fallback",
+            "error": f"profile {name!r} declares cli = {tables.get('cli')!r} which does "
+            f"not match the CLI backend {backend!r} this run is driving. Switch-cli "
+            f"first, or pick a profile whose cli matches the new backend.",
         }
     was, runner.profile.name = runner.profile.name, name
     # Warned-about names are forgotten on the way past: a profile re-created in the config
@@ -167,16 +167,16 @@ def _resolve_power_settings(
 
     Per field, the power mapping wins when present. Model then falls through to the
     run-level override (``AGENT_MODEL`` / ``AGENT_CLAUDE_MODEL``, resolved once at the
-    CLI boundary and handed down), then the config's ``[default.<backend>]`` table;
-    effort falls through to that table directly (it has no override). Anything still
-    unset stays None so the harness default applies.
+    CLI boundary and handed down), then the profile's ``default`` table; effort falls
+    through to that table directly (it has no override). Anything still unset stays
+    None so the harness default applies.
 
     The third value is the wall-clock multiplier for this tier, defaulting to ``1.0``
     — a run that configures nothing keeps every budget byte-identical. It rides here
     rather than beside the node numbers because a node's ``timeout=`` states the shape
     of the work ("a QA plan is about twenty minutes"), which is true whatever model
     does it; how fast a model executes a unit of that work is a property of the model,
-    which is exactly what the ``[power.*]`` tables already describe.
+    which is exactly what the ``[powers.<tier>]`` tables describe.
 
     ``profile`` narrows *which* config those two tables are read from, and narrowing is
     the whole mechanism: a selected profile replaces the top level rather than layering

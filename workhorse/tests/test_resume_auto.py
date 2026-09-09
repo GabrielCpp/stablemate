@@ -257,14 +257,21 @@ def test_the_recorded_resume_command_carries_what_the_checkpoint_does_not_hold()
     by the run, and a supervisor re-spawning this line hours later is a fresh process
     with a fresh environment — so what the environment would have said has to be in the
     argv. The params are the other way round: they are in the checkpoint, and replaying
-    a `--params-file` would let a stale file win over what the run really holds."""
+    a `--params-file` would let a stale file win over what the run really holds.
+
+    v2: ``--profile cheap`` carries its own ``cli = "claude"``, so ``--cli claude`` is
+    no longer in the argv. The recorded resume command therefore omits ``--cli`` and
+    relies on the profile to name it.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         run_dir = Path(tmp) / "runs" / "research-shakedown"
         cfg = Path(tmp) / "stablemate.toml"
-        cfg.write_text('[profiles.cheap.default.claude]\nmodel = "haiku"\n')
+        cfg.write_text(
+            '[profiles.cheap]\ncli = "claude"\n[profiles.cheap.default]\nmodel = "haiku"\n'
+        )
         argv = resume_argv(
             "workhorse-research", run_dir,
-            cli="claude", profile="cheap", config_path=str(cfg),
+            profile="cheap", config_path=str(cfg),
         )
         assert argv[:4] == ["workhorse-research", "run", "--resume-run", str(run_dir)]
         assert "--params" not in argv and "--params-file" not in argv

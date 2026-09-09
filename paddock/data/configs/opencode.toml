@@ -12,7 +12,7 @@
 # effective config into its scratch directory; this file stays the part that is the same
 # everywhere.
 
-config_version = 1
+config_version = 2
 default_cli = "opencode"
 
 # These are `openai/` ids, not `openrouter/openai/` ones, because opencode reaches them
@@ -40,27 +40,30 @@ default_cli = "opencode"
 # renders as `--variant` (low -> minimal, medium -> the provider default, high -> high,
 # xhigh -> max).
 
-[power.high.opencode]
+[profiles.opencode]
+cli = "opencode"
+
+[profiles.opencode.powers.high]
 model = "openai/gpt-5.6-terra"
 effort = "high"
 
-[power.max.opencode]
+[profiles.opencode.powers.max]
 model = "openai/gpt-5.6-sol"
 effort = "high"
 
-[power.ultra.opencode]
+[profiles.opencode.powers.ultra]
 model = "openai/gpt-5.6-sol"
 effort = "xhigh"
 
-[power.medium.opencode]
+[profiles.opencode.powers.medium]
 model = "openai/gpt-5.6-terra"
 effort = "medium"
 
-[power.low.opencode]
+[profiles.opencode.powers.low]
 model = "openai/gpt-5.6-terra"
 effort = "low"
 
-[default.opencode]
+[profiles.opencode.default]
 model = "openai/gpt-5.6-terra"
 effort = "medium"
 

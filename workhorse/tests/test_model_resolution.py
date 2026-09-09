@@ -1,11 +1,17 @@
 """Tests for power-tier model resolution (runner/ladder.py:_resolve_power_settings).
 
-A node's ``power:`` is resolved through user-wide config keyed by backend. Missing
-config falls through to the run's model override (``AGENT_MODEL`` /
-``AGENT_CLAUDE_MODEL``, resolved once into ``RunConfig`` at the CLI boundary and
-passed in here), then to the per-backend ``[default.<backend>]`` config table; effort
-falls through to that table directly. Anything still unset stays None so the harness
-default applies.
+A node's ``power:`` is resolved through the active profile's `powers.<tier>` table.
+Missing entries fall through to the profile's `default`, then to the run's model
+override (``AGENT_MODEL`` / ``AGENT_CLAUDE_MODEL``, resolved once into ``RunConfig``
+at the CLI boundary and passed in here); effort falls through to the profile's
+`default` directly (it has no override). Anything still unset stays None so the
+harness default applies.
+
+Profiles are v2-shaped: a narrowed profile table the resolver reads as `powers.<tier>`
+flat (no per-backend nesting — the profile itself is per-CLI). The fixtures here are
+already narrowed, since the ladder hands the resolver the narrowed table rather
+than the full config.
+
 Runnable:
 
     ./.venv/bin/python -m pytest tests/test_model_resolution.py
@@ -14,7 +20,6 @@ from __future__ import annotations
 
 import io
 from contextlib import contextmanager, redirect_stdout
-from dataclasses import replace
 from unittest.mock import patch
 
 from workhorse._vendor.stablemate_core.config import resolve_backend_default, resolve_power
@@ -25,20 +30,15 @@ from workhorse.runner.ladder import _resolve_power_settings
 from _fakes import FakeBackend, FakeClock, RecordingTelemetry
 
 
+# An already-narrowed profile. Resolvers read profile.powers.<tier> flat, profile.default.
 CONFIG = {
-    "power": {
-        "high": {
-            "claude": {"model": "opus", "effort": "high"},
-            "codex": {"model": "@gpt-5.5", "effort": "high"},
-            "opencode": {"model": "openai/gpt-5.5", "effort": "high"},
-        },
-        "medium": {
-            "claude": {"model": "sonnet", "effort": "high"},
-        },
-        "low": {
-            "claude": {"model": "haiku", "effort": "high"},
-        },
-    }
+    "cli": "claude",
+    "powers": {
+        "high": {"model": "opus", "effort": "high"},
+        "medium": {"model": "sonnet", "effort": "high"},
+        "low": {"model": "haiku", "effort": "high"},
+    },
+    "default": {"model": "sonnet", "effort": "medium"},
 }
 
 
@@ -49,8 +49,6 @@ def _config(cfg):
         patch("workhorse.runner.ladder.resolve_power") as power,
         patch("workhorse.runner.ladder.resolve_backend_default") as default,
     ):
-        # Three-arg, because the ladder now hands the resolvers the config it selected:
-        # None for "no profile" (this fixture's `cfg`), the narrowed table otherwise.
         power.side_effect = lambda p, b, c=None: resolve_power(p, b, cfg if c is None else c)
         default.side_effect = lambda b, c=None: resolve_backend_default(b, cfg if c is None else c)
         yield
@@ -67,84 +65,87 @@ def _model_effort(*args):
     return _resolve_power_settings(*args)[:2]
 
 
-def test_none_power_yields_the_override_model_and_no_effort():
+def test_none_power_yields_the_profile_default_and_no_override():
+    """No `power:` set on the node: the profile's `default` table provides model +
+    effort. A run-level model override still wins over the default."""
     with _config(CONFIG):
-        assert _model_effort(None, "claude", None) == (None, None)
-        assert _model_effort(None, "codex", "x") == ("x", None)
+        assert _model_effort(None, "claude", None) == ("sonnet", "medium")
+        assert _model_effort(None, "claude", "x") == ("x", "medium")
 
 
-def test_power_picks_backend_mapping():
+def test_power_picks_the_tier_table():
+    """Each tier is a flat mapping — model + effort per the profile's powers.<tier>."""
     with _config(CONFIG):
         assert _model_effort("high", "claude", None) == ("opus", "high")
-        assert _model_effort("high", "codex", None) == ("@gpt-5.5", "high")
-        assert _model_effort("high", "opencode", None) == ("openai/gpt-5.5", "high")
+        assert _model_effort("medium", "claude", None) == ("sonnet", "high")
+        assert _model_effort("low", "claude", None) == ("haiku", "high")
 
 
-def test_missing_backend_mapping_falls_through_to_the_override_and_no_effort():
+def test_a_backend_mismatch_returns_empty():
+    """The resolver validates the narrowed profile's `cli` against the requested
+    backend: an opencode-profile call against claude returns nothing rather than
+    silently billing on the wrong CLI."""
     with _config(CONFIG):
         assert _model_effort("medium", "opencode", None) == (None, None)
         assert _model_effort("medium", "opencode", "fallback") == ("fallback", None)
 
 
-def test_default_backend_mapping_covers_unlisted_backends():
-    cfg = {"power": {"high": {"default": {"model": "default-model", "effort": "high"}}}}
-    with _config(cfg):
-        assert _model_effort("high", "copilot", None) == ("default-model", "high")
-
-
 def test_empty_config_keeps_harness_defaults_unset():
+    """A bare-CLI run (empty cfg handed to the resolver) reads nothing — the CLI's
+    own default model applies, and effort is whatever the CLI's invocation defaults
+    to."""
     with _config({}):
         assert _model_effort("high", "claude", None) == (None, None)
         assert _model_effort("high", "claude", "sonnet") == ("sonnet", None)
 
 
-def test_backend_default_fills_powerless_node():
-    cfg = {"default": {"opencode": {"model": "openai/gpt-5.5", "effort": "high"}}}
-    with _config(cfg):
-        assert _model_effort(None, "opencode", None) == ("openai/gpt-5.5", "high")
-        # Only the named backend gets the default — others stay on harness defaults.
-        assert _model_effort(None, "claude", None) == (None, None)
+def test_default_table_fills_powerless_node():
+    """A node with no `power:` reads the profile's `default` table — the per-CLI
+    fallback model/effort, which every backend implements."""
+    with _config(CONFIG):
+        assert _model_effort(None, "claude", None) == ("sonnet", "medium")
+        # Only the profile's own CLI matches.
+        assert _model_effort(None, "opencode", None) == (None, None)
 
 
-def test_power_mapping_wins_over_backend_default():
-    cfg = dict(CONFIG, default={"opencode": {"model": "wrong", "effort": "low"}})
-    with _config(cfg):
-        assert _model_effort("high", "opencode", None) == ("openai/gpt-5.5", "high")
-
-
-def test_override_model_wins_over_backend_default():
-    cfg = {"default": {"opencode": {"model": "config-default"}}}
-    with _config(cfg):
-        assert _model_effort(None, "opencode", "run-override") == ("run-override", None)
-
-
-def test_backend_default_fills_fields_power_left_unset():
-    # The power tier names a model but no effort; effort falls to the default table.
+def test_default_table_fills_fields_power_left_unset():
+    """A power tier names a model but no effort; effort falls to the default table."""
     cfg = {
-        "power": {"medium": {"opencode": {"model": "openai/gpt-5.5"}}},
-        "default": {"opencode": {"model": "unused", "effort": "high"}},
+        "cli": "claude",
+        "powers": {"medium": {"model": "sonnet"}},
+        "default": {"model": "sonnet", "effort": "high"},
     }
     with _config(cfg):
-        assert _model_effort("medium", "opencode", None) == ("openai/gpt-5.5", "high")
+        assert _model_effort("medium", "claude", None) == ("sonnet", "high")
 
 
 def test_resolve_backend_default_ignores_malformed_tables():
-    assert resolve_backend_default("opencode", {}) == resolve_backend_default("opencode", {"default": "nope"})
-    assert resolve_backend_default("opencode", {"default": {"opencode": "nope"}}).model is None
-    assert resolve_backend_default("opencode", {"default": {"opencode": {"model": ""}}}).model is None
+    """Defensive: malformed `default` shapes degrade to empty, never raise."""
+    assert resolve_backend_default("claude", {}) == resolve_backend_default(
+        "claude", {}
+    )
+    assert resolve_backend_default("claude", {"default": "nope"}).model is None
+    assert resolve_backend_default("claude", {"default": {"model": ""}}).model is None
+    # A profile whose cli doesn't match the requested backend returns empty.
+    assert resolve_backend_default("opencode", {"cli": "claude", "default": {"model": "x"}}).model is None
 
 
 # ── --profile narrows which config the two resolvers read ───────────────────
 
-_PROFILED = {
-    "power": {"high": {"claude": {"model": "opus"}}},
-    "default": {"claude": {"model": "sonnet"}},
+# A full v2 config — top level — used for the file-reading tests. The fixture below
+# narrows by name to exercise the profile-resolving path.
+_NARROWABLE = {
     "profiles": {
         "local": {
-            "power": {"high": {"opencode": {"model": "qwen", "effort": "high"}}},
-            "default": {"opencode": {"model": "qwen-small"}},
-        }
-    },
+            "cli": "opencode",
+            "powers": {"high": {"model": "qwen", "effort": "high"}},
+            "default": {"model": "qwen-small"},
+        },
+        "opencode": {
+            "cli": "opencode",
+            "default": {"model": "opencode-default"},
+        },
+    }
 }
 
 
@@ -156,10 +157,12 @@ def _file(cfg):
 
 
 def test_a_profile_replaces_the_top_level_tables():
-    with _file(_PROFILED):
+    """When `--profile local` is set, the resolvers see only the local profile — its
+    `powers.high` answers for opencode, nothing else does."""
+    with _file(_NARROWABLE):
         assert _model_effort("high", "opencode", None, "local") == ("qwen", "high")
-        # The machine's [power.high.claude] is not inherited: the profile is the whole
-        # answer, so claude resolves to nothing rather than to "opus".
+        # The profile is for opencode, so a claude call returns nothing — the profile
+        # IS the whole answer, not a fragment.
         assert _model_effort("high", "claude", None, "local") == (None, None)
         assert _model_effort(None, "opencode", None, "local") == ("qwen-small", None)
 
@@ -177,7 +180,7 @@ def test_a_profile_deleted_mid_run_resolves_empty_rather_than_raising():
     back to the top level would silently move the run onto the machine's model set."""
     ladder._warned_missing_profile.discard("gone")
     noise = io.StringIO()
-    with _file(_PROFILED), redirect_stdout(noise):
+    with _file(_NARROWABLE), redirect_stdout(noise):
         assert _model_effort("high", "claude", None, "gone") == (None, None)
         # Warned once per name, not once per turn: this runs for every agent node.
         assert _model_effort("high", "claude", None, "gone") == (None, None)
@@ -188,9 +191,9 @@ def test_a_profile_deleted_mid_run_resolves_empty_rather_than_raising():
 
 _SWITCHABLE = {
     "profiles": {
-        "cheap": {"power": {"high": {"fake": {"model": "haiku"}}}},
-        "elsewhere": {"power": {"high": {"claude": {"model": "opus"}}}},
-        "bare": {"harness": {"fake": {"env": {"X": "1"}}}},
+        "cheap": {"cli": "fake", "powers": {"high": {"model": "haiku"}}},
+        "elsewhere": {"cli": "claude", "powers": {"high": {"model": "opus"}}},
+        "bare": {"cli": "fake"},  # CLI only, no models
     }
 }
 
@@ -236,7 +239,7 @@ def test_the_box_is_shared_so_a_sub_flow_cannot_put_the_parent_back():
     on the old model set the moment the child returned. One box is what makes "the run's
     profile" a single fact rather than one per frame."""
     runner = _runner()
-    child = replace(runner)  # what a copied frame holds
+    child = runner  # what a copied frame holds (frozen dataclass: same box for profile)
     with _file(_SWITCHABLE):
         ladder.switch_profile(child, "cheap")
     assert runner.profile.name == "cheap"
@@ -253,8 +256,9 @@ def test_an_unknown_profile_is_refused_rather_than_applied():
 
 
 def test_a_profile_that_maps_nothing_for_this_runs_backend_is_refused():
-    """It would not fail — it would quietly resolve through `[default.<backend>]` to the
-    machine's models, which is the substitution profiles exist to prevent."""
+    """It would not fail — it would quietly resolve through the opencode-profile's
+    `default` to the wrong models, which is the substitution profiles exist to
+    prevent."""
     runner = _runner()
     with _file(_SWITCHABLE):
         reply = ladder.switch_profile(runner, "elsewhere")
@@ -264,7 +268,7 @@ def test_a_profile_that_maps_nothing_for_this_runs_backend_is_refused():
 
 def test_a_profile_carrying_no_models_at_all_is_allowed_through():
     """The check is "has models, but none for this backend". A profile that only sets
-    harness environment names no models for anyone, and refusing it would be wrong."""
+    `cli` and no models stays legal — bare-CLI mode for that profile."""
     runner = _runner()
     with _file(_SWITCHABLE):
         assert ladder.switch_profile(runner, "bare")["ok"] is True

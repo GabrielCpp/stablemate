@@ -22,19 +22,23 @@ from farrier import cli
 from farrier._vendor.stablemate_core import config
 
 CONFIG = """\
+config_version = 2
 default_cli = "claude"
 
-[power.high.claude]
+[profiles.claude]
+cli = "claude"
+
+[profiles.claude.powers.high]
 model = "opus"
 
 [profiles.cheap]
-default_cli = "opencode"
+cli = "opencode"
 
-[profiles.cheap.power.high.claude]
+[profiles.cheap.powers.high]
 model = "haiku"
 effort = "low"
 
-[profiles.cheap.default.opencode]
+[profiles.cheap.default]
 model = "qwen"
 """
 
@@ -83,17 +87,18 @@ def test_a_profile_is_shown_flattened_to_dotted_keys():
         lines = _show("--config", str(path), "show", "--profile", "cheap")
 
     assert lines == [
-        "default_cli=opencode",
-        "power.high.claude.model=haiku",
-        "power.high.claude.effort=low",
-        "default.opencode.model=qwen",
+        "cli=opencode",
+        "powers.high.model=haiku",
+        "powers.high.effort=low",
+        "default.model=qwen",
     ]
 
 
 def test_the_profile_replaces_the_top_level_rather_than_layering_over_it():
     """The property the whole feature rests on, asserted where an operator can see it:
-    `[power.high.claude] model = "opus"` is above the profile in the same file, and the
-    profile's own entry is the *whole* answer rather than an override on top of it."""
+    `[profiles.claude.powers.high] model = "opus"` is above the profile in the same
+    file, and the selected profile's own entry is the *whole* answer rather than an
+    override on top of it."""
     with written() as path:
         lines = _show("--config", str(path), "show", "--profile", "cheap")
 
@@ -104,7 +109,7 @@ def test_a_key_is_looked_up_by_its_dotted_path_within_the_profile():
     """`show <key>` already means "print one bare value"; inside a profile the keys are
     the dotted ones, so this is the same verb rather than a second spelling."""
     with written() as path:
-        lines = _show("--config", str(path), "show", "power.high.claude.model",
+        lines = _show("--config", str(path), "show", "powers.high.model",
                       "--profile", "cheap")
 
     assert lines == ["haiku"]
@@ -127,7 +132,7 @@ def test_a_key_the_profile_does_not_set_says_which_profile_it_looked_in():
     tool rather than as a gap in the profile."""
     with written() as path:
         try:
-            _show("--config", str(path), "show", "power.high.codex.model",
+            _show("--config", str(path), "show", "powers.high.codex.model",
                   "--profile", "cheap")
         except SystemExit as exc:
             assert "profile 'cheap'" in str(exc), exc
@@ -136,8 +141,10 @@ def test_a_key_the_profile_does_not_set_says_which_profile_it_looked_in():
 
 
 def test_a_config_with_no_profiles_at_all_still_shows_the_top_level():
-    with written('default_cli = "codex"\n') as path:
-        assert _show("--config", str(path), "show") == ["default_cli=codex"]
+    with written('config_version = 2\ndefault_cli = "codex"\n') as path:
+        lines = _show("--config", str(path), "show")
+        assert "default_cli=codex" in lines
+        assert "config_version=2" in lines
 
 
 def test_set_worktree_records_a_directory_that_does_not_exist_yet():

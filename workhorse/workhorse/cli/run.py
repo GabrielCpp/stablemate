@@ -26,7 +26,7 @@ from pydantic import ValidationError
 from workhorse import otel
 from workhorse._vendor.stablemate_core.config import (
     CONFIG_PATH_ENV,
-    DEFAULT_CLI_KEY,
+    ConfigError,
     UnknownProfileError,
     config_path,
     get_config_value,
@@ -34,6 +34,7 @@ from workhorse._vendor.stablemate_core.config import (
     profile_backends,
     profile_has_backend,
     resolve_default_cli,
+    select_active_profile,
     select_profile,
 )
 from workhorse._vendor.stablemate_core.discovery import base_library_dir
@@ -109,16 +110,20 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "opencode. Overrides the AGENT_CLI env var, which in turn overrides the "
         "shared config's `default_cli` (claude when that is unset too). Selection is "
         "per-run, not per-node. To run on an OpenRouter model, use an OpenRouter-"
-        "native backend (cline/opencode) and give nodes an 'openrouter/<slug>' model.",
+        "native backend (cline/opencode) and give nodes an 'openrouter/<slug>' model. "
+        "MUTUALLY EXCLUSIVE with --profile: a profile carries its own `cli` field, "
+        "and the two cannot disagree about which CLI runs.",
     )
     parser.add_argument(
         "--profile",
         default=None,
         metavar="NAME",
-        help="Resolve this run's models from the config's [profiles.<NAME>] tables "
-        "instead of its top-level ones. A profile REPLACES them — nothing outside it "
-        "is inherited — and is independent of --cli, which chooses whose entries in it "
-        "apply. Its `default_cli` is only the default value of --cli.",
+        help="Resolve this run's models from the named [profiles.NAME] table. The "
+        "profile REPLACES the top-level model tables — nothing outside it is "
+        "inherited — and declares its own `cli` field naming the CLI it runs "
+        "under. MUTUALLY EXCLUSIVE with --cli: drop --cli, or the profile selects "
+        "its CLI for you. A profile whose key matches its `cli` is auto-selected "
+        "when `--cli <that-cli>` is set without `--profile`.",
     )
     parser.add_argument(
         "--config",
@@ -188,17 +193,24 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     # is `repo_dir`, resolved below and handed over as a run parameter.
     os.environ.setdefault("AGENT_REPO_DIR", str(Path.cwd().resolve()))
 
+    # --cli and --profile are mutually exclusive: a profile carries its own `cli`
+    # field naming the CLI it runs under, so passing both flags leaves the run with
+    # two opinions about which CLI runs. Hard-fail here rather than silently picking
+    # one, so the operator sees the contradiction before any turn starts.
+    if args.cli and getattr(args, "profile", None):
+        print(
+            "error: --cli and --profile are mutually exclusive — a profile carries "
+            "its own `cli` field. Drop one of them.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
     # --cli (else AGENT_CLI, else the config's `default_cli`, else claude) selects the
     # backend for the run. The resolved name is written back to AGENT_CLI so the whole
     # process — and every agent subprocess it spawns — reads one answer: the manifest
     # and template layers ask the environment for the active CLI at their own edges,
     # and a config default that only `get_backend` knew about would have them
     # projecting a Claude manifest for an opencode run.
-    # The profile is selected before the CLI is, because it holds one rung of the
-    # ladder: --cli > AGENT_CLI > the profile's default_cli > the top-level one > claude.
-    # The two are independent axes — the profile holds a mapping keyed by backend, and
-    # --cli chooses whose entries in it apply — so a profile can carry a default without
-    # dictating the backend.
     if args.runs_dir:
         runs_dir = Path(args.runs_dir).resolve()
     else:
@@ -213,14 +225,23 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         profile_name = _recorded_profile(resume_run_dir)
     cfg = load_config()
     try:
-        profile = select_profile(cfg, profile_name)
+        # When --profile is set, the profile names its CLI — the run uses that. Otherwise
+        # auto-pick the profile whose `cli` matches the resolved CLI; if none, the run is
+        # bare-CLI and the workflow emits no --model/--effort flags.
+        if profile_name:
+            profile = select_profile(cfg, profile_name)
+            resolved_cli = _profile_cli_or_raise(profile, profile_name)
+        else:
+            active_cli = _resolve_active_cli(args, cfg)
+            profile = select_active_profile(cfg, active_cli=active_cli)
+            resolved_cli = active_cli
     except UnknownProfileError as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
-    resolved_cli = (
-        args.cli or os.environ.get("AGENT_CLI") or _configured_default_cli(cfg, profile)
-    ).strip().lower()
     os.environ["AGENT_CLI"] = resolved_cli
 
     # Resolve the active backend now so an unknown name fails fast with a clear
@@ -301,31 +322,46 @@ def library_dirs(cfg: dict[str, Any]) -> list[str]:
     return roots
 
 
-def _configured_default_cli(cfg: dict[str, Any], profile: dict[str, Any]) -> str:
-    """The file-sourced rungs of the CLI ladder: the profile's `default_cli`, then the
-    top-level one, then the built-in.
+def _resolve_active_cli(args: argparse.Namespace, cfg: dict[str, Any]) -> str:
+    """Resolve the active CLI for a non-`--profile` run: --cli → $AGENT_CLI → config.
 
-    Two calls rather than one because `resolve_default_cli` answers with the built-in
-    when it finds nothing — which cannot be told from a profile that really says
-    `default_cli = "claude"`. Asking for the raw key first is what keeps a profile that
-    names no CLI from erasing the machine's answer.
+    The same ladder ``select_active_profile`` then drives: the profile whose `cli`
+    matches the answer is auto-selected, else the run is bare-CLI. This function only
+    answers "what CLI are we on"; the profile narrowing is the caller's job.
     """
-    named = get_config_value(DEFAULT_CLI_KEY, profile)
-    if isinstance(named, str) and named.strip():
-        return resolve_default_cli(profile)
-    return resolve_default_cli(cfg)
+    return (
+        args.cli
+        or os.environ.get("AGENT_CLI")
+        or resolve_default_cli(cfg)
+    ).strip().lower()
+
+
+def _profile_cli_or_raise(profile: dict[str, Any], name: str) -> str:
+    """The CLI a `--profile`-selected profile declares, stripped and lowercased.
+
+    `select_profile` already validated the field is present, so this only normalizes.
+    """
+    cli = profile.get("cli")
+    if not isinstance(cli, str) or not cli.strip():
+        # select_profile raises ConfigError for this case; defensive for the type
+        # narrowing only.
+        raise ConfigError(f"[profiles.{name}] has no cli field")
+    return cli.strip().lower()
 
 
 def _check_profile_resolves(name: str, profile: dict[str, Any], backend: str) -> None:
-    """Refuse a selected profile that cannot map a model for the backend in play.
+    """Refuse a selected profile whose `cli` field names a backend workhorse does not drive.
 
-    Both failures below resolve to an empty mapping at every node and are therefore
-    invisible: the run does not fail, it spends however many days it has on the harness's
-    own default model. That is precisely the "typo found at hour 30" `--dry-run` exists
-    for, so these run before the first state on a dry run too.
+    Under v2 the profile's CLI is the active CLI (see ``invocation``), so the v1
+    "profile has no entries for the chosen backend" mismatch cannot occur — a profile
+    is *for* its CLI, and selecting it for a different CLI is exactly what the
+    mutual-exclusion check at the top of ``invocation`` now prevents. What remains is
+    the typo: a profile that names a CLI no backend implements would silently fall
+    through to ``get_backend``'s "unknown CLI" error mid-turn, so it is caught here
+    where failing is safe.
 
-    An otherwise-empty profile that carries only `default_cli` stays legal — it selects a
-    CLI and claims nothing about models, which is a coherent thing to want.
+    A profile that declares only `cli` and no models stays legal — bare-CLI mode for
+    that profile, exactly as a run without `--profile` is bare-CLI mode globally.
     """
     if not name:
         return
@@ -334,20 +370,19 @@ def _check_profile_resolves(name: str, profile: dict[str, Any], backend: str) ->
     unknown = [n for n in profile_backends(profile) if n not in backend_names()]
     if unknown:
         print(
-            f"error: profile {name!r} keys models by unknown CLI backend(s) "
-            f"{', '.join(repr(n) for n in unknown)} {consulted}; known backends are: "
+            f"error: profile {name!r} declares cli = {unknown[0]!r} {consulted}; that "
+            f"is not a backend this build of workhorse drives. Known backends: "
             f"{', '.join(backend_names())}",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    carries_models = bool(profile.get("power")) or bool(profile.get("default"))
-    if carries_models and not profile_has_backend(profile, backend):
+    if not profile_has_backend(profile, backend):
         print(
-            f"error: profile {name!r} has no entries for CLI backend {backend!r} "
-            f"{consulted}; it maps: {', '.join(profile_backends(profile)) or 'nothing'}. "
-            f"--profile and --cli are independent axes — pick a backend the profile "
-            f"maps, or give the profile a [power.<tier>.default] fallback.",
+            f"error: profile {name!r} declares cli = {backend!r} but carries no "
+            f"models for it {consulted}. Add a [profiles.{name}.powers.<tier>] "
+            f"table or a [profiles.{name}.default] entry, or run with --cli "
+            f"<this-cli> and no --profile (bare-CLI mode).",
             file=sys.stderr,
         )
         sys.exit(1)

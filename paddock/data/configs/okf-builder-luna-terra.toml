@@ -1,57 +1,67 @@
-# A controlled OKF Builder comparison: model is the only difference between profiles.
-config_version = 1
+# Compare Luna and Terra rebuilding the same link-shortener OKF book.
+#
+# Both arms start from independent clones of one committed stripped baseline. The score
+# keeps deterministic book quality separate from retries, tokens, elapsed time, and
+# rate-card cost so a cheaper incomplete build cannot be mistaken for a better one.
+#
+# Each profile runs under opencode, but with different model rungs — the same five tiers
+# resolved to a different model. Under v2 that is expressed as two named profiles
+# (`--profile luna` and `--profile terra`), each declaring `cli = "opencode"`, rather
+# than the v1 shape of per-profile `power.<tier>.<backend>` keys.
+
+config_version = 2
 default_cli = "opencode"
 
 [profiles.luna]
-default_cli = "opencode"
+cli = "opencode"
 
-[profiles.luna.power.low.opencode]
+[profiles.luna.powers.low]
 model = "openai/gpt-5.6-luna"
 effort = "low"
 
-[profiles.luna.power.medium.opencode]
+[profiles.luna.powers.medium]
 model = "openai/gpt-5.6-luna"
 effort = "medium"
 
-[profiles.luna.power.high.opencode]
+[profiles.luna.powers.high]
 model = "openai/gpt-5.6-luna"
 effort = "high"
 
-[profiles.luna.power.max.opencode]
+[profiles.luna.powers.max]
 model = "openai/gpt-5.6-luna"
 effort = "high"
 
-[profiles.luna.power.ultra.opencode]
+[profiles.luna.powers.ultra]
 model = "openai/gpt-5.6-luna"
 effort = "xhigh"
 
-[profiles.luna.default.opencode]
+[profiles.luna.default]
 model = "openai/gpt-5.6-luna"
 effort = "medium"
 
 [profiles.terra]
-default_cli = "opencode"
+cli = "opencode"
 
-[profiles.terra.power.low.opencode]
+[profiles.terra.powers.low]
 model = "openai/gpt-5.6-terra"
 effort = "low"
 
-[profiles.terra.power.medium.opencode]
+[profiles.terra.powers.medium]
 model = "openai/gpt-5.6-terra"
 effort = "medium"
 
-[profiles.terra.power.high.opencode]
+[profiles.terra.powers.high]
 model = "openai/gpt-5.6-terra"
 effort = "high"
 
-[profiles.terra.power.max.opencode]
+[profiles.terra.powers.max]
 model = "openai/gpt-5.6-terra"
 effort = "high"
 
-[profiles.terra.power.ultra.opencode]
+[profiles.terra.powers.ultra]
 model = "openai/gpt-5.6-terra"
 effort = "xhigh"
 
-[profiles.terra.default.opencode]
+[profiles.terra.default]
 model = "openai/gpt-5.6-terra"
 effort = "medium"

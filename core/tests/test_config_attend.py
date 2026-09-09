@@ -15,12 +15,17 @@ import pytest
 from stablemate_core import config as cfgmod
 
 _NEIGHBOURS = """\
-[power.high.claude]
+config_version = 2
+
+[profiles.claude]
+cli = "claude"
+
+[profiles.claude.powers.high]
 model = "opus"
 effort = "high"
 
 [profiles.fast]
-default_cli = "claude"
+cli = "claude"
 """
 
 
@@ -42,8 +47,8 @@ def test_writing_the_section_leaves_its_neighbours_intact(cfg_file):
     )
 
     data = tomllib.loads(cfg_file.read_text())
-    assert data["power"]["high"]["claude"] == {"model": "opus", "effort": "high"}
-    assert data["profiles"]["fast"] == {"default_cli": "claude"}
+    assert data["profiles"]["claude"]["powers"]["high"] == {"model": "opus", "effort": "high"}
+    assert data["profiles"]["fast"] == {"cli": "claude"}
     assert data["groom"]["attend"] == {"mode": "headless", "deny": ["push a red pr"]}
     assert data[cfgmod.CONFIG_VERSION_KEY] == cfgmod.CONFIG_VERSION
 

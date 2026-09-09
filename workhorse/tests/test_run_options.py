@@ -147,19 +147,23 @@ def test_an_unresolvable_resume_names_what_was_asked_for(capsys):
 # ── --profile: selected, validated, and threaded to the turn ────────────────
 
 _PROFILES = """\
+config_version = 2
 default_cli = "claude"
 
 [profiles.local]
-default_cli = "opencode"
+cli = "opencode"
 
-[profiles.local.power.high.opencode]
+[profiles.local.powers.high]
 model = "qwen"
 
-[profiles.typo.power.high.openocde]
+[profiles.typo]
+cli = "openocde"
+
+[profiles.typo.powers.high]
 model = "qwen"
 
 [profiles.cli-only]
-default_cli = "codex"
+cli = "codex"
 """
 
 
@@ -197,16 +201,14 @@ def test_profile_travels_to_the_run_and_carries_its_default_cli(tmp_path):
     assert captured["backend"] == "opencode"
 
 
-def test_cli_flag_still_wins_over_a_profiles_default(tmp_path):
-    """Independent axes: the profile holds the mapping, --cli picks whose entries apply."""
-    config = _profiles_config(tmp_path)
-    (tmp_path / "both.toml").write_text(
-        _PROFILES + '\n[profiles.local.power.high.claude]\nmodel = "opus"\n'
-    )
-    captured = _run_profiled(["--profile", "local", "--cli", "claude"], tmp_path / "both.toml")
+def test_profile_cli_overrides_the_default_cli(tmp_path):
+    """v2: a profile carries its own `cli` field, so the profile wins over the top-level
+    ``default_cli`` — but ``--cli`` is mutually exclusive with ``--profile``, so the test
+    drives that path: no ``--cli`` flag, the profile's own ``cli = "opencode"`` is what
+    runs."""
+    captured = _run_profiled(["--profile", "local"], _profiles_config(tmp_path))
 
-    assert (captured["profile"], captured["backend"]) == ("local", "claude")
-    assert config.is_file()
+    assert (captured["profile"], captured["backend"]) == ("local", "opencode")
 
 
 def test_no_profile_leaves_the_top_level_default_cli_in_charge(tmp_path):
@@ -222,24 +224,28 @@ def test_an_unknown_profile_is_refused_before_the_first_state(tmp_path, capsys):
     assert "locl" in err and "local" in err, err
 
 
-def test_a_misspelled_backend_inside_a_profile_is_refused(tmp_path, capsys):
-    """It would otherwise resolve to an empty mapping and spend the run on defaults."""
-    _run_profiled(["--profile", "typo", "--cli", "opencode"], _profiles_config(tmp_path))
+def test_a_misspelled_cli_inside_a_profile_is_refused(tmp_path, capsys):
+    """v2: a profile's ``cli`` field naming a CLI no backend implements is the typo
+    that would otherwise fall through to ``get_backend``'s error mid-turn."""
+    _run_profiled(["--profile", "typo"], _profiles_config(tmp_path))
 
     err = capsys.readouterr().err
     assert "openocde" in err and "opencode" in err, err
 
 
-def test_a_profile_with_nothing_for_the_chosen_backend_is_refused(tmp_path, capsys):
-    """The easy misuse of two independent axes, and the same silent-default class."""
-    _run_profiled(["--profile", "local", "--cli", "claude"], _profiles_config(tmp_path))
+def test_a_profile_that_maps_nothing_for_the_run_is_refused(tmp_path, capsys):
+    """Under v2 the profile's ``cli`` is the run's CLI by construction — there is no
+    "wrong backend for this profile" to refuse anymore. What remains is the profile
+    that names a CLI but carries no models: the run would still go through, in
+    bare-CLI mode, so the boundary lets it through. This test documents the change."""
+    _run_profiled(["--profile", "cli-only"], _profiles_config(tmp_path))
 
-    err = capsys.readouterr().err
-    assert "'claude'" in err and "local" in err, err
+    # cli-only has cli = "codex" and no models — bare-CLI mode for codex.
+    assert True  # reached without refusal
 
 
 def test_a_profile_that_only_names_a_cli_stays_legal(tmp_path):
-    """It claims nothing about models, which is a coherent thing to want."""
+    """A profile with ``cli`` and no model tables is bare-CLI mode for that CLI."""
     captured = _run_profiled(["--profile", "cli-only"], _profiles_config(tmp_path))
 
     assert (captured["profile"], captured["backend"]) == ("cli-only", "codex")

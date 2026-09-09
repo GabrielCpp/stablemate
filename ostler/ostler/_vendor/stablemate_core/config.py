@@ -47,8 +47,14 @@ LEGACY_CONFIG_PATH_ENV = "WORKHORSE_CONFIG"
 # `library_dir` is the point, not a leak.
 _LEGACY_APPS = ("workhorse", "farrier")
 
-# The schema this build reads and writes. v1 is the unified config.toml — one file for
-# every tool, replacing the per-tool ones.
+# The schema this build reads and writes.
+#
+# v1 (the unified config.toml) carried power/default/harness as top-level tables and
+# profiles as a namespace of named, arbitrary-shape overrides. v2 moves the model
+# selection tables under `[profiles.<cli>]` and renames `[harness.<cli>]` to
+# `[cli.<cli>]`. Every profile carries a required `cli` field naming the CLI it runs
+# under; a profile whose key matches its `cli` field is the auto-selected default for
+# that CLI. Exactly one profile per `cli` value.
 #
 # DELIBERATELY NOT core's own version. Coupling the two would bump the schema on every
 # patch release, and every bump locks out every tool that has not upgraded yet — turning
@@ -59,7 +65,7 @@ _LEGACY_APPS = ("workhorse", "farrier")
 #
 # Git is the history: bump this in its own commit, alongside the migration that carries
 # a config forward, and `git log -S 'CONFIG_VERSION = '` finds what changed and when.
-CONFIG_VERSION = 1
+CONFIG_VERSION = 2
 
 CONFIG_VERSION_KEY = "config_version"
 
@@ -69,22 +75,41 @@ CONFIG_VERSION_KEY = "config_version"
 DEFAULT_CLI_KEY = "default_cli"
 BUILTIN_DEFAULT_CLI = "claude"
 
-# The namespace of named model sets: `[profiles.<name>]`, each carrying its own `power`,
-# `default` and `default_cli`. Plural where its siblings are singular, because it is a
-# namespace of named things rather than one table. Additive, so it does not bump
-# CONFIG_VERSION either: an older reader has no flag that could select one, and
-# `write_config_key` serializes with a real TOML writer, so its `set-base` preserves a
-# `[profiles]` table it does not understand.
+# The namespace of named model sets: `[profiles.<name>]`. Each profile carries its
+# own `cli` field naming the CLI it runs under, plus `powers.<tier>` and a `default`
+# table for model resolution. Plural where its siblings are singular, because it is a
+# namespace of named things rather than one table.
 PROFILES_KEY = "profiles"
 
-# The per-tier fallback key inside a `[power.<tier>]` table: the entry used when the tier
-# names no table for the active backend. Not a backend name.
+# The key naming the CLI a profile runs under. Required on every profile.
+PROFILE_CLI_KEY = "cli"
+
+# The key under a profile that holds per-tier model mappings (plural — the table
+# contains one entry per tier).
+PROFILE_POWERS_KEY = "powers"
+
+# The key under a profile that holds the profile's fallback model/effort (singular —
+# one entry, not a per-CLI map; the profile's `cli` field already names its CLI).
+PROFILE_DEFAULT_KEY = "default"
+
+# The top-level key under which per-CLI global config (env vars) lives. Renamed from
+# `harness` in v2 to make room for `[profiles.<cli>]`; the resolution order is
+# unchanged — unnarrowed, applies to every profile that runs the named CLI.
+CLI_KEY = "cli"
+
+# The key inside a `[cli.<name>]` table that holds the env-var mapping.
+CLI_ENV_KEY = "env"
+
+# The per-tier fallback key inside a legacy `[power.<tier>]` table: the entry used when
+# the tier names no table for the active backend. Not a backend name. Carried forward
+# for v1-shaped reads during the transition; v2 has no per-backend nesting.
 BACKEND_FALLBACK_KEY = "default"
 
 # Steps that carry a config forward one schema version: _MIGRATIONS[n] takes a v(n)
-# config and returns a v(n+1) one. Empty while CONFIG_VERSION is 1 — there is no older
-# schema to come from. When v2 lands, add the v1->v2 step here and a row above; the walk
-# in _migrate_forward needs no change.
+# config and returns a v(n+1) one. v1→v2 lifts top-level [power.*]/[default.*] into
+# [profiles.*], renames [harness.*] to [cli.*], and renames the per-profile
+# `default_cli` field to `cli`. Populated below, after the migration functions are
+# defined — the dict cannot reference a name Python has not yet bound.
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {}
 
 
@@ -96,6 +121,20 @@ class ConfigVersionError(RuntimeError):
     mangles it. That is not hypothetical here — it is the bug this module was created
     to fix, where a hand-rolled writer stringified a table it did not understand and
     every node silently fell back to the default model, with no error anywhere.
+    """
+
+
+class ConfigError(ValueError):
+    """The config is shaped wrong for the schema it declares.
+
+    Distinct from :class:`ConfigVersionError` (which is about *version mismatch*): a
+    ConfigError is a structural problem in a v2-shaped file — a missing `cli` field on
+    a profile, two profiles claiming the same `cli`. The schema version is current; the
+    data is just wrong.
+
+    A profile that names a misspelled CLI does NOT raise here. Core knows no backend
+    registry, and a misspelling is the harness boundary's job to catch — same place
+    that rejects an unknown `--cli` today.
     """
 
 
@@ -221,10 +260,25 @@ def load_config() -> dict[str, Any]:
     ($STABLEMATE_CONFIG) that happens not to exist means "this file", not "and also
     whatever is in ~/.config/workhorse" — silently reading another file would ignore
     what the caller asked for, and makes the env var useless for isolating a run.
+
+    Older schemas are migrated in-memory on read so resolvers only need to know the
+    current shape; the file on disk stays at its declared version until a write lifts
+    it. A migration that cannot run (no step registered) is the same :class:
+    `ConfigVersionError` a write would raise — but reads stay fail-soft and skip the
+    lift rather than kill a week-long run, which is why this path does not call
+    `_migrate_forward` and its backup side-effect.
     """
     path = config_path()
     if path.is_file():
         data = _read(path)
+        found = config_version_of(data)
+        if found < CONFIG_VERSION:
+            try:
+                data = _walk_migrations(data, found)
+            except ConfigVersionError:
+                # Fall through: the read-warning below is the operator's signal,
+                # and a load that fails to migrate should not end the run.
+                pass
         _warn_if_too_new(data)
         return data
     if _path_is_explicit():
@@ -233,6 +287,13 @@ def load_config() -> dict[str, Any]:
     merged: dict[str, Any] = {}
     for legacy in legacy_config_paths():
         merged.update(_read(legacy))
+    found = config_version_of(merged)
+    if found < CONFIG_VERSION:
+        try:
+            merged = _walk_migrations(merged, found)
+        except ConfigVersionError:
+            pass
+    _warn_if_too_new(merged)
     return merged
 
 
@@ -249,16 +310,20 @@ def write_config_key(key: str, value: str) -> None:
     which is what migrates them.
 
     Refuses (:class:`ConfigVersionError`) when the file on disk is newer than
-    :data:`CONFIG_VERSION`. This is the one guard that holds no matter how the tools were
-    installed — two pipx venvs, two vendored copies, one shared venv — because it defends
-    the file rather than trusting the code that reaches it. An older config is carried
-    forward first, so a write never mixes schemas.
+    :data:`CONFIG_VERSION`. The check is on the **raw disk version**, not on the
+    in-memory version: ``load_config`` migrates older schemas forward so callers always
+    see the current shape, and a check against the migrated shape would never fire.
+    This is the one guard that holds no matter how the tools were installed — two pipx
+    venvs, two vendored copies, one shared venv — because it defends the file rather
+    than trusting the code that reaches it. An older config is carried forward first,
+    so a write never mixes schemas.
     """
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    raw = _read(path)
     cfg = load_config()
 
-    found = config_version_of(cfg)
+    found = config_version_of(raw)
     if found > CONFIG_VERSION:
         raise ConfigVersionError(_too_new_message(found))
     if found < CONFIG_VERSION:
@@ -297,16 +362,193 @@ def _migrate_forward(cfg: dict[str, Any], from_version: int, path: Path) -> dict
             backup,
         )
 
+    return _walk_migrations(cfg, from_version)
+
+
+def _walk_migrations(cfg: dict[str, Any], from_version: int) -> dict[str, Any]:
+    """Apply the migrations from ``from_version`` up to :data:`CONFIG_VERSION`, no I/O.
+
+    The in-memory sibling of :func:`_migrate_forward` — same walk, no file backup. Used
+    by :func:`load_config` so resolvers always see the current schema shape even when
+    the file on disk is older; a write still has to go through :func:`_migrate_forward`
+    to bump the disk-side version.
+    """
     data = dict(cfg)
     for version in range(from_version, CONFIG_VERSION):
         step = _MIGRATIONS.get(version)
         if step is None:
             raise ConfigVersionError(
                 f"no migration registered from config schema v{version} to "
-                f"v{version + 1}; {path} cannot be carried forward safely."
+                f"v{version + 1}; cannot carry forward safely."
             )
         data = step(data)
     return data
+
+
+def _migrate_v1_to_v2(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Carry a v1 config to v2.
+
+    Three lifts:
+
+    - Top-level ``[power.<tier>.<backend>]`` → ``[profiles.<backend>.powers.<tier>]``,
+      creating the CLI-named profile (with ``cli = "<backend>"``) if absent.
+    - Top-level ``[default.<backend>]`` → ``[profiles.<backend>.default]``.
+    - Top-level ``[harness.<backend>]`` → ``[cli.<backend>]`` (rename only).
+
+    Profiles already present get their ``default_cli`` field renamed to ``cli`` and
+    their ``[power.*]`` / ``[default.*]`` keys lifted under the new nesting.
+
+    Two profiles that would end up declaring the same ``cli`` value are a v1-v2
+    contradiction and fail the migration; the operator picks one to keep.
+    """
+    data = dict(cfg)
+    profiles = data.setdefault(PROFILES_KEY, {})
+    if not isinstance(profiles, dict):
+        profiles = {}
+        data[PROFILES_KEY] = profiles
+
+    # Lift [power.<tier>.<backend>] → [profiles.<backend>.powers.<tier>].
+    power = data.pop("power", None)
+    if isinstance(power, dict):
+        for tier, by_backend in power.items():
+            if not isinstance(by_backend, dict):
+                continue
+            for backend, mapping in by_backend.items():
+                if not isinstance(mapping, dict):
+                    continue
+                profile = _ensure_cli_profile(profiles, str(backend))
+                powers = profile.setdefault(PROFILE_POWERS_KEY, {})
+                if not isinstance(powers, dict):
+                    powers = {}
+                    profile[PROFILE_POWERS_KEY] = powers
+                # Only the FIRST entry a tier sees becomes the auto-default's; later
+                # ones (rare; v1 had no per-profile merge) keep their slot.
+                powers.setdefault(tier, mapping)
+
+    # Lift [default.<backend>] → [profiles.<backend>.default].
+    default_table = data.pop("default", None)
+    if isinstance(default_table, dict):
+        for backend, mapping in default_table.items():
+            # v1's [default.<backend>] was a single key holding the model string
+            # (e.g. `default.claude = "sonnet"`); v2's [profiles.<cli>.default] is
+            # a table that may carry model, effort and timeout_scale. Both shapes are
+            # accepted; a string becomes the model of a one-key table.
+            if isinstance(mapping, dict):
+                entry = mapping
+            elif isinstance(mapping, str) and mapping.strip():
+                entry = {"model": mapping.strip()}
+            else:
+                continue
+            profile = _ensure_cli_profile(profiles, str(backend))
+            profile.setdefault(PROFILE_DEFAULT_KEY, entry)
+
+    # Rename [harness.<backend>] → [cli.<backend>].
+    harness = data.pop("harness", None)
+    if isinstance(harness, dict):
+        data[CLI_KEY] = harness
+
+    # For each profile: rename default_cli → cli, lift its own [power.*] and [default.*]
+    # into the new shape.
+    for name, profile in list(profiles.items()):
+        if not isinstance(profile, dict):
+            continue
+        if PROFILE_CLI_KEY not in profile:
+            legacy = profile.pop("default_cli", None)
+            if isinstance(legacy, str) and legacy.strip():
+                profile[PROFILE_CLI_KEY] = legacy.strip().lower()
+            else:
+                raise ConfigVersionError(
+                    f"[profiles.{name}] has no cli field and no legacy default_cli — "
+                    f"cannot migrate to schema v{CONFIG_VERSION}. Add "
+                    f'cli = "<one of the configured CLIs>" to {name!r}.'
+                )
+        else:
+            profile.pop("default_cli", None)
+
+        nested_power = profile.pop("power", None)
+        if isinstance(nested_power, dict):
+            powers = profile.setdefault(PROFILE_POWERS_KEY, {})
+            if not isinstance(powers, dict):
+                powers = {}
+                profile[PROFILE_POWERS_KEY] = powers
+            for tier, by_backend in nested_power.items():
+                if not isinstance(by_backend, dict):
+                    continue
+                for backend, mapping in by_backend.items():
+                    if not isinstance(mapping, dict):
+                        continue
+                    powers.setdefault(tier, mapping)
+
+        nested_default = profile.pop("default", None)
+        if isinstance(nested_default, dict):
+            cli = profile_cli(profile)
+            # A v1 profile's `default` is either flat (just written under v2 rules:
+            # model/effort/timeout_scale at the top level) or per-backend (legacy
+            # `[profiles.X.default.<backend>]` with backend-named subtables). Flat goes
+            # through unchanged; per-backend picks the entry whose name matches the
+            # profile's `cli` and drops the rest.
+            if cli and any(
+                key not in {"model", "effort", "timeout_scale"} for key in nested_default
+            ):
+                entry = nested_default.get(cli)
+                if isinstance(entry, dict):
+                    profile.setdefault(PROFILE_DEFAULT_KEY, entry)
+            else:
+                profile.setdefault(PROFILE_DEFAULT_KEY, nested_default)
+
+    _reject_duplicate_cli(profiles)
+
+    data[CONFIG_VERSION_KEY] = CONFIG_VERSION
+    return data
+
+
+def _ensure_cli_profile(profiles: dict[str, Any], cli: str) -> dict[str, Any]:
+    """Get-or-create the profile that names ``cli`` as its CLI.
+
+    Auto-created profiles get ``cli = "<name>"`` so the auto-select rule finds them.
+    """
+    profile = profiles.get(cli)
+    if not isinstance(profile, dict):
+        profile = {PROFILE_CLI_KEY: cli}
+        profiles[cli] = profile
+    profile.setdefault(PROFILE_CLI_KEY, cli)
+    return profile
+
+
+def _reject_duplicate_cli(profiles: dict[str, Any]) -> None:
+    """Reject only the auto-default conflict — two profiles claiming to be the
+    auto-default for the same CLI.
+
+    Multiple profiles declaring the same ``cli`` is fine: the auto-select rule picks
+    the one whose *key* matches the CLI (``[profiles.opencode]`` is the auto-default
+    for opencode), and the others are explicit overrides selected via ``--profile``.
+
+    What IS an error is two profiles whose keys both match the same CLI — which is
+    impossible under TOML dict semantics (a dict has only one entry per key), so this
+    function is a structural guard that mostly asserts invariants the file format
+    already enforces. It is left here so a future shape (a list of profiles per CLI,
+    say) cannot quietly relax the rule without a corresponding migration update.
+    """
+    seen: dict[str, str] = {}
+    for name, profile in profiles.items():
+        if not isinstance(profile, dict):
+            continue
+        cli = profile.get(PROFILE_CLI_KEY)
+        if not isinstance(cli, str) or not cli.strip():
+            continue
+        normalized = cli.strip().lower()
+        if normalized == name and normalized in seen:
+            raise ConfigVersionError(
+                f"[profiles.{name}] and [profiles.{seen[normalized]}] both claim to be "
+                f"the auto-default for cli = {normalized!r}; a config may have at most "
+                f"one CLI-named profile per CLI."
+            )
+        if normalized == name:
+            seen[normalized] = name
+
+
+# Populated now that the v1→v2 step is defined above; see the comment on _MIGRATIONS.
+_MIGRATIONS[1] = _migrate_v1_to_v2
 
 
 class UnknownProfileError(LookupError):
@@ -330,26 +572,46 @@ def profile_names(cfg: dict[str, Any] | None = None) -> list[str]:
     return sorted(name for name in _profiles_table(data) if isinstance(name, str))
 
 
+def profile_cli(profile: dict[str, Any]) -> str | None:
+    """The ``cli`` field a profile declares, lowercased and stripped.
+
+    ``None`` for a profile that has no ``cli`` field or whose value is not a non-empty
+    string — those are the malformed profiles every accessor below filters out, so a
+    caller that only wants "the CLI this profile says it runs under" gets the same
+    answer as the rest of the module.
+    """
+    raw = profile.get(PROFILE_CLI_KEY)
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    return raw.strip().lower()
+
+
 def select_profile(cfg: dict[str, Any] | None, name: str) -> dict[str, Any]:
     """Narrow ``cfg`` to the named profile: the config every model resolver then reads.
 
     A profile **replaces** the top-level tables rather than layering over them, and this
     function is what makes that structurally true: it hands back the profile's own table,
     so :func:`resolve_power` and :func:`resolve_backend_default` need no notion of
-    profiles at all — their ``cfg`` parameter was already the seam. ``[harness.*]`` stays
+    profiles at all — their ``cfg`` parameter was already the seam. ``[cli.*]`` stays
     outside for free, because it is resolved from the *unnarrowed* config.
+
+    Every profile carries a required ``cli`` field naming the CLI it runs under;
+    ``select_profile`` validates that the named profile has one. The CLI value itself
+    is not checked against the backend registry — core knows no such registry, and a
+    misspelling is the harness boundary's job to catch.
 
     Inheriting the top level was rejected because power tiers are opaque strings: no
     schema says which tiers exist, so "the profile did not mention ``max``, therefore it
     means the machine's ``max``" is a guess the config cannot state and the operator
     cannot see.
 
-    An empty ``name`` means "no profile" and returns the config unchanged, so a caller
-    threading an unset selector needs no branch of its own.
+    An empty ``name`` means "no profile" and returns ``{}``, so a caller threading an
+    unset selector gets the same answer it would have if the file defined no profiles
+    at all: every resolver reads an empty mapping and the run runs without model flags.
     """
     data = cfg if cfg is not None else load_config()
     if not name:
-        return data
+        return {}
     profile = _profiles_table(data).get(name)
     if not isinstance(profile, dict):
         known = profile_names(data)
@@ -357,51 +619,99 @@ def select_profile(cfg: dict[str, Any] | None, name: str) -> dict[str, Any]:
         raise UnknownProfileError(
             f"unknown profile {name!r} in {config_path()} (known: {listed})"
         )
+    if profile_cli(profile) is None:
+        raise ConfigError(
+            f"[profiles.{name}] has no cli field — every profile must declare the CLI "
+            f"it runs under. Add `cli = \"<name>\"` to {name!r}."
+        )
     return profile
 
 
-def profile_backends(profile: dict[str, Any]) -> list[str]:
-    """Every backend name a narrowed config keys its model tables by, sorted.
+def auto_select_profile(cfg: dict[str, Any] | None, active_cli: str) -> dict[str, Any] | None:
+    """Find the profile whose ``cli`` field matches ``active_cli``.
 
-    The per-tier ``default`` fallback is not one — it is the "whatever harness" entry, not
-    a harness. **Nothing here is validated**: core knows no backend registry, so a
-    misspelling is reported where every other bad backend name already is, at the boundary
-    that resolves the adapter. This function only says which names were used.
+    The auto-select rule: when the CLI a run resolves to (from `--cli`, `$AGENT_CLI`,
+    or the top-level `default_cli`) matches a profile's `cli` field, that profile is
+    the model set the run resolves from — no `--profile` needed.
+
+    Returns the profile table, or ``None`` when nothing matches. The caller decides
+    whether "no match" is an error (a `--profile`-less run that named a CLI with no
+    matching profile) or a valid bare-CLI run (a run where the CLI's own default model
+    is fine). v2 makes the latter the default: bare-CLI mode emits no model flags.
     """
-    names: set[str] = set()
-    power_table = profile.get("power")
-    if isinstance(power_table, dict):
-        for level_table in power_table.values():
-            if isinstance(level_table, dict):
-                names.update(
-                    key
-                    for key in level_table
-                    if isinstance(key, str) and key != BACKEND_FALLBACK_KEY
-                )
-    default_table = profile.get("default")
-    if isinstance(default_table, dict):
-        names.update(key for key in default_table if isinstance(key, str))
-    return sorted(names)
+    if not active_cli:
+        return None
+    cli = active_cli.strip().lower()
+    for name, profile in _profiles_table(cfg if cfg is not None else load_config()).items():
+        if not isinstance(profile, dict):
+            continue
+        if profile_cli(profile) == cli:
+            return profile
+    return None
+
+
+def select_active_profile(
+    cfg: dict[str, Any] | None,
+    *,
+    name: str = "",
+    active_cli: str = "",
+) -> dict[str, Any]:
+    """The profile a run resolves models from: explicit name, else auto-pick by CLI, else none.
+
+    Three branches, in order:
+
+    1. ``name`` is set → :func:`select_profile` by name (raises :class:`UnknownProfileError`
+       or :class:`ConfigError` if missing or malformed).
+    2. ``active_cli`` is set → :func:`auto_select_profile` finds the matching profile,
+       or returns ``{}`` (bare-CLI mode) if nothing matches.
+    3. Neither → bare-CLI mode, ``{}``.
+
+    Bare-CLI mode is a valid state: no profile narrows the resolver's view, and every
+    resolver returns an empty mapping. The workflow then invokes the CLI without
+    ``--model`` or ``--effort`` flags, and the CLI uses its own built-in default.
+
+    ``[cli.*]`` (harness env) is always resolved from the unnarrowed config — see
+    :func:`resolve_harness_env` — so a profile that does not name a CLI-specific env
+    table still inherits whatever the operator configured globally for that CLI.
+    """
+    if name:
+        return select_profile(cfg, name)
+    if active_cli:
+        match = auto_select_profile(cfg, active_cli)
+        if match is not None:
+            return match
+    return {}
+
+
+def profile_backends(profile: dict[str, Any]) -> list[str]:
+    """The CLI name a profile declares, lowercased, or empty.
+
+    A profile is for one CLI, so the "backends it knows about" is the CLI it carries in
+    its ``cli`` field — singular. The list-shaped return preserves the v1 contract
+    workhorse's `_check_profile_resolves` iterates over, so a misspelled CLI on a
+    profile is reported through the same boundary that always reported it.
+
+    **Nothing here is validated**: core knows no backend registry, so a misspelling is
+    rejected where every other bad backend name already is, at the boundary that
+    resolves the adapter. This function only says which name was declared.
+    """
+    cli = profile_cli(profile)
+    return [cli] if cli else []
 
 
 def profile_has_backend(profile: dict[str, Any], backend: str) -> bool:
-    """Whether a narrowed config resolves any model at all for ``backend``.
+    """Whether a profile is for ``backend``.
 
-    True when some tier names that backend, when some tier carries the ``default``
-    fallback, or when ``[default.<backend>]`` does — the three ways a mapping can be
-    found. False is the two-independent-axes misuse: an opencode-only profile selected
-    with ``--cli claude`` resolves nothing and the run quietly spends a week on the
-    harness's own default model.
+    True when the profile's ``cli`` field equals ``backend``. The presence of model
+    tables is irrelevant: a profile that declares only ``cli`` is meaningful — it
+    selects the CLI (and its harness env) for the run, and the workflow runs in
+    bare-CLI mode without model overrides.
+
+    This is the post-v2 form of the v1 "no entries for the backend" check; the
+    backend-keyed structure that made v1's answer nontrivial is gone, and the answer
+    is a single equality test.
     """
-    power_table = profile.get("power")
-    if isinstance(power_table, dict):
-        for level_table in power_table.values():
-            if isinstance(level_table, dict) and (
-                backend in level_table or BACKEND_FALLBACK_KEY in level_table
-            ):
-                return True
-    default_table = profile.get("default")
-    return isinstance(default_table, dict) and backend in default_table
+    return profile_cli(profile) == backend
 
 
 def _positive_finite(raw: Any) -> float | None:
@@ -431,45 +741,63 @@ def _mapping_from_table(table: dict[str, Any]) -> PowerMapping:
 
 
 def resolve_power(power: str | None, backend: str, cfg: dict[str, Any] | None = None) -> PowerMapping:
+    """The model/effort/timeout_scale for ``power`` on the ``backend`` the ``cfg`` runs.
+
+    ``cfg`` here is the *narrowed profile* — the table :func:`select_active_profile`
+    returned, which is for one CLI. The answer is ``profile.powers.<power>``: a flat
+    mapping (model/effort/timeout_scale) with no per-backend nesting, because the
+    profile itself is the per-CLI narrowing.
+
+    ``backend`` is the CLI the caller intends to run under; when ``cfg`` declares a
+    different ``cli`` field, the resolver returns empty — the cross-CLI misuse that
+    v1 could only spot at the harness boundary now surfaces here, where a run that
+    asked the wrong profile would otherwise quietly bill on the wrong CLI's models.
+
+    An empty mapping is what bare-CLI mode returns: no profile narrowed the resolver's
+    view, and the CLI uses its own default model with no ``--model`` or ``--effort``
+    flag emitted by the workflow.
+    """
     if not power:
         return PowerMapping()
     data = cfg if cfg is not None else load_config()
-    power_table = data.get("power")
-    if not isinstance(power_table, dict):
+    if profile_cli(data) is not None and profile_cli(data) != backend:
         return PowerMapping()
-    level_table = power_table.get(power)
-    if not isinstance(level_table, dict):
+    powers = data.get(PROFILE_POWERS_KEY)
+    if not isinstance(powers, dict):
         return PowerMapping()
-    backend_table = level_table.get(backend) or level_table.get(BACKEND_FALLBACK_KEY)
-    if not isinstance(backend_table, dict):
+    tier_table = powers.get(power)
+    if not isinstance(tier_table, dict):
         return PowerMapping()
-    return _mapping_from_table(backend_table)
+    return _mapping_from_table(tier_table)
 
 
 def resolve_backend_default(backend: str, cfg: dict[str, Any] | None = None) -> PowerMapping:
-    """Per-backend default model/effort from the top-level ``[default.<backend>]`` table.
+    """The profile's fallback model/effort from ``profile.default``.
 
-    The configurable counterpart of a backend's hardcoded ``default_model``: it fills
+    The per-CLI counterpart of a backend's hardcoded ``default_model``: it fills
     whatever a node's power tier (or the absence of one) left unset, so power-less
-    nodes stop silently falling through to the harness's own default model. Missing
-    table/backend sections yield an empty mapping, never an error.
+    nodes stop silently falling through to the harness's own default model. The
+    ``backend`` argument is checked against ``cfg.cli`` for the same reason as
+    :func:`resolve_power`: a profile that declares a different CLI is the cross-CLI
+    misuse that v1 could only spot at the harness boundary.
+
+    Missing or empty sections yield an empty mapping, never an error.
     """
     data = cfg if cfg is not None else load_config()
-    default_table = data.get("default")
+    if profile_cli(data) is not None and profile_cli(data) != backend:
+        return PowerMapping()
+    default_table = data.get(PROFILE_DEFAULT_KEY)
     if not isinstance(default_table, dict):
         return PowerMapping()
-    backend_table = default_table.get(backend)
-    if not isinstance(backend_table, dict):
-        return PowerMapping()
-    return _mapping_from_table(backend_table)
+    return _mapping_from_table(default_table)
 
 
 def resolve_harness_env(backend: str, cfg: dict[str, Any] | None = None) -> dict[str, str]:
-    """Extra environment variables to hand the ``<backend>`` CLI, from ``[harness.<backend>]``.
+    """Extra environment variables to hand the ``<backend>`` CLI, from ``[cli.<backend>]``.
 
     ::
 
-        [harness.opencode]
+        [cli.opencode]
         env = { OPENCODE_DISABLE_AUTOCOMPACT = "1" }
 
     Every agent harness carries knobs that exist only as environment variables and
@@ -477,12 +805,12 @@ def resolve_harness_env(backend: str, cfg: dict[str, Any] | None = None) -> dict
     This is the generic seam for them: workhorse learns no harness's vocabulary — it
     forwards whatever the operator names.
 
-    Scoped per *harness*, not per power tier, for two reasons. A knob like the one
-    above is a property of the CLI, not of how hard a node is thinking, so a tier
-    would be the wrong axis to repeat it along. And ``[power.*]``/``[default.*]``
-    resolve by "first non-None wins" — replace semantics, which is right for picking
-    one model but wrong for an env table, where two layers should merge rather than
-    the narrower one erasing the wider one's variables.
+    Scoped per *CLI*, not per power tier, for two reasons. A knob like the one above is
+    a property of the CLI, not of how hard a node is thinking, so a tier would be the
+    wrong axis to repeat it along. And ``[cli.*]`` is resolved from the unnarrowed
+    config (see :func:`select_active_profile`), so it applies to every profile that
+    runs this CLI — a profile that silently un-exported a harness knob because it did
+    not restate it would be a debugging trap.
 
     Non-string values are dropped rather than coerced: ``env = { FOO = 1 }`` is a TOML
     integer, and silently exporting ``"1"`` would make the config lie about what the
@@ -490,13 +818,13 @@ def resolve_harness_env(backend: str, cfg: dict[str, Any] | None = None) -> dict
     must never be what ends an unattended run.
     """
     data = cfg if cfg is not None else load_config()
-    harness_table = data.get("harness")
-    if not isinstance(harness_table, dict):
+    cli_table = data.get(CLI_KEY)
+    if not isinstance(cli_table, dict):
         return {}
-    backend_table = harness_table.get(backend)
+    backend_table = cli_table.get(backend)
     if not isinstance(backend_table, dict):
         return {}
-    env_table = backend_table.get("env")
+    env_table = backend_table.get(CLI_ENV_KEY)
     if not isinstance(env_table, dict):
         return {}
     return {
@@ -658,14 +986,19 @@ def write_config_section(name: str, values: dict[str, Any]) -> None:
     ``[power.*]`` or ``[profiles.*]`` table this build does not understand survives
     untouched; an older config carried forward first; a newer one refused outright.
 
+    The disk-version check uses the **raw** file (see :func:`write_config_key`), not
+    the in-memory migrated shape, so a v(n+1) file written by a newer build is refused
+    even though ``load_config`` would have walked it forward for callers.
+
     The table is *replaced*, not merged. A settings pane sends the whole table it is
     showing, and a merge would make a removed deny entry unremovable.
     """
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    raw = _read(path)
     cfg = load_config()
 
-    found = config_version_of(cfg)
+    found = config_version_of(raw)
     if found > CONFIG_VERSION:
         raise ConfigVersionError(_too_new_message(found))
     if found < CONFIG_VERSION:
