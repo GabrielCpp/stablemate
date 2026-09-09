@@ -1,6 +1,6 @@
 agents:
   claude: true
-  codex: false
+  codex: true
   copilot: false
 
 # The hook manager farrier splices its one entry into. `githooks` — git's own

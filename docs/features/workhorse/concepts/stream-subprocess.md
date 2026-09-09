@@ -22,6 +22,7 @@ CLI's event vocabulary; that is each adapter's job.
 - code: `workhorse/workhorse/runner/process.py::stream_subprocess`
 - code: `workhorse/workhorse/runner/process.py::ProcessSupervisor`
 - code: `workhorse/workhorse/runner/process.py::ActiveProcess`
+- code: `workhorse/tests/test_config_harness_env.py::test_harness_env_wins_over_the_inherited_shell`
 - The implementation is covered by `workhorse/tests/test_stream_subprocess.py::test_clean_stream_completes_without_timeout`,
   `workhorse/tests/test_stream_subprocess.py::test_wedged_midline_is_killed_by_watchdog`, and
   `workhorse/tests/test_stream_subprocess.py::test_group_children_are_reaped`.

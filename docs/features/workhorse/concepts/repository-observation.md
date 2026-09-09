@@ -22,7 +22,7 @@ to the same Git root.
 - detail: [Directory observation context](directory-observation-context.md)
 - detail: [RepoState concept selection](repo-state-concept-selection.md)
 
-### observe
+### method: observe
 - sig: `observe(path: str | Path, *, dirty: bool = True, stash: bool = False) -> RepoState`
 - does: records repository root, origin, HEAD, branch, and optionally dirty state
 - verify: json_path(path="$.head", matches="^.+$")
@@ -31,11 +31,14 @@ to the same Git root.
 - returns: an observed `RepoState`, or an empty state when no repository can answer
 - verify: absent(subject="repository observation fields after Git cannot answer")
 - code: `workhorse/workhorse/gitstate.py::observe`
+- code: `workhorse/tests/test_gitstate.py::test_observe_reports_head_branch_and_clean`
+- code: `workhorse/tests/test_gitstate.py::test_observe_preserves_the_exact_origin_url`
+- code: `workhorse/tests/test_gitstate.py::test_observe_reports_a_dirty_tree_and_can_snapshot_it`
 - tests: `workhorse/tests/test_gitstate.py::test_observe_reports_head_branch_and_clean`,
   `workhorse/tests/test_gitstate.py::test_observe_reports_a_dirty_tree_and_can_snapshot_it`,
   `workhorse/tests/test_gitstate.py::test_a_non_repo_is_observed_as_nothing_rather_than_as_clean`
 
-### observe_scope
+### method: observe_scope
 - sig: `observe_scope(cwd: str | Path, add_dirs: Sequence[str | Path] = ()) -> RepositorySnapshot`
 - does: records the cwd and additional directories in request order
 - verify: count(subject="declared directories in their requested order", equals=3)
@@ -44,6 +47,7 @@ to the same Git root.
 - returns: an immutable snapshot of the declared execution scope
 - verify: persists(subject="immutable repository scope snapshot")
 - code: `workhorse/workhorse/gitstate.py::observe_scope`
+- code: `workhorse/tests/test_gitstate.py::test_scope_keeps_multiple_git_roots_and_an_unversioned_primary`
 - tests: `workhorse/tests/test_gitstate.py::test_scope_keeps_multiple_git_roots_and_an_unversioned_primary`
 
 ## Types
@@ -297,6 +301,7 @@ to the same Git root.
 - returns: the bound tree's cached or refreshed HEAD, or an empty string when unbound
 - verify: absent(subject="HEAD value when no repository observer is bound")
 - code: `workhorse/workhorse/gitstate.py::current_head`
+- code: `workhorse/tests/test_gitstate.py::test_head_is_cached_until_refreshed`
 
 ### current_state
 - sig: `current_state(*, dirty: bool = True, stash: bool = False) -> RepoState`

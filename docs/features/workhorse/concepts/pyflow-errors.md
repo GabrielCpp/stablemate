@@ -18,8 +18,11 @@ failure remains resumable unless the outer run policy explicitly marks it termin
 ### field: WorkflowFailed
 - type: `PyflowError`
 - semantics: state-declared or driver-detected failed outcome, with optional `failure_class` and artifact paths
+- semantics: the `failure_class` kwarg, when supplied, is what `_record_failure_handoff` writes to the inbox body in place of the exception's class name
+- semantics: the `artifacts` kwarg, when supplied, becomes one `name: path` line per entry appended to the inbox body
 - verify: json_path(path="$.kind", equals="failure")
 - code: `workhorse/workhorse/pyflow/errors.py::WorkflowFailed`
+- tests: `workhorse/tests/test_failure_handoff.py::test_a_workflow_failure_writes_a_diagnostic_outbox_entry`, `workhorse/tests/test_failure_handoff.py::test_a_raise_sites_own_failure_class_and_artifacts_reach_the_outbox`
 
 ### field: AgentTimeout
 - type: `PyflowError`
@@ -36,8 +39,10 @@ failure remains resumable unless the outer run policy explicitly marks it termin
 ### field: RunBudgetExceeded
 - type: `PyflowError`
 - semantics: the run-wide wall-clock budget expired and the checkpoint must remain resumable
+- semantics: caught by the driver but routed past the failure-handoff inbox entry — the run dir is left without `inbox.jsonl`, the same way a run with no `PyflowError` ever raised looks
 - verify: json_path(path="$.terminal", absent=true)
 - code: `workhorse/workhorse/pyflow/errors.py::RunBudgetExceeded`
+- tests: `workhorse/tests/test_failure_handoff.py::test_a_run_budget_stop_writes_no_outbox_entry`
 
 ### field: WorkflowDefinitionError
 - type: `PyflowError`

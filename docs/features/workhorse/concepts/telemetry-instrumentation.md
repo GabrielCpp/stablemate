@@ -166,6 +166,7 @@ detached before provider shutdown.
 - verify: absent(subject="repository snapshot without an installed probe")
 - returns: `None`
 - code: `workhorse/workhorse/otel.py::set_repository_probe`
+- code: `workhorse/tests/test_gitstate.py::test_agent_node_and_turn_spans_use_their_own_multi_repo_scope`
 - tests: `workhorse/tests/test_gitstate.py::test_agent_node_and_turn_spans_use_their_own_multi_repo_scope`
 
 ### set_head_probe
@@ -174,8 +175,11 @@ detached before provider shutdown.
 - verify: json_path(path="git.head.start", matches=".+")
 - does: clears repository observation when the argument is `None`
 - verify: absent(subject="git.head.start after clearing the head probe")
+- does: keeps a probe that raises from aborting the run — the failure costs the `git.head` attribute but leaves the span intact
+- verify: absent(subject="git.head.start when the head probe raises during start_run")
 - returns: `None`
 - code: `workhorse/workhorse/otel.py::set_head_probe`
+- code: `workhorse/tests/test_gitstate.py::test_a_probe_that_raises_costs_an_attribute_not_the_span`
 - tests: `workhorse/tests/test_gitstate.py::test_a_head_that_moves_inside_a_node_leaves_unequal_endpoints`
 
 ### enabled

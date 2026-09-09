@@ -165,6 +165,8 @@ while budget, interrupt, and unavailable-backend stops retain a resumable checkp
 - does: disarms the control channel on every exit path
 - verify: absent(subject="armed control channel after exit")
 - does: hands deliberate workflow failures to the run inbox before stamping the run terminal
+- does: skips the failure-handoff inbox entry for `RunBudgetExceeded` and `AgentTurnFailed`, treating them as operational stops rather than verdicts
+- verify: absent(subject="inbox.jsonl after a budget stop")
 - does: keeps interrupt, budget, and backend stops resumable instead of stamping a terminal checkpoint
 - does: executes a core reload only after telemetry is flushed and the control channel is disarmed
 - does: drives the selected workflow and returns success after a terminal `Done`
@@ -175,7 +177,7 @@ while budget, interrupt, and unavailable-backend stops retain a resumable checkp
 - returns: process exit code `0` for completion, `1` for a reported failure, and `130` for keyboard interruption
 - verify: exit_status(code=0)
 - code: `workhorse/workhorse/pyflow/run.py::run_pyflow`
-- tests: `workhorse/tests/test_run_terminal.py::test_a_successful_run_is_stamped_terminal_not_aborted`, `workhorse/tests/test_run_terminal.py::test_the_crash_backstop_still_fires_when_nothing_finalized`, `workhorse/tests/test_reload_reentry.py::test_a_run_listens_on_its_own_dir_and_stops_listening_on_the_way_out`, `workhorse/tests/test_run_budget.py::test_a_budget_stop_leaves_the_run_resumable`
+- tests: `workhorse/tests/test_run_terminal.py::test_a_successful_run_is_stamped_terminal_not_aborted`, `workhorse/tests/test_run_terminal.py::test_the_crash_backstop_still_fires_when_nothing_finalized`, `workhorse/tests/test_reload_reentry.py::test_a_run_listens_on_its_own_dir_and_stops_listening_on_the_way_out`, `workhorse/tests/test_run_budget.py::test_a_budget_stop_leaves_the_run_resumable`, `workhorse/tests/test_failure_handoff.py::test_a_run_budget_stop_writes_no_outbox_entry`
 
 ### _open_run
 - sig: `_open_run(name, runs_dir, resume_run_dir, *, run_id, params, no_cache) -> tuple[ArtifactWriter, Resume | None]`
@@ -258,9 +260,16 @@ while budget, interrupt, and unavailable-backend stops retain a resumable checkp
 ### _record_failure_handoff
 - sig: `_record_failure_handoff(writer: ArtifactWriter, exc: PyflowError) -> None`
 - does: identifies the failure class and state from the exception and checkpoint
-- does: writes the error, run paths, checkpoint path, turn directory, and exception artifact paths into one failure inbox message
+- does: prefers `exc.failure_class` and falls back to the exception's class name when none is attached
+- does: writes the failure class, current state, error message, run directory, checkpoint path, and turn directory into one failure inbox message
+- does: appends one `name: path` line per entry in `exc.artifacts`, preserving the raise site's diagnostic map
 - does: preserves the original failure when the inbox write itself fails and emits a warning
 - code: `workhorse/workhorse/pyflow/run.py::_record_failure_handoff`
-- tests: `workhorse/tests/test_run_terminal.py::test_a_workflow_failure_still_reports_fail_first`
+- tests: `workhorse/tests/test_run_terminal.py::test_a_workflow_failure_still_reports_fail_first`, `workhorse/tests/test_failure_handoff.py::test_a_workflow_failure_writes_a_diagnostic_outbox_entry`, `workhorse/tests/test_failure_handoff.py::test_a_raise_sites_own_failure_class_and_artifacts_reach_the_outbox`
 - emits: `failure` inbox message
 - verify: persists(subject="failure handoff in run inbox")
+- verify: json_path(path="$[0].kind", equals="failure")
+- verify: json_path(path="$[0].body", matches=".*node: \\w+.*")
+- verify: json_path(path="$[0].body", matches=".*failure_class: \\S+.*")
+- verify: json_path(path="$[0].body", matches=".*run_dir: .*")
+- verify: json_path(path="$[0].reply", equals="")

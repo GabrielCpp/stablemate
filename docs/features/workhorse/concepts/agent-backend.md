@@ -26,6 +26,7 @@ method should fail loudly at construction rather than silently satisfy a structu
 
 The contract is exercised by `workhorse/tests/test_backends.py::test_non_claude_backends_registered`
 and `workhorse/tests/test_config_harness_env.py::test_every_backend_forwards_its_own_table`.
+- code: `workhorse/tests/test_config_harness_env.py::_spawn_env`
 
 ## Contract
 

@@ -114,7 +114,9 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - sig: `check_time_rules(now: float | None = None) -> list[Alert]`
 - does: fires `STALL` when a non-terminal run has emitted neither a span nor heartbeat beyond the stall threshold.
 - does: fires `STUCK` when a heartbeating run has an active agent turn idle beyond the stuck threshold or deterministic work open beyond that threshold.
-- does: excludes terminal runs and explicit waits from `STALL` and `STUCK` evaluation.
+- does: excludes terminal runs from every rule with an early continue at the top of the per-run loop.
+- does: excludes explicit waits from `STUCK` evaluation.
+- does: evaluates `STALL` before the wait branch, so a run with an open wait still fires `STALL` once its silence crosses the stall threshold.
 - does: fires `WAITING` when an unanswered operator wait exceeds the wait threshold while leaving cap and machine waits exempt.
 - returns: newly-fired time-based alerts after per-run rule deduplication.
 - verify: count(subject="time-rule alerts", equals=1)

@@ -18,7 +18,8 @@ symbols.
 - code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.run_turn`
 
 Regression coverage includes `workhorse/tests/test_backends.py::test_claude_effort_maps_to_native_flag`,
-`workhorse/tests/test_backends.py::test_claude_no_effort_omits_flag`, and
+`workhorse/tests/test_backends.py::test_claude_no_effort_omits_flag`,
+`workhorse/tests/test_backends.py::test_claude_keeps_a_large_prompt_on_stdin`, and
 `workhorse/tests/test_config_harness_env.py::test_every_backend_forwards_its_own_table`.
 
 ## Contract
@@ -79,6 +80,10 @@ Regression coverage includes `workhorse/tests/test_backends.py::test_claude_effo
    stdin_data=prompt, cwd=cwd or None, env_extra=self.harness_env())`. That call runs the argv through the
    shared supervised spawn path ([`stream_subprocess`](stream-subprocess.md)); its completed
    [`ClaudeTurnStream`](stream-events.md#claudeturnstream) feeds the classification step.
+   The prompt is delivered exclusively on stdin — a prompt larger than Linux's per-argument
+   limit reaches the CLI over stdin rather than being split into argv — so the prompt is
+   never present in the spawned argv (asserted by
+   `workhorse/tests/test_backends.py::test_claude_keeps_a_large_prompt_on_stdin`).
 
 The completed stream is classified by `classify_turn("claude", node_id, …)`, with its fields read
 off **by name**: `result_text=stream.result_text`, `diagnostics=stream.diagnostics_text`,

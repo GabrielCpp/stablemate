@@ -92,7 +92,11 @@ workflow-format file or a backend request.
 - verify: json_path(path="$.power", equals="cheap-bulk")
 - semantics: an unmapped or misspelled tier falls through to `[default.<backend>]` rather than failing the run
 - verify: json_path(path="$.model", matches=".+")
+- semantics: any operator-invented tier name is accepted — including ones this repo never imagined — because the engine treats `power` as an opaque key into the operator's `[power.<level>.<backend>]` tables
+- verify: json_path(path="$.power", equals="cheap-bulk")
+- semantics: the validation path used by a dict-shaped spec (a YAML/Python driver entry) accepts the same opaque names as the model constructor
 - code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- tests: `workhorse/tests/test_backends.py::test_agentnode_power_is_an_opaque_tier_name`
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### timeout

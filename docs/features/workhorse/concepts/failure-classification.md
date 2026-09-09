@@ -45,6 +45,7 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - returns: one of `parse`, `overflow`, `cap`, `timeout`, `transient`, or `fatal`
 - verify: json_path(path="$", matches="^(parse|overflow|cap|timeout|transient|fatal)$")
 - code: `workhorse/workhorse/runner/failure.py::error_kind`
+- tests: `workhorse/tests/test_guardrails.py::test_error_kind_classification`
 
 ### is_transient
 - sig: `is_transient(diagnostics: str) -> bool`
@@ -61,6 +62,7 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - returns: whether the diagnostic names a scheduled cap
 - verify: json_path(path="$", equals=false)
 - code: `workhorse/workhorse/runner/failure.py::is_cap`
+- tests: `workhorse/tests/test_guardrails.py::test_cap_detection`
 
 ### is_context_overflow
 - sig: `is_context_overflow(diagnostics: str) -> bool`
@@ -110,6 +112,7 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - returns: a runtime error value with the supplied flags
 - verify: json_path(path="$.error.timed_out", equals=true)
 - code: `workhorse/workhorse/runner/failure.py::BackendInvocationError`
+- tests: `workhorse/tests/test_guardrails.py::test_error_recovery`
 
 ### OutputParseError
 - sig: `OutputParseError(message: str)`

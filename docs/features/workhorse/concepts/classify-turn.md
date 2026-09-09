@@ -23,6 +23,9 @@ knowledge — the backends import it, never the reverse.
   `workhorse/tests/test_backends.py::test_finalize_turn_classifies_failures`,
   `workhorse/tests/test_backends.py::test_finalize_turn_non_recoverable_names_each_backend`,
   `workhorse/tests/test_backends.py::test_opencode_provider_header_timeout_aborts_into_short_retry`,
+  `workhorse/tests/test_backends.py::test_an_empty_turn_that_generated_nothing_stays_a_plain_transient`,
+  `workhorse/tests/test_backends.py::test_an_empty_turn_that_generated_tokens_is_a_budget_overrun_not_a_retry`,
+  `workhorse/tests/test_backends.py::test_an_empty_turn_with_no_usage_report_keeps_the_old_verdict`,
   `workhorse/tests/test_agent_recovery.py::test_context_overflow_is_detected`
 - detail: [Failure classification documentation views](failure-classification-views.md)
 
@@ -138,8 +141,21 @@ return result_text
    exit is raised with `transient=False, overflow=False` — deterministic (a crashed CLI, a bad
    flag) and NOT retried; [`AgentRunner.run`](run-agent.md#the-ladder)'s non-recoverable fast path
    re-raises it immediately instead of reframing or defaulting.
-6. **Empty `result_text` → transient.** No output at all (e.g. the CLI was interrupted) is treated
-   as recoverable and retried.
+6. **Empty `result_text` → transient, or `overflow` when the model spent tokens reasoning
+   about nothing.** No output at all (e.g. the CLI was interrupted) is treated as recoverable
+   and retried with the `"No result text"` message —
+   `test_an_empty_turn_that_generated_nothing_stays_a_plain_transient` asserts the empty
+   path is a plain transient with the model's reported token count held at zero. When
+   `generated_tokens` reports a non-zero count, however, the model spent its whole
+   max-output budget reasoning about a prompt it could not finish — a fresh retry re-rolls
+   the same dice, so this path is filed as `overflow=True` with the spent count embedded in
+   the message (`"<backend> spent N generation tokens without answering for node '<id>' —
+   output budget exhausted while reasoning"`,
+   `test_an_empty_turn_that_generated_tokens_is_a_budget_overrun_not_a_retry`); compaction
+   is the only lever against a ceiling the model itself sets. The Claude path does not
+   report reasoning tokens, so the split is undecidable there and unset behaves exactly as
+   the empty path did before the split existed
+   (`test_an_empty_turn_with_no_usage_report_keeps_the_old_verdict`).
 7. **Success.** `session_id` is persisted (if both `session_id_path` and `session_id` are set),
    [`record_session_map`](#record_session_map) records the node→session mapping, and `result_text`
    is returned unchanged.

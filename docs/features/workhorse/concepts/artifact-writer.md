@@ -58,13 +58,19 @@ restarts — which is what `run_pyflow`'s `auto_resolve` always supplies (the ex
 
 1. Sets `run_dir = runs_dir / f"{workflow_name}-{run_id}"`; create it (`mkdir(parents=True,
    exist_ok=True)`).
-2. **Fresh-start hygiene:** unlink (`missing_ok=True`) any existing `CHECKPOINT_FILE` and
-   `EVENTS_FILE` in `run_dir`. A stable-id dir may be reused after its previous run already
-   finished; dropping both means an interruption before this run's first checkpoint can't
-   resurrect the old run on the next auto-resume, and a prior run's event log can't interleave
-   with this one's.
+2. **Fresh-start hygiene:** if `run_dir` exists, try `shutil.rmtree` to clear any leftover
+   state from a previous run; on `OSError` (a busy filesystem — e.g. another process holding
+   the tree), fall back to unlinking only `CHECKPOINT_FILE` and `EVENTS_FILE`. A stable-id
+   dir may be reused after its previous run already finished; either path means an
+   interruption before this run's first checkpoint can't resurrect the old run on the next
+   auto-resume, and a prior run's event log can't interleave seq numbering with this one's.
+   Housekeeping is never allowed to end a run that would otherwise work.
 3. Sets `_started_at` to now, `_workflow_name`, `_run_id`, `_seq = 0`.
 4. Calls `_write_run_json(terminal=None)`.
+
+- code: `workhorse/workhorse/artifacts.py::_clear_stale_run`
+- code: `workhorse/tests/test_artifacts_fresh.py::test_an_unremovable_run_dir_costs_the_wipe_but_not_the_run`
+- tests: `workhorse/tests/test_artifacts_fresh.py::test_a_fresh_run_does_not_inherit_the_previous_runs_node_output`, `workhorse/tests/test_artifacts_fresh.py::test_a_resume_keeps_everything_the_run_had_already_written`
 
 ### `resume`
 `resume(run_dir) -> ArtifactWriter` (classmethod)

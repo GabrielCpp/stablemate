@@ -185,6 +185,7 @@ shape change.
 - verify: json_path(path="$.dirty", equals="null")
 - code: `workhorse/workhorse/records.py::RepoObservation`
 - detail: [RepoObservation fields](repo-observation-fields.md)
+- code: `workhorse/tests/test_gitstate.py::test_run_json_records_what_the_run_started_from_and_ended_on`
 - tests: `workhorse/tests/test_gitstate.py::test_run_json_records_what_the_run_started_from_and_ended_on`, `workhorse/tests/test_gitstate.py::test_run_json_outside_a_repo_records_no_observation_at_all`
 
 ### RunRecord

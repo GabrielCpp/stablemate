@@ -24,6 +24,7 @@ harness test observes this by compacting from events without `session_id` and re
 session ID afterward.
 
 - code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.compact`
+- code: `workhorse/tests/test_config_harness_env.py::test_compaction_runs_under_the_same_env`
 - tests: `workhorse/tests/test_config_harness_env.py::test_compaction_runs_under_the_same_env`
 
 ## Contract

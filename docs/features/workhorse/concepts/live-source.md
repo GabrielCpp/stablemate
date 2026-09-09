@@ -106,6 +106,7 @@ copy failure, missing `uv`, or failed install leaves the prior installed generat
 - returns: `True` only when the install subprocess exits with status zero
 - verify: exit_status(code=0)
 - code: `workhorse/livesource.py::install`
+- code: `workhorse/tests/test_livesource.py::test_uv_missing_entirely_is_reported_not_raised.boom`
 - tests: `workhorse/tests/test_livesource.py::test_install_points_uv_at_the_copy_never_at_the_bind`,
   `workhorse/tests/test_livesource.py::test_extra_local_packages_are_installed_alongside`,
   `workhorse/tests/test_livesource.py::test_a_failed_install_leaves_the_previous_generation_in_place`,

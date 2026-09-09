@@ -18,7 +18,8 @@ result or a `BackendInvocationError`. Nothing in that module names a CLI.
 
 - code: `workhorse/workhorse/runner/backends/turn.py::finalize_turn`
 - tests: `workhorse/tests/test_backends.py::test_finalize_turn_classifies_failures`,
-  `workhorse/tests/test_backends.py::test_finalize_turn_non_recoverable_names_each_backend`
+  `workhorse/tests/test_backends.py::test_finalize_turn_non_recoverable_names_each_backend`,
+  `workhorse/tests/test_backends.py::test_finalize_turn_hands_the_classifier_the_counts_it_stamped`
 
 ## Contract
 
@@ -169,6 +170,7 @@ Two design rules hold this struct in place:
 - sig: `finalize_turn(backend_name, node_id, state: TurnState, session_id_path, timeout, rate_reset_at=None) -> str`
 - does: reports non-empty normalized usage to the open turn span
 - does: delegates the completed state to `classify_turn`
+- does: hands the classifier the generated-token count stamped on `state.usage` so the empty-turn branch can distinguish a fresh-attempt transient from a budget overrun (`test_finalize_turn_hands_the_classifier_the_counts_it_stamped`)
 - raises: `BackendInvocationError` when the classifier rejects the turn
 - verify: emitted(event="normalized token counts and cost to the open agent-turn span", count=1)
 - returns: the classified result text on success
