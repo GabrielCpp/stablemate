@@ -285,6 +285,28 @@ def _native_gate(run: RunTelemetry, waiting_on: str = "") -> GateInfo | None:
     )
 
 
+def _held_gate_pending(run: RunTelemetry, held: GateInfo) -> bool:
+    """Whether a held gate's on-disk status is still AWAITING (or the legacy headerless form).
+
+    The `_sync_native_row` arm that hands off via `held` cannot see the operator
+    answering a gate the walk cannot name — that gate's next checkpoint the run
+    writes won't mention the file. Re-read the file before carrying the cached
+    `GateInfo` forward, so an answered gate does not keep the dashboard row
+    BLOCKED for the rest of the run.
+    """
+    if held.base:
+        base = Path(held.base)
+        candidate = base / held.file_path
+    elif run.workspace:
+        candidate = Path(run.workspace).resolve() / held.file_path
+    else:
+        return False
+    content = localfs.read_file(str(candidate.parent), candidate.name)
+    if content is None:
+        return False
+    return status_of(content) in {"", AWAITING}
+
+
 def _native_ending(run: RunTelemetry) -> str:
     """Local-host evidence that a native run has ENDED, when telemetry has not said so.
 
@@ -377,6 +399,15 @@ def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None)
     waiting_on = "" if run.terminal else _active_waiting_on(run.run_dir)
     gate = _native_gate(run, waiting_on) if waiting_on else None
     held = {} if before is None or run.terminal else dict(before.gates)
+    # The held dict is the bridge across a `_active_waiting_on` walk that came back
+    # empty: a sub-flow with a non-standard directory name, or the checkpoint chain
+    # not yet rewritten after a state change. It carries the gate forward when the
+    # next walk might name it again. The cost is that the walk cannot see an operator
+    # answering a held gate, so re-read each held gate's file: a STATUS line that is
+    # no longer AWAITING (and not the legacy headerless form) means the gate closed,
+    # and the dashboard row must follow.
+    if held and not waiting_on:
+        held = {fp: g for fp, g in held.items() if _held_gate_pending(run, g)}
     if run.terminal:
         gates: dict[str, GateInfo] = {}
     elif waiting_on:

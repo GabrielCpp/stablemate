@@ -532,6 +532,70 @@ def test_active_waiting_on_stops_at_the_depth_bound(tmp_path):
     assert groom_app._active_waiting_on(str(run_dir)) == ""
 
 
+def test_a_walk_that_empties_clears_a_held_gate_whose_file_is_now_answered(tmp_path):
+    """A native run's checkpoint can drop its `waiting_on` while the run is still
+    alive — the workhorse `control answer` flips the file to ANSWERED and the wait
+    script exits, so the next checkpoint the run writes no longer names the gate.
+
+    The `_native_gate` arm then has nothing to walk, and the held dict under
+    `_sync_native_row` is the only thing keeping the gate alive in the dashboard.
+    A held gate whose file no longer reads AWAITING is stale: the operator answered
+    it, the run resumed, the dashboard must follow.
+    """
+    _reset()
+    run_dir = tmp_path / "runs" / "coder-h1"
+    workspace = tmp_path / "workspace"
+    gate = workspace / "audit" / "behavior-audit-context.md"
+    gate.parent.mkdir(parents=True)
+    gate.write_text(
+        "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\nProceed?\n"
+    )
+    # The walk finds the gate the first poll: parent state is `audit` (so the
+    # descended path is `audit/_flow/checkpoint.json`, where the waiting_on points
+    # at the gate).
+    _checkpoint(run_dir, "", "audit", None)
+    _checkpoint(run_dir, "audit/_flow", "start", str(gate))
+
+    alerts.ingest_metrics(
+        [
+            _metric(
+                "H1", "workhorse.run.heartbeat", 1,
+                run_dir=str(run_dir), workspace=str(workspace), node="audit",
+            )
+        ],
+        now=time.time(),
+    )
+    groom_app._sync_native_row(state.RUNS["H1"])
+    wf = state.WORKFLOWS["H1"]
+    assert wf.state == WorkflowState.BLOCKED
+    assert "audit/behavior-audit-context.md" in wf.gates
+
+    # The operator answers. The gate file flips; the wait script exits and the
+    # checkpoint the run writes next no longer names the gate — `waiting_on` is
+    # cleared on the sub-flow scope whose chain was the only link to it.
+    gate.write_text(
+        "STATUS: ANSWERED\n\n## Questions from the agent\nProceed?\n\nyes\n"
+    )
+    _checkpoint(run_dir, "audit/_flow", "start", None)
+
+    alerts.ingest_metrics(
+        [
+            _metric(
+                "H1", "workhorse.run.heartbeat", 1,
+                run_dir=str(run_dir), workspace=str(workspace), node="audit",
+            )
+        ],
+        now=time.time(),
+    )
+    groom_app._sync_native_row(state.RUNS["H1"])
+
+    wf = state.WORKFLOWS["H1"]
+    assert wf.gates == {}, (
+        f"held gate should drop when its file no longer reads AWAITING; got {wf.gates}"
+    )
+    assert wf.state == WorkflowState.RUNNING
+
+
 # --------------------------------------------------------------------------- #
 # Gate answering over local FS
 # --------------------------------------------------------------------------- #
