@@ -227,7 +227,13 @@ class _Agent:
         }
 
     def _recheck_coverage(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        return {"needs_journeys": False, "discovered": []}
+        # The recheck prompt is the seeder now (okf-digest-scoped-build §5): a fresh
+        # book lands here because every unit is in the join's `missing` list, and the
+        # prompt's classifier turns that list into the surface/runbook items the drain
+        # documents. The test stands in for the classifier by handing the worklist the
+        # items `surfaces` describes — the same items the old `enumerate-surfaces`
+        # turn used to mint.
+        return {"needs_journeys": False, "discovered": list(self.surfaces)}
 
     def _walkthrough_web(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"walk_status": "confirmed", "discovered": []}
@@ -428,17 +434,22 @@ def test_an_empty_book_is_filled_top_down_from_the_code_s_surfaces(
 ) -> None:
     """The first fill: seed one surface, document it, converge, hand off.
 
-    There is no book to reconcile against, so the entry is the enumeration — and every
-    artifact below is the YAML's artifact: the worklist with its item closed, the source
-    inventory walked from `acme/`, and the coverage join written into the book the turn
-    just wrote. The verdict is arithmetic — one module and one symbol, both cited by the
-    doc the investigation produced.
+    There is no book to reconcile against, so the entry is the join — and every artifact
+    below is the YAML's artifact: the worklist with its item closed, the source inventory
+    walked from `acme/`, and the coverage join written into the book the turn just wrote.
+    The verdict is arithmetic — one module and one symbol, both cited by the doc the
+    investigation produced.
+
+    The recheck agent is the seeder now (okf-digest-scoped-build §5): the empty book hits
+    `checkpoint` (clean), `rescan_coverage` (missing = everything), and lands at
+    `recheck`, which classifies the missing list into the surface item the drain
+    documents. The pre-plan ``enumerate-surfaces`` agent turn is gone.
     """
     agent = _Agent(unbooked, writes=FILLS)
     result = _drive(_env(tmp_path), agent)
 
-    assert agent.counts() == {"enumerate-surfaces": 1, "investigate": 1, "behavior-audit": 1}, agent.counts()
-    assert agent.powers == ["low", "low", "medium"]
+    assert agent.counts() == {"recheck-coverage": 1, "investigate": 1, "behavior-audit": 1}, agent.counts()
+    assert agent.powers == ["medium", "low", "medium"]
 
     # The drain closed what it opened.
     items = _worklist(unbooked)
@@ -456,8 +467,10 @@ def test_an_empty_book_is_filled_top_down_from_the_code_s_surfaces(
         "acme/service.py::charge",
     }, inventory
 
-    # `recheck` never ran, because the join was already complete.
-    assert "recheck-coverage" not in agent.counts(), agent.counts()
+    # `recheck` ran exactly once — as the seeder (okf-digest-scoped-build §5). After the
+    # drain closes the seeded surface, the next rescan finds coverage_complete and the
+    # loop converges without a second adjudication.
+    assert agent.counts()["recheck-coverage"] == 1, agent.counts()
 
     # The run's value is the sub-flow's: this service documents no screen, so the walk is
     # a no-op that booted nothing.

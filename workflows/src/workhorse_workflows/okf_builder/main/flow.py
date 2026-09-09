@@ -70,6 +70,7 @@ from workhorse.pyflow import (
     AgentTimeout, AgentTurnFailed, Await, Continue, Done, NodeNotRunError, Workflow,
     WorkflowFailed,
 )
+from workhorse_workflows.kit import build_worklist
 from workhorse_workflows.okf_builder.audit.flow import Audit
 from workhorse_workflows.okf_builder.main.nodes import (
     advance_watermark,
@@ -86,7 +87,6 @@ from workhorse_workflows.okf_builder.shared.audit import AuditScope, assess_audi
 from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book, settle_stale
 from workhorse_workflows.okf_builder.shared.schemas import (
     Adjudication,
-    Discovery,
     Evidence,
     Investigation,
     Prepared,
@@ -277,37 +277,15 @@ class OkfBuilder(Workflow):
         if self.ctx.book_exists:
             self.logger.info("the book exists: reconciling it to HEAD from the checkpoint")
             return Continue(None, self.checkpoint).because("the book exists: reconcile it to HEAD")
-        self.logger.info("no book yet: filling it top-down from the code's entry surfaces")
-        return Continue(None, self.enumerate_surfaces).because("no book yet: fill it from the entry surfaces")
-
-    def enumerate_surfaces(self) -> Continue:
-        """Identify every entry-point surface from the code.
-
-        Their internals are not this turn's job: the drain discovers them, one layer at a
-        time, which is what keeps this prompt's scope constant regardless of book size.
-        """
-        self.logger.info("enumerating %s's surfaces", self.service or "the repo")
-        result = self.agent(
-            "main/prompts/enumerate-surfaces.md",
-            returns=Discovery,
-            power="low",
-            cwd=self.ctx.repo_root,
-            add_dirs=[self.ctx.repo_root],
-            args={
-                "service": self.service,
-                "features_root": self.ctx.features_root,
-                "repo_root": self.ctx.repo_root,
-                "source_root": self.ctx.source_root,
-                "source_excludes": self.ctx.source_excludes,
-            },
+        # The entry fork is gone (okf-digest-scoped-build §5): an empty book is not a
+        # different mode, it is the case where every digest is absent and every unit is
+        # `uncovered`, which the join reports without being asked anything special. The
+        # coverage join is the seeder; the recheck prompt's classifier turns the join's
+        # `missing` list into the surface/runbook/environment items the drain picks up.
+        self.logger.info("no book yet: the join reports every unit as missing; recheck classifies")
+        return Continue(None, self.checkpoint).because(
+            "empty book: same join seeds the worklist"
         )
-        return Continue(result, self.seed_surfaces, discovered=result.discovered).because("entry surfaces discovered")
-
-    def seed_surfaces(self, discovered: list[dict]) -> Continue:
-        """`seed_surfaces`: open the surfaces, close nothing."""
-        return Continue(
-            self.call(record, self.ctx.worklist_path, None, discovered), self.select
-        ).because("surfaces opened on the worklist")
 
     # --- the drain ----------------------------------------------------------
 
@@ -894,7 +872,8 @@ class OkfBuilder(Workflow):
     def rescan_coverage(
         self, rnd: int = 0, rescan: int = 0, refuels: int = 0
     ) -> Continue | Await:
-        """`inventory_source` + `compute_coverage` + `decide_coverage`.
+        """`inventory_source` + `compute_coverage` + `decide_coverage`, with the
+        worklist builder seeding deterministic rows alongside.
 
         Two nodes in one state because the second consumes the first's only output and
         nothing decides between them — the inventory is not a checkpoint anyone would want
@@ -903,6 +882,11 @@ class OkfBuilder(Workflow):
         The verdict is arithmetic, not an agent's self-report: the join of the book's
         `code:` citations against the inventory. The agent's role begins below, on the rows
         this says are missing.
+
+        With the entry fork gone (okf-digest-scoped-build §5), this state is the *seeder*
+        too: trim rows for files the catalog carries but the tree lacks, unreachable rows
+        for orphan nodes, and the existing regrounding rows are written alongside the
+        build's own join. The drain picks them all up the same way.
         """
         inventory = self.call(
             inventory_source,
@@ -920,6 +904,25 @@ class OkfBuilder(Workflow):
             str(paths.waivers_path(self.ctx.features_root)),
             rescan,
         )
+        # The deterministic rows — trim, unreachable, drift, moved, dangling — are seeded
+        # straight onto the worklist. The builder composed them from the same join the
+        # coverage node just ran, so the data is already on disk; re-reading it here would
+        # be a second, slower copy.
+        try:
+            builder_rows = build_worklist(
+                Path(self.ctx.repo_root),
+                Path(self.ctx.features_root),
+                self.service,
+            ).rows
+        except (OSError, ValueError, RuntimeError) as exc:
+            self.logger.warning("worklist builder failed: %s", exc)
+            builder_rows = ()
+        if builder_rows:
+            self.logger.info(
+                "%d deterministic row(s) from the builder", len(builder_rows),
+                extra={"activity": True},
+            )
+            self.call(record, self.ctx.worklist_path, None, list(builder_rows))
         # One gap left to test here. The other — every cited node declaring what observing
         # it looks like — used to be re-read at this point because the checkpoint drained
         # errors only and `undeclared-obligation` is a warn. The checkpoint is severity-

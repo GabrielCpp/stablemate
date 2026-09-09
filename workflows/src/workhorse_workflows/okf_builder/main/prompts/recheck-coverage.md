@@ -110,12 +110,17 @@ book is not an empty gap.
    `__main__` entry points). Diff it against the graph: `ostler list runbook` / `ostler list
    environment` (and `ostler graph --surface ‹service› --type runbook`). **The book is not complete
    until the run surface is a runbook**: every driver the service exposes has a `runbook` whose
-   `## Steps` are ordered and executable and whose `environment` resolves, and each target
-   environment has an `environment` node. Queue a `runbook`/`environment` item for any driver or
-   target that is missing or below the §4.4 bar (a step with no real `run:`/`health:`, an
-   unresolved `environment:`/`surfaces:` link, a `service` step whose `health:` is a UI shell rather
-   than a real probe). A repo with genuinely nothing to boot still needs one `artifact`/`none`
-   runbook — its absence is a gap, not a pass.
+   `## Steps` are ordered and executable, whose `environment` resolves, and whose **`commands:`
+   bullet lists every command a reviewer can paste to drive it** (one entry per make/just target,
+   compose service, package/console script, `__main__` entry point — whichever apply to that
+   driver). Prose that says "run `make test`" is a description, not a contract; the `commands:`
+   bullet is what makes the runbook executable by something other than a reader, the same way
+   `ostler reach` already treats routes. A `commands:` bullet with one entry for a multi-driver
+   runbook is a gap, not a pass. Each target environment has an `environment` node. Queue a
+   `runbook`/`environment` item for any driver or target that is missing or below the §4.4 bar
+   (a step with no real `run:`/`health:`, an unresolved `environment:`/`surfaces:` link, a
+   `service` step whose `health:` is a UI shell rather than a real probe). A repo with genuinely
+   nothing to boot still needs one `artifact`/`none` runbook — its absence is a gap, not a pass.
 7. **Judgment** — competing implementations with no recorded selection rule. Query the graph for
    two or more nodes of the *same type* whose `code:` bullets cite an identical `path::symbol`
    (`ostler graph --surface ‹service› --bullet 'code=<symbol>'` checks one; the doctor's
