@@ -487,7 +487,28 @@ def build_worklist(
     except (OSError, ValueError, RuntimeError) as exc:
         raise RuntimeError(f"could not load the OKF graph at {root}: {exc}") from exc
 
-    inventory_path = features / ".source-inventory.json"
+    # The build's source inventory is parked beside the worklist, not inside the book:
+    # the worklist is run state (gitignored under `.agents/`), the book is the committed
+    # surface. `coverage_mod.run` is given the worklist-relative path; load through the
+    # same lens so the builder and the join read the same file. A caller that has
+    # written the inventory under `<features>/.source-inventory.json` is also accepted,
+    # which is what the unit tests and the older read paths expect.
+    from workhorse_workflows.okf_builder.shared.paths import (
+        worklist_path as _worklist_path, source_inventory_path as _inv_path,
+    )
+    worklist_relative = _inv_path(_worklist_path(root, service))
+    features_relative = features / ".source-inventory.json"
+    candidates = [worklist_relative, features_relative]
+    for candidate in candidates:
+        if candidate.is_file():
+            inventory_path = candidate
+            break
+    else:
+        # Both candidates absent: report the worklist-relative one (the live one) so
+        # the error names what the build actually produced, not the historical name.
+        raise RuntimeError(
+            f"could not load the source inventory — none of {candidates} exists"
+        )
     try:
         inventory = coverage_mod.load_inventory(inventory_path)
     except (OSError, ValueError) as exc:

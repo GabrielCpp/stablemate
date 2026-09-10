@@ -927,23 +927,28 @@ class OkfBuilder(Workflow):
             rescan,
         )
         # The deterministic rows — trim, unreachable, drift, moved, dangling — are seeded
-        # straight onto the worklist. The builder composed them from the same join the
-        # coverage node just ran, so the data is already on disk; re-reading it here would
-        # be a second, slower copy.
-        try:
-            builder_rows = build_worklist(
-                Path(self.ctx.repo_root),
-                Path(self.ctx.features_root),
-                self.service,
-            ).rows
-        except (OSError, ValueError, RuntimeError) as exc:
-            self.logger.warning("worklist builder failed: %s", exc)
-            builder_rows = ()
-        if builder_rows:
-            self.logger.info(
-                "%d deterministic row(s) from the builder", len(builder_rows),
-                extra={"activity": True},
-            )
+        # straight onto the worklist, but **only on the first scan and only when the
+        # join has work to do**. On later scans the join is the convergence check, and
+        # the builder's unreachable rows would re-queue concepts the drain just wrote
+        # (a half-built book always has orphans whose links have not been authored yet).
+        # The convergence path only needs the join's own verdict; a complete book at
+        # the seeder has nothing to queue either.
+        builder_rows: tuple = ()
+        if rescan == 0 and not coverage.coverage_complete:
+            try:
+                builder_rows = build_worklist(
+                    Path(self.ctx.repo_root),
+                    Path(self.ctx.features_root),
+                    self.service,
+                ).rows
+            except (OSError, ValueError, RuntimeError) as exc:
+                self.logger.warning("worklist builder failed: %s", exc)
+                builder_rows = ()
+            if builder_rows:
+                self.logger.info(
+                    "%d deterministic row(s) from the builder", len(builder_rows),
+                    extra={"activity": True},
+                )
             self.call(record, self.ctx.worklist_path, None, list(builder_rows))
         # One gap left to test here. The other — every cited node declaring what observing
         # it looks like — used to be re-read at this point because the checkpoint drained
