@@ -64,11 +64,18 @@ Reads the scoped book (no formatting or source import) and extracts evidence fro
 
 Raises ValueError if source_path is missing or support context files cannot be parsed.
 
-### assess_audit(logger, scope, run_dir, prompt_path) → AuditWork
+### prepare_audit(logger, scope, run_dir, prompt_path) → AuditPreparation
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::prepare_audit`
+
+The read-once half of the assessment: computes an `AuditPreparation` from source and book, then persists `preparation.json` and one `packet.json` per selected packet under `<run_dir>/behavior-audit/<digest>/`. The audit flow's `setup()` calls it once; the iteration body reads the cached result. Splitting it from `assess_audit` keeps the per-iteration hot loop off the book- and source-reading path — for an N-packet audit the per-packet work is O(1) (receipt scan) instead of O(book + source).
+
+### assess_audit(logger, scope, run_dir, prompt_path, prepared=None) → AuditWork
 - code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::assess_audit`
 - detail: [assess_audit entry points](assess-audit-entry-points.md)
 
-Main assessment entry point. Rebuilds packets from current source and claims, reuses receipts when the review contract has not changed, and returns a partial or complete outcome with pending packets for review.
+Main assessment entry point. Scans receipts against the prepared packets, reuses memoised verdicts when the review contract has not changed, and returns a partial or complete outcome with pending packets for review.
+
+When `prepared` is `None` (the default), the call self-contains: it runs `prepare_audit` first and writes the on-disk artifacts the iteration body reads. The audit flow passes a cached `AuditPreparation` from `setup()` so the read-once work is not repeated per packet.
 
 Returns AuditWork with:
 - `outcome` — BehaviorAuditOutcome

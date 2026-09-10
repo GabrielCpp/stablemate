@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 from ostler.behavior import (
-    AuditPacket, AuditPreparation, AuditReport, AuditVerdicts,
+    AuditPacket, AuditPreparation, AuditReport, AuditVerdicts, EvidenceInventory,
     build_audit_packets, extract_book, extract_evidence, validate_verdicts,
 )
 from ostler.behavior_memo import (
@@ -233,23 +233,80 @@ def preparation(scope: AuditScope) -> AuditPreparation:
     )
 
 
-@blueprint.node(stub=lambda logger, scope, run_dir, prompt_path=AUDIT_PROMPT: AuditWork(outcome=BehaviorAuditOutcome(
-    schema_version=2,
-    status="assessed", report_path=str(Path(run_dir) / "behavior-audit.json"),
-    scope_digest="dry-run", scope=scope, scope_clear=True,
-    limitations=("Dry-run stand-in: no source or claims were reviewed.",),
-)))
+@blueprint.node(stub=lambda logger, scope, run_dir, prompt_path=AUDIT_PROMPT: AuditPreparation(
+    inventory=EvidenceInventory(scope=(), files=(), candidates=(), limitations=()),
+    packets=(), selected_candidates=0, selected_claims=0,
+))
+def prepare_audit(
+    logger: logging.Logger, scope: AuditScope, run_dir: str, prompt_path: Path = AUDIT_PROMPT,
+) -> AuditPreparation:
+    """Compute and persist the audit preparation once per run.
+
+    The audit flow's `start` self-loops once per packet, and `assess_audit`'s
+    iteration body called `preparation(scope)` every loop. That work — `load(root)`,
+    `extract_book(graph, scope=...)`, `extract_evidence(root, [source], ...)`,
+    `build_audit_packets(...)` — reads the entire book and source off disk and
+    SHA-256s the result. For an N-packet audit that is N×(book + source) reads.
+    Splitting prep into its own blueprint node lets the audit flow call it from
+    `setup()` once, pass the cached `AuditPreparation` to `assess_audit`, and pay
+    the read cost exactly once.
+
+    Persists `preparation.json` and one `packet.json` per selected packet under
+    `<run_dir>/behavior-audit/<digest>/`. The latter is read by `load_repair` and
+    `stage_repair` after each iteration, so it must exist before `assess_audit`
+    reads its first receipt.
+    """
+    directory = Path(run_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    prepared = preparation(scope)
+    artifacts = directory / "behavior-audit"
+    artifacts.mkdir(exist_ok=True)
+    (artifacts / "preparation.json").write_text(prepared.model_dump_json(indent=2), encoding="utf-8")
+    for packet in prepared.packets[:scope.max_packets]:
+        packet_dir = artifacts / packet.digest
+        packet_dir.mkdir(exist_ok=True)
+        (packet_dir / "packet.json").write_text(packet.model_dump_json(indent=2), encoding="utf-8")
+    logger.info(
+        "audit prepared: %d packet(s) under %s",
+        min(len(prepared.packets), scope.max_packets or len(prepared.packets)),
+        artifacts,
+    )
+    return prepared
+
+
+@blueprint.node(stub=lambda logger, scope, run_dir, prompt_path=AUDIT_PROMPT, prepared=None: AuditWork(
+    outcome=BehaviorAuditOutcome(
+        schema_version=2,
+        status="assessed", report_path=str(Path(run_dir) / "behavior-audit.json"),
+        scope_digest="dry-run", scope=scope, scope_clear=True,
+        limitations=("Dry-run stand-in: no source or claims were reviewed.",),
+    ),
+))
 def assess_audit(
     logger: logging.Logger, scope: AuditScope, run_dir: str, prompt_path: Path = AUDIT_PROMPT,
+    prepared: AuditPreparation | None = None,
 ) -> AuditWork:
-    """Rebuild packets and reuse only receipts bound to the evidence and review contract."""
+    """Scan receipts and dispatch the next pending packet; iterate from a prepared scope.
+
+    `prepared` is the cached `AuditPreparation` produced by `prepare_audit`. When
+    `None`, this node calls `prepare_audit` itself and persists `preparation.json`
+    plus `packet.json` per selected packet on disk — the original behavior, kept
+    for callers that drive `assess_audit` outside the audit flow's split. When
+    provided, both files are assumed already on disk and only `report.json` is
+    written here.
+
+    The per-packet receipt scan (`read_receipt` / `recall_report`) runs every call
+    because it is cheap relative to preparation, and it is the only way to see a
+    receipt that a previous iteration wrote.
+    """
     directory = Path(run_dir)
     directory.mkdir(parents=True, exist_ok=True)
     report_path = directory / "behavior-audit.json"
     try:
         result_schema = verdict_schema()
         contract = review_contract(prompt_path, result_schema)
-        prepared = preparation(scope)
+        if prepared is None:
+            prepared = prepare_audit(logger, scope, run_dir, prompt_path)
     except (ValueError, OSError) as exc:
         outcome = BehaviorAuditOutcome(
             schema_version=2,
@@ -258,10 +315,9 @@ def assess_audit(
         )
         report_path.write_text(outcome.model_dump_json(indent=2), encoding="utf-8")
         return AuditWork(outcome=outcome)
+    assert prepared is not None
     digest = hashlib.sha256(prepared.model_dump_json().encode()).hexdigest()
     artifacts = directory / "behavior-audit"
-    artifacts.mkdir(exist_ok=True)
-    (artifacts / "preparation.json").write_text(prepared.model_dump_json(indent=2), encoding="utf-8")
     selected = prepared.packets[:scope.max_packets]
     pending: list[AuditPacket] = []
     reports: list[AuditReport] = []
@@ -274,8 +330,6 @@ def assess_audit(
     memo_hits = memo_partial = 0
     for packet in selected:
         packet_dir = artifacts / packet.digest
-        packet_dir.mkdir(exist_ok=True)
-        (packet_dir / "packet.json").write_text(packet.model_dump_json(indent=2), encoding="utf-8")
         report = read_receipt(packet_dir, packet, contract)
         if report is None:
             recalled = recall_report(artifacts, packet, memo, contract)
