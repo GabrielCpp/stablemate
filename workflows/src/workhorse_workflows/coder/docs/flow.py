@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal
 
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow, WorkflowFailed
-from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.kit import build_worklist, find_docs_root
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.dev import (
     plan_summary,
@@ -872,12 +872,20 @@ class Docs(Workflow):
         rather than returning an empty worklist that would read as "nothing to ground".
         The packet is rebuilt in `verify` against the tree the author left behind — this
         one is the *before* picture and is deliberately not reused as the gate's input.
+
+        The same worklist builder the okf-builder uses is also called here, scoped to the
+        story's changed paths (okf-digest-scoped-build §3). The same join answers both
+        questions — "what does the book owe this story?" here, "what does it owe the
+        whole tree?" in okf-builder — and the path filter is what scopes it. The missing
+        list is logged so a hand-debugging run can see what the join said.
         """
         mode = self._context_mode(classification)
         build_status = ""
+        packet = None
         if mode == "local":
-            build_status = self._okf_packet(classification).status
-        return self.call(
+            packet = self._okf_packet(classification)
+            build_status = packet.status
+        obligations = self.call(
             documentation_obligations,
             self.docs_path,
             self.ctx.spec_dir,
@@ -885,6 +893,30 @@ class Docs(Workflow):
             build_status,
             preexisting=tuple(self.preexisting),
         )
+        if packet is not None and packet.ostler:
+            paths = sorted({
+                str(unit.get("path", ""))
+                for unit in (packet.ostler.get("changedUnits") or [])
+                if isinstance(unit, dict) and unit.get("path")
+            })
+            if paths:
+                try:
+                    docs_root = Path(find_docs_root(self.docs_path, self.repo_dir))
+                    scoped = build_worklist(
+                        docs_root,
+                        Path(features_root(self)),
+                        "",
+                        paths=paths,
+                    )
+                except (OSError, ValueError, RuntimeError) as exc:
+                    self.logger.info("scoped worklist builder skipped: %s", exc)
+                else:
+                    self.logger.info(
+                        "%d changed path(s): %d missing unit(s) per the worklist builder",
+                        len(paths), len(scoped.missing),
+                        extra={"activity": True},
+                    )
+        return obligations
 
     @property
     def _epic_path(self) -> str:
