@@ -273,6 +273,44 @@ def test_resume_rebuilds_source_and_claims_before_reusing_receipts(booked: Path,
     assert agent.packets[-1].claims
 
 
+def test_audit_preparation_runs_once_per_drive(booked: Path, tmp_path: Path) -> None:
+    """Regression: preparation was called once per packet, not once per drive.
+
+    Before the split, ``assess_audit`` called ``preparation(scope)`` on every
+    iteration of the audit flow's ``start`` self-loop. ``preparation`` reads the
+    entire book and source off disk and SHA-256s the result — for an N-packet
+    audit that was N × (book + source) reads on the hot loop. The fix moved
+    preparation into a dedicated ``prepare_audit`` blueprint node called once
+    from ``setup()``; ``assess_audit`` reads the cached ``AuditPreparation`` per
+    packet.
+
+    The test counts the cheaper inner call — ``preparation(scope)`` — by patching
+    the source module. The blueprint registry caches the function reference at
+    registration time, so a patch on the symbol alone cannot replace the call
+    the engine makes; patching the module attribute the body resolves at call
+    time (the inner ``preparation``) intercepts every actual read without
+    bypassing the cached registration that the engine looks up.
+    """
+    from workhorse_workflows.okf_builder.shared import audit as audit_module
+
+    agent = AuditAgent()
+    env = audit_env(tmp_path, agent)
+    counts = {"prepare": 0}
+    original = audit_module.preparation
+
+    def counted(scope: Any) -> Any:
+        counts["prepare"] += 1
+        return original(scope)
+
+    with patch.object(audit_module, "preparation", counted):
+        audit = Audit(docs_path=str(booked), source_path="acme", service="acme")
+        drive(audit, env)
+    assert counts["prepare"] == 1, (
+        f"preparation ran {counts['prepare']}× for {len(agent.packets)} packet(s); "
+        "it should run exactly once per drive"
+    )
+
+
 def test_memoized_verdicts_cost_no_turn_in_another_run(
     booked: Path, tmp_path: Path,
 ) -> None:
