@@ -186,7 +186,19 @@ class Audit(Workflow):
         self, failed_digest: str = "", attempts: int = 0, feedback: str = "", turns: int = 0,
         repair_digest: str = "", transient_streak: int = 0,
     ) -> Continue | Done | Await:
+        # `setup()` is supposed to run exactly once and `_ctx` is sealed from its return
+        # value on every drive (fresh or resumed). A resume reads `setup()`'s return
+        # annotation, validates the stored ctx against it, and seals the result — so a
+        # `None` here means the prior checkpoint's `ctx` field was itself `None`. That
+        # has been observed on long-lived okf-builder runs after many reloads; the
+        # engine has no recovery path for it, so the audit sub-flow would otherwise
+        # crash on `setup.outcome` below. `setup()` is deterministic for the same
+        # inputs (the audit flow's `preparation` is content-keyed, so it is stable
+        # across reloads), so re-running it is the honest recovery — once.
         setup = self.ctx
+        if setup is None:
+            self._ctx = self.setup()
+            setup = self._ctx
         if setup.outcome is not None and setup.outcome.status == "invalid":
             return Await(
                 self.run_dir / "behavior-audit-context.md", setup.outcome.error, self.start,
