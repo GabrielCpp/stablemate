@@ -1059,6 +1059,60 @@ def test_audit_packet_iteration_is_not_churn():
         assert "on the same work" in fired[0].message
 
 
+def test_rescan_coverage_is_not_churn():
+    """Regression: okf-builder's coverage re-scan paged as CHURN on its fifth round.
+
+    The rescan loop (`rescan_coverage → recheck → seed_recheck → select → checkpoint
+    → rescan_coverage`) reads no new items while the worklist is empty, so
+    `select_item` keeps returning the dry-state `work_id=""` / `progress="X/Y"`.
+    `OkfBuilder.state_labels(params)` adds `rescan_round` whenever `params` carries
+    `rescan`, and the re-scan counter increments on every `compute_coverage` call —
+    so a varying `rescan_round` becomes the forward-progress signal the rule needs.
+
+    Mirrors `test_a_drain_iterating_over_its_worklist_is_not_churn`'s shape. The
+    negative path (same `rescan_round` repeated past the threshold) still fires,
+    because a counter stuck past the bound *is* the bug signal the rule exists for.
+    """
+    with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_CHURN_REPEATS": "5"}):
+        for index in range(6):
+            rescan_round = f"round-{index}"
+            rescan_pass = otlp.parse_traces(
+                _trace_request(
+                    [
+                        {
+                            "name": "recheck-coverage",
+                            "node": "recheck-coverage",
+                            "seq": index,
+                            "labels": {
+                                "work_id": "",
+                                "progress": "50/100",
+                                "rescan_round": rescan_round,
+                                "service": "acme",
+                            },
+                        }
+                    ]
+                )
+            )
+            assert alerts.ingest_spans(rescan_pass, now=10.0 + index) == [], (
+                f"rescan pass {index} ({rescan_round}) should not churn"
+            )
+
+        # Same rescan_round, no forward progress → CHURN past the threshold.
+        stuck = [
+            {"name": "recheck-coverage", "node": "recheck-coverage", "seq": seq,
+             "labels": {"work_id": "", "progress": "50/100",
+                        "rescan_round": "round-stuck", "service": "acme"}}
+            for seq in range(5)
+        ]
+        fired = []
+        for span in stuck:
+            fired.extend(alerts.ingest_spans(
+                otlp.parse_traces(_trace_request([span])), now=20.0 + stuck.index(span),
+            ))
+        assert [a.rule for a in fired] == ["CHURN"], fired
+        assert "on the same work" in fired[0].message
+
+
 def test_churn_still_fires_when_the_same_work_repeats():
     """The condition the rule exists for, now stated precisely: the same node
     completing again and again for the SAME unit of work."""
