@@ -1009,6 +1009,56 @@ def test_a_drain_iterating_over_its_worklist_is_not_churn():
             assert alerts.ingest_spans(drain, now=10.0 + index) == []
 
 
+def test_audit_packet_iteration_is_not_churn():
+    """Regression: the audit sub-flow paged as CHURN on its fifth packet.
+
+    `Audit.start` self-loops with `Continue(None, self.start, ...)`, so `assess_audit`
+    (the wrapper blueprint node) and `behavior-audit` (the agent node) close once per
+    packet. The audit flow had no `labels()` override, so every iteration's signature
+    was `()` and CHURN fired at packet five. `Audit.labels()` now reads
+    `pending[0].digest` off the recorded `assess_audit` output.
+
+    Mirrors `test_a_drain_iterating_over_its_worklist_is_not_churn`'s shape: varying
+    `packet_digest` across iterations. The negative path (same digest repeated) still
+    fires — a test that only asserted the happy path would let a regression that
+    *widened* the rule (e.g. always returning empty labels) slip through.
+    """
+    happy_digests = [f"pkt-{index:02d}" for index in range(6)]
+    with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_CHURN_REPEATS": "5"}):
+        for index, digest in enumerate(happy_digests):
+            audit_pass = otlp.parse_traces(
+                _trace_request(
+                    [
+                        {
+                            "name": node,
+                            "node": node,
+                            "seq": index * 2 + offset,
+                            "labels": {"packet_digest": digest},
+                        }
+                        for offset, node in enumerate(["assess_audit", "behavior-audit"])
+                    ]
+                )
+            )
+            assert alerts.ingest_spans(audit_pass, now=10.0 + index) == [], (
+                f"audit pass {index} ({digest}) should not churn"
+            )
+
+        # Same digest repeated → the rule's own condition: the same unit of work, the
+        # same node, completing again and again. CHURN is the signal, not the bug.
+        stuck = [
+            {"name": "behavior-audit", "node": "behavior-audit", "seq": seq,
+             "labels": {"packet_digest": "pkt-stuck"}}
+            for seq in range(5)
+        ]
+        fired = []
+        for span in stuck:
+            fired.extend(alerts.ingest_spans(
+                otlp.parse_traces(_trace_request([span])), now=20.0 + stuck.index(span),
+            ))
+        assert [a.rule for a in fired] == ["CHURN"], fired
+        assert "on the same work" in fired[0].message
+
+
 def test_churn_still_fires_when_the_same_work_repeats():
     """The condition the rule exists for, now stated precisely: the same node
     completing again and again for the SAME unit of work."""
