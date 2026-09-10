@@ -6,7 +6,8 @@ from pathlib import Path
 from ostler.behavior import AuditVerdicts
 from pydantic import Field
 from workhorse.pyflow import (
-    AgentTimeout, AgentTurnFailed, Await, Continue, Done, Workflow, WorkflowFailed,
+    AgentTimeout, AgentTurnFailed, Await, Continue, Done, NodeNotRunError, Workflow,
+    WorkflowFailed,
 )
 
 from workhorse_workflows.okf_builder.shared import audit as audit_nodes
@@ -32,6 +33,29 @@ class Audit(Workflow):
     turn_budget: int = Field(default=0, ge=0)
     #: Parent-run storage survives the engine resetting a completed handoff scope.
     artifact_dir: str = ""
+
+    def labels(self) -> dict[str, str]:
+        """Which packet the audit is reviewing — the dimension churn keys on.
+
+        The audit's `start` self-loops via `Continue(None, self.start, ...)`, so the
+        same node spans (`assess_audit`, `behavior-audit`) close once per packet. The
+        rule at `groom/groom/alerts.py::ingest_spans` keys CHURN on `(node, signature)`
+        where `signature` is the workflow-declared label set; with no `labels()` here,
+        every iteration's signature is `()` and CHURN fires at packet five. The
+        per-packet digest is the only forward-progress signal the loop emits, and
+        `assess_audit`'s recorded output carries it on `pending[0]`.
+
+        Before the first `assess_audit` runs there is nothing to read; the empty
+        signature then is the same one every fresh workflow produces, which CHURN
+        guards against by node (not by run), so a one-shot empty at start is safe.
+        """
+        try:
+            work = self.output(assess_audit)
+        except NodeNotRunError:
+            return {}
+        if not work.pending:
+            return {}
+        return {"packet_digest": work.pending[0].digest}
 
     def start(
         self, failed_digest: str = "", attempts: int = 0, feedback: str = "", turns: int = 0,
