@@ -460,9 +460,12 @@ class Engine:
                 # than travelling as a runner name a workflow may not import. Two names,
                 # not one: a state that cannot tell a cut turn from a turn that answered
                 # nothing would land partial work on a node that never wrote any.
+                # `transient` rides along so a state can split "CLI blip" from
+                # "verdict-validation failure": the first wants a longer backoff and a
+                # separate budget; the second counts against the verdict's attempt cap.
                 if exc.timed_out:
-                    raise AgentTimeout(str(exc)) from exc
-                raise AgentTurnFailed(str(exc)) from exc
+                    raise AgentTimeout(str(exc), transient=exc.transient) from exc
+                raise AgentTurnFailed(str(exc), transient=exc.transient, overflow=exc.overflow) from exc
             writer.write_step(node_id, rendered, raw, {}, next_node=None)
             return _coerce(raw, returns, node_id)
 

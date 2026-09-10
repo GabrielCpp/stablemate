@@ -59,6 +59,23 @@ class AuditAgent:
             # What the ladder re-raises once its bounded retries are spent — the real
             # shape of the failure this node meets on a flaky provider.
             raise BackendInvocationError(f"No result text from opencode for node '{node.id}'")
+        if self.status == "transient_failure":
+            # The provider blip shape: a network / catalog-fetch outage that the ladder
+            # cannot recover from. Distinct from a verdict-validation failure: the
+            # reviewer never read the packet, so it must NOT count against `attempts`.
+            raise BackendInvocationError(
+                f"No result text from opencode for node '{node.id}'",
+                transient=True,
+            )
+        if self.status == "transient_then_success":
+            # Same provider blip on the first packet, then succeed. Used to verify the
+            # transient_streak counter resets on the next successful receipt — without
+            # that, every successful audit would carry the previous run's streak.
+            if len(self.packets) == 1:
+                raise BackendInvocationError(
+                    f"No result text from opencode for node '{node.id}'",
+                    transient=True,
+                )
         if self.status == "invalid_schema":
             return "scripted", {"claims": "not a list"}
         if self.status == "invalid_ids":
@@ -175,6 +192,105 @@ def test_a_spent_reviewer_turn_is_gated_not_fatal(booked: Path, tmp_path: Path) 
     assert checkpoint["waiting_on"].endswith("behavior-audit-context.md")
     report = BehaviorAuditOutcome.model_validate_json((env.run_dir / "behavior-audit.json").read_text())
     assert report.status == "invalid" and "No result text" in (report.error or "")
+
+
+def test_a_single_transient_blip_does_not_count_against_verdict_budget(
+    booked: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A transient CLI failure (e.g. `models.dev` catalog timeout) rides its own counter.
+
+    Without the split, every transient failure incremented `attempts` and the second
+    blip gated. With it, the first blip retries the same packet on a separate counter
+    and the audit continues once the CLI recovers.
+    """
+    # Skip the pre-warm — the test environment has no network and we are exercising the
+    # audit's mid-run transient path, not its setup-time catalog check.
+    monkeypatch.setattr(
+        "workhorse_workflows.okf_builder.audit.flow.fetch_models_dev_catalog",
+        lambda *a, **kw: None,
+    )
+    agent = AuditAgent("transient_then_success")
+    env = audit_env(tmp_path, agent)
+    # The booked fixture has one packet. The agent fails once transiently then succeeds,
+    # so the audit must complete — not gate on a spent verdict budget.
+    result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
+    assert isinstance(result, BehaviorAuditOutcome)
+    assert result.status == "assessed"
+    assert len(agent.packets) == 2, "blip then success on the same packet"
+
+
+def test_three_consecutive_transient_failures_gate_with_models_dev_in_the_message(
+    booked: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A sustained catalog outage gates after TRANSIENT_STREAK_CAP packets.
+
+    The streak cap is the smallest signal that the network, not the packet, is broken:
+    below it a single blip pages the operator on every quiet run, above it a sustained
+    outage lets the audit pass through packets the reviewer never read. The gate
+    message names `https://models.dev/api.json` so the operator fixes the network, not
+    the run.
+    """
+    monkeypatch.setattr(
+        "workhorse_workflows.okf_builder.audit.flow.fetch_models_dev_catalog",
+        lambda *a, **kw: None,
+    )
+    from workhorse_workflows.okf_builder.audit.flow import TRANSIENT_STREAK_CAP
+
+    # Three packets, each one transient-failing: cap = 3 means the third failure is the
+    # one that gates. Each call to assess_audit rebuilds the scope so the next packet
+    # is freshly picked.
+    (booked / "acme/a.py").write_text("LIMIT = 2\n")
+    (booked / "acme/b.py").write_text("MORE = 3\n")
+    (booked / "acme/c.py").write_text("EVEN = 4\n")
+    agent = AuditAgent("transient_failure")
+    env = audit_env(tmp_path, agent)
+
+    def parked(*args: Any, **kwargs: Any) -> None:
+        raise InterruptedError("parked")
+
+    with patch.object(driver, "wait_for_answer", parked), pytest.raises(InterruptedError):
+        drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
+    assert len(agent.packets) == TRANSIENT_STREAK_CAP, "streak cap reached before the gate"
+    gate = env.run_dir / "behavior-audit-context.md"
+    assert gate.is_file(), "the streak cap writes a gate file the operator can answer"
+    body = gate.read_text()
+    assert "models.dev" in body, "the gate message names the catalog URL"
+    assert "consecutive" in body.lower()
+
+
+def test_setup_warmup_failure_gates_before_any_packet_is_dispatched(
+    booked: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A catalog outage at setup gates the audit before any reviewer turn is spent.
+
+    Without the pre-warm, a hard outage at setup time still produced a drive that
+    dispatched the first packet, exhausted the ladder on the blip, and gated. The
+    pre-warm catches it sooner — at the cost of one network round-trip per drive —
+    and writes a `behavior-audit.json` with `status='invalid'` so the operator sees
+    the same shape they'd see for an evidence-preparation failure.
+    """
+    def unreachable(*args: Any, **kwargs: Any) -> None:
+        raise OSError("simulated DNS failure")
+
+    monkeypatch.setattr(
+        "workhorse_workflows.okf_builder.audit.flow.fetch_models_dev_catalog",
+        unreachable,
+    )
+    agent = AuditAgent()
+    env = audit_env(tmp_path, agent)
+
+    def parked(*args: Any, **kwargs: Any) -> None:
+        raise InterruptedError("parked")
+
+    with patch.object(driver, "wait_for_answer", parked), pytest.raises(InterruptedError):
+        drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
+    assert len(agent.packets) == 0, "no reviewer turn ran — the pre-warm gated first"
+    gate = env.run_dir / "behavior-audit-context.md"
+    assert gate.is_file()
+    body = gate.read_text()
+    assert "models.dev" in body or "opencode catalog" in body
+    report = BehaviorAuditOutcome.model_validate_json((env.run_dir / "behavior-audit.json").read_text())
+    assert report.status == "invalid"
 
 
 def test_sampling_and_unsupported_source_are_explicit_partial_reports(booked: Path, tmp_path: Path) -> None:

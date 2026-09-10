@@ -59,10 +59,27 @@ class AgentTurnFailed(PyflowError):
     however carefully it enumerated, and the run died on a node whose own author had
     written an operator gate for exactly this case.
 
+    `transient` and `overflow` carry the matching flags from `BackendInvocationError` so a
+    state can tell "the CLI blipped" (`transient=True`, e.g. a `models.dev` catalog fetch
+    timing out) from "the reviewer said something we couldn't parse" (`overflow=True`, the
+    model spent its output budget on reasoning) — they want opposite recovery. The default
+    `False` keeps every existing `raise AgentTurnFailed(...)` site unchanged.
+
     Uncaught, it stops the run at a resumable checkpoint rather than stamping a terminal
     (`pyflow/run.py`): a provider that gave up is an operational stop, not the workflow's
     verdict on itself.
     """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        transient: bool = False,
+        overflow: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.transient = transient
+        self.overflow = overflow
 
 
 class AgentTimeout(PyflowError):
@@ -85,7 +102,16 @@ class AgentTimeout(PyflowError):
     `workhorse.runner.failure`, which a workflow must not import — pyflow stays cheap
     to import because resolving a workflow *name* imports it. This is the translation;
     `AgentTurnFailed` above is the one for every other way a spent turn ends.
+
+    `transient` mirrors `BackendInvocationError.transient` so a state can tell a wall-clock
+    stop caused by a network blip from one caused by an unreachable provider — both want
+    a different gate than a deterministic timeout. Default `False` keeps every existing
+    raise site unchanged.
     """
+
+    def __init__(self, message: str, *, transient: bool = False) -> None:
+        super().__init__(message)
+        self.transient = transient
 
 
 class RunBudgetExceeded(PyflowError):
