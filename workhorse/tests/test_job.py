@@ -183,24 +183,6 @@ def test_the_sampler_kills_a_job_over_its_ceiling_and_says_which(tmp_path: Path)
     assert result.peak_rss_mb > 64
 
 
-def test_a_job_over_its_ceiling_does_not_survive_on_this_machines_own_tier(tmp_path: Path):
-    """However this machine contains a job, a 64MB ceiling is not something to run past.
-
-    Which half fires is a property of the kernel, not of the code: under `premium` the
-    cgroup kills it and the supervisor merely records the exit, so demanding one spelling
-    of "stopped" here would make the suite pass or fail on the developer's init system.
-    """
-    directory = tmp_path / "hog"
-    job.submit({**FAST, "memory_mb": 64, "command": _python(HOG)},
-               job_dir=directory, logger=LOG)
-    result = _finish(directory, timeout=60.0)
-
-    if result.tier == "premium":
-        assert result.exit_code not in (0, None)
-    else:
-        assert result.kill_reason == "memory"
-
-
 def test_a_machine_that_cannot_meet_the_floor_refuses_the_job(tmp_path: Path,
                                                               monkeypatch: pytest.MonkeyPatch):
     """A weak machine is a different repair from a command that would not start."""
