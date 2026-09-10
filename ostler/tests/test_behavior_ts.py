@@ -184,3 +184,26 @@ def test_ts_book_claims_bind_to_typescript_symbols(tmp_path: Path) -> None:
     assert {"dispatch", "notExported", "Queue.push"} <= symbols, "cited private symbols are tier 1 too"
     assert "_hidden" not in symbols and "Queue.drain" not in symbols
     assert preparation.deferred_candidates == 6, "Queue.drain ×2, Queue.hidden, Queue.#secret, _hidden ×2"
+
+
+def test_ts_visit_respects_max_depth(tmp_path: Path) -> None:
+    """Tree-sitter visitors cap recursion the same way the Go one does.
+
+    The same fault class — ``Node.text`` segfaulting deep inside a recursive visit
+    on malformed source — has fired here too on minified JS. The cap answers it.
+    """
+    from ostler.behavior_tree import MAX_DEPTH
+
+    deep = MAX_DEPTH + 50
+    source = "export function Outer(): void {\n"
+    source += "if (true) {\n" * deep
+    source += "return;\n"
+    source += "}\n" * deep
+    source += "}\n"
+    (tmp_path / "deep.ts").write_text(source, encoding="utf-8")
+    inventory = extract_evidence(tmp_path, ["deep.ts"])
+    assert inventory.files[0].status == "parsed"
+    # Outer function contract survives; the inner returns at depth > MAX_DEPTH
+    # are dropped.
+    kinds = {item.kind for item in inventory.candidates}
+    assert "function_contract" in kinds

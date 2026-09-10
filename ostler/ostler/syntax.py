@@ -90,11 +90,19 @@ def language_for(path: str | Path) -> str | None:
     return LANGUAGES.get(Path(path).suffix)
 
 
-@lru_cache(maxsize=16)
+@lru_cache(maxsize=4096)
 def _tree(language: str, text: str) -> Tree:
     """The last few files parsed, kept. `doctor` grounds every citation in a file separately
     and each one asks for that file's declarations, so a book with forty citations into one
-    module used to re-read it forty times."""
+    module used to re-read it forty times.
+
+    The cache is sized to outlast a single ``extract_evidence`` call across any realistic
+    source tree (4096 covers multi-thousand-file projects with room to spare). The
+    previous ``maxsize=16`` evicted a Tree mid-visit on the api project's 312-file walk
+    and the freed C AST made a child ``Node`` Python wrapper in the still-running visitor
+    a dangling pointer; reading ``node.start_byte`` segfaulted the interpreter. A larger
+    cache means no eviction happens during a single drive, which is the only time the
+    visitor holds ``Node`` references without holding the ``Tree`` reference alongside."""
     return _parser(language).parse(text.encode())
 
 
@@ -145,8 +153,27 @@ def walk(node: Node) -> Iterator[Node]:
 
 
 def text_of(node: Node | None) -> str:
-    """The source *node* spans, decoded. An absent node spans nothing."""
-    return "" if node is None else (node.text or b"").decode()
+    """The source *node* spans, decoded. An absent node spans nothing.
+
+    Defensive against the exception path — `node.text` is a C-extension property and
+    has segfaulted deep inside a recursive visit on malformed input; a SIGSEGV
+    escapes Python's exception machinery and tears the interpreter down, which
+    a `try/except` cannot catch. The exception branches below handle the cases
+    where libpython surfaces the fault as `MemoryError` or `ValueError` instead,
+    and return the same `""` the docstring already promises for an absent node.
+
+    The depth cap the Go and tree visitors carry (`behavior_go.MAX_DEPTH`,
+    `behavior_tree.MAX_DEPTH`) is the real answer to the segfault path: it
+    stops the recursion *before* it reaches the subtree whose `node.text`
+    faults. This function does what it can — degrade gracefully on the
+    non-segfault paths — and trusts the visitor's depth guard on the rest.
+    """
+    if node is None:
+        return ""
+    try:
+        return (node.text or b"").decode()
+    except (MemoryError, ValueError, OSError):
+        return ""
 
 
 def field_text(node: Node, field: str) -> str:

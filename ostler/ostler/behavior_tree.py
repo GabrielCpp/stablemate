@@ -11,6 +11,9 @@ The first table is TypeScript, shared by ``.ts``, ``.tsx``, ``.js`` and ``.jsx``
 the TSX grammar is a superset of the same node vocabulary; the second is PHP. Twig has no
 table: its grammar is flat (``{% endif %}`` is a sibling of ``{% if %}``, not its parent),
 so a visitor that reads enclosure from the tree has nothing to read there.
+
+The depth cap ``MAX_DEPTH`` is the safety net for the same tree-sitter ``Node.text``
+segfault the Go extractor answers with ``_slice`` and ``_field`` here.
 """
 from __future__ import annotations
 
@@ -147,7 +150,15 @@ PHP = LanguageTable(
 TABLES: dict[str, LanguageTable] = {"typescript": TYPESCRIPT, "tsx": TYPESCRIPT, "php": PHP}
 
 
-def _tokens(node: Node, skip: frozenset[str]) -> list[tuple[str, str]]:
+#: Maximum recursion depth the tree-sitter visitor will follow. The same rationale as
+#: ``behavior_go.MAX_DEPTH`` — tree-sitter's `Node.text` is a C-extension property that
+#: has segfaulted deep inside a recursive visit on minified or generated source; the cap
+#: here mirrors the Go one so a single malformed subtree stops the visitor rather than
+#: the interpreter.
+MAX_DEPTH = 500
+
+
+def _tokens(node: Node, source_bytes: bytes, skip: frozenset[str]) -> list[tuple[str, str]]:
     """Keep syntax and literal bytes, not comments, offsets or inter-token whitespace."""
     result: list[tuple[str, str]] = []
     stack = [node]
@@ -156,13 +167,13 @@ def _tokens(node: Node, skip: frozenset[str]) -> list[tuple[str, str]]:
         if current.type in skip or current.type == ";":
             continue
         if not current.children:
-            result.append((current.type, syntax.text_of(current)))
+            result.append((current.type, source_bytes[current.start_byte:current.end_byte].decode()))
         else:
             stack.extend(reversed(current.children))
     return result
 
 
-def _member_name(call: Node, path: tuple[str, ...]) -> str:
+def _member_name(call: Node, path: tuple[str, ...], source_bytes: bytes) -> str:
     if not path:
         return ""
     *hops, last = path
@@ -171,7 +182,10 @@ def _member_name(call: Node, path: tuple[str, ...]) -> str:
         current = current.child_by_field_name(hop) if current is not None else None
     if current is None or (hops and current.type != "member_expression"):
         return ""
-    return syntax.field_text(current, last)
+    child = current.child_by_field_name(last)
+    if child is None:
+        return ""
+    return source_bytes[child.start_byte:child.end_byte].decode()
 
 
 class TreeEvidence:
@@ -180,6 +194,7 @@ class TreeEvidence:
     def __init__(self, path: str, source: str, digest: str, table: LanguageTable) -> None:
         self.path = path
         self.source = source
+        self.source_bytes = source.encode()
         self.digest = digest
         self.table = table
         self.symbols: list[str] = []
@@ -193,16 +208,33 @@ class TreeEvidence:
         self.handlers = 0
         """Depth inside a route registration call; its literal argument is the handler."""
 
+    def _slice(self, node: Node | None) -> str:
+        """Same shape as ``GoEvidence._slice`` — the bytes ``node`` spans, decoded.
+
+        Never calls ``node.text``; that's the C-extension property that has segfaulted
+        the interpreter on malformed subtrees, and we own the source bytes already.
+        """
+        if node is None:
+            return ""
+        start, end = node.start_byte, node.end_byte
+        if start < 0 or end > len(self.source_bytes) or start > end:
+            return ""
+        return self.source_bytes[start:end].decode()
+
+    def _field(self, node: Node, field: str) -> str:
+        return self._slice(node.child_by_field_name(field))
+
     def emit(self, node: Node, kind: str, *, text: str = "", snippet: str = "", framework: str = "") -> None:
         symbol = ".".join(self.symbols) or "<module>"
-        identity = json.dumps((self.path, symbol, kind, _tokens(node, self.table.skip)), ensure_ascii=True)
+        identity = json.dumps((self.path, symbol, kind, _tokens(node, self.source_bytes, self.table.skip)), ensure_ascii=True)
         self.occurrences[identity] += 1
         ident = hashlib.sha256(f"{identity}\0{self.occurrences[identity]}".encode()).hexdigest()
+        sliced = self._slice(node)
         self.candidates.append(BehaviorEvidence.model_validate({
             "id": f"evidence:{ident}", "path": self.path, "symbol": symbol,
             "start_line": node.start_point.row + 1, "end_line": node.end_point.row + 1,
             "start_column": node.start_point.column, "end_column": node.end_point.column,
-            "kind": kind, "text": text or syntax.text_of(node), "snippet": snippet or syntax.text_of(node),
+            "kind": kind, "text": text or sliced, "snippet": snippet or sliced,
             "conditions": tuple(self.conditions), "source_digest": self.digest,
             "framework": framework or self.table.framework,
             "exported": None if symbol == "<module>" else all(self.exported),
@@ -221,7 +253,7 @@ class TreeEvidence:
             boundary = next((child for child in node.children if child.type in self.table.headers), None)
             if boundary is not None:
                 end = boundary.start_byte
-        return self.source.encode()[node.start_byte:end].decode().strip()
+        return self.source_bytes[node.start_byte:end].decode().strip()
 
     def _held(self, node: Node) -> bool:
         """Whether a field sits in a declaration's body rather than an inline type."""
@@ -236,16 +268,16 @@ class TreeEvidence:
     def _visible(self, node: Node) -> bool:
         """A member is public unless a modifier or a private name says otherwise."""
         holders = [node] + ([node.parent] if node.parent is not None and node.parent.type not in self.table.field_holders else [])
-        if any(child.type == self.table.modifier and syntax.text_of(child) in self.table.private_modifiers
+        if any(child.type == self.table.modifier and self._slice(child) in self.table.private_modifiers
                for holder in holders for child in holder.children):
             return False
         return not self._name(node).startswith(self.table.private_prefixes)
 
     def _name(self, node: Node) -> str:
         """The declared name: the ``name`` field, or the bare ``name`` child a grammar leaves unlabelled."""
-        name = syntax.field_text(node, "name")
+        name = self._field(node, "name")
         if not name:
-            name = next((syntax.text_of(child) for child in node.named_children if child.type == "name"), "")
+            name = next((self._slice(child) for child in node.named_children if child.type == "name"), "")
         return name.removeprefix(self.table.sigil)
 
     def _open(self, node: Node, name: str, *, exported: bool) -> None:
@@ -270,25 +302,31 @@ class TreeEvidence:
             self.visit(child)
         self._close()
 
-    def visit(self, node: Node, *, exported: bool = False) -> None:
+    def visit(self, node: Node, *, exported: bool = False, depth: int = 0) -> None:
         table = self.table
         if node.type in table.skip:
+            return
+        # See MAX_DEPTH in behavior_go.py — the same C-extension segfault that the Go
+        # extractor's depth cap answers has fired here on minified JS / generated TS
+        # during benchmarking, and the cap is small enough that no real source trips
+        # it (a representative TS AST sits under ~30 frames even with deep generics).
+        if depth > MAX_DEPTH:
             return
         if node.type == table.root:
             for child in node.named_children:
                 if child.type in table.exports:
                     for spec in syntax.walk(child):
                         if spec.type == "export_specifier":
-                            self.reexported.add(syntax.text_of(spec.named_children[0]))
+                            self.reexported.add(self._slice(spec.named_children[0]))
             for child in node.named_children:
                 before = len(self.candidates)
-                self.visit(child)
+                self.visit(child, depth=depth + 1)
                 if any(item.symbol == "<module>" for item in self.candidates[before:]):
                     self.context(child)
             return
         if node.type in table.exports:
             for child in node.named_children:
-                self.visit(child, exported=True)
+                self.visit(child, exported=True, depth=depth + 1)
             return
         if node.type in table.functions:
             name = self._name(node)
@@ -308,20 +346,20 @@ class TreeEvidence:
         if node.type in table.binders:
             value = node.child_by_field_name(table.binder_fields[1])
             if value is not None and value.type in table.literals:
-                name = syntax.field_text(node, table.binder_fields[0]).removeprefix(table.sigil)
+                name = self._field(node, table.binder_fields[0]).removeprefix(self.table.sigil)
                 visible = exported or name in self.reexported or (table.module_public and not self.symbols)
                 self._function(value, name, exported=visible or (bool(self.symbols) and all(self.exported)))
                 return
         if node.type in table.wrappers:
             for child in node.named_children:
-                self.visit(child, exported=exported)
+                self.visit(child, exported=exported, depth=depth + 1)
             return
         if node.type in table.containers:
             name = self._name(node)
             self._open(node, name, exported=exported or name in self.reexported or (table.module_public and not self.symbols))
             before = len(self.candidates)
             for child in node.named_children:
-                self.visit(child)
+                self.visit(child, depth=depth + 1)
             if len(self.candidates) > before:
                 self.context(node)
             self._close()
@@ -341,7 +379,7 @@ class TreeEvidence:
             self.emit(node, "raise", framework=table.raise_note)
         handler = False
         if node.type in table.calls:
-            name = _member_name(node, table.call_name)
+            name = _member_name(node, table.call_name, self.source_bytes)
             if name in table.routes:
                 self.emit(node, "route", framework=table.route_note)
                 handler = True
@@ -349,13 +387,13 @@ class TreeEvidence:
                 self.emit(node, "http_response", framework=table.response_note)
         if node.type in table.conditionals:
             condition_node = node.child_by_field_name("condition")
-            condition = syntax.text_of(condition_node) if condition_node is not None else ""
+            condition = self._slice(condition_node) if condition_node is not None else ""
             consequence = node.child_by_field_name(table.consequence_field)
             for child in node.named_children:
                 label = "" if child == condition_node else f"if {condition}" if child == consequence else f"else of {condition}"
                 if label:
                     self.conditions.append(label)
-                self.visit(child)
+                self.visit(child, depth=depth + 1)
                 if label:
                     self.conditions.pop()
             return
@@ -364,7 +402,7 @@ class TreeEvidence:
             self.conditions.append(f"within {self._header(node)}")
         self.handlers += handler
         for child in node.named_children:
-            self.visit(child)
+            self.visit(child, depth=depth + 1)
         self.handlers -= handler
         if contextual:
             self.conditions.pop()
