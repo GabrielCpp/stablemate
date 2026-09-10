@@ -248,6 +248,28 @@ class OkfBuilder(Workflow):
             return labels
         return {**labels, "work_id": pick.item_target, "progress": pick.progress}
 
+    def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
+        """Per-state dimensions on top of `labels()`: the coverage re-scan counter.
+
+        The drain's labels carry forward progress across items (`work_id`, `progress`).
+        The coverage re-scan loop (`rescan_coverage → recheck → seed_recheck → select
+        → checkpoint → rescan_coverage`) reads no new items between iterations while
+        the worklist is empty, so `work_id`/`progress` stay constant. Without
+        `rescan_round` in the signature, the rule at `groom/groom/alerts.py::ingest_spans`
+        keys CHURN on a static signature and fires at iteration five — on a healthy
+        rescan that has simply not picked anything new yet.
+
+        `rescan` is a parameter threaded through every state that participates in
+        the re-scan path, so `"rescan" in params` discriminates them from the
+        non-rescan states (`start`, `commit`, `walkthrough`) without naming each one.
+        On drain-path states the extra dimension is harmless: their `work_id`/
+        `progress` keys still change per pick.
+        """
+        labels = self.labels()
+        if "rescan" in params:
+            labels["rescan_round"] = str(params.get("rescan", 0))
+        return labels
+
     # --- seeding ------------------------------------------------------------
 
     def start(self) -> Continue:
