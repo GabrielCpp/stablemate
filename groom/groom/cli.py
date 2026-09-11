@@ -37,7 +37,12 @@ def _is_loopback(host: str) -> bool:
         return False
 
 
-def serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, *, allow_non_loopback: bool = False) -> None:
+def serve(
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_PORT,
+    *,
+    allow_non_loopback: bool = False,
+) -> None:
     if not _is_loopback(host) and not allow_non_loopback:
         print(
             f"warning: binding non-loopback host {host!r} — groom has NO authentication and "
@@ -182,8 +187,90 @@ def _format_logs(rows: list[dict]) -> str:
     for row in reversed(rows):
         stamp = _dt.datetime.fromtimestamp(row["ts"]).strftime("%H:%M:%S")
         node = f" {row['node']}" if row["node"] else ""
-        lines.append(f"{stamp} {row['severity']:<7}{node} [{row['logger']}] {row['body']}")
+        lines.append(
+            f"{stamp} {row['severity']:<7}{node} [{row['logger']}] {row['body']}"
+        )
     return "\n".join(lines)
+
+
+def recent(
+    limit: int = 10,
+    workflow: str = "",
+    alive_since_s: float | None = None,
+    as_json: bool = False,
+) -> None:
+    """Print the most recent runs the database has telemetry for, alive or dead.
+
+    ``groom status`` is liveness-only — it asks the running server's in-memory
+    heartbeat cache over HTTP, and a run whose process vanished in the last
+    minute is the only kind of run a wedged-or-dead run has any path to show
+    there. ``groom archive ls`` is the other end: terminal runs the archiver
+    swept to disk. Between those two, a run the workhorse crashed a while ago
+    was visible on no groom surface — the dashboard had already dropped it
+    and the archiver had not yet fired.
+
+    This fills the gap: read every run the database has telemetry for, ordered
+    by ``MAX(start_ts, end_ts)`` over spans descending, mark alive using the
+    same ``LIVE_AFTER_S`` threshold ``groom.projection.liveness`` uses, and
+    print the top N. The liveness predicate is *from-telemetry* — a run whose
+    last activity is older than the threshold is dead regardless of whether
+    anything is happening on the wire.
+
+    Pure SQLite read against ``$GROOM_DB``; no ``groom serve`` required. That
+    is the load-bearing property: a freshly-asked "where did my run go?"
+    answer is one CLI away from any machine holding the database, and not
+    gated on whichever serve process happens to be up right now.
+    """
+    import datetime as _dt
+    import json as _json
+    import time
+
+    from groom import store
+
+    rows = store.recent_runs(limit=limit, workflow=workflow)
+
+    cutoff = float(alive_since_s) if alive_since_s is not None else store.LIVE_AFTER_S
+    now = time.time()
+
+    if as_json:
+        out = []
+        for row in rows:
+            alive = bool(row.max_ts) and (now - row.max_ts) <= cutoff
+            out.append(
+                {
+                    "run": row.run_id,
+                    "workflow": row.workflow,
+                    "last_seen": row.max_ts,
+                    "alive": alive,
+                    "spans": row.spans,
+                }
+            )
+        print(_json.dumps(out, indent=2))
+        return
+
+    if not rows:
+        print(
+            f"no runs found in {store.db_path()}."
+            + (f" (workflow filter: {workflow!r})" if workflow else "")
+        )
+        return
+
+    header = f"{'run':<34} {'workflow':<20} {'lifecycle':<10} {'last':<17} {'spans':>7}"
+    lines = [header, "-" * len(header)]
+    for row in rows:
+        last_ts = (
+            _dt.datetime.fromtimestamp(row.max_ts).strftime("%Y-%m-%d %H:%M")
+            if row.max_ts
+            else "-"
+        )
+        alive = bool(row.max_ts) and (now - row.max_ts) <= cutoff
+        marker = "alive" if alive else "dead "
+        lines.append(
+            f"{str(row.run_id)[:34]:<34} {str(row.workflow or '-')[:20]:<20}"
+            f" {marker:<10} {last_ts:<17} {row.spans:>7}"
+        )
+    print("\n".join(lines))
+    print(f"\n{len(rows)} run(s); liveness threshold = {cutoff:g}s without telemetry.")
 
 
 def logs(
@@ -205,7 +292,9 @@ def logs(
 
     from groom import store
 
-    rows = store.query_logs(run=run, node=node, level=level, contains=contains, limit=limit)
+    rows = store.query_logs(
+        run=run, node=node, level=level, contains=contains, limit=limit
+    )
     if as_json:
         print(_json.dumps(rows, indent=2))
         return
@@ -219,9 +308,7 @@ def _format_costs(rows: list[dict]) -> str:
             "  Cost and tokens are stamped on agent_turn spans, so a run that has not\n"
             "  yet finished a turn — or ran with telemetry off — has nothing to total."
         )
-    header = (
-        f"{'node':<28}{'turns':>6}{'/work':>7}{'usd':>9}{'est$':>9}{'share':>7}{'min':>7}"
-    )
+    header = f"{'node':<28}{'turns':>6}{'/work':>7}{'usd':>9}{'est$':>9}{'share':>7}{'min':>7}"
     lines = [header, "-" * len(header)]
     for row in rows:
         cost = row["cost_usd"]
@@ -264,7 +351,9 @@ def _format_costs(rows: list[dict]) -> str:
     # two ways: reporting nothing (a visible gap) or reporting a literal zero while
     # spending tokens (invisible — it sums, so the total looks complete).
     if priced < turns or zeroed:
-        backends = sorted({b for row in rows for b in (row["backends"] or "").split(",") if b})
+        backends = sorted(
+            {b for row in rows for b in (row["backends"] or "").split(",") if b}
+        )
         lines.append("")
         if priced < turns:
             lines.append(
@@ -379,12 +468,18 @@ def prices_cmd(
         # A model absent from the table is never guessed at from its neighbours, so
         # these turns simply have no estimate. Naming them is what makes est$'s
         # coverage a number rather than an impression.
-        lines.append(f"unpriced ({sum(unpriced.values())} turns, no rate for the model):")
+        lines.append(
+            f"unpriced ({sum(unpriced.values())} turns, no rate for the model):"
+        )
         for model, turns in unpriced.items():
             lines.append(f"  {model[:40]:<42}{turns:>7} turns")
         lines.append("")
-        lines.append("Add a rate for any of those to the override file, then rerun with")
-        lines.append("--reprice. Nothing is estimated from a model the table does not name.")
+        lines.append(
+            "Add a rate for any of those to the override file, then rerun with"
+        )
+        lines.append(
+            "--reprice. Nothing is estimated from a model the table does not name."
+        )
     print("\n".join(lines))
 
 
@@ -413,7 +508,9 @@ def _format_loops(rows: list[dict]) -> str:
     total = sum(row["excess_cost_usd"] or 0.0 for row in rows)
     excess_turns = sum(row["excess_turns"] for row in rows)
     lines.append("-" * len(header))
-    lines.append(f"{'excess (laps after the first)':<40}{excess_turns:>6} turns  ${total:.2f}")
+    lines.append(
+        f"{'excess (laps after the first)':<40}{excess_turns:>6} turns  ${total:.2f}"
+    )
     lines.append("")
     priced = sum(row["priced_turns"] for row in rows)
     zeroed = sum(row["zero_cost_turns"] for row in rows)
@@ -443,11 +540,15 @@ def _format_loops(rows: list[dict]) -> str:
                 f"      at rate-card prices that excess is ~${est:.2f}"
                 f" over the {est_turns} of {turns} turns"
             )
-            lines.append("      whose model has rates (`groom reprice` after editing"
-                         " prices.toml).")
+            lines.append(
+                "      whose model has rates (`groom reprice` after editing"
+                " prices.toml)."
+            )
         else:
-            lines.append("      `groom reprice` prices them from tokens once"
-                         " prices.toml names their model.")
+            lines.append(
+                "      `groom reprice` prices them from tokens once"
+                " prices.toml names their model."
+            )
         lines.append("")
     lines.append(
         "exit = how often this gate accepts, per lap. at-max counts the work items that"
@@ -455,7 +556,9 @@ def _format_loops(rows: list[dict]) -> str:
     lines.append(
         "reached the longest run observed — a pile there is worth checking against the"
     )
-    lines.append("node's MAX_* budget, since a censored loop stacks up at exactly the cap.")
+    lines.append(
+        "node's MAX_* budget, since a censored loop stacks up at exactly the cap."
+    )
     return "\n".join(lines)
 
 
@@ -489,10 +592,13 @@ def _format_profile(result: dict | None) -> str:
         return "no telemetry found for that run."
     time_s = result["time_s"]
     work = result["work"]
-    waits = ", ".join(
-        f"{kind}={seconds / 3600:.2f}h"
-        for kind, seconds in time_s["waits_by_kind"].items()
-    ) or "none"
+    waits = (
+        ", ".join(
+            f"{kind}={seconds / 3600:.2f}h"
+            for kind, seconds in time_s["waits_by_kind"].items()
+        )
+        or "none"
+    )
     cost = f"${work['cost_usd']:.2f}" if work["cost_usd"] is not None else "-"
     lines = [
         f"{result['run_id']}  [{result['workflow'] or '?'}]",
@@ -540,7 +646,9 @@ def _format_profile(result: dict | None) -> str:
         lines.append("verdict decisions (every gate outcome, priced or not)")
         totals: dict[str, int] = {}
         for row in decisions:
-            totals[row["dimension"]] = totals.get(row["dimension"], 0) + row["decisions"]
+            totals[row["dimension"]] = (
+                totals.get(row["dimension"], 0) + row["decisions"]
+            )
         for row in decisions:
             share = row["decisions"] / totals[row["dimension"]]
             lines.append(
@@ -601,7 +709,11 @@ def _format_turns(rows: list[dict]) -> str:
 
     lines = [f"{'when':<9} {'visit':<12} {'node':<28} {'src':<14} {'size':>9}  session"]
     for row in rows:
-        stamp = _dt.datetime.fromtimestamp(row["ts"]).strftime("%H:%M:%S") if row["ts"] else "-"
+        stamp = (
+            _dt.datetime.fromtimestamp(row["ts"]).strftime("%H:%M:%S")
+            if row["ts"]
+            else "-"
+        )
         visit = turns.visit_label(row)
         size = f"{row['bytes'] / 1024:.0f}K" if row["bytes"] else "-"
         lines.append(
@@ -612,8 +724,12 @@ def _format_turns(rows: list[dict]) -> str:
 
 
 def transcript_ls(
-    run: str = "", node: str = "", session: str = "", workflow: str = "",
-    limit: int = 200, as_json: bool = False,
+    run: str = "",
+    node: str = "",
+    session: str = "",
+    workflow: str = "",
+    limit: int = 200,
+    as_json: bool = False,
 ) -> None:
     """List archived turn records, in the order the run took them.
 
@@ -625,7 +741,9 @@ def transcript_ls(
 
     from groom import store
 
-    rows = store.query_turns(run=run, node=node, session=session, workflow=workflow, limit=limit)
+    rows = store.query_turns(
+        run=run, node=node, session=session, workflow=workflow, limit=limit
+    )
     if as_json:
         print(_json.dumps(rows, indent=2))
         return
@@ -651,7 +769,9 @@ def transcript_show(session: str, as_json: bool = False) -> None:
         print(_json.dumps(records, indent=2))
         return
     for record in records:
-        print(f"{record['node']}  visit {turns.visit_label(record)}  {record['source']}")
+        print(
+            f"{record['node']}  visit {turns.visit_label(record)}  {record['source']}"
+        )
         print(f"  dir: {record['dir']}")
         for name in record["files"]:
             print(f"    {name}")
@@ -681,7 +801,11 @@ def transcript_backfill(dry_run: bool = False) -> None:
 
 
 def transcript_export(
-    target: str, workflow: str = "", run: str = "", node: str = "", limit: int = 1_000_000,
+    target: str,
+    workflow: str = "",
+    run: str = "",
+    node: str = "",
+    limit: int = 1_000_000,
 ) -> None:
     """Materialize the archive as a by-node dataset under a directory the caller names.
 
@@ -721,7 +845,9 @@ def archive_ls(run: str = "", long: bool = False, as_json: bool = False) -> None
 
     dirs = archive.archive_dirs()
     if run:
-        dirs = [path for path in dirs if path.name == run or path.name.startswith(f"{run}-")]
+        dirs = [
+            path for path in dirs if path.name == run or path.name.startswith(f"{run}-")
+        ]
     if not (long or run or as_json):
         for path in dirs:
             print(path.name)
@@ -732,19 +858,21 @@ def archive_ls(run: str = "", long: bool = False, as_json: bool = False) -> None
     for path in dirs:
         found = archive.manifest(path)
         counts = found.get("rows") or {}
-        rows.append({
-            "run": path.name,
-            "dir": str(path),
-            "workflow": found.get("workflow", ""),
-            "repo": found.get("repo", ""),
-            "branch": found.get("branch", ""),
-            "archived_at": found.get("archived_at"),
-            "min_ts": found.get("min_ts"),
-            "max_ts": found.get("max_ts"),
-            "spans": counts.get("span", 0),
-            "logs": counts.get("log", 0),
-            "metrics": counts.get("metric", 0),
-        })
+        rows.append(
+            {
+                "run": path.name,
+                "dir": str(path),
+                "workflow": found.get("workflow", ""),
+                "repo": found.get("repo", ""),
+                "branch": found.get("branch", ""),
+                "archived_at": found.get("archived_at"),
+                "min_ts": found.get("min_ts"),
+                "max_ts": found.get("max_ts"),
+                "spans": counts.get("span", 0),
+                "logs": counts.get("log", 0),
+                "metrics": counts.get("metric", 0),
+            }
+        )
     if as_json:
         print(_json.dumps(rows, indent=2))
         return
@@ -753,7 +881,9 @@ def archive_ls(run: str = "", long: bool = False, as_json: bool = False) -> None
         return
     import datetime as _dt
 
-    print(f"{'run':<34} {'archived':<17} {'workflow':<20} {'spans':>8} {'logs':>9} {'metrics':>8}")
+    print(
+        f"{'run':<34} {'archived':<17} {'workflow':<20} {'spans':>8} {'logs':>9} {'metrics':>8}"
+    )
     for row in rows:
         stamp = row["archived_at"]
         when = (
@@ -779,7 +909,9 @@ def archive_show(run: str, limit: int = 0) -> None:
     root = archive.archives_root()
     target = root / run / archive.TELEMETRY_FILE
     if not target.exists():
-        matches = [path for path in archive.archive_dirs() if path.name.startswith(f"{run}-")]
+        matches = [
+            path for path in archive.archive_dirs() if path.name.startswith(f"{run}-")
+        ]
         if not matches:
             print(f"no archived run {run} under {root}.")
             return
@@ -815,7 +947,9 @@ def archive_now(dry_run: bool = False, limit: int = 0, as_json: bool = False) ->
     if len(result.archived) > 20:
         print(f"  … and {len(result.archived) - 20} more")
     if result.resumed:
-        print(f"finished {len(result.resumed)} interrupted sweep(s): {', '.join(result.resumed)}")
+        print(
+            f"finished {len(result.resumed)} interrupted sweep(s): {', '.join(result.resumed)}"
+        )
     if result.failed:
         print(f"{len(result.failed)} run(s) failed:")
         for name, why in result.failed.items():
@@ -842,7 +976,9 @@ def archive_status(as_json: bool = False) -> None:
         return
     print(f"archives:        {report['root']}")
     print(f"frozen runs:     {report['archived_runs']}")
-    print(f"pending:         {report['pending']} run(s) past {report['retention_days']:.0f}d")
+    print(
+        f"pending:         {report['pending']} run(s) past {report['retention_days']:.0f}d"
+    )
     print(f"held by activity: {len(report['held_by_activity'])} run(s)")
     for run_id in report["held_by_activity"][:10]:
         print(f"  {run_id}")
@@ -857,14 +993,18 @@ def archive_status(as_json: bool = False) -> None:
         )
     else:
         print("last sweep:      none in this process")
-    print(f"every:           {report['every_s'] / 3600:.1f}h, {report['runs_per_pass']} runs/pass")
+    print(
+        f"every:           {report['every_s'] / 3600:.1f}h, {report['runs_per_pass']} runs/pass"
+    )
     print("deletable without an archive:")
     for name, count in sorted(report["unarchived_deletable"].items()):
         print(f"  {name:<26} {count}")
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="groom", description="Local dashboard for workhorse operator gates.")
+    parser = argparse.ArgumentParser(
+        prog="groom", description="Local dashboard for workhorse operator gates."
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     serve_parser = subparsers.add_parser("serve", help="Run the groom web dashboard.")
@@ -896,10 +1036,16 @@ def main(argv: list[str] | None = None) -> None:
     logs_parser.add_argument("--run", default="", help="Limit to one run_id.")
     logs_parser.add_argument("--node", default="", help="Limit to one node id.")
     logs_parser.add_argument(
-        "--level", default="", help="Minimum severity (e.g. WARNING shows WARNING+ERROR+FATAL)."
+        "--level",
+        default="",
+        help="Minimum severity (e.g. WARNING shows WARNING+ERROR+FATAL).",
     )
-    logs_parser.add_argument("--contains", default="", help="Substring match on the message.")
-    logs_parser.add_argument("--limit", type=int, default=200, help="Max records (default 200).")
+    logs_parser.add_argument(
+        "--contains", default="", help="Substring match on the message."
+    )
+    logs_parser.add_argument(
+        "--limit", type=int, default=200, help="Max records (default 200)."
+    )
     logs_parser.add_argument(
         "--json", action="store_true", dest="as_json", help="Machine-readable output."
     )
@@ -910,8 +1056,38 @@ def main(argv: list[str] | None = None) -> None:
         "Turns per work item is the rework signal.",
     )
     cost_parser.add_argument("--run", default="", help="Limit to one run_id.")
-    cost_parser.add_argument("--limit", type=int, default=100, help="Max nodes (default 100).")
     cost_parser.add_argument(
+        "--limit", type=int, default=100, help="Max nodes (default 100)."
+    )
+    cost_parser.add_argument(
+        "--json", action="store_true", dest="as_json", help="Machine-readable output."
+    )
+
+    recent_parser = subparsers.add_parser(
+        "recent",
+        help="List runs ordered by most-recent telemetry (alive + dead).",
+    )
+    recent_parser.add_argument(
+        "-n",
+        "--limit",
+        type=int,
+        default=10,
+        dest="limit",
+        help="How many runs to show (default 10; 0 = every run).",
+    )
+    recent_parser.add_argument(
+        "--workflow",
+        default="",
+        help="Limit to one workflow name.",
+    )
+    recent_parser.add_argument(
+        "--alive-since-s",
+        type=float,
+        default=None,
+        dest="alive_since_s",
+        help="Liveness threshold in seconds (default: ${GROOM_LIVE_AFTER_S} or 180).",
+    )
+    recent_parser.add_argument(
         "--json", action="store_true", dest="as_json", help="Machine-readable output."
     )
 
@@ -921,16 +1097,22 @@ def main(argv: list[str] | None = None) -> None:
         "to turns already in the store.",
     )
     prices_parser.add_argument(
-        "--reprice", action="store_true",
+        "--reprice",
+        action="store_true",
         help="Estimate turns in the store and write est_cost_usd (leaves total_cost_usd alone).",
     )
-    prices_parser.add_argument("--run", default="", help="Limit --reprice to one run_id.")
     prices_parser.add_argument(
-        "--all", action="store_true", dest="all_turns",
+        "--run", default="", help="Limit --reprice to one run_id."
+    )
+    prices_parser.add_argument(
+        "--all",
+        action="store_true",
+        dest="all_turns",
         help="With --reprice, redo turns that already carry an estimate (after a rate changes).",
     )
     prices_parser.add_argument(
-        "--resolve", action="store_true",
+        "--resolve",
+        action="store_true",
         help="Price turns whose model is an alias by reading the concrete id from their "
         "session store.",
     )
@@ -944,9 +1126,14 @@ def main(argv: list[str] | None = None) -> None:
         "the laps after the first are costing. Defaults to every run in the store.",
     )
     loops_parser.add_argument("--run", default="", help="Limit to one run_id.")
-    loops_parser.add_argument("--workflow", default="", help="Limit to one workflow name.")
     loops_parser.add_argument(
-        "--min-items", type=int, default=3, dest="min_items",
+        "--workflow", default="", help="Limit to one workflow name."
+    )
+    loops_parser.add_argument(
+        "--min-items",
+        type=int,
+        default=3,
+        dest="min_items",
         help="Skip nodes with fewer work items than this (default 3).",
     )
     loops_parser.add_argument(
@@ -969,23 +1156,32 @@ def main(argv: list[str] | None = None) -> None:
     )
     transcript_verbs = transcript_parser.add_subparsers(dest="verb", required=True)
 
-    ts_ls = transcript_verbs.add_parser("ls", help="List archived turns for a run or node.")
+    ts_ls = transcript_verbs.add_parser(
+        "ls", help="List archived turns for a run or node."
+    )
     ts_ls.add_argument("--run", default="", help="Limit to one run_id.")
     ts_ls.add_argument("--node", default="", help="Limit to one node id.")
     ts_ls.add_argument("--session", default="", help="Limit to one backend session id.")
     ts_ls.add_argument("--workflow", default="", help="Limit to one workflow name.")
-    ts_ls.add_argument("--limit", type=int, default=200, help="Max records (default 200).")
-    ts_ls.add_argument("--json", action="store_true", dest="as_json", help="Machine-readable.")
+    ts_ls.add_argument(
+        "--limit", type=int, default=200, help="Max records (default 200)."
+    )
+    ts_ls.add_argument(
+        "--json", action="store_true", dest="as_json", help="Machine-readable."
+    )
 
     ts_show = transcript_verbs.add_parser(
         "show", help="One turn: its files on disk and the prompt that produced it."
     )
     ts_show.add_argument("--session", required=True, help="The backend session id.")
-    ts_show.add_argument("--json", action="store_true", dest="as_json", help="Machine-readable.")
+    ts_show.add_argument(
+        "--json", action="store_true", dest="as_json", help="Machine-readable."
+    )
 
     transcript_verbs.add_parser(
-        "harvest", help="Copy new turn records out of visible run dirs now, without waiting "
-        "for the periodic tick."
+        "harvest",
+        help="Copy new turn records out of visible run dirs now, without waiting "
+        "for the periodic tick.",
     )
 
     ts_export = transcript_verbs.add_parser(
@@ -1014,7 +1210,9 @@ def main(argv: list[str] | None = None) -> None:
         "the agent CLI's own session store, joined on the run's session map.",
     )
     ts_backfill.add_argument(
-        "--dry-run", action="store_true", help="Report what would be archived, copy nothing."
+        "--dry-run",
+        action="store_true",
+        help="Report what would be archived, copy nothing.",
     )
 
     archive_parser = subparsers.add_parser(
@@ -1025,30 +1223,46 @@ def main(argv: list[str] | None = None) -> None:
     archive_verbs = archive_parser.add_subparsers(dest="verb", required=True)
 
     ar_ls = archive_verbs.add_parser("ls", help="List frozen runs.")
-    ar_ls.add_argument("--run", default="", help="Limit to one run_id (and its resumes).")
     ar_ls.add_argument(
-        "--long", action="store_true",
+        "--run", default="", help="Limit to one run_id (and its resumes)."
+    )
+    ar_ls.add_argument(
+        "--long",
+        action="store_true",
         help="Read each run's manifest: workflow, when it was frozen, row counts.",
     )
-    ar_ls.add_argument("--json", action="store_true", dest="as_json", help="Machine-readable.")
+    ar_ls.add_argument(
+        "--json", action="store_true", dest="as_json", help="Machine-readable."
+    )
 
-    ar_show = archive_verbs.add_parser("show", help="Stream one frozen run's telemetry.jsonl.")
+    ar_show = archive_verbs.add_parser(
+        "show", help="Stream one frozen run's telemetry.jsonl."
+    )
     ar_show.add_argument("--run", required=True, help="The archived run_id.")
     ar_show.add_argument(
-        "--limit", type=int, default=0, help="Stop after n records (0 = the whole file)."
+        "--limit",
+        type=int,
+        default=0,
+        help="Stop after n records (0 = the whole file).",
     )
 
     ar_now = archive_verbs.add_parser(
         "now", help="Run an archival sweep now instead of waiting for the tick."
     )
     ar_now.add_argument(
-        "--dry-run", action="store_true", help="Report what would be archived, write nothing."
+        "--dry-run",
+        action="store_true",
+        help="Report what would be archived, write nothing.",
     )
     ar_now.add_argument(
-        "--limit", type=int, default=0,
+        "--limit",
+        type=int,
+        default=0,
         help="Runs to archive this pass (0 = GROOM_ARCHIVE_RUNS_PER_PASS).",
     )
-    ar_now.add_argument("--json", action="store_true", dest="as_json", help="Machine-readable.")
+    ar_now.add_argument(
+        "--json", action="store_true", dest="as_json", help="Machine-readable."
+    )
 
     ar_status = archive_verbs.add_parser(
         "status", help="What is frozen, what is waiting, and what the last sweep did."
@@ -1065,7 +1279,9 @@ def main(argv: list[str] | None = None) -> None:
         "and reclaim the space.",
     )
     purge_parser.add_argument(
-        "--dry-run", action="store_true", help="Report what would be deleted, delete nothing."
+        "--dry-run",
+        action="store_true",
+        help="Report what would be deleted, delete nothing.",
     )
     purge_parser.add_argument(
         "--no-vacuum",
@@ -1076,33 +1292,55 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
     if args.command == "serve":
-        serve(host=args.host, port=args.port, allow_non_loopback=args.allow_non_loopback)
+        serve(
+            host=args.host, port=args.port, allow_non_loopback=args.allow_non_loopback
+        )
     elif args.command == "status":
         status(run=args.run, as_json=args.as_json)
     elif args.command == "logs":
         logs(
-            run=args.run, node=args.node, level=args.level,
-            contains=args.contains, limit=args.limit, as_json=args.as_json,
+            run=args.run,
+            node=args.node,
+            level=args.level,
+            contains=args.contains,
+            limit=args.limit,
+            as_json=args.as_json,
         )
     elif args.command == "cost":
         cost(run=args.run, limit=args.limit, as_json=args.as_json)
     elif args.command == "prices":
         prices_cmd(
-            reprice=args.reprice, run=args.run, all_turns=args.all_turns,
-            as_json=args.as_json, resolve=args.resolve,
+            reprice=args.reprice,
+            run=args.run,
+            all_turns=args.all_turns,
+            as_json=args.as_json,
+            resolve=args.resolve,
         )
     elif args.command == "loops":
         loops(
-            run=args.run, workflow=args.workflow,
-            min_items=args.min_items, as_json=args.as_json,
+            run=args.run,
+            workflow=args.workflow,
+            min_items=args.min_items,
+            as_json=args.as_json,
+        )
+    elif args.command == "recent":
+        recent(
+            limit=args.limit,
+            workflow=args.workflow,
+            alive_since_s=args.alive_since_s,
+            as_json=args.as_json,
         )
     elif args.command == "profile":
         profile(run=args.run, as_json=args.as_json)
     elif args.command == "transcript":
         if args.verb == "ls":
             transcript_ls(
-                run=args.run, node=args.node, session=args.session,
-                workflow=args.workflow, limit=args.limit, as_json=args.as_json,
+                run=args.run,
+                node=args.node,
+                session=args.session,
+                workflow=args.workflow,
+                limit=args.limit,
+                as_json=args.as_json,
             )
         elif args.verb == "show":
             transcript_show(session=args.session, as_json=args.as_json)
@@ -1110,8 +1348,11 @@ def main(argv: list[str] | None = None) -> None:
             transcript_harvest()
         elif args.verb == "export":
             transcript_export(
-                target=args.by_node, workflow=args.workflow,
-                run=args.run, node=args.node, limit=args.limit,
+                target=args.by_node,
+                workflow=args.workflow,
+                run=args.run,
+                node=args.node,
+                limit=args.limit,
             )
         elif args.verb == "backfill":
             transcript_backfill(dry_run=args.dry_run)

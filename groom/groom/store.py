@@ -46,7 +46,11 @@ from typing import Any, ParamSpec, TypeVar
 from platformdirs import user_data_dir
 
 from groom import prices
-from groom.models import ARCHIVED_METRICS, LIVENESS_METRICS, UNARCHIVED_DELETABLE_METRICS
+from groom.models import (
+    ARCHIVED_METRICS,
+    LIVENESS_METRICS,
+    UNARCHIVED_DELETABLE_METRICS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +189,7 @@ CREATE TABLE IF NOT EXISTS attend_sessions (
 CREATE INDEX IF NOT EXISTS attend_recent ON attend_sessions(started_at DESC);
 CREATE INDEX IF NOT EXISTS attend_run ON attend_sessions(run_id, status);
 """
+
 
 def db_path() -> Path:
     """``$GROOM_DB`` (tests point it at a temp file), else the platform data
@@ -495,12 +500,16 @@ class _Store:
             self._last_error_ts = time.time()
             now = self.monotonic()
             if self._reopens and now - self._last_reopen_at < REOPEN_COOLDOWN_S:
-                logger.error("groom.store: %s failed again while cooling down: %s", where, exc)
+                logger.error(
+                    "groom.store: %s failed again while cooling down: %s", where, exc
+                )
                 raise exc
             self._close_quietly()
             self._reopens += 1
             self._last_reopen_at = now
-            logger.error("groom.store: recycling the connection after %s in %s", exc, where)
+            logger.error(
+                "groom.store: recycling the connection after %s in %s", exc, where
+            )
 
     def reset(self) -> None:
         """Close the connection and forget every failure with it (tests switch
@@ -546,7 +555,11 @@ class _Store:
         """
         path = db_path()
         cached: _Reader | None = getattr(self._readers, "handle", None)
-        if cached is not None and cached.generation == self._generation and cached.path == path:
+        if (
+            cached is not None
+            and cached.generation == self._generation
+            and cached.path == path
+        ):
             return cached.conn
         self.retire_reader()
         with self.lock:
@@ -781,10 +794,19 @@ def insert_spans(spans: list[dict[str, Any]]) -> None:
             f" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {placeholders})",
             [
                 (
-                    s["span_id"], s["trace_id"], s.get("parent_id", ""), s.get("run_id", ""),
-                    s.get("workflow", ""), s.get("repo", ""), s.get("branch", ""),
-                    s.get("node", ""), s.get("name", ""), s.get("run_dir", ""),
-                    s.get("start_ts", 0.0), s.get("end_ts", 0.0), s.get("status", "UNSET"),
+                    s["span_id"],
+                    s["trace_id"],
+                    s.get("parent_id", ""),
+                    s.get("run_id", ""),
+                    s.get("workflow", ""),
+                    s.get("repo", ""),
+                    s.get("branch", ""),
+                    s.get("node", ""),
+                    s.get("name", ""),
+                    s.get("run_dir", ""),
+                    s.get("start_ts", 0.0),
+                    s.get("end_ts", 0.0),
+                    s.get("status", "UNSET"),
                     json.dumps(s.get("attrs") or {}),
                     *_promoted(s, s.get("attrs") or {}),
                 )
@@ -828,8 +850,11 @@ def _write_metrics(points: list[dict[str, Any]]) -> None:
             "INSERT INTO metrics (run_id, name, ts, value, attrs_json) VALUES (?, ?, ?, ?, ?)",
             [
                 (
-                    p.get("run_id", ""), p["name"], p.get("ts", 0.0),
-                    float(p.get("value", 0.0)), json.dumps(p.get("attrs") or {}),
+                    p.get("run_id", ""),
+                    p["name"],
+                    p.get("ts", 0.0),
+                    float(p.get("value", 0.0)),
+                    json.dumps(p.get("attrs") or {}),
                 )
                 for p in points
             ],
@@ -862,9 +887,15 @@ def insert_logs(records: list[dict[str, Any]]) -> None:
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (
-                    r.get("run_id", ""), r.get("workflow", ""), r.get("run_dir", ""),
-                    r.get("node", ""), r.get("logger", ""), r.get("severity", "INFO"),
-                    r.get("body", ""), r.get("ts", 0.0), r.get("trace_id", ""),
+                    r.get("run_id", ""),
+                    r.get("workflow", ""),
+                    r.get("run_dir", ""),
+                    r.get("node", ""),
+                    r.get("logger", ""),
+                    r.get("severity", "INFO"),
+                    r.get("body", ""),
+                    r.get("ts", 0.0),
+                    r.get("trace_id", ""),
                     json.dumps(r.get("attrs") or {}),
                     _log_attribute(r.get("attrs") or {}, "git.head")
                     or _log_attribute(r.get("attrs") or {}, "head"),
@@ -1084,7 +1115,8 @@ def apply_estimates(updates: list[tuple[float, str, str]]) -> int:
     """
     with _STORE.writing() as conn:
         conn.executemany(
-            "UPDATE spans SET est_cost_usd = ?, priced_model = ? WHERE span_id = ?", updates
+            "UPDATE spans SET est_cost_usd = ?, priced_model = ? WHERE span_id = ?",
+            updates,
         )
     return len(updates)
 
@@ -1169,7 +1201,12 @@ def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
 #: in five is doing its job; one that accepts one time in five is not a gate, it is a
 #: budget being spent. The boundaries are round numbers chosen to be legible, not
 #: fitted — the number to act on is `excess_cost_usd`, and the verdict only sorts.
-_LOOP_VERDICTS = ((0.8, "converged"), (0.5, "loose"), (0.3, "churning"), (0.0, "thrashing"))
+_LOOP_VERDICTS = (
+    (0.8, "converged"),
+    (0.5, "loose"),
+    (0.3, "churning"),
+    (0.0, "thrashing"),
+)
 
 #: Below this many work items a lap distribution says nothing: one story that took
 #: four passes is an anecdote, and calling it "thrashing" would put noise at the top
@@ -1260,7 +1297,10 @@ def loop_convergence(
     Nodes with fewer than `min_work_items` items are dropped: see
     :data:`MIN_LOOP_WORK_ITEMS`.
     """
-    clauses = ["name = 'agent_turn'", "json_extract(attrs_json, '$.work_id') IS NOT NULL"]
+    clauses = [
+        "name = 'agent_turn'",
+        "json_extract(attrs_json, '$.work_id') IS NOT NULL",
+    ]
     params: list[Any] = []
     if run:
         clauses.append("run_id = ?")
@@ -1271,18 +1311,22 @@ def loop_convergence(
     if since_ts is not None:
         clauses.append("start_ts >= ?")
         params.append(float(since_ts))
-    rows = _read_connection().execute(
-        "SELECT node, run_id,"  # noqa: S608 — clauses are literals; every value is bound
-        " json_extract(attrs_json, '$.work_id') AS work_id,"
-        f" {_cost} AS cost_usd, {_cost} = 0 AND COALESCE({_output}, 0) > 0 AS suspect_zero,"
-        " est_cost_usd, start_ts"
-        # The tiebreaker is not decoration. Laps are ordered so `laps[1:]` is "every pass
-        # after the first", and `spans_start` is a DESC index: on equal `start_ts` sqlite
-        # walks it backwards and hands back the *last* arrival first, so the excess sums
-        # the wrong lap. `end_ts` then arrival order settles it.
-        f" FROM spans WHERE {' AND '.join(clauses)} ORDER BY start_ts, end_ts, rowid",
-        params,
-    ).fetchall()
+    rows = (
+        _read_connection()
+        .execute(
+            "SELECT node, run_id,"  # noqa: S608 — clauses are literals; every value is bound
+            " json_extract(attrs_json, '$.work_id') AS work_id,"
+            f" {_cost} AS cost_usd, {_cost} = 0 AND COALESCE({_output}, 0) > 0 AS suspect_zero,"
+            " est_cost_usd, start_ts"
+            # The tiebreaker is not decoration. Laps are ordered so `laps[1:]` is "every pass
+            # after the first", and `spans_start` is a DESC index: on equal `start_ts` sqlite
+            # walks it backwards and hands back the *last* arrival first, so the excess sums
+            # the wrong lap. `end_ts` then arrival order settles it.
+            f" FROM spans WHERE {' AND '.join(clauses)} ORDER BY start_ts, end_ts, rowid",
+            params,
+        )
+        .fetchall()
+    )
 
     # node -> (run_id, work_id) -> [(cost, suspect_zero, est_cost) of each lap, in order]
     laps: dict[str, dict[tuple[str, str], list[Lap]]] = {}
@@ -1293,7 +1337,9 @@ def loop_convergence(
 
     report = [_loop_row(node, items) for node, items in laps.items()]
     report = [row for row in report if row["work_items"] >= min_work_items]
-    report.sort(key=lambda row: (-(row["excess_cost_usd"] or 0.0), -row["excess_turns"]))
+    report.sort(
+        key=lambda row: (-(row["excess_cost_usd"] or 0.0), -row["excess_turns"])
+    )
     return report
 
 
@@ -1306,8 +1352,12 @@ def _loop_row(node: str, items: dict[tuple[str, str], list[Lap]]) -> dict[str, A
     priced = [lap.cost for lap in every if lap.cost is not None]
     estimated = [lap.est for lap in every if lap.est is not None]
     # The laps after the first, by their own cost — not the total pro-rated.
-    excess = [lap.cost for laps in items.values() for lap in laps[1:] if lap.cost is not None]
-    excess_est = [lap.est for laps in items.values() for lap in laps[1:] if lap.est is not None]
+    excess = [
+        lap.cost for laps in items.values() for lap in laps[1:] if lap.cost is not None
+    ]
+    excess_est = [
+        lap.est for laps in items.values() for lap in laps[1:] if lap.est is not None
+    ]
     return {
         "node": node,
         "work_items": work_items,
@@ -1340,12 +1390,13 @@ def _profile_turn_summary(turns: list[dict[str, Any]]) -> dict[str, Any]:
         if (value := turn["attrs"].get("work_id") or turn["attrs"].get("wf.work_id"))
     }
     visits = len(
-        {
-            (turn["trace_id"], turn["parent_id"] or turn["span_id"])
-            for turn in turns
-        }
+        {(turn["trace_id"], turn["parent_id"] or turn["span_id"]) for turn in turns}
     )
-    costs = [float(turn["profile_cost_usd"]) for turn in turns if turn["profile_cost_usd"] is not None]
+    costs = [
+        float(turn["profile_cost_usd"])
+        for turn in turns
+        if turn["profile_cost_usd"] is not None
+    ]
     zeroed = sum(
         turn["profile_cost_usd"] == 0 and (turn["profile_output_tokens"] or 0) > 0
         for turn in turns
@@ -1447,9 +1498,7 @@ def _profile_verdict_decisions(spans: list[dict[str, Any]]) -> list[dict[str, An
                 counts[(dimension, raw)] += 1
                 current[(trace, dimension)] = raw
         for key in [
-            key
-            for key in current
-            if key[0] == trace and key[1] not in present
+            key for key in current if key[0] == trace and key[1] not in present
         ]:
             del current[key]
     return [
@@ -1458,9 +1507,7 @@ def _profile_verdict_decisions(spans: list[dict[str, Any]]) -> list[dict[str, An
     ]
 
 
-def _span_category(
-    span: dict[str, Any], parent_keys: set[tuple[str, str]]
-) -> str:
+def _span_category(span: dict[str, Any], parent_keys: set[tuple[str, str]]) -> str:
     attrs = span["attrs"]
     kind = str(attrs.get("workhorse.span_kind") or "")
     if kind == "wait":
@@ -1507,9 +1554,7 @@ def _profile_time_partition(
 ) -> dict[str, Any]:
     events: dict[float, list[tuple[str, int]]] = defaultdict(list)
     parent_keys = {
-        (span["trace_id"], span["parent_id"])
-        for span in spans
-        if span["parent_id"]
+        (span["trace_id"], span["parent_id"]) for span in spans if span["parent_id"]
     }
     for span in spans:
         category = _span_category(span, parent_keys)
@@ -1574,22 +1619,30 @@ def run_profile(run: str) -> dict[str, Any] | None:
     """
     if not run:
         return None
-    rows = _read_connection().execute(
-        f"SELECT {_SPAN_COLUMNS}, duration_ms AS profile_duration_ms,"  # noqa: S608
-        f" {_cost} AS profile_cost_usd, {_output} AS profile_output_tokens,"
-        " resume_generation FROM spans WHERE run_id = ? ORDER BY start_ts",
-        (run,),
-    ).fetchall()
+    rows = (
+        _read_connection()
+        .execute(
+            f"SELECT {_SPAN_COLUMNS}, duration_ms AS profile_duration_ms,"  # noqa: S608
+            f" {_cost} AS profile_cost_usd, {_output} AS profile_output_tokens,"
+            " resume_generation FROM spans WHERE run_id = ? ORDER BY start_ts",
+            (run,),
+        )
+        .fetchall()
+    )
     spans = [
         {**dict(row), "attrs": json.loads(row["attrs_json"] or "{}")} for row in rows
     ]
     # Gauges only, now that the heartbeat ticks are never stored: a run that died
     # before its first gauge export contributes no metric bounds, and its wall
     # clock falls back to the span envelope alone.
-    metric_bounds = _read_connection().execute(
-        "SELECT MIN(ts) AS first_ts, MAX(ts) AS last_ts FROM metrics WHERE run_id = ?",
-        (run,),
-    ).fetchone()
+    metric_bounds = (
+        _read_connection()
+        .execute(
+            "SELECT MIN(ts) AS first_ts, MAX(ts) AS last_ts FROM metrics WHERE run_id = ?",
+            (run,),
+        )
+        .fetchone()
+    )
     metric_start = metric_bounds["first_ts"] if metric_bounds else None
     metric_end = metric_bounds["last_ts"] if metric_bounds else None
     if not spans and metric_start is None:
@@ -1660,11 +1713,15 @@ def query_spans(
         clauses.append("start_ts >= ?")
         params.append(float(since_ts))
     params.append(max(1, min(int(limit), 1000)))
-    rows = _read_connection().execute(
-        f"SELECT {_SPAN_COLUMNS} FROM spans WHERE {' AND '.join(clauses)}"  # noqa: S608 - literals
-        " ORDER BY start_ts DESC LIMIT ?",
-        params,
-    ).fetchall()
+    rows = (
+        _read_connection()
+        .execute(
+            f"SELECT {_SPAN_COLUMNS} FROM spans WHERE {' AND '.join(clauses)}"  # noqa: S608 - literals
+            " ORDER BY start_ts DESC LIMIT ?",
+            params,
+        )
+        .fetchall()
+    )
     return [dict(row) for row in rows]
 
 
@@ -1692,15 +1749,19 @@ def run_summaries(
         run_clause = "AND run_id = ?"
         params.append(run)
     params.append(max(1, min(int(limit), 500)))
-    rows = _read_connection().execute(
-        "SELECT run_id, MAX(workflow) AS workflow, MAX(repo) AS repo,"
-        " MIN(start_ts) AS first_ts, MAX(end_ts) AS last_ts,"
-        " COUNT(*) AS span_count,"
-        " SUM(CASE WHEN status = 'ERROR' THEN 1 ELSE 0 END) AS error_count"
-        f" FROM spans WHERE run_id != '' AND end_ts >= ? {run_clause} GROUP BY run_id"  # noqa: S608 - literal clause, bound values
-        " ORDER BY last_ts DESC LIMIT ?",
-        params,
-    ).fetchall()
+    rows = (
+        _read_connection()
+        .execute(
+            "SELECT run_id, MAX(workflow) AS workflow, MAX(repo) AS repo,"
+            " MIN(start_ts) AS first_ts, MAX(end_ts) AS last_ts,"
+            " COUNT(*) AS span_count,"
+            " SUM(CASE WHEN status = 'ERROR' THEN 1 ELSE 0 END) AS error_count"
+            f" FROM spans WHERE run_id != '' AND end_ts >= ? {run_clause} GROUP BY run_id"  # noqa: S608 - literal clause, bound values
+            " ORDER BY last_ts DESC LIMIT ?",
+            params,
+        )
+        .fetchall()
+    )
     return [dict(row) for row in rows]
 
 
@@ -1789,7 +1850,9 @@ def _test_run_ids() -> set[str]:
                 f"SELECT DISTINCT run_id, run_dir FROM {table} WHERE run_dir != ''"  # noqa: S608 - literal table name
             )
         )
-    return {run_id for run_id, run_dir in pairs if run_id and is_scratch_run_dir(run_dir)}
+    return {
+        run_id for run_id, run_dir in pairs if run_id and is_scratch_run_dir(run_dir)
+    }
 
 
 @_reading
@@ -1823,7 +1886,9 @@ def purge_test_runs(dry_run: bool = False, vacuum: bool = True) -> dict[str, int
             marks = ",".join("?" * len(chunk))
             for table in ("spans", "metrics", "logs", "turns"):
                 verb = "SELECT COUNT(*) AS n FROM" if dry_run else "DELETE FROM"
-                cursor = conn.execute(f"{verb} {table} WHERE run_id IN ({marks})", chunk)  # noqa: S608 - literal table name, bound values
+                cursor = conn.execute(
+                    f"{verb} {table} WHERE run_id IN ({marks})", chunk
+                )  # noqa: S608 - literal table name, bound values
                 counts[table] += cursor.fetchone()["n"] if dry_run else cursor.rowcount
 
     if dry_run:
@@ -1863,11 +1928,20 @@ def insert_turns(rows: list[dict[str, Any]]) -> int:
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (
-                    r.get("run_id", ""), r.get("workflow", ""), r.get("flow", ""),
-                    r.get("node", ""), r.get("session_id", ""), r.get("generation"),
-                    r.get("seq"), float(r.get("ts") or 0.0), r.get("backend", ""),
-                    r.get("source", ""), r.get("path", ""), int(r.get("bytes") or 0),
-                    r.get("sha256", ""), r.get("head") or None,
+                    r.get("run_id", ""),
+                    r.get("workflow", ""),
+                    r.get("flow", ""),
+                    r.get("node", ""),
+                    r.get("session_id", ""),
+                    r.get("generation"),
+                    r.get("seq"),
+                    float(r.get("ts") or 0.0),
+                    r.get("backend", ""),
+                    r.get("source", ""),
+                    r.get("path", ""),
+                    int(r.get("bytes") or 0),
+                    r.get("sha256", ""),
+                    r.get("head") or None,
                 )
                 for r in rows
             ],
@@ -1892,7 +1966,10 @@ def query_turns(
     clauses: list[str] = []
     params: list[Any] = []
     for column, value in (
-        ("run_id", run), ("node", node), ("session_id", session), ("workflow", workflow)
+        ("run_id", run),
+        ("node", node),
+        ("session_id", session),
+        ("workflow", workflow),
     ):
         if value:
             clauses.append(f"{column} = ?")
@@ -2042,13 +2119,35 @@ def prune(
     if expired:
         deletable |= _test_run_ids()
     for run_id in sorted(deletable & expired):
-        removed += _chunked_delete("spans", "run_id = ? AND end_ts < ?", (run_id, cutoff))
+        removed += _chunked_delete(
+            "spans", "run_id = ? AND end_ts < ?", (run_id, cutoff)
+        )
         removed += _chunked_delete("logs", "run_id = ? AND ts < ?", (run_id, cutoff))
         removed += _chunked_delete("metrics", "run_id = ? AND ts < ?", (run_id, cutoff))
 
     _checkpoint()
     _STORE.note_prune()
     return removed
+
+
+@dataclass(frozen=True, slots=True)
+class RecentRun:
+    """One row of :func:`recent_runs` — what ``groom recent`` shows.
+
+    Built from the spans table (which ranks runs) merged with the metrics
+    table (which gives a heartbeat-aware ``max_ts``). Each pass is a single
+    indexed GROUP BY, hence the half-second wall time on the 1.4GB production
+    store where :func:`run_bounds`'s four-table merge takes forty seconds.
+    The trade-off is named in the helper's docstring: spanning gives recency
+    ranking, metrics give liveness — and a run that has emitted spans but
+    whose process died at the last heartbeat shows its last activity, not
+    "now-30-minutes".
+    """
+
+    run_id: str
+    workflow: str = ""
+    max_ts: float = 0.0
+    spans: int = 0
 
 
 @dataclass(frozen=True)
@@ -2125,7 +2224,11 @@ def run_bounds() -> dict[str, RunBounds]:
 
     bounds: dict[str, RunBounds] = {}
     for run_id in set(span) | set(log) | set(metric):
-        parts = [part for part in (span.get(run_id), log.get(run_id), metric.get(run_id)) if part]
+        parts = [
+            part
+            for part in (span.get(run_id), log.get(run_id), metric.get(run_id))
+            if part
+        ]
         stamps = [value for lo, hi, _ in parts for value in (lo, hi) if value]
         workflow, repo, branch, run_dir = identity.get(run_id, ("", "", "", ""))
         bounds[run_id] = RunBounds(
@@ -2141,6 +2244,94 @@ def run_bounds() -> dict[str, RunBounds]:
             metrics=metric.get(run_id, (0.0, 0.0, 0))[2],
         )
     return bounds
+
+
+@_reading
+def recent_runs(limit: int = 10, workflow: str = "") -> list[RecentRun]:
+    """Top runs ordered by most-recent activity, alive or dead.
+
+    Two indexed GROUP BYs and a Python-side merge — one over ``spans`` for
+    the recency ranking (and the workflow filter, since metrics carries
+    ``run_id`` only), one over ``metrics`` for the heartbeat-aware ``max_ts``.
+    Spans close at *node end* — minutes apart for a long-running node, while
+    metrics stream every ~10s — and a recency check that saw only ``end_ts``
+    would say a healthy live run is dead the moment one node sits between
+    visits. Merging on the metrics side gives \"alive in the last 180s\" the
+    same meaning the dashboard's chip uses, without paying for
+    :func:`run_bounds`'s four-table union.
+
+    ``limit`` is enforced in SQL after the merge on the post-merge ordering, so
+    a wider screening pass gives exactly the top N ranked by their *latest
+    telemetry*, not \"the N whose last span was most recent, regardless of
+    whether they have heartbeats.\" ``limit=0`` returns every run; the caller
+    is doing archival work and should use :func:`run_bounds` instead.
+    """
+    conn = _read_connection()
+
+    # First pass: ranked selection by spans. The ``MAX(MAX(start_ts, end_ts))``
+    # is read as MAX(start_ts OR end_ts) by SQLite — the bigger of the two,
+    # which is \"either the visit opened or it closed\". A start_ts is written
+    # immediately on visit entry, so this stays current even mid-visit.
+    sql_spans = (
+        "SELECT run_id, MAX(MAX(start_ts, end_ts)) AS max_ts,"
+        " MAX(workflow) AS workflow, COUNT(*) AS spans"
+        " FROM spans WHERE run_id != ''"
+    )
+    params: tuple = ()
+    if workflow:
+        sql_spans += " AND workflow = ?"
+        params = (workflow,)
+    sql_spans += " GROUP BY run_id ORDER BY max_ts DESC"
+    if limit > 0:
+        sql_spans += " LIMIT ?"
+        params_spans = params + (
+            limit * 4,
+        )  # widen the screening so merging has headroom
+    else:
+        params_spans = params
+    spans_rows = (
+        conn.execute(sql_spans, params_spans)
+        if params_spans
+        else conn.execute(sql_spans)  # noqa: S608 - bound placeholders
+    )
+
+    spans_by_id: dict[str, tuple[float, str, int]] = {}
+    for row in spans_rows:
+        spans_by_id[row["run_id"]] = (
+            float(row["max_ts"] or 0.0),
+            row["workflow"] or "",
+            int(row["spans"] or 0),
+        )
+    if not spans_by_id:
+        return []
+
+    # Second pass: metrics max_ts for the spans-seen runs only. ``MAX(ts)
+    # WHERE run_id IN (...)`` uses the index; without a cap, the GROUP BY
+    # walks every metric row.
+    placeholders = ",".join("?" * len(spans_by_id))
+    metrics_rows = conn.execute(
+        f"SELECT run_id, MAX(ts) AS max_ts FROM metrics"  # noqa: S608 - bound placeholders
+        f" WHERE run_id IN ({placeholders}) GROUP BY run_id",
+        tuple(spans_by_id),
+    )
+    metrics_by_id = {row["run_id"]: float(row["max_ts"] or 0.0) for row in metrics_rows}
+
+    out: list[RecentRun] = []
+    for run_id, (span_max_ts, workflow_value, span_count) in spans_by_id.items():
+        metric_max_ts = metrics_by_id.get(run_id, 0.0)
+        merged_max_ts = max(span_max_ts, metric_max_ts)
+        out.append(
+            RecentRun(
+                run_id=run_id,
+                workflow=workflow_value,
+                max_ts=merged_max_ts,
+                spans=span_count,
+            )
+        )
+    out.sort(key=lambda row: row.max_ts, reverse=True)
+    if limit > 0:
+        out = out[:limit]
+    return out
 
 
 @_reading
@@ -2283,6 +2474,7 @@ def checkpoint() -> None:
 #: a claim :func:`groom.attend.recover_orphans` re-checks against the pid at boot.
 ATTEND_RUNNING, ATTEND_COMPLETED = "running", "completed"
 
+
 def _attend_row(row: sqlite3.Row) -> dict[str, Any]:
     """A row with ``session_ids`` back as the ordered list it is stored as JSON for.
 
@@ -2296,7 +2488,9 @@ def _attend_row(row: sqlite3.Row) -> dict[str, Any]:
         parsed = json.loads(raw) if raw else []
     except ValueError:
         parsed = []
-    record["session_ids"] = [str(item) for item in parsed] if isinstance(parsed, list) else []
+    record["session_ids"] = (
+        [str(item) for item in parsed] if isinstance(parsed, list) else []
+    )
     return record
 
 
@@ -2329,9 +2523,19 @@ def attend_start(
             " exit_code, started_at, ended_at, released_state)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, '')",
             (
-                job_id, run_id, workflow, run_dir, workspace, kind, reason, node,
-                gate_path, ATTEND_RUNNING, json.dumps([session_id] if session_id else []),
-                pid, float(started_at if started_at is not None else time.time()),
+                job_id,
+                run_id,
+                workflow,
+                run_dir,
+                workspace,
+                kind,
+                reason,
+                node,
+                gate_path,
+                ATTEND_RUNNING,
+                json.dumps([session_id] if session_id else []),
+                pid,
+                float(started_at if started_at is not None else time.time()),
             ),
         )
 
@@ -2396,21 +2600,29 @@ def attend_running_for_run(run_id: str) -> dict[str, Any] | None:
     a run that is still stopped when its attendant finishes gets another one on the next
     rules tick, and a run that is not does not.
     """
-    row = _read_connection().execute(
-        "SELECT * FROM attend_sessions WHERE run_id = ? AND status = ?"
-        " ORDER BY started_at DESC LIMIT 1",
-        (run_id, ATTEND_RUNNING),
-    ).fetchone()
+    row = (
+        _read_connection()
+        .execute(
+            "SELECT * FROM attend_sessions WHERE run_id = ? AND status = ?"
+            " ORDER BY started_at DESC LIMIT 1",
+            (run_id, ATTEND_RUNNING),
+        )
+        .fetchone()
+    )
     return _attend_row(row) if row is not None else None
 
 
 @_reading
 def attend_latest_for_run(run_id: str) -> dict[str, Any] | None:
     """The most recent attendant on this run, running or not — the pane's one link."""
-    row = _read_connection().execute(
-        "SELECT * FROM attend_sessions WHERE run_id = ? ORDER BY started_at DESC LIMIT 1",
-        (run_id,),
-    ).fetchone()
+    row = (
+        _read_connection()
+        .execute(
+            "SELECT * FROM attend_sessions WHERE run_id = ? ORDER BY started_at DESC LIMIT 1",
+            (run_id,),
+        )
+        .fetchone()
+    )
     return _attend_row(row) if row is not None else None
 
 
@@ -2449,9 +2661,11 @@ def attend_recent(limit: int = 200) -> list[dict[str, Any]]:
 
 @_reading
 def attend_get(job_id: str) -> dict[str, Any] | None:
-    row = _read_connection().execute(
-        "SELECT * FROM attend_sessions WHERE job_id = ?", (job_id,)
-    ).fetchone()
+    row = (
+        _read_connection()
+        .execute("SELECT * FROM attend_sessions WHERE job_id = ?", (job_id,))
+        .fetchone()
+    )
     return _attend_row(row) if row is not None else None
 
 
