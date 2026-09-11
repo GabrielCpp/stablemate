@@ -139,6 +139,11 @@ class QaSession:
         self._data: dict[str, Any] = {}
         self._secret_values: dict[str, str] = {}
         self._manifest: RunManifest | None = None
+        #: Live daemon Popen handles, keyed by pid. Kept outside `_data` because the
+        #: session file is JSON-serialized on every write — a Popen is not serializable,
+        #: and an explicit handle is the difference between a daemon the runner can reap
+        #: at teardown and one that ResourceWarning flags at GC time.
+        self._daemon_procs: dict[int, subprocess.Popen[bytes]] = {}
 
     # -- load / save ---------------------------------------------------------
 
@@ -410,6 +415,7 @@ class QaSession:
                 env=self.command_env(),
             )
         pid = proc.pid
+        self._daemon_procs[pid] = proc
         self._data.setdefault("daemons", []).append(
             {"name": name, "pid": pid, "argv": argv, "log_file": str(log_file)}
         )
@@ -451,6 +457,15 @@ class QaSession:
             raise ValueError(f"no running daemon named {name!r}")
         entry = daemons.pop(index)
         exit_code = _kill_pid(entry["pid"])
+        # Reap the Popen now — `_kill_pid` only delivers the signal. Without `wait`,
+        # the Popen is released at GC and pytest's ResourceWarning fires for every
+        # test that backgrounds a daemon.
+        proc = self._daemon_procs.pop(entry["pid"], None)
+        if proc is not None:
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
         self._save()
         record: dict[str, Any] = {
             "kind": "daemon_stop",

@@ -62,3 +62,21 @@ testpaths = ["tests"]
 # Discard a passing test's tmp_path immediately; keep it only for a failure. pytest's
 # default (`all`) retains three whole runs' worth of sandboxes.
 tmp_path_retention_policy = "failed"
+# CPython's argparse lazily loads `gettext` on first use, which on this CPython
+# build opens a socket to query locale data and never closes it (the socket is
+# closed at interpreter shutdown — pytest's ResourceWarning fires before that).
+# Nothing in user code can prevent the leak: `re.compile` reaches it through the
+# `locale` → `socket.gethostname()` chain that argparse triggers. Filter the
+# warning narrowly so a real leak elsewhere still surfaces — stdlib modules only,
+# `ResourceWarning` only, never the broad class. Pytest wraps the resource leak in
+# a PytestUnraisableExceptionWarning when it's reported at GC time, so filter both
+# forms on the same modules.
+filterwarnings = [
+  "ignore::ResourceWarning:argparse",
+  "ignore::ResourceWarning:gettext",
+  "ignore::ResourceWarning:locale",
+  "ignore::ResourceWarning:re",
+  "ignore::ResourceWarning:shutil",
+  "ignore::ResourceWarning:socket",
+  "ignore::pytest.PytestUnraisableExceptionWarning:_pytest.unraisableexception",
+]
