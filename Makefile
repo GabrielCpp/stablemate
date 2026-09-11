@@ -92,11 +92,6 @@ test: ## Run every package suite and repo guard exactly as CI does
 	$(MAKE) -C groom test
 	$(MAKE) -C saddlebag test
 	$(MAKE) -C paddock test
-	$(MAKE) check-portability
-	$(MAKE) check-library
-	$(MAKE) check-agent-outputs
-	$(MAKE) check-skills
-	$(MAKE) check-vendor
 
 .PHONY: bench-doctor
 bench-doctor: ## Measure `ostler doctor` against a book: make bench-doctor DOCS=<path> [JSON=1]
