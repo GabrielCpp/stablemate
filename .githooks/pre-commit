@@ -46,6 +46,3 @@ python3 "$repo_root/scripts/check_public.py" --names-only
 # on a machine where it is installed; this covers everyone else, at the moment the file
 # would enter the tree rather than whenever someone next runs `make test`.
 python3 "$repo_root/scripts/check_no_shell.py"
-# >>> farrier: hooks (generated) >>>
-make farrier-run-hook
-# <<< farrier: hooks <<<

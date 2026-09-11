@@ -301,9 +301,3 @@ release: ## Open (or refresh) the release-please PR — merging it is what publi
 	gh workflow run release.yml --ref main
 	@echo "dispatched. The release PR appears in ~30s; find it with:"
 	@echo "  gh pr list --label 'autorelease: pending'"
-
-# >>> farrier: agent launcher include (generated) >>>
-# Surfaces agent-install / agent-check from the generated
-# launcher. Re-created by `farrier install`; remove this block to opt out.
-include .agents/agents.mk
-# <<< farrier: agent launcher include <<<
