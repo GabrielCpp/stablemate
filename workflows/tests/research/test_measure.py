@@ -327,5 +327,10 @@ def test_a_resubmission_clears_the_previous_attempt_s_result_in_the_cwd(tmp_path
         estimate_s=1.0,
         probe_units_timed=1,
     )
+    # Reap the detached supervisor — `submit_job` does not wait by design, so the
+    # caller's test is the natural place to release the Popen. Without this, the
+    # ResourceWarning fires at GC for every test that submits a `true` and walks
+    # away.
+    job.wait_submitted(str(directory))
 
     assert not (cwd / "result.json").exists()
