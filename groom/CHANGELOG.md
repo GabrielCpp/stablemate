@@ -1,5 +1,57 @@
 # Changelog
 
+## [1.2.0](https://github.com/GabrielCpp/stablemate/compare/groom-v1.1.0...groom-v1.2.0) (2026-09-11)
+
+
+### Features
+
+* capture full opencode session transcripts ([e03d1bd](https://github.com/GabrielCpp/stablemate/commit/e03d1bdb502473dff76578345168a8ed002432a9))
+* **groom:** answer and discover gates over the run socket ([7a24f15](https://github.com/GabrielCpp/stablemate/commit/7a24f15507521a6644b4a38350bb53152c7ff7c6))
+* **groom:** archive run telemetry to disk before pruning it ([b4ab404](https://github.com/GabrielCpp/stablemate/commit/b4ab40486cd2400f470f7b61a7edcce78c3f949b))
+* **groom:** dispatch an attendant to a run that parked or died ([27dfaf7](https://github.com/GabrielCpp/stablemate/commit/27dfaf7fe2350f9afb294bff7a952d87511c3792))
+* **groom:** list the last N runs ordered by telemetry recency ([9e152fd](https://github.com/GabrielCpp/stablemate/commit/9e152fd31ff54f7c6a47f98ec0cc65bc0d26887d))
+* **groom:** memory-only liveness and a never-blocked event loop ([8c066af](https://github.com/GabrielCpp/stablemate/commit/8c066af68df679fb89548989f9ae09ad02cef419))
+* **groom:** persist repository telemetry scopes ([9540ae0](https://github.com/GabrielCpp/stablemate/commit/9540ae0a574d528df586114466edae65408c169f))
+* **groom:** print each live run's control command in status ([b2bff5d](https://github.com/GabrielCpp/stablemate/commit/b2bff5d74a0e27f7acc07181b78644965cd158d3))
+* **groom:** record every attendance and show it in an Attendant pane ([5aaee72](https://github.com/GabrielCpp/stablemate/commit/5aaee7297bd84e4d8831c9ecd8f7685d999b9228))
+* **groom:** show a gate's full context file in the dashboard ([f0c9a40](https://github.com/GabrielCpp/stablemate/commit/f0c9a4036190cacdf676b84971b85a6863145184))
+* **groom:** show a run's whole id in the detail pane, selectable ([ee93ff6](https://github.com/GabrielCpp/stablemate/commit/ee93ff6b2546c823ebfedb058e7a5245c13302ff))
+* **groom:** show the stablemate logo as the dashboard favicon ([8dd1c7b](https://github.com/GabrielCpp/stablemate/commit/8dd1c7b6e553e70fdff068f852622f6bfd2261c2))
+* **groom:** sidecar getQuestions and answerGate RPCs ([ca5cf2a](https://github.com/GabrielCpp/stablemate/commit/ca5cf2acf715b9595200c64debbea5842029b72e))
+* **workhorse:** let an Await say a machine owes it the answer ([b3e33ec](https://github.com/GabrielCpp/stablemate/commit/b3e33ec60b85a44c467cda4f97d9174eae544fff))
+
+
+### Bug Fixes
+
+* **groom:** answer an empty telemetry batch without the store lock ([1e8f419](https://github.com/GabrielCpp/stablemate/commit/1e8f419d1dc35874ad0976ae7e2c5cf4b9788988))
+* **groom:** attend a gate the announcement already put on the row ([d017b69](https://github.com/GabrielCpp/stablemate/commit/d017b69c5c3e722bfe23fb4bfbd575b0b3bfe474))
+* **groom:** drop a held gate whose file has flipped to ANSWERED ([2617ff3](https://github.com/GabrielCpp/stablemate/commit/2617ff3fe8e20d7fc66c4685b21b1dbc61a7a420))
+* **groom:** extract latest question from rearmed gate ([5e3706f](https://github.com/GabrielCpp/stablemate/commit/5e3706ffa440ff687cedfe6c68939c07a14d76c4))
+* **groom:** give the attendant the whole gate and the groom reads ([049dfe2](https://github.com/GabrielCpp/stablemate/commit/049dfe28f72bf6417ea8625fc16f11616d044566))
+* **groom:** heal the store connection instead of wedging on it ([880f0ca](https://github.com/GabrielCpp/stablemate/commit/880f0ca5e9c4f3b32d87a14b39ea19d2b89e257b))
+* **groom:** log a gate poll the run answered unreadably ([ad4cd71](https://github.com/GabrielCpp/stablemate/commit/ad4cd7116a8bf425d54e20b9d66d041e9f27fde7))
+* **groom:** log details when otlp trace payload decoding fails ([32cc6a9](https://github.com/GabrielCpp/stablemate/commit/32cc6a99211fb2996508fbd83b91bda6d390e8b4))
+* **groom:** order a node's laps by more than the start instant ([60d2fc6](https://github.com/GabrielCpp/stablemate/commit/60d2fc607f59f44913cb09ea351f3643efbc9d9b))
+* **groom:** put settings next to attendant in the activity bar ([4b43f2e](https://github.com/GabrielCpp/stablemate/commit/4b43f2e07e4daccaa78c4e7fa44ccc30367d49d6))
+* **groom:** show a native run's whole id in the fleet list ([5ba2f33](https://github.com/GabrielCpp/stablemate/commit/5ba2f335a48eea47f433fbe5a3705a34779e38a4))
+* **groom:** stop the row sync erasing a socket-discovered gate ([a5519cc](https://github.com/GabrielCpp/stablemate/commit/a5519cc17ddba15f47f450b5486ff3147196ac46))
+* **groom:** surface a native gate outside the run's claimed workspace ([05976fd](https://github.com/GabrielCpp/stablemate/commit/05976fdfca3642d386234496be650d33aa505c39))
+* **workhorse:** keep a handoff's START in its flow, colour END apart ([eb00514](https://github.com/GabrielCpp/stablemate/commit/eb00514755460c77f4b10ade8d20f9d4fdb503d8))
+
+
+### Performance Improvements
+
+* consolidate package test startups ([10a5bf8](https://github.com/GabrielCpp/stablemate/commit/10a5bf88d1dee595514222eba8262ed712e3ba36))
+* **groom:** give telemetry ingest its own thread pool ([933c6df](https://github.com/GabrielCpp/stablemate/commit/933c6df184b34bf0bf1fe47ba7edd5ef44832217))
+* **groom:** index dashboard telemetry queries ([495cb64](https://github.com/GabrielCpp/stablemate/commit/495cb64ba42bea73e6a30e60ba26a84db17f1c35))
+* **groom:** read from a per-thread connection instead of the write lock ([9fc833f](https://github.com/GabrielCpp/stablemate/commit/9fc833fe4ca0fccc996d6cd430efab773e94245c))
+
+
+### Code Refactoring
+
+* **groom:** answer the findings basedpyright reports ([c7c2f41](https://github.com/GabrielCpp/stablemate/commit/c7c2f4115962fb3a57dff259ac9467ab16d2e774))
+* **groom:** ship the attendant prompt with groom ([36d9cf1](https://github.com/GabrielCpp/stablemate/commit/36d9cf1c695732657ea215b960a86abc4519ca0a))
+
 ## [1.1.0](https://github.com/GabrielCpp/stablemate/compare/groom-v1.0.0...groom-v1.1.0) (2026-08-14)
 
 

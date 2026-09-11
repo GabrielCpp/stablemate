@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0](https://github.com/GabrielCpp/stablemate/compare/saddlebag-v1.0.0...saddlebag-v1.1.0) (2026-09-11)
+
+
+### Features
+
+* **saddlebag:** fill a credential into a browser over CDP ([6a8763e](https://github.com/GabrielCpp/stablemate/commit/6a8763e2cc230cbd6b3b5846412e0345e824d7b5))
+* **saddlebag:** read a credential from a keychain item it did not write ([593f5d7](https://github.com/GabrielCpp/stablemate/commit/593f5d7a2480a2458d5ff6d98d0a5f1db157a84e))
+
+
+### Bug Fixes
+
+* **workhorse:** keep a handoff's START in its flow, colour END apart ([eb00514](https://github.com/GabrielCpp/stablemate/commit/eb00514755460c77f4b10ade8d20f9d4fdb503d8))
+
 ## [1.0.0](https://github.com/GabrielCpp/stablemate/compare/saddlebag-v0.1.0...saddlebag-v1.0.0) (2026-08-11)
 
 

@@ -1,5 +1,46 @@
 # Changelog
 
+## [3.0.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v2.1.0...farrier-v3.0.0) (2026-09-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* **farrier:** bare `farrier hooks` no longer defaults to install; use `farrier hooks install` explicitly.
+* **core:** bump stablemate config schema to v2
+
+### Features
+
+* **core:** let a power tier scale every wall-clock budget ([50b5081](https://github.com/GabrielCpp/stablemate/commit/50b5081d3930a22e0cae23ed2c989eb56af71d3c))
+* **core:** persist a nested config table, and groom's attend settings ([3c51cca](https://github.com/GabrielCpp/stablemate/commit/3c51cca625bf29d50092cbb1cbd2a7399bec8cb3))
+* **farrier:** add hooks install/list verbs with dry-run support ([e8b3ed3](https://github.com/GabrielCpp/stablemate/commit/e8b3ed3882c3446e49f1340fd5c3311de7865cfa))
+* **farrier:** delete only files tagged generated_by: farrier ([518154e](https://github.com/GabrielCpp/stablemate/commit/518154eb0e718135a3121e4038972b242b978cb5))
+* **farrier:** hold skills to the open agent skills spec ([d41bcf1](https://github.com/GabrielCpp/stablemate/commit/d41bcf13debedcaa022fa0d3bcd7b9fd6d77cc90))
+* **farrier:** install skills into the harness home directory ([811f71d](https://github.com/GabrielCpp/stablemate/commit/811f71dcecd69c14abe473a5287288059ab43604))
+* **farrier:** read the library from the CLI ([846fc81](https://github.com/GabrielCpp/stablemate/commit/846fc81a49d1462477a747f8b483d41678fe6b8a))
+* **farrier:** seed a new agents.yml with the base library's two packs ([f33cae3](https://github.com/GabrielCpp/stablemate/commit/f33cae3f9115ae90c55d65ec90fa0f87d2c4a37e))
+* **workhorse:** run a measurement detached under a bounded supervisor ([3c0cb8c](https://github.com/GabrielCpp/stablemate/commit/3c0cb8c64e535353a1a6dfae83b04598f2c2e2b0))
+
+
+### Bug Fixes
+
+* **farrier:** let the aggregated AGENTS.md be regenerated ([5cf584c](https://github.com/GabrielCpp/stablemate/commit/5cf584ca00613914d74aacec66c4b4e6f1d56834))
+* **farrier:** stop the generated launcher taking over the help target ([aa2161f](https://github.com/GabrielCpp/stablemate/commit/aa2161f5755c9c762914e949fbe489d36583c24d))
+* **workhorse:** keep a handoff's START in its flow, colour END apart ([eb00514](https://github.com/GabrielCpp/stablemate/commit/eb00514755460c77f4b10ade8d20f9d4fdb503d8))
+
+
+### Performance Improvements
+
+* consolidate package test startups ([10a5bf8](https://github.com/GabrielCpp/stablemate/commit/10a5bf88d1dee595514222eba8262ed712e3ba36))
+
+
+### Code Refactoring
+
+* **core:** bump stablemate config schema to v2 ([586d593](https://github.com/GabrielCpp/stablemate/commit/586d593134aad89d14d4f21f748a8c83ae6b4ad8))
+* **core:** move the clock port into shared plumbing ([fa5a4f5](https://github.com/GabrielCpp/stablemate/commit/fa5a4f5a7323f0740ee775c6b6f40c8da8f6e64a))
+* **farrier:** drop per-skill copilot instruction files ([50e2677](https://github.com/GabrielCpp/stablemate/commit/50e2677100809b5d3a56601a306eb897878ef704))
+* **farrier:** guard the front-matter token's line map ([dc6a378](https://github.com/GabrielCpp/stablemate/commit/dc6a3780a13da611569ea8a8b3373c445747ebe9))
+* **farrier:** name installed skills by their library group ([170b38a](https://github.com/GabrielCpp/stablemate/commit/170b38a59611a3ad35fb2444790c055a7440d2a4))
+
 ## [2.1.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v2.0.0...farrier-v2.1.0) (2026-08-14)
 
 
