@@ -1,5 +1,78 @@
 # Changelog
 
+## [3.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v2.1.0...workhorse-agent-v3.0.0) (2026-09-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** bump stablemate config schema to v2
+
+### Features
+
+* capture full opencode session transcripts ([e03d1bd](https://github.com/GabrielCpp/stablemate/commit/e03d1bdb502473dff76578345168a8ed002432a9))
+* **core:** let a power tier scale every wall-clock budget ([50b5081](https://github.com/GabrielCpp/stablemate/commit/50b5081d3930a22e0cae23ed2c989eb56af71d3c))
+* **core:** persist a nested config table, and groom's attend settings ([3c51cca](https://github.com/GabrielCpp/stablemate/commit/3c51cca625bf29d50092cbb1cbd2a7399bec8cb3))
+* **workhorse:** arm the wake file before a watcher parks on it ([ae808c2](https://github.com/GabrielCpp/stablemate/commit/ae808c273eeb0275be51e57cb8551196f5b7e15f))
+* **workhorse:** bound transient provider retries per agent node ([22a0330](https://github.com/GabrielCpp/stablemate/commit/22a0330582845014a0a867e39ab29cd9508f5830))
+* **workhorse:** control answer and questions subcommands ([089772b](https://github.com/GabrielCpp/stablemate/commit/089772b221596e082944fc08420db8c519939a4a))
+* **workhorse:** draw a Done as an edge to END, never as a green state ([d18d588](https://github.com/GabrielCpp/stablemate/commit/d18d588f8bf880334a393cdd5ab624f9536243b4))
+* **workhorse:** draw a handoff as a coloured step, not a cross edge ([89aadb8](https://github.com/GabrielCpp/stablemate/commit/89aadb85ed541622e30c68782526e2837ecbd238))
+* **workhorse:** draw a state as the chain of steps it runs ([44ee85f](https://github.com/GabrielCpp/stablemate/commit/44ee85fc72f39e025832dd3ee0f64bddf9f695dd))
+* **workhorse:** let a registry declare its own package ([a1c17b4](https://github.com/GabrielCpp/stablemate/commit/a1c17b459ca2308cd91d53210e3a8081a4f154d5))
+* **workhorse:** let a transition say why, and print it on the edge ([bed8d77](https://github.com/GabrielCpp/stablemate/commit/bed8d7787b7818f86fdab3fe276f688d60036eae))
+* **workhorse:** let an Await say a machine owes it the answer ([b3e33ec](https://github.com/GabrielCpp/stablemate/commit/b3e33ec60b85a44c467cda4f97d9174eae544fff))
+* **workhorse:** questions and answer verbs on the control channel ([0debb61](https://github.com/GabrielCpp/stablemate/commit/0debb61da2d9cb0276805687cd3d6c3db6207b93))
+* **workhorse:** re-attempt a capped turn every probe interval ([4ac6481](https://github.com/GabrielCpp/stablemate/commit/4ac6481fe0203c3c10a15d2c6574979e95ba78a1))
+* **workhorse:** refill the transition budget on forward progress ([780e06c](https://github.com/GabrielCpp/stablemate/commit/780e06c9ea19c775b1d43d86b35be6e089d318c0))
+* **workhorse:** resolve control --run through groom on a local miss ([279b6a3](https://github.com/GabrielCpp/stablemate/commit/279b6a3686498ae6e6e81cfe49e14fc813667781))
+* **workhorse:** resume re-arms a parked operator wait ([cbe7c58](https://github.com/GabrielCpp/stablemate/commit/cbe7c58cfba14426ccbea570abeed409eac271f0))
+* **workhorse:** run a measurement detached under a bounded supervisor ([3c0cb8c](https://github.com/GabrielCpp/stablemate/commit/3c0cb8c64e535353a1a6dfae83b04598f2c2e2b0))
+* **workhorse:** stamp repository scopes on telemetry ([0e77048](https://github.com/GabrielCpp/stablemate/commit/0e7704876a84d6c28f2ce059132f54475aeaf760))
+* **workhorse:** the operator await answers over the socket ([c5eff11](https://github.com/GabrielCpp/stablemate/commit/c5eff119dc8d908e1fbb9f2efcceb996f670fdb2))
+
+
+### Bug Fixes
+
+* **workflows:** audit survives a sustained models.dev outage ([60a664e](https://github.com/GabrielCpp/stablemate/commit/60a664ec5edb0fc04b1a7ba142e4394daad747c6))
+* **workhorse:** accept the type __package__ actually has ([0e5e3f1](https://github.com/GabrielCpp/stablemate/commit/0e5e3f1ac48ad2bdac832e6698633cecce5a5ac0))
+* **workhorse:** add skill_path_ref so prompts cite installed skill files ([f65ff19](https://github.com/GabrielCpp/stablemate/commit/f65ff190132e99ef82b3f88d49304580455e8c64))
+* **workhorse:** apply the tier's clock scale, and make the env var work ([c697fed](https://github.com/GabrielCpp/stablemate/commit/c697fedac67992a478f0b1e572bc8813598b35ca))
+* **workhorse:** deliver large prompts outside argv ([2814b02](https://github.com/GabrielCpp/stablemate/commit/2814b027f9bf220cd1017a7b2e650beb74e839e1))
+* **workhorse:** find the reloaded registry in its composition root ([6df4629](https://github.com/GabrielCpp/stablemate/commit/6df4629f65284c2f34e3eeb02b74c8d6c1efb995))
+* **workhorse:** keep a handoff's START in its flow, colour END apart ([eb00514](https://github.com/GabrielCpp/stablemate/commit/eb00514755460c77f4b10ade8d20f9d4fdb503d8))
+* **workhorse:** lift opencode's 32k output cap to the model's own limit ([ecb2545](https://github.com/GabrielCpp/stablemate/commit/ecb25454a872fbe5540de3edf131fd33982e256a))
+* **workhorse:** match an opencode store lock by class, not statement ([4348c57](https://github.com/GabrielCpp/stablemate/commit/4348c57cbc4d96fadc8ca71f49d39312cf9f7c5e))
+* **workhorse:** name every spent agent turn, not just the timeout ([3dae471](https://github.com/GabrielCpp/stablemate/commit/3dae471646f5a0d67fe710609269114f76fe1fe5))
+* **workhorse:** pin opencode's title helper to the turn's model ([1786e93](https://github.com/GabrielCpp/stablemate/commit/1786e93efd6cfb1537e2130714693ead70cfc848))
+* **workhorse:** promote settled opencode exports ([8322375](https://github.com/GabrielCpp/stablemate/commit/8322375d2b9d29a5c82a62bde6a0724a594b403f))
+* **workhorse:** reassemble a control message across packets ([13c34de](https://github.com/GabrielCpp/stablemate/commit/13c34de4e74ae9782fd8c372a5f4c313d2a6c1cd))
+* **workhorse:** reread partial opencode session exports ([10aef37](https://github.com/GabrielCpp/stablemate/commit/10aef37557e09cbf0b8a717945e702e45423d7e3))
+* **workhorse:** retry opencode project-store contention ([4a35507](https://github.com/GabrielCpp/stablemate/commit/4a35507e7d67df7156f6d8a239eb6f7f34ee8d05))
+* **workhorse:** route an exhausted output budget to compaction ([ab094a5](https://github.com/GabrielCpp/stablemate/commit/ab094a5420973cda078ea806ac2f9f1ad263a2a0))
+* **workhorse:** stamp previous-process death on resume for groom ([8a87d6e](https://github.com/GabrielCpp/stablemate/commit/8a87d6eac797c94633a435cc946011ef908388cf))
+* **workhorse:** stop a machine wait asking for an answer nobody owes ([2d75da8](https://github.com/GabrielCpp/stablemate/commit/2d75da8e2afefeb9a02ff01d6d46cb0239179013))
+* **workhorse:** survive long agent CLI replacement gaps ([a6607f7](https://github.com/GabrielCpp/stablemate/commit/a6607f7bcf6fee8f5d1b60752d25c416994fc96d))
+* **workhorse:** treat a session id as an opaque string ([7a0c66b](https://github.com/GabrielCpp/stablemate/commit/7a0c66bdf38deb61dfc386cc1a4f24ba2941a175))
+* **workhorse:** treat opencode's session-store write race as transient ([133dd06](https://github.com/GabrielCpp/stablemate/commit/133dd06b08a17acd46cdb928db53c796a1699f84))
+
+
+### Performance Improvements
+
+* parallelize Python test suites ([ee2f9f2](https://github.com/GabrielCpp/stablemate/commit/ee2f9f27152cbdfca029b661cf761e95a3fd2121))
+* **workhorse:** reap terminated job leaders promptly ([5ef444e](https://github.com/GabrielCpp/stablemate/commit/5ef444e1e30580b878cb452e40addc7b2e84dc3f))
+
+
+### Code Refactoring
+
+* **core:** bump stablemate config schema to v2 ([586d593](https://github.com/GabrielCpp/stablemate/commit/586d593134aad89d14d4f21f748a8c83ae6b4ad8))
+* **core:** move the clock port into shared plumbing ([fa5a4f5](https://github.com/GabrielCpp/stablemate/commit/fa5a4f5a7323f0740ee775c6b6f40c8da8f6e64a))
+* **ostler:** own the durable QA stack, hard-cut workhorse.stack ([6191e5d](https://github.com/GabrielCpp/stablemate/commit/6191e5d5359c1675fd72fda7cf04e51a6e4a5486))
+* rename the top power tiers to max and ultra ([66a017d](https://github.com/GabrielCpp/stablemate/commit/66a017d2ae8d7ba3283cb85e676a8904fa56e831))
+* **workflows:** drop the coder lanes' session_id parameter ([8db22d9](https://github.com/GabrielCpp/stablemate/commit/8db22d9c1b168bb13ef1b23dd4e9916a27f6d7c3))
+* **workhorse:** answer the findings basedpyright reports ([9dba9dd](https://github.com/GabrielCpp/stablemate/commit/9dba9ddee8101d5b557f3648b4c37b3ad26d38ce))
+* **workhorse:** inline one-use private helpers ([25c578c](https://github.com/GabrielCpp/stablemate/commit/25c578c1450971bfada8cc5d0a61ecdb96af64f7))
+* **workhorse:** share the control and inbox run-target resolver ([f8026d7](https://github.com/GabrielCpp/stablemate/commit/f8026d754b1d6b7b03e3ba433fd7563c3fd83b35))
+
 ## [2.1.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v2.0.0...workhorse-agent-v2.1.0) (2026-08-14)
 
 
