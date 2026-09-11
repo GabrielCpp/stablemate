@@ -83,7 +83,14 @@ from workhorse_workflows.okf_builder.main.nodes import (
     prepare,
 )
 from workhorse_workflows.okf_builder.shared import paths
-from workhorse_workflows.okf_builder.shared.audit import AuditScope, assess_audit, audit_pass
+from workhorse_workflows.okf_builder.shared.audit import (
+    AuditScope,
+    BehaviorAuditOutcome,
+    UnresolvedItem,
+    assess_audit,
+    audit_pass,
+    audit_rework_count,
+)
 from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book, settle_stale
 from workhorse_workflows.okf_builder.shared.schemas import (
     Adjudication,
@@ -98,6 +105,7 @@ from workhorse_workflows.okf_builder.shared.schemas import (
 from workhorse_workflows.okf_builder.shared.vocabulary import bullet_grammar, check_vocabulary
 from workhorse_workflows.okf_builder.shared.worklist import (
     MAX_TARGET_ATTEMPTS,
+    last_added_counts,
     record,
     select_item,
 )
@@ -120,6 +128,17 @@ MAX_RESCAN_ROUNDS = 6
 #: stubborn repair is the per-target counter; this stays as the coarse backstop it was.
 MAX_STALL_ROUNDS = 3
 
+#: Operator-answered audit gates before the message escalates to a *review* gate.
+#: The cap never auto-commits and never bypasses the operator: it changes the
+#: gate's wording so a long loop is visible, and ``ANSWERED`` resets the counter
+#: to zero for another ``REWORK_LIMIT``-pass allowance. If the audit has looped
+#: ``REWORK_LIMIT`` times on the same packets the operator is asked to engage
+#: deliberately — a workflow bug, an impossible task, or an illformed packet
+#: are the only reasons the same content would keep failing. ``audit_max_passes``
+#: bounds budget-exhausted passes; this bounds operator-driven rework on the
+#: same scope.
+REWORK_LIMIT = 3
+
 
 def _attempts(current_item: dict[str, Any]) -> int:
     try:
@@ -131,6 +150,83 @@ def _attempts(current_item: dict[str, Any]) -> int:
 def investigation_power(current_item: dict[str, Any]) -> str:
     """Escalate an investigation only after its first model attempt failed."""
     return "medium" if _attempts(current_item) > 0 else "low"
+
+
+def _audit_unresolved_to_requeue(
+    items: tuple[UnresolvedItem, ...],
+) -> list[dict[str, Any]]:
+    """Map audit ``UnresolvedItem``s onto the worklist rows the drain will process.
+
+    ``no_source`` becomes ``reground:no-source``; ``model_judgment`` becomes
+    ``behavior-repair``; ``out_of_scope`` and ``validation_error`` are
+    skipped — they ship silently because the audit cannot act on them and a
+    re-run would list the same items forever, gating the run.
+    """
+    rows: list[dict[str, Any]] = []
+    for item in items:
+        if item.kind == "no_source":
+            kind = "reground:no-source"
+        elif item.kind == "model_judgment":
+            kind = "behavior-repair"
+        else:
+            continue
+        rows.append({
+            "kind": kind,
+            "target": item.id,
+            "context": item.explanation,
+            "packet_digest": item.packet_digest,
+            "requeue": True,
+        })
+    return rows
+
+
+def _audit_gate_message(
+    result: BehaviorAuditOutcome, *, rework: int,
+    queued: int, counts: dict[str, int], blocked: list[dict[str, Any]],
+    worklist_path: str,
+) -> str:
+    """The audit gate body. Counts and worklist path, never per-item enumeration.
+
+    The operator looks in the worklist itself for what was added; the gate
+    body is precise about *how many* of each kind the pass added and where
+    they live. At ``rework >= REWORK_LIMIT`` the body escalates to a review
+    message — same shape, plus the rework count and a clear "ANSWERED to
+    reset the counter and retry" instruction. The cap never auto-commits.
+    """
+    is_review = rework >= REWORK_LIMIT
+    lines: list[str] = []
+    if is_review:
+        lines.append(
+            f"okf-builder's behavior audit did not converge after {rework} operator-answered "
+            f"rework passes (cap {REWORK_LIMIT})."
+        )
+    else:
+        lines.append(f"okf-builder could not clear the behavior audit on pass {rework + 1}.")
+    if blocked:
+        names = ", ".join(
+            f"{b.get('target', '?')} ({b.get('kind', '?')})" for b in blocked
+        )
+        lines.append(
+            f"{len(blocked)} row(s) at MAX_TARGET_ATTEMPTS={MAX_TARGET_ATTEMPTS} and cannot be re-queued: {names}"
+        )
+    elif queued:
+        lines.append(f"{queued} row(s) queued at the bottom of {worklist_path}:")
+        for kind, count in sorted(counts.items()):
+            lines.append(f"  {count} {kind}")
+    if is_review:
+        lines.append(
+            f"\nANSWERED to reset the rework counter and retry the audit with a fresh "
+            f"{REWORK_LIMIT}-pass allowance; the worklist above names the rows. The audit "
+            f"never auto-commits — a long loop is impossible, illformed, or symptomatic "
+            f"of a workflow bug, and the operator decides the next move."
+        )
+    else:
+        lines.append(
+            f"\nOpen {worklist_path} to see which targets are waiting. "
+            f"Resolve the underlying source or book; do not invent or remove claims to pass."
+        )
+    lines.append(f"\nReport: {result.report_path}")
+    return "\n".join(lines)
 
 
 def repair_power(current_item: dict[str, Any], item_context: str) -> str:
@@ -1063,7 +1159,7 @@ class OkfBuilder(Workflow):
             refuels=refuels,
         ).because("real gaps queued")
 
-    def semantic_audit(self) -> Continue | Await:
+    def semantic_audit(self, rework: int = 0) -> Continue | Await:
         """Audit current source and claims, then queue coherent file/node repairs.
 
         Each pass spends at most `audit_turn_budget` reviewer turns. A pass that ends on
@@ -1071,8 +1167,22 @@ class OkfBuilder(Workflow):
         `audit_max_passes`; past that the audit ships partial, with the unaudited packets
         in the receipt. A contradicted or missing verdict is a repair either way, and a
         repair blocks the commit until the drain has closed it.
+
+        ``rework`` counts operator-answered gates for this run, per-run (the file
+        ``<run_dir>/behavior-audit/rework`` is the canonical store, the kwarg is
+        the resume parity handle). When ``rework`` reaches ``REWORK_LIMIT`` the gate
+        body escalates to a *review* message that names the rework count and the
+        worklist path — the operator can still ``ANSWERED`` to reset the counter
+        and try again, but the message makes the loop visible. The cap never
+        auto-commits and never bypasses: a workflow that loops on the same content
+        is either impossible, illformed, or buggy, and the operator is the one
+        who decides what to do next.
         """
         passes = self.call(audit_pass, str(self.run_dir), True)
+        # Increment the operator-answered-gate counter BEFORE the handoff so a
+        # ``Done`` from the audit that lands on a gate this same body opens has
+        # already moved the counter — the resume target reads the file next.
+        self.call(audit_rework_count, str(self.run_dir), False)
         result = self.handoff(
             Audit, docs_path=self.ctx.repo_root, source_path=self.ctx.source_root,
             service=self.service, artifact_dir=str(self.run_dir), turn_budget=self.audit_turn_budget,
@@ -1090,6 +1200,33 @@ class OkfBuilder(Workflow):
                     self.retry_blocked,
                 ).because("behavior repair attempts exhausted: operator gate")
             return Continue(recorded, self.select).because("behavior gaps queued by source file or book node")
+        # Queue the audit's blocking-unresolved items onto the worklist before
+        # deciding the gate: a ``no_source`` claim becomes a ``reground:no-source``
+        # row the drain picks up; a ``model_judgment`` verdict becomes a
+        # ``behavior-repair`` row. ``out_of_scope`` and ``validation_error`` items
+        # ship silently — the audit cannot change them and re-running would
+        # list the same items every pass, gating forever. ``last_added_counts``
+        # tells the gate body exactly how many of each kind this pass added, so
+        # the operator reads the worklist to see the rows.
+        requeue = _audit_unresolved_to_requeue(result.unresolved)
+        if requeue:
+            recorded = self.call(record, self.ctx.worklist_path, None, requeue)
+            counts = last_added_counts(self.ctx.worklist_path, recorded.added)
+            blocked = [b for b in recorded.blocked
+                       if b.get("kind") in {"behavior-repair", "reground:no-source"}]
+            if blocked:
+                return Await(
+                    paths.operator_context_path(Path(self.ctx.repo_root), self.service, self.ctx.scope_id),
+                    _audit_gate_message(
+                        result=result, rework=rework, queued=recorded.added,
+                        counts=counts, blocked=blocked,
+                        worklist_path=str(self.ctx.worklist_path),
+                    ),
+                    self.semantic_audit,
+                    rework=rework + 1,
+                ).because("unresolved rows exhausted attempts: operator gate")
+            return Continue(recorded, self.select).because(
+                "unresolved behavior items queued at the bottom of the worklist")
         if result.clear_except_unaudited:
             if passes < self.audit_max_passes:
                 return Continue(result, self.semantic_audit).because("turn budget spent: next pass")
@@ -1097,13 +1234,15 @@ class OkfBuilder(Workflow):
                 return Continue(result, self.walkthrough).because("audit partial by budget: walkthrough requested")
             return Continue(result, self.commit, walked=WebApp()).because(
                 "audit partial by budget at the pass cap: commit with unaudited list")
-        if result.unresolved or result.status != "assessed":
+        if result.blocking_unresolved or result.status != "assessed":
             return Await(
                 paths.operator_context_path(Path(self.ctx.repo_root), self.service, self.ctx.scope_id),
-                f"Behavior audit incomplete: {result.report_path}\n"
-                + "\n".join(result.unresolved)
-                + "\nResolve the evidence or scope uncertainty; do not invent or remove claims to pass.",
+                _audit_gate_message(
+                    result=result, rework=rework, queued=0, counts={}, blocked=[],
+                    worklist_path=str(self.ctx.worklist_path),
+                ),
                 self.semantic_audit,
+                rework=rework + 1,
             ).because("unresolved behavior or incomplete scope: operator gate")
         if self.runtime_walkthrough:
             return Continue(result, self.walkthrough).because("audit clear: explicit runtime walkthrough requested")
@@ -1150,4 +1289,4 @@ class OkfBuilder(Workflow):
 
 
 
-__all__ = ["MAX_RESCAN_ROUNDS", "MAX_STALL_ROUNDS", "OkfBuilder"]
+__all__ = ["MAX_RESCAN_ROUNDS", "MAX_STALL_ROUNDS", "REWORK_LIMIT", "OkfBuilder"]

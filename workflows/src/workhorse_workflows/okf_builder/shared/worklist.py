@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -388,9 +389,34 @@ def record(
     )
 
 
+def last_added_counts(worklist_path: Path, count: int) -> dict[str, int]:
+    """Kind breakdown of the last ``count`` items appended to *worklist_path*.
+
+    ``record`` writes ``discovered`` items to the end of the worklist; this
+    helper reads that tail and returns a ``{kind: n}`` summary. The audit's
+    gate body uses it to say "5 behavior-repair, 2 reground:no-source at the
+    bottom of <worklist>" without enumerating each row — the operator opens
+    the worklist to see what was queued.
+
+    Reading is the worklist's own JSON; no separate state. ``count`` is the
+    number returned by ``Recorded.added`` from the ``record`` call that just
+    ran, so this helper reads exactly the rows that call appended.
+    """
+    if count <= 0:
+        return {}
+    try:
+        data = json.loads(Path(worklist_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    items = data.get("items", [])
+    recent = items[-count:] if count <= len(items) else items
+    return dict(Counter(str(item.get("kind", "")) for item in recent))
+
+
 __all__ = [
     "MAX_TARGET_ATTEMPTS",
     "book_has_docs",
+    "last_added_counts",
     "load_worklist",
     "record",
     "repair_keys",

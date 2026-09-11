@@ -15,8 +15,9 @@ from workhorse.pyflow import (
 from workhorse_workflows.okf_builder.shared import audit as audit_nodes
 from workhorse_workflows.okf_builder.shared.audit import (
     AuditScope, BehaviorAuditOutcome, IncompleteVerdicts, ReviewContractChanged,
-    assess_audit, load_repair, prepare_audit, record_audit_budget_stop,
-    record_audit_error, record_audit_verdicts, stage_repair,
+    UnresolvedItem, assess_audit, load_repair, prepare_audit,
+    record_audit_budget_stop, record_audit_error, record_audit_verdicts,
+    stage_repair,
 )
 
 #: Consecutive transient CLI failures (an opencode provider blip that prevents the
@@ -148,9 +149,15 @@ class Audit(Workflow):
             )
         except (ValueError, OSError) as exc:
             outcome = BehaviorAuditOutcome(
-                schema_version=2, status="invalid",
+                schema_version=3, status="invalid",
                 report_path=str(report_path), scope_digest="", scope=scope,
-                error=str(exc), unresolved=("Evidence preparation failed",),
+                error=str(exc),
+                unresolved=(UnresolvedItem(
+                    id="evidence-preparation",
+                    kind="out_of_scope",
+                    explanation=str(exc),
+                    packet_digest="",
+                ),),
             )
             report_path.write_text(outcome.model_dump_json(indent=2), encoding="utf-8")
             return AuditSetup(
@@ -243,10 +250,15 @@ class Audit(Workflow):
                     report_path=str(report_path),
                     scope_digest=work.outcome.scope_digest, scope=setup.scope,
                     error=f"opencode catalog unreachable at audit start: {exc}",
-                    unresolved=(
-                        "Agent backend unreachable; resume once "
-                        "https://models.dev/api.json responds.",
-                    ),
+                    unresolved=(UnresolvedItem(
+                        id="models-dev-catalog",
+                        kind="out_of_scope",
+                        explanation=(
+                            "Agent backend unreachable; resume once "
+                            "https://models.dev/api.json responds."
+                        ),
+                        packet_digest="",
+                    ),),
                 )
                 report_path.write_text(
                     outcome.model_dump_json(indent=2), encoding="utf-8",

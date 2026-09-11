@@ -23,6 +23,49 @@ from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
 
 
+#: Kinds an audit can leave unresolved. Each carries an implicit resolution path
+#: so the gate does not have to make the call per item.
+#:
+#: - ``out_of_scope``: source files the inventory cannot extract (markdown, yaml,
+#:   build artifacts). Shipped silently; the audit's *job* is bounded to what the
+#:   extractor covers.
+#: - ``no_source``: a packet had no source candidates to verify against — the
+#:   packet is ungrounded book-only, or the scope yielded no candidates. The
+#:   drain's regrounding path is the right place to find source.
+#: - ``model_judgment``: a grounded packet where the reviewer said unresolved.
+#:   Genuine audit concern; goes to the drain as a behavior-repair so a turn
+#:   can act on it, gates the operator only if the worklist already blocked it.
+#: - ``validation_error``: a reply the deterministic validator rejected (hash
+#:   typo, duplicate id, foreign id). Already retry-budgeted inside the audit
+#:   pass — listed here for the report, not as an open item.
+UnresolvedKind = Literal["out_of_scope", "no_source", "model_judgment", "validation_error"]
+#: How the audit flow disposes of an ``UnresolvedItem``. ``ship`` items never
+#: gate the run; ``queue`` items are written to the worklist and may gate if
+#: the worklist already exhausted attempts on the same target; ``retry`` items
+#: are handled inside the audit pass (the per-packet attempts counter) and
+#: appear here only for the report.
+Resolution = Literal["ship", "queue", "retry"]
+
+
+class UnresolvedItem(BaseModel):
+    """One item the audit could not clear, classified so the gate does not need to.
+
+    ``id`` is the candidate or claim id when the reviewer named one, the file
+    path when the inventory rejected one, or the packet digest when the scope
+    yielded nothing. ``packet_digest`` ties items that arose from the same
+    packet together, so a reader of the report can follow them back to the
+    verdict that produced them.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    kind: UnresolvedKind
+    explanation: str
+    packet_digest: str = ""
+    resolution: Resolution = "ship"
+
+
 AUDIT_PROMPT = Path(__file__).resolve().parents[1] / "audit/prompts/behavior-audit.md"
 
 
@@ -93,8 +136,11 @@ class AuditRepair(BaseModel):
 
 
 class BehaviorAuditOutcome(BaseModel):
-    # Unversioned historical reports have no observed review contract.
-    schema_version: Literal[1, 2] = 1
+    # v1 and v2: unresolved is a tuple of free-form strings.
+    # v3: unresolved is a tuple of ``UnresolvedItem`` with kind + resolution.
+    # A v2 report loads as v3 with ``id``/``explanation`` parsed from the
+    # string; v1 reports still load because the field default is empty.
+    schema_version: Literal[1, 2, 3] = 1
     review_contract: ReviewContract | None = None
     policy_digest: str = ""
     status: Literal["assessed", "partial", "invalid"]
@@ -110,7 +156,9 @@ class BehaviorAuditOutcome(BaseModel):
     selected_claims: int = 0
     reports: tuple[AuditReport, ...] = ()
     repairs: tuple[AuditRepair, ...] = ()
-    unresolved: tuple[str, ...] = ()
+    unresolved: tuple[UnresolvedItem, ...] = Field(
+        default=(), description="Items the audit could not clear, classified by kind",
+    )
     undocumented_files: tuple[str, ...] = Field(
         default=(), description="Source files with exported symbols that no claim cites; queued as repairs")
     unaudited_packets: tuple[str, ...] = Field(
@@ -120,17 +168,44 @@ class BehaviorAuditOutcome(BaseModel):
         default=0, description="Packets reduced to the items the index did not remember before dispatch")
     limitations: tuple[str, ...] = ()
     error: str = ""
+    #: Audit passes opened for this run. ``audit_pass(advance=True)`` on the
+    #: last completed pass; the run counter lives at
+    #: ``<run_dir>/behavior-audit/passes``.
+    audit_pass_count: int = 0
+    #: Operator-answered audit gates for this run. Reset to 0 on a fresh drive;
+    #: carried in a state kwarg on ``semantic_audit`` so resume reads it back.
+    audit_rework_count: int = 0
+
+    @property
+    def blocking_unresolved(self) -> tuple[UnresolvedItem, ...]:
+        """Items that still need operator attention after the audit pass.
+
+        ``out_of_scope`` and ``validation_error`` items ship silently — the
+        audit cannot change them and the next pass would either retry the same
+        ``validation_error`` or re-list the same ``out_of_scope`` files.
+        ``no_source`` and ``model_judgment`` items belong to the drain, not
+        the audit, but the gate fires when the worklist already exhausted
+        attempts on the same target.
+        """
+        return tuple(item for item in self.unresolved
+                     if item.kind in {"no_source", "model_judgment"})
 
     @property
     def clear_except_unaudited(self) -> bool:
         """Nothing blocks a commit but packets no reviewer has read yet.
 
-        This is the shape a turn budget leaves behind: no repair, no unresolved verdict,
-        no omitted packet, only receipts still owed. The pass cap in the main flow decides
-        whether that ships; the outcome only says that it *could*.
+        This is the shape a turn budget leaves behind: no repair, no blocking
+        unresolved verdict, no omitted packet, only receipts still owed. The
+        pass cap in the main flow decides whether that ships; the outcome
+        only says that it *could*.
+
+        ``out_of_scope`` and ``validation_error`` items in ``unresolved`` do
+        not block — they are informational and re-appear every pass, so
+        letting them gate would loop the audit forever.
         """
         return (self.status == "partial" and bool(self.unaudited_packets)
-                and not self.repairs and not self.unresolved and not self.omitted_packets)
+                and not self.repairs and not self.blocking_unresolved
+                and not self.omitted_packets)
 
 
 def packet_label(packet: AuditPacket) -> str:
@@ -309,9 +384,15 @@ def assess_audit(
             prepared = prepare_audit(logger, scope, run_dir, prompt_path)
     except (ValueError, OSError) as exc:
         outcome = BehaviorAuditOutcome(
-            schema_version=2,
+            schema_version=3,
             status="invalid", report_path=str(report_path), scope_digest="", scope=scope,
-            error=str(exc), unresolved=("Evidence preparation failed",),
+            error=str(exc),
+            unresolved=(UnresolvedItem(
+                id="evidence-preparation",
+                kind="out_of_scope",
+                explanation=str(exc),
+                packet_digest="",
+            ),),
         )
         report_path.write_text(outcome.model_dump_json(indent=2), encoding="utf-8")
         return AuditWork(outcome=outcome)
@@ -321,10 +402,26 @@ def assess_audit(
     selected = prepared.packets[:scope.max_packets]
     pending: list[AuditPacket] = []
     reports: list[AuditReport] = []
-    unresolved = [f"{file.path}: {file.status}: {file.message}"
-                  for file in prepared.inventory.files if file.status != "parsed"]
+    # The audit's open items, classified so the gate does not need to read each
+    # string. ``out_of_scope`` and ``validation_error`` items ship silently
+    # (resolution="ship" / "retry"); ``no_source`` and ``model_judgment`` items
+    # are the work the drain still owes.
+    unresolved: list[UnresolvedItem] = [
+        UnresolvedItem(
+            id=file.path,
+            kind="out_of_scope",
+            explanation=f"{file.status}: {file.message}",
+            packet_digest="",
+        )
+        for file in prepared.inventory.files if file.status != "parsed"
+    ]
     if not prepared.inventory.files or not prepared.selected_candidates:
-        unresolved.append("No extractable behavior candidates in the selected source scope")
+        unresolved.append(UnresolvedItem(
+            id="scope",
+            kind="no_source",
+            explanation="No extractable behavior candidates in the selected source scope",
+            packet_digest="",
+        ))
     grouped: dict[str, list[str]] = defaultdict(list)
     memo = verdict_memo(scope, contract)
     memo_hits = memo_partial = 0
@@ -344,9 +441,21 @@ def assess_audit(
         (packet_dir / "report.json").write_text(report.model_dump_json(indent=2), encoding="utf-8")
         candidates = {candidate.id: candidate for candidate in packet.candidates}
         claims = {claim.id: claim for claim in packet.claims}
+        # A reviewer that said unresolved on an ungrounded packet is right —
+        # there is no source to verify against. The drain's regrounding path
+        # is the right place to find source; the audit is not. Only a
+        # reviewer that saw source and still said unresolved is a model
+        # judgment worth queueing as behavior-repair.
+        grounded = bool(packet.candidates)
         for candidate in report.verdicts.candidates:
             if candidate.status == "unresolved":
-                unresolved.append(f"{candidate.id}: {candidate.explanation}")
+                kind = "model_judgment" if grounded else "no_source"
+                unresolved.append(UnresolvedItem(
+                    id=candidate.id,
+                    kind=kind,
+                    explanation=candidate.explanation,
+                    packet_digest=packet.digest,
+                ))
             elif candidate.status == "missing":
                 evidence = candidates[candidate.id]
                 grouped[evidence.path].append(
@@ -355,7 +464,13 @@ def assess_audit(
                 )
         for claim in report.verdicts.claims:
             if claim.status == "unresolved":
-                unresolved.append(f"{claim.id}: {claim.explanation}")
+                kind = "model_judgment" if grounded else "no_source"
+                unresolved.append(UnresolvedItem(
+                    id=claim.id,
+                    kind=kind,
+                    explanation=claim.explanation,
+                    packet_digest=packet.digest,
+                ))
             elif claim.status in {"partial", "contradicted"}:
                 evidence_text = "\n".join(candidates[key].snippet for key in claim.candidate_ids)
                 grouped[claims[claim.id].path].append(
@@ -378,7 +493,16 @@ def assess_audit(
         batch: list[str] = []
         for finding in findings:
             if len(finding) > scope.packet_max_chars:
-                unresolved.append(f"{target}: a repair finding exceeds the context budget; inspect the packet report")
+                # A repair finding that does not fit a packet cannot be
+                # queued — the gate asks the operator to inspect by hand.
+                # Validation-error semantics: the audit could not act on its
+                # own, so the row is informational, not blocking.
+                unresolved.append(UnresolvedItem(
+                    id=target,
+                    kind="validation_error",
+                    explanation="a repair finding exceeds the context budget; inspect the packet report",
+                    packet_digest="",
+                ))
                 continue
             if batch and (len(batch) >= 20 or len("\n\n".join([*batch, finding])) > scope.packet_max_chars):
                 batches.append("\n\n".join(batch))
@@ -390,9 +514,15 @@ def assess_audit(
             target=target if len(batches) == 1 else f"{target}#behavior-{number}", context=context,
         ) for number, context in enumerate(batches, 1))
     omitted = len(prepared.packets) - len(selected)
-    partial = bool(pending or omitted or unresolved)
+    # ``out_of_scope`` and ``validation_error`` items ship silently — they
+    # would block forever if they gated, because the audit cannot change them
+    # and a re-run lists the same items. The "blocking" subset is what flips
+    # status; the rest of ``unresolved`` is preserved for the report.
+    blocking = [item for item in unresolved
+                if item.kind in {"no_source", "model_judgment"}]
+    partial = bool(pending or omitted or blocking)
     outcome = BehaviorAuditOutcome(
-        schema_version=2, review_contract=contract, policy_digest=contract.digest,
+        schema_version=3, review_contract=contract, policy_digest=contract.digest,
         status="partial" if partial else "assessed", report_path=str(report_path),
         scope_digest=digest, scope=scope, scope_clear=not partial and not grouped,
         total_packets=len(prepared.packets), assessed_packets=len(reports), omitted_packets=omitted,
@@ -407,10 +537,25 @@ def assess_audit(
                       "Model judgments are not semantic proofs or whole-book completeness guarantees.",
                       "Selection limits apply to packets; omitted packets are not assessed."),
     )
+    # Stamp the run-level counters on the report so a reader can see how far
+    # the audit went without re-reading ``<run_dir>/behavior-audit/{passes,rework}``.
+    # The audit already opened its pass (``audit_pass(True)`` in the parent
+    # ``semantic_audit``) before the handoff, so the file carries the
+    # current count. ``rework`` is read-only here; the gate increments it
+    # when the operator answers.
+    counts = assess_audit_call_counts(logger, run_dir)
+    outcome = outcome.model_copy(update={
+        "audit_pass_count": counts["passes"],
+        "audit_rework_count": counts["rework"],
+    })
     report_path.write_text(outcome.model_dump_json(indent=2), encoding="utf-8")
     logger.info("behavior audit: %s, %d/%d packets (%d whole memo hits, %d reduced); report %s",
                 outcome.status, len(reports), len(prepared.packets), memo_hits, memo_partial, report_path)
-    return AuditWork(outcome=outcome, pending=tuple(pending), result_schema=result_schema)
+    return AuditWork(
+        outcome=outcome,
+        pending=tuple(pending),
+        result_schema=result_schema,
+    )
 
 
 #: Verdicts salvaged from a rejected reply, staged beside a reduced packet. They are
@@ -614,6 +759,50 @@ def audit_pass(logger: logging.Logger, run_dir: str, advance: bool) -> int:
         count += 1
         path.write_text(str(count), encoding="utf-8")
         logger.info("behavior audit: pass %d opened", count)
+    return count
+
+
+def assess_audit_call_counts(logger: logging.Logger, run_dir: str) -> dict[str, int]:
+    """Read the per-run audit counters from disk without advancing them.
+
+    ``assess_audit`` runs after ``audit_pass(True)`` has already incremented
+    ``passes`` for this pass; ``semantic_audit`` has already advanced
+    ``rework`` for the gate it just answered. The values on disk at this
+    moment are the ones that belong on the report.
+
+    Helper rather than blueprint node because it only reads — the workflow's
+    canonical count stores are ``audit_pass`` and ``audit_rework_count``.
+    """
+    base = Path(run_dir) / "behavior-audit"
+
+    def _read(name: str) -> int:
+        path = base / name
+        return int(path.read_text(encoding="utf-8") or 0) if path.exists() else 0
+    return {"passes": _read("passes"), "rework": _read("rework")}
+
+
+@blueprint.node(stub=lambda logger, run_dir, advance: 0)
+def audit_rework_count(logger: logging.Logger, run_dir: str, advance: bool) -> int:
+    """How many operator-answered audit gates this run has seen; per-run.
+
+    Distinct from ``audit_pass``: every pass opens a counter, but only
+    operator-answered gates increment this one. The cap on operator-driven
+    rework (``REWORK_LIMIT`` in the main flow) fires when this count reaches
+    the limit; the gate message escalates to a review request but never
+    auto-commits — the operator still has to engage.
+
+    The file is per-run, fresh on every drive: two consecutive okf-builder
+    runs start at zero. A reload reads the counter off the file via this
+    node, and ``semantic_audit``'s state kwarg carries the same value so
+    resume parity is mechanical.
+    """
+    path = Path(run_dir) / "behavior-audit" / "rework"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    count = int(path.read_text(encoding="utf-8") or 0) if path.exists() else 0
+    if advance:
+        count += 1
+        path.write_text(str(count), encoding="utf-8")
+        logger.info("behavior audit: operator-answered gate %d", count)
     return count
 
 
