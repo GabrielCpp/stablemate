@@ -1,8 +1,8 @@
 {
-  "workhorse": "3.0.0",
-  "workflows": "2.0.0",
+  "workhorse": "3.0.1",
+  "workflows": "2.0.1",
   "farrier": "3.0.0",
-  "ostler": "2.0.0",
-  "groom": "1.2.0",
+  "ostler": "2.0.1",
+  "groom": "1.2.1",
   "saddlebag": "1.1.0"
 }

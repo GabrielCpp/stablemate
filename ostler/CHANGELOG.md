@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/GabrielCpp/stablemate/compare/ostler-v2.0.0...ostler-v2.0.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **ostler:** reap backgrounded daemons when the session closes ([6399ec6](https://github.com/GabrielCpp/stablemate/commit/6399ec6278b21210b3d4c04839be1572565e5afc))
+
 ## [2.0.0](https://github.com/GabrielCpp/stablemate/compare/ostler-v1.1.0...ostler-v2.0.0) (2026-09-11)
 
 

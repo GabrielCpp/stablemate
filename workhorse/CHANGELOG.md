@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.0.1](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v3.0.0...workhorse-agent-v3.0.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **workhorse:** close the streaming supervisor's stdout pipe ([6772e49](https://github.com/GabrielCpp/stablemate/commit/6772e491aea2f74276e7917ebf9d39afb87709f6))
+* **workhorse:** reap the detached supervisor when its job ends ([a00c825](https://github.com/GabrielCpp/stablemate/commit/a00c82542faff4f0548c631fb3d499cff8f06ce6))
+
 ## [3.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v2.1.0...workhorse-agent-v3.0.0) (2026-09-11)
 
 

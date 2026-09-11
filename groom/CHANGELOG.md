@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/GabrielCpp/stablemate/compare/groom-v1.2.0...groom-v1.2.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **groom:** drop litestar's inferred-style query/path parameters ([dfd0ec1](https://github.com/GabrielCpp/stablemate/commit/dfd0ec1f1c644601aa2f31b3d1d6ad845e182e42))
+
 ## [1.2.0](https://github.com/GabrielCpp/stablemate/compare/groom-v1.1.0...groom-v1.2.0) (2026-09-11)
 
 
