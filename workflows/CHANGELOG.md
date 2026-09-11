@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v2.0.0...workhorse-workflows-v2.0.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **workflows:** cap workhorse-agent and ostler at the 3.x/2.x majors ([763ef79](https://github.com/GabrielCpp/stablemate/commit/763ef79b96350f0380b552baa13317d78d3c203b))
+
 ## [2.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v1.1.0...workhorse-workflows-v2.0.0) (2026-09-11)
 
 
