@@ -6,12 +6,9 @@ libtree-sitter C source between v0.25.10 and v0.27.0 showed no version differenc
 all of them segfault the same way. The bug is in py-tree-sitter 0.26.0's Python
 binding, not in libtree-sitter.
 
-The bisect the user asked for was on libtree-sitter, in
-``/mnt/data/workspace-other/tree-sitter``. We did it, the answer was "the C
-library is not the cause." The fix in ostler/pyproject.toml
-(``tree-sitter>=0.25,<0.26``) prevents the bug by pinning py-tree-sitter to a
-version that does not have it. This test asserts that pin is in place and that
-the in-process reproduction does not crash.
+The fix in ostler/pyproject.toml (``tree-sitter>=0.25,<0.26``) prevents the bug by
+pinning py-tree-sitter to a version that does not have it. This test asserts that
+pin is in place and that the in-process reproduction does not crash.
 
 If a future release of py-tree-sitter (>=0.27) fixes the binding bug, this test
 should be updated to widen the upper bound. The bd8d0fd1 history line in the
@@ -24,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-OSTLER_PYPROJECT = Path("/mnt/data/workspace/stablemate/ostler/pyproject.toml")
+OSTLER_PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
 SOURCE_ROOT = Path("/mnt/data/workspace/example/api")
 
 
