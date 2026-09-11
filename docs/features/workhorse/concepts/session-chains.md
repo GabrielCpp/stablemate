@@ -10,6 +10,8 @@ exception: its key is sanitized into a file under `<run-dir>/.sessions/`, and la
 the session id stored there. The chain key is not itself a backend session id.
 
 - code: `workhorse/workhorse/sessions.py`
+- tests: `workhorse/tests/test_agent_recovery.py::test_new_node_starts_clean_dropping_prior_session`,
+  `workhorse/tests/test_agent_recovery.py::test_interrupted_node_keeps_session_for_resume`
 
 ### slug
 - sig: `slug(key: str) -> str`

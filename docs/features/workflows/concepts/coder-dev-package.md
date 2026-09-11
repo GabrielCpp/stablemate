@@ -17,6 +17,16 @@ resolver a bounded repair budget; exhausted repairs or human mode escalate to an
 
 - code: `workflows/src/workhorse_workflows/coder/dev/flow.py`
 - code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev`
-- tests: `workflows/tests/coder/test_dev.py`
+- code: `workflows/tests/coder/dev/test_flow.py::docs`
+- code: `workflows/tests/coder/dev/test_flow.py::workspace`
+- tests: `workflows/tests/coder/dev/test_flow.py`
 - detail: [coder dev nodes](coder-dev-nodes.md)
+
+The dev package operates against a docs repository carrying one epic with its `## Stories`
+listing and one authored story, and against a workspace file naming the code repositories the
+plan dispatches into. The `docs` and `workspace` test fixtures stand those inputs up — `docs`
+builds the docs repo, `workspace` builds two real git repositories with a checked-in
+`.code-workspace` file carrying relative paths exactly as a project ships one — so the gates the
+flow describes run against the same artifacts the YAML engine drove against, with the same files
+on disk afterwards.
 

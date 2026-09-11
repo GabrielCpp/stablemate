@@ -24,5 +24,6 @@ wants the second. Neither is a stand-in for the other, and no rule chooses betwe
 
 - code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::assess_audit`
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.commit`
-- code: `workflows/src/workhorse_workflows/okf_builder/audit/flow.py::Audit.start`
+- rule: choose `Audit.start` to run a turn-budgeted standalone audit pass, and `OkfBuilder.commit` to gate the whole-book builder flow on a fresh audit receipt — neither is preferred or deprecated; the choice is by context, not by rank
+- detail: [OKF-builder audit module](okf-builder-audit-module.md)
 

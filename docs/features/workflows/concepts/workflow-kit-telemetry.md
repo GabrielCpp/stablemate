@@ -76,3 +76,18 @@ between a pass that changed nothing and one that closed findings while opening r
 - tests: `workflows/tests/coder/test_telemetry.py::test_progress_verdict_names_what_a_pass_bought`
 - tests: `workflows/tests/coder/test_telemetry.py::test_a_pass_that_closed_two_and_opened_two_is_not_a_stall`
 - tests: `workflows/tests/coder/test_telemetry.py::test_an_empty_baseline_is_a_first_pass_not_a_reduction`
+
+### counter_labels reach telemetry across a rework loop
+
+The unit tests above pin the shaping rules; the integration test that keeps them honest is
+`test_labels_reach_telemetry_across_a_rework_loop`, which drives a `Workflow` subclass with a
+single-budget `state_labels` and a three-pass `rework` loop through the real driver with a
+recording telemetry host. The host observes one `set_labels` call per transition, each stamped
+with the counter value current at the moment the span opened — so the only way a counter label
+can be reported on a span is for the driver to read `state_labels` and forward the result
+through `otel.set_labels` at every transition. Without the integration test, a future refactor
+could disconnect the shaping helpers from span emission and every label would still pass its
+unit test.
+
+- detail: [counter_labels](#counter_labels)
+- tests: `workflows/tests/coder/test_telemetry.py::test_labels_reach_telemetry_across_a_rework_loop`

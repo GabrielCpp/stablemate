@@ -13,6 +13,8 @@ the same run-level allowance by calling one another.
 - code: `workhorse/workhorse/runner/waits.py::recovery_wait_scope`
 - code: `workhorse/workhorse/runner/waits.py::active_recovery_wait_budget`
 - code: `workhorse/workhorse/runner/waits.py::RecoveryWaitBudgetExceeded`
+- tests: `workhorse/tests/test_agent_recovery.py::test_retry_wait_budget_is_shared_across_output_retries`,
+  `workhorse/tests/test_agent_recovery.py::test_reframe_wait_budget_is_cumulative_for_the_node`
 - detail: [AgentRunner.run](run-agent.md)
 - detail: [Recovery wait budget documentation](recovery-wait-budget-documentation.md)
 

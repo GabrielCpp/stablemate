@@ -81,6 +81,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: json_path(path="$.required", equals=false)
 - does: unions distinct `layers` and `services` from every covered seed in source order
 - verify: json_path(path="$.layers", matches=".+")
+- tests: `workflows/tests/author/test_mockup_gate.py::test_the_gate_is_the_union_of_the_covered_seeds_layers`
 - does: requires visual design when any covered frontend seed has `design: required`
 - verify: json_path(path="$.evidence", matches="required")
 - does: skips visual design when all covered frontend seeds are `design: preserve` or when the story has no frontend layer

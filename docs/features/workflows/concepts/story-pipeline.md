@@ -107,6 +107,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - code: `workflows/src/workhorse_workflows/coder/shared/story.py::scrub_plan_mutations`
 - detail: [Plan scrub result](../plan-scrub.md)
 - tests: `workflows/tests/coder/shared/test_clean_tree.py::test_the_scrub_reverts_what_the_turn_wrote_and_only_that`
+- tests: `workflows/tests/coder/shared/test_clean_tree.py::test_a_turn_that_kept_to_reading_scrubs_nothing`
 
 ### stamp_specs
 - sig: `stamp_specs(logger, docs_path: str = "", story_slug: str = "", repo_dir: str = "") -> SpecsStamped`

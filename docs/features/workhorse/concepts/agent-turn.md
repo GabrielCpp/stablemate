@@ -28,6 +28,14 @@ The resilience contract is covered by `workhorse/tests/test_agent_cap.py::test_c
 `workhorse/tests/test_agent_cap.py::test_non_timeout_transient_retries_prompt_unchanged`, and
 `workhorse/tests/test_agent_cap.py::test_structured_reset_at_drives_invoke_wait`.
 
+The same transient-retry layer's reload and budget behavior is exercised by
+`workhorse/tests/test_agent_recovery.py::test_a_reload_is_neither_retried_nor_reframed`,
+`workhorse/tests/test_agent_recovery.py::test_the_cut_turn_closes_its_span_and_closes_it_cleanly`,
+`workhorse/tests/test_agent_recovery.py::test_transient_failure_still_reframes_not_aborts`,
+`workhorse/tests/test_agent_recovery.py::test_node_invoke_retries_bounds_transient_retries_below_the_run_default`,
+`workhorse/tests/test_agent_recovery.py::test_node_invoke_retries_unset_keeps_the_run_default`, and
+`workhorse/tests/test_agent_recovery.py::test_a_day_long_outage_is_slept_through_not_failed_through`.
+
 ## Contract
 
 A method on the [`AgentRunner`](run-agent.md#the-runner) dataclass, so the backend, the resilience

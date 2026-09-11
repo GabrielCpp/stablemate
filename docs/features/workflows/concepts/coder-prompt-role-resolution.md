@@ -11,7 +11,18 @@ to the agent. A role is the envelope stem, so the same role may have one envelop
 while one repo or library replacement applies to every copy.
 
 - code: `workflows/src/workhorse_workflows/coder/shared/roles.py::ROLES`
+- code: `workflows/tests/coder/shared/test_roles.py::test_every_prompt_is_a_role_or_declared_mechanics`
 - tests: `workflows/tests/coder/shared/test_roles.py`
+
+The registry is one side of a bidirectional coverage check on every flow's `prompts/` directory:
+every key in `ROLES` is required to have a matching envelope on disk
+(`test_every_role_has_an_envelope_the_workflow_ships`), and every stem on disk is required to be
+either a `ROLES` key or a member of the explicit `MECHANICS` allowlist
+(`{"resolve-operator", "settle-worktree", "fix-merge"}`) — the state-machine-to-self prompts
+named at their callsites by path because no body exists for a layer to swap. Together these
+two tests restore the `pyflow.graph._missing_prompts` check that the role-by-name call hides:
+a literal `self.agent(turn.prompt, …)` is invisible to that scan, so an orphan prompt or a
+missing envelope would now surface as a render error mid-run rather than before the first node.
 
 The resolver checks overrides in this order: a valid repo-relative or absolute file named by the
 repo's `agents.yml` `prompts:` mapping, the first matching `library/prompts/coder/<role>.md` in

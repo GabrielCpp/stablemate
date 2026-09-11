@@ -44,27 +44,27 @@ A second dispatch for the same run is rejected — the blocked check calls `_blo
 
 ## Job structure and dispatch entry points
 
-### attend_gate
+### method: attend_gate
 - sig: `(*, run_id: str, workflow: str, run_dir: str, workspace: str, gate_path: str, question: str, kind: str = ATTENDABLE_KIND, now: float | None = None, spawner: Spawner | None = None) -> AttendJob | None`
-- does:
-  - reject if `kind != "operator"` (machine waits are not attendable)
-  - reject if gate path or question contains a deny pattern
-  - reject if an attendant is already on this run
-  - if all gates clear: create an `AttendJob` with `kind = "gate"`, dispatch it, return the job
-- returns: the job if dispatched, `None` if rejected
+- does: reject if `kind != "operator"` (machine waits are not attendable)
+- does: reject if `gate_path` or `question` contains a deny pattern
+- does: reject if an attendant is already on this run
+- does: dispatch an `AttendJob` with `kind = "gate"` and return it when no rejection fires
+- returns: the job if dispatched, `None` if any reject clause fired
 - code: `groom/groom/attend.py::attend_gate`
-- verify: emitted(event="AttendJob", kind="gate")
+- detail: [attend job](../attend-job.md)
+- verify: emitted(event="AttendJob", count=1)
 
-### attend_death
+### method: attend_death
 - sig: `(*, run_id: str, workflow: str, run_dir: str, workspace: str, now: float | None = None, spawner: Spawner | None = None) -> AttendJob | None`
-- does:
-  - reject if an attendant is already on this run
-  - read the failure handoff from `inbox.jsonl` in run_dir (machine-readable failure_class, node)
-  - create an `AttendJob` with `kind = "death"` and captured failure metadata
-  - dispatch it, return the job
+- does: reject if an attendant is already on this run
+- does: read the failure handoff from `inbox.jsonl` in run_dir, returning machine-readable `failure_class` and `node`
+- does: create an `AttendJob` with `kind = "death"` and the captured failure metadata
+- does: dispatch the job and return it
 - returns: the job if dispatched, `None` if rejected
 - code: `groom/groom/attend.py::attend_death`
-- verify: emitted(event="AttendJob", kind="death")
+- detail: [attend job](../attend-job.md)
+- verify: emitted(event="AttendJob", count=1)
 
 ### read_failure
 - sig: `(run_dir: str) -> tuple[str, str, str]`
@@ -84,6 +84,7 @@ The headless dispatch spawns a Claude agent in the run's workspace and owns its 
   - write a row to the `attend` table with `status = running` before the process runs
   - start a daemon thread that waits on the process, fetches its transcript if it ran, and finishes the row
 - code: `groom/groom/attend.py::spawn_headless`
+- detail: [reason method](../attend-job.md#reason)
 - verify: persists(subject="attend table row", field="status", value="running")
 
 The spawned prompt is the attendant doctrine (shipped in `groom/groom/prompts/attend-gate.md`) followed by the job's `.facts()` summary. The doctrine establishes the rules; the facts give context (run id, workspace, gate body or failure summary, etc.). The stdout is discarded (the session transcript is the record).
@@ -111,10 +112,11 @@ Boot recovery is called from `groom.main` as groom starts up, one time. A row th
 
 ## Queue and release
 
+`queue` walks the module-scoped `_LEDGER.jobs`, orders every `AttendJob` by `created_at` (oldest first), and serialises each through `AttendJob.as_dict()`. In `session` mode the result is the fleet-wide view a session polls; in `headless` mode it backs the in-memory half of the dedupe, while the durable half lives in the `attend` table.
+
 ### queue
 - sig: `() -> list[dict]`
-- does: return every outstanding job from the ledger, oldest first, as dicts
-- returns: ordered list of jobs; in `headless` mode this is always empty
+- returns: ordered list of jobs
 - code: `groom/groom/attend.py::queue`
 
 This endpoint is polled by `GET /api/attend/queue` and rendered in the session pane of the dashboard. A session claims a job by calling the control CLI with the job's `run_id`.

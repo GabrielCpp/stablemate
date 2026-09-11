@@ -25,7 +25,11 @@ session ID afterward.
 
 - code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.compact`
 - code: `workhorse/tests/test_config_harness_env.py::test_compaction_runs_under_the_same_env`
-- tests: `workhorse/tests/test_config_harness_env.py::test_compaction_runs_under_the_same_env`
+- tests: `workhorse/tests/test_config_harness_env.py::test_compaction_runs_under_the_same_env`,
+  `workhorse/tests/test_agent_recovery.py::test_overflow_compacts_then_continues_same_prompt`,
+  `workhorse/tests/test_agent_recovery.py::test_overflow_falls_back_to_reframe_when_compaction_fails`,
+  `workhorse/tests/test_agent_recovery.py::test_overflow_compaction_attempts_are_bounded`,
+  `workhorse/tests/test_agent_recovery.py::test_a_reload_during_compaction_is_not_read_as_compaction_being_unavailable`
 
 ## Contract
 

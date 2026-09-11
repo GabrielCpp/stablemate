@@ -14,6 +14,10 @@ are input values.
 
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
 - code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::resolve_genesis_target`
+- code: `workflows/tests/coder/genesis/test_flow.py::farrier`
+- code: `workflows/tests/coder/genesis/test_flow.py::target`
+- code: `workflows/tests/coder/genesis/test_flow.py::existing`
+- tests: `workflows/tests/coder/genesis/test_flow.py`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_repo_skips_git_init_but_still_builds_the_new_service`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_service_skips_the_skeleton_and_never_re_runs_the_init_command`

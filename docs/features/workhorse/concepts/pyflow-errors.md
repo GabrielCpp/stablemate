@@ -26,14 +26,24 @@ failure remains resumable unless the outer run policy explicitly marks it termin
 
 ### field: AgentTimeout
 - type: `PyflowError`
-- semantics: an agent turn exhausted its recovery ladder after a timeout
+- semantics: an agent turn was stopped at its per-node `timeout` after the recovery ladder finished with it — the ladder's verdict, not a report of the first overrun, so a catching state lands a verdict rather than short-circuiting a retry that would have succeeded
+- semantics: whether anything survives a cut turn depends on what the turn was writing — nothing to salvage and a resumable checkpoint when the deliverable is the reply, a partial draft usually worth more than a fresh start when the deliverable is a file on disk, and only the calling state knows which it has
+- semantics: pair it with `retries=0` so the reframes do not spend the node's whole budget again before this is ever raised
+- semantics: carries `transient` (default `False`) mirroring `BackendInvocationError.transient`, so a state can distinguish a wall-clock stop from a network blip or an unreachable provider — both want a different gate than a deterministic timeout
+- semantics: deliberately NOT a subtype of `AgentTurnFailed` — a cut turn may have left a partial file worth keeping where the other signals "no answer at all"
 - verify: json_path(path="exception.type", equals="AgentTimeout")
+- verify: json_path(path="exception.transient", equals=false)
 - code: `workhorse/workhorse/pyflow/errors.py::AgentTimeout`
 
 ### field: AgentTurnFailed
 - type: `PyflowError`
 - semantics: an agent turn exhausted its recovery ladder without producing an answer, and is deliberately not a supertype of `AgentTimeout`
+- semantics: carries `transient` (default `False`) mirroring `BackendInvocationError.transient`, so a state can distinguish "the CLI blipped" (e.g. a `models.dev` catalog fetch timing out) from a deterministic failure — the two want opposite recovery
+- semantics: carries `overflow` (default `False`) mirroring `BackendInvocationError.overflow`, so a state can recognise when the model spent its output budget on reasoning rather than producing a usable reply — the two want opposite recovery
+- semantics: uncaught, stops the run at a resumable checkpoint rather than stamping a terminal — a provider that gave up is an operational stop, not the workflow's verdict on itself
 - verify: json_path(path="exception.type", equals="AgentTurnFailed")
+- verify: json_path(path="exception.transient", equals=false)
+- verify: json_path(path="exception.overflow", equals=false)
 - code: `workhorse/workhorse/pyflow/errors.py::AgentTurnFailed`
 
 ### field: RunBudgetExceeded

@@ -117,6 +117,7 @@ is spent.
 - returns: the resolver's structured `OperatorResolution`
 - verify: count(subject="development resolver turns", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::resolver_turn`
+- code: `workflows/tests/coder/dev/test_flow.py::test_a_resolver_that_grounds_its_answer_settles_the_block_without_a_person`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_resolver_that_grounds_its_answer_settles_the_block_without_a_person`
 
 ### gate_plan
@@ -127,6 +128,7 @@ is spent.
 - returns: a continuation to plan resolution or an await on story context
 - verify: count(subject="plan-block routing arms", equals=3)
 - code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::gate_plan`
+- code: `workflows/tests/coder/dev/test_flow.py::test_human_operator_modes_wait_on_the_story_context_file`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_human_operator_modes_wait_on_the_story_context_file`
 - tests: `workflows/tests/coder/dev/test_a_service_path_nobody_can_repair_never_gives_up`
 

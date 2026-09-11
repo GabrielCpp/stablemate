@@ -30,6 +30,41 @@ Answer event log is groom's process-local, bounded history of dashboard answer a
 - command coverage: handled answer-command successes and handled answer-command failures are both logged; frames whose command is not exactly `answer`, and exceptions raised before an [answer result](../answer-result.md) is returned, produce no answer log entry.
 - failure behavior: the log has no domain-level validation or recovery path; if the underlying append operation raises, that ordinary runtime error propagates to the caller.
 
+### algorithm-log-initialization
+
+Initializes the answer event log as an empty bounded `deque` of dictionaries with maximum
+length 200, performed exactly once per Python process by the module-level assignment that
+runs when `groom.state` is first imported.
+
+- trigger: first import of `groom.state` — transitively reached by any module that imports
+  it, including `groom.app`, the dashboard websocket command handler, the gate-answering
+  layer, and the CLI entry point — which causes Python to execute the module body top to
+  bottom
+- step: Python evaluates the right-hand side of `LOG: deque[dict] = deque(maxlen=200)`,
+  invoking the standard-library `collections.deque` constructor with the keyword argument
+  `maxlen=200`
+- step: the constructor returns a fresh, empty bounded double-ended queue object holding
+  zero entries with capacity for two hundred entries; entries past the cap will be evicted
+  from the head on the next append
+- step: the assignment binds the queue object to the module-level name `LOG` in
+  `groom.state`, making it reachable by every later first-party caller in the same
+  process — primarily `record_log`, but also any read access to the module attribute
+- result: an empty `deque` instance with capacity 200, owned by `groom.state`, accessible
+  as the module attribute `groom.state.LOG` (also reachable as `state.LOG` inside the
+  package)
+- lifetime: the bound object persists for the lifetime of the Python interpreter process;
+  when the process exits, the object is garbage-collected along with the rest of the
+  module's namespace and no replay or reload path restores it
+- re-import: a subsequent `import groom.state` (or attribute access via an already-loaded
+  reference) does not re-run the assignment — Python's module cache returns the same
+  module object, the existing `LOG` deque is preserved with whatever entries have been
+  appended, and no reset, clear, or rebuild step takes place
+- concurrency: no synchronization primitive participates in initialization; the
+  single-process, single-event-loop assumption guarantees the assignment is observed by
+  every subsequent caller without coordination
+- code: `groom/groom/state.py::LOG`
+- verify: count(subject="LOG entries after a fresh groom.state import", equals=0)
+
 ## Fields
 
 ### field-log-entry
@@ -52,18 +87,12 @@ Answer event log is groom's process-local, bounded history of dashboard answer a
 - abstract: false
 - raises: no domain-specific errors.
 - raises: ordinary container append errors would propagate to the caller.
+- returns: `None` — the method appends the supplied dictionary to the bounded `LOG` deque exactly once and returns no payload; the append's success or failure is observed through ordinary container behaviour, not through a returned value.
+- verify: count(subject="LOG entries after one record_log call", equals=1)
 - verify: json_path(path="exception.type", equals="RuntimeError")
 - code: groom/groom/state.py::record_log
 
-Appends one already-built event dictionary to the process-local answer event log without validating, normalizing, cloning, broadcasting, or persisting it.
-
-#### Inputs
-
-- event: dictionary supplied by the caller; required; default none. For dashboard answer commands the dictionary matches [answer log entry](../answer-log-entry.md), but this layer itself accepts the dictionary as given and does not enforce keys or value types.
-
-#### Return
-
-- value: `None` after the append completes.
+Appends one already-built event dictionary to the process-local answer event log without validating, normalizing, cloning, broadcasting, or persisting it. The parameter is documented in `sig:`; the layer does not enforce keys or value types, so the dictionary is accepted as supplied (for dashboard answer commands it matches [answer log entry](../answer-log-entry.md)).
 
 #### Effects
 
@@ -76,21 +105,3 @@ Appends one already-built event dictionary to the process-local answer event log
 - Does not: validate the event shape, copy or freeze the dictionary, add timestamps, redact answer metadata, read or write gate files, answer containers, render HTML, broadcast dashboard updates, persist logs to disk, or expose the entry to connected clients.
 - Errors: no groom-specific error is caught or translated; a runtime failure from appending to the bounded in-memory sequence propagates as-is.
 - Bottoms out: the layer only calls the bounded deque append operation on `LOG`; it calls no other first-party groom symbol.
-
-## Algorithms
-
-### algorithm-log-initialization
-
-When the groom state module is imported in a process, it constructs `LOG` as an empty bounded
-sequence with a maximum retained length of 200 entries. The resulting log is available to
-first-party callers without opening files, connecting to a database, accepting websocket clients,
-inspecting workflow containers, or rendering dashboard HTML.
-
-### algorithm-answer-attempt-append
-
-The append call has no return payload; its caller remains responsible for client notification,
-dashboard rendering, workflow-state changes, and error handling.
-
-- step: A caller supplies one already-built event dictionary.
-- step: [record answer log entry](#method-record-answer-log-entry) appends that same dictionary object at the newest end of the process-local log.
-- step: If the append makes the bounded sequence exceed 200 entries, the oldest retained entry is evicted by the bounded container.

@@ -49,6 +49,10 @@ no-op when the book has no web surface — and then commits only the service fea
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder`
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::investigation_power`
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::repair_power`
+- tests: `workflows/tests/okf_builder/test_workflow.py::test_repair_power_keeps_a_single_mechanical_first_attempt_low`
+- tests: `workflows/tests/okf_builder/test_workflow.py::test_repair_power_routes_difficult_first_attempts_to_medium`
+- tests: `workflows/tests/okf_builder/test_workflow.py::test_repair_power_climbs_the_ladder_only_after_each_tier_fails`
+- code: `workflows/tests/okf_builder/test_workflow.py::test_repair_power_routes_difficult_first_attempts_to_medium`
 - detail: [OKF-builder workflow composition root](okf-builder-workflow-composition-root.md)
 - detail: [workhorse-okf-builder](../workhorse-okf-builder.md)
 - detail: [source inventory filtering](source-inventory-filter.md)
@@ -71,6 +75,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - does: labels the run with its service and, after selection, the current work item and progress
 - verify: count(subject="OKF-builder dashboard label sets", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.labels`
+- code: `workflows/tests/okf_builder/test_workflow.py::test_the_labels_name_the_service_and_the_item.capture`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_the_labels_name_the_service_and_the_item`
 
 ### start
@@ -132,6 +137,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - does: forwards the agent's discovered items and documentation status to item recording
 - verify: count(subject="OKF-builder investigation results", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.investigate`
+- code: `workflows/tests/okf_builder/test_repair_prompt.py::test_a_known_code_renders_its_own_fragment`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_an_investigation_opens_the_items_it_reveals`
 
 ### record_item
@@ -193,6 +199,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: count(subject="OKF-builder semantic audit dispatches", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.rescan_coverage`
 - tests: `workflows/tests/okf_builder/test_regrounding.py::test_a_symbol_that_changed_under_its_citation_is_queued_not_converged`
+- detail: [Workflow kit worklist builder](workflow-kit-worklist.md)
 
 ### recheck
 
@@ -251,6 +258,8 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: count(subject="completed OKF-builder runs", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.commit`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_a_completed_book_is_committed_with_optional_story_provenance`
+- tests: `workflows/tests/okf_builder/test_workflow.py::test_fully_cited_book_cannot_commit_with_behavior_gaps`
+- tests: `workflows/tests/okf_builder/test_workflow.py::test_legacy_completion_checkpoints_require_a_current_audit`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_budget_partial_audit_ships_after_the_pass_cap`
 
 ## Node Modules

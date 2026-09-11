@@ -21,6 +21,13 @@ test`; this tier blocks that aggregate CI gate.
 - driver: cli
 - surfaces: [OKF-builder workflow composition root](../concepts/okf-builder-workflow-composition-root.md)
 - code: `workflows/Makefile::test`
+- code: `workflows/tests/okf_builder/conftest.py::logger`
+- code: `workflows/tests/okf_builder/conftest.py::repo`
+- code: `workflows/tests/okf_builder/conftest.py::write`
+- code: `workflows/tests/okf_builder/conftest.py::read_json`
+- code: `workflows/tests/okf_builder/conftest.py::booked`
+- code: `workflows/tests/okf_builder/conftest.py::unbooked`
+- code: `workflows/tests/okf_builder/conftest.py::dirty`
 - working-directory: workflows
 - detail: [Workflow unit-test tiers](../concepts/workflow-unit-test-tiers.md)
 

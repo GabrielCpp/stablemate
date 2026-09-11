@@ -20,7 +20,6 @@ the run recipes that force the runbook profile — an undocumented operational s
 coverage unit, making the book incomplete until a `runbook` node claims it.
 
 - code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py`
-- tests: `workflows/tests/okf_builder/test_coverage.py`
 - detail: [OKF-builder main build machine](okf-builder-main-build-machine.md) — `inventory_source` node
 
 ## Methods
@@ -33,6 +32,8 @@ coverage unit, making the book incomplete until a `runbook` node claims it.
 - returns: `False` when the path is readable source that should be inventoried
 - verify: json_path(path="return value", equals=false)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py::skipped`
+- tests: `workflows/tests/okf_builder/test_inventory_skips.py::test_a_test_or_vendored_file_is_not_a_unit`
+- tests: `workflows/tests/okf_builder/test_inventory_skips.py::test_a_source_file_is_a_unit`
 
 The exclusions are service-scoped (read from the builder config) and checked three ways: exact
 match, directory prefix, or glob. Built-in skips include `.git`, `__pycache__`, `node_modules`,

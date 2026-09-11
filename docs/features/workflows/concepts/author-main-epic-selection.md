@@ -79,6 +79,7 @@ resolved back to Ostler's numbered directory name before it is passed to later n
 - returns: returns an `EpicChoice` for the selected epic or the completed-worklist reason
 - verify: count(subject="epic document selection choices", equals=1)
 - code: `workflows/src/workhorse_workflows/author/main/nodes/epics.py::select_epic_document`
+- code: `workflows/tests/author/test_workflow.py::test_roadmap_authoring_selects_only_its_milestone_epics`
 - tests: `workflows/tests/author/test_workflow.py::test_roadmap_authoring_selects_only_its_milestone_epics`
 
 ### select_epic
@@ -90,5 +91,7 @@ resolved back to Ostler's numbered directory name before it is passed to later n
 - returns: returns the selected epic's resolved directory and worklist progress, or the completion reason
 - verify: count(subject="epic selection choices", equals=1)
 - code: `workflows/src/workhorse_workflows/author/main/nodes/epics.py::select_epic`
+- code: `workflows/tests/author/test_workflow.py::test_author_nodes_use_milestones_when_todo_is_absent`
+- code: `workflows/tests/author/test_workflow.py::test_roadmap_authoring_selects_only_its_milestone_epics`
 - tests: `workflows/tests/author/test_workflow.py::test_author_nodes_use_milestones_when_todo_is_absent`
 - tests: `workflows/tests/author/test_workflow.py::test_roadmap_authoring_selects_only_its_milestone_epics`

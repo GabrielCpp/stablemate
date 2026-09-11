@@ -47,10 +47,20 @@ is the single source of recovery flags.
 - code: `workhorse/workhorse/runner/ladder.py::resolved_profile`
 - code: `workhorse/workhorse/runner/ladder.py::switch_profile`
 - tests: `workhorse/tests/test_agent_recovery.py::test_success_on_first_attempt_returns_outputs`,
-  `workhorse/tests/test_agent_recovery.py::test_reframe_count_then_default`,
-  `workhorse/tests/test_agent_recovery.py::test_overflow_compacts_then_continues_same_prompt`,
-  `workhorse/tests/test_agent_recovery.py::test_non_recoverable_backend_error_aborts_without_reframe`,
   `workhorse/tests/test_agent_recovery.py::test_rendered_prompt_is_written_and_only_path_is_printed`,
+  `workhorse/tests/test_agent_recovery.py::test_empty_result_then_reframe_succeeds`,
+  `workhorse/tests/test_agent_recovery.py::test_persistent_failure_raises_instead_of_answering_for_the_node`,
+  `workhorse/tests/test_agent_recovery.py::test_reframe_count_then_stop`,
+  `workhorse/tests/test_agent_recovery.py::test_a_node_can_spend_a_smaller_reframe_budget_than_the_run`,
+  `workhorse/tests/test_agent_recovery.py::test_a_node_without_its_own_budget_still_uses_the_runs`,
+  `workhorse/tests/test_agent_recovery.py::test_a_node_can_spend_a_larger_reframe_budget_than_the_run`,
+  `workhorse/tests/test_agent_recovery.py::test_new_node_starts_clean_dropping_prior_session`,
+  `workhorse/tests/test_agent_recovery.py::test_interrupted_node_keeps_session_for_resume`,
+  `workhorse/tests/test_agent_recovery.py::test_overflow_compacts_then_continues_same_prompt`,
+  `workhorse/tests/test_agent_recovery.py::test_overflow_falls_back_to_reframe_when_compaction_fails`,
+  `workhorse/tests/test_agent_recovery.py::test_overflow_compaction_attempts_are_bounded`,
+  `workhorse/tests/test_agent_recovery.py::test_non_recoverable_backend_error_aborts_without_reframe`,
+  `workhorse/tests/test_agent_recovery.py::test_transient_failure_still_reframes_not_aborts`,
   `workhorse/tests/test_node_timeout.py::test_timeout_defaults_to_1_hour`
 - detail: [ProfileSelection selection guidance](profile-selection-guidance.md)
 
@@ -112,16 +122,19 @@ once rather than moving silently to the machine's top-level models.
 - sig: `switch_profile(runner: AgentRunner | None, name: str) -> dict[str, object]`
 - does: refuse the request when no agent runner exists
 - does: refuse an unknown profile without changing the current selection
-- does: refuse a profile with model or default entries but no mapping for the active backend
-- does: accept a profile with no model entries, because it makes no backend claim
+- does: refuse a profile whose declared `cli` does not match the runner's backend name
+- does: accept a profile with no model entries when its declared `cli` matches the runner's backend name, because the run continues in bare-CLI mode for that backend
 - does: assign the accepted name to the shared profile selection box
 - does: re-stamp the root telemetry attribute with the accepted profile name
+- does: apply in place during a live run without cutting the active turn, because the profile is re-narrowed every turn
+- consistency: switch-profile-return-shape — a refused switch returns `{ok: false, error: <message>}`, never `{ok: true, profile: name, was: ...}`, so a refused switch is not reported on the control channel as one that landed
+- verify: json_path(path="$.ok", equals=false)
 - returns: `{ok: true, profile: name, was: previous_name}` after acceptance
 - returns: `{ok: false, error: message}` after refusal
 - code: `workhorse/workhorse/runner/ladder.py::switch_profile`
 - verify: json_path(path="$.ok", equals=true)
 - verify: json_path(path="$.profile", equals="cheap")
-- tests: `workhorse/tests/test_model_resolution.py::test_a_switch_is_one_assignment_that_the_next_turn_reads`, `workhorse/tests/test_model_resolution.py::test_an_unknown_profile_is_refused_rather_than_applied`, `workhorse/tests/test_model_resolution.py::test_a_profile_that_maps_nothing_for_this_runs_backend_is_refused`, `workhorse/tests/test_model_resolution.py::test_a_profile_carrying_no_models_at_all_is_allowed_through`, `workhorse/tests/test_model_resolution.py::test_a_run_that_drives_no_agent_is_told_so_rather_than_crashing`
+- tests: `workhorse/tests/test_model_resolution.py::test_a_switch_is_one_assignment_that_the_next_turn_reads`, `workhorse/tests/test_model_resolution.py::test_an_unknown_profile_is_refused_rather_than_applied`, `workhorse/tests/test_model_resolution.py::test_a_profile_that_maps_nothing_for_this_runs_backend_is_refused`, `workhorse/tests/test_model_resolution.py::test_a_profile_carrying_no_models_at_all_is_allowed_through`, `workhorse/tests/test_model_resolution.py::test_a_run_that_drives_no_agent_is_told_so_rather_than_crashing`, `workhorse/tests/test_reload_reentry.py::test_a_profile_switch_is_applied_in_place_and_the_run_carries_on`, `workhorse/tests/test_reload_reentry.py::test_a_profile_switch_the_run_refuses_is_reported_as_a_refusal`
 
 ## Contract
 

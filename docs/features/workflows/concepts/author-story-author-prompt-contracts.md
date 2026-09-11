@@ -30,6 +30,17 @@ context.
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md`
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/audit-story.md`
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md`
+- code: `workflows/tests/author/test_prompt_authority.py::test_writer_can_define_in_scope_behavior_without_prior_okf_authority`
+- code: `workflows/tests/author/test_prompt_authority.py::test_writer_separates_build_scope_from_regression_invariants`
+- code: `workflows/tests/author/test_prompt_authority.py::test_writer_records_concise_grounded_technical_notes`
+- code: `workflows/tests/author/test_prompt_authority.py::test_auditor_does_not_demand_prior_citations_for_new_behavior`
+- code: `workflows/tests/author/test_prompt_authority.py::test_auditor_respects_the_bare_minimum_story_boundary`
+- code: `workflows/tests/author/test_prompt_authority.py::test_reworker_makes_in_scope_choices_instead_of_blocking`
+- code: `workflows/tests/author/test_prompt_authority.py::test_mutating_turns_leave_validation_and_delivery_to_author`
+- code: `workflows/tests/author/test_prompt_authority.py::test_mockup_inspection_does_not_leave_screenshot_collateral`
+- code: `workflows/tests/author/test_write_story_prompt.py::test_the_backend_only_story_is_given_something_to_ground_in`
+- code: `workflows/tests/author/test_write_story_prompt.py::test_the_absent_mockup_is_not_a_block`
+- code: `workflows/tests/author/test_write_story_prompt.py::test_the_mockup_arm_survives_for_the_story_that_has_one`
 - tests: `workflows/tests/test_prompts_exist.py::test_the_prompt_file_is_there`
 - tests: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply`
 - tests: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`
@@ -41,8 +52,77 @@ context.
 - tests: `workflows/tests/author/test_prompt_authority.py::test_reworker_makes_in_scope_choices_instead_of_blocking`
 - tests: `workflows/tests/author/test_prompt_authority.py::test_mutating_turns_leave_validation_and_delivery_to_author`
 - tests: `workflows/tests/author/test_prompt_authority.py::test_mockup_inspection_does_not_leave_screenshot_collateral`
+- tests: `workflows/tests/author/test_write_story_prompt.py::test_the_backend_only_story_is_given_something_to_ground_in`
+- tests: `workflows/tests/author/test_write_story_prompt.py::test_the_absent_mockup_is_not_a_block`
+- tests: `workflows/tests/author/test_write_story_prompt.py::test_the_mockup_arm_survives_for_the_story_that_has_one`
 - detail: [author story-author subflow](author-story-author-subflow.md)
 - detail: [workflow prompt static contracts](workflow-prompt-static-contracts.md)
+
+The eight `test_prompt_authority.py` symbols above each pin a specific prompt-authority contract
+that the `story_author` and `epic_edit` envelopes must hold in lockstep across every prompt copy.
+The contracts the tests enforce — over both copies of each envelope — are themselves the behaviour
+each symbol carries:
+
+- `test_writer_can_define_in_scope_behavior_without_prior_okf_authority` asserts that every
+  `write-story.md` copy declares "Acceptance Criteria become the authoritative contract", that
+  "Absence from the existing OKF book is not by itself a reason to block", and that new decisions
+  "must not contradict existing documented behavior".
+- `test_writer_separates_build_scope_from_regression_invariants` asserts every `write-story.md`
+  copy separates the build scope (Acceptance Criteria) from regression invariants
+  (Non-Functional Acceptance Criteria) and that the regression side "does not add implementation
+  scope" while "QA must still prove" each non-functional criterion.
+- `test_writer_records_concise_grounded_technical_notes` asserts every `write-story.md` copy
+  requires Technical Notes grounded by a `path::symbol` citation into "original or prior
+  implementation".
+- `test_auditor_does_not_demand_prior_citations_for_new_behavior` asserts every `audit-story.md`
+  copy refrains from refuting new in-scope behavior "merely because no prior OKF node defines it"
+  and only refutes behavior that "contradicts cited existing behavior".
+- `test_auditor_respects_the_bare_minimum_story_boundary` asserts every `audit-story.md` copy
+  judges only the behavior changed by the story's covered seeds, does not "demand endpoint names,
+  request or response schemas", "does not import every guard, state, interaction, or journey", and
+  treats "existing guards, chrome, states, and flows outside those covered seeds" as out of scope.
+- `test_reworker_makes_in_scope_choices_instead_of_blocking` asserts every `rework-story.md` copy
+  "makes the concrete choice in the Acceptance Criteria" and does "not block merely because the
+  existing OKF book is silent".
+- `test_mutating_turns_leave_validation_and_delivery_to_author` asserts that across ten mutating
+  prompts (`epic_author/write-epic`, `story_split/split-stories`, the four `story_author` prompts,
+  `finalize/resolve-integrity`, `milestone/build-milestone`, `epic_split/split-epics`, and
+  `epic_split/rework-epic-split`) none of them "install dependencies, run repository-wide checks,
+  stage, commit, push, or alter branches/remotes" and that "Author validates and delivers after
+  all authoring turns finish".
+- `test_mockup_inspection_does_not_leave_screenshot_collateral` asserts every `design-mockup.md`
+  copy treats browser inspection as ephemeral, that the prompt "does not save screenshots,
+  evidence, or rendered exports", and that the "story-local `mockup.html` is this turn's only
+  output".
+
+The three `test_write_story_prompt.py` symbols above each pin a prose-drift contract that every
+`write-story.md` copy must hold in lockstep with the parameterization the deterministic author
+gates actually produce. Both `author/main/nodes/stories.py` gates stand down on a backend-only
+story: `check_story_grounding` puts its cite-a-node requirement behind `if okf.graph.ui_nodes:`,
+and `check_mockup_needed` decides from `layers:` on the covered seeds, so a story tagged
+`layers: backend` is rendered with `mockup_path=""`. The prompt must still give such a story
+something to ground the Context in and tell the writer not to block on the missing artifact — a
+stricter pair of instructions that demands an OKF node *or* a mockup, in a repo whose book is not
+built yet, hands the writer two empty arms and parks the round at the operator gate. Prose drift
+is invisible to ruff, ty, and review, so each of the three symbols renders the template with the
+backend-only parameterization the gates produce and asserts the third arm survives in the prose
+the author reads:
+
+- `test_the_backend_only_story_is_given_something_to_ground_in` asserts every `write-story.md`
+  copy renders the instruction "Ground the Context in the epic's seeds this story `covers`" and
+  the phrase "new and undocumented" for a story whose `features_dir` is set but whose book holds
+  no node and whose `mockup_path` is empty. An assertion that passes against the prose this test
+  exists to replace is no assertion, so the check matches the instruction to ground in the seeds
+  rather than the words alone.
+- `test_the_absent_mockup_is_not_a_block` asserts every `write-story.md` copy renders the
+  permission "its absence is not a block" and the explicit instruction "Do not block for the
+  want of a node or a mockup" for the same backend-only parameterization. Mentioning the seeds
+  is not enough — an earlier drift asked the writer to *link* the mockup — so this symbol
+  proves the absence clause survives.
+- `test_the_mockup_arm_survives_for_the_story_that_has_one` asserts every `write-story.md` copy
+  still renders the mockup link arm for a story whose `mockup_path` is supplied: the literal
+  `./mockup.html` path and the phrase "link it from Context as the source of truth". The fix
+  widens the disjunction; this symbol proves the original arm was not replaced.
 
 ## Prompt contracts
 

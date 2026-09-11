@@ -13,7 +13,10 @@ This is the boundary where an `OutputParseError` is either absorbed (retried in-
 to escape to the ladder.
 
 - code: `workhorse/workhorse/runner/ladder.py::AgentRunner._invoke_and_parse`
-- tests: `workhorse/tests/test_agent_recovery.py::test_unparseable_output_reframes_then_defaults`
+- tests: `workhorse/tests/test_agent_recovery.py::test_a_wrong_shaped_reply_is_corrected_in_session_not_fatal`,
+  `workhorse/tests/test_agent_recovery.py::test_a_persistently_wrong_shape_stops_the_run_instead_of_passing_it_on`,
+  `workhorse/tests/test_agent_recovery.py::test_unparseable_output_reframes_then_stops`,
+  `workhorse/tests/test_agent_recovery.py::test_retry_wait_budget_is_shared_across_output_retries`
 
 ## Contract
 

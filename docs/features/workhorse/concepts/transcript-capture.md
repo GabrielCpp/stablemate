@@ -13,8 +13,9 @@ capture failure is deliberately best-effort and never fails the turn.
 - code: `workhorse/workhorse/runner/transcript.py::tee_begin`
 - code: `workhorse/workhorse/runner/transcript.py::bind`
 - code: `workhorse/workhorse/runner/transcript.py::export_session`
-- tests: `workhorse/tests/test_transcript.py::test_the_store_is_preferred_and_the_tee_it_beats_is_dropped`, `workhorse/tests/test_transcript.py::test_a_backend_with_no_store_is_captured_from_the_tee`, `workhorse/tests/test_transcript.py::test_the_next_turn_promotes_a_provisional_tee_after_the_session_settles`, `workhorse/tests/test_transcript.py::test_the_tee_stops_at_the_cap_and_says_so`
+- tests: `workhorse/tests/test_transcript.py::test_the_store_is_preferred_and_the_tee_it_beats_is_dropped`, `workhorse/tests/test_transcript.py::test_a_backend_with_no_store_is_captured_from_the_tee`, `workhorse/tests/test_transcript.py::test_a_backend_export_is_preferred_over_the_stream_tee`, `workhorse/tests/test_transcript.py::test_a_failed_backend_export_preserves_the_stream_tee`, `workhorse/tests/test_transcript.py::test_the_next_turn_promotes_a_provisional_tee_after_the_session_settles`, `workhorse/tests/test_transcript.py::test_opencode_export_uses_the_public_full_session_command`, `workhorse/tests/test_transcript.py::test_opencode_export_rereads_a_partial_successful_snapshot`, `workhorse/tests/test_transcript.py::test_the_tee_stops_at_the_cap_and_says_so`, `workhorse/tests/test_transcript.py::test_the_store_capture_is_also_capped`, `workhorse/tests/test_transcript.py::test_capture_is_off_when_the_run_asked_for_it_to_be`, `workhorse/tests/test_transcript.py::test_a_turn_outside_a_visit_is_not_filed_under_somebody_elses`, `workhorse/tests/test_transcript.py::test_each_lap_of_a_looping_node_is_captured_separately`, `workhorse/tests/test_transcript.py::test_capture_never_faults_the_turn`, `workhorse/tests/test_transcript.py::test_a_session_with_no_recorded_backend_is_found_by_probing_the_stores`
 - detail: [run artifacts](../run-artifacts.md)
+- detail: [agent visit key](visit-key.md)
 
 ## Fields
 
@@ -25,6 +26,7 @@ capture failure is deliberately best-effort and never fails the turn.
 - semantics: identifies whether the persisted capture came from a backend store, public export, or redacted stream
 - verify: json_path(path="$.source", equals="store")
 - code: `workhorse/workhorse/runner/transcript.py::capture`
+- detail: [transcript-capture](transcript-capture.md)
 
 ### max_bytes
 - type: integer
@@ -37,6 +39,46 @@ capture failure is deliberately best-effort and never fails the turn.
 - semantics: truncated captures append a JSON marker with the bytes written
 - verify: json_path(path="$.truncated_marker.bytes", equals=32)
 - code: `workhorse/workhorse/runner/transcript.py::bind`
+
+## Constants
+
+Module-level names that the run record cites directly and that the binding step defaults to.
+Each is fixed at import time — `bind` does not let an operator override the directory names,
+only the byte ceiling.
+
+### field: TRANSCRIPTS_DIR
+- type: string
+- default: `"transcripts"`
+- required: true
+- semantics: the run-dir-relative directory under which every captured turn lands
+- verify: json_path(path="$.capture_path", matches="^.+/transcripts/.+$")
+- semantics: named for what it holds (transcripts, not captures) so the same shell-visible path does not have to be re-invented for every backend the registry grows
+- verify: json_path(path="$.capture_path_basename", equals="transcripts")
+- code: `workhorse/workhorse/runner/transcript.py::TRANSCRIPTS_DIR`
+
+### field: PENDING_DIR
+- type: string
+- default: `".pending"`
+- required: true
+- semantics: the transcripts-dir-relative subdirectory that holds an in-flight tee — a tee whose
+  visit key is known but whose session id is not — at the moment the stream callback writes its
+  first line. The leading dot keeps it out of a casual `ls` while a turn is still running.
+  `capture` renames its single file out of `.pending/` once the CLI names the session id.
+- code: `workhorse/workhorse/runner/transcript.py::PENDING_DIR`
+- verify: json_path(path="$.pending_path_basename", equals=".pending")
+
+### field: DEFAULT_MAX_BYTES
+- type: integer
+- default: `33554432`
+- verify: json_path(path="$.default_max_bytes", equals=33554432)
+- required: true
+- semantics: per-turn byte ceiling applied to every capture when `bind` is called without an
+  override (32 MiB — sized for the pathological turn so a normal one never notices it)
+- verify: json_path(path="$.bind_default_max_bytes", equals=33554432)
+- semantics: a turn that hits the cap is truncated with a JSON marker rather than dropped, so the
+  evidence that does fit is still usable
+- verify: json_path(path="$.truncated", equals=true)
+- code: `workhorse/workhorse/runner/transcript.py::DEFAULT_MAX_BYTES`
 
 ## Methods
 
@@ -169,3 +211,37 @@ capture failure is deliberately best-effort and never fails the turn.
 - returns: `None`
 - verify: json_path(path="$.result", equals="None")
 - code: `workhorse/workhorse/runner/transcript.py::Tee.close`
+
+## Backends
+
+The `_STORES` and `_EXPORTERS` dicts (in `workhorse/workhorse/runner/transcript.py`) are the
+registry the rest of the module walks by backend name. Each entry is keyed by the same string
+`sessions.jsonl` records on the line that names the session — the one `store_files(backend,
+session_id)` and `export_session(backend, session_id)` look up by, and the one
+`probe_stores(session_id)` / `probe_exporters(session_id)` walk declaration-order to find when the
+caller does not know. A backend absent from both registries is not a defect; it means **the tee
+is the source** for every turn it ran.
+
+- **claude** — store. `_claude_store(session_id)` reads
+  `~/.claude/projects/*/<session_id>.jsonl` and, when present, the sibling
+  `<session_id>/` directory of subagent sidechains and tool results. Project slugs are globbed
+  rather than derived from cwd: a tree change between visits would otherwise invalidate a
+  derivation in a way a glob is not, and the CLI's own slug encoding is the thing the resolver
+  has to match.
+  `workhorse/workhorse/runner/transcript.py::_claude_store`
+
+- **codex** — store. `_codex_store(session_id)` reads
+  `~/.codex/sessions/<y>/<m>/<d>/rollout-*-<session_id>.jsonl`, looked up by the date-bucketed
+  pattern the CLI itself uses. No sibling tree: codex's session model is a single rollout file
+  per session.
+  `workhorse/workhorse/runner/transcript.py::_codex_store`
+
+- **opencode** — exporter. `_opencode_export(session_id)` shells out to
+  `opencode export <session_id>`, retries once on a partial valid-JSON response (a completed
+  `opencode run` can briefly expose a partial export while its session is being finalized; the
+  retry is the readiness check, because there is no separate session-settled signal to wait on),
+  and returns the captured JSON bytes. The corresponding store resolver is **deliberately not
+  registered** — OpenCode's internal database is not a stable filesystem contract, so the export
+  is the only contract the module treats as authoritative.
+  `workhorse/workhorse/runner/transcript.py::_opencode_export`
+

@@ -52,6 +52,7 @@ title: Coder QA flow
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_failing_run_is_fixed_one_scenario_at_a_time`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_audit_refuting_on_a_product_test_gap_sends_the_fixer_not_the_planner`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_run_killed_mid_audit_resumes_on_the_audit`
+- tests: `workflows/tests/coder/qa/test_flow.py`
 
 The flow class `Qa` and the assessment-routing tuple `RoutedFindings` are declared in
 `workflows/src/workhorse_workflows/coder/qa/flow.py`. The checkpointed `QaLoop` carries the QA
@@ -137,7 +138,13 @@ return `status="rescope"` to development with docs recheck required. A product-c
 return `status="refix"` to development while its triage scope remains available for bounding.
 In local mode, QA rework is bounded by `MAX_QA_REWORKS`, with one evidence-only bonus pass; a
 repeated identical run failure switches once between plan repair and code repair before gating.
-Budget exhaustion always enters the operator gate rather than silently ending the story.
+Budget exhaustion always enters the operator gate rather than silently ending the story. Every
+guard — context repair, plan validation repair, plan judgement repair, code rework, and setup
+repair — preserves the exhausted counter on the routed loop and stamps the spent phrase into the
+gate body, so the operator sees which cap was reached; the shared `MAX_TOTAL_PLAN_LAPS` ceiling
+still bounds the sum when the two plan counters are spent in alternation. Past `MAX_QA_REWORKS`
+the one verification-only pass is granted only for a first `evidence` failure, only when the
+bonus has not already been spent, and never for `code`, `environment`, or untriaged laps.
 
 ### feedback-and-regression
 
@@ -164,3 +171,27 @@ write failures resume the same report state rather than re-QAing an already judg
 The flow's own deterministic and agent-backed operations are implemented by the QA node modules,
 evidence and hygiene modules, regression module, and QA checkpoint schemas. Those bounded source
 groups are the next descent items.
+
+## Phase Details
+
+### Budget routing
+
+Every repair counter — context rework, plan validation rework, plan judgement rework, code
+rework, and setup rework — has a single guard that funnels to the operator gate. Each guard
+preserves the exhausted counter on the routed loop, stamps the spent phrase into the gate body,
+and never ends the run in `WorkflowFailed` on the ground of a cap alone. The two plan counters
+share `MAX_TOTAL_PLAN_LAPS` so that an alternation past one cannot exceed the sum, and the code
+rework counter grants one verification-only bonus pass past its own ceiling only for a first
+`evidence` failure with the bonus still unspent.
+
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._exhausted`
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._gate`
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_plan`
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_plan_validation`
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_setup`
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_qa`
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._plan_lap`
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_dry_run`
+- code: `workflows/tests/coder/test_session_chains.py::test_each_spent_qa_budget_routes_to_the_operator_with_its_own_counter`
+- code: `workflows/tests/coder/test_session_chains.py::test_the_total_plan_lap_ceiling_bounds_individually_legal_budgets`
+- code: `workflows/tests/coder/test_session_chains.py::test_only_an_unspent_evidence_bonus_can_cross_the_code_rework_ceiling`

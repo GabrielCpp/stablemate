@@ -8,7 +8,7 @@ title: groom server
 - code: groom/groom/app.py::create_app
 - openapi: none; every first-party handler is registered with `include_in_schema=False`.
 
-The `groom` server is the Litestar surface used by browser dashboard tabs, workflow-container sidecars, and the `groom-sidecar` development loop. It serves one HTML document — the shell for the [groom dashboard service](../groom.md) — and then speaks JSON for everything else: the [dashboard state payload](../dashboard-state-payload.md) behind the [runs fleet view](../runs-fleet-view.md), the [run detail payload](#get-run-detail), and the repository/file/diff panel data. It also receives the residual best-effort pushes described by [sidecar protocol](../sidecar-protocol.md) and owns the persistent sidecar socket described by [sidecar live sessions](../sidecar-live-sessions.md). The route table is fixed by the [Groom app module](../concepts/groom-app-module.md) `create_app` member, which registers 25 route handlers: one dashboard HTML entry point, six JSON read endpoints, four mutation/push endpoints, four run outbox/inbox endpoints, one attendant-queue read endpoint, three OTLP ingest routes and two telemetry query routes, one reload endpoint, two websocket channels, and the vendored static asset mount. Application startup is also fixed by `create_app`, which registers four startup hooks — [schedule startup discovery scan](#schedule-startup-discovery-scan), the alert-rule ticker, the [live clock](#schedule-live-clock), and the run-telemetry archive routine — and cancels the latter three, plus shuts down the process worker pools, on shutdown.
+The `groom` server is the Litestar surface used by browser dashboard tabs, workflow-container sidecars, and the `groom-sidecar` development loop. It serves one HTML document — the shell for the [groom dashboard service](../groom.md) — and then speaks JSON for everything else: the [dashboard state payload](../dashboard-state-payload.md) behind the [runs fleet view](../runs-fleet-view.md), the [run detail payload](#get-run-detail), and the repository/file/diff panel data. It also receives the residual best-effort pushes described by [sidecar protocol](../sidecar-protocol.md) and owns the persistent sidecar socket described by [sidecar live sessions](../sidecar-live-sessions.md). The route table is fixed by the [Groom app module](../concepts/groom-app-module.md) `create_app` member, which registers 30 route handlers: one dashboard HTML entry point, six JSON read endpoints, four mutation/push endpoints, four run outbox/inbox endpoints, six attendant endpoints (four reads, two writes), three OTLP ingest routes and two telemetry query routes, one reload endpoint, two websocket channels, and the vendored static asset mount. Application startup is also fixed by `create_app`, which registers five startup hooks — [schedule startup discovery scan](#schedule-startup-discovery-scan), the alert-rule ticker, the [live clock](#schedule-live-clock), the run-telemetry archive routine, and the attend-recovery routine — and cancels the three loop-driven ones (alert-rule, live clock, archive), plus shuts down the process worker pools, on shutdown.
 
 The server is single-process and stateful in memory. Startup schedules a background discovery scan without blocking the server bind; live updates are pushed as JSON messages over the browser websocket and as RPC/messages over sidecar websockets. No route on this surface provides authentication, and the app-level OpenAPI schema intentionally excludes these routes.
 
@@ -477,6 +477,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Folds the `hello` frame's identity and snapshot into the visible workflow fleet through the [sidecar hello applier](../concepts/sidecar-hello-applier.md), rebuilding gates from the snapshot and broadcasting the resulting shell.
   - Resolves `rpc_result` frames against pending host-to-sidecar RPCs so `/files`, `/file`, `/diff`, and `/reload` can use the same connected socket.
   - Applies `progress` and `blocked` frames as live workflow state deltas and broadcasts the resulting dashboard updates.
+  - Schedules a [sidecar turn pull](../concepts/sidecar-turn-pulling.md) on `turn` frames — the container's hint that one of its turn records moved; the host goes and re-fetches rather than letting the sidecar push the record itself.
   - Treats a websocket disconnect as normal session end and unregisters only the current connection, failing any in-flight RPCs so callers can fall back instead of hanging.
 - verify: created(subject="the sidecar connection registered for the container id in the sidecar connection registry")
 - verify: json_path(path="hello.snapshot.current_node", equals="await_operator")
@@ -498,8 +499,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - query: none
   - headers: no endpoint-specific headers beyond the websocket upgrade handshake.
   - body: none before the websocket is accepted.
-  - inbound-frame: [sidecar websocket frame](../sidecar-websocket-frame.md) JSON object with `type` discriminator; supported inbound sidecar-to-groom types are `hello`, `rpc_result`, `progress`, and `blocked`.
-  - field: `type`; type string; required for action; default absent; values other than `hello`, `rpc_result`, `progress`, or `blocked` are ignored.
+  - inbound-frame: [sidecar websocket frame](../sidecar-websocket-frame.md) JSON object with `type` discriminator; supported inbound sidecar-to-groom types are `hello`, `rpc_result`, `progress`, `blocked`, and `turn`.
+  - field: `type`; type string; required for action; default absent; values other than `hello`, `rpc_result`, `progress`, `blocked`, or `turn` are ignored.
   - field: `identity`; type object; required for a useful `hello`; default `{}`; contains sidecar identity fields.
   - field: `identity.container_id`; type string-convertible value; required for registration; default `""`; normalized to `str(value)[:12]`.
   - field: `identity.name`; type any value accepted by the workflow model assignment; optional; default omitted; when non-null in `hello`, updates the workflow display name.
@@ -518,12 +519,15 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - field: `current_node`; type any JSON value; optional for `progress`; default omitted; passed through to the workflow's current-node field.
   - field: `file_path`; type string-convertible value; required for `blocked`; default `""`; empty values are ignored.
   - field: `question`; type string-convertible value; optional for `blocked`; default `""`; stored as the gate question and truncated to 200 characters only for notification text.
+  - field: `run`; type string-convertible value; optional for `turn`; default `""`; names the container run whose turn records the host should refetch.
+  - field: `run_id`; type string-convertible value; optional for `turn`; default `""`; corollary run identifier carried into the archive alongside the pulled records.
+  - field: `workflow`; type string-convertible value; optional for `turn`; default `""`; workflow name carried into the archive alongside the pulled records.
 - response:
   - status: accepted websocket connection when the route handler starts normally.
   - media: websocket JSON text frames sent by host-side sidecar operations.
   - outbound-frame: `{"type":"rpc","id":string,"method":"getTree"|"getFile"|"getDiff","params":object}` when HTTP data-plane handlers need file-tree, file-content, or diff data from the sidecar.
   - outbound-frame: `{"type":"reload"}` when the reload endpoint targets this connected sidecar.
-  - command-response: no acknowledgement for `hello`, `progress`, or `blocked`; their success is visible through dashboard shell broadcasts on the browser websocket. `rpc_result` resolves an in-process future and does not send a reply frame.
+  - command-response: no acknowledgement for `hello`, `progress`, `blocked`, or `turn`; the first three are reflected through dashboard shell broadcasts on the browser websocket, while `turn` only schedules a sidecar turn pull with no reply. `rpc_result` resolves an in-process future and does not send a reply frame.
   - errors: malformed JSON, receive failures other than ordinary websocket disconnect, send failures on host-issued frames, and failures while folding/broadcasting state end through the framework or the waiting caller rather than producing an endpoint-specific error payload.
 
 ### post-reload
@@ -750,6 +754,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: json_path(path="$.mode", equals="session")
 - verify: json_path(path="$.jobs", matches=".*")
 - code: groom/groom/app.py::attend_queue
+- detail: [attend job](../attend-job.md), [as_dict](../attend-job.md#as_dict)
 - route: `GET /api/attend/queue`
 - parent: [groom server](#groom-server)
 - request:
@@ -2110,7 +2115,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - does:
   - Enters the route table that `groom/groom/app.py::create_app` built for `/assets`.
   - Uses the static-files router that `create_app` constructed with `path="/assets"` and the package asset directory [field-assets-dir](../concepts/groom-app-module.md#field-assets-dir).
-  - Exposes only the packaged dashboard asset files present under `groom/groom/assets`: `htm-preact.js`, `dashboard.js`, `dashboard.css`, `diff2html.min.js`, `diff2html.min.css`, `marked.min.js`, `purify.min.js`, `highlight.min.js`, and `hljs-github-dark.min.css`.
+  - Exposes only the packaged dashboard asset files present under `groom/groom/assets`: `htm-preact.js`, `dashboard.js`, `dashboard.css`, `diff2html.min.js`, `diff2html.min.css`, `marked.min.js`, `purify.min.js`, `highlight.min.js`, `hljs-github-dark.min.css`, and `stablemate-logo.png`.
   - Delegates per-request path validation, file lookup, conditional request handling, media-type selection, and static response construction to the mounted framework static-file router.
   - verify: http_status(code=200, path="/assets/dashboard.js")
   - Does not run a first-party route handler function for an individual asset request.

@@ -23,7 +23,7 @@ The result is the structured reply returned by the split and rework agent turns.
 ### notes
 - type: string
 - required: true
-- semantics: agent explanation passed to review or operator resolution
+- semantics: agent explanation: the produced skeleton list or change summary, or the blocking question when blocked
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitResult`
 - detail: [epic split result field roles](concepts/epic-split-result-field-roles.md)

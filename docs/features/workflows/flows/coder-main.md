@@ -36,6 +36,7 @@ The implementation is `workflows/src/workhorse_workflows/coder/main/flow.py::Cod
 - tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
 - tests: `workflows/tests/coder/test_workflow.py::test_the_pr_cluster_passes_through_offline_and_still_advances_the_queue`
 - tests: `workflows/tests/coder/test_workflow.py::test_story_mode_cuts_its_own_branch_and_ends_at_its_own_pr`
+- tests: `workflows/tests/coder/test_workflow.py::test_a_required_final_docs_block_parks_for_an_operator_in_either_mode`
 
 ## Steps
 

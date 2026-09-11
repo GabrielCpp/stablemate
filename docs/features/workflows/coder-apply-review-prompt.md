@@ -7,15 +7,26 @@ title: Coder apply-review prompt
 
 - file: `workflows/src/workhorse_workflows/coder/review/prompts/apply-review.md`
 - code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply`
+- code: `workflows/tests/coder/test_status_line_ownership.py::test_the_prompt_forbids_writing_the_story_status_line`
+- code: `workflows/tests/coder/test_status_line_ownership.py::test_the_guard_names_what_enforces_it`
 - detail: [coder review flow](flows/coder-review.md)
 - detail: [coder review schema contracts](concepts/coder-review-schema-contracts.md)
+- detail: [coder story status check](story-status-check.md)
 - tests: `workflows/tests/coder/review/test_flow.py::test_the_apply_loop_is_bounded_and_then_reaches_the_operator`
+- tests: `workflows/tests/coder/test_status_line_ownership.py::test_the_prompt_forbids_writing_the_story_status_line`
+- tests: `workflows/tests/coder/test_status_line_ownership.py::test_the_guard_names_what_enforces_it`
 
 The apply turn is limited to the supplied story and review or operator feedback. It must resolve
 only required findings, preserve story scope, update tests for behavior changes, and write
 `review-resolution.json`. The deterministic settlement gate, not the turn's returned status,
 decides whether each cited artifact or exact JSON assertion proves a finding; unresolved work is
 re-applied or blocked according to the flow.
+
+The prompt carries a `## Story Status` section that names the story's `Implementation Status`
+field and prohibits the turn from editing it. Unlike `implement-plan`, this lane owns the
+transition out of review (the `settle-review` gate sets the line from the structured verdict), so
+the prohibition names the gate as the writer rather than as a re-reader; the contract the test
+verifies is the same shape — the prohibition must name the machinery, never stand as a bare rule.
 
 ## Fields
 

@@ -66,7 +66,7 @@ All infrastructure dependencies and substitutions are shared by one drive invoca
 - does: returns the registered stub reply and records its output without invoking the configured runner during a dry run
 - verify: persists(subject="dry-run agent visit output artifact")
 - does: forwards a supplied invocation retry budget to the configured runner
-- verify: json_path(path="$.runner.invoke_retries", equals=2)
+- verify: json_path(path="$.runner.node.invoke_retries", equals=2)
 - does: forwards a supplied working directory to the configured runner
 - verify: json_path(path="$.runner.node.cwd", equals="/repos/acme")
 - does: forwards supplied additional repository directories to the configured runner

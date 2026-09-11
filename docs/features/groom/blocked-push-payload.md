@@ -5,7 +5,7 @@ title: Blocked push payload
 ---
 # Blocked push payload
 
-Blocked push payload is the JSON request body accepted by the [receive blocked push](http/groom.md#receive-blocked-push) invocation on the [groom server](http/groom.md). It is produced by the residual HTTP path in [sidecar protocol](sidecar-protocol.md) through the [sidecar residual HTTP push helper](concepts/sidecar-residual-http-push-helper.md), and records one open [gate info](concepts/gate-info.md) entry on a [workflow container](concepts/workflow-container.md), marking that workflow blocked and notifying connected dashboard tabs with a [dashboard notify message](dashboard-notify-message.md). It is the residual HTTP counterpart of the websocket [sidecar blocked applier](concepts/sidecar-blocked-applier.md): both carry one gate-file delta, replace only that gate key, and leave other open gates intact.
+Blocked push payload is the JSON request body accepted by the [receive blocked push](http/groom.md#receive-blocked-push) invocation on the [groom server](http/groom.md). It is produced by the residual HTTP path in [sidecar protocol](sidecar-protocol.md) through the [sidecar residual HTTP push helper](concepts/sidecar-residual-http-push-helper.md), and records one open [gate info](concepts/gate-info.md) entry on a [workflow container](concepts/workflow-container.md), marking that workflow blocked and notifying connected dashboard tabs with a [dashboard notify message](dashboard-notify-message.md). It is the residual HTTP counterpart of the websocket [sidecar blocked applier](concepts/sidecar-blocked-applier.md): both carry one gate-file delta, replace only that gate key, and leave other open gates intact. The full producer/consumer contract — shape, producer identity, normalization rules, success guard, and result effects — is detailed in the [Contract section](#contract) below.
 
 - file: not an on-disk artifact; this is a best-effort HTTP JSON request body for `POST /push/blocked`.
 - code: groom/groom/app.py::push_blocked
@@ -30,7 +30,7 @@ The payload contract is covered by `groom/tests/test_sidecar.py::test_push_block
 - consumer: the blocked-push endpoint accepts a parsed JSON object and ignores fields other than `container_id`, `file_path`, `question`, `name`, `repo_name`, and `repo_branch`.
 - object rule: no nested object, list, or envelope is required; unknown members have no workflow, gate, notification, response, log, or persistence effect.
 - id normalization: `container_id` is read with default `""`, converted to text, and truncated to 12 characters before any Docker metadata lookup or workflow mutation.
-- gate-key normalization: `file_path` is read with default `""`, converted to text, and used exactly as the key in the workflow's open-gates map; no path canonicalization, trimming, workspace-prefix check, filesystem lookup, or traversal rejection occurs at this format boundary.
+- gate-key normalization: [`file_path`](#field-file-path) is read with default `""`, converted to text, and used exactly as the key in the workflow's open-gates map; no path canonicalization, trimming, workspace-prefix check, filesystem lookup, or traversal rejection occurs at this format boundary.
 - question normalization: `question` is read with default `""`, converted to text, and stored in full on the gate record; only the browser notification message truncates it.
 - null rule: explicit JSON `null` for `container_id`, `file_path`, or `question` is converted to the text `"None"`; explicit JSON `null` for `name`, `repo_name`, or `repo_branch` means do not update that optional identity field.
 - success guard: an empty normalized `container_id` or empty normalized `file_path` is invalid and yields `ok: false` with no Docker metadata lookup, workflow update, gate record, dashboard broadcast, browser notification, or retry.
@@ -54,6 +54,11 @@ The payload contract is covered by `groom/tests/test_sidecar.py::test_push_block
 - verify: json_path(path="$.ok", equals=false)
 - required: true
 - verify: json_path(path="$.ok", equals=false)
+- code: groom/groom/sidecar.py::_identity
+- code: groom/groom/app.py::push_blocked
+- tests: groom/tests/test_app.py::test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame
+- tests: groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape
+- parent: [blocked-push-payload](blocked-push-payload.md)
 - producer: sidecar identity uses the first 12 characters of the sidecar process hostname.
 - consumer: the handler converts it with `str(value)[:12]`, rejects the request when the result is empty, and uses the normalized value as the workflow registry key and stored gate workflow id.
 - meaning: workflow container id that associates the gate with one in-memory workflow container.
@@ -65,7 +70,12 @@ The payload contract is covered by `groom/tests/test_sidecar.py::test_push_block
 - default: `""`
 - verify: json_path(path="$.ok", equals=false)
 - required: true
-- verify: json_path(path="$.ok", equals=false)
+- semantics: [operator gate context file](operator-gate-context-file.md) path that identifies one operator prompt and scopes the later answer command to that file.
+- code: groom/groom/sidecar.py::push_blocked
+- code: groom/groom/app.py::push_blocked
+- tests: groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape
+- tests: groom/tests/test_app.py::test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame
+- parent: [blocked-push-payload](blocked-push-payload.md)
 - producer: sidecar gate-event handling supplies the workspace-relative [operator gate context file](operator-gate-context-file.md) path; compatible clients may supply any string-convertible path token.
 - consumer: the handler converts it with `str(value)`, rejects the request when the result is empty, and uses the normalized value as both the open-gates map key and the stored gate file path.
 - meaning: [operator gate context file](operator-gate-context-file.md) path that identifies the operator prompt and scopes the later answer command.
@@ -78,6 +88,11 @@ The payload contract is covered by `groom/tests/test_sidecar.py::test_push_block
 - verify: json_path(path="$.gates[0].question", equals="")
 - required: false
 - verify: json_path(path="$.ok", equals=true)
+- code: groom/groom/sidecar.py::push_blocked
+- code: groom/groom/app.py::push_blocked
+- tests: groom/tests/test_app.py::test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame
+- tests: groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape
+- parent: [blocked-push-payload](blocked-push-payload.md)
 - producer: sidecar gate-event handling supplies the extracted operator question text from the awaiting [operator gate context file](operator-gate-context-file.md).
 - consumer: the handler converts it with `str(value)`, stores the full normalized text on the gate record, and truncates only the browser notification message to the first 200 characters.
 - meaning: operator-facing gate question shown in the inbox preview, worker detail, and notification preview.
@@ -90,6 +105,12 @@ The payload contract is covered by `groom/tests/test_sidecar.py::test_push_block
 - verify: json_path(path="$.runs[0].name", equals="abc123")
 - required: false
 - verify: json_path(path="$.runs[0].name", equals="existing-name")
+- code: groom/groom/sidecar.py::_identity
+- code: groom/groom/app.py::push_blocked
+- code: groom/groom/state.py::upsert_workflow
+- tests: groom/tests/test_app.py::test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame
+- tests: groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape
+- parent: [blocked-push-payload](blocked-push-payload.md)
 - producer: sidecar identity uses the `REPO_NAME` environment variable when present, including when it is an empty string; only an absent `REPO_NAME` falls back to the sidecar process hostname.
 - consumer: when present and non-null, the value is passed to workflow upsert as `name`; omitted or `null` preserves the existing name, and a newly created workflow without a non-empty name defaults to the normalized container id.
 - meaning: human-facing workflow/container label used in dashboard rows, notification messages, and repository picker labels.
@@ -102,6 +123,12 @@ The payload contract is covered by `groom/tests/test_sidecar.py::test_push_block
 - verify: unchanged(subject="workflow container", except_fields=["state", "gates"])
 - required: false
 - verify: json_path(path="$.ok", equals=true)
+- code: groom/groom/sidecar.py::_identity
+- code: groom/groom/app.py::push_blocked
+- code: groom/groom/state.py::upsert_workflow
+- tests: groom/tests/test_app.py::test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame
+- tests: groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape
+- parent: [blocked-push-payload](blocked-push-payload.md)
 - producer: sidecar identity uses `REPO_NAME` when set, otherwise `""`.
 - consumer: when present and non-null, replaces the workflow's current `repo_name`; omitted or `null` preserves the existing repository name.
 - meaning: repository name shown in dashboard identity text.
@@ -114,6 +141,12 @@ The payload contract is covered by `groom/tests/test_sidecar.py::test_push_block
 - verify: unchanged(subject="workflow container", except_fields=["state", "gates"])
 - required: false
 - verify: json_path(path="$.ok", equals=true)
+- code: groom/groom/sidecar.py::_identity
+- code: groom/groom/app.py::push_blocked
+- code: groom/groom/state.py::upsert_workflow
+- tests: groom/tests/test_app.py::test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame
+- tests: groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape
+- parent: [blocked-push-payload](blocked-push-payload.md)
 - producer: sidecar identity uses `REPO_BRANCH` when set, otherwise `""`.
 - consumer: when present and non-null, replaces the workflow's current `repo_branch`; omitted or `null` preserves the existing repository branch.
 - meaning: repository branch shown with the repository name.
@@ -126,7 +159,11 @@ The payload contract is covered by `groom/tests/test_sidecar.py::test_push_block
 - verify: json_path(path="$.ok", equals=true)
 - required: false
 - verify: unchanged(subject="workflow container", except_fields=["state", "gates"])
-- meaning: all keys outside `container_id`, `file_path`, `question`, `name`, `repo_name`, and `repo_branch` are ignored by the current consumer and are not copied into the workflow container or gate record.
+- semantics: any key in the JSON object that is not one of `container_id`, `file_path`, `question`, `name`, `repo_name`, or `repo_branch` is read as a key but discarded
+- semantics: the value of an ignored key is not consulted by the handler and not propagated to the workflow container, gate record, Docker metadata lookup, shell broadcast, or response object
+- code: groom/groom/app.py::push_blocked
+- parent: [blocked-push-payload](blocked-push-payload.md)
 - producer: first-party residual HTTP blocked pushes do not add ignored fields; compatible clients may include them without changing current handler behavior.
 - consumer: the endpoint never passes ignored keys to the workflow registry, gate record constructor, Docker metadata resolver, shell renderer, notification renderer, dashboard broadcaster, or response object.
+- meaning: extension or accidental keys in the request body that the current consumer does not read; their presence does not affect any observable behavior.
 - constraints: ignored keys do not make the request invalid, do not affect the response body, do not alter existing gates, and do not create forward-compatibility guarantees for future consumers.

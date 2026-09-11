@@ -12,7 +12,7 @@ Answer result is the in-memory return object from the [gate-answering layer](con
 - consistency: answer-result — `groom/groom/gates.py::answer_gate` returns an `AnswerResult` for every explicit gate-answering domain outcome.
 - consistency: answer-result — construction requires an `ok` argument, as declared by `groom/groom/models.py::AnswerResult`.
 
-Regression coverage for this format includes `groom/tests/test_gates.py::test_answer_gate_rejects_when_already_answered`, `groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running`, `groom/tests/test_gates.py::test_answer_gate_restarts_when_container_stopped`, `groom/tests/test_gates.py::test_answer_gate_reports_missing_workspace_volume`, `groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_answered_script`, and `groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch`.
+Regression coverage for this format includes `groom/tests/test_gates.py::test_answer_gate_rejects_when_already_answered`, `groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running`, `groom/tests/test_gates.py::test_answer_gate_restarts_when_container_stopped`, `groom/tests/test_gates.py::test_answer_gate_reports_missing_workspace_volume`, `groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event`, and `groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch`.
 
 ## Contract
 
@@ -61,11 +61,15 @@ Regression coverage for this format includes `groom/tests/test_gates.py::test_an
 ### field-message
 
 - type: `str`
-- default: an omitted `message` argument exposes `message=""`.
+- default: `""` — an omitted `message` argument exposes `message=""`
 - verify: json_path(path="$.message", equals="")
-- required: false for construction.
-- verify: json_path(path="$.constructor.message.required", equals=false)
-- domain: first-party non-empty values are the success and failure strings listed in the contract; the shape itself also permits the empty default and arbitrary caller-supplied strings.
-- producer-use: set by the gate-answering layer to summarize the accepted write, duplicate/stale gate, missing file, missing workspace volume, write failure, or restart fallback outcome.
-- consumer-use: copied verbatim into the [answer log entry](answer-log-entry.md); not used to decide success, not sent in the `groom:answered` event detail, and not parsed by the websocket handler.
-- meaning: operator-facing outcome text recorded into the answer event log entry; first-party values are the success and failure messages listed in the contract, but the dataclass itself does not restrict the string.
+- required: false for construction — callers may omit `message` and the field defaults to the empty string
+- semantics: operator-facing outcome text describing the success path or failure reason; first-party non-empty values are the success and failure strings listed in the parent contract, and the dataclass itself does not restrict the string.
+- verify: json_path(path="$.message", matches=".*")
+- code: groom/groom/models.py::AnswerResult
+- tests: groom/tests/test_gates.py::test_answer_gate_rejects_when_already_answered
+- tests: groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running
+- tests: groom/tests/test_gates.py::test_answer_gate_restarts_when_container_stopped
+- tests: groom/tests/test_gates.py::test_answer_gate_reports_missing_workspace_volume
+- tests: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event
+- tests: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch

@@ -25,6 +25,7 @@ both sides must share the host path.
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::get_affected_repos`
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::_main`
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::SOURCE_MODES`
+- code: `workflows/tests/test_kit_worktree.py::host_repo`
 - tests: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_uses_the_repo_dir_argument_over_cwd`
 - tests: `workflows/tests/test_kit_workspace.py::test_a_repo_is_named_by_its_directory_not_by_its_agents_yml`
 - tests: `workflows/tests/test_kit_workspace.py::test_git_network_command_uses_configured_token_env`

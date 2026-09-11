@@ -59,5 +59,6 @@ rehearsal walks **one** — the path a machine of stand-in values happens to tak
   journey if it dies mid-machine.
 - verify: exit_status(code=0)
 - tests: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_dry_run_reports_problems_and_never_opens_a_run_dir`, `workhorse/tests/test_pyflow_graph.py::test_dry_run_drives_the_machine_without_running_a_node`, `workhorse/tests/test_pyflow_graph.py::test_dry_run_uses_its_own_run_dir_rather_than_a_real_runs_checkpoint`
 - tests: `workhorse/tests/test_pyflow.py::test_dry_run_records_the_calls_without_making_them`
 - tests: `workhorse/tests/test_pyflow.py::test_a_dry_run_answers_a_prompt_with_the_reply_the_registry_declared`

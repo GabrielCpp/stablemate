@@ -126,6 +126,9 @@ workflow-format file or a backend request.
 - semantics: `0` prevents reframes from multiplying a tight per-node timeout budget
 - verify: count(subject="fresh reframe sessions that consume an additional per-node timeout budget after a failed turn with retries 0", equals=0)
 - code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- tests: `workhorse/tests/test_agent_recovery.py::test_a_node_can_spend_a_smaller_reframe_budget_than_the_run`,
+  `workhorse/tests/test_agent_recovery.py::test_a_node_without_its_own_budget_still_uses_the_runs`,
+  `workhorse/tests/test_agent_recovery.py::test_a_node_can_spend_a_larger_reframe_budget_than_the_run`
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### invoke_retries
@@ -138,6 +141,8 @@ workflow-format file or a backend request.
 - verify: json_path(path="$.invoke_retries", equals="None")
 - semantics: a spending-cap wait is not limited by this field because recovery waits for the cap to clear rather than stopping the turn
 - code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- tests: `workhorse/tests/test_agent_recovery.py::test_node_invoke_retries_bounds_transient_retries_below_the_run_default`,
+  `workhorse/tests/test_agent_recovery.py::test_node_invoke_retries_unset_keeps_the_run_default`
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### cwd

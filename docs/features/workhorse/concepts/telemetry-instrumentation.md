@@ -47,7 +47,8 @@ detached before provider shutdown.
 - code: `workhorse/workhorse/otel.py::run_attribute`
 - code: `workhorse/workhorse/otel.py::gas_level`
 - code: `workhorse/workhorse/otel.py::gas_refuel`
-- tests: `workhorse/tests/test_otel.py`
+- tests: `workhorse/tests/test_otel.py`,
+  `workhorse/tests/test_agent_recovery.py::test_the_cut_turn_closes_its_span_and_closes_it_cleanly`
 - detail: [telemetry documentation scope](telemetry-documentation-scope.md)
 
 ## Fields
@@ -158,6 +159,37 @@ detached before provider shutdown.
 - code: `workhorse/workhorse/otel.py::TelemetryHost.end_run`
 - tests: `workhorse/tests/test_otel.py::test_end_run_is_idempotent_and_the_first_status_wins`
 
+### scope
+- sig: `scope() -> Iterator[None]`
+- does: closes, in the body's own `finally`, every execution span the body leaves open when it raises
+- verify: count(subject="open execution spans after a raise", equals=0)
+- does: stamps `workhorse.outcome="error"` on enclosing frames so a reader can see they ended in an error without claiming to *be* one
+- does: records the failure exactly once on the innermost frame — one defect is one ERROR span however deep the frame that raised was
+- verify: count(subject="ERROR spans per single defect", equals=1)
+- does: marks spans closed by a control unwind (a `ReloadRequested` exception) with `workhorse.outcome="control"` and no ERROR status, so a deliberate reload does not consume the once-per-run error slot a real failure needs
+- code: `workhorse/workhorse/otel.py::scope`
+- tests: `workhorse/tests/test_otel.py::test_scope_closes_the_frames_it_opened_and_blames_only_the_innermost`, `workhorse/tests/test_otel.py::test_a_reload_unwind_closes_its_frames_without_counting_as_a_failure`
+
+### record_event
+- sig: `record_event(event: NodeEvent) -> None`
+- does: mirrors one `ArtifactWriter` event-log record into node spans: `enter` opens the `(node, seq)`-keyed span, `done` closes it, `error` records the cause on the open span, `terminal` records on the innermost enclosing flow-node span
+- verify: emitted(event="node span opened from a writer enter and closed by its done", count=1)
+- does: ignores `enter` events carrying `waiting_on` — state checkpoints are durable position, not execution boundaries
+- verify: absent(subject="node span opened from a checkpoint")
+- code: `workhorse/workhorse/otel.py::record_event`
+- tests: `workhorse/tests/test_otel.py::test_record_event_via_writer_reaches_active_telemetry`
+
+### heartbeat
+- sig: `heartbeat(node_id: str, remaining_s: float) -> None`
+- does: increments the cap-wait heartbeat counter with the waiting node as its `node` attribute
+- verify: emitted(event="workhorse.cap_wait.heartbeat", count=1)
+- does: sets the cap-wait remaining-seconds gauge
+- verify: json_path(path="workhorse.cap_wait.remaining_s", equals=540.0)
+- does: swallows any instrument exception — a telemetry bug must degrade to "no heartbeat", never take down the thread and with it every later liveness signal
+- verify: unchanged(subject="the beat thread after an instrument raises")
+- code: `workhorse/workhorse/otel.py::heartbeat`
+- tests: `workhorse/tests/test_otel.py::test_beat_survives_an_instrument_that_raises`
+
 ### set_repository_probe
 - sig: `set_repository_probe(probe: RepositoryProbe | None) -> None`
 - does: replaces the repository observation callback used for span boundary attributes
@@ -179,8 +211,8 @@ detached before provider shutdown.
 - verify: absent(subject="git.head.start when the head probe raises during start_run")
 - returns: `None`
 - code: `workhorse/workhorse/otel.py::set_head_probe`
-- code: `workhorse/tests/test_gitstate.py::test_a_probe_that_raises_costs_an_attribute_not_the_span`
-- tests: `workhorse/tests/test_gitstate.py::test_a_head_that_moves_inside_a_node_leaves_unequal_endpoints`
+- code: `workhorse/tests/test_gitstate.py::test_a_head_that_moves_inside_a_node_leaves_unequal_endpoints`
+- tests: `workhorse/tests/test_gitstate.py::test_a_probe_that_raises_costs_an_attribute_not_the_span`
 
 ### enabled
 - sig: `enabled() -> bool`

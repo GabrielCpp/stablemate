@@ -127,6 +127,37 @@ It replaced an HTML fragment pair that was swapped into the page out-of-band. No
 - workers: the total number of workflows, regardless of state, gates, query, selection, or repository.
 - meaning: the fleet-wide totals the status bar shows. Fleet-wide even while a query narrows the visible list.
 
+### field-store
+
+- type: `object` with `ok`, `path`, `last_ok_ts`, `reopens`, `failures`, `last_error`, `last_error_ts`, `last_write_ts`, `last_prune_ts`, `wal_bytes`, `last_checkpoint_busy`
+- default: none
+- required: true
+- code: groom/groom/store.py::health_dict
+- ok: whether the collector has stored successfully since the last reopen — not "the last call succeeded", so a single healed blip and an hour of dropped batches read differently.
+- path: the SQLite file the collector is writing into.
+- last_ok_ts: epoch seconds of the last successful write.
+- reopens: how many times the SQLite connection has been reopened since process start.
+- failures: number of write failures observed since process start.
+- last_error: most recent error string, or empty when none has been recorded.
+- last_error_ts: epoch seconds of the most recent error, or 0 when none.
+- last_write_ts: epoch seconds of the most recent write attempt.
+- last_prune_ts: epoch seconds of the most recent retention prune.
+- wal_bytes: current write-ahead-log size in bytes.
+- last_checkpoint_busy: number of times SQLite returned `SQLITE_BUSY` while attempting a checkpoint.
+- meaning: the collector's own health. A wedged store answers every read route 200 with a plausible-looking fleet, so "is groom still storing what it is told" has to be asked separately or not at all — sibling of `status`, not part of it.
+
+### field-attend
+
+- type: `object` with `mode`, `by_run`, `rev`, `count`
+- default: none
+- required: true
+- code: groom/groom/projection.py::attend_summary
+- mode: the attendant's enabled mode — `session`, `headless`, or `off`. A value outside that set is normalized to `off`.
+- by_run: the latest attendant row per run, mapping run_id to a record of `job_id`, `session_id`, `status`, `kind`, `reason`, `started_at`, `ended_at`.
+- rev: the maximum of `started_at` / `ended_at` across `by_run` — the revision the attendant pane watches to know its own list went stale.
+- count: the number of entries in `by_run`.
+- meaning: the attendant's per-run dispatch summary, deliberately a small slice so the state frame can ride every rules tick. The pane's 200-row list is pulled separately, from `GET /api/attend/sessions`, by whoever has the pane open.
+
 ## Algorithms
 
 ### algorithm-one-payload-two-paths

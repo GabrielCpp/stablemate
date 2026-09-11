@@ -36,6 +36,13 @@ title: Coder development flow
 - tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`
 - tests: `workflows/tests/coder/dev/test_an_epic_scoped_answer_leaves_the_flow_to_be_replanned`
 
+The `docs` and `workspace` test fixtures stand up the inputs every dev-flow scenario runs
+against: `docs` builds a docs repo carrying one epic and one authored story so the story-slot
+resolution has something real to look up, and `workspace` builds two real git repos under a
+checked-in `.code-workspace` file naming them, since `branch_code_repos` checks out a branch in
+each and the per-layer-gate dispatch walks both. They are documented at the
+[coder dev package concept](../concepts/coder-dev-package.md).
+
 `setup` resolves workspace directories and the story slug, rejects an unauthored or unreadable
 story before any agent turn, and returns the shared `StoryPaths` context. It also establishes the
 story conversation identity used by later turns.

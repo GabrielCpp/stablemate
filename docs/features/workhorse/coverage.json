@@ -1,11 +1,11 @@
 {
-  "covered": 368,
-  "total": 368,
+  "covered": 369,
+  "total": 369,
   "waived": 8,
   "screens": 0,
   "generated_from": {
     "sourceRoot": "workhorse",
     "excludes": [],
-    "commit": "a42ea794"
+    "commit": "9e152fd3"
   }
 }

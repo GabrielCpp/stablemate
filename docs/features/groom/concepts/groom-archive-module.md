@@ -64,7 +64,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 
 - code: groom/groom/archive.py::SweepResult
 
-#### field-archived
+#### field: archived
 
 - type: `list[str]`
 - default: `[]`
@@ -174,8 +174,9 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - sig: `is_archived(run_id: str) -> bool`
 - abstract: false
 - does: Checks whether a run has been frozen to the archives by verifying the run's `telemetry.jsonl` file exists in the archives root
-- verify: http_status(200)
-- raises: none intentionally raised
+- verify: created(subject="the run's telemetry.jsonl file in archives")
+- raises: none intentionally raised.
+- verify: json_path(path="exception.type", absent=True)
 - returns: `True` if the run has been archived with a complete telemetry file; `False` otherwise
 - code: groom/groom/archive.py::is_archived
 

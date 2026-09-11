@@ -23,6 +23,8 @@ surface is recorded in [Author main node exports](author-main-node-exports.md).
 - code: `workflows/src/workhorse_workflows/author/main/flow.py::Author`
 - code: `workflows/src/workhorse_workflows/author/main/__init__.py::__getattr__`
 - code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint`
+- code: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
+- code: `workflows/tests/author/test_workflow.py::test_the_labels_name_the_story_and_the_epic.capture`
 - tests: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
 - detail: [author main composition layers](author-main-composition-layers.md)
 - detail: [author schemas exports](author-schemas-exports.md)

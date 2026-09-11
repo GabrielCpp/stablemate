@@ -84,6 +84,7 @@ only composes them for one story-split run.
 - returns: returns labels containing both story-split budget counters
 - verify: json_path(path="$.cov_reworks", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.state_labels`
+- code: `workflows/tests/author/test_workflow.py::test_coverage_resolver_cycles_share_the_epic_scoped_split_bound.capture`
 
 ### start
 - sig: `start() -> Continue`

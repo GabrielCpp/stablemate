@@ -257,4 +257,5 @@ do not end a wait. `answer` is persisted by the gate consumer before it is ackno
 - raises: when a newline-delimited control message exceeds its configured byte limit
 - verify: count(subject="over-limit control messages rejected", equals=1)
 - code: `workhorse/workhorse/control.py::ControlProtocolError`
+- code: `workhorse/tests/test_control_channel.py::test_a_message_over_its_limit_is_refused_rather_than_truncated`
 - tests: `workhorse/tests/test_control_channel.py::test_a_message_over_its_limit_is_refused_rather_than_truncated`

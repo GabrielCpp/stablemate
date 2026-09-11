@@ -106,12 +106,16 @@ still shows the subcommand listing.
   - `--cli <name>` — pick the agent harness for the run: selects an
     [AgentBackend](concepts/agent-backend.md) implementation via
     [get_backend](concepts/get-backend.md); `<name>` ∈ `claude` (default) · `codex` ·
-    `copilot` · `cline` · `opencode`. Per run, not per state.
+    `copilot` · `cline` · `opencode`. Per run, not per state. MUTUALLY EXCLUSIVE with
+    `--profile`: a profile carries its own `cli` field, and passing both flags exits the run
+    with code `2` rather than silently picking one.
   - `--profile <name>` — resolve this run's models from the config's
     [`[profiles.<name>]`](concepts/config.md#profiles) tables instead of its top-level ones. A
-    profile **replaces** them — nothing outside it is inherited — and is an axis independent of
-    `--cli`, which chooses whose entries in it apply. Per run, not per state; recorded in
-    [`run.json`](run-artifacts.md#runjson) so a flagless `--resume-run` re-applies it.
+    profile **replaces** them — nothing outside it is inherited — and declares its own `cli`
+    field naming the CLI it runs under, so passing `--profile` together with `--cli` rejects
+    the run with exit `2` rather than letting the two flags disagree about which CLI runs.
+    Per run, not per state; recorded in [`run.json`](run-artifacts.md#runjson) so a flagless
+    `--resume-run` re-applies it.
   - `--config <path>` — read the [shared config file](concepts/config.md) from this path instead
     of the discovered one. Means what `$STABLEMATE_CONFIG` means — *this* file, entirely, with no
     merge against the machine's — so it must itself carry `library_dir`/`base_dir`/`stablemate_dir`
@@ -122,6 +126,8 @@ still shows the subcommand listing.
     params, `default`.
   - `--dry-run` — check the workflow without doing its work, then exit (`0` clean, `1` on
     the first problem). The `--dry-run` bullet below says what it actually checks.
+    - code: `workhorse/tests/test_pyflow_graph.py::test_the_run_parser_carries_dry_run`
+    - tests: `workhorse/tests/test_pyflow_graph.py::test_the_run_parser_carries_dry_run`
   - `--resume-run <path-or-id>` / `--resume-latest` / `--no-cache` — mutually exclusive
     with each other. `--resume-run`/`--resume-latest` resume a checkpointed run instead of
     the default auto-resume-in-place. `--no-cache` deletes the stable run dir before
@@ -162,8 +168,11 @@ still shows the subcommand listing.
   - run: an undefined profile prints `UnknownProfileError`, including the known names, and exits
     `1`
   - verify: exit_status(code=1)
-  - run: select the CLI from `--cli`, `AGENT_CLI`, the profile's
-    [`default_cli`](concepts/config.md#resolve_default_cli), the top-level default, or `claude`
+  - run: refuse `--profile` together with `--cli` by printing the mutually-exclusive error to
+    stderr and exiting `2`, since the profile already names the CLI it runs under
+  - verify: exit_status(code=2)
+  - run: select the CLI from `--cli`, `AGENT_CLI`, the config's
+    [`default_cli`](concepts/config.md#resolve_default_cli), or `claude`
   - verify: exit_status(code=0)
   - run: write the resolved CLI name to `AGENT_CLI` so later readers use the selected backend
     rather than re-deriving it
@@ -301,11 +310,10 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - verify: exit_status(code=0)
 - code: `workhorse/workhorse/cli/dot.py::run`
 - code: `workhorse/workhorse/cli/dot.py::add_arguments`
+- code: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`
+- code: `workhorse/tests/test_pyflow_graph.py::test_dot_rejects_pin_and_leaf_at_the_parser`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`
-
-There are no `--pin`/`--leaf` flags. They collapsed a *declared* branch node into one
-edge, and a Python workflow's branches are ordinary `if` statements in a state body —
-there is nothing declared to pin.
+- tests: `workhorse/tests/test_pyflow_graph.py::test_dot_rejects_pin_and_leaf_at_the_parser`
 
 ### version
 - usage: `workhorse-<name> version`

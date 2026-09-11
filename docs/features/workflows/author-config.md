@@ -95,6 +95,7 @@ loading does not create a surface inventory.
 - returns: a `Config` containing the absolute repository root and repository-relative configured paths
 - verify: json_path(path="$.repo_root", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`
+- code: `workflows/tests/author/test_config.py::test_epic_authoring_requires_an_approved_roadmap`
 - tests: `workflows/tests/author/test_config.py::test_author_config_never_invents_a_surface_inventory`
 - tests: `workflows/tests/author/test_config.py::test_epic_authoring_requires_an_approved_roadmap`
 - tests: `workflows/tests/author/test_config.py::test_epic_authoring_does_not_fall_back_to_a_backlog`

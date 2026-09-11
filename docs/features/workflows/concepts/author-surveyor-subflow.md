@@ -68,6 +68,7 @@ re-planning completed work.
 - returns: returns `work_id` and `progress` labels from the latest unit selection
 - verify: count(subject="surveyor work-label snapshots", equals=1)
 - code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.labels`
+- code: `workflows/tests/author/surveyor/test_flow.py::test_the_labels_name_the_unit_and_the_progress.capture`
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_the_labels_name_the_unit_and_the_progress`
 
 ### state_labels
@@ -89,6 +90,7 @@ re-planning completed work.
 - returns: returns a `Continue` carrying the `InventoryCheck` decision and the selected next state
 - verify: count(subject="surveyor start routing decisions", equals=1)
 - code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.start`
+- code: `workflows/tests/author/surveyor/test_flow.py::surveyed`
 - tests: `workflows/tests/author/surveyor/test_config.py::test_an_existing_inventory_freezes_the_enumeration`
 
 ### plan

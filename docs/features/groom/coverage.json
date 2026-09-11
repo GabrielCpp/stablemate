@@ -1,11 +1,11 @@
 {
-  "covered": 148,
-  "total": 267,
-  "waived": 0,
+  "covered": 274,
+  "total": 294,
+  "waived": 1,
   "screens": 1,
   "generated_from": {
     "sourceRoot": "groom",
     "excludes": [],
-    "commit": "e785b0eb"
+    "commit": "874bdd04"
   }
 }

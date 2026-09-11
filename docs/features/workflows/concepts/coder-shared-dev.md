@@ -6,6 +6,7 @@ title: Coder shared development helpers
 # Coder shared development helpers
 
 - code: `workflows/src/workhorse_workflows/coder/shared/dev.py::__all__`
+- code: `workflows/tests/coder/shared/test_gates.py::repo`
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder resolver decision handling](coder-shared-resolution.md)
 

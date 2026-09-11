@@ -48,6 +48,8 @@ the arguments that shaped the build. Validation independently checks the packet 
 - verify: absent(subject="worktree signature after Git query failure")
 - code: `workflows/src/workhorse_workflows/coder/shared/okf.py::worktree_signature`
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_editing_a_tracked_file_rebuilds`
+- tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_brand_new_untracked_file_rebuilds`
+- tests: `workflows/tests/coder/shared/test_okf_memo.py::test_committing_rebuilds`
 
 ### fingerprint
 - sig: `fingerprint(signature: str | None, arguments: dict[str, object]) -> str | None`
@@ -70,6 +72,7 @@ the arguments that shaped the build. Validation independently checks the packet 
 - verify: json_path(path="$.status", matches="passed|invalid")
 - code: `workflows/src/workhorse_workflows/coder/shared/okf.py::recall`
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_an_unreadable_stamp_rebuilds_rather_than_guessing`
+- tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_missing_packet_file_rebuilds_even_with_a_matching_stamp`
 
 ### remember
 - sig: `remember(spec_path: Path, key: str | None, result: OkfContextResult) -> None`
@@ -98,6 +101,8 @@ the arguments that shaped the build. Validation independently checks the packet 
 - verify: json_path(path="$.status", matches="passed|invalid")
 - code: `workflows/src/workhorse_workflows/coder/shared/okf.py::build_okf_context`
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_repeat_visit_reuses_the_packet_byte_for_byte`
+- tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_different_spec_dir_does_not_read_the_other_ones_memo`
+- tests: `workflows/tests/coder/shared/test_okf_memo.py::test_multi_repository_context_is_grouped_and_invalidated_by_source_edits`
 
 ### validate_okf_context
 - sig: `validate_okf_context(logger: logging.Logger, spec_dir: str = "", build_status: str = "invalid", docs_path: str = "", repo_dir: str = "") -> OkfContextResult`

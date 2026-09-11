@@ -90,9 +90,11 @@ selection](epic-edit-invocation-selection.md).
 - sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
 - does: combines epic labels with telemetry labels for the `epic_edit` machine
 - does: includes the `reworks` budget counter label when present in state parameters
+- does: omits `reworks` (and every other budget counter) when the state carries it at the default of zero, so a span cannot be silently bucketed as a first attempt for a budget the flow has not spent
 - returns: returns labels used for state telemetry
 - verify: count(subject="epic-edit state label sets", equals=1)
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.state_labels`
+- tests: `workflows/tests/coder/test_telemetry.py::test_epic_edit_reports_reworks_and_omits_defaulted_absent_counters`
 
 ### blueprint
 - sig: `Blueprint("author-epic-edit") -> Blueprint`
@@ -147,10 +149,12 @@ selection](epic-edit-invocation-selection.md).
 ### apply_plan
 - sig: `apply_plan(intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan) -> Continue`
 - does: applies the approved graph plan through the edit nodes
-- does: fails when post-application state differs from the approved plan
-- does: skips prose and story authoring when the epic was deleted
-- returns: returns a continuation targeting `finish` or `rewrite_epic`
+- does: fails the run with `failure_class="epic-edit-application-drift"` and the validation errors when post-application state differs from the approved plan
+- does: skips prose and story authoring by continuing to `finish` when the applied edit deleted the epic
+- does: continues to `rewrite_epic` with `intent`, `snapshot`, `plan`, and `applied` when the applied edit kept the epic
+- returns: returns a continuation targeting `finish` (deleted epic) or `rewrite_epic` (surviving epic)
 - verify: count(subject="epic-edit plan applications", equals=1)
+- verify: count(subject="epic-edit application drift failures", equals=1)
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.apply_plan`
 
 ### rewrite_epic
@@ -165,15 +169,17 @@ selection](epic-edit-invocation-selection.md).
 
 ### next_affected_story
 - sig: `next_affected_story(intent: EditIntent, applied: AppliedEpicEdit, index: int = 0) -> Continue`
-- does: selects the next affected story in approved order
-- does: routes to coverage when no affected story remains
-- returns: returns a continuation targeting mockup design or coverage checking
+- does: enters the affected-story loop at the first affected story (`index=0` default) and advances the index on each re-entry
+- does: routes to `check_coverage` with `intent` and `applied` when the affected-story list is exhausted (`pick.has_story` is false)
+- does: continues to `design_mockup` with `intent`, `applied`, `pick`, and `index` when an affected story is selected
+- returns: returns a continuation targeting `check_coverage` (exhausted) or `design_mockup` (selected)
 - verify: count(subject="epic-edit affected-story selections", equals=1)
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.next_affected_story`
 
 ### design_mockup
 - sig: `design_mockup(intent: EditIntent, applied: AppliedEpicEdit, pick: StoryChoice, index: int) -> Continue`
 - does: asks the design agent for a story-local mockup before story authoring
+- does: continues to `write_story` with `intent`, `applied`, `pick`, `index`, and the produced `mockup`
 - returns: returns a continuation targeting `write_story` with the mockup result
 - verify: count(subject="epic-edit mockup designs", equals=1)
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.design_mockup`

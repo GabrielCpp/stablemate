@@ -227,6 +227,7 @@ so an omitted decision is retried rather than silently routed.
 - returns: a fail-closed loop with blank gate records, zero counters, empty worklists, and a blank running verdict
 - verify: json_path(path="$.qa.status", equals="")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop`
+- tests: `workflows/tests/coder/test_telemetry.py::test_missing_documentation_taint_fails_closed`
 
 ### method: QaFlowResult
 - sig: `QaFlowResult(status: QaFlowStatus = "inconclusive", qa: QaResult = QaResult(), qa_rework: int = 0, triage_scope: int = 0, operator_notes: str = "", docs_recheck_required: bool = True) -> QaFlowResult`
@@ -234,7 +235,10 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.status", matches="^(passed|inconclusive|replan|rescope|refix)$")
 - returns: an inconclusive-by-default result that cannot imply a passing QA flow
 - verify: json_path(path="$.status", equals="inconclusive")
+- does: defaults `docs_recheck_required` to `True` so a terminal result cannot imply the documentation story has stayed clean without an explicit False
+- verify: json_path(path="$.docs_recheck_required", equals=true)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaFlowResult`
+- tests: `workflows/tests/coder/test_telemetry.py::test_missing_documentation_taint_fails_closed`
 
 ## Methods
 
@@ -317,7 +321,10 @@ so an omitted decision is retried rather than silently routed.
 - sig: `QaLoop.cleared(self) -> QaLoop`
 - does: blanks the running verdict and gate diagnostics while retaining context status and all durable budgets
 - verify: json_path(path="$.qa.status", equals="")
+- does: blanks assessment and audit records together with the notes they summarise, so a later span cannot claim a verdict whose findings have already been forgotten
+- does: retains every repair counter and the docs-recheck taint, since those are budgets and obligations rather than findings
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.cleared`
+- tests: `workflows/tests/coder/test_telemetry.py::test_verdicts_are_forgotten_with_the_notes_they_summarise`
 
 ### QaLoop.block_notes
 - sig: `QaLoop.block_notes -> str`

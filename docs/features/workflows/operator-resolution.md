@@ -32,7 +32,7 @@ steps were attempted before the workflow awaits an operator.
 ### tried
 - type: list of strings
 - default: empty list
-- required: true
+- required: false
 - semantics: diagnostic actions completed before escalation
 - verify: count(subject="$.tried", equals=0)
 - code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::OperatorResolution`

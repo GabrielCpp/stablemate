@@ -14,6 +14,9 @@ tests to enforce agent-facing field prose.
 
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::schema_block`
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::described_fields`
+- code: `workflows/tests/coder/test_output_contracts.py::test_rendered_models_describe_every_field`
+- code: `workflows/tests/coder/test_output_contracts.py::test_rendered_contracts_ask_for_a_document`
+- code: `workflows/tests/coder/test_output_contracts.py::test_class_docstrings_stay_out_of_the_contract`
 - tests: `workflows/tests/coder/test_output_contracts.py::test_rendered_contracts_ask_for_a_document`
 - tests: `workflows/tests/coder/test_output_contracts.py::test_rendered_models_describe_every_field`
 - tests: `workflows/tests/coder/shared/test_blocked_signal.py::test_the_review_prompt_asks_for_the_keys_the_model_reads`
@@ -41,8 +44,13 @@ tests to enforce agent-facing field prose.
 - verify: count(subject="indented rendered schema bodies", equals=1)
 - does: returns the preamble, a blank line, a fenced json block, and the serialized schema in that order
 - verify: count(subject="complete rendered output contracts", equals=1)
+- does: frames the block as a document to produce
+- verify: count(subject="rendered contracts beginning with the preamble", equals=1)
+- does: strips the `"title"` field pydantic would otherwise emit on the object and its fields
+- verify: removed(subject="pydantic-derived \"title\" keys from the rendered JSON block")
 - returns: a string suitable for insertion into a Coder prompt
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::schema_block`
+- code: `workflows/tests/coder/test_output_contracts.py::test_rendered_contracts_ask_for_a_document`
 - tests: `workflows/tests/coder/test_output_contracts.py::test_rendered_contracts_ask_for_a_document`
 - tests: `workflows/tests/coder/shared/test_blocked_signal.py::test_the_review_prompt_asks_for_the_keys_the_model_reads`
 
@@ -53,6 +61,7 @@ tests to enforce agent-facing field prose.
 - returns: property identities formatted as `<model>.<field>` for every undescribed property, or an empty list when all properties are described
 - verify: json_path(path="$.undescribed_fields", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::described_fields`
+- code: `workflows/tests/coder/test_output_contracts.py::test_rendered_models_describe_every_field`
 - tests: `workflows/tests/coder/test_output_contracts.py::test_rendered_models_describe_every_field`
 
 ### _models
@@ -70,5 +79,9 @@ tests to enforce agent-facing field prose.
 - does: additionally removes `description` only from dictionaries that contain `properties`, preserving property-level descriptions
 - verify: removed(subject="object-level descriptions from the rendered schema")
 - verify: count(subject="object-level schema descriptions removed", equals=1)
+- does: keeps the first line of every class docstring out of the rendered contract, since pydantic would otherwise lift it onto the object-level `description` and leak the maintainer's rationale to the agent
+- verify: absent(subject="class docstring text inside the rendered output contract")
 - returns: the recursively pruned value, leaving scalar values unchanged
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::_pruned`
+- code: `workflows/tests/coder/test_output_contracts.py::test_class_docstrings_stay_out_of_the_contract`
+- tests: `workflows/tests/coder/test_output_contracts.py::test_class_docstrings_stay_out_of_the_contract`

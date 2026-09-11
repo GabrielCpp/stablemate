@@ -21,6 +21,7 @@ fixture is a test-setup convenience, not a relationship between the two result f
 themselves — it grounds both format nodes in `workflows/tests/coder/fix_ci/test_flow.py` because
 that is where their behavior is proved, not because one is preferred over the other.
 
+- code: `workflows/tests/coder/fix_ci/test_flow.py::workspace`
 - rule: `WorkspaceDirs` (from `setup`) and `CiRepoPick` (from `start`) are complementary results
   of the CI remediation flow's two setup steps, not competing implementations of one concept; no
   source-defined ranking exists between them.

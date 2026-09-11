@@ -140,13 +140,41 @@ title: Coder documentation schemas
 - verify: json_path(path="$.gate_progress_verdict", matches=".*")
 - does: replaces the gate identity baseline
 - verify: json_path(path="$.gate_ids", matches=".*")
+- does: blanks the verdict, failures, and identity baseline together when the gate passes, so a later span cannot claim a `gate_progress_verdict` of `cleared` against identities that have already been closed
 - returns: a copied progress value containing the current gate decision
 - verify: json_path(path="$.gate_failures", equals=0)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsProgress.after_gate`
+- code: `workflows/tests/coder/docs/test_flow.py::test_grounding_gate_budget_routes_directly`
+- tests: `workflows/tests/coder/test_telemetry.py::test_the_gate_verdict_is_forgotten_with_the_failures_it_summarises`
 
 ### after_review
 - sig: `DocsProgress.after_review(review: DocumentationReview) -> DocsProgress`
 - does: records the review disposition and finding count, retaining finding identities only for revise
+- does: leaves no worklist behind when the review is `approved` or `blocked`, since both end the flow and any attached findings exist only to explain that terminal decision
 - returns: a copied progress value containing the current review decision
 - verify: json_path(path="$.review_findings", equals=0)
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsProgress.after_review`
+- code: `workflows/tests/coder/docs/test_flow.py::test_reviewer_budget_routes_directly`
+- tests: `workflows/tests/coder/test_telemetry.py::test_only_a_revise_leaves_a_worklist_for_the_next_pass`
+
+## Fields
+
+### field: DocsProgress.VERDICT_LABELS
+- type: tuple of strings
+- semantics: the four progress-bundle field names emitted under the `docs.` prefix as verdict-group span dimensions
+- semantics: every name ends in a suffix `groom profile` recognises as a verdict dimension (`_verdict`, `_disposition`, `_failure_class`, `_refutation_class`), so a label cannot drift into the catch-all bucket that the dashboard would silently leave unrendered
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsProgress.VERDICT_LABELS`
+
+### field: DocsProgress.COUNT_LABELS
+- type: tuple of strings
+- semantics: the two progress-bundle field names emitted under the `docs.` prefix as attempt-group span dimensions
+- semantics: each name is a non-negative count of what a pass left outstanding rather than a signed delta, because `groom profile` classifies an attempt dimension with `str.isdigit` and a negative value would silently render nowhere
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsProgress.COUNT_LABELS`
+- tests: `workflows/tests/coder/test_telemetry.py::test_every_docs_label_lands_in_a_groom_profile_bucket`
+
+### field: DocsLoop.COUNT_LABELS
+- type: tuple of strings
+- semantics: the four bundle field names emitted under the `docs.` prefix as attempt-group span dimensions
+- semantics: bare names here, with `Docs.state_labels` supplying the `docs.` prefix at emission time
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsLoop.COUNT_LABELS`
+- tests: `workflows/tests/coder/test_telemetry.py::test_docs_reports_its_gates_and_whether_the_rework_bought_anything`

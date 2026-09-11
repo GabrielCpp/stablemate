@@ -24,6 +24,9 @@ consuming repository from the explicit `repo_dir` input using the survey resolve
 - returns: the Ostler adoption result after logging its message
 - verify: count(subject="backlog adoption results", equals=1)
 - code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::adopt_backlog`
+- code: `workflows/tests/author/test_workflow.py::backlogged`
+- code: `workflows/tests/author/test_workflow.py::with_epic`
+- code: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`
 - tests: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`
 
 ### validate_roadmap_milestone

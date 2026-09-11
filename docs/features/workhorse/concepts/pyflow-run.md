@@ -160,6 +160,8 @@ while budget, interrupt, and unavailable-backend stops retain a resumable checkp
 - does: arms a local control channel for a live run and exposes checkpoint-backed status
 - does: ends telemetry with the first terminal outcome
 - verify: emitted(event="terminal", count=1)
+- does: stamp `terminal` from the success path inside the `try` block — and stamps every other terminal status from inside the `try` on its failing branch — so the `finally` block's `aborted` backstop finds the run already finalized and the first status is the one that is kept
+- verify: emitted(event="run heartbeat after finalization", count=0)
 - does: closes the control channel on every exit path
 - verify: absent(subject="run control socket after exit")
 - does: disarms the control channel on every exit path
@@ -176,8 +178,13 @@ while budget, interrupt, and unavailable-backend stops retain a resumable checkp
 - verify: json_path(path="$.terminal", absent=true)
 - returns: process exit code `0` for completion, `1` for a reported failure, and `130` for keyboard interruption
 - verify: exit_status(code=0)
+- code: `workhorse/tests/test_run_terminal.py::test_a_successful_run_is_stamped_terminal_not_aborted`
+- code: `workhorse/tests/test_run_terminal.py::test_the_crash_backstop_still_fires_when_nothing_finalized`
+- code: `workhorse/tests/test_run_terminal.py::test_a_workflow_failure_still_reports_fail_first`
 - code: `workhorse/workhorse/pyflow/run.py::run_pyflow`
+- code: `workhorse/tests/test_pyflow_graph.py::test_dry_run_reports_problems_and_never_opens_a_run_dir`
 - tests: `workhorse/tests/test_run_terminal.py::test_a_successful_run_is_stamped_terminal_not_aborted`, `workhorse/tests/test_run_terminal.py::test_the_crash_backstop_still_fires_when_nothing_finalized`, `workhorse/tests/test_reload_reentry.py::test_a_run_listens_on_its_own_dir_and_stops_listening_on_the_way_out`, `workhorse/tests/test_run_budget.py::test_a_budget_stop_leaves_the_run_resumable`, `workhorse/tests/test_failure_handoff.py::test_a_run_budget_stop_writes_no_outbox_entry`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_dry_run_reports_problems_and_never_opens_a_run_dir`, `workhorse/tests/test_pyflow_graph.py::test_dry_run_drives_the_machine_without_running_a_node`, `workhorse/tests/test_pyflow_graph.py::test_dry_run_uses_its_own_run_dir_rather_than_a_real_runs_checkpoint`, `workhorse/tests/test_pyflow_graph.py::test_dry_run_reports_a_fail_terminal_rather_than_failing_on_it`, `workhorse/tests/test_pyflow_graph.py::test_a_real_run_still_fails_on_the_same_fail_terminal`, `workhorse/tests/test_pyflow_graph.py::test_an_unresolvable_skill_reference_warns_a_real_run_and_fails_a_dry_one`, `workhorse/tests/test_pyflow_graph.py::test_a_run_carrying_no_manifest_is_not_warned_about_references`
 
 ### _open_run
 - sig: `_open_run(name, runs_dir, resume_run_dir, *, run_id, params, no_cache) -> tuple[ArtifactWriter, Resume | None]`
@@ -196,10 +203,19 @@ while budget, interrupt, and unavailable-backend stops retain a resumable checkp
 
 ### _drop_retired_inputs
 - sig: `_drop_retired_inputs(workflow_cls, inputs) -> tuple[dict, tuple[str, ...]]`
-- does: removes checkpoint keys for fields deleted from the current workflow class
-- returns: filtered inputs and sorted retired field names
-- verify: absent(subject="deleted workflow input in resumed instance")
+- does: removes checkpoint keys the current workflow class no longer declares
+- verify: removed(subject="deleted workflow input in resumed instance")
+- does: leaves a checkpoint the class still matches alone, returning the original dict by identity
+- verify: count(subject="retired keys on a checkpoint the class still matches", equals=0)
+- does: keeps fields declared on the workflow base class even when the workflow subclass never names them
+- verify: count(subject="base-class fields reported as retired", equals=0)
+- does: does not forgive a retyped field — only fields the class no longer declares are forgiven, so a stored value whose type the class rejects still reaches `_instantiate` and stops the run
+- verify: count(subject="retired keys when a declared field has a stored value of the wrong type", equals=0)
+- does: returns the retired keys sorted alphabetically
+- returns: filtered inputs and the retired keys in alphabetical order
+- verify: count(subject="retired keys in alphabetical order across multiple deletions", equals=3)
 - code: `workhorse/workhorse/pyflow/run.py::_drop_retired_inputs`
+- tests: `workhorse/tests/test_retired_params.py::test_retired_key_is_dropped_and_named`, `workhorse/tests/test_retired_params.py::test_several_retired_keys_are_reported_sorted`, `workhorse/tests/test_retired_params.py::test_a_clean_checkpoint_is_left_alone`, `workhorse/tests/test_retired_params.py::test_the_workflows_own_fields_are_never_dropped`, `workhorse/tests/test_retired_params.py::test_a_retyped_field_still_stops_the_run`
 
 ### _drive_reloadable
 - sig: `_drive_reloadable(wf, env, resume, *, registry, writer) -> Any`
@@ -207,20 +223,23 @@ while budget, interrupt, and unavailable-backend stops retain a resumable checkp
 - does: re-imports editable workflow and source-tree packages after a workflow-only reload
 - does: reads the new checkpoint, rebuilds the workflow instance, and re-enters the checkpointed state
 - does: converts a CLI switch or core reload into a process-edge reload request carrying CLI and live profile
+- does: treat a CLI switch as a core reload even when the request's `core` flag is false, because the backend is bound once at the process edge
 - returns: the terminal value from `drive` after the final re-entry
 - verify: emitted(event="reload", count=1)
 - code: `workhorse/workhorse/pyflow/run.py::_drive_reloadable`
-- tests: `workhorse/tests/test_reload_reentry.py::test_a_reload_re_enters_the_same_run_on_the_code_that_was_pushed`, `workhorse/tests/test_reload_reentry.py::test_a_reload_picks_up_a_fix_to_a_library_the_workflow_imports`, `workhorse/tests/test_reload_reentry.py::test_a_core_reload_replaces_the_process_only_after_the_run_is_finalized`
+- tests: `workhorse/tests/test_reload_reentry.py::test_a_reload_re_enters_the_same_run_on_the_code_that_was_pushed`, `workhorse/tests/test_reload_reentry.py::test_a_reload_picks_up_a_fix_to_a_library_the_workflow_imports`, `workhorse/tests/test_reload_reentry.py::test_a_core_reload_replaces_the_process_only_after_the_run_is_finalized`, `workhorse/tests/test_reload_reentry.py::test_a_switch_is_a_core_reload_even_when_nobody_asked_for_one`
 - emits: `reload` telemetry with checkpoint state, flow, and replaced packages
 
 ### _exec_reload
 - sig: `_exec_reload(name: str, run_dir: Path, *, cli: str = "", profile: str = "") -> int`
 - does: rebuilds the resume command rather than replaying the original invocation
+- does: uses the same `resume_argv` builder a supervisor re-spawns off `launch.json`, so the line this process re-execs with and the line a supervisor would re-spawn it with cannot drift apart
 - does: replaces the current process image with the resume command when executable resolution succeeds
-- does: prints a resumable error and returns the reserved reload exit code when re-exec fails
+- does: carry the requested `--cli` when one was named, because CLI is the one thing a resume cannot read off the checkpoint
+- does: print a resumable error and return the reserved reload exit code when re-exec fails
 - verify: exit_status(code=3)
 - code: `workhorse/workhorse/pyflow/run.py::_exec_reload`
-- tests: `workhorse/tests/test_reload_reentry.py::test_the_re_exec_argv_is_the_resume_spelling_not_the_original_one`, `workhorse/tests/test_reload_reentry.py::test_a_re_exec_carries_the_live_profile_and_the_config_file_it_is_reading`
+- tests: `workhorse/tests/test_reload_reentry.py::test_the_re_exec_argv_is_the_resume_spelling_not_the_original_one`, `workhorse/tests/test_reload_reentry.py::test_moving_a_run_onto_another_cli_re_execs_naming_it`, `workhorse/tests/test_reload_reentry.py::test_a_re_exec_builds_its_argv_with_the_same_function_the_launch_record_does`, `workhorse/tests/test_reload_reentry.py::test_a_re_exec_carries_the_live_profile_and_the_config_file_it_is_reading`
 
 ### _reloadable_roots
 - sig: `_reloadable_roots(entry_module: str) -> list[str]`

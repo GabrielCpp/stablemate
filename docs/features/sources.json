@@ -2384,7 +2384,7 @@
         },
         {
           "path": "groom/groom/app.py",
-          "content_sha256": "cac6ed722aa1e0138d9056a89e2ebd8c2139fc650f7d416fa7d590bd8d6e6ead",
+          "content_sha256": "f85d0b3dbec3a04e15cc5e4c891cea6843da1fe65845b4aab1b06d30d2a97945",
           "symbols": [
             "ARCHIVE_EVERY_S",
             "ASSETS_DIR",
@@ -2422,9 +2422,11 @@
             "_dispatch_alerts",
             "_docker_inbox_rel_path",
             "_ensure_volumes",
+            "_gate_abs_path",
             "_gate_from_question",
             "_gate_pollable",
             "_handle_command",
+            "_held_gate_pending",
             "_inbox_append",
             "_inbox_messages",
             "_live_loop",
@@ -2439,6 +2441,7 @@
             "_push_watched",
             "_real_runs",
             "_reconcile",
+            "_recover_attend",
             "_recv_loop",
             "_repos_for",
             "_rules_loop",
@@ -2461,12 +2464,18 @@
             "_truthy",
             "_workflow_by_run_id",
             "allow_headerless",
+            "anchor",
             "answer",
             "api_live",
             "api_state",
             "archived",
             "at",
             "attend_queue",
+            "attend_session",
+            "attend_sessions",
+            "attend_settings_get",
+            "attend_settings_post",
+            "attend_stop",
             "base",
             "before",
             "body",
@@ -2487,6 +2496,7 @@
             "differ",
             "dirs",
             "done",
+            "enabled",
             "ending",
             "error",
             "exc",
@@ -2557,11 +2567,16 @@
             "relative",
             "reload",
             "reloaded",
+            "rendered",
             "reply",
             "repos",
             "request",
             "resolved",
+            "restarted",
             "result",
+            "resume",
+            "row",
+            "rows",
             "run",
             "run_id",
             "run_ids",
@@ -2574,17 +2589,20 @@
             "stamp",
             "stamp_assets",
             "status",
+            "stopped",
             "targets",
             "task",
             "tel",
             "text",
             "threshold",
             "traces",
+            "updated",
             "url",
             "version",
             "volume",
             "waiting",
             "waiting_on",
+            "wanted",
             "was_blocked",
             "watchers",
             "wf",
@@ -2640,7 +2658,7 @@
             },
             {
               "name": "_attend_gates",
-              "content_sha256": "2ede563a14315a98b486e4bb7cbbce32c79fe7a560e824d1b7771e53104effff"
+              "content_sha256": "0ea0672ff890658b8e0b8315737e12aabd232a345df0b47fd7292792ca899448"
             },
             {
               "name": "_background_scan",
@@ -2671,6 +2689,10 @@
               "content_sha256": "2e257d6bf1b946fcffca9b7a0eb477a4b708bcd240475671eed9f8722cc9b99b"
             },
             {
+              "name": "_gate_abs_path",
+              "content_sha256": "3ebbda1de5fae5121e07ba5e5132e44eca67d73a12d59381a42fd42209e6762e"
+            },
+            {
               "name": "_gate_from_question",
               "content_sha256": "b92bc4df8fbbcd84a156ba88d637e03436f6f9162241d43a106aa7b2092d202e"
             },
@@ -2681,6 +2703,10 @@
             {
               "name": "_handle_command",
               "content_sha256": "54642a4eaa885beade0ee6f40633337cb1bd705677e5d6e346de77efe1101cef"
+            },
+            {
+              "name": "_held_gate_pending",
+              "content_sha256": "b6a8fc7ab839999b991e75b47de0ee3f3a34d9f784c18be32d23561250129600"
             },
             {
               "name": "_inbox_append",
@@ -2712,7 +2738,7 @@
             },
             {
               "name": "_poll_gates_of",
-              "content_sha256": "875d11cfda3d00a409dbaa08b464f822aef2c8de855224a1bb9b5b498974dc79"
+              "content_sha256": "7985ad9a4c3de4c7c656cdf83c20c8dd3c1ad96eacb5e9772a6b1b3b4b0feb9c"
             },
             {
               "name": "_project_native_rows",
@@ -2733,6 +2759,10 @@
             {
               "name": "_reconcile",
               "content_sha256": "e447e0d777c92c33937cd2e6fff2508c6742c676f0a905e14aaf4000561c0f30"
+            },
+            {
+              "name": "_recover_attend",
+              "content_sha256": "7aeeccfb69cdcb788e630d686a26c023d5fba5651a221eb0b8d1cc22e8655302"
             },
             {
               "name": "_recv_loop",
@@ -2796,7 +2826,7 @@
             },
             {
               "name": "_sync_native_row",
-              "content_sha256": "6ccce7bdc539fd27b2c264407b4f47d50ceabc0b0a9b3290bbb7544b7e9c03ab"
+              "content_sha256": "7578549dc6a53d09e942056df7d99c61d802f31da34b1d8b8e06e1b5259507ef"
             },
             {
               "name": "_truthy",
@@ -2819,8 +2849,28 @@
               "content_sha256": "396900d001c6db5c3cfd0e91313b087dcdbe2d881c4acee92adb1b972b6d31f5"
             },
             {
+              "name": "attend_session",
+              "content_sha256": "30256dc81283c93566b3d911ee6976a17b614d5c31a01fd6a8dbf6e2feb38bf6"
+            },
+            {
+              "name": "attend_sessions",
+              "content_sha256": "247c31bf083378bc27571ab9de50e813a9d7746f7cbda70fc4a508dc4732af36"
+            },
+            {
+              "name": "attend_settings_get",
+              "content_sha256": "bf4fe24efd58e39a2733780363968ad45acf45ae06c49ebc92cdcd25eb18f875"
+            },
+            {
+              "name": "attend_settings_post",
+              "content_sha256": "404e2fb1e6288d8989f6598df5a65e035f914ed68f946bbcf4ffe3cbfffd195b"
+            },
+            {
+              "name": "attend_stop",
+              "content_sha256": "14abffb6962d884d1af0618006e58820fec7b006297cb1127521d30168730d0f"
+            },
+            {
               "name": "create_app",
-              "content_sha256": "39b80515cf244e6119b016358d415815be69fcde47a58783e52af815307c79b0"
+              "content_sha256": "ec8819aa80cb043faf1361aebb1ee391c4aadded309bbff3acb8761292960509"
             },
             {
               "name": "dashboard_sidecar",
@@ -4594,15 +4644,17 @@
         },
         {
           "path": "groom/groom/projection.py",
-          "content_sha256": "0799ddc10ec7f99125dc1172c6c9adb0398bfbbb8a06fd27292fb05b3f8db97b",
+          "content_sha256": "ecc3e2225471c9b3eb312b9df1ee4892116a2b901c48d98f991b7a5fb82907ff",
           "symbols": [
             "EXT_LANG",
             "LOG_TRAIL_LIMIT",
             "SEVERITY_CLASS",
             "STATE_ORDER",
             "_",
+            "attend_summary",
             "base",
             "bits",
+            "by_run",
             "cards",
             "cells",
             "cli_label",
@@ -4634,6 +4686,7 @@
             "idle",
             "is_live",
             "last_beat",
+            "latest",
             "line",
             "lines",
             "live_cls",
@@ -4649,6 +4702,7 @@
             "repo_entries",
             "repo_label",
             "repos",
+            "rev",
             "row_id",
             "row_mini",
             "rows",
@@ -4676,6 +4730,10 @@
             "wait_kind"
           ],
           "declarations": [
+            {
+              "name": "attend_summary",
+              "content_sha256": "558d5cc9e46674d94628d4e45e4e2a6c54ba8bc3a295ee8d7cbcfe052a196105"
+            },
             {
               "name": "cli_label",
               "content_sha256": "839260cf2cfaecdecc168baa531273c65b16cd08d21aff71dd567e272d3e21f7"
@@ -4802,7 +4860,7 @@
             },
             {
               "name": "state_message",
-              "content_sha256": "6c0231f6af838d6c894744ba261cf2322cc81d4b1cc82af367beb374de042ad7"
+              "content_sha256": "c5bb0a77e13ac612384f40edd389a93690214b6cb6c5831e6357c682d09426a6"
             },
             {
               "name": "status_bar",
@@ -19973,82 +20031,148 @@
         },
         {
           "path": "workhorse/workhorse/_vendor/stablemate_core/config.py",
-          "content_sha256": "88b02687f5b530b32c078c7788ddf34b7e2d2851dcc7f607089a45f19ba7febd",
+          "content_sha256": "451a081294d09d810fe9d6a8abbae04e7934c4547265d40b02cc02af743f3d6a",
           "symbols": [
+            "ATTEND_CLI_ENV",
+            "ATTEND_DENY_ENV",
+            "ATTEND_HEADLESS",
+            "ATTEND_MODE_ENV",
+            "ATTEND_OFF",
+            "ATTEND_SECTION",
+            "ATTEND_SESSION",
+            "AttendSettings",
             "BACKEND_FALLBACK_KEY",
+            "BUILTIN_ATTEND_CLI",
             "BUILTIN_DEFAULT_CLI",
+            "CLI_ENV_KEY",
+            "CLI_KEY",
             "CONFIG_PATH_ENV",
+            "CONFIG_SOURCE",
             "CONFIG_VERSION",
             "CONFIG_VERSION_KEY",
+            "ConfigError",
             "ConfigVersionError",
             "DEFAULT_CLI_KEY",
+            "DEFAULT_SOURCE",
+            "ENV_SOURCE",
             "LEGACY_CONFIG_PATH_ENV",
             "PROFILES_KEY",
+            "PROFILE_CLI_KEY",
+            "PROFILE_DEFAULT_KEY",
+            "PROFILE_POWERS_KEY",
             "PowerMapping",
             "UnknownProfileError",
+            "_ATTEND_MODES",
             "_LEGACY_APPS",
             "_MIGRATIONS",
+            "_attend_mode",
             "_core_version",
             "_default_config_path",
+            "_ensure_cli_profile",
             "_mapping_from_table",
             "_migrate_forward",
+            "_migrate_v1_to_v2",
             "_path_is_explicit",
             "_positive_finite",
             "_profiles_table",
             "_read",
+            "_reject_duplicate_cli",
             "_too_new_message",
+            "_walk_migrations",
             "_warn_if_too_new",
             "_warned_too_new",
+            "as_dict",
+            "auto_select_profile",
             "backend_table",
             "backup",
             "cfg",
             "check_config_version",
+            "cli",
+            "cli_table",
             "config_path",
             "config_version_of",
             "configured",
             "data",
             "default_table",
+            "deny",
             "effort",
+            "entry",
+            "env_cli",
+            "env_mode",
             "env_table",
             "found",
             "get_config_value",
-            "harness_table",
+            "harness",
             "known",
+            "last_mode",
+            "legacy",
             "legacy_config_paths",
-            "level_table",
             "listed",
             "load_config",
             "logger",
+            "match",
             "merged",
+            "mode",
             "model",
-            "names",
+            "nested",
+            "nested_default",
+            "nested_power",
+            "normalized",
+            "parts",
             "path",
-            "power_table",
+            "power",
+            "powers",
             "profile",
             "profile_backends",
+            "profile_cli",
             "profile_has_backend",
             "profile_names",
+            "profiles",
             "raw",
+            "raw_cli",
+            "raw_deny",
+            "raw_env",
             "read_config",
+            "resolve_attend_settings",
             "resolve_backend_default",
             "resolve_default_cli",
             "resolve_harness_env",
             "resolve_power",
             "resolve_stablemate_dir",
             "resolve_worktree_dir",
+            "section",
+            "seen",
+            "select_active_profile",
             "select_profile",
+            "sources",
             "step",
             "table",
+            "text",
+            "tier_table",
             "timeout_scale",
             "value",
+            "write_attend_settings",
             "write_base_dir",
             "write_config_key",
+            "write_config_section",
             "write_default_cli",
             "write_library_dir",
             "write_stablemate_dir",
             "write_worktree_dir"
           ],
           "declarations": [
+            {
+              "name": "AttendSettings",
+              "content_sha256": "a606dc765bce851581790e31d2ec20e324d6d97e7ca3fd010e1c316dd9e6a9a8"
+            },
+            {
+              "name": "AttendSettings.as_dict",
+              "content_sha256": "327b61674191f4566466c3f3ae5640553673e15834e5dd6d30b3ea508a89d9db"
+            },
+            {
+              "name": "ConfigError",
+              "content_sha256": "34e0c7f579651bc8c2287b61a5653acc764cb6789395c940f2faee9b299855f2"
+            },
             {
               "name": "ConfigVersionError",
               "content_sha256": "a6ba25f76eb50d231b4de8ad8960246226bc0b14e34325474917c92aaf76927e"
@@ -20062,6 +20186,10 @@
               "content_sha256": "594c70b0daea7d34a7b8cc49bb0ca81bacff67770df86902501014c9d7263032"
             },
             {
+              "name": "_attend_mode",
+              "content_sha256": "57537695137c8d705438c9c97b14f74348da8de5f7b19ea431baa2bc7b95133a"
+            },
+            {
               "name": "_core_version",
               "content_sha256": "f0cd22f9b0f3a4625304b4008976ad774cf8741ffe66f18ce736882c4286ae06"
             },
@@ -20070,12 +20198,20 @@
               "content_sha256": "45fd4865b23ccc0843e5aa43130aa58c4477eba81da3a84022310ccaa3c9f887"
             },
             {
+              "name": "_ensure_cli_profile",
+              "content_sha256": "29f125f512f3e8bffcc1b36d3bfea71cf3430d99d3fbbc88aaa5e2a1820e4c8a"
+            },
+            {
               "name": "_mapping_from_table",
               "content_sha256": "8bf511ba1eb8f949fc7a3c50b45ba61990cc09d6b4ec10ecd28f5b54bca72bd7"
             },
             {
               "name": "_migrate_forward",
-              "content_sha256": "f66a3b08453d64e428fee8a12cc100c6de3e0766c29f7a97a8c5a9fe3b18d98a"
+              "content_sha256": "3a7293fc3e3617cc29bad8842a9c1ff54b5121f7088646fd4e79d3ee8a4444a0"
+            },
+            {
+              "name": "_migrate_v1_to_v2",
+              "content_sha256": "7babadd0437af6cf5d1e6ca0b6e96773a422fe8875b1311e09b188fafc04cba0"
             },
             {
               "name": "_path_is_explicit",
@@ -20094,12 +20230,24 @@
               "content_sha256": "1bba21b16719a9b4c38b08280740711e132acfaa773964e8cd6daab7e33dfe32"
             },
             {
+              "name": "_reject_duplicate_cli",
+              "content_sha256": "f741e4c02ae60153b1d01600e3e82daa6cdf59119da3ff2c36abcf400c41cd6c"
+            },
+            {
               "name": "_too_new_message",
               "content_sha256": "1ae3edb63e79a391d807db889ec96db25a20db1db9973e69fab51caf71f82705"
             },
             {
+              "name": "_walk_migrations",
+              "content_sha256": "9620b87f9e0662f1b418e74bc8205faf8549e4f82abf927a69797ef003a86eaa"
+            },
+            {
               "name": "_warn_if_too_new",
               "content_sha256": "ee5246bd08ef73c2fd282f7c054f905a8dadcb1672020e48f0045c2b4bef4e6c"
+            },
+            {
+              "name": "auto_select_profile",
+              "content_sha256": "bc165bdb26fab1f6f299d6cf4c96eea434af2d541653a8308f0a53579dc2c729"
             },
             {
               "name": "check_config_version",
@@ -20123,23 +20271,31 @@
             },
             {
               "name": "load_config",
-              "content_sha256": "edb5cd346c003f6c70bb58932638132277be1bc2ff39c6f174dc94bf181165ff"
+              "content_sha256": "8240ce202593f592bf0c188e46229034d017011ae55dfda559aa055329c20f24"
             },
             {
               "name": "profile_backends",
-              "content_sha256": "7421142752031e1a20cc69b842f6b1cc90ffe08151e45614102a0b1edebe659b"
+              "content_sha256": "03f92fc0290bfd07d47be67429db3482d3d157daba91078e4afff18a58bcc0e7"
+            },
+            {
+              "name": "profile_cli",
+              "content_sha256": "1e762219c515af67bf991476ae5e7c91db9a6f9fc5be94231b944ce5ca3d6f7d"
             },
             {
               "name": "profile_has_backend",
-              "content_sha256": "55d118fe914c073bf0c726a57c061b2620aa570e8e5b6466adfd5a63a4083e78"
+              "content_sha256": "762b1b64272061d8899b632632aa9c744b8e5bf0914a114f2e700cda8d476b09"
             },
             {
               "name": "profile_names",
               "content_sha256": "34607cee6a39ac5b6b68191a214290881ddb0efcfff9ca4b0c49a0c56afaf740"
             },
             {
+              "name": "resolve_attend_settings",
+              "content_sha256": "10384efff134ae92bb03a9bbcd401905d828c0dd46a03d09212fdb82a7c19fbb"
+            },
+            {
               "name": "resolve_backend_default",
-              "content_sha256": "a785921415aee5d99996415c4bceebf17250a725c3d5ba491b20cfc87e92cf44"
+              "content_sha256": "b5827b7fc7ce54046881f5985efce0006a2c4e1a0a8c526ee1f977fb1baf696a"
             },
             {
               "name": "resolve_default_cli",
@@ -20147,11 +20303,11 @@
             },
             {
               "name": "resolve_harness_env",
-              "content_sha256": "3265e5b6db3e28837474daddc68a281b633fd46b09d68c251671f16da7f3b42c"
+              "content_sha256": "5ac999e9512592dd1955832036ce651482d6da14a8adb31f01d1d66f8562775b"
             },
             {
               "name": "resolve_power",
-              "content_sha256": "318a57d0f58d31607a8f959f3422e5176c8069e8aa5b93f73c89d2c657e2022a"
+              "content_sha256": "2b9b467bddeb9b88460b442f50850117ecb4051d6a70af5a2598db8704c7796f"
             },
             {
               "name": "resolve_stablemate_dir",
@@ -20162,8 +20318,16 @@
               "content_sha256": "bc9166ecc6fa843a32b98a47f59f27bd5ec2ae33993cff84b797add5655b576d"
             },
             {
+              "name": "select_active_profile",
+              "content_sha256": "b0099967f1c13b79253903c655c354a9b569d277b8ee955433434df061e75a37"
+            },
+            {
               "name": "select_profile",
-              "content_sha256": "a0b45b49c109963fe70da1f4f6f084043e1d8ac4c11ed191addaf1b1de939f76"
+              "content_sha256": "a56135a79d39636ad9b4fd74b7e71fad35f82b418caeeccc874759954f433583"
+            },
+            {
+              "name": "write_attend_settings",
+              "content_sha256": "b5550104f7d576d6f5c6be8db1d6b5a9b9759aebae08702d9d268372b9c60941"
             },
             {
               "name": "write_base_dir",
@@ -20171,7 +20335,11 @@
             },
             {
               "name": "write_config_key",
-              "content_sha256": "4eafc3daf789279f76709433e2ec702d90d90a308c7ccad7ff361b9859607e0a"
+              "content_sha256": "1463a10937fd3be3e39fe64930efb82208d07b56d427b918ea02b4bdfb270617"
+            },
+            {
+              "name": "write_config_section",
+              "content_sha256": "2788688dee1810e2ee002295f9b41a1c6f04892339c1c1a9035ed99d15efa7f1"
             },
             {
               "name": "write_default_cli",
@@ -20239,7 +20407,7 @@
         },
         {
           "path": "workhorse/workhorse/artifacts.py",
-          "content_sha256": "f809657a55db5c26b333b23506e4e276231b9cac464093090bcdb194baee9671",
+          "content_sha256": "4876e19c48a114546c86cd876bb5288a8c4246348c674a55c9e1b0e36248d244",
           "symbols": [
             "ArtifactWriter",
             "CHECKPOINT_FILE",
@@ -20250,6 +20418,7 @@
             "_clear_stale_run",
             "_keep_visit_copy",
             "_observe_repo",
+            "_process_alive",
             "_write_checkpoint",
             "_write_done",
             "_write_run_json",
@@ -20294,11 +20463,11 @@
           "declarations": [
             {
               "name": "ArtifactWriter",
-              "content_sha256": "bb601472709560ae8b1c96686d4d3724dfbf75baf52adee476eb90c3b05947b3"
+              "content_sha256": "a77f4091f3d3d1256331326d0f4ece697dbf71315c6a85dd89b5d4254d923cb2"
             },
             {
               "name": "ArtifactWriter.__init__",
-              "content_sha256": "a3dcbca8632dbebf45804a683e16166471e28e3d50597861adcca3bbff3b9d56"
+              "content_sha256": "69436ad7dd5ebe14deea300c0461bedd2a018732f4695be2f92adbce65b0e49b"
             },
             {
               "name": "ArtifactWriter._append_event",
@@ -20318,7 +20487,7 @@
             },
             {
               "name": "ArtifactWriter._write_run_json",
-              "content_sha256": "e44bf4a2a8e3256b3e9dd530b4242bdb0048d9cdb6505cf403a50b7f0ac430c4"
+              "content_sha256": "3e0870c43c360806946cd7eea4ce311a511a873dd7178b95862c45e826ca8c5b"
             },
             {
               "name": "ArtifactWriter._write_unlinked",
@@ -20326,11 +20495,11 @@
             },
             {
               "name": "ArtifactWriter.at",
-              "content_sha256": "8acce83ed0d8c988cfb1593e18a1ad2bb0dd2e61dd0d05cfe3df38ce0c36ccd4"
+              "content_sha256": "69df6ff519f19a617cd657c4649956241cfe96df9f57569419593fff21bf8f8f"
             },
             {
               "name": "ArtifactWriter.finish",
-              "content_sha256": "b43c7db89e0d19ccc1573fc998e09ab4798e3025391716f03591bb44229bbe3d"
+              "content_sha256": "e5b57cafe4221fa8ffbcd3a985102047fc8352fbce105e7ff4ecc2c4288fc651"
             },
             {
               "name": "ArtifactWriter.read_checkpoint",
@@ -20370,7 +20539,7 @@
             },
             {
               "name": "ArtifactWriter.resume",
-              "content_sha256": "2030cde4eb911ec00ad4eddc799c8998b894d12253b21ebe9b278f3dff40c544"
+              "content_sha256": "12847e283ed578d66b712bad3b342580b4742deb44c01523f318ca74c12dab3e"
             },
             {
               "name": "ArtifactWriter.run_id",
@@ -20411,6 +20580,10 @@
             {
               "name": "_observe_repo",
               "content_sha256": "839dbf4c573712d31b7de95019ce45b3ff69d671ab7ed077658bbd38383ca560"
+            },
+            {
+              "name": "_process_alive",
+              "content_sha256": "a6a0708d9463e6a4d0d1001b799519bd0ef413aa2289746c7e5a7477bfcabcc9"
             }
           ]
         },
@@ -20629,25 +20802,26 @@
         },
         {
           "path": "workhorse/workhorse/cli/run.py",
-          "content_sha256": "0a3d326da22e35a0dd69e0578e8b5f0050cc247b5cf8861a3245f757687139eb",
+          "content_sha256": "b5237ac7dfc9ba63cb88cded8b7ff8b1422e190f48f3fb5a553e2d8bf7e36202",
           "symbols": [
             "HELP",
             "NAME",
             "_apply_config_path",
             "_check_profile_resolves",
-            "_configured_default_cli",
+            "_profile_cli_or_raise",
             "_recorded_profile",
+            "_resolve_active_cli",
             "_resume_run_dir",
+            "active_cli",
             "add_arguments",
             "backend",
-            "carries_models",
             "cfg",
+            "cli",
             "consulted",
             "flow",
             "invocation",
             "latest",
             "library_dirs",
-            "named",
             "overlay",
             "params",
             "path",
@@ -20670,15 +20844,19 @@
             },
             {
               "name": "_check_profile_resolves",
-              "content_sha256": "443f45fe98d7673001b0b246baf8fbb8ce98e752189039965d5d01ec43babe8f"
+              "content_sha256": "30bc903929d7ff7a55a2f0a343d0e98973a426a3adc3dba689eb8da7af239d5f"
             },
             {
-              "name": "_configured_default_cli",
-              "content_sha256": "0c9f422ff291828f0767ef18447eee733f83fbdad8cf69b9570b00ffc5985278"
+              "name": "_profile_cli_or_raise",
+              "content_sha256": "2bb1c7daa480b776fcf8db0111f4ba09b41310682d533d35b4b20b505bbc839a"
             },
             {
               "name": "_recorded_profile",
               "content_sha256": "246307532cbb2f6f0ccdd911e4e9d80e0593f34051e04731f8578b9b15da66f2"
+            },
+            {
+              "name": "_resolve_active_cli",
+              "content_sha256": "956764af0a4a6c14546474133ba0d82dd40e7bf3b0d990ca9c606918c1f849cb"
             },
             {
               "name": "_resume_run_dir",
@@ -20686,11 +20864,11 @@
             },
             {
               "name": "add_arguments",
-              "content_sha256": "8198d75c10295f8a7f58519548fb7f80a892ffcbc17c0eac231662b3c9a938d3"
+              "content_sha256": "47c89e5d309def48345a6fdf678137a9784858d5d3424bc5f9341f97968ee881"
             },
             {
               "name": "invocation",
-              "content_sha256": "fcb2fecc3cf668a427ee0c0fe63e275a06f279826672695fd915e559afaaf30b"
+              "content_sha256": "7f0385d3265104d4ef5a6efa2809de0cd68e1845ab0dbdd5dff7b685a5a8a816"
             },
             {
               "name": "library_dirs",
@@ -22904,7 +23082,7 @@
         },
         {
           "path": "workhorse/workhorse/pyflow/engine.py",
-          "content_sha256": "b26a504c403d7c14d8a19f4ddbec6dee1426948f8a43840534e08deca5f35592",
+          "content_sha256": "c353a712887c5074cb2a72bc99bd128eb7d58626b2506a70735ba410772b264e",
           "symbols": [
             "Engine",
             "RunEnv",
@@ -22986,7 +23164,7 @@
           "declarations": [
             {
               "name": "Engine",
-              "content_sha256": "cf4b0bc030bdb088281b5ac609abee1866cdff3e807fc6f5a350cde784004bfc"
+              "content_sha256": "a4575fea1c84141bb31a02d8a586ecfb88e766ad25f66c2676f17667e3699257"
             },
             {
               "name": "Engine.__init__",
@@ -23006,7 +23184,7 @@
             },
             {
               "name": "Engine.agent",
-              "content_sha256": "1f725d452617366c12f174b6c9d199c312c931680689426de6c0263bf8a7994b"
+              "content_sha256": "35504a67814d38d501ea479ee8af7185fe954873bcfa21c0a6ea72abd6b38bab"
             },
             {
               "name": "Engine.call",
@@ -23112,7 +23290,7 @@
         },
         {
           "path": "workhorse/workhorse/pyflow/errors.py",
-          "content_sha256": "4b5616586b440ec315b1500cf77f524e83d9283eb48b22d3cf1ee31c9f0dd486",
+          "content_sha256": "a0984ab941980ef6afa7e280d92258e62428118d8cff455df45ee6e3bb02d94a",
           "symbols": [
             "AgentTimeout",
             "AgentTurnFailed",
@@ -23129,11 +23307,19 @@
           "declarations": [
             {
               "name": "AgentTimeout",
-              "content_sha256": "6772d0495122a142a1454074180bd06be43ccebd8a002b66211a4484a89ed086"
+              "content_sha256": "a580dd8ff3b74b36da6396bd6bde8876fe5728e3933b5a5a14fd3d2d5c0fd5e9"
+            },
+            {
+              "name": "AgentTimeout.__init__",
+              "content_sha256": "d17a8890a7740298649c9636862591aff5f61c81794957239a3b25e4e0200159"
             },
             {
               "name": "AgentTurnFailed",
-              "content_sha256": "ce54f7c2b2fc82557897a9efd6af5024ac67b091c6e946c277fdc33f64a83a0b"
+              "content_sha256": "587c3207c476cf0ab3dd232cea515d06a4874a5410345e7fe9a0f8f91b5a4290"
+            },
+            {
+              "name": "AgentTurnFailed.__init__",
+              "content_sha256": "b1585042ac329d86c654d099a50ed32c573fc57cc3e709ed01bc08ecad128cf6"
             },
             {
               "name": "NodeNotRunError",
@@ -23975,7 +24161,7 @@
         },
         {
           "path": "workhorse/workhorse/records.py",
-          "content_sha256": "b6a786102883ea536b0f19cd28caafa75f462d0fdca6780a7e0eaf7424a7e140",
+          "content_sha256": "9277b8111856e4125269599e846322219777209327af8583854fcd15d3fef60c",
           "symbols": [
             "Checkpoint",
             "LaunchRecord",
@@ -24012,6 +24198,8 @@
             "path",
             "phase",
             "pid",
+            "previous_process_died_at",
+            "previous_process_pid",
             "profile",
             "profile_config",
             "program",
@@ -24053,7 +24241,7 @@
             },
             {
               "name": "RunRecord",
-              "content_sha256": "a87ab07c8f58da3be3dba29f0ef84022387591166080d62401ef2bccb08d0352"
+              "content_sha256": "9e60aa3e32530978d31d60d853008099981fc45992b7771c09e5b6c89e1ec8e8"
             },
             {
               "name": "parse_checkpoint",
@@ -24572,11 +24760,13 @@
         },
         {
           "path": "workhorse/workhorse/runner/backends/opencode.py",
-          "content_sha256": "ceb62ffcd55772309ff9f2313228470458c08f9b4be79e2264ec0330ff26b00d",
+          "content_sha256": "189ab90da7f9d90e552a5f6eb6f258138e69d7f8f4a0ccd85b0eb946bd7bbc74",
           "symbols": [
             "OpenCodeBackend",
             "_CODEX_RESPONSES_URL",
             "_OPENCODE_AUTH_PATH",
+            "_OPENCODE_OUTPUT_TOKEN_MAX",
+            "_OPENCODE_OUTPUT_TOKEN_MAX_ENV",
             "_OPENCODE_VARIANT",
             "_OpenCodeEvents",
             "_codex_reset_at",
@@ -24612,7 +24802,7 @@
           "declarations": [
             {
               "name": "OpenCodeBackend",
-              "content_sha256": "3fd05c09bcd148daa1b121d373a06df83ce12d0504b9a6c31104b4d2e79da5c0"
+              "content_sha256": "48759320d81a132df42b2a3cdacdae140e9303bcbbd71e2f9c5168db7ec82595"
             },
             {
               "name": "OpenCodeBackend.compact",
@@ -24620,7 +24810,7 @@
             },
             {
               "name": "OpenCodeBackend.run_turn",
-              "content_sha256": "6773516c7a51a47e72f64416367b642a4f2189d3ee3c593b4099dbc9bc827c19"
+              "content_sha256": "af8328dc881be78b780e3754fda38f52718f0c374069b9642838f09da6641825"
             },
             {
               "name": "_OpenCodeEvents",
@@ -24870,7 +25060,7 @@
         },
         {
           "path": "workhorse/workhorse/runner/ladder.py",
-          "content_sha256": "1dfad8b5193ba8cb69c1ffa2b4383963dbc53294ff82d54aebb2c37e47d0ed4b",
+          "content_sha256": "3d905316475c7c9688b23e5af89cd0e3124267f1ac01d79138b674325aa13888",
           "symbols": [
             "AgentRunner",
             "ProfileSelection",
@@ -24983,7 +25173,7 @@
             },
             {
               "name": "_resolve_power_settings",
-              "content_sha256": "caf66937c1049234210e25fc731a18709584769b490431ee562dc35ca45180c1"
+              "content_sha256": "8193ce3c363496ef0cd788f0ea63bfbc11c67e08cd3211bcd9c3688bc81817e6"
             },
             {
               "name": "_write_prompt_for_inspection",
@@ -24995,7 +25185,7 @@
             },
             {
               "name": "switch_profile",
-              "content_sha256": "3eba1385d79236c2b38e336d2baa551da93c0f3aff573e0fd66abf792b3574b8"
+              "content_sha256": "9fd85a1cbe2e711bcd04c7cce44d9b2b3c3a99d7c3a803e04022ce16c1f17daf"
             }
           ]
         },

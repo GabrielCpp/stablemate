@@ -106,6 +106,7 @@ author turn and scope doctor findings to the documentation nodes affected by the
 - returns: a path-to-line-set map, with `None` representing an undecidable complete-file scope
 - verify: count(subject="documentation diff scope maps", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/docs.py::story_touched_lines`
+- code: `workflows/tests/coder/docs/test_scoping.py::book`
 - tests: `workflows/tests/coder/docs/test_scoping.py::test_an_untracked_document_is_the_story_s_in_its_entirety`
 
 ### detect_okf_docs

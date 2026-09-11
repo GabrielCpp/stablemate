@@ -7,15 +7,27 @@ title: Coder implement-plan prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/implement-plan.md`
 - code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::implement_layer`
+- code: `workflows/tests/coder/test_status_line_ownership.py::test_the_prompt_forbids_writing_the_story_status_line`
+- code: `workflows/tests/coder/test_status_line_ownership.py::test_the_guard_names_what_enforces_it`
 - detail: [coder development flow](flows/coder-dev.md)
 - detail: [coder implementation result](impl-result.md)
+- detail: [coder story status check](story-status-check.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_the_implement_turn_is_handed_the_two_values_its_prompt_reads`
+- tests: `workflows/tests/coder/test_status_line_ownership.py::test_the_prompt_forbids_writing_the_story_status_line`
+- tests: `workflows/tests/coder/test_status_line_ownership.py::test_the_guard_names_what_enforces_it`
 
 The implementation envelope constrains one turn to the inlined story plan and one selected
 service layer. It requires the agent to apply the plan with tests, run the plan's exact
 verification commands and service gates, smoke the touched layer when required, and return an
 `ImplResult`; a blocked turn is routed to the operator rather than treated as a successful empty
 layer. Optional QA setup and operator context are included only when the flow has them.
+
+The prompt carries a `## Story Status` section that names the story's `Implementation Status`
+field, prohibits the turn from editing it (one of `Do **not**`, `do **not**`, `exactly as you
+found them`), and points at the [coder story status check](story-status-check.md) gate that
+re-reads the line after the turn — the gate is what makes stating the rule binding, so a
+prohibition without it reads as bookkeeping to an agent that has just decided a story passed
+and wants to record it.
 
 ## Fields
 

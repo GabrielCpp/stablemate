@@ -51,18 +51,25 @@ explored.
 - returns: states reachable from the start over non-dynamic, non-dangling edges
 - verify: count(subject="reachable states in a two-state flow", equals=2)
 - code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.reachable`
+- code: `workhorse/tests/test_pyflow_graph.py::test_a_target_the_source_cannot_name_is_reported_as_dynamic`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_a_target_the_source_cannot_name_is_reported_as_dynamic`
 
 ### FlowGraph.unreachable
 - sig: `unreachable() -> tuple[str, ...]`
 - returns: live states not reached by the static walk
 - verify: count(subject="unreachable states in a connected flow", equals=0)
 - code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.unreachable`
+- code: `workhorse/tests/test_pyflow_graph.py::test_reachability_finds_the_state_nothing_transitions_to`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_reachability_finds_the_state_nothing_transitions_to`
 
 ### FlowGraph.prompts
 - sig: `prompts() -> tuple[tuple[str, str], ...]`
 - returns: each live state and every literal agent prompt path found in that state
 - verify: count(subject="literal prompts reported for a graph", equals=1)
 - code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.prompts`
+- code: `workhorse/tests/test_pyflow_graph.py::test_node_calls_and_prompt_paths_are_collected`
+- detail: [Seam collector selection](seam-collector-selection.md)
+- tests: `workhorse/tests/test_pyflow_graph.py::test_node_calls_and_prompt_paths_are_collected`, `workhorse/tests/test_pyflow_graph.py::test_a_seam_inside_a_private_helper_is_attributed_to_the_state`
 
 ### state_graph
 - sig: `state_graph(cls: type[Workflow], names=(), workflow_dir=None) -> FlowGraph`
@@ -70,6 +77,8 @@ explored.
 - returns: one graph with live state names only
 - verify: count(subject="state graphs produced for one workflow class", equals=1)
 - code: `workhorse/workhorse/pyflow/graph.py::state_graph`
+- code: `workhorse/tests/test_pyflow_graph.py::test_both_arms_of_a_branch_become_edges`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_both_arms_of_a_branch_become_edges`, `workhorse/tests/test_pyflow_graph.py::test_an_alias_is_never_a_second_state`, `workhorse/tests/test_pyflow_graph.py::test_a_step_carries_the_docstring_line_or_the_prompt_title`
 
 ### registry_graphs
 - sig: `registry_graphs(registry: Registry) -> list[FlowGraph]`
@@ -77,6 +86,8 @@ explored.
 - returns: one graph per distinct registered workflow class
 - verify: count(subject="graphs produced for one registry with one flow class", equals=1)
 - code: `workhorse/workhorse/pyflow/graph.py::registry_graphs`
+- code: `workhorse/tests/test_pyflow_graph.py::test_registry_graphs_render_each_class_once_with_all_its_flow_names`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_registry_graphs_render_each_class_once_with_all_its_flow_names`
 
 ### preflight
 - sig: `preflight(graphs: Sequence[FlowGraph], workflow_dir=None) -> list[str]`
@@ -84,12 +95,16 @@ explored.
 - returns: problem strings, empty when static checks pass
 - verify: count(subject="preflight problems for a valid workflow", equals=0)
 - code: `workhorse/workhorse/pyflow/graph.py::preflight`
+- code: `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_an_unreachable_state`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_preflight_is_quiet_when_every_prompt_resolves`, `workhorse/tests/test_pyflow_graph.py::test_preflight_names_the_prompt_that_does_not_exist`, `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_an_unreachable_state`, `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_a_machine_that_cannot_terminate`, `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_a_transition_to_something_that_is_not_a_state`
 
 ### StateNode.terminal
 - sig: `terminal -> bool`
 - returns: `true` when at least one recorded edge is a `done` edge
 - verify: json_path(path="$.terminal", equals=true)
 - code: `workhorse/workhorse/pyflow/graph.py::StateNode.terminal`
+- code: `workhorse/tests/test_pyflow_graph.py::test_a_done_is_an_edge_out_of_the_state_beside_its_other_edge`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_a_done_is_an_edge_out_of_the_state_beside_its_other_edge`
 
 ### StateNode.handoffs
 - sig: `handoffs -> tuple[str, ...]`
@@ -102,6 +117,9 @@ explored.
 - returns: blueprint node names reached by call steps in source order
 - verify: count(subject="node calls reported by a state with one call", equals=1)
 - code: `workhorse/workhorse/pyflow/graph.py::StateNode.calls`
+- code: `workhorse/tests/test_pyflow_graph.py::test_node_calls_and_prompt_paths_are_collected`
+- detail: [Seam collector selection](seam-collector-selection.md)
+- tests: `workhorse/tests/test_pyflow_graph.py::test_node_calls_and_prompt_paths_are_collected`, `workhorse/tests/test_pyflow_graph.py::test_a_seam_inside_a_private_helper_is_attributed_to_the_state`, `workhorse/tests/test_pyflow_graph.py::test_helpers_that_call_each_other_do_not_loop_the_reader`
 
 ### StateNode.prompts
 - sig: `prompts -> tuple[str, ...]`
@@ -176,6 +194,7 @@ explored.
 - semantics: unique engine seams discovered in source order
 - code: `workhorse/workhorse/pyflow/graph.py::StateNode`
 - detail: [StateNode field selection](state-node-field-selection.md)
+- tests: `workhorse/tests/test_pyflow_graph.py::test_node_calls_and_prompt_paths_are_collected`, `workhorse/tests/test_pyflow_graph.py::test_a_seam_inside_a_private_helper_is_attributed_to_the_state`
 
 ### field: StateNode.opaque
 - type: `bool`
@@ -225,6 +244,8 @@ explored.
 - semantics: `continue`, `await`, or `done`
 - code: `workhorse/workhorse/pyflow/graph.py::Edge`
 - detail: [Edge transition record](edge-transition-record.md)
+- code: `workhorse/tests/test_pyflow_graph.py::test_an_await_edge_is_read_from_the_third_argument`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_a_done_is_an_edge_out_of_the_state_beside_its_other_edge`, `workhorse/tests/test_pyflow_graph.py::test_an_await_edge_is_read_from_the_third_argument`
 
 ### field: Edge.params
 - type: `tuple[str, ...]`
@@ -233,6 +254,8 @@ explored.
 - semantics: names of parameters bound on the destination state
 - code: `workhorse/workhorse/pyflow/graph.py::Edge`
 - detail: [Edge transition record](edge-transition-record.md)
+- code: `workhorse/tests/test_pyflow_graph.py::test_edge_labels_name_the_parameters_the_transition_binds`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_edge_labels_name_the_parameters_the_transition_binds`
 
 ### field: Edge.reason
 - type: `str`
@@ -241,6 +264,8 @@ explored.
 - semantics: literal reason supplied to `.because()`, or empty when it is not statically knowable
 - code: `workhorse/workhorse/pyflow/graph.py::Edge`
 - detail: [Edge transition record](edge-transition-record.md)
+- code: `workhorse/tests/test_pyflow_graph.py::test_a_chained_because_is_read_as_the_edge_reason`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_a_chained_because_is_read_as_the_edge_reason`
 
 ### field: Edge.dynamic
 - type: `bool`
@@ -249,6 +274,8 @@ explored.
 - semantics: the target expression was not a plain `self.<state>` reference
 - code: `workhorse/workhorse/pyflow/graph.py::Edge`
 - detail: [Edge transition record](edge-transition-record.md)
+- code: `workhorse/tests/test_pyflow_graph.py::test_a_target_the_source_cannot_name_is_reported_as_dynamic`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_a_target_the_source_cannot_name_is_reported_as_dynamic`
 
 ### field: Edge.dangling
 - type: `bool`
@@ -257,6 +284,8 @@ explored.
 - semantics: a plain target names no live state
 - code: `workhorse/workhorse/pyflow/graph.py::Edge`
 - detail: [Edge transition record](edge-transition-record.md)
+- code: `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_a_transition_to_something_that_is_not_a_state`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_a_transition_to_something_that_is_not_a_state`
 
 ## Fields of Step
 
@@ -281,6 +310,8 @@ explored.
 - semantics: first line of a node docstring or prompt title when available
 - code: `workhorse/workhorse/pyflow/graph.py::Step`
 - detail: [Step field selection](step-field-selection.md)
+- code: `workhorse/tests/test_pyflow_graph.py::test_a_step_carries_the_docstring_line_or_the_prompt_title`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_a_step_carries_the_docstring_line_or_the_prompt_title`
 
 ### method: Step.file
 - code: `workhorse/workhorse/pyflow/graph.py::Step.file`
@@ -380,3 +411,8 @@ and the work inside them on one page:
 An edge is labelled with its `reason` when the author wrote one, else with the parameter
 names it binds. A state is never drawn terminal: `Done` on one branch does not stop the
 other, so the ending is the edge into `END`. A legend cluster draws the vocabulary once.
+
+- code: `workhorse/tests/test_pyflow_graph.py::test_dot_prefers_the_reason_over_parameter_names`
+- tests: `workhorse/tests/test_pyflow_graph.py::test_dot_prefers_the_reason_over_parameter_names`, `workhorse/tests/test_pyflow_graph.py::test_dot_renders_one_cluster_per_flow_with_live_names_only`, `workhorse/tests/test_pyflow_graph.py::test_dot_draws_a_state_as_the_chain_of_steps_it_runs`, `workhorse/tests/test_pyflow_graph.py::test_dot_marks_an_await_edge_and_labels_bound_parameters`, `workhorse/tests/test_pyflow_graph.py::test_dot_draws_done_as_an_edge_to_one_end_sink_per_flow`, `workhorse/tests/test_pyflow_graph.py::test_dot_draws_a_handoff_as_a_coloured_bubble_and_never_an_edge`, `workhorse/tests/test_pyflow_graph.py::test_dot_ids_are_flow_prefixed_so_two_flows_may_share_a_state_name`
+
+- tests: `workhorse/tests/test_pyflow_graph.py::test_dot_prefers_the_reason_over_parameter_names`, `workhorse/tests/test_pyflow_graph.py::test_dot_renders_one_cluster_per_flow_with_live_names_only`, `workhorse/tests/test_pyflow_graph.py::test_dot_draws_a_state_as_the_chain_of_steps_it_runs`, `workhorse/tests/test_pyflow_graph.py::test_dot_marks_an_await_edge_and_labels_bound_parameters`, `workhorse/tests/test_pyflow_graph.py::test_dot_draws_done_as_an_edge_to_one_end_sink_per_flow`, `workhorse/tests/test_pyflow_graph.py::test_dot_draws_a_handoff_as_a_coloured_bubble_and_never_an_edge`, `workhorse/tests/test_pyflow_graph.py::test_dot_ids_are_flow_prefixed_so_two_flows_may_share_a_state_name`

@@ -8,7 +8,9 @@ title: Coder story status check
 - file: none — in-memory pre-QA status result
 - config: `StoryStatusCheck` status gate result
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StoryStatusCheck`
+- code: `workflows/tests/coder/test_status_line_ownership.py::test_the_dev_gate_defaults_to_dirty`
 - detail: [coder development schema contracts](concepts/coder-dev-schema-contracts.md)
+- tests: `workflows/tests/coder/test_status_line_ownership.py::test_the_dev_gate_defaults_to_dirty`
 
 ## Fields
 

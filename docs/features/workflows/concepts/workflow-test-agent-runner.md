@@ -29,7 +29,10 @@ Creates the runner with a null backend and retains the scripted agent callable.
 
 ### run
 
-Delegates an engine turn unchanged to the scripted agent callable.
+Delegates an engine turn unchanged to the scripted agent callable. The `agent` callable the
+hello-world test passes into `StubRunner` is the canonical scripted shape — it records the
+context at the call site and returns the `(rendered_prompt, raw_reply)` tuple the engine
+expects.
 
 - sig: `StubRunner.run(self, *args: Any, **kwargs: Any) -> tuple[str, dict[str, Any]]`
 - does: forwards all positional and keyword arguments to the scripted agent
@@ -37,4 +40,5 @@ Delegates an engine turn unchanged to the scripted agent callable.
 - returns: the scripted agent's rendered prompt and raw reply
 - verify: json_path(path="$.greeting", equals="Hello, globex.")
 - code: `workflows/tests/_fakes.py::StubRunner.run`
+- code: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting.agent`
 - tests: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting`

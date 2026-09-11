@@ -15,7 +15,7 @@ The review is the independent verdict over the milestone's ordered epic skeleton
 ### status
 - type: literal `approved`, `needs_rework`, or `blocked`
 - required: true
-- semantics: review disposition used to select validation, rework, or resolution
+- semantics: independent review verdict drawn from the literal set `approved`, `needs_rework`, or `blocked`
 - verify: json_path(path="$.status", equals="approved")
 - code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitReview`
 - detail: [epic split review field roles](concepts/epic-split-review-field-roles.md)
@@ -23,7 +23,7 @@ The review is the independent verdict over the milestone's ordered epic skeleton
 ### notes
 - type: string
 - required: true
-- semantics: review findings forwarded to rework or the operator context
+- semantics: review findings describing exact repairs or the owner decision required
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitReview`
 - detail: [epic split review field roles](concepts/epic-split-review-field-roles.md)

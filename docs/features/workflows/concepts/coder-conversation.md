@@ -12,6 +12,9 @@ own run directory; a standalone lane starts cold when that chain is absent. Turn
 the owning flow, while this module applies the shared recycling rule.
 
 - code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::__all__`
+- code: `workflows/tests/coder/test_session_chains.py::spy`
+- code: `workflows/tests/coder/test_session_chains.py::spy.fake_agent`
+- code: `workflows/tests/coder/test_session_chains.py::spy.fake_require_engine`
 - detail: [coder shared library](coder-shared-library.md)
 
 ## Methods

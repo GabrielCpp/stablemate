@@ -16,6 +16,7 @@ mutation was found.
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::PlanScrub`
 - detail: [Coder story pipeline](concepts/story-pipeline.md)
 - tests: `workflows/tests/coder/shared/test_clean_tree.py::test_the_scrub_reverts_what_the_turn_wrote_and_only_that`
+- tests: `workflows/tests/coder/shared/test_clean_tree.py::test_a_turn_that_kept_to_reading_scrubs_nothing`
 
 ## Fields
 

@@ -26,7 +26,8 @@ knowledge — the backends import it, never the reverse.
   `workhorse/tests/test_backends.py::test_an_empty_turn_that_generated_nothing_stays_a_plain_transient`,
   `workhorse/tests/test_backends.py::test_an_empty_turn_that_generated_tokens_is_a_budget_overrun_not_a_retry`,
   `workhorse/tests/test_backends.py::test_an_empty_turn_with_no_usage_report_keeps_the_old_verdict`,
-  `workhorse/tests/test_agent_recovery.py::test_context_overflow_is_detected`
+  `workhorse/tests/test_agent_recovery.py::test_context_overflow_is_detected`,
+  `workhorse/tests/test_agent_recovery.py::test_overflow_compacts_then_continues_same_prompt`
 - detail: [Failure classification documentation views](failure-classification-views.md)
 
 ## Contract
@@ -262,7 +263,9 @@ returned instead of auto-compacting — rather than crashing or exiting non-zero
 reason?
 
 - code: `workhorse/workhorse/runner/failure.py::is_context_overflow`
-- verify: `workhorse/tests/test_agent_recovery.py::test_context_overflow_is_detected`
+- verify: json_path(path="$", equals=true)
+- verify: json_path(path="$", equals=false)
+- tests: `workhorse/tests/test_agent_recovery.py::test_context_overflow_is_detected`
 
 - **Input:** `diagnostics: str` — the same non-result output `classify_turn` scans for every marker
   check.

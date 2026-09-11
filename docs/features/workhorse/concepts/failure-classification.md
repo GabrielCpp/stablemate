@@ -94,8 +94,12 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 
 ### record_session_map
 - sig: `record_session_map(session_id_path: Path | None, node_id: str, session_id: str | None, backend: str = "") -> None`
-- does: records the node-to-session mapping with visit key, timestamp, backend, and observed git head
+- does: records the node-to-session mapping with visit key, timestamp, and backend
 - verify: persists(subject="the run's sessions.jsonl manifest")
+- does: stamps the observed git head on the row when gitstate is bound to a tree
+- verify: json_path(path="$.head", matches="^[0-9a-f]{40}$")
+- does: omits the head field when no repo is observed
+- verify: absent(subject="head field on a sessions.jsonl row recorded without a bound repo")
 - does: stamps the active turn span with the session id
 - verify: emitted(event="session id attribute on active agent-turn span", count=1)
 - does: requests transcript capture for the recorded session
@@ -104,6 +108,8 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - verify: json_path(path="$.result", absent=true)
 - code: `workhorse/workhorse/runner/failure.py::record_session_map`
 - tests: `workhorse/tests/test_turnkey.py::test_each_turn_of_a_revisited_node_gets_its_own_addressable_row`
+- tests: `workhorse/tests/test_turnkey.py::test_a_row_records_the_commit_the_tree_was_on`
+- tests: `workhorse/tests/test_turnkey.py::test_no_repo_observed_leaves_the_row_without_a_head`
 
 ### BackendInvocationError
 - sig: `BackendInvocationError(message: str, *, transient: bool = False, overflow: bool = False, timed_out: bool = False, reset_at: float | None = None)`
@@ -112,7 +118,8 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - returns: a runtime error value with the supplied flags
 - verify: json_path(path="$.error.timed_out", equals=true)
 - code: `workhorse/workhorse/runner/failure.py::BackendInvocationError`
-- tests: `workhorse/tests/test_guardrails.py::test_error_recovery`
+- tests: `workhorse/tests/test_guardrails.py::test_error_recovery`,
+  `workhorse/tests/test_agent_recovery.py::test_non_recoverable_backend_error_aborts_without_reframe`
 
 ### OutputParseError
 - sig: `OutputParseError(message: str)`

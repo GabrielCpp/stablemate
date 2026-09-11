@@ -13,33 +13,66 @@ The `attend_sessions` table holds the dispatch record for every attendant groom 
 - prefers: [method: attend_running_for_run](#method-attend_running_for_run)
 - deprecates: [attend_* (attendant gate support)](groom-store.md#attend_-attendant-gate-support)
 - tests: `groom/tests/test_store.py`
+- detail: [concept: Session states](#concept-session-states) — the closed enumeration an `attend_sessions.status` value is drawn from; one of two states, no third
 
-## Session states
+## concept: Session states
 
-An attendance exists in exactly one of two states; there is no third.
+The closed enumeration an attendance's `status` column is drawn from. An attendance exists in exactly one of two states; there is no third. The two states are module-level constants in `groom/groom/store.py`, bound at import time, and are the only values the dispatch and finish methods ever write to that column — [`attend_start`](#method-attend_start) and [`attend_append_session`](#attend_append_session) write `ATTEND_RUNNING`; [`attend_finish`](#attend_finish) writes `ATTEND_COMPLETED`.
 
-- `ATTEND_RUNNING = "running"` — groom has dispatched an attendant and not yet observed it exit. The claim is conditional: a headless attendant's pid may have died since the last query, which is what boot recovery verifies at startup.
-- `ATTEND_COMPLETED = "completed"` — the attendant exited or groom stopped it. The row remains queryable.
+- code: `groom/groom/store.py::ATTEND_RUNNING`
+- code: `groom/groom/store.py::ATTEND_COMPLETED`
+- tests: `groom/tests/test_attend.py::test_a_row_is_running_until_the_owner_finishes_it`
+
+### field: ATTEND_RUNNING
+
+- type: `str`
+- default: `"running"`
+- required: true
+- semantics: groom has dispatched an attendant and not yet observed it exit — the attendant's process is presumed alive
+- semantics: the claim is conditional — a headless attendant's pid may have died since the last query, which is what boot recovery re-checks at startup via [`attend_orphans`](#attend_orphans) so a stale dispatch is re-armed with a fresh session rather than left as an orphan the rules engine would never reclaim
+- semantics: persisted to `attend_sessions.status` by [`attend_start`](#method-attend_start) on dispatch and by [`attend_append_session`](#attend_append_session) on boot-recovery re-arm; the row is rewritten in place rather than re-inserted, so a recovery never produces a duplicate
+- code: `groom/groom/store.py::ATTEND_RUNNING`
+- verify: json_path(path="status", equals="running")
+- tests: `groom/tests/test_attend.py::test_a_row_is_running_until_the_owner_finishes_it`
+
+### field: ATTEND_COMPLETED
+
+- type: `str`
+- default: `"completed"`
+- required: true
+- semantics: the attendant exited or groom stopped it — the row is terminal and never re-flipped to `ATTEND_RUNNING` short of a fresh dispatch keyed by a different `job_id`
+- semantics: the row remains queryable after completion — [`attend_latest_for_run`](#method-attend_latest_for_run), [`attend_recent`](#method-attend_recent) and [`attend_by_session`](#method-attend_by_session) return completed rows alongside running ones, so the UI can still navigate from a blocked run to a past attendant that already exited
+- semantics: persisted to `attend_sessions.status` by [`attend_finish`](#attend_finish) along with the exit code, completion timestamp, and the run's terminal gate or failure state captured at the moment the attendant left
+- code: `groom/groom/store.py::ATTEND_COMPLETED`
+- verify: json_path(path="status", equals="completed")
+- tests: `groom/tests/test_attend.py::test_a_row_is_running_until_the_owner_finishes_it`
 
 ## Table and row conversion
 
-### _attend_row
+### method: _attend_row
+
 - sig: `(row: sqlite3.Row) -> dict[str, Any]`
-- does: convert a database row to a dict, parsing the `session_ids` JSON string into an ordered list of session id strings
-- returns: dict with `session_ids` field as `list[str]`, newest last (oldest attempt first)
+- does: copy every column of the row into a dict, preserving the row's keys
+- verify: keys_unchanged(subject="row dict keys")
+- does: decode the `session_ids` column from its stored JSON string into a list of strings, falling back to an empty list when the stored value is malformed JSON, empty, or absent
+- verify: json_path(path="session_ids", matches="^\\[.*\\]$")
+- returns: a dict whose `session_ids` field is `list[str]` rather than the stored JSON string
 - code: `groom/groom/store.py::_attend_row`
 
-Session ids are appended when an attendance is resumed after a groom restart, making the full history queryable.
+Session ids are appended when an attendance is resumed after a groom restart, making the full history queryable. The list order is preserved from the JSON, so the freshest session id is at index `-1` because [`attend_append_session`](#attend_append_session) appends rather than inserts.
 
 ## Dispatch lifecycle
 
-### attend_start
+### method: attend_start
 - sig: `(job_id: str, *, run_id: str = "", workflow: str = "", run_dir: str = "", workspace: str = "", kind: str = "", reason: str = "", node: str = "", gate_path: str = "", session_id: str = "", pid: int | None = None, started_at: float | None = None) -> None`
 - does: insert or replace a row with `status = running`, capturing the dispatch metadata before the attendant's first byte of output
-- returns: nothing; raises if the write fails
+- returns: nothing
+- raises: sqlite3.Error if the INSERT OR REPLACE fails after one reopen attempt by the [@_resilient](../concepts/_store-class.md#method-_resilient) wrapper
 - idempotency: attend-sessions-row — INSERT OR REPLACE on job_id, so re-calling with the same job_id replaces the row rather than duplicating
 - code: `groom/groom/store.py::attend_start`
-- verify: persists(subject="attend_sessions row", field="status", value=ATTEND_RUNNING)
+- detail: [reason method](../attend-job.md#reason)
+- verify: json_path(path="status", equals="running")
+- tests: `groom/tests/test_attend.py::test_a_row_is_running_until_the_owner_finishes_it`
 
 The session id is minted by groom and passed to the CLI invocation, not scraped from it. This ensures the row exists from the moment the process does, making the dispatch discoverable even if the process crashes immediately.
 

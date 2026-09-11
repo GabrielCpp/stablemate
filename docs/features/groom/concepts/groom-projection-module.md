@@ -89,7 +89,7 @@ questions travel as data rather than markup.
 - step: Resolve the clock, defaulting to wall time.
 - step: Project the filtered fleet through `fleet_rows` in display order.
 - step: Project the unfiltered fleet through `status_bar` so counts stay fleet-wide.
-- step: Return `{"type": "state", "ts", "scanning", "runs", "status", "store"}` — the [dashboard state payload](../dashboard-state-payload.md), including the collector health independently of fleet counts.
+- step: Return `{"type": "state", "ts", "scanning", "runs", "status", "store", "attend"}` — the [dashboard state payload](../dashboard-state-payload.md), including the collector health independently of fleet counts and the attendant's per-run dispatch summary from `attend_summary()`.
 
 ### method-run-message
 
@@ -337,15 +337,20 @@ questions travel as data rather than markup.
 
 - sig: `head(wf: WorkflowContainer, tel: RunTelemetry | None = None, now: float | None = None) -> dict[str, Any]`
 - abstract: false
-- does: Projects the detail pane's identity, workflow state, repository, liveness verdict, active node, process id, agent label, exit verdict, and activity.
+- does: Projects the detail pane's identity and handle, workflow type and its stable hue, repository, liveness verdict and its label, active node, process id, agent label, exit verdict and exit-ok flag, and activity.
 - verify: json_path(path="$.id", matches=".+")
+- verify: json_path(path="$.handle", matches=".+")
 - verify: json_path(path="$.state", matches=".+")
+- verify: json_path(path="$.type", matches=".+")
+- verify: json_path(path="$.type_hue", matches="\\d+")
 - verify: json_path(path="$.repo", matches=".+")
 - verify: json_path(path="$.live", matches=".+")
+- verify: json_path(path="$.live_label", matches=".*")
 - verify: json_path(path="$.node", matches=".*")
 - verify: json_path(path="$.pid", matches=".*")
 - verify: json_path(path="$.cli", matches=".*")
 - verify: json_path(path="$.exit_hint", matches=".+")
+- verify: json_path(path="$.exit_ok", matches="(true|false)")
 - verify: json_path(path="$.activity", matches=".*")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)

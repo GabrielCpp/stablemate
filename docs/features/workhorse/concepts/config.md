@@ -95,12 +95,12 @@ tooling.
 
 ### resolve_stablemate_dir
 - sig: `resolve_stablemate_dir() -> Path | None`
-- returns: the expanded, resolved configured `stablemate_dir`, or `None` when it is unset or not a string
+- returns: `Path(stablemate_dir).expanduser().resolve()` when `stablemate_dir` is a non-empty string, else `None`
 - code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_stablemate_dir`
 
 ### resolve_worktree_dir
 - sig: `resolve_worktree_dir() -> Path | None`
-- returns: the expanded, resolved configured `worktree_dir`, or `None` when it is unset or not a string
+- returns: `Path(worktree_dir).expanduser().resolve()` when `worktree_dir` is a non-empty string, else `None`
 - code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_worktree_dir`
 
 ### read_config
@@ -140,6 +140,15 @@ When the unified file is absent, it merges the legacy per-tool files instead, in
 `farrier` order. That fallback applies **only** to the default path — an explicit
 `$STABLEMATE_CONFIG` means what it says.
 
+Older schemas are carried forward in memory before the function returns: `_walk_migrations` is
+applied when the loaded data's `config_version` is below `CONFIG_VERSION`, so resolvers always
+see the current shape without callers needing to know the data predates it. The file on disk
+stays at its declared version until a `write_*` lifts it; the in-memory walk has no side effect.
+A walk step that cannot run raises `ConfigVersionError`, which `load_config` catches — an
+unmigratable file must not end a week-long run, even though a write would refuse. A config
+newer than this build understands is read anyway and warned about once per version
+(`resolve_power` re-reads per node, so warning per call would bury a long run in duplicates).
+
 `read_config` is an alias of this function, farrier's spelling of the same call, aliased rather than
 renamed so neither caller had to change.
 
@@ -154,25 +163,33 @@ indexed — an unresolved path is silent, never an error. Used by
 `stablemate_core.discovery` to read `base_dir`/`stablemate_dir` without caring whether either is
 set.
 
+- returns: the value at the dotted path in the config (defaulting to the loaded file when no `cfg` is supplied); `None` when any segment is missing or hits a non-dict
 - code: `workhorse/workhorse/_vendor/stablemate_core/config.py::get_config_value`
 
 ## write_config_key
 
 Persists a single top-level `key`/`value` pair, preserving every other key already in the file:
-loads the current config, migrates it forward if needed, sets `cfg[key] = value`, stamps
-`config_version`, and serialises the whole dict with `tomli_w` — a real TOML writer, so nested
-tables survive a write.
+reads the file's raw bytes for the version check (separately from `load_config()`), loads the
+current config (which migrates an older schema forward in memory), sets `cfg[key] = value`,
+stamps `config_version`, and serialises the whole dict with `tomli_w` — a real TOML writer, so
+nested tables survive a write.
 
 It used to rewrite the file as `key = "value"` lines built by hand, which stringified every nested
 table it did not understand: one `config set-base` turned `[power.*]` into a Python-repr string,
 after which `resolve_power` saw a `str` where it expected a table and silently returned an empty
 mapping — every node quietly falling back to the harness's default model, with no error anywhere.
 
-Creates the config directory if absent. Refuses with `ConfigVersionError` when the file on disk is
-newer than `CONFIG_VERSION`. Used by
+Creates the config directory if absent. The version check is on the **raw disk bytes**, not the
+in-memory migrated shape — `load_config` carries older schemas forward so callers always see the
+current shape, and a check against the migrated shape would never fire. This is the one guard
+that holds no matter how the tools were installed (two pipx venvs, two vendored copies, one
+shared venv), because it defends the file rather than trusting the code that reaches it.
+Refuses with `ConfigVersionError` when the file on disk is newer than `CONFIG_VERSION`; migrates
+an older file forward (after backing it up to `<name>.v<n>.bak`) before writing, so a single
+file never holds a mix of schemas. Used by
 [farrier config set-library / set-stablemate / set-base / set-worktree](../../farrier/farrier.md#config),
-and by the typed helpers `write_library_dir`, `write_stablemate_dir`, `write_base_dir` and
-`write_worktree_dir` that wrap it.
+and by the typed helpers `write_library_dir`, `write_stablemate_dir`, `write_default_cli`,
+`write_base_dir` and `write_worktree_dir` that wrap it.
 
 - code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_config_key`
 - detail: [config write documentation contexts](../../farrier/concepts/config-write-context.md)
@@ -214,19 +231,40 @@ back to the top-level tables could otherwise run unattended on the wrong models.
 
 - consistency: config-profile — selecting a named profile returns that profile's own table without overlaying the
   top-level model tables
-- consistency: config-profile — selecting an empty profile name returns the config unchanged
+- consistency: config-profile — selecting an empty profile name returns `{}`
 - consistency: config-profile — selecting an undefined profile raises `UnknownProfileError` naming the requested
   profile and the known alternatives
-- `profile_backends(profile) -> list[str]` — every backend name the narrowed config keys its
-  model tables by, sorted (the per-tier `default` fallback is not one). **Nothing is
-  validated here**: core knows no backend registry, so a misspelling is reported at the
-  boundary that resolves the adapter, where every other bad backend name already is.
-- `profile_has_backend(profile, backend) -> bool` — whether the narrowed config resolves any
-  model at all for that backend: some tier names it, some tier carries the `default`
-  fallback, or `[default.<backend>]` does. False is the two-independent-axes misuse — an
-  opencode-only profile selected with `--cli claude` — which
-  [`run`](../workhorse.md#run) refuses at the boundary rather than letting the run spend a
-  week on the harness's own default model.
+- consistency: config-profile — selecting a profile whose table has no `cli` field raises `ConfigError` naming the offending profile
+- `profile_backends(profile) -> list[str]` — the CLI name the profile declares in its
+  `cli` field, lowercased and wrapped in a single-element list, or `[]` when the profile
+  has no valid `cli` field. A profile is for one CLI under v2 — the per-backend model
+  tables v1 enumerated are gone — so the list is either empty or a singleton. The list
+  shape is preserved because workhorse's `_check_profile_resolves` iterates over the
+  result, and a misspelled CLI is reported through the same boundary that always reported
+  it. **Nothing is validated here**: core knows no backend registry, so a misspelling is
+  reported at the boundary that resolves the adapter, where every other bad backend name
+  already is.
+- `profile_has_backend(profile, backend) -> bool` — whether the profile is for `backend`.
+  True when the profile's `cli` field equals `backend`; the presence of model tables is
+  irrelevant — a profile that declares only `cli` is meaningful, selecting the CLI (and
+  its harness env) for the run, after which the workflow runs in bare-CLI mode without
+  model overrides. False is the cross-CLI misuse — an opencode-only profile selected with
+  `--cli claude` — which [`run`](../workhorse.md#run) refuses at the boundary rather than
+  letting the run spend a week on the harness's own default model.
+
+### auto_select_profile
+- sig: `auto_select_profile(cfg: dict[str, Any] | None, active_cli: str) -> dict[str, Any] | None`
+- does: resolve the auto-default for a run by matching `active_cli` against each profile's `cli` field
+- returns: the matching profile table, or `None` when `active_cli` is empty or no profile's `cli` field equals it
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::auto_select_profile`
+
+### select_active_profile
+- sig: `select_active_profile(cfg: dict[str, Any] | None, *, name: str = "", active_cli: str = "") -> dict[str, Any]`
+- does: choose the profile a run resolves models from — explicit name, else auto-pick by CLI, else bare-CLI mode
+- returns: `select_profile(cfg, name)` when `name` is set
+- returns: the `auto_select_profile` match when `active_cli` is set and one is found
+- returns: `{}` (bare-CLI mode) when neither names one
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::select_active_profile`
 
 There is **no writer**. A profile is a nested table and
 [`write_config_key`](#write_config_key) sets one top-level key, so profiles are authored by
@@ -246,31 +284,38 @@ reads one back.
 
 Resolves a node's abstract [`power`](../workflow-format.md#power) tier (`high`/`medium`/`low`) plus
 the active backend name to a concrete `PowerMapping`. A `power` of `None`/`""` short-circuits to an
-empty mapping (no override). Otherwise looks up `power.<power>.<backend>`, falling back to
-`power.<power>.default` when no backend-specific table exists; any missing/non-dict step along the
-way (no `power` table, no such tier, no matching backend/default table) yields an empty mapping
-rather than an error — an unconfigured tier leaves the node's model/effort unset so the backend's
-own default applies.
+empty mapping (no override). Otherwise reads `cfg.powers.<power>` — a flat mapping of
+`model`/`effort`/`timeout_scale`, with no per-backend nesting, because `cfg` is the per-CLI
+narrowing passed in (a [profile](#profiles) when one is active, the unnarrowed config otherwise).
+When `cfg` declares a `cli` field that does not equal `backend`, the resolver returns an empty
+mapping — a profile for one CLI asked about another is the cross-CLI misuse v1 could only catch at
+the harness boundary, and surfacing it here is what stops a run from quietly billing on the wrong
+CLI's models. Any missing or non-dict step along the way (no `powers` table, no such tier) yields
+an empty mapping rather than an error; bare-CLI mode (no profile narrowing the resolver) returns
+empty too, so the CLI uses its own default model with no `--model` or `--effort` flag emitted by
+the workflow.
 
 - **Input:** `power: str | None`, `backend: str`, `cfg: dict | None` (defaults to
   `load_config()`; under a [profile](#profiles) the caller passes the narrowed table
   instead, which is why this function knows nothing about profiles).
-- **Output:** `PowerMapping(model, effort, timeout_scale)` — each field `None` unless the config
-  supplies a non-empty string (or, for the scale, a positive finite number).
+- returns: `PowerMapping(model, effort, timeout_scale)` built from `cfg.powers.<power>` — each field `None` unless the config supplies a non-empty string (or, for the scale, a positive finite number)
 - code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_power`
 
 ## resolve_backend_default
 
-Resolves the active backend name to the top-level `[default.<backend>]` table — the configurable
-counterpart of a backend's hardcoded `default_model`. Consumed by `_resolve_power_settings` as the
-last config-side fallback: it fills whatever the node's power tier (or the absence of one) left
-unset, so power-less nodes stop silently falling through to the harness's own auto-picked model.
-Any missing/non-dict step (no `default` table, no such backend section) yields an empty mapping
-rather than an error.
+Resolves the active backend name to the
+[`[profiles.<name>].default`](#profiles) table — the configurable counterpart of a backend's
+hardcoded `default_model`. Consumed by `_resolve_power_settings` as the last config-side
+fallback: it fills whatever the node's power tier (or the absence of one) left unset, so
+power-less nodes stop silently falling through to the harness's own auto-picked model. The
+`cfg` is the narrowed profile when one is active — the table `select_active_profile` returned,
+for one CLI — so this resolver reads `cfg.default` directly rather than looking up a
+per-backend section. A profile whose `cli` field does not equal `backend` returns an empty
+mapping (the cross-CLI misuse v1 could only spot at the harness boundary); a missing or
+non-dict `default` table does the same rather than raising.
 
 - **Input:** `backend: str`, `cfg: dict | None` (defaults to `load_config()`).
-- **Output:** `PowerMapping(model, effort, timeout_scale)` — each field `None` unless the config
-  supplies a non-empty string (or, for the scale, a positive finite number).
+- returns: `PowerMapping(model, effort, timeout_scale)` built from the `[profiles.<name>].default` table — each field `None` unless the config supplies a non-empty string (or, for the scale, a positive finite number)
 - code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_backend_default`
 
 ## resolve_default_cli
@@ -306,14 +351,19 @@ to the same built-in it always used.
 
 ## resolve_harness_env
 
-Resolves `[harness.<backend>].env` to a plain `dict[str, str]` of environment variables to add to
+Resolves `[cli.<backend>].env` to a plain `dict[str, str]` of environment variables to add to
 that harness's subprocess — e.g. `env = { OPENCODE_DISABLE_AUTOCOMPACT = "1" }`. Scoped per
-**harness**, not per power tier: what a CLI needs in its environment is a property of that CLI.
-A missing or mistyped table yields `{}`, and a non-string value is dropped rather than coerced —
-an environment is strings, and quietly stringifying a bare TOML `1` would hide the config error.
+**CLI**, not per power tier, for two reasons: a knob like `OPENCODE_DISABLE_AUTOCOMPACT` is a
+property of the harness, not of how hard a node is thinking, so a tier would be the wrong axis
+to repeat it along; and `[cli.*]` is resolved from the unnarrowed config (see
+[`select_active_profile`](#select_active_profile)), so it applies to every profile that runs
+this CLI — a profile that silently un-exported a harness knob because it did not restate it
+would be a debugging trap. A missing or mistyped table yields `{}`, and a non-string value is
+dropped rather than coerced — an environment is strings, and quietly stringifying a bare TOML
+`1` would hide the config error.
 
 - **Input:** `backend: str`, `cfg: dict | None` (defaults to `load_config()`).
-- **Output:** `dict[str, str]`.
+- returns: `dict[str, str]` filtered from the `[cli.<backend>].env` table — entries with a non-string key, an empty key, or a non-string value are dropped
 - code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_harness_env`
 
 ## PowerMapping

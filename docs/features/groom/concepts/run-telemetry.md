@@ -362,3 +362,4 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - default: new empty set per record
 - required: false
 - semantics: alert-rule names already paged for this run, deduplicating pages until recovery, forward progress, wait closure, or a resumed session retires the applicable entries.
+- detail: [alert rule](alert.md#rule)

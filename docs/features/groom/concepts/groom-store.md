@@ -223,7 +223,7 @@ Schema is versioned via `_ADDED_*_COLUMNS` so a new groom can backfill columns o
 - does: fold the write-ahead log back into the database file and truncate it
 - verify: persists(subject="WAL folded into database file")
 - does: use `PRAGMA wal_checkpoint(TRUNCATE)` rather than PASSIVE because auto-checkpoint starves when concurrent readers hold snapshots (the common state on a live groom)
-- does: record checkpoint busy count if a reader blocked it, for health dashboard visibility
+- does: record checkpoint busy count via [`note_checkpoint()`](_store-class.md#note_checkpoint) when a reader blocked the checkpoint, for health dashboard visibility
 - verify: persists(subject="checkpoint busy count in health")
 - raises: logs warning but does not raise on failure — checkpoint is an optimization, not critical
 - verify: exit_status(code=0)
@@ -282,6 +282,8 @@ Schema is versioned via `_ADDED_*_COLUMNS` so a new groom can backfill columns o
 
 ### Lap
 
+One turn of a loop, held as three independent readings rather than one resolved number. `cost` is NULL when the harness did not report billed cost — not zero, since an unknown bill is information the dashboard needs to label separately from a free turn. `est` is NULL when the model has no entry in `groom.prices`. `suspect_zero=true` flags a turn that reported exactly $0 while emitting output tokens: the turn's money is unknown, not free, so downstream reports treat the row as unsettled rather than confirmed free.
+
 - sig: `Lap(cost: float | None, suspect_zero: bool, est: float | None)`
 - abstract: One turn of a loop (review→rework cycle), with three independent cost readings to prevent decision collapse
 - does: distinguish billed cost (what a vendor charged) from estimated cost (what `groom.prices` says tokens are worth) — essential when the harness does not report cost (subscription auth, free models)
@@ -289,7 +291,6 @@ Schema is versioned via `_ADDED_*_COLUMNS` so a new groom can backfill columns o
 - does: flag `suspect_zero`: turns reporting exactly $0 while emitting output tokens, which sum into a bill and hide the actual spend
 - verify: persists(subject="suspect_zero flag for zero-cost output turns")
 - code: `groom/groom/store.py::Lap`
-- semantics: `cost` is NULL when the harness did not report it, not 0; `est` is NULL when the model has no rate card entry; `suspect_zero=true` means the turn's money is unknown, not free
 
 ### insert_turns
 
@@ -331,12 +332,11 @@ Schema is versioned via `_ADDED_*_COLUMNS` so a new groom can backfill columns o
 - sig: `is_scratch_run_dir(run_dir: str) -> bool`
 - does: wider net than `is_test_run_dir`: includes certain test markers *and* Python `tempfile.mkdtemp()` heuristic
 - verify: created(subject="true when is_test_run_dir returns true")
-- does: match `tempfile.mkdtemp()` naming (`tmp` + 6+ random chars) under temp roots (`/tmp` or `tempfile.gettempdir()`)
+- does: match `tempfile.mkdtemp()` naming (`tmp` + 6+ random chars) under temp roots (`/tmp` or `tempfile.gettempdir()`) — a real run launched from a `mkdtemp` directory matches too, so the matcher is a heuristic, not a test marker
 - verify: created(subject="true for mkdtemp-named dirs under temp roots")
 - returns: true for test markers or temp dirs — used only in deliberately-preview-able commands (`groom purge --dry-run`), not ingest
 - code: `groom/groom/store.py::is_scratch_run_dir`
 - tests: `groom/tests/test_store.py::test_is_scratch_run_dir_catches_mkdtemp`
-- semantics: heuristic — a real run launched from a temp dir matches too — so confined to explicit purges rather than ingest filtering
 
 ### test_run_ids
 
@@ -395,7 +395,7 @@ Input to any recovery that goes looking outside the span for what the model real
 
 - sig: `unpriceable_turns(run: str = "") -> list[dict[str, Any]]`
 - does: turns with tokens, no estimate, and a model the rate card does not cover
-- verify: json_path(path="$[0].est_cost_usd", equals=null)
+- verify: json_path(path="$[0].est_cost_usd", absent=true)
 - returns: list of turn records with span_id, model, session_id, and token counts for recovery attempts
 - verify: json_path(path="$[0].span_id", matches=".+")
 - code: `groom/groom/store.py::unpriceable_turns`
@@ -415,6 +415,7 @@ Input to any recovery that goes looking outside the span for what the model real
 - code: `groom/groom/store.py::attend_start`
 - code: `groom/groom/store.py::attend_running_for_run`
 - code: `groom/groom/store.py::attend_recent`
+- detail: [Attendant session persistence](attendant-session-persistence.md) — the per-method contract (signature, `does:`, `returns:`, `verify:`, `code:`) lives there; this summary block exists only to enumerate the family and is not a second spec for any one method
 - tests: `groom/tests/test_store.py::test_attend_session_tracks_dispatch_and_outcome`
 
 ## Implementation
@@ -425,7 +426,7 @@ The module maintains **one writer, many readers**:
 
 - `_STORE`: process-wide singleton `_Store` object holding the write connection and RLock
 - `_Store.connect()` opens or returns the write connection; the locking contract is documented on [connect](_store-class.md#connect)
-- `_Store.read_connection()`: returns a thread-local read-only connection, not locked — a reader holding a snapshot does not block writers, and writers do not block readers
+- `_Store.read_connection()` returns a thread-local read-only handle; the lock-free fast path and per-thread sync contract are documented on [read_connection](_store-class.md#read_connection)
 - `_resilient`: decorator that serializes store calls under the lock and retries once on sqlite3.Error
 - `_reading`: decorator that retries once on sqlite3.Error without locking (reads already serialize through the thread-local handle)
 

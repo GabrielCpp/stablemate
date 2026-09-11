@@ -30,10 +30,17 @@ Only the key the kit reads; a `.code-workspace` file may carry others (`settings
 …) which pass through unread.
 
 ### folders
-- type: `list<Folder>` — required: no — default: `[]` (via `ws.get("folders", [])`)
-
-Each entry is one repo/directory in the workspace, resolved relative to the file's own parent
-directory (`ws_dir`).
+- type: `list<Folder>` — one entry per repo/directory in the workspace
+- default: `[]` — a `.code-workspace` file with no `folders` key parses to an empty list
+  (`ws.get("folders", [])` at
+  [`workspace-resolution`](concepts/workflow-kit.md#workspace-resolution)), which is what makes
+  a one-repo run need no manifest at all
+- required: no
+- semantics: each entry is one repo/directory in the workspace, resolved relative to the file's
+  own parent directory (`ws_dir`)
+- semantics: the per-entry schema is the [Folder](#foldername) mapping
+  ([Folder.name](#foldername), [Folder.path](#folderpath), [Folder.url](#folderurl),
+  [Folder.branch](#folderbranch))
 
 ### Folder.name
 - type: `string` — required: no — default: the last path segment of `Folder.path`

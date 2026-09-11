@@ -23,7 +23,7 @@ The verdict names the current session only and is self-clearing: a resume rewrit
 
 ## Contract
 
-The helper exists so the dashboard can stop claiming a native run is alive when same-host evidence says it ended, without waiting for silence or for a fresh telemetry beat. Three return values cover the three states the host can read.
+The helper exists so the dashboard can stop claiming a native run is alive when same-host evidence says it ended, without waiting for silence or for a fresh telemetry beat. Three return values cover the three states the host can read. The underlying [run-terminal](groom-localfs-module.md#run-terminal) and [pid-alive](groom-localfs-module.md#pid-alive) reads are best-effort — they absorb errors as zero values rather than raising — so the verdict layer observes zero values rather than exceptions; the detailed failure semantics, with the observations that prove them, are in [Failure Semantics](#failure-semantics).
 
 - return shape: one of three strings — `run.json`'s `terminal` field when truthy, the literal `"died"` when pid liveness contradicts an empty terminal, or `""` when no evidence of ending is present.
 - verify: json_path(path="$", matches="^(|[a-z_]+|died)$")
@@ -32,7 +32,6 @@ The helper exists so the dashboard can stop claiming a native run is alive when 
 - terminal-source precedence: a truthy `run.json` terminal takes precedence over the pid liveness check — the run's own verdict wins even when the pid is still alive.
 - pid-source precedence: the pid liveness check is consulted only when `run.json`'s terminal is empty AND `run.pid` is truthy.
 - empty-pid: a `None` pid produces `""`, because pid-liveness cannot speak for a run that has not yet reported a pid.
-- failure handling: the underlying [run-terminal](groom-localfs-module.md#run-terminal) and [pid-alive](groom-localfs-module.md#pid-alive) helpers are best-effort and return zero values rather than raising.
 - state boundary: this helper does not mutate the [run telemetry](run-telemetry.md) record, the [workflow registry](workflow-registry.md), the [alert](alert.md) set, or any dashboard or websocket state.
 - session scope: the verdict names the current session only.
 - alert-firing boundary: this helper is upstream of [note_native_ending](run-telemetry.md#note_native_ending); it fires no alerts.

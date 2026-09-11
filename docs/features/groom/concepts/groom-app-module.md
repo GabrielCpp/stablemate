@@ -70,9 +70,9 @@ The factory assembles application configuration only: it does not run discovery,
 - code: groom/groom/app.py::create_app
 - does: Constructs the Litestar application for the [groom server](../http/groom.md).
 - verify: created(subject="Litestar application")
-- does: Registers 25 route handlers, including the package-static `/assets` router.
+- does: Registers 30 route handlers — 29 first-party handlers plus the package-static `/assets` router.
 - verify: created(subject="Litestar application's route handlers")
-- does: Registers `_spawn_scan`, `_spawn_rules`, `_spawn_live`, and `_spawn_archive` as startup callbacks.
+- does: Registers `_spawn_scan`, `_spawn_rules`, `_spawn_live`, `_spawn_archive`, and `_recover_attend` as startup callbacks.
 - verify: created(subject="Litestar application's startup callbacks")
 - does: Registers `_stop_rules`, `_stop_live`, `_stop_archive`, and `pools.shutdown_all` as shutdown callbacks.
 - verify: created(subject="Litestar application's shutdown callbacks")

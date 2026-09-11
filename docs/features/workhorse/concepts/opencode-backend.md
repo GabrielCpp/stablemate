@@ -25,7 +25,14 @@ so importing [the port](agent-backend.md) drags in no adapter.
 - code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend`
 - extends: [AgentBackend](agent-backend.md)
 - tests: `workhorse/tests/test_backends.py::test_opencode_run_turn_fresh_then_resume`,
+  `workhorse/tests/test_backends.py::test_opencode_attaches_a_large_prompt_instead_of_putting_it_in_argv`,
   `workhorse/tests/test_backends.py::test_opencode_effort_variant_mapping_and_omit`,
+  `workhorse/tests/test_backends.py::test_opencode_pins_small_model_to_turn_model`,
+  `workhorse/tests/test_backends.py::test_opencode_no_model_no_small_model_pin`,
+  `workhorse/tests/test_backends.py::test_opencode_operator_config_content_wins_verbatim`,
+  `workhorse/tests/test_backends.py::test_opencode_pin_composes_with_other_harness_env`,
+  `workhorse/tests/test_backends.py::test_opencode_lifts_the_32k_output_cap_to_the_models_own_limit`,
+  `workhorse/tests/test_backends.py::test_opencode_operator_output_cap_wins`,
   `workhorse/tests/test_backends.py::test_opencode_cap_attaches_codex_reset_at`,
   `workhorse/tests/test_backends.py::test_opencode_non_cap_does_not_probe_codex`,
   `workhorse/tests/test_backends.py::test_non_claude_backends_registered`
@@ -40,46 +47,69 @@ so importing [the port](agent-backend.md) drags in no adapter.
   add_dirs=None, effort=None)`** — `timeout` and `resilience` are keyword-only and required
   ([why](agent-backend.md#run_turn-abstract)). Builds the argv:
   ```
-  opencode --print-logs --log-level ERROR run --format json
+  opencode --print-logs --log-level ERROR run --format json --thinking
            [-m <model>] [--variant <_OPENCODE_VARIANT[effort]>] [--session <sid>]
-           -- <prompt>
+           [--file <attachment>] -- <prompt>
   ```
-  1. Read a persisted session id via [`read_session_id(session_id_path)`](read-session-id.md)
-     (shared with the other JSONL backends).
-   2. `--print-logs --log-level ERROR` route OpenCode's ERROR-level log
-     lines (which carry quota/limit errors, e.g. `"The usage limit has been reached"`) onto stdout
-     as non-JSON lines instead of only into `~/.local/share/opencode/log/opencode.log`. Without
-     these flags those errors are invisible to the harness, and OpenCode's own internal exponential
-     backoff would run silently until the hard watchdog killed the process. They are what makes
-     [`stream_jsonl`'s early abort](stream-jsonl.md#early-abort)
-     possible on this backend at all.
-  3. `run --format json` — non-interactive single turn, NDJSON event stream.
-  4. `-m <model>` only when the caller named one.
-  5. `--variant <variant>` only when `effort` is set **and** maps to a known variant via
-     [`_OPENCODE_VARIANT`](#_opencode_variant) — OpenCode's own reasoning-effort knob. `"medium"`
-     has no opencode variant, so an `effort="medium"` node omits the flag entirely rather than
-     passing something invalid.
-  6. If a session id was read, append `--session <sid>` and log
-     `[{node_id}] 🔄 Resuming opencode session: {sid[:8]}...`.
-  7. `-- <prompt>` — `--` ends option parsing so a prompt beginning with `-` is still read as the
-     positional message, never as a flag. `add_dirs` has no OpenCode equivalent and is ignored.
-  8. Stream the command through [`stream_jsonl`](stream-jsonl.md#contract) with a **fresh**
-     `_OpenCodeEvents().on_event` as the vocabulary callback and `stdin_data=None` (OpenCode reads
-     its message from argv, not stdin), forwarding `resilience=resilience`, `cwd=cwd` and
-     `env_extra=self.harness_env()` → a [`TurnState`](finalize-turn.md#turnstate). One instance per
-     turn is what keeps the reader's accumulated text parts from leaking into the next turn
-     (`test_opencode_text_parts_do_not_leak_between_turns`).
-  9. **Codex-cap reset probe:** if [`failure.is_cap(state.diagnostics_text)`](classify-turn.md#is_cap)
-     is true (this turn hit a spending cap), call [`_codex_reset_at(model)`](codex-reset-at.md) to
-     fetch the precise unix-epoch reset time and pass it as `rate_reset_at`; otherwise
-     `rate_reset_at=None`. This only ever *sharpens* the wait — see
-     [`_codex_reset_at`](codex-reset-at.md)'s own guards (non-`openai/*` models, missing OAuth,
-     disabled probe, or any error all yield `None` with no observable effect on a non-cap turn).
-  10. Return [`finalize_turn`](finalize-turn.md)`("opencode", node_id, state, session_id_path,
-      timeout, rate_reset_at=rate_reset_at)` — raises
-      [`BackendInvocationError`](classify-turn.md#backendinvocationerror) on failure, carrying
-      `rate_reset_at` through to the runner's [cap wait](cap-delay-seconds.md) so it sleeps until
-       the actual window reopens instead of a blind default wait.
+   1. Read a persisted session id via [`read_session_id(session_id_path)`](read-session-id.md)
+      (shared with the other JSONL backends).
+   2. Compute `argv_prompt, attachment = prepare_argv_prompt(prompt, prompt_path)` — a prompt
+      within the per-argument byte cap stays as `argv_prompt`; an oversized prompt (or one the
+      caller supplied via `prompt_path`) is staged to that file and `argv_prompt` becomes a
+      one-line pointer telling the model to read the attached file. The `attachment` returned
+      alongside it is the path the later `--file` step attaches.
+   3. `--print-logs --log-level ERROR` route OpenCode's ERROR-level log
+      lines (which carry quota/limit errors, e.g. `"The usage limit has been reached"`) onto stdout
+      as non-JSON lines instead of only into `~/.local/share/opencode/log/opencode.log`. Without
+      these flags those errors are invisible to the harness, and OpenCode's own internal exponential
+      backoff would run silently until the hard watchdog killed the process. They are what makes
+      [`stream_jsonl`'s early abort](stream-jsonl.md#early-abort)
+      possible on this backend at all.
+   4. `run --format json` — non-interactive single turn, NDJSON event stream.
+   5. `--thinking` is always passed so OpenCode's reasoning events reach the stream.
+   6. `-m <model>` only when the caller named one.
+   7. `--variant <variant>` only when `effort` is set **and** maps to a known variant via
+      [`_OPENCODE_VARIANT`](#_opencode_variant) — OpenCode's own reasoning-effort knob. `"medium"`
+      has no opencode variant, so an `effort="medium"` node omits the flag entirely rather than
+      passing something invalid.
+   8. If a session id was read, append `--session <sid>` and log
+      `[{node_id}] 🔄 Resuming opencode session: {sid[:8]}...`.
+   9. `--file <attachment>` only when step 2 spilled the prompt to a file — otherwise the flag is
+      absent and `argv_prompt` carries the message directly.
+   10. `-- <argv_prompt>` — `--` ends option parsing so a prompt beginning with `-` is still read as
+       the positional message (or the path of the attached file step 9 named), never as a flag.
+       `add_dirs` has no OpenCode equivalent and is ignored.
+   11. **Harness env composition:** `env_extra` starts from `self.harness_env()` and is augmented
+       before the stream is invoked. When the caller named a model and `OPENCODE_CONFIG_CONTENT`
+       is not already in `env_extra`, it is set to `{"small_model": <model>}` — opencode's
+       internal title/summary helper has no CLI flag, reads `small_model` from config, and without
+       the pin it inherits whatever provider the machine's `opencode.jsonc` names, so a helper
+       routed at a provider the run doesn't otherwise use (an OpenRouter credit wall on the
+       title call) classified as a cap on the node and slept a run for 6 days while its coding
+       models were fine. And when `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX` is not already in
+       `env_extra`, it is set to `"131072"` — opencode caps every completion at 32 000 output
+       tokens (thinking included) by default, the only override is this env var (opencode reads
+       it as `Math.min(model.limit.output, value)`, so a large value is safe on every model), and
+       a reasoning model handed a 34k-token review packet otherwise spends all 32k thinking and
+       ends with `reason: length` and no text part. An operator who names either variable in
+       `[harness.opencode].env` has decided; the augmentation steps aside verbatim.
+   12. Stream the command through [`stream_jsonl`](stream-jsonl.md#contract) with a **fresh**
+       `_OpenCodeEvents().on_event` as the vocabulary callback and `stdin_data=None` (OpenCode reads
+       its message from argv, not stdin), forwarding `resilience=resilience`, `cwd=cwd` and
+       `env_extra=env_extra` → a [`TurnState`](finalize-turn.md#turnstate). One instance per
+       turn is what keeps the reader's accumulated text parts from leaking into the next turn
+       (`test_opencode_text_parts_do_not_leak_between_turns`).
+   13. **Codex-cap reset probe:** if [`failure.is_cap(state.diagnostics_text)`](classify-turn.md#is_cap)
+       is true (this turn hit a spending cap), call [`_codex_reset_at(model)`](codex-reset-at.md) to
+       fetch the precise unix-epoch reset time and pass it as `rate_reset_at`; otherwise
+       `rate_reset_at=None`. This only ever *sharpens* the wait — see
+       [`_codex_reset_at`](codex-reset-at.md)'s own guards (non-`openai/*` models, missing OAuth,
+       disabled probe, or any error all yield `None` with no observable effect on a non-cap turn).
+   14. Return [`finalize_turn`](finalize-turn.md)`("opencode", node_id, state, session_id_path,
+       timeout, rate_reset_at=rate_reset_at)` — raises
+       [`BackendInvocationError`](classify-turn.md#backendinvocationerror) on failure, carrying
+       `rate_reset_at` through to the runner's [cap wait](cap-delay-seconds.md) so it sleeps until
+        the actual window reopens instead of a blind default wait.
 - consistency: opencode-command — every OpenCode `run_turn` command includes `--print-logs --log-level ERROR` before
   `run`, so quota and limit errors are available to the harness as diagnostics
 - **`compact(session_id_path, node_id, model=None, *, timeout, resilience)`** — always returns

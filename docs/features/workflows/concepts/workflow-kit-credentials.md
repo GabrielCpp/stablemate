@@ -24,6 +24,9 @@ needs it, then restores the caller's prior process state even when that callee f
   It does not return the secret; Git expands the variable inside its credential helper.
 
 - code: `workflows/src/workhorse_workflows/kit/credentials.py`
+- code: `workflows/tests/test_kit_credentials.py::test_scoped_env_sets_the_value_for_the_block_and_clears_it_after`
+- code: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_a_prior_value_rather_than_clearing_it`
+- code: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_even_when_the_block_raises`
 - tests: `workflows/tests/test_kit_credentials.py::test_scoped_env_sets_the_value_for_the_block_and_clears_it_after`
 - tests: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_a_prior_value_rather_than_clearing_it`
 - tests: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_even_when_the_block_raises`
@@ -85,6 +88,9 @@ needs it, then restores the caller's prior process state even when that callee f
   - restores or removes `name` when the block exits through an exception
 - verify: removed(subject="the environment variable")
 - code: `workflows/src/workhorse_workflows/kit/credentials.py::scoped_env`
+- code: `workflows/tests/test_kit_credentials.py::test_scoped_env_sets_the_value_for_the_block_and_clears_it_after`
+- code: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_a_prior_value_rather_than_clearing_it`
+- code: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_even_when_the_block_raises`
 - tests: `workflows/tests/test_kit_credentials.py::test_scoped_env_sets_the_value_for_the_block_and_clears_it_after`
 - tests: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_a_prior_value_rather_than_clearing_it`
 - tests: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_even_when_the_block_raises`

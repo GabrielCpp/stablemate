@@ -228,6 +228,7 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 - raises: the shared timeout becomes `""`.
 - verify: count(subject="diff lines when git exceeds the shared timeout", equals=0)
 - code: groom/groom/localfs.py::git_diff
+- detail: [native git diff documentation scope](concepts/native-git-diff-documentation-scope.md)
 - input: `base` is the native run's checkout root on the groom host; `repo_dir` is the optional base-relative checkout directory from the repository picker.
 - output: raw unified working-tree-versus-`HEAD` diff stdout for the selected checkout, or `""` when no checkout resolves or git exits non-zero.
 - repository selection: resolves `base/repo_dir` first; when that does not resolve and no `repo_dir` was supplied, asks the base's first-checkout lookup and resolves again. An unresolvable base returns `""` without running git.

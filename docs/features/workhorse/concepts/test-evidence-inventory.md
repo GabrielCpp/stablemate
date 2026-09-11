@@ -11,6 +11,12 @@ concept or surface: module citations intentionally preserve the test module as a
 symbols exercise one shared seam. The suite-wide fixtures and doubles are also recorded because
 they define the substitution boundary used by the tests.
 
+`test_guardrails.py` is the one test file in this suite that doubles as a standalone script: its
+[`main`](#main) runs every guardrail test in sequence and returns `0` when all pass
+or `1` on the first failure, so the file can be invoked with `python workhorse/tests/test_guardrails.py`
+for a quick local check of the failure-classification and configuration surfaces without going
+through pytest.
+
 - code: `workhorse/tests/conftest.py`
 - code: `workhorse/tests/conftest.py::_no_base_fetch`
 - code: `workhorse/tests/conftest.py::_no_real_config`
@@ -19,6 +25,16 @@ they define the substitution boundary used by the tests.
 - code: `workhorse/tests/_fakes.py::FakeClock`
 - code: `workhorse/tests/_fakes.py::RecordingTelemetry`
 - code: `workhorse/tests/_fakes.py::fake_groom`
+- code: `workhorse/tests/test_otel.py::FakeSpan`
+- code: `workhorse/tests/test_otel.py::FakeTracer`
+- code: `workhorse/tests/test_otel.py::FakeTraceApi`
+- code: `workhorse/tests/test_otel.py::FakeInstrument`
+- code: `workhorse/tests/test_otel.py::FakeMeter`
+- code: `workhorse/tests/test_otel.py::FakeTelemetry`
+- code: `workhorse/tests/test_otel.py::installed`
+- code: `workhorse/tests/test_guardrails.py::main`
+- code: `workhorse/tests/test_run_terminal.py::Greeting`
+- code: `workhorse/tests/test_run_terminal.py::Recorder`
 - tests: `workhorse/tests/conftest.py`
 - tests: `workhorse/tests/_fakes.py::present`
 - tests: `workhorse/tests/_fakes.py::FakeBackend`
@@ -74,3 +90,34 @@ they define the substitution boundary used by the tests.
 - tests: `workhorse/tests/test_turn_records.py`
 - tests: `workhorse/tests/test_usage.py`
 - tests: `workhorse/tests/test_worklist.py`
+
+## Methods
+
+### main
+- sig: `main() -> int`
+- does: prints a banner, runs every guardrail test in sequence, prints a summary listing the improvements the guardrails deliver, and returns 0
+- does: catches any exception raised by a guardrail test, prints the failure to stderr with a traceback, and returns 1
+- returns: `0` when every guardrail test passes
+- verify: json_path(path="$.returncode", equals=0)
+- returns: `1` if any guardrail test raises
+- verify: json_path(path="$.returncode", equals=1)
+- code: `workhorse/tests/test_guardrails.py::main`
+
+The runner script reuses the same functions pytest discovers — invoking the file as
+`python workhorse/tests/test_guardrails.py` exercises the same surface that
+`pytest workhorse/tests/test_guardrails.py` does, with the only difference being the banner and
+exit-code shell around the calls.
+
+Two further fixtures carry this suite's terminal-status contract — the order in which `run_pyflow`
+stamps `end_run` against the `finally` backstop:
+
+- `workhorse/tests/test_run_terminal.py::Greeting` — a one-state flow whose `start` returns
+  `Done(None)`. It exists only to satisfy the registry's entry lookup; the tests patch
+  `pyflow.run.drive` and the class body never runs.
+- `workhorse/tests/test_run_terminal.py::Recorder` — a subclass of `workhorse.otel._NullTelemetry`
+  that overrides only the two signals the order-sensitive assertions read. `enabled` always
+  returns `True`, so the recorder's view is exercised the way an active host's is; `end_run`
+  appends `(status, error)` to `ended` in arrival order. The first-wins rule that keeps a
+  status out of `otel._NullTelemetry`'s body lives in production code and is asserted
+  separately in `test_otel.py` — re-encoding it here would let one test pass by re-using the
+  other's assumption.
