@@ -44,6 +44,20 @@ byte-identical on disk: the node's `enter` event has no `done` either way, and t
 only record that a human hit Ctrl-C lives in the agent CLI's session transcript. The
 stamp is cleared by the resume that follows it.
 
+**A SIGKILL/segfault is also recorded, just on the *next* resume.** A signal the engine
+cannot catch itself — `SIGKILL`, a segfault in the interpreter, an OOM kill, host
+power loss — leaves `run.json` looking exactly like a wedged or in-flight run: the
+`enter` event has no `done` and `terminal` is unset. The next `resume()` notices the
+record's `pid` is no longer alive on this host (`/proc/<pid>` is the OS's ground
+truth on Linux) and stamps `run.json` with `previous_process_died_at` /
+`previous_process_pid`. That is what groom consults to keep the run visible as
+something other than a run that has been "in flight" for hours with no heartbeats.
+A wedged run and a dead-and-resumed one are different states the operator reacts to
+differently — the stamp is the disambiguation that survives only on disk. The stamp
+is sticky through the resumed run's lifetime and cleared by the eventual `finish()`;
+on non-Linux hosts the probe falls back to "do not stamp a death we cannot confirm",
+which is conservative.
+
 Controller flags (passed to `workhorse`; `--resume-*` are manual overrides
 of the auto behavior above):
 
@@ -64,7 +78,7 @@ Each workflow execution writes a timestamped directory:
 ```
 runs/
 └── <workflow-name>-<timestamp>-<id>/
-    ├── run.json                  # start/end time, terminal state, interrupt stamp
+    ├── run.json                  # start/end time, terminal state, interrupt and previous-process stamps
     ├── context.json              # final context snapshot
     ├── sessions.jsonl            # one line per agent turn: the node, its visit key, and its CLI session
     ├── turns/                    # one directory per agent-node visit, keyed <gen>-<seq>-<node>,

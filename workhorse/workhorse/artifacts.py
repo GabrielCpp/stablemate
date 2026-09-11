@@ -43,6 +43,30 @@ def _observe_repo() -> RepoObservation | None:
     )
 
 
+def _process_alive(pid: int) -> bool:
+    """Whether ``pid`` is currently a running process on this host.
+
+    Best-effort, Linux-shaped. The engine's primary deploy target is Linux; on
+    Linux the inode under ``/proc/<pid>`` is the OS's ground truth and goes away
+    when the process exits. On non-Linux hosts the ``/proc`` lookup is the probe
+    we have, and a missing ``/proc`` rather than a missing pid is the case that
+    falls through — those platforms return ``True`` (conservative: preserve the
+    "do not stamp a death we cannot confirm" reading) and lose the protection
+    to whatever watcher groom ships on the same host. A consumer that wants the
+    signal in its env can probe ``/proc/<pid>`` itself.
+
+    The bounds check on the pid input is the same one ``os.kill`` does: pids the
+    kernel will not look up never reach ``/proc``, and asking returns ``False``
+    rather than treating an invalid argument as "alive".
+    """
+    if pid <= 0:
+        return False
+    try:
+        return Path(f"/proc/{pid}").exists()
+    except OSError:
+        return True
+
+
 def _clear_stale_run(run_dir: Path) -> None:
     """Empty a stable run dir that a *previous* run left behind, before reusing it.
 
@@ -93,12 +117,18 @@ class ArtifactWriter:
     # turns out to be the one that went wrong.
     TURNS_DIR = "turns"
 
-    def __init__(self, workflow_name: str, runs_dir: Path, run_id: str | None = None) -> None:
+    def __init__(
+        self, workflow_name: str, runs_dir: Path, run_id: str | None = None
+    ) -> None:
         # A fixed run_id (e.g. the program name, used by --auto) gives a single
         # stable run dir that is resumed in place across restarts; otherwise a
         # timestamped+random id makes a fresh, unique dir per invocation.
         if run_id is None:
-            run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4]
+            run_id = (
+                datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+                + "-"
+                + uuid.uuid4().hex[:4]
+            )
         self.run_dir = runs_dir / f"{workflow_name}-{run_id}"
         self._turns_root = self.run_dir
         _clear_stale_run(self.run_dir)
@@ -116,6 +146,9 @@ class ArtifactWriter:
         # run dir exists before that, so the first write of run.json carries neither.
         self._profile = ""
         self._profile_config: dict[str, Any] = {}
+        # No previous attempt to detect — fresh start has no `pid` to look up.
+        self._previous_process_died_at = None
+        self._previous_process_pid = None
         self._write_run_json(terminal=None)
 
     @property
@@ -148,7 +181,9 @@ class ArtifactWriter:
         # don't collide with the completion markers already on disk.
         self._seq = 0
         try:
-            self._seq = parse_checkpoint((run_dir / cls.CHECKPOINT_FILE).read_text()).seq
+            self._seq = parse_checkpoint(
+                (run_dir / cls.CHECKPOINT_FILE).read_text()
+            ).seq
         # `validate_json` reports malformed JSON as a ValidationError too, so the two
         # ways a stale run dir can disappoint us are the two caught here.
         except (OSError, ValidationError):
@@ -164,6 +199,22 @@ class ArtifactWriter:
         # would erase.
         self._profile = record.profile
         self._profile_config = dict(record.profile_config)
+        # Detect a previous attempt that died ungracefully — SIGKILL, segfault, OOM
+        # kill, host power loss — and left the dir with ``terminal: null`` and a
+        # ``pid`` that is no longer alive. ``operator_interrupt`` (Ctrl-C) already
+        # writes ``interrupted_at`` before exit; this stamps the gap the engine
+        # could not write itself, so groom keeps the run visible as something other
+        # than a run that has been in flight for hours with no heartbeats.
+        # Sticky through the lifetime of *this* run; cleared by ``finish()``.
+        self._previous_process_died_at = None
+        self._previous_process_pid = None
+        if (
+            record.terminal is None
+            and record.pid is not None
+            and not _process_alive(record.pid)
+        ):
+            self._previous_process_died_at = datetime.now(timezone.utc).isoformat()
+            self._previous_process_pid = record.pid
         # Re-mark the run as in-progress (terminal=None) until it finishes.
         self._write_run_json(terminal=None)
         return self
@@ -196,6 +247,11 @@ class ArtifactWriter:
         self._repo_start = _observe_repo()
         self._profile = ""
         self._profile_config = {}
+        # A nested scope is a fresh start (see :meth:`at`'s docstring); there is
+        # no previous attempt to detect here. Resume-via-`subscope(resume=True)`
+        # goes through the other constructor above and sets these itself.
+        self._previous_process_died_at = None
+        self._previous_process_pid = None
         self._write_run_json(terminal=None)
         return self
 
@@ -451,10 +507,16 @@ class ArtifactWriter:
         step_dir.mkdir(exist_ok=True)
         self._write_unlinked(step_dir / "prompt.md", prompt)
         self._write_unlinked(step_dir / "output.json", json.dumps(output, indent=2))
-        self._write_unlinked(step_dir / "context_after.json", json.dumps(context_after, indent=2))
+        self._write_unlinked(
+            step_dir / "context_after.json", json.dumps(context_after, indent=2)
+        )
         self._keep_visit_copy(
             node_id,
-            [step_dir / "prompt.md", step_dir / "output.json", step_dir / "context_after.json"],
+            [
+                step_dir / "prompt.md",
+                step_dir / "output.json",
+                step_dir / "context_after.json",
+            ],
         )
         self._write_done(node_id, next_node)
 
@@ -496,7 +558,9 @@ class ArtifactWriter:
         self._append_event(node_id=node_id, phase="error", error=error)
         self._write_run_json(terminal=None, error=error)
 
-    def record_profile(self, profile: str, tables: dict[str, Any] | None = None) -> None:
+    def record_profile(
+        self, profile: str, tables: dict[str, Any] | None = None
+    ) -> None:
         """Record which config profile this run's models come from, and what it held.
 
         Written to ``run.json`` rather than to the checkpoint, because it is not state the
@@ -547,6 +611,12 @@ class ArtifactWriter:
 
     def finish(self, terminal: str) -> None:
         (self.run_dir / "context.json").write_text("{}")  # overwritten by controller
+        # Clear the previous-process stamp alongside `interrupted_at`. A finished run
+        # has its own end-state to record; the fact that *some prior attempt* died
+        # ungracefully is not a fact about THIS finished run, and keeping it
+        # misreads as "this run was wedged mid-flight before terminating".
+        self._previous_process_died_at = None
+        self._previous_process_pid = None
         self._write_run_json(terminal=terminal)
         self._append_event(node_id="<run>", phase="terminal", terminal=terminal)
 
@@ -572,5 +642,10 @@ class ArtifactWriter:
             repo_end=_observe_repo() if terminal else None,
             profile=self._profile,
             profile_config=self._profile_config,
+            # Set by `resume()` when the previous attempt's pid is no longer alive,
+            # sticky through the lifetime of this run, cleared by `finish()`. Never
+            # default-populated: a fresh run is `None` here, not "unknown".
+            previous_process_died_at=self._previous_process_died_at,
+            previous_process_pid=self._previous_process_pid,
         )
         (self.run_dir / "run.json").write_text(record.model_dump_json(indent=2))

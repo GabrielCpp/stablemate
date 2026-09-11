@@ -129,6 +129,24 @@ class RunRecord(BaseModel):
     #: null, no stamp", which is a run still in flight (or wedged in one).
     interrupted_at: str | None = None
     error: str | None = None
+    #: Stamped by a resume that found the previous attempt's `pid` is no longer a
+    #: running process on this host — SIGKILL, segfault, OOM kill or any other
+    #: signal the engine cannot catch itself. Distinct from ``interrupted_at``,
+    #: which records an operator interrupt on *this* process: the two together
+    #: tell the operator what actually happened.
+    #:
+    #: ``terminal=null AND previous_process_died_at=stamp`` reads as "previous attempt
+    #: died ungracefully; this process resumed it", and is what groom consults to
+    #: keep the run visible as something other than an in-flight run that has not
+    #: checked in for hours. A wedged run and a dead-and-resumed one are different
+    #: states the operator has to react to differently.
+    #:
+    #: ``previous_process_pid`` is the pid that was alive at the last write of the
+    #: previous process and gone at the next resume — recorded for forensics; groom
+    #: does not need it. Cleared on ``finish()`` because the new run has its own
+    #: end-state to record.
+    previous_process_died_at: str | None = None
+    previous_process_pid: int | None = None
     #: Advertised on telemetry too; recorded here as well so it survives with telemetry
     #: off.
     pid: int | None = None
