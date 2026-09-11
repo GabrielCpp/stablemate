@@ -145,6 +145,62 @@ rather than read them, and that habit is how a real failure gets waved through.
 
 Assert the behaviour a caller depends on. If nobody would notice the change, no test should.
 
+## 11. A test that runs is one that has to clean up after itself
+
+A test owns everything it spawns. A fixture that opens a file has to close it; a
+subprocess a test launches has to be reaped (the `Popen` object, not just the
+process); an environment variable it sets has to be unset; a temp directory it
+creates has to be removed. The state a test leaves behind leaks into the next
+one — a port held open, a half-written file a later test trips over, a global
+flag a sibling fixture patches over because it assumed no one else would set it.
+The next person to debug a flaky test will spend hours tracing the contamination
+back to a test that ran minutes earlier and never finished cleaning up.
+
+The same rule for **the system, not just the test process.** Do not touch state
+the test did not put there: do not write into the user's home directory, do not
+modify the shell's `PATH`, do not bind a privileged port, do not create global
+files in `/tmp` with predictable names, do not `git init` outside the test's
+`tmp_path`. A test that contaminates the developer's machine is a test that
+makes the suite the reason CI broke for a different commit.
+
+The harness that ships with the suite is part of the contract: `pytest`'s
+`tmp_path` is per-test and auto-cleaned, `monkeypatch` reverts on teardown,
+`capsys` does not leak stdout. Use them; do not roll your own with `tempfile.mkdtemp()`
+and a manual `rm -rf` that someone will forget to wire into a fixture.
+
+## 12. Fix the warning before you commit, or the next person will lose it
+
+A test suite that ships with warnings is a test suite with broken windows. The
+next person to add a test sees a warning they cannot interpret and assumes it
+is theirs — then learns to ignore the whole stream. The third person sees a
+real `DeprecationWarning` that the framework emitted for the bug they just
+introduced, glances at the warning pile, scrolls past, and ships the broken
+change. The warning was theirs, but the noise was ours.
+
+Treat every warning as an error at the runner level (`filterwarnings = ["error"]`
+in the package's pytest config is the load-bearing line). A warning emitted by
+a third-party library that cannot be fixed belongs in a `filterwarnings` entry
+narrowly scoped to that library and category — never in the broad default. A
+warning emitted by the code under test means there is a `with` block missing,
+a `Popen` that was never `.wait()`-ed, a fixture that monkeypatched without
+restoring. Fix it before commit, not "later".
+
+## 13. A test asserts what its module owns — not what the rest of the repo does
+
+A test in `<package>/tests/<topic>.py` is responsible for `<package>`'s
+contract. It is not a place to re-assert that the root `Makefile` runs, that
+the workspace's other package imports cleanly, that the docs build, or that a
+sister package's CLI exits zero. Those are checks, and they belong in a guard
+under `scripts/` (or in the package that owns them), not in a test suite that
+will fail next time a sibling changes its public surface for unrelated reasons.
+
+The test that broke a CI run because it reached across packages was the test
+that taught the next person to mistrust the suite. Two tests fail for the
+same reason — "sibling X is broken" — and the operator spends the morning
+bisecting a problem that has nothing to do with the package they were working
+on. Reach only into the unit under test; let the gates that own the cross-
+package contract run elsewhere.
+
 ## Review checklist
 
 Before approving a test — yours or someone else's:
@@ -156,6 +212,9 @@ Before approving a test — yours or someone else's:
 - [ ] The dangerous side of the predicate is the side under test.
 - [ ] Something in the suite exercises the real wiring.
 - [ ] It cannot skip itself into green.
+- [ ] It cleans up after itself — files, subprocesses, env, network state (§11)
+- [ ] It does not emit a warning the package's pytest config would convert to an error (§12)
+- [ ] It does not assert a contract a sibling package owns (§13)
 
 ## Smells
 
@@ -167,3 +226,6 @@ Before approving a test — yours or someone else's:
 | A gate has only passing-input tests | It has never been shown to reject (§7) |
 | Tests skip on the CI box, pass locally | Skipped-to-green suite (§8) |
 | A refactor breaks 40 tests, no behaviour changed | Asserting incidentals (§10) |
+| A test passes alone, fails after another test | Leaked state across tests (§11) |
+| The warning pile grows by 5 per commit | A real warning is being lost in the noise (§12) |
+| A test in package A fails because package B changed | Test reached outside its module (§13) |
