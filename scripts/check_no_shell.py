@@ -96,7 +96,8 @@ def _is_shell(rel: str, path: Path) -> str | None:
     if path.suffix:
         return None
     try:
-        first = path.open("r", encoding="utf-8", errors="replace").readline()
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            first = handle.readline()
     except OSError:
         return None
     return f"shell shebang {first.strip()!r}" if _shebang_names_a_shell(first) else None
