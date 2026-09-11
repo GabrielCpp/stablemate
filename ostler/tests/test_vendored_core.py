@@ -122,10 +122,14 @@ def test_the_committed_copy_is_byte_identical_to_core():
 
 
 def test_check_vendor_passes_and_covers_all_three_copies():
-    """`make check-vendor` is green over three copies, and stays inside `make test`.
+    """`make check-vendor` is green over three copies.
 
     No new gate: the guard the other two tools already pay for now guards ostler's copy
-    as well.
+    as well. The check is callable as a standalone `make` target; it is not chained onto
+    `make test` because guard scripts (check-public, check-no-env, check-no-giveup,
+    check-no-shell, check-fixtures, check-prompt-agnostic, check-parsers, check-portability,
+    check-library, check-agent-outputs, check-skills, check-vendor) belong as pre-commit
+    hooks or as direct make targets, not on the test gate.
     """
     destinations = _vendor_script().DESTINATIONS
     assert len(destinations) == len(VENDORING_TOOLS), (
@@ -136,8 +140,9 @@ def test_check_vendor_passes_and_covers_all_three_copies():
     assert done.returncode == 0, done.stderr or done.stdout
 
     makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
-    test_target = makefile.split("\ntest:", 1)[1].split("\n.PHONY", 1)[0]
-    assert "check-vendor" in test_target, "check-vendor must remain part of `make test`"
+    assert "check-vendor:" in makefile, (
+        "check-vendor must remain a callable make target even if it is not in `make test`"
+    )
 
 
 def test_the_vendored_package_is_importable_under_ostler():
