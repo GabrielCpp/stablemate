@@ -22,6 +22,13 @@ SQLite store and the turn-record archive beside it. **Acting on a run** — relo
 pushed code, switching its CLI, answering its gate from the terminal — is [[workhorse-operate]].
 This skill is groom's architecture; those two are its evidence and its levers.
 
+For a one-shot read of "what's been alive or dead recently, ordered by telemetry" across the
+whole store — the gap `groom status` (liveness from the server's heartbeat cache) leaves
+for runs whose process vanished an hour ago, and `groom archive ls` (terminal-and-archived)
+leaves for the in-between — the answer is `groom recent`, surfaced under [[groom-telemetry]].
+Three views of "what runs are out there", deliberately scoped so each one says something the
+others cannot.
+
 ## What it is
 
 `groom` is a standalone `stablemate` package — sibling to `workhorse/` and `farrier/`, never the

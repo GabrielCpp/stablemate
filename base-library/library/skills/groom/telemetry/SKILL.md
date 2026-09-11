@@ -54,6 +54,7 @@ Corollary: an empty `spans` result for a live run is not a broken exporter.
 |---|---|
 | Where is every live run right now? | `groom status` |
 | Is it wedged or just slow? | `groom status` — read the idle column, below |
+| What was alive recently (alive + dead, ordered by recency)? | `groom recent [-n N] [--workflow NAME] [--json]` |
 | What was it *doing* on the way here? | `groom logs --run RUN` |
 | What did this run cost, and where? | `groom cost --run RUN` |
 | What would it have cost (unpriced harness)? | `groom prices --reprice`, then `cost`'s `est$` |
@@ -91,6 +92,45 @@ A ten-minute turn with a fresh heartbeat is not an incident. Workhorse heartbeat
 long as its process lives, which is what makes silence and slowness different
 observations — and why the STALL rule (nothing emitted at all) and STUCK (alive and
 parked) are separate alerts.
+
+## Recent: every run, alive and dead, by recency
+
+```bash
+groom recent                          # top 10, default liveness threshold = 180s
+groom recent -n 20                    # more
+groom recent --workflow okf-builder   # one workflow
+groom recent --alive-since-s 600      # widen "alive" for a slow node visit
+groom recent --json                   # machine-readable
+```
+
+`status` is the running server's in-memory heartbeat cache; a run whose process vanished
+an hour ago is invisible there. `archive ls` is the terminal end: a run groom swept to
+disk. **`recent` fills the gap** — every run the SQLite store has telemetry for, ordered by
+most-recent activity, alive and dead together, no `groom serve` required.
+
+The liveness predicate keys on `MAX(start_ts, end_ts)` over spans merged with `MAX(ts)`
+over metrics. A long-running node visit renders as **alive** the whole time metrics stream
+every ~10s from workhorse; only a run whose last telemetry is older than the threshold is
+**dead**. Override the threshold with `--alive-since-s` when 180s is wrong (a multi-hour
+repair turn, for example).
+
+The data source is one indexed `GROUP BY` over spans plus one bounded `GROUP BY` over
+metrics — half a second on the 1.4GB production store, where `run_bounds`' four-table
+merge (used by the archiver) takes forty. `--limit 0` returns every run; the operator
+rarely wants that and most questions are answered by `-n 10`.
+
+Use `recent` when:
+
+- **"Where did my run go?"** — `status` says no live runs, but the run's process died an
+  hour ago. `recent` says yes, here, with timestamp.
+- **"Is that other okf-builder run still going?"** — `status` shows only the current
+  machine's runs; a run on a sibling machine heartbeating into the same database shows
+  here, alive or dead.
+- **"Which runs are old enough that I should archive their evidence?"** — the `last`
+  column ranks faster than grepping `events.jsonl` per dir.
+
+Load [[groom-archive]] when a run is several days old and the archiver has already moved it
+to disk.
 
 ```bash
 groom logs --run RUN                      # everything, oldest-first
