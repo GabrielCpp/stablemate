@@ -23,11 +23,13 @@ import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Annotated
 
 from litestar import Litestar, Request, Response, get, post, websocket
 from litestar.connection import WebSocket
 from litestar.enums import MediaType
 from litestar.exceptions import WebSocketDisconnect
+from litestar.params import PathParameter, QueryParameter
 from litestar.static_files import create_static_files_router
 
 from groom import (
@@ -496,7 +498,7 @@ async def index() -> Response:
 
 
 @get("/api/state", include_in_schema=False)
-async def api_state(q: str = "") -> dict:
+async def api_state(q: Annotated[str, QueryParameter()] = "") -> dict:
     """The whole fleet as JSON — **the same payload the websocket pushes**.
 
     This is the resync path. A tab whose socket has gone quiet (or that reads
@@ -553,7 +555,10 @@ async def _sidecar_rpc(container_id: str, method: str, params: dict) -> dict | N
 
 
 @get("/files/{container_id:str}", include_in_schema=False)
-async def files(container_id: str, repo: str = "") -> dict:
+async def files(
+    container_id: Annotated[str, PathParameter()],
+    repo: Annotated[str, QueryParameter()] = "",
+) -> dict:
     """The repo-relative file paths of one checkout, as ``{"paths": [...]}``.
 
     A flat list, not a nested tree: the nesting is a pure function of the paths
@@ -577,7 +582,11 @@ async def files(container_id: str, repo: str = "") -> dict:
 
 
 @get("/file/{container_id:str}", include_in_schema=False)
-async def file_content(container_id: str, repo: str = "", path: str = "") -> dict:
+async def file_content(
+    container_id: Annotated[str, PathParameter()],
+    repo: Annotated[str, QueryParameter()] = "",
+    path: Annotated[str, QueryParameter()] = "",
+) -> dict:
     """One file's text plus the highlight.js language its name implies, as
     ``{"path", "content", "lang"}``.
 
@@ -637,7 +646,7 @@ async def _run_facts(wf: WorkflowContainer) -> tuple:
 
 
 @get("/worker/{container_id:str}", include_in_schema=False)
-async def worker_detail(container_id: str) -> dict:
+async def worker_detail(container_id: Annotated[str, PathParameter()]) -> dict:
     """One run's detail pane as JSON — activity, its gates, live metrics, log
     trail. The same body the websocket pushes to this run's watchers
     (:func:`groom.projection.detail_message`), so opening a pane and having one
@@ -651,7 +660,10 @@ async def worker_detail(container_id: str) -> dict:
 
 
 @get("/diff/{container_id:str}", include_in_schema=False)
-async def diff(container_id: str, repo: str = "") -> dict:
+async def diff(
+    container_id: Annotated[str, PathParameter()],
+    repo: Annotated[str, QueryParameter()] = "",
+) -> dict:
     """One checkout's working-tree git diff, as ``{"diff": "<unified diff>"}``.
 
     The raw unified text rides through: diff2html parses it in the browser to
@@ -674,7 +686,7 @@ async def diff(container_id: str, repo: str = "") -> dict:
 
 
 @get("/api/run/{run_id:str}/outbox", include_in_schema=False)
-async def outbox_get(run_id: str) -> dict:
+async def outbox_get(run_id: Annotated[str, PathParameter()]) -> dict:
     """The gate this run is parked on, if any — its path, question and status.
 
     A run has at most one live gate (the one its checkpoint's ``waiting_on``
@@ -695,7 +707,7 @@ async def outbox_get(run_id: str) -> dict:
 
 
 @post("/api/run/{run_id:str}/outbox", include_in_schema=False)
-async def outbox_post(run_id: str, data: dict) -> dict:
+async def outbox_post(run_id: Annotated[str, PathParameter()], data: dict) -> dict:
     """Answer the gate this run is parked on. Straight through to ``_answer``,
     the same path the browser's websocket ``answer`` command takes, so a gate
     answered from the CLI updates every open tab exactly like one answered here.
@@ -710,7 +722,10 @@ async def outbox_post(run_id: str, data: dict) -> dict:
 
 
 @get("/api/run/{run_id:str}/inbox", include_in_schema=False)
-async def inbox_get(run_id: str, include_all: bool = False) -> dict:
+async def inbox_get(
+    run_id: Annotated[str, PathParameter()],
+    include_all: Annotated[bool, QueryParameter()] = False,
+) -> dict:
     """This run's inbox — outstanding messages by default, every message
     (replied or not) when ``?include_all=true`` — mirroring the CLI's ``read``.
     """
@@ -724,7 +739,7 @@ async def inbox_get(run_id: str, include_all: bool = False) -> dict:
 
 
 @post("/api/run/{run_id:str}/inbox", include_in_schema=False)
-async def inbox_post(run_id: str, data: dict) -> dict:
+async def inbox_post(run_id: Annotated[str, PathParameter()], data: dict) -> dict:
     """Append an operator message to this run's inbox — the ``ask`` verb,
     reachable over HTTP rather than only the CLI so a browser tab (or a
     babysitting session without shell access to the run dir) can leave one.
@@ -824,7 +839,7 @@ async def attend_sessions() -> dict:
 
 
 @get("/api/attend/sessions/{session_id:str}", include_in_schema=False)
-async def attend_session(session_id: str) -> dict:
+async def attend_session(session_id: Annotated[str, PathParameter()]) -> dict:
     """One attendance, rendered as a conversation — not as JSON.
 
     The transcript is copied at process exit, and copied here on first read when that
@@ -845,7 +860,7 @@ async def attend_session(session_id: str) -> dict:
 
 
 @post("/api/attend/sessions/{job_id:str}/stop", include_in_schema=False)
-async def attend_stop(job_id: str) -> dict:
+async def attend_stop(job_id: Annotated[str, PathParameter()]) -> dict:
     """Kill this attendant and hand its run back to the operator's own terminal.
 
     Not a way to abandon the run — the run is still parked or still dead, and groom
@@ -1142,11 +1157,11 @@ async def otlp_logs(request: Request) -> Response:
 
 @get("/traces", include_in_schema=False)
 async def traces(
-    run: str = "",
-    node: str = "",
-    status: str = "",
-    slower_than: str = "",
-    show_ended: str = "",
+    run: Annotated[str, QueryParameter()] = "",
+    node: Annotated[str, QueryParameter()] = "",
+    status: Annotated[str, QueryParameter()] = "",
+    slower_than: Annotated[str, QueryParameter()] = "",
+    show_ended: Annotated[str, QueryParameter()] = "",
 ) -> dict:
     """Telemetry search over the SQLite spans table — a per-run summary strip
     and the matching spans, as ``{"runs": [...], "spans": [...]}``. Pulled by the
@@ -1177,7 +1192,7 @@ async def traces(
 
 
 @get("/api/live", include_in_schema=False)
-async def api_live(run: str = "") -> list[dict]:
+async def api_live(run: Annotated[str, QueryParameter()] = "") -> list[dict]:
     """Where each live run is right now — the rows behind ``groom status``.
 
     Served from the in-memory ingest cache (``alerts.live_status``): the
@@ -1837,7 +1852,7 @@ async def dashboard_sidecar(socket: WebSocket) -> None:
 
 
 @post("/reload", include_in_schema=False)
-async def reload(container_id: str = "") -> dict:
+async def reload(container_id: Annotated[str, QueryParameter()] = "") -> dict:
     """Broadcast a ``reload`` to connected sidecars (all, or one when
     ``container_id`` is given). Each sidecar closes and exits with code 3; the
     container entrypoint recopies the edited source and relaunches. A no-op for
