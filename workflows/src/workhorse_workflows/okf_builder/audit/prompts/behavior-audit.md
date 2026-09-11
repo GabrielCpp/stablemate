@@ -26,6 +26,17 @@ Use `implementation_detail` only with a concrete reason the candidate is not a p
 contract. Explain missing, contradicted, and partial behavior precisely
 enough to repair the affected source-file or book node as a coherent unit.
 
+Use `mixed` for a candidate that is *internally used* but *observably relevant* to a
+claim — a private struct field that constrains identity comparison (the field is
+not part of the public API, but the assignment does affect externally observable
+behavior), an unexported helper called from a public function whose return value
+appears in the public response, an internal validation guard whose side effect is
+what the claim is actually about. `mixed` candidates may be linked to claims; they
+do not carry book evidence. Mark a candidate `mixed` only when both `covered`
+(visible AND relevant) and `implementation_detail` (internal AND not relevant)
+would each be a stretch — the truthful verdict sits between them. Otherwise prefer
+the more specific status.
+
 This is a read-only, packet-only assessment. Return JSON directly; do not use tools,
 run tests, open a browser, edit files, or seek additional repository context.
 The workflow re-extracts source and claims before accepting completion.
@@ -35,10 +46,11 @@ once, on the claim: a claim's `candidate_ids` names the candidates that bear on 
 candidate is linked to exactly the claims that name it. Supported, contradicted, and
 partial claims require candidate links. Covered candidates require a supported or partial
 claim naming them or at least one validated book span. Only covered candidates may carry
-book evidence. Implementation details are named by no claim and carry no book evidence.
-Every book reference must resolve to a supplied node and a nonblank inclusive line range
-within that context, without duplicates. The deterministic validator rejects missing or
-foreign IDs, invalid book spans, and links to ids outside the packet.
+book evidence. Implementation details are named by no claim and carry no book evidence;
+mixed candidates may be linked but do not carry book evidence. Every book reference must
+resolve to a supplied node and a nonblank inclusive line range within that context,
+without duplicates. The deterministic validator rejects missing or foreign IDs, invalid
+book spans, and links to ids outside the packet.
 
 ## Packet
 
