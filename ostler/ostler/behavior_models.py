@@ -207,10 +207,20 @@ class BookEvidenceRef(BehaviorModel):
 
 
 class CandidateVerdict(BehaviorModel):
-    """One candidate's verdict. Its claim links are the claims that name it, not an echo."""
+    """One candidate's verdict. Its claim links are the claims that name it, not an echo.
+
+    ``mixed`` is the verdict for a candidate that is *internally used* but
+    *observably relevant* to a claim — a private struct field that constrains
+    identity comparison, an unexported helper whose return value is part of the
+    public response. ``mixed`` candidates may link to claims (typically
+    ``partial``) and may not carry book evidence; they are neither fully public
+    (``covered``) nor fully internal (``implementation_detail``). The status
+    closes the contradiction ``validate_verdicts`` used to reject: a private
+    field that a claim legitimately names.
+    """
 
     id: Nonblank
-    status: Literal["covered", "missing", "implementation_detail", "unresolved"]
+    status: Literal["covered", "missing", "implementation_detail", "mixed", "unresolved"]
     book_evidence: tuple[BookEvidenceRef, ...] = Field(
         default=(), description="Distinct nonblank book spans establishing covered source behavior. Only covered verdicts may supply these; not QA proof.",
     )

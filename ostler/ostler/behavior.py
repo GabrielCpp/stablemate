@@ -613,5 +613,10 @@ def validate_verdicts(packet: AuditPacket, payload: object) -> AuditReport:
             raise ValueError(f"{candidate.id}: covered requires a supported or partial claim link or book evidence")
         if candidate.status == "implementation_detail" and links:
             raise ValueError(f"{candidate.id}: implementation_detail cannot be linked by claims {sorted(links)}")
+        # ``mixed`` candidates may link to claims by definition: they are internal AND
+        # relevant, and the truthful verdict for a private struct field that bears on
+        # a claim's clauses is ``partial claim, mixed candidate``. The cross-item
+        # exclusivity rule that once forced the validator to reject this shape is
+        # the very contradiction ``mixed`` admits.
     return AuditReport(packet_digest=current_digest, verdicts=verdicts, limitations=(*packet.limitations,
         "Validated book evidence confirms externally reviewed documented source coverage, not QA proof; span resolution does not establish semantic correctness."))

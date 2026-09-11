@@ -309,6 +309,14 @@ def merge_verdicts(packet: AuditPacket, recall: MemoRecall, reviewed: AuditVerdi
         verdict = candidates.get(candidate.id)
         if verdict is None:
             raise ValueError(f"{candidate.id}: no recalled or reviewed verdict")
+        # ``mixed`` is the verdict that records the contradiction directly — a candidate
+        # that is internal AND relevant. A recalled supported or partial claim naming it
+        # does not upgrade it to ``covered`` (the visibility half is still partial), and
+        # the implementation_detail → unresolved demote that runs for a different
+        # contradiction does not apply (mixed already names what it is).
+        if verdict.status == "mixed":
+            merged.append(verdict)
+            continue
         if verdict.status != "covered" and supporting[candidate.id]:
             verdict = verdict.model_copy(update={
                 "status": "covered", "book_evidence": (),

@@ -290,6 +290,47 @@ def test_implementation_detail_requires_a_reason_but_no_book_claim(audit_packet:
     assert validate_verdicts(audit_packet, payload).verdicts.candidates[0].status == "implementation_detail"
 
 
+def test_mixed_candidate_may_link_to_a_partial_claim(audit_packet: AuditPacket) -> None:
+    """A candidate that is internal-and-relevant names the claim it bears on, with partial support.
+
+    The truthful verdict for a private struct field assignment that a claim legitimately
+    names via identity comparison is ``claim.status = 'partial'`` and
+    ``candidate.status = 'mixed'``. The strict cross-item rule
+    ``implementation_detail cannot be linked`` no longer rejects this shape, because
+    ``mixed`` is the schema state that admits the contradiction.
+    """
+    payload = verdicts(audit_packet).model_dump(mode="json")
+    candidate_id = payload["candidates"][0]["id"]
+    payload["claims"][0].update(status="partial", explanation="Substantive contract is the signature; field assignment is internal.",
+                               candidate_ids=[candidate_id])
+    payload["candidates"][0].update(status="mixed", explanation="Private struct field; constrains identity comparison.")
+    report = validate_verdicts(audit_packet, payload)
+    assert report.verdicts.claims[0].status == "partial"
+    assert report.verdicts.candidates[0].status == "mixed"
+    assert payload["claims"][0]["candidate_ids"] == [candidate_id]
+
+
+def test_mixed_candidate_may_link_to_a_supported_claim(audit_packet: AuditPacket) -> None:
+    """``mixed`` is permissive: the model is responsible for picking the right claim status."""
+    payload = verdicts(audit_packet).model_dump(mode="json")
+    candidate_id = payload["candidates"][0]["id"]
+    payload["claims"][0].update(status="supported", explanation="Observed.", candidate_ids=[candidate_id])
+    payload["candidates"][0].update(status="mixed", explanation="Internal but relevant.")
+    report = validate_verdicts(audit_packet, payload)
+    assert report.verdicts.claims[0].status == "supported"
+    assert report.verdicts.candidates[0].status == "mixed"
+
+
+def test_mixed_candidate_cannot_carry_book_evidence(audit_packet: AuditPacket) -> None:
+    """``mixed`` joins ``implementation_detail`` and ``unresolved`` in forbidding book evidence."""
+    payload = verdicts(audit_packet).model_dump(mode="json")
+    payload["claims"][0].update(status="partial", candidate_ids=[payload["candidates"][0]["id"]])
+    payload["candidates"][0].update(status="mixed", explanation="Internal but relevant.",
+                                    book_evidence=[{"node": "items", "start_line": 1, "end_line": 1}])
+    with pytest.raises(ValueError, match="cannot carry book evidence"):
+        validate_verdicts(audit_packet, payload)
+
+
 def test_async_decorators_positional_only_and_nested_symbols(tmp_path: Path) -> None:
     (tmp_path / "api.py").write_text(
         "@dataclass\nclass Config:\n    mode: str\n\n"

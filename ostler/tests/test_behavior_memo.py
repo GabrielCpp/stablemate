@@ -16,7 +16,7 @@ from ostler.behavior import build_audit_packets, extract_evidence, validate_verd
 from ostler.behavior_models import (
     AuditPacket, AuditVerdicts, BookClaim, BookContext, BookEvidenceRef, CandidateVerdict, ClaimVerdict,
 )
-from ostler.behavior_memo import VerdictMemo, merge_verdicts, reduce_packet, salvage_verdicts
+from ostler.behavior_memo import MemoRecall, VerdictMemo, merge_verdicts, reduce_packet, salvage_verdicts
 from ostler.index import IndexStore
 
 SOURCE = "def items():\n    return 20\n\ndef total():\n    return 0\n"
@@ -140,6 +140,35 @@ def test_a_reduced_reply_merges_over_the_recall_and_is_remembered_whole(tmp_path
     assert {verdict.id: verdict.status for verdict in report.verdicts.claims} == {"claim:limit": "supported", "claim:total": "supported"}
     memo.remember(edited, report)
     assert memo.recall(edited).covers(edited)
+
+
+def test_a_mixed_candidate_is_not_demoted_on_merge(tmp_path: Path, memo: VerdictMemo) -> None:
+    """``mixed`` admits the contradiction ``merge_verdicts`` used to demote around.
+
+    The merge logic rewrites ``implementation_detail`` linked to ``unresolved`` because
+    the two verdicts were made on different evidence. ``mixed`` is the verdict that
+    records the contradiction directly, so it passes through unchanged: the report
+    keeps ``status = 'mixed'`` and the explanatory note the reviewer wrote.
+    """
+    packet = packet_for(tmp_path)
+    items = next(candidate for candidate in packet.candidates if candidate.symbol == "items")
+    total = next(candidate for candidate in packet.candidates if candidate.symbol == "total")
+    recall = MemoRecall(
+        claims=(ClaimVerdict(id="claim:limit", status="partial",
+                             explanation="Stores the service via private field.",
+                             candidate_ids=(items.id, total.id)),
+                ClaimVerdict(id="claim:total", status="supported",
+                             explanation="Returns 0.",
+                             candidate_ids=(total.id,))),
+        candidates=(CandidateVerdict(id=items.id, status="covered",
+                                     explanation="Public signature observed."),
+                    CandidateVerdict(id=total.id, status="mixed",
+                                     explanation="Internal field assignment; constrains identity comparison.")),
+    )
+    edited = packet_for(tmp_path, limit_text="Returns 20")
+    report = merge_verdicts(edited, recall, None)
+    by_id = {verdict.id: verdict for verdict in report.verdicts.candidates}
+    assert by_id[total.id].status == "mixed", "mixed survives merge; only implementation_detail linked gets demoted"
 
 
 def test_a_damaged_entry_is_a_miss(tmp_path: Path, memo: VerdictMemo) -> None:
