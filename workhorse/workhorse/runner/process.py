@@ -454,6 +454,14 @@ class ProcessSupervisor:
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     pass
+            # Close the streaming pipes we opened. `subprocess.Popen` only closes them on
+            # `__del__`, which leaks a ResourceWarning under pytest; closing them here
+            # matches the lifetime the streaming loop actually needs them for. stdin was
+            # already closed at the write site when the caller fed it; the Popen's own
+            # cleanup closes the underlying descriptors, but the TextIOWrapper held by
+            # proc.stdout is what ResourceWarning flags.
+            if proc.stdout is not None:
+                proc.stdout.close()
         if reloading is not None:
             # Raised rather than returned because every caller between here and the driver
             # is written to interpret a `(timed_out, returncode)` pair as a verdict on the
