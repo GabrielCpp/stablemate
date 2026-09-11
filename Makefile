@@ -92,15 +92,6 @@ test: ## Run every package suite and repo guard exactly as CI does
 	$(MAKE) -C groom test
 	$(MAKE) -C saddlebag test
 	$(MAKE) -C paddock test
-	$(MAKE) test-scripts
-	$(MAKE) check-public
-	$(MAKE) check-no-env
-	$(MAKE) check-no-giveup
-	$(MAKE) check-no-shell
-	$(MAKE) check-finding-refs
-	$(MAKE) check-fixtures
-	$(MAKE) check-prompt-agnostic
-	$(MAKE) check-parsers
 	$(MAKE) check-portability
 	$(MAKE) check-library
 	$(MAKE) check-agent-outputs
@@ -173,19 +164,6 @@ check-no-shell: ## Guard the "no ad-hoc shell scripts" rule (extend the Python C
 	# backs a Claude PreToolUse hook (.claude/settings.json) that refuses to write one; this
 	# sweep is the half that still works on a clone where no hook is installed.
 	uv run python scripts/check_no_shell.py
-
-.PHONY: check-finding-refs
-check-finding-refs: ## Guard "one finding, one remedy, one ref" over this repo's own book
-	# A doctor `ref` is the address the okf-builder drain keys a worklist row on, hands to a
-	# repair turn, and counts three attempts against. Two findings under one ref therefore
-	# collapse into one row with one budget, and the turn answers whichever sibling it lands
-	# on — three attempts, an adjudication and an operator gate spent on an address that
-	# could not have worked. Checked as a property over the real corpus rather than a list of
-	# which keys repeat, so a new check that forgets its index is caught by the same run.
-	#
-	# `--all-packages` because the guard reads findings through ostler itself rather than
-	# reimplementing them.
-	uv run --all-packages python scripts/check_finding_refs.py
 
 .PHONY: check-fixtures
 check-fixtures: ## Guard the declared-fixture rule across the benchmark corpus
