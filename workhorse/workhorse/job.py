@@ -375,6 +375,14 @@ def overrun_multiple(elapsed_s: float, estimate_s: float, first: float) -> float
 # --------------------------------------------------------------------------- submit
 
 
+#: Live supervisor processes, keyed by their job directory. A supervisor outlives its
+#: submitter by design — the caller cannot be on the hook for waiting, but the caller
+#: still needs a handle to reap the Popen when the job is done. `wait_submitted` reads
+#: this, `kill` reads it, and pytest reads it (the missing `wait` was the source of
+#: every ResourceWarning in `tests/test_job.py`).
+_supervisor_procs: dict[str, subprocess.Popen[bytes]] = {}
+
+
 def _launch_argv(manifest: dict, tier: str) -> list[str]:
     """The argv the supervisor spawns — the command itself, or the command inside a scope."""
     command = [str(part) for part in manifest.get("command") or []]
@@ -432,6 +440,10 @@ def submit(manifest: dict, *, job_dir: Path | str, logger: logging.Logger | None
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
+    # Track the supervisor so a caller can wait on it after `runner.json` exists. Without
+    # this, the detached Popen object lives until garbage collection, and pytest's
+    # ResourceWarning fires for every test that submits and forgets.
+    _supervisor_procs[str(directory)] = proc
     handle = Handle(
         job_dir=str(directory),
         pid=proc.pid,
@@ -548,30 +560,82 @@ def collect(job_dir: Path | str) -> RunnerResult:
     )
 
 
+def wait_submitted(job_dir: Path | str, timeout: float = 30.0) -> int | None:
+    """Reap the supervisor of `job_dir` if one is still alive.
+
+    The supervisor exits once it writes `runner.json`, so a caller that has just
+    collected a result can call this to release the detached Popen immediately rather
+    than waiting for garbage collection. The return value is the supervisor's exit
+    code, or None when no supervisor is tracked (already reaped, never submitted, or
+    submitted by another process).
+
+    A supervisor that has not exited after `timeout` is killed (the job's whole group,
+    not just the supervisor process) and reaped, mirroring `kill`'s backstop.
+    """
+    directory = str(_paths(job_dir))
+    proc = _supervisor_procs.pop(directory, None)
+    if proc is None:
+        return None
+    try:
+        if proc.poll() is None:
+            try:
+                return proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                _signal_group(proc.pid, signal.SIGTERM)
+                try:
+                    return proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    _signal_group(proc.pid, signal.SIGKILL)
+                    try:
+                        return proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        return None
+        return proc.returncode
+    finally:
+        # Popen's own __del__ only closes the pipes when the object is GC'd. Closing
+        # here releases them the moment the supervisor exits, which is what the
+        # streaming supervisor does for its own pipes (workhorse/runner/process.py).
+        for stream in (proc.stdout, proc.stderr, proc.stdin):
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+
+
 def kill(job_dir: Path | str, reason: str = "operator") -> RunnerResult:
     """Stop the job and return what it cost up to that point.
 
     Asks the supervisor first — it is the one writer of `runner.json`, so a kill it
     performs is a kill that leaves a readable artifact. Only when it does not answer do we
-    reap the group ourselves and write the artifact in its place.
+    reap the group ourselves and write the artifact in our place.
     """
     directory = _paths(job_dir)
     handle = _read_json(directory / HANDLE_NAME)
     if not handle:
         raise JobError(f"no job handle in {directory}")
     if (directory / RUNNER_NAME).exists():
-        return collect(directory)
+        # The supervisor is on its way out (it just wrote runner.json) — reap it
+        # through `wait_submitted` so the Popen object is released here, not at GC.
+        result = collect(directory)
+        wait_submitted(directory)
+        return result
 
     (directory / KILL_REQUEST_NAME).write_text(f"{reason}\n", encoding="utf-8")
     deadline = time.time() + KILL_REQUEST_GRACE_S
     while time.time() < deadline:
         if (directory / RUNNER_NAME).exists():
-            return collect(directory)
+            result = collect(directory)
+            wait_submitted(directory)
+            return result
         time.sleep(0.5)
 
     child = _read_json(directory / CHILD_NAME)
     _reap_group(int(child.get("pgid") or 0))
     _reap_group(int(handle.get("pgid") or 0))
+    # The supervisor is part of the group we just reaped, but the Popen object is still
+    # tracked. Reap it now so the caller doesn't see a leaked handle at GC time.
+    wait_submitted(directory)
     started_at = float(handle.get("started_at") or 0.0)
     now = time.time()
     result = RunnerResult(

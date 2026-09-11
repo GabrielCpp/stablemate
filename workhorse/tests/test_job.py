@@ -36,11 +36,18 @@ def _python(code: str) -> list[str]:
 
 
 def _finish(job_dir: Path, timeout: float = 30.0) -> job.RunnerResult:
-    """Block until the supervisor has written what the job cost."""
+    """Block until the supervisor has written what the job cost, then reap the supervisor.
+
+    The supervisor is detached by design — it writes `runner.json` and exits without
+    blocking the caller. `wait_submitted` is what releases the Popen the moment the
+    supervisor is done with it; without it, the Popen lives until GC and the test
+    fires a ResourceWarning at process exit."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         if (job_dir / job.RUNNER_NAME).exists():
-            return job.collect(job_dir)
+            result = job.collect(job_dir)
+            job.wait_submitted(job_dir)
+            return result
         time.sleep(0.05)
     raise AssertionError(f"no {job.RUNNER_NAME} in {job_dir} after {timeout}s")
 
@@ -135,6 +142,7 @@ def test_a_live_job_is_adopted_rather_than_launched_twice(tmp_path: Path):
 
     assert second.pid == first.pid
     job.kill(directory)
+    job.wait_submitted(directory)
 
 
 def test_a_killed_job_still_reports_what_it_cost(tmp_path: Path):
@@ -145,6 +153,7 @@ def test_a_killed_job_still_reports_what_it_cost(tmp_path: Path):
 
     started = time.monotonic()
     result = job.kill(directory, reason="operator")
+    job.wait_submitted(directory)
 
     assert result.kill_reason == "operator"
     assert result.wall_s > 0
