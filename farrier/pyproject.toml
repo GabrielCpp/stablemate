@@ -48,3 +48,13 @@ packages = ["farrier"]
 
 [tool.hatch.build.targets.sdist]
 include = ["farrier", "README.md", "LICENSE", "agents.example.yml", "docs"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# A test suite that ships with warnings is a test suite with broken windows: the next
+# person to add a test sees a warning they cannot interpret and assumes it is theirs,
+# then learns to ignore the whole stream. Every warning is an error so a real one
+# surfaces immediately.
+filterwarnings = [
+  "error",
+]

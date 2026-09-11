@@ -92,3 +92,10 @@ tmp_path_retention_policy = "failed"
 # answer file). A hung test is then indistinguishable from a slow one until a runner has
 # been held for hours, so the suite states its own ceiling. See workflows/pyproject.toml.
 timeout = 120
+# A test suite that ships with warnings is a test suite with broken windows: the next
+# person to add a test sees a warning they cannot interpret and assumes it is theirs,
+# then learns to ignore the whole stream. Every warning is an error so a real one
+# surfaces immediately.
+filterwarnings = [
+  "error",
+]
