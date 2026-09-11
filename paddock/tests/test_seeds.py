@@ -154,7 +154,7 @@ def test_capture_pins_a_repo_that_lives_under_the_data_directory(
     repo: Path, data_dir: Path, store: Path
 ) -> None:
     inside = data_dir / "apps" / "acme-api"
-    shutil.copytree(repo, inside, symlinks=True)
+    shutil.copytree(repo, inside, symlinks=True, ignore=shutil.ignore_patterns(".git"))
     pointer = seeds.capture(inside, name="acme", data_dir=data_dir, store=store).pointer
     assert pointer.source == "apps/acme-api"
     pointer.verify_tree(inside)
@@ -165,7 +165,7 @@ def test_verify_tree_rejects_a_source_that_moved_after_capture(
 ) -> None:
     """The whole point: the trials run the zip, so an unre-captured edit is invisible to them."""
     inside = data_dir / "apps" / "acme-api"
-    shutil.copytree(repo, inside, symlinks=True)
+    shutil.copytree(repo, inside, symlinks=True, ignore=shutil.ignore_patterns(".git"))
     pointer = seeds.capture(inside, name="acme", data_dir=data_dir, store=store).pointer
     (inside / "README.md").write_text("acme, repaired\n", encoding="utf-8")
     with pytest.raises(PointerError, match="paddock seed capture"):
@@ -182,7 +182,7 @@ def test_verify_tree_honours_the_recorded_excludes(
     pointer whose freshness guard could not be reproduced from the pointer.
     """
     inside = data_dir / "apps" / "acme-api"
-    shutil.copytree(repo, inside, symlinks=True)
+    shutil.copytree(repo, inside, symlinks=True, ignore=shutil.ignore_patterns(".git"))
     (inside / ".venv").mkdir()
     (inside / ".venv" / "pyvenv.cfg").write_text("home = /usr\n", encoding="utf-8")
     pointer = seeds.capture(
@@ -203,7 +203,8 @@ def test_verify_tree_ignores_the_source_directorys_own_git(
 ) -> None:
     """A digest that moved on `git gc` would report skew nobody introduced."""
     inside = data_dir / "apps" / "acme-api"
-    shutil.copytree(repo, inside, symlinks=True)
+    shutil.copytree(repo, inside, symlinks=True, ignore=shutil.ignore_patterns(".git"))
     pointer = seeds.capture(inside, name="acme", data_dir=data_dir, store=store).pointer
+    (inside / ".git").mkdir(exist_ok=True)
     (inside / ".git" / "a-new-object").write_text("whatever\n", encoding="utf-8")
     pointer.verify_tree(inside)
