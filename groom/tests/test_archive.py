@@ -344,7 +344,7 @@ def test_status_reports_the_backlog_and_what_is_held():
         _seed("straddler", ts=OLD)
         _seed("straddler", ts=NOW - 60, node="build")
 
-        report = archive.status(now=NOW)
+        report = archive.status(now=NOW, retention_days=30)
         assert report["archived_runs"] == 1
         assert report["held_by_activity"] == ["straddler"]
         assert report["last_sweep"]["archived"] == ["frozen"]

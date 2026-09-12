@@ -480,14 +480,24 @@ def sweep(
     return result
 
 
-def status(now: float | None = None) -> dict[str, Any]:
+def status(
+    now: float | None = None,
+    retention_days: float = store.RETENTION_DAYS,
+) -> dict[str, Any]:
     """What an operator needs to know, computed on demand.
 
     Deliberately separate from :class:`groom.store.StoreHealth`, which stays about
-    live runs: no archival information is written while a run is alive, so there
-    is nothing here for the live-ops view to carry.
+    live runs: no archival information is written while a run is alive, so there is
+    nothing here for the live-ops view to carry.
+
+    ``retention_days`` is forwarded to :func:`eligible` so the held-by-activity
+    report reflects the same window the next sweep will use. Without it, status
+    answers the question against the *configured* retention window — which may
+    be 100 years (the default ``GROOM_RETENTION_DAYS`` on a fresh install) —
+    while the sweep just ran with a 30-day window and held a run that status
+    will not surface.
     """
-    archivable, held = eligible(now=now)
+    archivable, held = eligible(retention_days=retention_days, now=now)
     return {
         "root": str(archives_root()),
         "archived_runs": len(archive_dirs()),
@@ -495,7 +505,7 @@ def status(now: float | None = None) -> dict[str, Any]:
         "held_by_activity": [run.run_id for run in held],
         "every_s": ARCHIVE_EVERY_S,
         "runs_per_pass": RUNS_PER_PASS,
-        "retention_days": store.RETENTION_DAYS,
+        "retention_days": retention_days,
         "last_sweep": _LAST.as_dict() if _LAST else None,
         "unarchived_deletable": store.unarchived_row_counts(),
     }
