@@ -12,7 +12,8 @@ gate goes through, which the shared reader deliberately knows nothing about.
 from __future__ import annotations
 
 import asyncio
-import re
+
+from markdown_it import MarkdownIt
 
 from workhorse import gates as gate_file
 
@@ -23,12 +24,8 @@ AWAITING = "AWAITING_OPERATOR"
 ANSWERED = "ANSWERED"
 CONSUMED = "CONSUMED"
 
-_QUESTIONS_RE = re.compile(
-    r"##\s*Questions?\s+from\s+the\s+agent\s*\n+(.*?)(?:\n##|\Z)",
-    re.DOTALL | re.IGNORECASE,
-)
-
-_QUESTION_PREVIEW_LIMIT = 4000
+_MARKDOWN = MarkdownIt("commonmark")
+_QUESTION_HEADINGS = {"question from the agent", "questions from the agent"}
 
 
 def status_of(text: str) -> str:
@@ -42,12 +39,24 @@ def is_awaiting(text: str) -> bool:
 def extract_question(text: str) -> str:
     """Extract the latest human-facing question from the append-only gate.
 
-    Falls back to a truncated dump of the whole file when no recognizable
-    section header is present — still useful, just less tidy.
+    Preserve the full section, including nested headings and fenced examples.
+    Unstructured questions are returned intact.
     """
-    matches = list(_QUESTIONS_RE.finditer(text))
-    body = matches[-1].group(1).strip() if matches else text.strip()
-    return body[:_QUESTION_PREVIEW_LIMIT]
+    tokens = _MARKDOWN.parse(text)
+    lines = text.splitlines()
+    start = 0
+    end = len(lines)
+    selected = False
+    for opening, title in zip(tokens, tokens[1:], strict=False):
+        if opening.type != "heading_open" or opening.level != 0 or opening.map is None:
+            continue
+        if opening.tag == "h2" and " ".join(title.content.split()).casefold() in _QUESTION_HEADINGS:
+            start = opening.map[1]
+            end = len(lines)
+            selected = True
+        elif selected and opening.tag in ("h1", "h2"):
+            end = min(end, opening.map[0])
+    return "\n".join(lines[start:end]).strip()
 
 
 def apply_answer(text: str, answer: str) -> str:

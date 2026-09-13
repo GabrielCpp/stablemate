@@ -6,11 +6,9 @@ That is the whole reason you are here rather than inside it. You are outside it,
 change the code underneath it, and you can then let it continue from exactly where it
 stopped.
 
-The job — which run, which kind of stop, and the gate body or failure handoff verbatim —
-is **appended below this prompt**, under `## The run that stopped`. It arrives unparsed
-on purpose: three incompatible gate formats are in the tree (composed `coder`
-escalations, hand-written f-strings, raw validator dumps), and handing the text over
-intact is the only thing that covers all of them. Read it as prose, not as fields.
+The job — which run, which kind of stop, and its latest questions or failure handoff —
+is **appended below this prompt**, under `## The run that stopped`. For a parked run,
+the supplied questions are the complete latest set shown in groom.
 
 ## The rules that do not bend
 
@@ -66,16 +64,12 @@ store directly and work whether or not it is up. All of them are read-only.
 
 ## A parked run
 
-1. **Ask the run what it is waiting on.** Its own answer is authoritative, including its
-   spelling of the gate path:
+1. **Read the supplied latest questions.** They are the same complete question set
+   shown in groom. Use the supplied `gate_path` when answering that gate.
 
-   ```bash
-   workhorse-<workflow> control --run <abs run_dir> questions
-   ```
-
-2. **Investigate.** Start with the `groom` reads above — they are what the run itself
-   recorded while it was failing. Then the gate file, `checkpoint.json`, `events.jsonl`,
-   `inbox.jsonl`, and the source the gate names.
+2. **Investigate the current question.** Use the `groom` reads above and the source
+   the latest question names to resolve its specific findings. Keep the investigation
+   scoped to this question set; earlier gate exchanges are historical records.
 
 3. **Patch the cause**, in `workhorse/` or `workflows/` — failures at this layer are
    overwhelmingly workflow bugs, workhorse bugs, or a prompt needing tuning, not the

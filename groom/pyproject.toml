@@ -18,6 +18,7 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
+  "markdown-it-py>=3",
   "pydantic>=2.0",
   "litestar[standard]>=2.10",
   "workhorse-agent",

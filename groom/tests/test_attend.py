@@ -29,7 +29,7 @@ import pytest
 from litestar.testing import TestClient
 
 from groom import app as groom_app
-from groom import attend, attend_transcript, discovery, gates, state, store
+from groom import attend, attend_transcript, discovery, state, store
 from groom.models import GateInfo, WorkflowContainer, WorkflowState
 
 WAIT_S = 5.0
@@ -195,13 +195,12 @@ def test_a_spawn_that_raises_leaves_the_job_published(attending: Configure):
     assert len(attend.queue()) == 1
 
 
-def test_a_job_carries_the_gate_body_verbatim(attending: Configure):
-    """Three incompatible gate formats are in the tree; handing the text over intact
-    is the only thing that covers all of them."""
+def test_a_job_preserves_unstructured_questions(attending: Configure):
+    """A question without the canonical heading still reaches the attendant."""
     spawner = attending()
     body = "## Blocked\n\n- tried: reload\n- tried: answer\n"
     job = _gate(spawner=spawner, question=body)
-    assert job is not None and body in job.prompt()
+    assert job is not None and body.strip() in job.prompt()
 
 
 def test_the_doctrine_ships_with_groom(attending: Configure):
@@ -689,25 +688,27 @@ def test_the_dispatched_gate_path_is_absolute(attending: Configure):
     assert [job["gate_path"] for job in attend.queue()] == ["/repo/docs/gate.md"]
 
 
-def test_the_prompt_carries_the_whole_gate_not_the_dashboard_preview(tmp_path):
-    """`extract_question` keeps one section and truncates it to 4000 characters.
+def test_attendant_receives_the_same_latest_questions_as_the_ui(tmp_path, attending: Configure):
+    from groom import projection
+    from workhorse import gates as gate_file
 
-    That is the right shape for a row in a table and the wrong shape for the only copy
-    the attendant gets: a long adjudication arrives cut mid-word with most of its
-    findings missing, and an attendant cannot fix a finding it was never shown.
-    """
     gate = tmp_path / "gate.md"
-    body = "\n".join(f"- finding {i}: {'x' * 200}" for i in range(60))
-    gate.write_text(f"STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\n{body}\n")
-    preview = gates.extract_question(gate.read_text())
-    assert len(preview) == 4000  # the defect: the tail is gone before the job is built
-
-    job = attend.AttendJob(
-        job_id="j1", run_id="r1", kind="gate", workflow="okf-builder",
-        run_dir="/runs/r1", workspace=str(tmp_path), created_at=0.0,
-        gate_path=str(gate), question=preview,
-    )
-    assert "finding 59" in job.facts()
+    latest = "Choose a backend?\n\n### Evidence\n\n" + "Evidence. " * 500 + "\n\nProceed?"
+    earlier = gate_file.apply_answer(gate_file.format_operator_gate("Old question?"), "Old answer.")
+    content = gate_file.append_operator_gate(earlier, latest)
+    gate.write_text(content, encoding="utf-8")
+    spawner = attending()
+    job = _gate(spawner=spawner, gate_path=str(gate), question=content)
+    assert job is not None
+    shown = projection.gate_dict(GateInfo(workflow_id="r1", file_path=str(gate), question=content))
+    assert job.gate_body() == latest
+    assert job.gate_body() == shown["question"]
+    assert "Old question?" not in job.prompt()
+    assert "Old answer." not in job.prompt()
+    assert job.as_dict()["question"] == latest
+    restored = attend._job_from_row(job.as_dict())
+    assert restored.gate_body() == latest
+    assert "Old question?" not in restored.prompt()
 
 
 def test_the_gate_body_falls_back_to_the_preview_when_the_file_is_gone(tmp_path):

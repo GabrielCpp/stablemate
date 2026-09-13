@@ -8,6 +8,7 @@ import pytest
 
 from groom import alerts, app, projection, state, store
 from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
+from workhorse import gates as gate_file
 
 
 @pytest.fixture(autouse=True)
@@ -60,6 +61,21 @@ def test_detail_uses_current_telemetry_instead_of_stale_workflow():
     assert detail["gates"] == []
     assert detail["head"]["activity"] == "new"
     assert detail["head"]["pid"] == 5
+
+
+def test_parked_run_shows_only_the_complete_latest_questions():
+    previous = gate_file.format_operator_gate("Old question?")
+    answered = gate_file.apply_answer(previous, "Old answer.")
+    latest = "Choose a backend?\n\n### Evidence\n\n" + "Evidence. " * 500 + "\n\nProceed?"
+    rearmed = gate_file.append_operator_gate(answered, latest)
+    wf = WorkflowContainer(container_id="r", name="test")
+    tel = RunTelemetry(run_id="r", wait_kind="operator", wait_gate_path="gate.md",
+                       wait_gate_question=rearmed)
+
+    detail = projection.run_detail(wf, tel)
+
+    assert detail["gates"][0]["question"] == latest
+    assert detail["gates"][0]["preview"] == "Choose a backend?"
 
 
 def test_zero_live_metrics_do_not_resurrect_stored_wait():

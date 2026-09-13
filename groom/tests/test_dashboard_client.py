@@ -122,17 +122,9 @@ if __name__ == "__main__":
     raise SystemExit(1 if failed else 0)
 
 
-def test_a_gate_block_can_disclose_its_whole_context_file():
-    # The question is an excerpt; the operator answering it needs the findings and
-    # earlier escalations around it. The gate block therefore carries a lazy
-    # disclosure that fetches the gate file through `/file/` — keyed by the gate's
-    # own `file_path`, the path relative to the run's workspace — and renders it
-    # through the same sanitized Markdown path the question uses.
+def test_a_gate_block_shows_questions_without_a_context_disclosure():
     src = CLIENT.read_text()
-    assert "function ContextDisclosure" in src
-    assert 'fetch("/file/" + encodeURIComponent(workflowId) + "?path=" + encodeURIComponent(filePath))' in src
     gate_block = src[src.index("function GateBlock") : src.index("function DiffDisclosure")]
-    assert "ContextDisclosure" in gate_block
-    context = src[src.index("function ContextDisclosure") : src.index("function GateBlock")]
-    assert "<${Markdown}" in context
-    assert "dangerouslySetInnerHTML" not in context
+    assert 'source=${gate.question}' in gate_block
+    assert "ContextDisclosure" not in src
+    assert "Full context" not in src

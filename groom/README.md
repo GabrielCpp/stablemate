@@ -66,12 +66,12 @@ spans, per-node timings and error status, filterable without leaving the browser
   does not infer completion by reading checkpoints, `run.json`, or the host PID.
   A resumed process exports a new session identity, replacing the prior session's
   live values as its telemetry arrives.
-  Gate questions render as Markdown (`marked`, sanitized with
-  `DOMPurify` before insertion since the content is LLM-authored); a *Full
-  context* disclosure under the question fetches the whole gate file through
-  `/file/` and renders it the same way, so the findings and earlier escalations
-  around the question are read in the dashboard rather than hunted for on disk;
-  and each workflow row can expand a `git diff` of its working tree (rendered
+  The gate pane shows only the latest question set, in full, including nested
+  headings. Questions render as Markdown (`marked`, sanitized with `DOMPurify`
+  before insertion since the content is LLM-authored). The automatic attendant
+  receives that same latest question set. Earlier exchanges stay in the gate file;
+  the pane has no additional context disclosure. Each workflow row can expand a
+  `git diff` of its working tree (rendered
   with `diff2html`). All front-end assets are vendored locally; nothing is loaded
   from a CDN at runtime.
 - Gates travel over the run's control socket, with the file as the record. An

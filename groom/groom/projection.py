@@ -29,7 +29,7 @@ import time
 from datetime import datetime
 from typing import Any
 
-from groom import attend, state, store
+from groom import attend, gates, state, store
 from groom.attention import RULE_EVENTS, AttentionEvent
 from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 
@@ -226,10 +226,11 @@ def row_mini(tel: RunTelemetry | None) -> str:
 # Wire shapes
 # --------------------------------------------------------------------------- #
 def gate_dict(gate: GateInfo) -> dict[str, Any]:
+    question = gates.extract_question(gate.question) if gate.kind != "machine" else gate.question
     return {
         "file_path": gate.file_path,
-        "question": gate.question,
-        "preview": question_preview(gate.question),
+        "question": question,
+        "preview": question_preview(question),
         "status": gate.status,
         "kind": gate.kind,
     }

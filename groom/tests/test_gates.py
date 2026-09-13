@@ -50,6 +50,17 @@ def test_extract_question_pulls_latest_ask_from_rearmed_gate():
     assert gates.extract_question(rearmed) == "Authorize one more review?"
 
 
+def test_latest_question_keeps_nested_headings_and_quoted_question_examples():
+    latest = (
+        "Choose a backend?\n\n### Evidence\n\n"
+        "```markdown\n## Questions from the agent\nAn example, not a new ask.\n```\n\n"
+        "Proceed?"
+    )
+    first = gate_file.format_operator_gate("Old question?")
+    rearmed = gate_file.append_operator_gate(first, latest)
+    assert gates.extract_question(rearmed) == latest
+
+
 def test_extract_question_falls_back_to_whole_text_when_no_header():
     text = "STATUS: AWAITING_OPERATOR\n\njust a blob, no section header"
     assert gates.extract_question(text) == text.strip()
