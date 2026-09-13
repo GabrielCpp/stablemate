@@ -144,6 +144,31 @@ def test_a_dead_agent_cli_stops_the_run_cleanly_and_resumably():
         assert find_latest_resumable(runs_dir) is not None
 
 
+def test_a_resumable_stop_exports_interrupted_not_fail():
+    """`run.json` keeping `terminal: null` for a budget stop or a dead CLI is only half
+    of "resumable" — a fleet dashboard reads the *telemetry* export, not this file, and
+    it classifies a run as dead off `workhorse.terminal`. Exporting "fail" here — the
+    same value a genuine `WorkflowFailed` gets — makes an operator's dashboard page a
+    dead-run attendant onto a run that is about to resume on its own, indistinguishable
+    from one that never will. Pairing `record_interrupt` with `otel.end_run("fail", ...)`
+    was the gap: everywhere else in this module, `record_interrupt` is paired with
+    `otel.end_run("interrupted", ...)` (see the `KeyboardInterrupt` branch above).
+    """
+    for failure in (
+        RunBudgetExceeded("out of clock"),
+        BackendInvocationError("agent CLI 'claude' could not be launched"),
+    ):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(run_mod.otel, "end_run") as end_run:
+                code, _ = _run(tmp, failure)
+            assert code == 1, code
+            # The `finally` block's own `otel.end_run("aborted", ...)` backstop always
+            # fires too — idempotent in the real host (`_ended` guards it), but this
+            # mock has no such guard, so only the first, real call is under test here.
+            first_status = end_run.call_args_list[0].args[0]
+            assert first_status == "interrupted", (failure, first_status)
+
+
 def test_the_budget_error_is_not_a_workflow_failure():
     """`--dry-run` treats a `WorkflowFailed` as "walked into a declared fail terminal"
     and exits 0 for it. A budget stop is an operational fact about the machine running

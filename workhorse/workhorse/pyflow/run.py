@@ -358,7 +358,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
                 writer.record_interrupt(_state_of(writer), str(exc))
                 print(f"[workhorse] resume with: workhorse-{name} run "
                       f"--resume-run {writer.run_dir}")
-                otel.end_run("fail", error=str(exc), error_class=type(exc).__name__,
+                otel.end_run("interrupted", error=str(exc), error_class=type(exc).__name__,
                              error_kind="fatal")
                 return 1
             if dry_run and isinstance(exc, WorkflowFailed) and not registry.agent_stubs:
@@ -397,7 +397,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
             writer.record_interrupt(_state_of(writer), str(exc))
             print(f"[workhorse] resume with: workhorse-{name} run "
                   f"--resume-run {writer.run_dir}")
-            otel.end_run("fail", error=str(exc), error_class=type(exc).__name__,
+            otel.end_run("interrupted", error=str(exc), error_class=type(exc).__name__,
                          error_kind="fatal")
             return 1
         except Exception as exc:  # noqa: BLE001 — a smoke test reports, it does not raise
