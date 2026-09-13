@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from uuid import uuid4
 
 from ostler import Ostler
 from workhorse.manifest import BACKEND_SKILL_DIR
@@ -90,12 +91,18 @@ def prepare(
     story: str = "",
     workspace_file: str = "",
     sources: tuple[SourceRequest, ...] = (),
+    worklist_dir: str = "",
 ) -> Prepared:
     """Resolve paths and initialize (or adopt) the build worklist.
 
     The worklist is the crawl's memory: a list of typed items `{kind,target,context,
     status}` where an item's investigation may append deeper items (a surface spawns its
     elements, an element spawns its handler layer, a layer spawns its callees).
+
+    The workflow supplies ``worklist_dir`` under its run directory. The service path
+    becomes a compatibility link to the latest run; a new run copies that queue before
+    publishing its own link. Existing checkpoints retain the path they recorded, and
+    direct callers without a run directory retain the legacy service path.
 
     Every unusable setting comes back as a `Prepared` with `ostler_ok` false and a
     `prepare_error` saying which one — `start()` is where that becomes a failed run.
@@ -145,15 +152,30 @@ def prepare(
         )
     features = paths.features_root(root, service)
     paths.ensure_build_dir(root)
-    wl = paths.worklist_path(root, service)
-    data, reset = load_worklist(wl, service, features)
+    shared = paths.worklist_path(root, service)
+    # A queue belongs to the run that mutates it. Adopt the service's previous queue
+    # once, then keep all reads/writes beside this run's checkpoint. Removing build
+    # scratch or starting another builder must not destroy an in-flight queue.
+    wl = Path(worklist_dir).resolve() / shared.name if worklist_dir else shared
+    seed = wl if wl.exists() else shared
+    data, reset = load_worklist(seed, service, features)
     if reset:
         # The stamped memory was void (wrong service, unreadable, or a book that no longer
         # exists). Silently starting from zero would look like a resume that lost its work.
         logger.warning(
             "discarded a stale worklist at %s — starting fresh for service %r", wl, service
         )
+    wl.parent.mkdir(parents=True, exist_ok=True)
     wl.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    if worklist_dir:
+        # Compatibility/discovery alias only; the run never consumes this path after
+        # setup. Publish atomically so another setup sees either complete queue.
+        alias = shared.with_name(f".{shared.name}.{uuid4().hex}")
+        try:
+            alias.symlink_to(wl)
+            alias.replace(shared)
+        finally:
+            alias.unlink(missing_ok=True)
     # The run's budget baseline: `max_items` bounds *this* run's investigations, not the
     # worklist's lifetime total, so a resume gets its own allowance.
     baseline = sum(1 for i in data["items"] if i.get("status") == "done")

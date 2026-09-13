@@ -327,6 +327,7 @@ class OkfBuilder(Workflow):
             story=self.story,
             workspace_file=self.workspace_file,
             sources=self.sources,
+            worklist_dir=str(self.run_dir / "drain"),
         )
 
     def labels(self) -> dict[str, str]:

@@ -43,6 +43,7 @@ What the port could get wrong, and what is therefore under test here:
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from collections import Counter
 from collections.abc import Callable
@@ -64,7 +65,7 @@ from workhorse.pyflow.graph import state_graph
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
-from workhorse.records import parse_checkpoint
+from workhorse.records import PyflowCheckpoint, parse_checkpoint
 
 from workhorse_workflows import okf_builder
 from workhorse_workflows.okf_builder.main.flow import investigation_power, repair_power
@@ -279,6 +280,12 @@ def _worklist(repo: Path) -> list[dict[str, Any]]:
     return json.loads(wl.read_text())["items"]
 
 
+def _run_worklist_path(env: RunEnv) -> Path:
+    checkpoint = parse_checkpoint((env.run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    assert isinstance(checkpoint, PyflowCheckpoint)
+    return Path(checkpoint.ctx["worklist_path"])
+
+
 class _SemanticAgent(_Agent):
     def __init__(self, repo: Path, mode: str) -> None:
         super().__init__(repo)
@@ -446,7 +453,8 @@ def test_an_empty_book_is_filled_top_down_from_the_code_s_surfaces(
     documents. The pre-plan ``enumerate-surfaces`` agent turn is gone.
     """
     agent = _Agent(unbooked, writes=FILLS)
-    result = _drive(_env(tmp_path), agent)
+    env = _env(tmp_path)
+    result = _drive(env, agent)
 
     assert agent.counts() == {"recheck-coverage": 1, "investigate": 1, "behavior-audit": 1}, agent.counts()
     assert agent.powers == ["medium", "low", "medium"]
@@ -461,7 +469,7 @@ def test_an_empty_book_is_filled_top_down_from_the_code_s_surfaces(
     coverage = read_json(unbooked / BOOK / "coverage.json")
     assert coverage["total"] == 2, coverage
     assert coverage["covered"] == 2, coverage
-    inventory = read_json(paths.source_inventory_path(paths.worklist_path(unbooked, SERVICE)))
+    inventory = read_json(paths.source_inventory_path(_run_worklist_path(env)))
     assert {u["code"] for u in inventory["units"]} == {
         "acme/service.py",
         "acme/service.py::charge",
@@ -1232,7 +1240,7 @@ def test_unresolved_gate_body_lists_kind_counts_not_items(
         _drive(env, agent)
     assert seen
     body = seen[0]
-    assert ".agents/okf-build" in body
+    assert str(_run_worklist_path(env)) in body
     assert "behavior-repair" in body
     assert "footer-save-button" not in body
 
@@ -1327,3 +1335,47 @@ def test_blocked_unresolved_items_gate_with_actionable_message(
     blocked_bodies = [b for b in seen if "MAX_TARGET_ATTEMPTS" in b]
     if blocked_bodies:
         assert "behavior-repair" in blocked_bodies[0]
+
+
+class _ScratchCleanupAgent(_Agent):
+    def _investigate(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        if nth == 1:
+            shutil.rmtree(paths.build_dir(self.repo))
+        return super()._investigate(data, nth)
+
+
+def test_build_scratch_cleanup_during_a_turn_preserves_the_pending_queue(
+    unbooked: Path, tmp_path: Path,
+) -> None:
+    """The observed missing-worklist crash: scratch vanishes before record writes back."""
+    child = {"kind": "surface", "target": "acme/other.py", "context": "second item"}
+    agent = _ScratchCleanupAgent(
+        unbooked, writes=FILLS, spawn={"acme/service.py": [child]},
+    )
+    env = _env(tmp_path)
+    _drive(env, agent)
+    assert agent.targets == ["acme/service.py", "acme/other.py"]
+    worklist = _run_worklist_path(env)
+    assert worklist.is_relative_to(env.run_dir)
+    rows = json.loads(worklist.read_text())["items"]
+    assert {row["target"]: row["status"] for row in rows} == {
+        "acme/service.py": "done", "acme/other.py": "done",
+    }
+
+
+def test_a_second_run_cannot_overwrite_the_first_runs_active_queue(
+    unbooked: Path, tmp_path: Path,
+) -> None:
+    first_env = _env(tmp_path)
+    first = _Agent(unbooked, explode={"acme/service.py"})
+    with pytest.raises(RuntimeError, match="killed while investigating"):
+        _drive(first_env, first)
+    first_path = _run_worklist_path(first_env)
+    before = first_path.read_bytes()
+    second_env = _env(tmp_path / "second")
+    _drive(second_env, _Agent(unbooked, writes=FILLS))
+    assert first_path.read_bytes() == before
+    second_path = _run_worklist_path(second_env)
+    assert first_path != second_path
+    assert all(row["status"] == "done" for row in json.loads(second_path.read_text())["items"])
+    assert paths.worklist_path(unbooked, SERVICE).resolve() == second_path
