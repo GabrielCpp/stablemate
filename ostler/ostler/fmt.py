@@ -228,13 +228,25 @@ class FmtResult:
 
 
 def _target_files(graph: Graph, paths: list[str]) -> list[Path]:
-    if paths:
-        return [Path(p) if Path(p).is_absolute() else graph.root / p for p in paths]
-    froot = graph.doc_roots["features"]
-    if not froot.is_dir():
-        return []
-    return [p for p in sorted(froot.rglob("*.md"))
-            if p.is_file() and p.name not in registry.RESERVED_FILES]
+    """The docs a mutating pass reads: each named file, and every doc under each named folder.
+
+    A folder is a target, not an unreadable file. The callers skip a path whose read raises
+    `OSError` — right for a doc that vanished mid-run, and exactly what a directory raises —
+    so a folder passed as a path used to be skipped whole and in silence. A book scoped to
+    one surface is always passed as its folder, which made fmt and autofix no-ops on it.
+    """
+    roots = [Path(p) if Path(p).is_absolute() else graph.root / p for p in paths]
+    if not roots:
+        froot = graph.doc_roots["features"]
+        roots = [froot] if froot.is_dir() else []
+    files: list[Path] = []
+    for root in roots:
+        if root.is_dir():
+            files.extend(p for p in sorted(root.rglob("*.md"))
+                         if p.is_file() and p.name not in registry.RESERVED_FILES)
+        else:
+            files.append(root)
+    return files
 
 
 def run_fmt(graph: Graph, paths: list[str], check: bool = False) -> FmtResult:
