@@ -300,6 +300,17 @@ def test_an_explicit_profile_overrides_the_recorded_one(tmp_path):
     assert (captured["profile"], captured["backend"]) == ("cli-only", "codex")
 
 
+def test_a_cli_switch_does_not_restore_the_previous_backends_profile(tmp_path):
+    from workhorse.rundir import resume_argv
+
+    # switch-cli re-execs using this producer; its explicit backend must win
+    # over the profile saved by the previous process.
+    argv = resume_argv("workhorse-acme-flow", Path("shakedown"), cli="opencode")
+    captured = _resume_profiled(argv[4:], "cli-only", _profiles_config(tmp_path))
+
+    assert captured["backend"] == "opencode"
+
+
 def test_a_resume_of_a_run_that_had_no_profile_is_unchanged(tmp_path):
     captured = _resume_profiled([], "", _profiles_config(tmp_path))
 

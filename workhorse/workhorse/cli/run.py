@@ -221,7 +221,7 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     resume_run_dir = _resume_run_dir(args, runs_dir, registry.name)
 
     profile_name = (getattr(args, "profile", None) or "").strip()
-    if not profile_name and resume_run_dir is not None:
+    if not profile_name and not args.cli and resume_run_dir is not None:
         profile_name = _recorded_profile(resume_run_dir)
     cfg = load_config()
     try:
@@ -422,9 +422,8 @@ def _recorded_profile(run_dir: Path) -> str:
     cheap` a week ago is rarely the one typing `--resume-run` now, and re-resolving the
     same nodes against the machine's global model set is a substitution nothing in the
     output would show. So the recorded name is re-applied unless this command line names
-    one, which overrides it — that being the only way to *move* a run onto another set.
-    It is also what carries a run's models across a `switch-cli`, whose re-exec is exactly
-    this flagless resume.
+    one, which overrides it. An explicit ``--cli`` also overrides the saved selection:
+    ``switch-cli`` re-execs with that flag and must select the new backend's profile.
 
     Best-effort: a run dir with no readable record simply has no profile to re-apply, and
     the run proceeds on the top-level tables as it always did.
