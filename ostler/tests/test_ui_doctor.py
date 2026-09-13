@@ -248,6 +248,17 @@ def test_a_semicolon_joining_clauses_is_compound(repo: Path):
     assert "compound-normative-bullet" in all_codes(_run(repo))
 
 
+def test_a_semicolon_finding_names_the_form_a_reason_takes(repo: Path):
+    # The clause after the semicolon is often the *why* of the first, not a second observation,
+    # and there is no bullet to split a reason into. Told only to split, repair agents kept the
+    # reason and its semicolon and reported the bullet documented, lap after lap; the one form
+    # this rule admits for it — an aside — has to be in the finding that is read.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _interaction("does not cast the value; that decision belongs to the caller"))
+    finding = next(f for f in _run(repo).findings if f.code == "compound-normative-bullet")
+    assert "parentheses" in finding.message
+
+
 def test_a_semicolon_inside_an_aside_is_not_compound(repo: Path):
     # The aside is not what is being proved, so a semicolon joining two of *its* clauses joins
     # nothing the planner owes a scenario for — and there is no split of this bullet that clears

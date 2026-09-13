@@ -1281,7 +1281,11 @@ def _split_signals(value: str) -> list[str]:
     if len(names) > 1:
         reasons.append(f"it names {len(names)} distinct failures ({', '.join(names)})")
     if _SEMICOLON_CLAUSE.search(_outside_parentheses(_prose(value))):
-        reasons.append("a semicolon joins two independent clauses")
+        # Named here because splitting is not the remedy for every case this signal catches:
+        # the second clause is often the first one's reason, which is no observation and has
+        # no bullet of its own to go to. The aside is the form `_outside_parentheses` admits.
+        reasons.append("a semicolon joins two independent clauses (when the second only "
+                       "explains the first, keep it as an aside in parentheses instead)")
     if _CLAUSE_AND.search(value) and len(_ANY_AND.findall(value)) > 1:
         reasons.append("`and` joins clauses more than once")
     return reasons
