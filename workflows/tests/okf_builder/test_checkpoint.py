@@ -419,3 +419,40 @@ def test_a_watermark_above_the_done_count_is_stale(
     result = settle_stale(logger, str(worklist), str(dirty), BOOK, every=25)
     assert result.ran and result.settled == 1
     assert json.loads(worklist.read_text())["settled_done"] == 31
+
+
+def test_reopening_a_stale_closure_is_not_a_failed_repair(tmp_path: Path) -> None:
+    """A row the settle closed `stale` never had a repair turn, so its requeue costs no attempt.
+
+    Counting it spent the budget on flicker, and the block that followed quoted the
+    settle's own note — "doctor no longer reports this finding" — as the reason a finding
+    doctor *does* report could not be fixed.
+    """
+    from workhorse_workflows.okf_builder.shared.worklist import record
+
+    worklist = tmp_path / "w.json"
+    target = "a.md#a.md#publish#undeclared-obligation"
+    worklist.write_text(json.dumps({"items": [
+        {"kind": "fix:undeclared-obligation", "target": target, "status": "done",
+         "doc_status": "stale", "note": "doctor no longer reports this finding; closed mid-drain",
+         "context": "", "attempts": 2},
+    ]}))
+    standing = [{"kind": "fix:undeclared-obligation", "target": target,
+                 "context": "{}", "requeue": True}]
+    result = record(logging.getLogger("t"), str(worklist), None, standing, max_attempts=3)
+    assert result.pending_count == 1 and result.blocked_count == 0
+    row = json.loads(worklist.read_text())["items"][0]
+    assert row["status"] == "pending" and row["attempts"] == 2
+    assert "doc_status" not in row and "note" not in row and "blocked_reason" not in row
+
+    # A row blocked on real attempts, then settled, re-blocks on its own reason when the
+    # finding comes back — not on the settle's note, and not on "no reason".
+    worklist.write_text(json.dumps({"items": [
+        {"kind": "fix:undeclared-obligation", "target": target, "status": "done",
+         "doc_status": "stale", "note": "doctor no longer reports this finding; closed mid-drain",
+         "blocked_reason": "the source has no verify seam", "context": "", "attempts": 3},
+    ]}))
+    reblocked = record(logging.getLogger("t"), str(worklist), None, standing, max_attempts=3)
+    assert reblocked.blocked_count == 1
+    row = json.loads(worklist.read_text())["items"][0]
+    assert row["status"] == "blocked" and row["blocked_reason"] == "the source has no verify seam"

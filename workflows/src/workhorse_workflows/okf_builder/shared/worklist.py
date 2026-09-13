@@ -344,11 +344,23 @@ def record(
         existing = by_key.get(k)
         if existing:
             if d.get("requeue") is True and existing.get("status") == "done":
-                attempts = int(existing.get("attempts", 0) or 0) + 1
+                # A `stale` close was the settle's, not a repair turn's: no turn tried the
+                # finding, so reopening it spends no attempt, and the settle's note must not
+                # survive to be quoted as the reason a standing finding could not be fixed.
+                # A blocked row settled `stale` keeps its `blocked_reason`, which is the
+                # last real turn's account, and re-blocks on it.
+                prior = ""
+                if existing.get("doc_status") == "stale":
+                    existing.pop("doc_status", None)
+                    existing.pop("note", None)
+                    prior = str(existing.get("blocked_reason", ""))
+                    attempts = int(existing.get("attempts", 0) or 0)
+                else:
+                    attempts = int(existing.get("attempts", 0) or 0) + 1
                 existing["attempts"] = attempts
                 if attempts >= max_attempts:
                     last = str(existing.get("doc_status", ""))
-                    reason = str(existing.get("note", "")) or (
+                    reason = str(existing.get("note", "")) or prior or (
                         f"the last turn reported `{last}` and the finding still stands"
                         if last
                         else "the turn gave no reason"
