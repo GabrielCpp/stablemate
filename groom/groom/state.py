@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 
+from groom.live_history import LiveHistory
 from groom.models import RunTelemetry, WorkflowContainer
 
 WORKFLOWS: dict[str, WorkflowContainer] = {}
@@ -21,6 +22,8 @@ CLIENTS: set[asyncio.Queue] = set()
 # everyone (bandwidth proportional to tabs × runs, and each tab discarding almost
 # all of it) or having each tab poll for its own — which is what this replaces.
 WATCHING: dict[asyncio.Queue, str] = {}
+HISTORIES: dict[str, LiveHistory] = {}
+HISTORY_LOCK = asyncio.Lock()
 
 # Telemetry hot cache: run_id → alert-rule state, updated on every OTLP ingest
 # (groom.alerts). The durable copy is groom.store's SQLite file; this map only
@@ -118,6 +121,7 @@ def remove_client(queue: asyncio.Queue) -> None:
     # disconnect can never leave a subscription pointing at a queue nobody reads,
     # which would grow WATCHING for the life of the process.
     WATCHING.pop(queue, None)
+    _release_histories()
 
 
 def watch(queue: asyncio.Queue, run_id: str) -> None:
@@ -126,6 +130,18 @@ def watch(queue: asyncio.Queue, run_id: str) -> None:
         WATCHING[queue] = run_id
     else:
         WATCHING.pop(queue, None)
+    _release_histories()
+
+
+def _release_histories() -> None:
+    watched = {
+        wf.run_id or wf.container_id
+        for cid in WATCHING.values()
+        if (wf := WORKFLOWS.get(cid)) is not None
+    }
+    for run_id in list(HISTORIES):
+        if run_id not in watched:
+            del HISTORIES[run_id]
 
 
 def watchers_of(run_id: str) -> list[asyncio.Queue]:

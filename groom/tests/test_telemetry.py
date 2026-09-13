@@ -34,6 +34,7 @@ from opentelemetry.proto.trace.v1.trace_pb2 import Status
 from groom import alerts, cli, discovery, notify, otlp, projection, state, store
 from groom import app as groom_app
 from groom.cli import _format_status
+from groom.models import WorkflowContainer
 
 _SPAN_IDS = iter(f"{i:016x}" for i in range(1, 10_000))
 
@@ -2200,6 +2201,52 @@ def test_logs_receiver_stores_and_returns_200():
             assert [r["body"] for r in store.query_logs()] == ["hi"]
         finally:
             client.__exit__(None, None, None)
+
+
+def test_committed_telemetry_pushes_watched_history_without_database_reads():
+    with _TelemetryEnv():
+        state.WORKFLOWS.clear()
+        state.WATCHING.clear()
+        state.HISTORIES.clear()
+        state.HISTORY_LOCK = asyncio.Lock()
+        state.WORKFLOWS["worker"] = WorkflowContainer(
+            container_id="worker", name="worker", run_id="run-1"
+        )
+        client = _hermetic_client()
+        try:
+            with client.websocket_connect("/ws") as socket:
+                socket.receive_json()  # initial fleet
+                socket.send_json({"cmd": "watch", "run_id": "worker"})
+                while socket.receive_json()["type"] != "detail":
+                    pass
+                with patch.object(store, "query_logs", side_effect=AssertionError("polled logs")), \
+                     patch.object(store, "detail_spans", side_effect=AssertionError("polled spans")):
+                    response = client.post(
+                        "/v1/logs", content=_logs_request([{"body": "arrived now"}]),
+                        headers={"content-type": "application/x-protobuf"},
+                    )
+                    assert response.status_code == 200
+                    message = socket.receive_json()
+                    assert message["type"] == "detail"
+                    assert message["detail"]["logs"][0]["body"] == "arrived now"
+                    payload = _trace_request([{"name": "plan", "error": True}])
+                    for _ in range(2):
+                        response = client.post(
+                            "/v1/traces", content=payload,
+                            headers={"content-type": "application/x-protobuf"},
+                        )
+                        assert response.status_code == 200
+                        message = socket.receive_json()
+                        while message["type"] != "detail":
+                            message = socket.receive_json()
+                        cells = {c["key"]: c["value"] for c in message["detail"]["metrics"]["cells"]}
+                        assert cells["spans"] == "1"
+                        assert message["detail"]["logs"][0]["body"] == "arrived now"
+        finally:
+            client.__exit__(None, None, None)
+            state.WORKFLOWS.clear()
+            state.WATCHING.clear()
+            state.HISTORIES.clear()
 
 
 def test_logs_receiver_rejects_an_undecodable_body():

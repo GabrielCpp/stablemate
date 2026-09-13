@@ -49,7 +49,7 @@ const store = {
     scanning: true,
     conn: { phase: "connecting", resyncing: false },
     query: "",
-    // the open run (per-tab subscription + one fetch)
+    // the open run (subscription snapshot, then ingestion pushes)
     selected: null,
     detail: null,
     // per-tab, per-selection panels (HTTP; cancel- and cache-friendly)
@@ -510,11 +510,11 @@ function Metrics({ metrics }) {
 
 function LogTrail({ lines }) {
   if (!lines.length) {
-    return html`<div class="log-trail">
+    return html`<div class="log-trail" role="log" aria-label="Run logs" aria-live="polite">
       <div class="fd-empty">No log lines for this run (workhorse ships in-process script logs over OTLP).</div>
     </div>`;
   }
-  return html`<div class="log-trail">
+  return html`<div class="log-trail" role="log" aria-label="Run logs" aria-live="polite">
     ${lines.map(
       (line, i) => html`<div class=${"log-line" + (line.cls ? " " + line.cls : "")} key=${i}>
         <span class="lt-ts">${line.ts}</span>
@@ -645,13 +645,13 @@ let detailSeq = 0;
 async function select(id) {
   const seq = ++detailSeq;
   store.set({ selected: id, detail: null });
-  sendWatch(id);
+  if (sendWatch(id)) return;
   try {
     const response = await fetch("/worker/" + encodeURIComponent(id));
     const body = await response.json();
     if (seq === detailSeq && store.get().detail === null) store.set({ detail: body });
   } catch (err) {
-    // The watch subscription fills the pane in on the next tick.
+    // Reconnecting re-declares the watch and seeds the pane.
   }
 }
 

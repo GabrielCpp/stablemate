@@ -954,7 +954,7 @@ def query_logs(
     rows = conn.execute(
         f"SELECT run_id, workflow, run_dir, node, logger, severity, body, ts, trace_id,"  # noqa: S608
         f" attrs_json, head, workspace, vcs, origin, branch, repositories"
-        f" FROM logs {clause} ORDER BY ts DESC LIMIT ?",
+        f" FROM logs {clause} ORDER BY ts DESC, rowid DESC LIMIT ?",
         (*params, limit),
     ).fetchall()
     return [
@@ -1722,6 +1722,17 @@ def query_spans(
         )
         .fetchall()
     )
+    return [dict(row) for row in rows]
+
+
+@_reading
+def detail_spans(run: str) -> list[dict[str, Any]]:
+    """Compact span identities for an open pane's snapshot and idempotent updates."""
+    rows = _read_connection().execute(
+        "SELECT span_id, start_ts, end_ts, status FROM spans"
+        " WHERE run_id = ? AND end_ts >= ?",
+        (run, time.time() - ACTIVE_WINDOW_S),
+    ).fetchall()
     return [dict(row) for row in rows]
 
 

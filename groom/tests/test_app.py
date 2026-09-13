@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import inspect
 import tempfile
+import threading
 from pathlib import Path
 from unittest.mock import patch
 
@@ -41,6 +42,8 @@ def _reset() -> None:
     state._gate_locks.clear()
     state.CLIENTS.clear()
     state.WATCHING.clear()
+    state.HISTORIES.clear()
+    state.HISTORY_LOCK = asyncio.Lock()
     sidecar_hub.CONNECTIONS.clear()
     # Discovery-in-progress is fleet state too. SCANNING defaults to True at
     # import, and every `_hermetic_client()` starts a background scan that
@@ -325,6 +328,75 @@ def test_the_clock_refreshes_every_open_pane_alongside_the_fleet():
         seen = asyncio.run(drive())
 
     assert [m["type"] for m in seen] == ["state", "detail"]
+
+
+def test_watched_history_is_not_read_again_on_clock_push():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(
+        container_id="abc123", name="w", run_id="run-1"
+    )
+
+    async def drive():
+        queue = asyncio.Queue()
+        state.add_client(queue)
+        await groom_app._handle_command({"cmd": "watch", "run_id": "abc123"}, queue)
+        queue.get_nowait()
+        with patch.object(store, "query_logs", side_effect=AssertionError("polled logs")), \
+             patch.object(store, "detail_spans", side_effect=AssertionError("polled spans")):
+            await groom_app._push_watched()
+        assert queue.get_nowait()["detail"]["found"]
+        state.remove_client(queue)
+
+    asyncio.run(drive())
+
+
+@pytest.mark.parametrize("ingest_first", [False, True])
+def test_snapshot_and_ingest_do_not_lose_or_duplicate_a_log(ingest_first):
+    _reset()
+    state.WORKFLOWS["worker"] = WorkflowContainer(
+        container_id="worker", name="worker", run_id="run-1"
+    )
+    entered, release = threading.Event(), threading.Event()
+    original = store.insert_logs if ingest_first else store.query_logs
+
+    def held(*args, **kwargs):
+        entered.set()
+        assert release.wait(timeout=5)
+        return original(*args, **kwargs)
+
+    async def drive():
+        queue = asyncio.Queue()
+        state.add_client(queue)
+        rows = [{"run_id": "run-1", "body": "during snapshot", "ts": 1000.0}]
+
+        async def subscribe():
+            await groom_app._handle_command({"cmd": "watch", "run_id": "worker"}, queue)
+
+        async def ingest():
+            await groom_app._store_history_batch(rows, store.insert_logs, logs=True)
+
+        first, second = (ingest, subscribe) if ingest_first else (subscribe, ingest)
+        task = asyncio.create_task(first())
+        try:
+            assert await asyncio.to_thread(entered.wait, 5)
+            other = asyncio.create_task(second())
+            release.set()
+            await asyncio.gather(task, other)
+            await groom_app._push_watched()
+            messages = []
+            while not queue.empty():
+                messages.append(queue.get_nowait())
+            assert [line["body"] for line in messages[-1]["detail"]["logs"]] == [
+                "during snapshot"
+            ]
+        finally:
+            release.set()
+            await task
+            state.remove_client(queue)
+        assert not state.HISTORIES
+
+    with patch.object(store, "insert_logs" if ingest_first else "query_logs", held):
+        asyncio.run(drive())
 
 
 def test_api_state_is_the_resync_payload():

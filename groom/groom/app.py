@@ -21,6 +21,7 @@ import re
 import sqlite3
 import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -52,6 +53,7 @@ from groom import (
 )
 from groom.attention import RULE_EVENTS, AttentionEvent, AttentionFrame
 from groom.gates import answer_gate
+from groom.live_history import LiveHistory
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 from workhorse import control, inbox
 from workhorse import reload as reload_mod
@@ -159,7 +161,7 @@ async def _push_detail(container_id: str) -> None:
     """Send one run's detail slices to the tabs watching that run, and nobody else."""
     watchers = state.watchers_of(container_id)
     if not watchers:
-        return  # nobody has it open — don't pay for the two SQLite reads
+        return  # nobody has it open
     wf = state.WORKFLOWS.get(container_id)
     if wf is None:
         return
@@ -170,8 +172,8 @@ async def _push_detail(container_id: str) -> None:
 
 async def _push_watched() -> None:
     """Refresh every open detail pane on the clock, for the same reason the run
-    list is re-pushed on one: "in node 12m" and the log trail are derived from
-    ``now``, and a merely-running run emits no state change to push."""
+    list is re-pushed on one: elapsed labels are derived from ``now``.
+    History stays in memory; incoming telemetry advances it at ingestion."""
     for run_id in state.watched_ids():
         await _push_detail(run_id)
 
@@ -456,32 +458,58 @@ async def file_content(
 
 
 async def _run_facts(wf: WorkflowContainer) -> tuple:
-    """Everything the detail pane knows about one instance beyond its row:
-    ``(hot-cache telemetry, merged live+summary facts, recent log lines)``.
-
-    Two sources answer complementary halves — ``alerts.live_status`` says where
-    the run is *now* (its open node has no span yet, by construction; pure
-    in-memory, so it runs inline), ``run_summaries`` says what it has done so
-    far. The SQLite reads go off the loop, on ``pools.QUERY``: every store call
-    serializes under one lock, so even a bounded query run inline stalls the whole
-    server for as long as whatever holds that lock — which is exactly how a slow
-    cold read once wedged every request at once. Its own pool rather than the
-    shared default one because this is the read the operator is waiting on, and
-    the default pool is where docker and the bulk file copies queue.
-    """
+    """Seed history once per subscription; compose subsequent pushes in memory."""
     run_id = projection.run_id_of(wf)
-    tel = state.RUNS.get(run_id)
-    facts: dict = {}
-    logs: list = []
-    if run_id:
-        facts.update(next(iter(alerts.live_status(run=run_id)), {}) or {})
-        facts.update(
-            next(iter(await pools.QUERY.run(store.run_summaries, limit=1, run=run_id)), {}) or {}
-        )
-        logs = await pools.QUERY.run(
-            store.query_logs, run=run_id, limit=projection.LOG_TRAIL_LIMIT
-        )
-    return tel, facts, logs
+    history = state.HISTORIES.get(run_id)
+    if history is None or not history.loaded:
+        async with state.HISTORY_LOCK:
+            history = state.HISTORIES.get(run_id)
+            if history is None:
+                history = LiveHistory(log_limit=projection.LOG_TRAIL_LIMIT)
+            if run_id and not history.loaded:
+                spans = await pools.QUERY.run(store.detail_spans, run_id)
+                logs = await pools.QUERY.run(
+                    store.query_logs, run=run_id, limit=projection.LOG_TRAIL_LIMIT
+                )
+                history.update_spans(spans)
+                history.logs = logs
+                history.loaded = True
+            if state.watchers_of(wf.container_id):
+                state.HISTORIES[run_id] = history
+    facts = next(iter(alerts.live_status(run=run_id)), {}) if run_id else {}
+    facts.update(history.facts())
+    return state.RUNS.get(run_id), facts, history.logs
+
+
+async def _store_history_batch(
+    rows: list[dict], writer: Callable[[list[dict]], None], *, logs: bool = False
+) -> None:
+    """Commit and advance watched snapshots atomically with respect to seeding.
+
+    A snapshot cannot contain a just-committed batch and then append it again.
+    Unwatched runs incur only the existing store write, with no history retained.
+    """
+    async with state.HISTORY_LOCK:
+        histories = {
+            run_id: state.HISTORIES[run_id]
+            for run_id in sorted({row["run_id"] for row in rows})
+            if run_id in state.HISTORIES
+        }
+        await pools.INGEST.run(writer, rows)
+        for run_id, history in histories.items():
+            batch = [row for row in rows if row["run_id"] == run_id]
+            if logs:
+                history.update_logs(batch)
+            else:
+                history.update_spans(batch)
+
+
+async def _push_received(rows: list[dict]) -> None:
+    run_ids = {row["run_id"] for row in rows}
+    for cid in state.watched_ids():
+        wf = state.WORKFLOWS.get(cid)
+        if wf is not None and projection.run_id_of(wf) in run_ids:
+            await _push_detail(cid)
 
 
 @get("/worker/{container_id:str}", include_in_schema=False)
@@ -940,7 +968,7 @@ async def otlp_traces(request: Request) -> Response:
         )
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
     try:
-        await pools.INGEST.run(store.insert_spans, spans)
+        await _store_history_batch(spans, store.insert_spans)
     except sqlite3.Error:
         # Returning early on purpose: nothing was stored, so evaluating alerts
         # or projecting rows off this batch would publish a state the store
@@ -948,6 +976,7 @@ async def otlp_traces(request: Request) -> Response:
         return _store_unavailable()
     await _dispatch_alerts(alerts.ingest_spans(spans))
     await _project_native_rows(spans)
+    await _push_received(spans)
     # An empty ExportTraceServiceResponse serializes to zero bytes; OTLP/HTTP
     # defines success as 200 (Litestar's POST default would be 201).
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
@@ -971,6 +1000,7 @@ async def otlp_metrics(request: Request) -> Response:
         return _store_unavailable()
     await _dispatch_alerts(alerts.ingest_metrics(points))
     await _project_native_rows(points)
+    await _push_received(points)
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
 
 
@@ -985,20 +1015,21 @@ async def otlp_logs(request: Request) -> Response:
 
     No alert rules fire on logs — deliberately. Liveness is already answered by
     the heartbeat metrics, and paging on log content would mean guessing which
-    strings are worth waking someone for, per workflow. Logs are here to be
-    *queried* once a metric has told you where to look.
+    strings are worth waking someone for, per workflow. Committed logs advance
+    watched history and push the pane immediately.
     """
     try:
         records = _real_runs(otlp.parse_logs(await request.body()))
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
     try:
-        await pools.INGEST.run(store.insert_logs, records)
+        await _store_history_batch(records, store.insert_logs, logs=True)
     except sqlite3.Error:
         # Returning early on purpose: nothing was stored, so evaluating alerts
         # or projecting rows off this batch would publish a state the store
         # does not have, and the exporter is about to send it again.
         return _store_unavailable()
+    await _push_received(records)
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
 
 

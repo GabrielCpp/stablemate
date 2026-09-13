@@ -1,0 +1,39 @@
+"""A watched run's database snapshot, advanced by committed OTLP batches."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+
+@dataclass
+class LiveHistory:
+    """Only open panes retain history; span identities make retries idempotent."""
+
+    log_limit: int
+    loaded: bool = False
+    spans: dict[str, dict[str, Any]] = field(default_factory=dict)
+    logs: list[dict[str, Any]] = field(default_factory=list)
+
+    def update_spans(self, rows: list[dict[str, Any]]) -> None:
+        for row in rows:
+            self.spans[row["span_id"]] = {
+                "start_ts": row["start_ts"],
+                "end_ts": row["end_ts"],
+                "status": row["status"],
+            }
+
+    def update_logs(self, rows: list[dict[str, Any]]) -> None:
+        # New arrivals win timestamp ties, matching SQLite's descending row id.
+        self.logs = sorted(
+            [*reversed(rows), *self.logs], key=lambda row: row["ts"], reverse=True
+        )[:self.log_limit]
+
+    def facts(self) -> dict[str, Any]:
+        if not self.spans:
+            return {}
+        return {
+            "span_count": len(self.spans),
+            "error_count": sum(row["status"] == "ERROR" for row in self.spans.values()),
+            "first_ts": min(row["start_ts"] for row in self.spans.values()),
+            "last_ts": max(row["end_ts"] for row in self.spans.values()),
+        }
