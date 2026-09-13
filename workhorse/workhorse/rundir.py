@@ -73,13 +73,18 @@ def resume_argv(
     it is not — a resume line that does not say which config it is on is the one nobody
     can diagnose from the line they have.
 
+    The two flags are one axis, not two: a profile carries its own ``cli``, and the run
+    CLI refuses ``--cli`` beside ``--profile``. So a profile, when there is one, is what
+    names the backend, and ``cli`` is spelled only for a run that has none — the line
+    this returns has to be one the CLI accepts, whichever caller filled in both.
+
     Pure: it resolves nothing and reads nothing. Turning ``program`` into something
     executable is the caller's business, because the callers want different answers —
     :func:`workhorse.pyflow.run._exec_reload` needs a real executable to hand ``execv``,
     while the launch record wants the unresolved name, which is what a human types.
     """
     argv = [program, "run", "--resume-run", str(run_dir)]
-    if cli:
+    if cli and not profile:
         argv += ["--cli", cli]
     if profile:
         argv += ["--profile", profile]

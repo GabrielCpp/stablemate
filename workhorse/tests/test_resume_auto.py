@@ -284,6 +284,29 @@ def test_the_recorded_resume_command_carries_what_the_checkpoint_does_not_hold()
         assert resumed.config.profile == "cheap"
 
 
+def test_the_recorded_resume_command_of_a_profiled_run_is_accepted_by_the_cli():
+    """The launch record names both what the process resolved: the backend *and* the
+    profile. A profile carries its own `cli`, and the run CLI refuses the two flags
+    together — so a resume line spelling both is one no supervisor or operator can run.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = Path(tmp) / "runs" / "research-shakedown"
+        cfg = Path(tmp) / "stablemate.toml"
+        cfg.write_text(
+            '[profiles.cheap]\ncli = "codex"\n[profiles.cheap.default]\nmodel = "m"\n'
+        )
+        argv = resume_argv(
+            "workhorse-research", run_dir,
+            cli="codex", profile="cheap", config_path=str(cfg),
+        )
+        run_dir.mkdir(parents=True)
+        (run_dir / "checkpoint.json").write_text(json.dumps({"state": "s", "params": {}}))
+        resumed = _invocation(argv[1:])
+
+        assert resumed.config.backend.name == "codex"
+        assert resumed.config.profile == "cheap"
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0
