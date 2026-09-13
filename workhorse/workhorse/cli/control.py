@@ -13,7 +13,16 @@ this process is the one still serving this run dir. `questions` asks what the ru
 blocked asking an operator — answered in-band under every wait, like `status` — and
 `answer` delivers the operator's reply to the gate the run is parked on: the run writes
 it into the gate file itself, so disk keeps the record while the socket carries the
-exchange. The run is a different process (often
+exchange.
+
+`rewind` and `resume` are the two verbs no process answers, because they act on a run
+nobody is serving: `rewind` moves a stopped run's checkpoint to another state with params
+validated against that state's signature, and `resume` relaunches it detached from its
+recorded resume line. Both refuse a run whose pid is alive — see
+:mod:`workhorse.cli.offline`, which also carries `status --params` (the checkpoint's
+params, read from disk) and `stop --wait` (block until the stopped pid is gone).
+
+The run is a different process (often
 in a different container), so the whole command is: resolve which run dir is meant, say it
 on the run's control socket, and report what the run appeared to be doing when it was
 asked.
@@ -38,14 +47,25 @@ from pydantic import ValidationError
 
 from workhorse import control, reload
 from workhorse.artifacts import ArtifactWriter
+from workhorse.cli import offline
 from workhorse.cli.target import resolve_target
 from workhorse.records import PyflowCheckpoint, parse_checkpoint, parse_run_record
 
 NAME = "control"
-HELP = "Control a run in flight (reload, stop, status, questions, answer, switch-cli, switch-profile)"
+HELP = (
+    "Control a run in flight (reload, stop, status, questions, answer, switch-cli, "
+    "switch-profile) or a stopped one (rewind, resume)"
+)
 
 SWITCH_CLI = "switch-cli"
 SWITCH_PROFILE = reload.SWITCH_PROFILE
+REWIND = "rewind"
+RESUME = "resume"
+
+#: How long `stop --wait` and `resume` wait by default: a stop lands on the run's next
+#: select slice (or the end of a cut turn), and a resume serves once it has re-read its
+#: checkpoint — both seconds, rarely a minute.
+_DEFAULT_WAIT_S = 120.0
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
@@ -53,7 +73,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "action",
         choices=[
             "reload", control.STOP, "status", control.QUESTIONS, control.ANSWER,
-            SWITCH_CLI, SWITCH_PROFILE,
+            SWITCH_CLI, SWITCH_PROFILE, REWIND, RESUME,
         ],
         help="reload: pick up pushed code and re-enter the checkpoint. status: ask the "
         "run where it is, which is also a proof that this process is the one serving "
@@ -61,15 +81,18 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "answer: deliver the operator's answer to the gate the run is parked on. "
         "stop: interrupt the run and preserve its checkpoint for resume. "
         "switch-cli: re-enter the same checkpoint on another agent CLI. "
-        "switch-profile: resolve the next turn's models from another named profile.",
+        "switch-profile: resolve the next turn's models from another named profile. "
+        "rewind: move a STOPPED run's checkpoint to --to STATE, validated, backed up and "
+        "logged. resume: relaunch a stopped run detached from launch.json, optionally on "
+        "another agent CLI, and wait until it serves.",
     )
     parser.add_argument(
         "target",
         nargs="?",
         default=None,
         metavar="NAME",
-        help="For switch-cli, the agent CLI to come back on (claude, opencode, …); for "
-        "switch-profile, the profile to resolve models from next.",
+        help="For switch-cli and resume, the agent CLI to come back on (claude, "
+        "opencode, …); for switch-profile, the profile to resolve models from next.",
     )
     parser.add_argument(
         "--run",
@@ -113,6 +136,56 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+    parser.add_argument(
+        "--to",
+        default=None,
+        metavar="STATE",
+        help="For rewind: the state the resumed run enters.",
+    )
+    parser.add_argument(
+        "--param",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="For rewind: set one param of the target state. VALUE is JSON when it "
+        "parses as JSON, else the text as typed. Repeatable.",
+    )
+    parser.add_argument(
+        "--param-from-turn",
+        action="append",
+        default=[],
+        metavar="NAME=PATH",
+        help="For rewind: set one param from a turn's output.json — a node dir, a "
+        "turns/<visit> dir or a file, relative to the run dir. Repeatable.",
+    )
+    parser.add_argument(
+        "--keep",
+        action="append",
+        default=None,
+        metavar="NAME",
+        help="For rewind: carry only these checkpoint params. Omitted, every param the "
+        "target state accepts is carried. Repeatable.",
+    )
+    parser.add_argument(
+        "--params",
+        action="store_true",
+        help="For status: print the checkpoint's state and params as JSON from disk, "
+        "without asking the run — answers for a stopped run too.",
+    )
+    parser.add_argument(
+        "--wait",
+        action="store_true",
+        help="For stop: after the run accepts, block until its pid is gone.",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=_DEFAULT_WAIT_S,
+        metavar="S",
+        help=f"For stop --wait and resume: seconds to wait (default {_DEFAULT_WAIT_S:g}).",
+    )
+
+
 def run(args: argparse.Namespace) -> None:
     runs_dir = (
         Path(args.runs_dir).resolve()
@@ -120,8 +193,22 @@ def run(args: argparse.Namespace) -> None:
         else (Path.cwd() / ".agents" / "runs").resolve()
     )
     run_dir = resolve_target(args.run, runs_dir, args.registry.name)
-    cli, profile = _switch_target(args.action, args.target)
+    _refuse_misplaced_flags(args)
     gate, text = _answer_payload(args)
+    if args.action == REWIND:
+        if args.target:
+            offline.fail(f"rewind takes no name (got {args.target!r}); the state is --to")
+        offline.run_rewind(
+            run_dir, args.registry, args.to, args.param, args.param_from_turn, args.keep
+        )
+        return
+    if args.action == RESUME:
+        offline.run_resume(run_dir, args.target or "", args.timeout)
+        return
+    if args.action == control.STATUS and args.params:
+        offline.print_params(run_dir)
+        return
+    cli, profile = _switch_target(args.action, args.target)
     if args.action == control.STOP and (args.core or args.at_boundary):
         print("error: stop takes no --core or --at-boundary", file=sys.stderr)
         raise SystemExit(1)
@@ -152,6 +239,8 @@ def run(args: argparse.Namespace) -> None:
     if args.action == control.STOP:
         if reply.get("ok") is True and reply.get("action") == control.STOP:
             print(f"stop accepted for {run_dir}")
+            if args.wait:
+                offline.wait_gone(run_dir, args.timeout)
             return
         reason = reply.get("error") or "the run did not acknowledge stop; its outcome is unconfirmed"
         print(f"error: {reason}", file=sys.stderr)
@@ -191,6 +280,20 @@ def run(args: argparse.Namespace) -> None:
     print(f"  reply:   {reply or 'delivered, no answer'}")
     print(f"  run:     {_liveness(run_dir)}")
     print(f"  at:      {_position(run_dir)}")
+
+
+def _refuse_misplaced_flags(args: argparse.Namespace) -> None:
+    """A flag typed after the wrong verb is an error, not dropped — for the same reason
+    `_switch_target` refuses a stray name: silence reads as a request that worked."""
+    rewind_flags = args.to is not None or args.param or args.param_from_turn or args.keep
+    if rewind_flags and args.action != REWIND:
+        offline.fail(f"{args.action} takes no --to, --param, --param-from-turn or --keep")
+    if args.params and args.action != control.STATUS:
+        offline.fail(f"{args.action} takes no --params (it is `status --params`)")
+    if (args.core or args.at_boundary) and args.action in (REWIND, RESUME):
+        offline.fail(f"{args.action} takes no --core or --at-boundary")
+    if args.wait and args.action != control.STOP:
+        offline.fail(f"{args.action} takes no --wait (it is `stop --wait`)")
 
 
 def _switch_target(action: str, name: str | None) -> tuple[str, str]:

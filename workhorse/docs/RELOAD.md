@@ -172,6 +172,57 @@ should not be lost to a field removal that costs it nothing.
 The relaxation is for **checkpoints only**. An unknown key in `--params` on a fresh run is
 still rejected by name: there it is a typo you just typed, and catching it is the point.
 
+## Repairing a stopped run (`stop --wait` / `status --params` / `rewind` / `resume`)
+
+A reload moves a run onto new code at the state it is in. Sometimes the state is the
+problem: the run parked on a question the fix removed, or looped back to a state whose
+params still carry the verdict that sent it there. That repair is an edit to the
+checkpoint, and the four commands below are that edit made without a text editor, a
+guessed `sleep` or a hand-typed `nohup`:
+
+```bash
+workhorse-coder control --run <id> stop --wait [--timeout 120]    # stop, then block until the pid is gone
+workhorse-coder control --run <id> status --params                # {state, flow, waiting_on, params} from disk
+workhorse-coder control --run <id> rewind --to design \
+    --param budget=3 --param-from-turn verdict=check [--keep item --keep budget]
+workhorse-coder control --run <id> resume [CLI]                   # relaunch detached, wait until it serves
+```
+
+- **`stop --wait`** — an acknowledged stop is the run agreeing to stop at its next slice,
+  not having stopped. `--wait` polls the pid `run.json` records until it is gone (exit 1
+  when it outlives `--timeout`), so the next step is not a race.
+- **`status --params`** — reads `checkpoint.json` directly, so it answers the same for a
+  live run, a stopped one, and one busy in a script node that is not reading its socket.
+- **`rewind --to STATE`** — rewrites the checkpoint to enter `STATE`, validated exactly as
+  a resume would validate it: the state resolves through `Workflow.resolve_state`, and the
+  params bind through the state's own signature (`coerce_params`), so an unknown state, a
+  missing required param or a mistyped value is refused *here* with the checkpoint
+  untouched, instead of killing the relaunched process. Params carry over from the old
+  checkpoint by name — only the names `STATE` accepts, or only `--keep` names when given —
+  then `--param NAME=VALUE` (JSON, or the bare text when it is not JSON) and
+  `--param-from-turn NAME=REF` (the `output.json` of a node dir, a `turns/<visit>` dir or a
+  file, relative to the run dir) overlay them. `waiting_on` is cleared: the rewound state
+  never asked the gate the old one was parked on. The previous checkpoint is copied to
+  `checkpoint.rewound-<UTC stamp>.json` and `events.jsonl` gets a `phase: "rewind"` line
+  naming `from_state`, `from_waiting_on`, `dropped` and `backup`, so the jump in the run's
+  history is explained rather than looking like a driver bug. A rewind spends no gas, no
+  transition and no agent turn.
+- **`resume [CLI]`** — relaunches the run from `launch.json`'s recorded resume line, in
+  its recorded cwd, detached into its own session with stdout and stderr appended to
+  `<run_dir>/resume.log`, then waits (`--timeout`, default 120s) until the new process
+  serves its control socket. A `CLI` argument replaces the recorded `--cli`/`--profile`
+  with `--cli CLI` — the same axis `switch-cli` moves, for a run that is not alive to
+  receive it. A child that exits before serving is reported with its exit code and the
+  tail of the log. A containerised launch is refused: resume it inside its container.
+
+`rewind` and `resume` act on a run nobody is serving, and both **refuse** — with no
+override — while the pid in `run.json` answers signal 0 or something listens on the run's
+control socket: a live driver rewrites the checkpoint at its next transition, and a second
+driver beside it is two writers on one run dir. A run whose `terminal` is anything but
+`fail` has finished and is refused too; a `fail` run is exactly what these verbs repair.
+If the refusal names a pid that was reused by an unrelated process, the run is dead and
+`run.json` is stale — check `ps -p` before acting on it.
+
 ## What "the pushed code" covers
 
 It is wider than the workflow package, because a defect

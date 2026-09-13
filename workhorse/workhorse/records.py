@@ -19,7 +19,9 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 #: The closed set of event phases. Every node visit opens with `enter` and closes with
 #: `done`; `terminal` ends a run (or a nested flow's scope) and `error` marks a node the
 #: run was stopped inside of.
-NodePhase = Literal["enter", "done", "terminal", "error"]
+#: `rewind` is written by `workhorse.rewind`, from outside any run: an operator moved the
+#: checkpoint. It opens and closes nothing, so a span reader passes over it.
+NodePhase = Literal["enter", "done", "terminal", "error", "rewind"]
 
 
 class PyflowCheckpoint(BaseModel):

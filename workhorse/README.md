@@ -267,6 +267,10 @@ workhorse-coder control --run <id> questions              # what is this run ask
 workhorse-coder control --run <id> answer --text "go"     # answer the gate it is parked on
 workhorse-coder control --run <id> switch-cli claude      # move it onto another agent CLI
 workhorse-coder control --run <id> switch-profile cheap   # move it onto another set of models
+workhorse-coder control --run <id> stop --wait            # …and block until the pid is gone
+workhorse-coder control --run <id> status --params        # the checkpoint's state and params, as JSON
+workhorse-coder control --run <id> rewind --to design     # move a STOPPED run to another state
+workhorse-coder control --run <id> resume opencode        # relaunch a stopped run, detached
 ```
 
 A reload cuts the turn within about a second, closes its span with the usage it really

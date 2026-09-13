@@ -610,6 +610,16 @@ def send(run_dir: str | Path, request: Request, *, timeout: float = 5.0) -> dict
         client.close()
 
 
+def listening(run_dir: str | Path) -> bool:
+    """Whether a process is serving `run_dir`'s control socket right now.
+
+    A connect and nothing else — no request is sent, so a busy run that would not answer
+    `status` within a timeout still counts as there. This is the check an operator verb
+    that edits the run dir from outside makes before touching it.
+    """
+    return _is_live(_socket_path(Path(run_dir)))
+
+
 def _socket_path(run_dir: Path) -> Path:
     """Where this run's socket lives — in the run dir, unless the path is too long.
 
@@ -708,6 +718,7 @@ __all__ = [
     "arm",
     "armed",
     "hold",
+    "listening",
     "outstanding",
     "questions_with",
     "report_with",
