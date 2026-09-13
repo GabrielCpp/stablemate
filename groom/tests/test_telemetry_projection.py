@@ -20,6 +20,35 @@ def isolated_state(monkeypatch, tmp_path):
     store.reset()
 
 
+def test_shutdown_metric_flush_cannot_reopen_a_completed_generation():
+    session = {"run_id": "r", "pid": 11, "resume_generation": 1}
+    alerts.ingest_spans([{
+        **session, "name": "run:okf-builder", "end_ts": 100,
+        "attrs": {"workhorse.terminal": "terminal"},
+    }], now=100)
+    # Workhorse shuts down the meter provider after closing the root span. Its
+    # cumulative metrics therefore receive a collection timestamp after the end.
+    alerts.ingest_metrics([{
+        **session, "name": "workhorse.node.active", "value": 0,
+        "ts": 101, "attrs": {"node": "commit"},
+    }], now=101)
+    tel = state.RUNS["r"]
+    wf = WorkflowContainer(container_id="r", name="test")
+    assert projection.liveness(wf, tel, now=1000) == ("done", "terminal")
+
+    alerts.ingest_metrics([{
+        **session, "pid": 12, "resume_generation": 2,
+        "name": "workhorse.run.heartbeat", "value": 1, "ts": 1001,
+    }], now=1001)
+    assert projection.liveness(wf, tel, now=1001) == ("live", "alive")
+    # A delayed flush from generation 1 must not undo generation 2's activity.
+    alerts.ingest_spans([{
+        **session, "name": "run:okf-builder", "end_ts": 100,
+        "attrs": {"workhorse.terminal": "terminal"},
+    }], now=1002)
+    assert projection.liveness(wf, tel, now=1002) == ("live", "alive")
+
+
 def test_detail_uses_current_telemetry_instead_of_stale_workflow():
     wf = WorkflowContainer(container_id="r", name="test", state=WorkflowState.BLOCKED,
                            current_node="old", activity="old", pid=4)

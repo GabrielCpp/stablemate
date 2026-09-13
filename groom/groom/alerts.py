@@ -157,11 +157,12 @@ def _clear_stale_terminal(run: RunTelemetry, ts: float) -> None:
     marked dead for the life of the groom process: rendered finished on the
     dashboard while it was actively emitting, and eventually evicted from the fleet.
 
-    Any span or metric stamped after the root span's own end proves a live process,
-    which is the only thing "running right now" means. The fired-rule set goes with
-    it: this is a new session, and it deserves its own pages.
+    For producers with session identity, only ``_accept_session`` can establish a
+    restart. The final cumulative metric collection happens after the root span
+    ends, so a newer timestamp from that same session is not evidence of a resume.
+    Timestamp inference remains only for legacy producers without session identity.
     """
-    if run.terminal and ts > run.terminal_ts:
+    if run.last_session is None and run.terminal and ts > run.terminal_ts:
         run.terminal = ""
         run.terminal_ts = 0.0
         run.fired.clear()
