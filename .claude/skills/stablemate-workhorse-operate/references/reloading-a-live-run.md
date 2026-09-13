@@ -55,7 +55,12 @@ Two choices to make deliberately:
 - **`--at-boundary`, or cut the turn.** The default cuts the streaming turn within about
   a second, which is right when that turn *is* the waste you are stopping. Pass
   `--at-boundary` when the turn is doing legitimate work your fix does not change —
-  throwing it away buys nothing.
+  throwing it away buys nothing. **A run sleeping out a cap or a backoff has no turn to
+  protect**, and `--at-boundary` there is held until the *state* finishes — which a
+  capped run does not do until the cap clears, days out. The acknowledgement looks the
+  same either way. So read the wait first (`groom status`, or the run log's last `⏸`
+  line): if it is asleep, send a plain reload, which ends the wait and re-enters the
+  state on the new code.
 - **`--core` only for the engine.** A plain reload replaces the workflow package and
   anything else editable. `workhorse` itself is on the stack doing the reload, so
   changing *it* needs `--core`, which costs a process image. Do not reach for it for a
