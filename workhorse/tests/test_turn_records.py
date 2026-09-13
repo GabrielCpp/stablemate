@@ -17,6 +17,7 @@ from pathlib import Path
 
 from workhorse import turnkey
 from workhorse.artifacts import ArtifactWriter
+from workhorse.runner.ladder import _write_prompt_for_inspection
 
 
 def _writer(tmp: str, run_id: str = "t") -> ArtifactWriter:
@@ -45,6 +46,26 @@ def test_every_visit_of_a_looping_node_keeps_its_own_prompt():
         ]
         # The whole point: three visits, three *different* prompts still on disk.
         assert prompts == ["lap 1", "lap 2", "lap 3"]
+
+
+def test_the_prompt_staged_before_a_turn_does_not_rewrite_the_last_visits_copy():
+    """The runner stages ``<node>/prompt.md`` before invoking the CLI, so a failed turn is
+    inspectable, and that path is still hardlinked to the previous visit's kept copy. A
+    write through it filed every visit's output beside the *next* visit's prompt."""
+    turnkey.clear()
+    with tempfile.TemporaryDirectory() as tmp:
+        writer = _writer(tmp)
+
+        for lap in range(1, 4):
+            turnkey.begin(writer.run_dir, "repair")
+            _write_prompt_for_inspection("repair", f"lap {lap}", writer.run_dir)
+            writer.write_step("repair", f"lap {lap}", {"lap": lap}, {}, next_node="done")
+
+        kept = [
+            (writer.run_dir / ArtifactWriter.TURNS_DIR / v / "prompt.md").read_text()
+            for v in _turns(writer)
+        ]
+        assert kept == ["lap 1", "lap 2", "lap 3"]
 
 
 def test_the_per_node_directory_still_holds_the_latest_visit():

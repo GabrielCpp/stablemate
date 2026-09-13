@@ -106,6 +106,22 @@ def _clear_stale_run(run_dir: Path) -> None:
         (run_dir / ArtifactWriter.EVENTS_FILE).unlink(missing_ok=True)
 
 
+def write_unlinked(path: Path, text: str) -> None:
+    """Replace ``path``'s contents without writing through any link to it.
+
+    The visit archive hardlinks the per-node files into ``turns/<visit>/``, so a plain
+    ``write_text`` would truncate the previous visit's kept copy through the shared inode
+    — every archived prompt would end up holding the latest visit's text, which is the
+    exact loss the archive exists to prevent.
+
+    Module-level because the writer is not the only one writing these paths: the runner
+    stages ``<node>/prompt.md`` before the turn starts, and a second writer that knew the
+    path but not the link is what paired each kept output with the next visit's prompt.
+    """
+    path.unlink(missing_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
 class ArtifactWriter:
     CHECKPOINT_FILE = "checkpoint.json"
     # Append-only, per-node event log (enter/done/terminal) with timestamps.
@@ -447,15 +463,7 @@ class ArtifactWriter:
 
     @staticmethod
     def _write_unlinked(path: Path, text: str) -> None:
-        """Replace ``path``'s contents without writing through any link to it.
-
-        The visit archive hardlinks these files, so a plain ``write_text`` would truncate
-        the previous visit's kept copy through the shared inode — every archived prompt
-        would end up holding the latest visit's text, which is the exact loss the archive
-        exists to prevent.
-        """
-        path.unlink(missing_ok=True)
-        path.write_text(text)
+        write_unlinked(path, text)
 
     def visit_dir(self, node_id: str) -> Path | None:
         """Where this visit of ``node_id`` keeps its own copy, or None when there is no
