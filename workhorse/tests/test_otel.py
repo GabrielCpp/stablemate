@@ -493,6 +493,37 @@ def test_operator_wait_keeps_gate_attributes_until_its_metric_series_closes():
     assert span.attrs["workhorse.gate_question"] == "Which branch?"
 
 
+def test_heartbeat_republishes_active_state_for_a_reconnected_collector():
+    reader = InMemoryMetricReader()
+    meters = MeterProvider(metric_readers=[reader])
+    traces = TracerProvider()
+    telemetry = otel._Telemetry(trace, traces.get_tracer("test"), meters.get_meter("test"),
+                                lambda: None, 30)
+    try:
+        telemetry.state_start("review", 1)
+        token = telemetry.wait_start("operator", "review", "/run/gate.md", "Proceed?")
+        assert reader.get_metrics_data() is not None  # first collector received the edges
+        telemetry._beat_once()
+        data = reader.get_metrics_data()
+        assert data is not None
+        exported = encode_metrics(data)
+        gauges = {metric.name: list(metric.gauge.data_points)
+                  for resource in exported.resource_metrics
+                  for scope in resource.scope_metrics for metric in scope.metrics
+                  if metric.HasField("gauge")}
+        assert gauges["workhorse.node.active"][0].as_int == 1
+        point = gauges["workhorse.wait.active"][0]
+        assert point.as_int == 1
+        attrs = {attr.key: attr.value.string_value for attr in point.attributes}
+        assert attrs["gate_path"] == "/run/gate.md"
+        assert attrs["gate_question"] == "Proceed?"
+        telemetry.wait_end(token)
+    finally:
+        telemetry.end_run("terminal")
+        meters.shutdown()
+        traces.shutdown()
+
+
 def test_exported_operator_wait_has_no_active_series_after_answer():
     reader = InMemoryMetricReader()
     meters = MeterProvider(metric_readers=[reader])

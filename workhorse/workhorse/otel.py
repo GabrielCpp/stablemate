@@ -1167,21 +1167,29 @@ class _Telemetry:
     # (and with it every later liveness signal) mid-run.
     @_failsoft(None)
     def _beat_once(self) -> None:
-        """Emit one liveness tick for whatever node is open (or none)."""
+        """Repeat active state so a collector can join after the opening edge.
+
+        Keep observation and publication under the lock: an end must not publish
+        zero between our reading the active wait and publishing it again.
+        """
         with self._lock:
             top = self._stack[-1] if self._stack else None
             wait = next(reversed(self._wait_live.values()), None)
-        node = top[0][1] if top else ""
-        attrs = self._live_attrs(node)
-        if self._run_beats is not None:
-            self._run_beats.add(1, attrs)
-        if top is not None and self._node_elapsed is not None:
-            self._node_elapsed.set(time.monotonic() - top[2], attrs)
-        if wait is not None and self._wait_elapsed is not None:
-            self._wait_elapsed.set(
-                time.monotonic() - wait.started,
-                wait.attributes,
-            )
+            node = top[0][1] if top else ""
+            attrs = self._live_attrs(node)
+            if self._run_beats is not None:
+                self._run_beats.add(1, attrs)
+            if top is not None and self._node_active is not None:
+                self._node_active.set(1, attrs)
+            if top is not None and self._node_elapsed is not None:
+                self._node_elapsed.set(time.monotonic() - top[2], attrs)
+            if wait is not None and self._wait_active is not None:
+                self._wait_active.set(1, wait.attributes)
+            if wait is not None and self._wait_elapsed is not None:
+                self._wait_elapsed.set(
+                    time.monotonic() - wait.started,
+                    wait.attributes,
+                )
 
     def _parent_ctx(self) -> Any:
         parent = self._stack[-1][1] if self._stack else self._root
