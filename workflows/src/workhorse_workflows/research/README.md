@@ -124,6 +124,7 @@ until the gate is declared scientifically exhausted.
 | produced no measurement, fault in the tooling | an **operator**, immediately | nothing |
 | outgrew its declared resources | the **scientist** | one rescope (of 2) |
 | ran past its estimate | the **engineer** | nothing |
+| the scientist or engineer refused the gate as written (`status: "blocked"`) | the **lead**, as `design_blocked` / `build_blocked` | nothing |
 
 The locus is decided **deterministically**, by the deepest frame of the traceback: a frame
 under the repo is a repo fault, a frame inside `workhorse` or `ostler` is a tooling fault.
@@ -131,6 +132,14 @@ Only where there is no stack at all may a persona declare a locus, and `"tooling
 `component` named is treated as a repo fault and comes back to the engineer — because an
 engineer that can route its own hard problems to a human by calling them "tooling" has
 every reason to.
+
+A `blocked` design or build is not a fault at all: the persona read the gate and refused
+it — a contradiction with the README, a NEVER constraint, a prerequisite not on disk. It
+never reaches the runner. Building from a blocked design, or rehearsing a blocked build,
+can only fail downstream for a reason that is nobody's — an admission-only script that
+exits 0 and writes `status: "blocked"`, then a submission with no command — so the
+refusal is routed to the lead at the state that produced it, and the `n=1` rehearsal
+itself requires the result's `status` to be `ok`, not merely the file to exist.
 
 ---
 

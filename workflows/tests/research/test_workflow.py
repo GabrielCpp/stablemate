@@ -548,6 +548,89 @@ def test_the_engineer_may_declare_a_tooling_fault_only_by_naming_what_is_broken(
     assert outcome.nodes.counts()["dry_run"] == 0, outcome.nodes.counts()
 
 
+def test_a_blocked_design_goes_to_the_lead_and_never_reaches_the_engineer():
+    """The scientist is told to report `blocked` rather than design around a gate that
+    contradicts the program, and the workflow used to forward that to `build` anyway.
+    The shape of the bug this pins: an engineer handed no protocol implements the
+    admission check it *can* write, rehearses it (exit 0, `status: "blocked"`, which
+    the rehearsal accepted), submission refuses the empty command as a repo fault, a
+    build lap is spent, and the second engineer — with nothing left to fix — names the
+    workflow as a tooling fault and parks the run on an operator. Four states and a
+    human to route a refusal that was legible at the first one."""
+    outcome = _parking(
+        _script(
+            **{
+                "design-experiment": [
+                    {"status": "blocked", "notes": "Phase B has only 1,779 of the slots"}
+                ],
+                "research-lead-review": [{"verdict": "unknown"}],
+            }
+        )
+    )
+
+    counts = outcome.agent.counts()
+    assert counts["build-experiment"] == 0, counts
+    assert outcome.nodes.counts()["dry_run"] == 0, outcome.nodes.counts()
+    assert outcome.nodes.counts()["submit_job"] == 0, outcome.nodes.counts()
+    review = outcome.agent.args_for("research-lead-review")[0]
+    assert review["escalation"] == "design_blocked", review
+    assert "1,779" in review["notes"], review
+    assert [h["event"] for h in outcome.history if h["gate_id"] == "G1"][:2] == [
+        "gate_selected", "design_blocked",
+    ], outcome.history
+    # No engineering budget was spent on it.
+    assert outcome.checkpoints[-1]["params"]["budget"]["build_fixes"] == 0
+
+
+def test_a_blocked_build_goes_to_the_lead_without_touching_the_runner():
+    """Same owner from the engineer's side: a prerequisite that is not on disk is not
+    repaired by another build lap, and rehearsing whatever partial script exists proves
+    nothing about the measurement."""
+    outcome = _parking(
+        _script(
+            **{
+                "build-experiment": [
+                    {
+                        "status": "blocked",
+                        "command": [],
+                        "dry_run_command": ["bash", "admission.sh"],
+                        "notes": "six prerequisite files are missing",
+                    }
+                ],
+                "research-lead-review": [{"verdict": "unknown"}],
+            }
+        )
+    )
+
+    assert outcome.nodes.counts()["dry_run"] == 0, outcome.nodes.counts()
+    assert outcome.nodes.counts()["submit_job"] == 0, outcome.nodes.counts()
+    review = outcome.agent.args_for("research-lead-review")[0]
+    assert review["escalation"] == "build_blocked", review
+    assert "six prerequisite files" in review["notes"], review
+    assert outcome.agent.counts()["build-experiment"] == 1, outcome.agent.counts()
+
+
+def test_a_build_with_no_command_is_repaired_before_anything_is_rehearsed():
+    """An `ok` build that names no command has nothing a rehearsal could prove; it is
+    the engineer's lap either way, taken now rather than after a wasted dry run."""
+    outcome = _run(
+        _script(
+            **{
+                "build-experiment": [
+                    {"status": "ok", "command": [], "dry_run_command": ["true"]},
+                    {"status": "ok", "command": ["python", "run.py"]},
+                ],
+                "gate-check": [{"status": "approved"}],
+            }
+        )
+    )
+
+    assert outcome.agent.counts()["build-experiment"] == 2, outcome.agent.counts()
+    assert outcome.nodes.counts()["dry_run"] == 1, outcome.nodes.counts()
+    fixes = [h for h in outcome.history if h["event"] == "build_fix"]
+    assert len(fixes) == 1 and "no command" in fixes[0]["note"], outcome.history
+
+
 def test_the_operator_s_answer_reaches_the_state_it_released():
     """A block is a question, so the state that asked it has to be given the answer.
 

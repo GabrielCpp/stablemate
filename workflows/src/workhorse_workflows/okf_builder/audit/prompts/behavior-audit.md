@@ -25,6 +25,11 @@ not establish their source support.
 Use `implementation_detail` only with a concrete reason the candidate is not a public
 contract. Explain missing, contradicted, and partial behavior precisely
 enough to repair the affected source-file or book node as a coherent unit.
+A test function is a public contract's *check*, not the contract itself: mark it
+`implementation_detail` and do not link a claim to it, even when its assertions are the
+only thing in this packet that appears to demonstrate the claim's behavior. If no
+non-test candidate in this packet supports the claim, that is insufficient evidence —
+`unresolved`, not a link to the test.
 
 Use `mixed` for a candidate that is *internally used* but *observably relevant* to a
 claim — a private struct field that constrains identity comparison (the field is

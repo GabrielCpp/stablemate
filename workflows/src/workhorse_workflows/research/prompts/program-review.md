@@ -11,8 +11,10 @@ review is for, and it has the authority to act on it.
 You are here because: **{{ origin }}**
 {% if origin == "kill" %}(gate `{{ gate_id }}` has just been recorded as KILLED; if you
 return `continue`, the kill review runs next and decides revive vs new direction).
-{% elif origin == "escalation" %}(a repair budget was exhausted on gate `{{ gate_id }}`:
-`{{ escalation }}`; if you return `continue`, the kill review runs next).
+{% elif origin == "escalation" %}(gate `{{ gate_id }}` escalated without a measurement:
+`{{ escalation }}` — a `max_*` value is a repair budget that ran out; `design_blocked` /
+`build_blocked` is the scientist or engineer refusing the gate as written, with the
+reason in the notes; if you return `continue`, the kill review runs next).
 {% elif origin == "revive" %}(the kill review wants to revive gate `{{ gate_id }}`; if
 you return `continue`, the revival goes ahead — this is the moment to notice that it is
 the Nth revival of the same gate).

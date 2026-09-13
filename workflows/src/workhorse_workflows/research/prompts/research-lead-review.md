@@ -22,8 +22,11 @@ Killed gate: `{{ gate_id }}`
 Gate doc: `{{ gate_doc_path }}`
 Gate-check failures (if from this run): `{{ failed_criteria | default('(not available — kill detected at gate selection)') }}`
 Reviewer notes: `{{ notes | default('(none)') }}`
-{% if escalation %}Escalation: `{{ escalation }}` (a repair budget ran out; this kill is
-the loop giving up on the apparatus, not a measured refutation — weigh that.){% endif %}
+{% if escalation %}Escalation: `{{ escalation }}` (a `max_*` value means a repair budget
+ran out; `design_blocked` / `build_blocked` means the scientist or engineer refused the
+gate as written — a contradiction with the README, a NEVER constraint, a prerequisite
+not on disk — and the reason is in the notes. Either way this is the loop giving up on
+the apparatus or the gate's shape, not a measured refutation — weigh that.){% endif %}
 
 ## The program dossier (computed, no model in the loop)
 

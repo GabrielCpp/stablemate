@@ -171,6 +171,50 @@ def test_a_clean_exit_with_a_well_formed_result_is_ok(tmp_path):
     assert collected.tier == "premium" and collected.wall_s == 9.0
 
 
+def test_a_rehearsal_passes_only_on_a_result_that_says_ok(tmp_path):
+    """Exit 0 plus a file on disk is not a passed rehearsal. A command that writes
+    `status: "blocked"` and exits clean has said it measured nothing; reading only the
+    exit code and the file's existence called that a pass, submitted the real job on
+    the strength of it, and handed the engineer "the build produced no command" two
+    states later about a file that was never wrong."""
+    directory = _job_dir(tmp_path, "G1-dry")
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    _finished(directory)
+    _write(cwd, "result.json", {
+        "status": "blocked", "metrics": {}, "seeds": [], "controls": [],
+        "n_completed": 0, "n_planned": 1,
+    })
+
+    verdict = measure.judge_rehearsal(directory, cwd=str(cwd), repo_dir=str(cwd))
+
+    assert not verdict.ok
+    assert verdict.exit_code == 0
+    assert verdict.fault_locus == "repo"
+    assert "status 'blocked'" in verdict.reason, verdict.reason
+
+    _write(cwd, "result.json", {"status": "ok", "metrics": {"m": 1.0}, "n_completed": 1,
+                                "n_planned": 1})
+    assert measure.judge_rehearsal(directory, cwd=str(cwd), repo_dir=str(cwd)).ok
+
+
+def test_a_rehearsal_whose_result_will_not_parse_says_so(tmp_path):
+    directory = _job_dir(tmp_path, "G1-dry")
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    _finished(directory)
+    (cwd / "result.json").write_text("{not json", encoding="utf-8")
+
+    verdict = measure.judge_rehearsal(directory, cwd=str(cwd), repo_dir=str(cwd))
+
+    assert not verdict.ok
+    assert "not JSON" in verdict.reason, verdict.reason
+
+    (cwd / "result.json").unlink()
+    verdict = measure.judge_rehearsal(directory, cwd=str(cwd), repo_dir=str(cwd))
+    assert "no result file was written" in verdict.reason, verdict.reason
+
+
 def test_a_result_file_with_no_measurement_in_it_is_invalid_not_ok(tmp_path):
     """`invalid` is a separate outcome from `crash` on purpose: the command believed
     it succeeded, which is a different bug from one that fell over."""

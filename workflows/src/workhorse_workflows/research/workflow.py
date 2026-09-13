@@ -560,6 +560,23 @@ class Research(Workflow):
                 envelope_disk_gb=self.ctx.envelope_disk_gb,
             ),
         )
+        if design.status == "blocked":
+            # The scientist is told not to design around a gate doc that contradicts
+            # the program or asks for what a NEVER forbids, and to say so instead. What
+            # comes back then is not a protocol, and the engineer cannot build one from
+            # it: every downstream state would fail for a reason that is not theirs —
+            # a rehearsal of an admission-only script, a submission with no command, a
+            # build lap spent on a prerequisite. The question is the lead's — "is this
+            # gate worth this shape?" — so it goes there, as an escalation, and spends
+            # no engineering budget on the way.
+            self._history("design_blocked", gate_id, note=design.notes)
+            return self._to_lead(
+                gate_id,
+                gate_doc_path,
+                escalation="design_blocked",
+                notes=design.notes or "the scientist reported the design blocked, without a reason",
+                budget=budget,
+            )
         envelope = self.call(
             check_envelope,
             memory_mb=design.memory_mb,
@@ -650,6 +667,33 @@ class Research(Workflow):
                 design=design.model_dump(mode="json"),
                 budget=budget,
                 fix_reason=f"{OPERATOR_RELEASED}: {build.notes}",
+            )
+        if build.status == "blocked":
+            # The engineer's refusal, same owner as the scientist's: a gate whose
+            # prerequisites are not on disk cannot be made runnable by another build
+            # lap, and rehearsing whatever partial script exists proves nothing about
+            # the measurement. Routed to the lead before the runner is touched.
+            self._history("build_blocked", gate_id, note=build.notes)
+            return self._to_lead(
+                gate_id,
+                gate_doc_path,
+                escalation="build_blocked",
+                notes=build.notes or "the engineer reported the build blocked, without a reason",
+                budget=budget,
+            )
+        if not build.command:
+            # Nothing to submit, so there is nothing a rehearsal would prove; `submit`
+            # would refuse it anyway, and the refusal is the same repair lap either way.
+            return self._repair(
+                gate_id,
+                gate_doc_path,
+                design,
+                budget,
+                locus="repo",
+                component="",
+                reason="the build produced no command",
+                detail=build.notes,
+                where="the build",
             )
         rehearsal = self.call(
             dry_run,
@@ -1149,11 +1193,13 @@ class Research(Workflow):
     ) -> Continue | Await:
         """Judge whether the gate is dead, and route the program on the verdict.
 
-        Reached two ways, and `escalation` says which: a scientific kill (empty), or a
-        repair budget that ran out (`max_build_fixes`, `max_reworks`, `max_rescopes`).
-        The second is deliberately routed *here* rather than to a terminal — an
-        exhausted apparatus budget is not a finding, and the lead is the only persona
-        that can say whether the gate is worth a different shape.
+        Reached three ways, and `escalation` says which: a scientific kill (empty), a
+        repair budget that ran out (`max_build_fixes`, `max_reworks`, `max_rescopes`),
+        or a gate the scientist or engineer refused as written (`design_blocked`,
+        `build_blocked`). The last two are deliberately routed *here* rather than to a
+        terminal — an exhausted apparatus budget is not a finding, a missing
+        prerequisite is not a refutation, and the lead is the only persona that can say
+        whether the gate is worth a different shape.
 
         Kept a separate state from `goal_review` on purpose. They answer different
         questions — "was this kill sound?" against "where does the program go?" — and

@@ -329,21 +329,47 @@ def dry_run(
             stderr_tail=_tail(directory / job.STDERR_NAME),
         )
 
+    verdict = judge_rehearsal(directory, cwd=cwd, result_file=result_file, repo_dir=repo_dir)
+    if verdict.ok:
+        logger.info("n=1 rehearsal passed through the runner", extra={"activity": True})
+    return verdict
+
+
+def judge_rehearsal(
+    job_dir: str | Path, *, cwd: str, result_file: str = "result.json", repo_dir: str = ""
+) -> DryRun:
+    """Read a finished rehearsal off its two files, with no model call.
+
+    Passing takes three facts, not two: a clean exit, a result that parses with its
+    core keys, **and** a result whose `status` is `ok`. The third is what an exit code
+    cannot carry. A command that writes `{"status": "blocked", "n_completed": 0}` and
+    exits 0 has told the truth about itself — it did not measure anything — and a
+    rehearsal that read only the exit code and the file's existence would call that a
+    pass, submit the real job on the strength of it, and hand the engineer a failure
+    two states later about a file that was never wrong.
+    """
+    directory = Path(job_dir)
     runner = job.collect(directory)
     stderr_tail = _tail(directory / job.STDERR_NAME)
-    produced = result_path(directory, cwd, result_file).exists()
-    if runner.exit_code == 0 and produced:
-        logger.info("n=1 rehearsal passed through the runner", extra={"activity": True})
+    parsed, why = _read_result(result_path(directory, cwd, result_file))
+    status = str(parsed.get("status") or "") if parsed is not None else ""
+    if runner.exit_code == 0 and parsed is not None and status == "ok":
         return DryRun(ok=True, exit_code=0)
-    reason = (
-        f"exit {runner.exit_code}" if runner.exit_code not in (0, None) else
-        f"killed: {runner.kill_reason}" if runner.kill_reason else
-        f"no {result_file} was written"
-    )
+    if runner.exit_code not in (0, None):
+        reason, locus = f"exit {runner.exit_code}", classify_fault(stderr_tail, repo_dir)
+    elif runner.kill_reason:
+        reason, locus = f"killed: {runner.kill_reason}", classify_fault(stderr_tail, repo_dir)
+    elif parsed is None:
+        reason, locus = why, classify_fault(stderr_tail, repo_dir)
+    else:
+        # The command's own word: it exited clean and said it did not measure. That
+        # is the repo's to answer — the runner did everything asked of it.
+        reason = f"the rehearsal's {result_file or 'result.json'} reports status {status!r}, not 'ok'"
+        locus = "repo"
     return DryRun(
         ok=False,
         exit_code=runner.exit_code,
-        fault_locus=classify_fault(stderr_tail, repo_dir),
+        fault_locus=locus,
         stderr_tail=stderr_tail,
         reason=reason,
     )
