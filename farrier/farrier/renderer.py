@@ -96,8 +96,8 @@ class Rendered(str):
 # field so the edit lands in the library instead. Skills carry it natively (openskill
 # format: openskill.sh/docs/creators/skill-format); Claude commands carry the same
 # block — the slash-command parser (and claude-code-acp) ignores keys it does not
-# recognise, so `metadata` is inert to the agent. Codex/copilot prompts are left
-# untouched; aggregated Claude instruction files get an HTML-comment banner instead
+# recognise, so `metadata` is inert to the agent. Codex prompts share this header;
+# Copilot prompts retain their source headers. Aggregated Claude instructions get a banner
 # (see local_instruction_banner).
 def skill_metadata_block(
     source: Source,
@@ -721,7 +721,7 @@ class Renderer:
         return first_heading(body, public_name(self.prefix, source))
 
     def generated_command(self, source: Source, target: str, output_path: Path) -> str:
-        """Render a library prompt into a Claude slash command WITH front matter.
+        """Render a library prompt into a Claude or Codex command with front matter.
 
         Without a `description` in the front matter, claude-code-acp has nothing to
         advertise over ACP and the command never appears in Zed's autocomplete. So,
@@ -809,10 +809,9 @@ class Renderer:
             render_skills("codex")
             for source in self.prompts:
                 output_path = self.prompt_output_path(source.id, "codex")
-                content = self.render_templates(
-                    source.path.read_text(encoding="utf-8"), "codex", output_path
+                outputs[output_path] = self.generated_command(
+                    source, "codex", output_path
                 )
-                outputs[output_path] = content
 
         if agents.get("claude"):
             render_skills("claude")

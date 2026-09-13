@@ -5,12 +5,12 @@ the copy and loses the change on the next `make agent-install`. So each generate
 SKILL.md names its source of truth in the openskill `metadata` field
 (openskill.sh/docs/creators/skill-format).
 
-Prompts are not skills, so they carry no openskill `metadata` block. But a generated
-Claude command still needs a `description` in its front matter — without one,
+Generated Claude commands and Codex prompts carry the same provenance metadata.
+A Claude command also needs a `description` in its front matter — without one,
 claude-code-acp advertises nothing over ACP and the command never appears in Zed's
 autocomplete. So the claude target emits a header (description / argument-hint /
-model / allowed-tools) plus the same `metadata:` provenance block skills get, while
-codex/copilot prompts are left untouched.
+model / allowed-tools) plus the same `metadata:` provenance block skills get. Codex
+uses the same builder; Copilot prompts retain their source headers.
 
 Aggregated instruction files (localInstructions → CLAUDE.md) cannot carry front
 matter — Claude injects them verbatim. There the provenance is a block-level HTML
@@ -24,6 +24,9 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
+import pytest
+
+from farrier.frontmatter import frontmatter_mapping, split_front_matter
 from farrier.install import (
     Renderer,
     Source,
@@ -127,6 +130,37 @@ def _render_claude_command(tmp_path: Path, source: Source) -> str:
         roots=set(),
     )
     return next(c for p, c in outputs.items() if p.name.endswith(".md"))
+
+
+@pytest.mark.parametrize("with_header", [False, True])
+def test_codex_prompt_carries_description_and_provenance(
+    tmp_path: Path, with_header: bool
+) -> None:
+    body = "# Plan a story\n\nDo the planning.\n"
+    header = (
+        "---\ndescription: Plan a coding story\nargument-hint: <story>\n"
+        "tags: [planning]\n---\n\n"
+        if with_header else ""
+    )
+    source = _prompt_source(tmp_path, header + body)
+    outputs = _renderer_with(tmp_path, prompts=[source]).render(
+        agents={"codex": True}, roots=set()
+    )
+    dest = ".agents/prompts/demo-stablemate-plan-story.prompt.md"
+    content = outputs[tmp_path / dest]
+    metadata = frontmatter_mapping(content)
+    assert metadata.get("description") == (
+        "Plan a coding story" if with_header else "Plan a story"
+    )
+    provenance = metadata["metadata"]
+    assert provenance["generated_by"] == "farrier"
+    assert provenance["source"] == "library/prompts/stablemate/plan-story.md"
+    assert provenance["resolve"] == f"farrier source {dest}"
+    assert "make agent-install" in provenance["do_not_edit"]
+    if with_header:
+        assert metadata["argument-hint"] == "<story>"
+        assert provenance["tags"] == ["planning"]
+    assert split_front_matter(content)[1] == body
 
 
 def test_generated_command_gets_description_front_matter(tmp_path):
