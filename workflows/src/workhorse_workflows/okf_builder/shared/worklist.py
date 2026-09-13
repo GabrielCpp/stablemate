@@ -95,25 +95,52 @@ def repair_keys(rows: list[dict[str, Any]]) -> set[tuple[str, str]]:
     return {(_norm(r.get("kind")), _norm(r.get("target"))) for r in rows if isinstance(r, dict)}
 
 
+def doctor_row(row: dict[str, Any]) -> bool:
+    """Whether a worklist row is a doctor finding's repair — the only rows doctor may settle.
+
+    The `fix:` prefix is not the test: the coverage join queues `fix:stale-citation` rows
+    too, and doctor never reports those, so reading the prefix alone closes a regrounding
+    row as "stale" the moment any doctor pass runs. The checkpoint writes the findings that
+    back a row into its context (`_repair_items`), so a row carrying them is one whose
+    standing a doctor read can answer.
+    """
+    if not str(row.get("kind", "")).startswith("fix:"):
+        return False
+    raw = row.get("context", "")
+    try:
+        context = raw if isinstance(raw, dict) else json.loads(str(raw or "{}"))
+    except ValueError:
+        return False
+    return isinstance(context, dict) and "findings" in context
+
+
 def settle_stale_rows(
     items: list[dict[str, Any]], standing: list[dict[str, Any]], *, where: str
 ) -> int:
-    """Close every pending `fix:` row doctor no longer reports. Returns how many.
+    """Close every open doctor repair row doctor no longer reports. Returns how many.
 
     `standing` is the repair items a fresh doctor pass would queue — the rows a finding
-    still backs. A pending repair outside that set is a turn that would be spent finding
+    still backs. An open repair outside that set is a turn that would be spent finding
     nothing to do: a rule retired under the run, a finding an earlier repair of the same
-    node already cleared, an autofix that moved. Only pending rows, and only `fix:` rows —
-    a blocked row keeps the story the operator gate prints, and a discovery item is not
-    doctor's to settle.
+    node already cleared, an autofix that moved.
+
+    **Blocked rows too.** `blocked` records that a finding survived its attempts *as of the
+    doctor read that blocked it*; the gate that prints it asserts the finding still stands.
+    The book is a working tree other writers share, so that claim is only as old as its
+    observation — a row left out of the settle kept a run parked for hours on a gate whose
+    findings someone else had already cleared. What the operator reads has to be what
+    doctor reports now, so a blocked row is settled by the same rule as a pending one.
+    Only doctor's rows (`doctor_row`); a discovery item or a coverage row is not doctor's
+    to settle.
 
     Shared by `record`'s checkpoint write and `checkpoint.settle_stale`, which does the
-    same thing mid-drain; `where` is the closing note's word for which one it was.
+    same thing mid-drain and before a blocked gate; `where` is the closing note's word for
+    which one it was.
     """
     keys = repair_keys(standing)
     settled = 0
     for i in items:
-        if i.get("status") != "pending" or not str(i.get("kind", "")).startswith("fix:"):
+        if i.get("status") not in ("pending", "blocked") or not doctor_row(i):
             continue
         if (_norm(i.get("kind")), _norm(i.get("target"))) in keys:
             continue
@@ -268,12 +295,12 @@ def record(
     changed and the next block is judged afresh.
 
     `settle_fix_items` says `discovered` is the *whole* standing doctor report — the
-    checkpoint's call, and only that call. A pending `fix:` row the report no longer names
+    checkpoint's call, and only that call. An open doctor row the report no longer names
     is a finding that stopped firing: repaired by a neighbouring turn, or retired by a
     doctor rule that changed under the run. It is closed as `stale` here rather than handed
     out, because a repair turn on a finding doctor no longer raises is a turn spent
-    confirming there is nothing to do. Blocked rows are left alone: their story is the
-    operator's to read.
+    confirming there is nothing to do — and a blocked one is a gate asking the operator
+    about a finding that is gone (`settle_stale_rows`).
     """
     path = Path(worklist_path)
     data = json.loads(path.read_text())
@@ -421,5 +448,6 @@ __all__ = [
     "record",
     "repair_keys",
     "select_item",
+    "doctor_row",
     "settle_stale_rows",
 ]

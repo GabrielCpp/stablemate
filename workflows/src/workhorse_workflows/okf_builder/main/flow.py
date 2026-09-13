@@ -822,6 +822,12 @@ class OkfBuilder(Workflow):
                 signature=signature,
                 refuels=refuels,
             ).because("verdict applied: next blocked row")
+        # Verdict turns take hours and the book is a tree other writers edit meanwhile, so
+        # "doctor still reports it" was true only at the read that blocked the row. Re-read
+        # now: the gate below must list findings that stand, not findings that stood.
+        self.call(
+            settle_stale, self.ctx.worklist_path, self.ctx.repo_root, self.ctx.features_root, 0
+        )
         recorded = self.call(record, self.ctx.worklist_path)
         if recorded.pending_count:
             # A `book` verdict put its row back; a `code` one may have closed its row, and
@@ -975,7 +981,14 @@ class OkfBuilder(Workflow):
         answer is a statement that something changed — a hand repair, a detector fix — and
         carrying the pre-gate stall count in would spend the next two rounds walking
         straight back into the stall gate on a finding set nobody has re-read yet.
+
+        The settle goes first and unconditionally for the same reason: a gate can sit
+        answered-late for hours, and a blocked row whose finding is gone must close here
+        rather than cost another three attempts to learn there is nothing to do.
         """
+        self.call(
+            settle_stale, self.ctx.worklist_path, self.ctx.repo_root, self.ctx.features_root, 0
+        )
         return Continue(
             self.call(record, self.ctx.worklist_path, unblock=True),
             self.select,

@@ -32,7 +32,7 @@ from ostler.fmt import run_fmt
 from workhorse_workflows.okf_builder.shared import stubs
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
 from workhorse_workflows.okf_builder.shared.schemas import Checkpoint, Settled
-from workhorse_workflows.okf_builder.shared.worklist import settle_stale_rows
+from workhorse_workflows.okf_builder.shared.worklist import doctor_row, settle_stale_rows
 
 #: Findings whose remedy cannot be read off the finding: the value has to come from the
 #: source. Everything else is mechanical and stays a `fixup`.
@@ -325,7 +325,7 @@ def settle_stale(
     features_root: str = "",
     every: int = SETTLE_EVERY,
 ) -> Settled:
-    """Mid-drain, close the pending repair rows doctor no longer reports.
+    """Mid-drain, close the open repair rows doctor no longer reports.
 
     `record` already settles stale `fix:` rows — but only on the checkpoint's write, and
     the checkpoint only runs when the drain goes dry. On a book queued with hundreds of
@@ -342,7 +342,10 @@ def settle_stale(
     checkpoint would queue (`scoped_findings` → `_repair_items`), so a row this pass keeps
     is a row the checkpoint would keep too.
 
-    A pass that finds nothing pending to settle skips the doctor read; a doctor failure is
+    `every=0` makes the pass unconditional — the blocked gate's call, which has to print
+    what doctor reports at the moment it asks, not what it reported rounds ago.
+
+    A pass that finds nothing open to settle skips the doctor read; a doctor failure is
     reported and the watermark still advances, so a broken doctor costs one warning per
     `every` items rather than a minute per pick.
     """
@@ -353,9 +356,7 @@ def settle_stale(
     pending = sum(1 for i in items if i.get("status") == "pending")
     last = data.get("settled_done")
     due = not isinstance(last, int) or done - last >= every
-    fixable = any(
-        i.get("status") == "pending" and str(i.get("kind", "")).startswith("fix:") for i in items
-    )
+    fixable = any(i.get("status") in ("pending", "blocked") and doctor_row(i) for i in items)
     if not due or not fixable:
         return Settled(pending_count=pending, at_done=done if isinstance(last, int) else 0)
 
