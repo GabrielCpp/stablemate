@@ -583,6 +583,16 @@ def _check_candidate_verdict(packet: AuditPacket, candidate: CandidateVerdict) -
             raise ValueError(f"{candidate.id}: book evidence range is unseen or blank: {ref}")
 
 
+def _check_candidate_links(
+    candidate: CandidateVerdict, links: set[str], supported_claims: set[str],
+) -> None:
+    """The relationship rules shared by final validation and partial-reply salvage."""
+    if candidate.status == "covered" and not supported_claims & links and not candidate.book_evidence:
+        raise ValueError(f"{candidate.id}: covered requires a supported or partial claim link or book evidence")
+    if candidate.status == "implementation_detail" and links:
+        raise ValueError(f"{candidate.id}: implementation_detail cannot be linked by claims {sorted(links)}")
+
+
 def validate_verdicts(packet: AuditPacket, payload: object) -> AuditReport:
     """Validate external decisions and links against this exact current packet.
 
@@ -609,10 +619,7 @@ def validate_verdicts(packet: AuditPacket, payload: object) -> AuditReport:
     for candidate in verdicts.candidates:
         links = linked_claims[candidate.id]
         _check_candidate_verdict(packet, candidate)
-        if candidate.status == "covered" and not supported_claims & links and not candidate.book_evidence:
-            raise ValueError(f"{candidate.id}: covered requires a supported or partial claim link or book evidence")
-        if candidate.status == "implementation_detail" and links:
-            raise ValueError(f"{candidate.id}: implementation_detail cannot be linked by claims {sorted(links)}")
+        _check_candidate_links(candidate, links, supported_claims)
         # ``mixed`` candidates may link to claims by definition: they are internal AND
         # relevant, and the truthful verdict for a private struct field that bears on
         # a claim's clauses is ``partial claim, mixed candidate``. The cross-item

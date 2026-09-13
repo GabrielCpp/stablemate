@@ -34,7 +34,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from ostler.behavior import (
-    _check_candidate_verdict, _check_claim_verdict, packet_digest, validate_verdicts,
+    _check_candidate_links, _check_candidate_verdict, _check_claim_verdict, packet_digest, validate_verdicts,
 )
 from ostler.behavior_models import (
     AuditPacket, AuditReport, AuditVerdicts, BehaviorEvidence, BehaviorModel, BookClaim,
@@ -213,14 +213,11 @@ def salvage_verdicts(packet: AuditPacket, payload: object) -> tuple[MemoRecall, 
     nineteen candidates is eighteen judgements plus a gap, and re-asking the whole
     packet is how the same id gets dropped a second time.
 
-    So this applies exactly the per-item rules ``validate_verdicts`` applies — the two
-    ``_check_*`` predicates it shares with it, never a second opinion — and nothing
-    whole-reply. A verdict for an id this packet did not supply, or one that fails its
-    own rules, is not salvaged; its id joins the owing set instead of raising. The
-    cross-item rules are deliberately left out, because they cannot be decided from a
-    partial reply — ``merge_verdicts`` re-validates the merged whole against the full
-    packet and raises if the result does not hold, so nothing is weakened by salvaging
-    optimistically here.
+    Apply the same item and relationship predicates as final validation. A contradictory
+    candidate and its linked claims are owed together: either side may be wrong, so
+    retaining one as settled would prejudge the repair. An unsupported ``covered``
+    verdict is owed only when all claims were answered; a missing claim could still
+    supply its support. Final validation always checks the merged whole.
 
     Returns the recall to reduce the packet against, and the ids still owing, sorted.
     """
@@ -247,6 +244,23 @@ def salvage_verdicts(packet: AuditPacket, payload: object) -> tuple[MemoRecall, 
         except ValueError:
             continue
         candidates[candidate.id] = candidate
+    links: dict[str, set[str]] = defaultdict(set)
+    for claim in claims.values():
+        for candidate_id in claim.candidate_ids:
+            links[candidate_id].add(claim.id)
+    supporting = {claim.id for claim in claims.values() if claim.status in {"supported", "partial"}}
+    conflicting_claims: set[str] = set()
+    conflicting_candidates: set[str] = set()
+    for candidate in candidates.values():
+        if candidate.status == "covered" and set(claims) != claim_ids:
+            continue
+        try:
+            _check_candidate_links(candidate, links[candidate.id], supporting)
+        except ValueError:
+            conflicting_candidates.add(candidate.id)
+            conflicting_claims.update(links[candidate.id])
+    claims = {key: value for key, value in claims.items() if key not in conflicting_claims}
+    candidates = {key: value for key, value in candidates.items() if key not in conflicting_candidates}
     owing = tuple(sorted((claim_ids - set(claims)) | (candidate_ids - set(candidates))))
     recall = MemoRecall(
         claims=tuple(claims[claim.id] for claim in packet.claims if claim.id in claims),

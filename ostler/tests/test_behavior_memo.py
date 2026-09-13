@@ -73,6 +73,30 @@ def test_a_whole_hit_reproduces_the_report_without_a_reviewer(tmp_path: Path, me
     assert merge_verdicts(packet, recall, None).verdicts == validate_verdicts(packet, judged(packet)).verdicts
 
 
+@pytest.mark.parametrize("status", ["implementation_detail", "covered"])
+def test_salvage_reasks_conflicting_pair_without_discarding_unrelated_verdicts(
+    tmp_path: Path, status: str,
+) -> None:
+    """A locally valid candidate can contradict its claim links: both sides need review."""
+    packet = packet_for(tmp_path)
+    reply = judged(packet).model_dump(mode="json")
+    reply["candidates"][0].update(status=status)
+    with pytest.raises(ValueError):
+        validate_verdicts(packet, reply)
+
+    recall, owing = salvage_verdicts(packet, reply)
+    bad_candidate = reply["candidates"][0]["id"]
+    assert set(owing) == {"claim:limit", bad_candidate}
+    assert [claim.id for claim in recall.claims] == ["claim:total"]
+    assert [candidate.id for candidate in recall.candidates] == [reply["candidates"][1]["id"]]
+    reduced = reduce_packet(packet, recall)
+    assert reduced is not None and reduced.digest != packet.digest
+    assert [claim.id for claim in reduced.claims] == ["claim:limit"]
+    # A repair supplies a judgment, rather than tooling inventing a replacement status.
+    corrected = judged(packet)
+    assert merge_verdicts(packet, recall, corrected).verdicts == corrected
+
+
 def test_an_empty_memo_hands_back_the_packet_unchanged(tmp_path: Path, memo: VerdictMemo) -> None:
     packet = packet_for(tmp_path)
     recall = memo.recall(packet)
