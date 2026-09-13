@@ -627,6 +627,15 @@ class RecharterResult(ResearchResult):
 # ── a state parameter ───────────────────────────────────────────────────────
 
 
+def _one_more(grants: int, spent: int, cap: int) -> int:
+    """The grant count that authorizes exactly one more spend past `spent` under `cap`.
+
+    The guard blocks while `spent >= cap + grants`, so this is the smallest count that
+    lets one more through — never lower than what was already granted.
+    """
+    return max(grants, spent - cap) + 1
+
+
 class Budget(BaseModel):
     """The loop's three counters, travelling as one parameter.
 
@@ -674,7 +683,11 @@ class Budget(BaseModel):
     # operator's answer *is* the authorization to keep going. Without somewhere to
     # record that, the resume re-enters the capped state, re-reads the same count and
     # blocks again — a loop with a human in it, which is worse than the give-up it
-    # replaced. Each grant raises the ceiling by one, so the next block is a real one.
+    # replaced. A grant puts the ceiling one past what the *program* has spent, so the
+    # next block is a real one. It cannot be a flat `+1`: the spend is program-scoped
+    # (it includes every earlier run's ledger) while the grants live in this run's
+    # checkpoint, so a program already past its cap when this run started would re-park
+    # on the very answer that authorized it, one grant short for every review over.
 
     #: Extra lead reviews an operator has authorized past `MAX_LEAD_REVIEWS`.
     lead_review_grants: int = 0
@@ -700,13 +713,17 @@ class Budget(BaseModel):
     def rescoped(self) -> Budget:
         return self.model_copy(update={"rescopes": self.rescopes + 1})
 
-    def granted_review(self) -> Budget:
+    def granted_review(self, spent: int, cap: int) -> Budget:
         """An operator answered the lead-review block: one more lap is authorized."""
-        return self.model_copy(update={"lead_review_grants": self.lead_review_grants + 1})
+        return self.model_copy(
+            update={"lead_review_grants": _one_more(self.lead_review_grants, spent, cap)}
+        )
 
-    def granted_extension(self) -> Budget:
+    def granted_extension(self, spent: int, cap: int) -> Budget:
         """An operator answered the extension block: one more extension is authorized."""
-        return self.model_copy(update={"extension_grants": self.extension_grants + 1})
+        return self.model_copy(
+            update={"extension_grants": _one_more(self.extension_grants, spent, cap)}
+        )
 
     def reviewed(self) -> Budget:
         return self.model_copy(update={"lead_reviews": self.lead_reviews + 1})
@@ -727,10 +744,12 @@ class Budget(BaseModel):
     def rechartered(self) -> Budget:
         return self.model_copy(update={"recharters": self.recharters + 1})
 
-    def granted_program_review(self) -> Budget:
+    def granted_program_review(self, spent: int, cap: int) -> Budget:
         """An operator answered the program-review block: one more is authorized."""
         return self.model_copy(
-            update={"program_review_grants": self.program_review_grants + 1}
+            update={
+                "program_review_grants": _one_more(self.program_review_grants, spent, cap)
+            }
         )
 
 

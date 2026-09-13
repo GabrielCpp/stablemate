@@ -935,6 +935,31 @@ def test_the_lead_review_cap_parks_on_an_operator_rather_than_ending_the_run():
     assert outcome.agent.counts()["research-lead-review"] == 0, outcome.agent.counts()
 
 
+def test_one_answer_authorizes_a_lead_review_for_a_program_already_past_the_cap():
+    """The spend is program-scoped and the grants are not: a run started on a ledger two
+    reviews over the cap has to be let through by the one answer that says "one more",
+    not re-park on it until the operator has answered once per review over."""
+    released = _run(
+        _script(
+            **{
+                "select-next-gate": [
+                    {"gate_id": "G1", "gate_doc_path": "g.md", "program_killed": True},
+                    {"gate_id": "none"},
+                ],
+                "research-lead-review": [{"verdict": "revive", "kill_was_correct": False}],
+                "revive-gate": [{"status": "ok", "gate_id": "G1"}],
+            }
+        ),
+        ledger="status: active\nlead_reviews: 6\n",
+        caps={"MAX_LEAD_REVIEWS": 4},
+        answer="one more",
+    )
+
+    assert released.agent.counts()["research-lead-review"] == 1, released.agent.counts()
+    assert len(released.waited) == 1, released.waited
+    assert "lead_reviews: 7" in released.ledger, released.ledger
+
+
 def test_the_extension_cap_parks_instead_of_halting_the_program():
     """A program at the extension cap is usually deferring a verdict it could give, so
     the question goes to a person — and the run stays resumable rather than dying."""
@@ -1350,6 +1375,26 @@ def test_the_program_review_cap_parks_and_an_answer_authorizes_one_more():
     )
     assert released.agent.counts()["program-review"] == 1, released.agent.counts()
     assert "program_reviews: 9" in released.ledger, released.ledger
+
+
+def test_one_answer_authorizes_a_program_review_for_a_program_already_past_the_cap():
+    released = _run(
+        _script(
+            **{
+                "select-next-gate": [
+                    {"gate_id": "G1", "gate_doc_path": "g.md", "program_killed": True},
+                    {"gate_id": "none"},
+                ],
+                "program-review": [{"verdict": "bank"}],
+            }
+        ),
+        ledger="status: active\nprogram_reviews: 10\n",
+        answer="one more",
+    )
+
+    assert released.agent.counts()["program-review"] == 1, released.agent.counts()
+    assert len(released.waited) == 1, released.waited
+    assert "program_reviews: 11" in released.ledger, released.ledger
 
 
 def test_a_periodic_review_fires_after_enough_gates_and_the_clock_restarts():

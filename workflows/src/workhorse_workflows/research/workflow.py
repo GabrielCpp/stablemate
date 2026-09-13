@@ -1221,7 +1221,7 @@ class Research(Workflow):
                 failed_criteria=failed_criteria or [],
                 notes=notes,
                 escalation=escalation,
-                budget=budget.granted_review(),
+                budget=budget.granted_review(lead_reviews, MAX_LEAD_REVIEWS),
                 dossier=dossier,
             )
         if not dossier:
@@ -1416,7 +1416,9 @@ class Research(Workflow):
                 notes=notes,
                 escalation=escalation,
                 review=review,
-                budget=budget.granted_program_review(),
+                budget=budget.granted_program_review(
+                    program_reviews, MAX_PROGRAM_REVIEWS
+                ),
             )
         dossier = self._dossier(budget)
         rendered = render_dossier(dossier)
@@ -1654,7 +1656,7 @@ class Research(Workflow):
                     "far is bankable. Answering authorizes exactly one more "
                     "extension.",
                     self.goal_review,
-                    budget=budget.granted_extension(),
+                    budget=budget.granted_extension(extensions_spent, MAX_EXTENSIONS),
                 )
             return Continue(
                 review,
