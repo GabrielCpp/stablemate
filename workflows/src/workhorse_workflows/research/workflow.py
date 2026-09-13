@@ -1292,8 +1292,16 @@ class Research(Workflow):
         gate_doc_path: str,
         review: LeadReview,
         budget: Budget = Budget(),
+        escalation: str = "",
+        notes: str = "",
     ) -> Continue:
-        """Re-scope a gate that was killed for the wrong reason, then loop."""
+        """Re-scope a gate that was killed or blocked for the wrong reason, then loop.
+
+        `escalation` and `notes` are what the gate was stopped on. A gate blocked on a
+        prerequisite no ladder row owns cannot be fixed by re-scoping it — selection
+        picks it straight back up and it blocks on the same missing work — so the
+        reviser is told the block and may write that prerequisite as a gate ahead of it.
+        """
         result = self.agent(
             "prompts/revive-gate.md",
             returns=ReviveResult,
@@ -1301,10 +1309,17 @@ class Research(Workflow):
             # same tier as the review that drove it.
             power="max",
             args=self._program_args(
-                gate_id=gate_id, gate_doc_path=gate_doc_path, lead_review=review
+                gate_id=gate_id,
+                gate_doc_path=gate_doc_path,
+                lead_review=review,
+                escalation=escalation,
+                notes=notes,
             ),
         )
-        self._history("revive", gate_id, note=result.status)
+        note = result.status
+        if result.prerequisite_gate_id:
+            note += f"; prerequisite {result.prerequisite_gate_id} ahead of it"
+        self._history("revive", gate_id, note=note)
         spent = budget.reviewed()
         self._persist(spent)
         self._publish(f"revive {gate_id} after lead review")
@@ -1459,6 +1474,8 @@ class Research(Workflow):
                     gate_id=gate_id,
                     gate_doc_path=gate_doc_path,
                     review=review,
+                    escalation=escalation,
+                    notes=notes,
                     budget=spent,
                 )
             if origin == "periodic":

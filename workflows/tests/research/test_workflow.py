@@ -582,6 +582,44 @@ def test_a_blocked_design_goes_to_the_lead_and_never_reaches_the_engineer():
     assert outcome.checkpoints[-1]["params"]["budget"]["build_fixes"] == 0
 
 
+def test_a_revived_block_tells_the_reviser_what_the_gate_was_blocked_on():
+    """A gate revived after a block is waiting on something, and only the block says what.
+
+    The revival used to receive the lead's verdict alone. When that block was a
+    prerequisite no ladder row owned, the reviser could only re-scope the same gate:
+    selection picked it again, the design blocked on the same missing work, and the
+    program spent its reviews re-opening one gate while every review said "do the
+    prerequisite first". The reviser is the one turn that may write that prerequisite
+    as a gate of its own, and it cannot do that without being told what blocked.
+    """
+    outcome = _run(
+        _script(
+            **{
+                "select-next-gate": [
+                    {"gate_id": "G2", "gate_doc_path": f"{PROGRAM_DIR}/gates/G2.md"},
+                    {"gate_id": "none"},
+                ],
+                "design-experiment": [
+                    {"status": "blocked", "notes": "the training pools G2 needs are not built"},
+                    {"status": "ok", "memory_mb": 4000, "estimate_s": 600.0},
+                ],
+                "research-lead-review": [{"verdict": "revive", "apparatus_fix": "build pools"}],
+                "revive-gate": [
+                    {"status": "reopened", "gate_id": "G2", "prerequisite_gate_id": "G1b"}
+                ],
+                "gate-check": [{"status": "approved"}],
+            }
+        )
+    )
+
+    revived = outcome.agent.args_for("revive-gate")
+    assert len(revived) == 1, outcome.agent.counts()
+    assert revived[0]["escalation"] == "design_blocked", revived
+    assert "training pools" in revived[0]["notes"], revived
+    events = [(h["event"], h.get("note", "")) for h in outcome.history]
+    assert any(e == "revive" and "G1b" in note for e, note in events), events
+
+
 def test_a_blocked_build_goes_to_the_lead_without_touching_the_runner():
     """Same owner from the engineer's side: a prerequisite that is not on disk is not
     repaired by another build lap, and rehearsing whatever partial script exists proves

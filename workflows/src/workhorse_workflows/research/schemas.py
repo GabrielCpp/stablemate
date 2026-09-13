@@ -207,6 +207,9 @@ class ReviveResult(ResearchResult):
     finding_path: str = ""
     progress_updated: bool = False
     gate_doc_rescoped: bool = False
+    #: The gate this revival wrote ahead of the revived one, when what blocked it was
+    #: prerequisite work no not-yet-PASS ladder row owned. Empty when none was needed.
+    prerequisite_gate_id: str = ""
 
 
 class NewDirectionResult(ResearchResult):

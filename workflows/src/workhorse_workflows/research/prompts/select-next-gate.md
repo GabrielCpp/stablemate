@@ -21,7 +21,14 @@ Program dossier, in brief (computed by code — target, latest metric, counts, t
 2. Read `{{ progress_path }}` for the status of each gate (if it does not exist
    yet, treat all gates as not-started).
 3. Pick the lowest gate in the ladder that is **not yet PASS/WEAK_PASS** and whose
-   dependencies (per the README) are satisfied. Two rows outrank that order:
+   dependencies (per the README) are satisfied. A dependency is satisfied only when
+   the work it names is recorded **done**: a dependency on a phase, part or deliverable
+   of a PASS gate whose own row or progress entry records that part as queued, pending
+   or not started is **not** satisfied, and the gate waiting on it is not selectable.
+   If that leaves no selectable gate while not-yet-PASS gates remain, select the
+   blocked gate anyway and say in `rationale` which unrecorded work it waits on — the
+   design will report it blocked and the research lead writes that work as a gate.
+   Two rows outrank that order:
    - a **probe** gate (id `P<n>`, written by a program review) with status
      `NOT STARTED` is selected before any ladder gate;
    - a gate whose status reads `REOPENED (score from cache)` is selected as it stands

@@ -141,6 +141,18 @@ exits 0 and writes `status: "blocked"`, then a submission with no command — so
 refusal is routed to the lead at the state that produced it, and the `n=1` rehearsal
 itself requires the result's `status` to be `ok`, not merely the file to exist.
 
+When the lead revives a blocked gate, `revive` is handed the block itself
+(`escalation`, `notes`), not only the lead's verdict. A block on a **prerequisite no
+not-yet-PASS ladder row owns** — data not produced, a phase of a passed gate still
+queued — cannot be cleared by re-scoping the gate: the loop runs only ladder gates, so
+selection picks the same gate back up and it blocks on the same missing work, lap
+after lap, until the review caps park the program. The reviser therefore writes that
+work as its own gate ahead of the blocked one (README row, gate doc, `NOT STARTED`
+progress entry, the blocked gate's dependency moved onto it) and returns its id as
+`prerequisite_gate_id`, which lands in the `revive` history note. `select-next-gate`
+counts a dependency satisfied only when the work it names is recorded done, so a PASS
+row that records the depended-on phase as queued does not release the gate behind it.
+
 ---
 
 ## The two contracts
