@@ -1181,6 +1181,24 @@ def _drive_stream_jsonl(lines, on_event):
         )
 
 
+def test_a_line_that_parses_but_is_not_an_object_is_text():
+    """A scalar JSON line is a CLI's stray text, not an event, and must not reach `on_event`.
+
+    Codex echoed an apply_patch failure's hunk to stdout; a hunk line that happened to parse
+    as JSON went to `_on_event`, whose `event.get("type")` raised and ended the run.
+    """
+    seen = []
+
+    def on_event(event, state, node_id):
+        seen.append(event)
+
+    state = _drive_stream_jsonl(
+        ['{"type":"step"}\n', '42\n', '"loading"\n', '[1, 2]\n', 'null\n'], on_event,
+    )
+    assert seen == [{"type": "step"}]
+    assert state.diagnostics[-4:] == ["42", '"loading"', "[1, 2]", "null"]
+
+
 def test_opencode_cap_log_line_aborts_stream_early():
     """A cap surfaced as a raw --print-logs ERROR line aborts the stream immediately
     (timed_out flagged so the runner waits the window out) instead of waiting ~3600s

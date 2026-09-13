@@ -82,13 +82,18 @@ def stream_jsonl(
         if not line:
             return False
         before = len(state.diagnostics)
+        # An event is a JSON *object*, not any line that parses: a CLI echoing a patch
+        # hunk or a log fragment can print `42` or `"loading"`, and handing that to an
+        # adapter that reads `event.get(...)` killed the whole run on one stray line.
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
+            event = None
+        if isinstance(event, dict):
+            on_event(event, state, node_id)
+        else:
             print(f"[{node_id}] {line}", flush=True)
             state.diagnostics.append(line)
-        else:
-            on_event(event, state, node_id)
         # As soon as a recoverable provider failure appears — whether as a raw log
         # line or a structured error event — abort the CLI's internal retry loop and
         # hand recovery to Workhorse's bounded backoff policy. Caps retain their
