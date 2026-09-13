@@ -423,6 +423,13 @@ def assess_audit(
             packet_digest="",
         ))
     grouped: dict[str, list[str]] = defaultdict(list)
+    # A file too big for one packet crosses its candidate chunks with its claim chunks, so
+    # one candidate is reviewed beside each claim chunk and only some of them hold the claim
+    # that documents it. "missing" is what one packet saw, "covered" is what the book says:
+    # a candidate any packet covers is not missing, and a repair queued for it has nothing to
+    # write and comes back every pass.
+    missing: dict[str, tuple[str, str]] = {}
+    covered: set[str] = set()
     memo = verdict_memo(scope, contract)
     memo_hits = memo_partial = 0
     for packet in selected:
@@ -456,11 +463,14 @@ def assess_audit(
                     explanation=candidate.explanation,
                     packet_digest=packet.digest,
                 ))
-            elif candidate.status == "missing":
+            elif candidate.status == "covered":
+                covered.add(candidate.id)
+            elif candidate.status == "missing" and candidate.id not in missing:
                 evidence = candidates[candidate.id]
-                grouped[evidence.path].append(
+                missing[candidate.id] = (
+                    evidence.path,
                     f"Missing behavior {candidate.id}: {candidate.explanation}\n"
-                    f"Source {evidence.path}:{evidence.start_line}\n{evidence.snippet}"
+                    f"Source {evidence.path}:{evidence.start_line}\n{evidence.snippet}",
                 )
         for claim in report.verdicts.claims:
             if claim.status == "unresolved":
@@ -477,6 +487,9 @@ def assess_audit(
                     f"{claim.status}: {claim.id}: {claim.explanation}\n"
                     f"Node {claims[claim.id].node}: {claims[claim.id].text}\n{evidence_text}"
                 )
+    for candidate_id, (path, finding) in missing.items():
+        if candidate_id not in covered:
+            grouped[path].append(finding)
     for file in prepared.undocumented:
         symbols = ", ".join(f"{symbol} (line {line})" for symbol, line
                             in zip(file.exported_symbols, file.first_lines, strict=False))

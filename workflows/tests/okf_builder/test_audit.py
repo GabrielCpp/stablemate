@@ -971,3 +971,49 @@ def test_conflicting_verdicts_are_repaired_without_reclassifying_them(
     if repair_valid:
         report = json.loads(receipt.read_text())
         assert report["verdicts"]["candidates"][0]["status"] == "missing"
+
+
+class SiblingCoverReviewer:
+    """Covers every candidate in the packet that carries the claim naming it, and calls the
+    same candidates missing in each sibling packet whose claim chunk is about something else."""
+
+    def __init__(self) -> None:
+        self.packets: list[AuditPacket] = []
+
+    def __call__(self, node: Any, ctx: Any, workflow_dir: Path, *args: Any, **kwargs: Any) -> Any:
+        packet = AuditPacket.model_validate_json(ctx.as_dict()["packet"])
+        self.packets.append(packet)
+        documents = any("returns the amount" in claim.text for claim in packet.claims)
+        return "scripted", AuditVerdicts(
+            claims=tuple(ClaimVerdict(
+                id=claim.id, status="supported", candidate_ids=tuple(c.id for c in packet.candidates),
+                explanation="The source does this",
+            ) for claim in packet.claims),
+            candidates=tuple(CandidateVerdict(
+                id=candidate.id, status="covered" if documents else "missing",
+                explanation="Documented" if documents else "No claim in this packet describes it",
+            ) for candidate in packet.candidates),
+        ).model_dump(mode="json")
+
+
+def test_a_candidate_covered_in_a_sibling_packet_is_not_queued_as_missing(
+    booked: Path, tmp_path: Path,
+) -> None:
+    """An oversized file crosses its candidate chunks with its claim chunks, so one
+    candidate is reviewed beside each claim chunk and only one of them holds the claim that
+    documents it. The others say "missing" about what they cannot see; queueing that sent a
+    documented behavior to a repair that has nothing to write, every pass."""
+    doc = booked / "docs/features/acme/concepts/charge.md"
+    doc.write_text(doc.read_text() + "\n- consistency: Charge returns the amount it was given.\n"
+                   "- idempotency: Charging twice charges once.\n", encoding="utf-8")
+    agent = SiblingCoverReviewer()
+    env = audit_env(tmp_path, agent)
+    result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme",
+                         packet_max_items=2), env)
+    assert isinstance(result, BehaviorAuditOutcome)
+    candidate_packets = [packet for packet in agent.packets if packet.candidates]
+    assert len({len(packet.claims) for packet in candidate_packets}) == 1
+    assert len(candidate_packets) > len({c.id for p in candidate_packets for c in p.candidates})
+    statuses = {verdict.status for report in result.reports for verdict in report.verdicts.candidates}
+    assert statuses == {"covered", "missing"}, "the sibling packets really did disagree"
+    assert not result.repairs
