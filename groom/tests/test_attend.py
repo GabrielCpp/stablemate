@@ -15,6 +15,7 @@ Run: uv run pytest groom/tests/test_attend.py
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 import sys
@@ -30,7 +31,8 @@ from litestar.testing import TestClient
 
 from groom import app as groom_app
 from groom import attend, attend_transcript, discovery, state, store
-from groom.models import GateInfo, WorkflowContainer, WorkflowState
+from groom.alerts import Alert
+from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 
 WAIT_S = 5.0
 
@@ -735,3 +737,31 @@ def test_the_prompt_hands_over_the_groom_reads(tmp_path):
     prompt = job.prompt()
     for read in ("groom logs --run", "groom loops --run", "groom transcript ls --run"):
         assert read in prompt
+
+
+@pytest.mark.parametrize("terminal", ["reload", "interrupted", "ended"])
+def test_a_run_that_ended_on_purpose_is_not_attended_as_a_death(
+    monkeypatch: pytest.MonkeyPatch, terminal: str,
+):
+    """A `--core` reload or a `switch-cli` re-execs the run, so its root span ends `reload`.
+
+    The exit-code path already excludes `RELOAD_EXIT_CODE`; the ENDED path read the same
+    ending from the span and dispatched a death attendant at a run that was still going.
+    """
+    deaths: list[str] = []
+    monkeypatch.setattr(state, "RUNS", {"r1": RunTelemetry(run_id="r1", terminal=terminal)})
+    monkeypatch.setattr(groom_app, "_attend_death", deaths.append)
+    monkeypatch.setattr(groom_app.notify, "push", lambda title, message: None)
+
+    asyncio.run(groom_app._dispatch_alerts([Alert("r1", "ENDED", "run ended")]))
+    assert deaths == []
+
+
+def test_a_run_that_ended_failed_is_attended_as_a_death(monkeypatch: pytest.MonkeyPatch):
+    deaths: list[str] = []
+    monkeypatch.setattr(state, "RUNS", {"r1": RunTelemetry(run_id="r1", terminal="failed")})
+    monkeypatch.setattr(groom_app, "_attend_death", deaths.append)
+    monkeypatch.setattr(groom_app.notify, "push", lambda title, message: None)
+
+    asyncio.run(groom_app._dispatch_alerts([Alert("r1", "ENDED", "run ended")]))
+    assert deaths == ["r1"]

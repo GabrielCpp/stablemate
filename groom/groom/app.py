@@ -845,9 +845,12 @@ async def push_exited(data: dict) -> dict:
 
 #: Endings that are not a death to attend. ``RELOAD_EXIT_CODE`` is the supervisor
 #: restarting the run on purpose — the thing an attendant does itself — and an
-#: interrupt is a person who has already decided.
+#: interrupt is a person who has already decided. The terminal set says the same thing
+#: for a native run, whose ending arrives as its root span: a ``--core`` reload or a
+#: ``switch-cli`` re-execs the process and ends that span ``reload`` — the same restart
+#: ``RELOAD_EXIT_CODE`` names, and the run is still going.
 _NOT_A_DEATH_EXIT = frozenset({0, reload_mod.RELOAD_EXIT_CODE})
-_NOT_A_DEATH_TERMINAL = frozenset(alerts.CLEAN_TERMINALS) | {"interrupted"}
+_NOT_A_DEATH_TERMINAL = frozenset(alerts.CLEAN_TERMINALS) | {"interrupted", "reload"}
 
 
 def _attend_death(container_id: str) -> None:
