@@ -24,6 +24,16 @@ def test_text_is_identity_not_display() -> None:
     assert one.text() == two.text() == 'http_status(code=409, title="Conflict")'
 
 
+def test_a_soft_wrapped_bullet_parses_as_markdown_renders_it() -> None:
+    """Books wrap bullets at a column; the break is a space to every reader but Python's
+    grammar, so a wrapped `subject="…"` must bind as the one-line call it renders as."""
+    call = checks.parse_check('persists(subject="the id resolved for a known,\n  verified email")')
+    assert isinstance(call, checks.CheckCall)
+    assert call.text() == 'persists(subject="the id resolved for a known, verified email")'
+    assert checks.expected_form('persists(subject="a,\n  b", nope=1)') == \
+        checks.CHECK_BY_NAME["persists"].signature()
+
+
 def test_list_arguments_round_trip() -> None:
     call = checks.parse_check('unchanged(subject="manifest", except_fields=["pages.a.fr.slug"])')
     assert isinstance(call, checks.CheckCall)

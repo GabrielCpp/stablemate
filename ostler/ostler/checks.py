@@ -28,6 +28,7 @@ parentheses.
 from __future__ import annotations
 
 import ast
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -270,7 +271,7 @@ def parse_check(value: str) -> CheckCall | str:
     of a permissive grammar here is a declaration nobody can execute reaching the harness.
     Only literals are admitted — there is nothing to evaluate, and nothing that could be.
     """
-    text = value.strip()
+    text = _unwrap(value)
     if not text:
         return "empty"
     try:
@@ -310,6 +311,21 @@ def parse_check(value: str) -> CheckCall | str:
     return bind(name, args)
 
 
+def _unwrap(value: str) -> str:
+    """The bullet's value as markdown reads it: every soft line break is one space.
+
+    A bullet is prose first, and books wrap prose at a column — `ostler fmt` keeps the break,
+    so a long `subject="…"` arrives here split across lines. CommonMark renders that break
+    as a space; Python's grammar rejects it inside a string literal. Parsing the rendered
+    value rather than the raw bytes is what keeps a legal wrap from reading as a malformed
+    check that an author then unwraps by hand, one node at a time.
+    """
+    return _SOFT_BREAK.sub(" ", value).strip()
+
+
+_SOFT_BREAK = re.compile(r"[ \t]*\n[ \t]*")
+
+
 def _not_a_call(text: str) -> str:
     """Why this value is not a check — naming the likeliest mistake when it is recognisable.
 
@@ -342,7 +358,7 @@ def expected_form(value: str) -> str:
     signature is the answer; when it is not, the whole vocabulary is, because the author has
     not yet chosen from it.
     """
-    text = value.strip()
+    text = _unwrap(value)
     try:
         expression = ast.parse(text, mode="eval").body
     except SyntaxError:
