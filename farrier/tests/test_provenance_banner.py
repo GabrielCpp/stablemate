@@ -5,12 +5,12 @@ the copy and loses the change on the next `make agent-install`. So each generate
 SKILL.md names its source of truth in the openskill `metadata` field
 (openskill.sh/docs/creators/skill-format).
 
-Generated Claude commands and Codex prompts carry the same provenance metadata.
+All generated prompt targets carry the same provenance metadata.
 A Claude command also needs a `description` in its front matter — without one,
 claude-code-acp advertises nothing over ACP and the command never appears in Zed's
 autocomplete. So the claude target emits a header (description / argument-hint /
 model / allowed-tools) plus the same `metadata:` provenance block skills get. Codex
-uses the same builder; Copilot prompts retain their source headers.
+uses the same builder; Copilot retains native fields alongside the metadata.
 
 Aggregated instruction files (localInstructions → CLAUDE.md) cannot carry front
 matter — Claude injects them verbatim. There the provenance is a block-level HTML
@@ -133,8 +133,13 @@ def _render_claude_command(tmp_path: Path, source: Source) -> str:
 
 
 @pytest.mark.parametrize("with_header", [False, True])
-def test_codex_prompt_carries_description_and_provenance(
-    tmp_path: Path, with_header: bool
+@pytest.mark.parametrize("target,directory,suffix", [
+    ("claude", ".claude/commands", ".md"),
+    ("codex", ".agents/prompts", ".prompt.md"),
+    ("copilot", ".github/prompts", ".prompt.md"),
+])
+def test_prompt_carries_description_and_provenance(
+    tmp_path: Path, with_header: bool, target: str, directory: str, suffix: str
 ) -> None:
     body = "# Plan a story\n\nDo the planning.\n"
     header = (
@@ -144,9 +149,9 @@ def test_codex_prompt_carries_description_and_provenance(
     )
     source = _prompt_source(tmp_path, header + body)
     outputs = _renderer_with(tmp_path, prompts=[source]).render(
-        agents={"codex": True}, roots=set()
+        agents={target: True}, roots=set()
     )
-    dest = ".agents/prompts/demo-stablemate-plan-story.prompt.md"
+    dest = f"{directory}/demo-stablemate-plan-story{suffix}"
     content = outputs[tmp_path / dest]
     metadata = frontmatter_mapping(content)
     assert metadata.get("description") == (
@@ -289,11 +294,13 @@ def test_claude_pointer_imports_the_readme_alongside_the_body(tmp_path):
     assert "@README.md" in content
 
 
-def test_generated_copilot_prompt_with_front_matter_untouched(tmp_path):
+def test_generated_copilot_prompt_preserves_native_header_fields(tmp_path):
     prompt_file = tmp_path / "library" / "prompts" / "qa" / "plan-qa.prompt.md"
     prompt_file.parent.mkdir(parents=True)
     prompt_file.write_text(
-        "---\nname: plan-qa\ndescription: Plan QA\n---\n\n## Steps\n", encoding="utf-8"
+        "---\nname: plan-qa\ndescription: Plan QA\nagent: agent\n"
+        "tools: [search, read]\nmodel: [model-a, model-b]\n---\n\n## Steps\n",
+        encoding="utf-8"
     )
     source = Source(
         kind="prompt", path=prompt_file, rel="qa/plan-qa.prompt.md", id="qa/plan-qa"
@@ -304,6 +311,10 @@ def test_generated_copilot_prompt_with_front_matter_untouched(tmp_path):
         roots=set(),
     )
     content = next(c for p, c in outputs.items() if p.name.endswith(".prompt.md"))
-    assert "generated_by" not in content
-    assert "metadata:" not in content
+    header = frontmatter_mapping(content)
+    assert header["name"] == "plan-qa"
+    assert header["agent"] == "agent"
+    assert header["tools"] == ["search", "read"]
+    assert header["model"] == ["model-a", "model-b"]
+    assert header["metadata"]["generated_by"] == "farrier"
     assert "<!--" not in content

@@ -9,12 +9,14 @@ import json
 from pathlib import Path
 from typing import Any
 
+import yaml
 from jinja2 import Environment, StrictUndefined
 from jinja2 import UndefinedError
 
 from farrier.frontmatter import (
     first_heading,
     front_matter_end,
+    frontmatter_mapping,
     frontmatter_tags,
     normalize_tags,
     split_front_matter,
@@ -97,7 +99,7 @@ class Rendered(str):
 # format: openskill.sh/docs/creators/skill-format); Claude commands carry the same
 # block — the slash-command parser (and claude-code-acp) ignores keys it does not
 # recognise, so `metadata` is inert to the agent. Codex prompts share this header;
-# Copilot prompts retain their source headers. Aggregated Claude instructions get a banner
+# Copilot prompts carry it alongside their native fields. Claude instructions get a banner
 # (see local_instruction_banner).
 def skill_metadata_block(
     source: Source,
@@ -721,7 +723,7 @@ class Renderer:
         return first_heading(body, public_name(self.prefix, source))
 
     def generated_command(self, source: Source, target: str, output_path: Path) -> str:
-        """Render a library prompt into a Claude or Codex command with front matter.
+        """Render a library prompt with target-specific fields and shared provenance.
 
         Without a `description` in the front matter, claude-code-acp has nothing to
         advertise over ACP and the command never appears in Zed's autocomplete. So,
@@ -729,7 +731,8 @@ class Renderer:
         parser recognises (description / argument-hint / model / allowed-tools) plus
         the same `metadata:` provenance block skills get. Farrier-internal keys
         (`agent`, `name`) are intentionally dropped: the command name comes from the
-        filename, and `agent` only selected the backend at render time.
+        filename, and `agent` only selected the backend at render time. Copilot
+        retains its native header fields and YAML types alongside the provenance.
         """
         header, body = split_front_matter(source.path.read_text(encoding="utf-8"))
         header = {
@@ -737,20 +740,31 @@ class Renderer:
             for key, value in header.items()
         }
         body = self.render_templates(body, target, output_path).strip()
-        lines = [
-            "---",
-            f"description: {yaml_quote(self.command_description(source, header, body))}",
-        ]
-        # Pass through the optional slash-command keys when the library author set
-        # them (accepting both kebab and camelCase spellings in the source).
-        for key, aliases in (
-            ("argument-hint", ("argument-hint", "argumentHint")),
-            ("model", ("model",)),
-            ("allowed-tools", ("allowed-tools", "allowedTools")),
-        ):
-            value = next((header[a] for a in aliases if header.get(a)), None)
-            if value:
-                lines.append(f"{key}: {yaml_quote(value)}")
+        if target == "copilot":
+            rendered = self.render_templates(
+                source.path.read_text(encoding="utf-8"), target, output_path
+            )
+            native_header = frontmatter_mapping(rendered)
+            native_header.pop("metadata", None)
+            native_header["description"] = self.command_description(source, header, body)
+            lines = ["---", yaml.safe_dump(
+                native_header, sort_keys=False, allow_unicode=True
+            ).rstrip("\n")]
+        else:
+            lines = [
+                "---",
+                f"description: {yaml_quote(self.command_description(source, header, body))}",
+            ]
+            # Pass through the optional slash-command keys when the library author set
+            # them (accepting both kebab and camelCase spellings in the source).
+            for key, aliases in (
+                ("argument-hint", ("argument-hint", "argumentHint")),
+                ("model", ("model",)),
+                ("allowed-tools", ("allowed-tools", "allowedTools")),
+            ):
+                value = next((header[a] for a in aliases if header.get(a)), None)
+                if value:
+                    lines.append(f"{key}: {yaml_quote(value)}")
         dest_rel = self.dest_rel(output_path)
         lines.append(
             skill_metadata_block(
@@ -779,10 +793,9 @@ class Renderer:
 
             for source in self.prompts:
                 output_path = self.prompt_output_path(source.id, "copilot")
-                content = self.render_templates(
-                    source.path.read_text(encoding="utf-8"), "copilot", output_path
+                outputs[output_path] = self.generated_command(
+                    source, "copilot", output_path
                 )
-                outputs[output_path] = content
 
             for root in roots:
                 # Presence was validated up front (see the roots check below), so a miss
