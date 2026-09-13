@@ -287,11 +287,15 @@ def _pending_gate(path: Path, kind: str, since: str) -> list[dict[str, object]]:
     """
     if answered(path):
         return []
+    return [{"path": str(path), "question": _gate_question(path), "kind": kind, "since": since}]
+
+
+def _gate_question(path: Path) -> str:
+    """Read the durable question, including any earlier exchanges on this gate."""
     try:
-        question = path.read_text()
+        return path.read_text(encoding="utf-8")
     except OSError:
-        question = ""
-    return [{"path": str(path), "question": question, "kind": kind, "since": since}]
+        return ""
 
 
 def _consume_answer(
@@ -453,7 +457,7 @@ def drive(
                 parked = False
             if parked:
                 env.log.info("[workhorse] resume → still parked on %s", gate)
-                with otel.wait("operator", state):
+                with otel.wait("operator", state, str(gate), _gate_question(gate)):
                     _park(gate, env, kind="operator")
     else:
         wf._seal(wf.setup())
@@ -608,7 +612,14 @@ def drive(
             env.log.info(
                 "[workhorse] await  → %s %s%s", verb, outcome.path, _because(outcome.reason)
             )
-            with otel.wait(outcome.kind, spec.name):
+            # Publish the written gate so pre-authored questions and earlier
+            # exchanges reach the detail pane along with this wait's question.
+            with otel.wait(
+                outcome.kind,
+                spec.name,
+                str(outcome.path),
+                _gate_question(outcome.path) if outcome.kind == "operator" else "",
+            ):
                 _park(outcome.path, env, kind=outcome.kind)
         state, params, why = outcome.state, outcome.params, outcome.reason
 

@@ -134,6 +134,7 @@ class RecordingTelemetry(otel._NullTelemetry):
         self.cuts: list[tuple[str, str]] = []
         #: Completed wait boundaries: action, token, kind/outcome, node.
         self.waits: list[tuple[str, int, str, str]] = []
+        self.gates: list[tuple[str, str]] = []
         #: One entry per ``turn_event``: name, error flag, attributes.
         self.events: list[tuple[str, bool, dict[str, Any]]] = []
         #: Agent-turn span boundaries: the node each turn opened on, and the error each
@@ -201,9 +202,16 @@ class RecordingTelemetry(otel._NullTelemetry):
     ) -> None:
         self.ended.append(status)
 
-    def wait_start(self, kind: str, node_id: str) -> int:
+    def wait_start(
+        self,
+        kind: str,
+        node_id: str,
+        gate_path: str = "",
+        gate_question: str = "",
+    ) -> int:
         self._wait_token += 1
         self.waits.append(("start", self._wait_token, kind, node_id))
+        self.gates.append((gate_path, gate_question))
         return self._wait_token
 
     def wait_end(self, token: int, outcome: str = "completed") -> None:

@@ -22,6 +22,12 @@ import socket
 import tempfile
 from pathlib import Path
 
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.common.metrics_encoder import encode_metrics
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from opentelemetry.sdk.trace import TracerProvider
+
 from _fakes import FakeBackend, FakeClock, RecordingTelemetry
 from workhorse import artifacts, otel, records, reload
 from workhorse.config_run import AgentResilience
@@ -467,6 +473,53 @@ def test_an_interrupted_node_records_why_on_its_span():
     t.record_event(_event("plan", 1, "error", error="KeyboardInterrupt"))
     span = tracer.by_name("plan")
     assert span.events[-1] == ("error", {"error": "KeyboardInterrupt"})
+
+
+def test_operator_wait_keeps_gate_attributes_until_its_metric_series_closes():
+    t, tracer, meter, _ = _telemetry()
+    t.set_labels({"activity": "review"})
+    token = t.wait_start("operator", "review", "/run/question.md", "Which branch?")
+    attrs = meter.instruments["workhorse.wait.active"].records[-1][2]
+    assert attrs["gate_path"] == "/run/question.md"
+    assert attrs["gate_question"] == "Which branch?"
+    # Changing labels must not strand the original wait's active series at 1.
+    t.set_labels({"activity": "answer"})
+    t._beat_once()
+    assert meter.instruments["workhorse.wait.elapsed_s"].records[-1][2] == attrs
+    t.wait_end(token)
+    assert meter.instruments["workhorse.wait.active"].records[-1] == ("set", 0, attrs)
+    assert meter.instruments["workhorse.wait.elapsed_s"].records[-1][2] == attrs
+    span = tracer.by_name("wait:operator")
+    assert span.attrs["workhorse.gate_question"] == "Which branch?"
+
+
+def test_exported_operator_wait_has_no_active_series_after_answer():
+    reader = InMemoryMetricReader()
+    meters = MeterProvider(metric_readers=[reader])
+    traces = TracerProvider()
+    telemetry = otel._Telemetry(trace, traces.get_tracer("test"), meters.get_meter("test"),
+                                lambda: None, 30)
+    try:
+        token = telemetry.wait_start("operator", "review", "/run/gate.md", "Proceed?")
+        # Collect while blocked, as a running collector would before the answer.
+        assert reader.get_metrics_data() is not None
+        telemetry._beat_once()
+        telemetry.wait_end(token)
+        data = reader.get_metrics_data()
+        assert data is not None
+        exported = encode_metrics(data)
+        points = [point for resource in exported.resource_metrics
+                  for scope in resource.scope_metrics for metric in scope.metrics
+                  if metric.name == "workhorse.wait.active" for point in metric.gauge.data_points]
+        assert len(points) == 1
+        assert points[0].as_int == 0
+        attrs = {attr.key: attr.value.string_value for attr in points[0].attributes}
+        assert attrs["gate_path"] == "/run/gate.md"
+        assert attrs["gate_question"] == "Proceed?"
+    finally:
+        telemetry.end_run("terminal")
+        meters.shutdown()
+        traces.shutdown()
 
 
 def test_a_failed_turn_carries_its_class_and_recovery_bucket():

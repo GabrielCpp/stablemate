@@ -136,6 +136,12 @@ def _metric_export_every_s(environ: Mapping[str, str], heartbeat_every_s: float)
 
 
 @dataclass(frozen=True, slots=True)
+class _LiveWait:
+    started: float
+    attributes: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
 class OtelSettings:
     """Everything telemetry reads from the environment — read once, at the edge.
 
@@ -349,7 +355,13 @@ class Telemetry(Protocol):
     def state_end(
         self, state: str, seq: int, next_state: str | None = None, cut: str = ""
     ) -> None: ...
-    def wait_start(self, kind: str, node_id: str) -> int: ...
+    def wait_start(
+        self,
+        kind: str,
+        node_id: str,
+        gate_path: str = "",
+        gate_question: str = "",
+    ) -> int: ...
     def wait_end(self, token: int, outcome: str = "completed") -> None: ...
     def gas_level(self, gas: int, capacity: int) -> None: ...
     def gas_refuel(self, node_id: str) -> None: ...
@@ -402,7 +414,13 @@ class _NullTelemetry:
     def state_end(
         self, state: str, seq: int, next_state: str | None = None, cut: str = ""
     ) -> None: ...
-    def wait_start(self, kind: str, node_id: str) -> int:
+    def wait_start(
+        self,
+        kind: str,
+        node_id: str,
+        gate_path: str = "",
+        gate_question: str = "",
+    ) -> int:
         return 0
     def wait_end(self, token: int, outcome: str = "completed") -> None: ...
     def gas_level(self, gas: int, capacity: int) -> None: ...
@@ -822,9 +840,20 @@ def scope() -> Iterator[None]:
 
 
 @contextmanager
-def wait(kind: str, node_id: str) -> Iterator[None]:
-    """Bracket an actual engine-controlled wait with a completed duration span."""
-    token = _host.active.wait_start(kind, node_id)
+def wait(
+    kind: str,
+    node_id: str,
+    gate_path: str = "",
+    gate_question: str = "",
+) -> Iterator[None]:
+    """Bracket an actual engine-controlled wait with a completed duration span.
+
+    For an operator `Await`, ``gate_path`` and ``gate_question`` are the absolute
+    path the wait is parked on and the question text written alongside. They ride
+    on the wait gauge's attributes so groom's row can render the gate without
+    re-reading the file.
+    """
+    token = _host.active.wait_start(kind, node_id, gate_path, gate_question)
     try:
         yield
     except BaseException:
@@ -977,7 +1006,7 @@ class _Telemetry:
         ] = {}
         self._wait_seq = 0
         self._wait_keys: dict[int, tuple[str, str, int]] = {}
-        self._wait_live: dict[int, tuple[str, str, float]] = {}
+        self._wait_live: dict[int, _LiveWait] = {}
         self._turn: Any = None
         self._turn_repository: tuple[
             str | None, tuple[str, ...], dict[str, str]
@@ -1149,10 +1178,9 @@ class _Telemetry:
         if top is not None and self._node_elapsed is not None:
             self._node_elapsed.set(time.monotonic() - top[2], attrs)
         if wait is not None and self._wait_elapsed is not None:
-            wait_node, kind, started = wait
             self._wait_elapsed.set(
-                time.monotonic() - started,
-                self._wait_attrs(wait_node, kind),
+                time.monotonic() - wait.started,
+                wait.attributes,
             )
 
     def _parent_ctx(self) -> Any:
@@ -1234,14 +1262,21 @@ class _Telemetry:
             self._set_node_active(state, 0)
 
     @_failsoft(_NO_WAIT_TOKEN)
-    def wait_start(self, kind: str, node_id: str) -> int:
+    def wait_start(
+        self,
+        kind: str,
+        node_id: str,
+        gate_path: str = "",
+        gate_question: str = "",
+    ) -> int:
         with self._lock:
             self._wait_seq += 1
             token = self._wait_seq
             key = ("wait", node_id, token)
             self._wait_keys[token] = key
             started = time.monotonic()
-            self._wait_live[token] = (node_id, kind, started)
+            attrs = self._wait_attrs(node_id, kind, gate_path, gate_question)
+            self._wait_live[token] = _LiveWait(started, attrs)
             self._start_execution(
                 key,
                 f"wait:{kind}",
@@ -1249,10 +1284,11 @@ class _Telemetry:
                 {
                     "workhorse.span_kind": "wait",
                     "workhorse.wait_kind": kind,
+                    "workhorse.gate_path": gate_path,
+                    "workhorse.gate_question": gate_question,
                 },
                 mark_active=False,
             )
-            attrs = self._wait_attrs(node_id, kind)
             if self._wait_active is not None:
                 self._wait_active.set(1, attrs)
             if self._wait_elapsed is not None:
@@ -1272,15 +1308,28 @@ class _Telemetry:
                 end_attributes={"workhorse.wait_outcome": outcome},
             )
             if live is not None:
-                node_id, kind, started = live
-                attrs = self._wait_attrs(node_id, kind)
                 if self._wait_elapsed is not None:
-                    self._wait_elapsed.set(time.monotonic() - started, attrs)
+                    self._wait_elapsed.set(time.monotonic() - live.started, live.attributes)
                 if self._wait_active is not None:
-                    self._wait_active.set(0, attrs)
+                    self._wait_active.set(0, live.attributes)
 
-    def _wait_attrs(self, node_id: str, kind: str) -> dict[str, str]:
-        return {**self._live_attrs(node_id), "wait_kind": kind}
+    def _wait_attrs(
+        self,
+        node_id: str,
+        kind: str,
+        gate_path: str = "",
+        gate_question: str = "",
+    ) -> dict[str, str]:
+        attrs = {**self._live_attrs(node_id), "wait_kind": kind}
+        # The gate file path is telemetry-only knowledge: it does not have to be a
+        # file (the wait can be a channel-only park), but when it is, the path is
+        # what groom's row renders. Question text rides along for the detail pane
+        # so groom doesn't need to re-read the file.
+        if gate_path:
+            attrs["gate_path"] = gate_path
+        if gate_question:
+            attrs["gate_question"] = gate_question
+        return attrs
 
     def _start_execution(
         self,
