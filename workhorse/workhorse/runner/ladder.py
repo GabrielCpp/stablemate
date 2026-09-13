@@ -47,9 +47,7 @@ if TYPE_CHECKING:
     from workhorse.runner.backends import AgentBackend
 
 
-def _write_prompt_for_inspection(
-    node_id: str, prompt: str, run_dir: Path | None
-) -> Path | None:
+def _write_prompt_for_inspection(node_id: str, prompt: str, run_dir: Path | None) -> Path | None:
     """Persist the rendered prompt before invocation so failed nodes are inspectable."""
     if run_dir is None:
         return None
@@ -91,9 +89,7 @@ def _profile_config(profile: str) -> dict[str, Any] | None:
     except UnknownProfileError as exc:
         if profile not in _warned_missing_profile:
             _warned_missing_profile.add(profile)
-            print(
-                f"[workhorse] WARNING: {exc}; resolving no models from it", flush=True
-            )
+            print(f"[workhorse] WARNING: {exc}; resolving no models from it", flush=True)
         return {}
 
 
@@ -139,10 +135,7 @@ def switch_profile(runner: "AgentRunner | None", name: str) -> dict[str, object]
     reads.
     """
     if runner is None:
-        return {
-            "ok": False,
-            "error": "this run drives no agent, so it resolves no models",
-        }
+        return {"ok": False, "error": "this run drives no agent, so it resolves no models"}
     try:
         tables = select_profile(load_config(), name)
     except UnknownProfileError as exc:
@@ -226,9 +219,7 @@ class AgentRunner:
     profile: ProfileSelection = field(default_factory=ProfileSelection)
 
     @classmethod
-    def from_config(
-        cls, config: RunConfig, *, clock: Clock = SYSTEM_CLOCK
-    ) -> AgentRunner:
+    def from_config(cls, config: RunConfig, *, clock: Clock = SYSTEM_CLOCK) -> AgentRunner:
         """The ladder this run's configuration describes.
 
         The one construction point: the environment was read once into ``RunConfig``
@@ -377,9 +368,7 @@ class AgentRunner:
             **ctx,
             **rendered_args,
             "node_timeout_s": "unbounded" if unbounded else int(effective_timeout),
-            "node_timeout_min": "unbounded"
-            if unbounded
-            else int(round(effective_timeout / 60)),
+            "node_timeout_min": "unbounded" if unbounded else int(round(effective_timeout / 60)),
             "_node_cwd": rendered_cwd or "",
         }
         rendered_prompt = render(node.prompt, prompt_ctx, workflow_dir)
@@ -398,11 +387,7 @@ class AgentRunner:
             bare = re.fullmatch(r"\{\{\s*(\w+)\s*\}\}", node.add_dirs.strip())
             if bare:
                 native = ctx.get(bare.group(1), [])
-                rendered_add_dirs = [
-                    str(d).strip()
-                    for d in (native if isinstance(native, list) else [native])
-                    if d
-                ]
+                rendered_add_dirs = [str(d).strip() for d in (native if isinstance(native, list) else [native]) if d]
             else:
                 rendered = render_string(node.add_dirs, ctx).strip()
                 rendered_add_dirs = [rendered] if rendered else []
@@ -415,9 +400,7 @@ class AgentRunner:
         # again via --add-dir is redundant and clutters the CLI invocation.
         if rendered_cwd and rendered_add_dirs:
             cwd_resolved = Path(rendered_cwd).resolve()
-            rendered_add_dirs = [
-                d for d in rendered_add_dirs if Path(d).resolve() != cwd_resolved
-            ]
+            rendered_add_dirs = [d for d in rendered_add_dirs if Path(d).resolve() != cwd_resolved]
 
         # New node = clean context: drop any session left by a previous node so this
         # node's first attempt does not --resume someone else's conversation. When
@@ -453,16 +436,12 @@ class AgentRunner:
                 )
             try:
                 outputs = self._invoke_and_parse(
-                    prompt,
-                    node,
-                    session_id_path,
-                    model,
+                    prompt, node, session_id_path, model,
                     prompt_path=prompt_path,
                     timeout=effective_timeout,
                     budget_scale=timeout_scale,
                     base_timeout_s=base_timeout,
-                    cwd=rendered_cwd,
-                    add_dirs=rendered_add_dirs,
+                    cwd=rendered_cwd, add_dirs=rendered_add_dirs,
                     effort=node_effort,
                     validate=validate,
                 )
@@ -588,9 +567,7 @@ class AgentRunner:
                 )
                 raise
 
-    def _reenter_on(
-        self, cut: control.Request | None, node_id: str, where: str
-    ) -> None:
+    def _reenter_on(self, cut: control.Request | None, node_id: str, where: str) -> None:
         """Unwind the ladder for a reload that ended one of its waits, or do nothing.
 
         Every wait in here is a wait *between* turns, so there is nothing to cut and
@@ -634,17 +611,10 @@ class AgentRunner:
         max_output_retries = self.resilience.max_output_retries
         for attempt in range(max_output_retries + 1):
             result_text = self.turn(
-                prompt,
-                node.id,
-                session_id_path,
-                model=model,
-                timeout=timeout,
+                prompt, node.id, session_id_path, model=model, timeout=timeout,
                 prompt_path=prompt_path,
-                budget_scale=budget_scale,
-                base_timeout_s=base_timeout_s,
-                cwd=cwd,
-                add_dirs=add_dirs,
-                effort=effort,
+                budget_scale=budget_scale, base_timeout_s=base_timeout_s,
+                cwd=cwd, add_dirs=add_dirs, effort=effort,
                 invoke_retries=node.invoke_retries,
             )
             try:
@@ -718,9 +688,7 @@ class AgentRunner:
         """
         resilience = self.resilience
         backend = self.backend
-        budget = active_recovery_wait_budget() or RecoveryWaitBudget.from_resilience(
-            resilience
-        )
+        budget = active_recovery_wait_budget() or RecoveryWaitBudget.from_resilience(resilience)
         max_invoke_retries = (
             resilience.max_invoke_retries if invoke_retries is None else invoke_retries
         )
@@ -731,10 +699,7 @@ class AgentRunner:
         attempt_prompt = prompt
         while True:
             try:
-                print(
-                    f"[{node_id}] 🚀 Invoking {backend.name} (model: {model or 'default'})",
-                    flush=True,
-                )
+                print(f"[{node_id}] 🚀 Invoking {backend.name} (model: {model or 'default'})", flush=True)
                 # One agent-turn span per CLI invocation; the result event's
                 # duration/usage attach via otel.turn_result, from inside the adapter.
                 otel.turn_start(
@@ -791,9 +756,7 @@ class AgentRunner:
                     error_class=type(exc).__name__,
                     error_kind=error_kind(exc),
                 )
-                print(
-                    f"[{node_id}] ⚠ {backend.name} invocation failed: {exc}", flush=True
-                )
+                print(f"[{node_id}] ⚠ {backend.name} invocation failed: {exc}", flush=True)
                 if not exc.transient:
                     raise
                 # A budget timeout: warn the next attempt that it overran and give it the
@@ -877,7 +840,7 @@ class AgentRunner:
                 if short_attempt >= max_invoke_retries:
                     raise
                 delay = min(
-                    resilience.invoke_backoff_base_s * (2**short_attempt),
+                    resilience.invoke_backoff_base_s * (2 ** short_attempt),
                     resilience.invoke_backoff_cap_s,
                 )
                 short_attempt += 1
