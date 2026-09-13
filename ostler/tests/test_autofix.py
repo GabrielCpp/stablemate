@@ -45,6 +45,19 @@ def test_parsing_check_is_never_touched():
     assert autofix.fix_text(text) == text
 
 
+def test_a_backticked_check_is_unwrapped_not_moved():
+    """A dotted json path gives the span a "file extension"; it is still an observation."""
+    out = autofix.fix_text(endpoint_doc('`json_path(path="$.accountType", absent=true)`'))
+    assert '- verify: json_path(path="$.accountType", absent=true)' in out
+    assert "- tests:" not in out
+
+
+def test_a_backticked_run_holding_a_check_is_not_a_citation():
+    text = endpoint_doc(
+        '`json_path(path="$.a", absent=true)`, `api-service/x/y_test.go::Test_Y`')
+    assert "- tests:" not in autofix.fix_text(text)
+
+
 def test_prose_verify_is_left_for_judgment():
     text = endpoint_doc("the row appears in the table after saving")
     assert autofix.fix_text(text) == text

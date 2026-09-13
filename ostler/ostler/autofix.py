@@ -27,6 +27,10 @@ keyword colon is found on the token stream, so a colon inside a string literal i
 touched, and the rewrite stands only when the result parses as a check. An unquoted value
 (`path: $.detail`) does not, and stays a finding: which text the author meant to quote is
 judgment.
+
+The fourth fix: a whole `verify:` value wrapped in one inline-code span whose content
+parses as a check. The backticks are the only drift, so they go; a code span that holds a
+check is never read as a citation for the first fix.
 """
 
 from __future__ import annotations
@@ -60,10 +64,25 @@ def _is_test_citation_run(value: str) -> bool:
     if isinstance(parse_check(value), CheckCall):
         return False
     spans = markdown.leading_code_spans(value)
-    if not spans:
+    if not spans or any(isinstance(parse_check(span), CheckCall) for span in spans):
+        # A check wrapped in inline code is an observation, not a citation: its dotted
+        # `path="$.a"` reads as a file extension to the test below.
         return False
     cited = [ref for span in spans if (ref := refs.normalize_ref(span))]
     return bool(cited) and all(Path(refs.ref_path(ref)).suffix for ref in cited)
+
+
+def _unwrap_code_span(value: str) -> str:
+    """The value with one inline-code span around the whole of it removed, else unchanged.
+
+    The vocabulary's calls are bare, so `` `json_path(...)` `` fails parsing on its backticks
+    alone. Whether what is inside is a check is the caller's gate, like every rewrite here.
+    """
+    spans = markdown.leading_code_spans(value)
+    stripped = value.strip()
+    if len(spans) != 1 or stripped != f"`{spans[0]}`":
+        return value
+    return value[:len(value) - len(value.lstrip())] + spans[0]
 
 
 _NULL_EQUALS = re.compile(r"\bequals\s*=\s*(?:None|null)\b")
@@ -143,7 +162,7 @@ def _fix_bullet(bullet: markdown.Bullet, uitype: registry.UINodeType | None,
     if owns_tests and _is_test_citation_run(bullet.value):
         fixed = f"{marker}- {_TARGET_KEY}:{value}"
         return (bullet.line_start, bullet.line_start + 1, [fixed])
-    fixed = _colon_keywords_as_equals(value)
+    fixed = _colon_keywords_as_equals(_unwrap_code_span(value))
     if _is_null_equals(fixed):
         fixed = _NULL_EQUALS.sub("absent=true", fixed, count=1)
     if fixed == value or not isinstance(parse_check(fixed.strip()), CheckCall):
