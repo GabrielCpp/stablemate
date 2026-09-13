@@ -115,6 +115,27 @@ def test_null_equals_on_another_check_is_left_alone():
     assert autofix.fix_text(text) == text
 
 
+def test_colon_keywords_become_equals():
+    out = autofix.fix_text(endpoint_doc('http_status(code: 204, path: "/rows/{rowId}")'))
+    assert '- verify: http_status(code=204, path="/rows/{rowId}")' in out
+
+
+def test_a_colon_inside_a_string_is_not_a_keyword():
+    out = autofix.fix_text(endpoint_doc('count(subject: "rows, equals: none", equals: 0)'))
+    assert '- verify: count(subject="rows, equals: none", equals=0)' in out
+
+
+def test_colon_keywords_compose_with_the_null_fix():
+    out = autofix.fix_text(endpoint_doc('json_path(path: "$.order", equals: null)'))
+    assert '- verify: json_path(path="$.order", absent=true)' in out
+
+
+def test_an_unquoted_colon_value_is_left_for_judgment():
+    # Which text the author meant as the string is not provable from the shape.
+    text = endpoint_doc('json_path(path: $.detail, equals: invalid credentials)')
+    assert autofix.fix_text(text) == text
+
+
 def test_idempotent():
     once = autofix.fix_text(endpoint_doc(
         "`api-service/internal/account/account_service_test.go::Test_Create`"))

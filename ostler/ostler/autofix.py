@@ -20,12 +20,21 @@ the old key. A value that fails check parsing, opens with an inline-code citatio
 and cites only paths with file extensions cannot be a mistyped check — it is the split's
 path half under the split's observation key, and the fix renames the key. Anything the
 predicate cannot prove stays where it is and remains a doctor finding for judgment.
+
+The third fix: a call whose keywords are spelled `name: value` — the shape the vocabulary's
+own signatures (`code: int`) invite when an author substitutes a value for the type. Each
+keyword colon is found on the token stream, so a colon inside a string literal is never
+touched, and the rewrite stands only when the result parses as a check. An unquoted value
+(`path: $.detail`) does not, and stays a finding: which text the author meant to quote is
+judgment.
 """
 
 from __future__ import annotations
 
 import ast
+import io
 import re
+import tokenize
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -84,6 +93,40 @@ def _is_null_equals(value: str) -> bool:
     return is_none or is_null
 
 
+def _colon_keywords_as_equals(value: str) -> str:
+    """`value` with every `name: …` keyword spelled `name=…` — unchanged when it has none.
+
+    A keyword colon is a NAME directly inside the call's own parentheses, following its `(`
+    or a `,`, and followed by `:`. Found on tokens rather than text: `subject="a, b: c"` is
+    one STRING token, so the colon a regex would rewrite is not a candidate here. Whether
+    the result is a check is the caller's gate, after every rewrite has composed.
+    """
+    try:
+        tokens = [t for t in tokenize.generate_tokens(io.StringIO(value).readline)
+                  if t.type not in (tokenize.NL, tokenize.NEWLINE, tokenize.ENDMARKER)]
+    except (tokenize.TokenError, SyntaxError):
+        return value
+    spans: list[tuple[int, int]] = []
+    depth = 0
+    for i, token in enumerate(tokens):
+        if token.type == tokenize.OP and token.string in "([{":
+            depth += 1
+        elif token.type == tokenize.OP and token.string in ")]}":
+            depth -= 1
+        elif (token.type == tokenize.OP and token.string == ":" and depth == 1 and i >= 2
+              and tokens[i - 1].type == tokenize.NAME
+              and tokens[i - 2].type == tokenize.OP and tokens[i - 2].string in "(,"):
+            if token.start[0] != 1:
+                return value  # a wrapped head is not one line to rewrite
+            # Through the whitespace after the colon: `code: 204` reads back as `code=204`.
+            after = tokens[i + 1].start if i + 1 < len(tokens) else token.end
+            spans.append((token.start[1], after[1] if after[0] == 1 else token.end[1]))
+    rewritten = value
+    for start, end in reversed(spans):
+        rewritten = rewritten[:start] + "=" + rewritten[end:]
+    return rewritten
+
+
 def _fix_bullet(bullet: markdown.Bullet, uitype: registry.UINodeType | None,
                 body_lines: list[str]) -> tuple[int, int, list[str]] | None:
     """The one-line rewrite for a drifted bullet, or None if every predicate fails.
@@ -100,11 +143,12 @@ def _fix_bullet(bullet: markdown.Bullet, uitype: registry.UINodeType | None,
     if owns_tests and _is_test_citation_run(bullet.value):
         fixed = f"{marker}- {_TARGET_KEY}:{value}"
         return (bullet.line_start, bullet.line_start + 1, [fixed])
-    if _is_null_equals(bullet.value):
-        rewritten = _NULL_EQUALS.sub("absent=true", value, count=1)
-        if isinstance(parse_check(rewritten.strip()), CheckCall):
-            return (bullet.line_start, bullet.line_start + 1, [f"{marker}- {_DRIFTED_KEY}:{rewritten}"])
-    return None
+    fixed = _colon_keywords_as_equals(value)
+    if _is_null_equals(fixed):
+        fixed = _NULL_EQUALS.sub("absent=true", fixed, count=1)
+    if fixed == value or not isinstance(parse_check(fixed.strip()), CheckCall):
+        return None
+    return (bullet.line_start, bullet.line_start + 1, [f"{marker}- {_DRIFTED_KEY}:{fixed}"])
 
 
 def fix_text(text: str) -> str:
