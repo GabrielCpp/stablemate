@@ -475,7 +475,15 @@ async def supervise(
                     *exit_notice(rc), env=dict(run.env),
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
-                await notice.wait()
+                try:
+                    await notice.wait()
+                finally:
+                    # Cancelling the await does not stop the OS process. Own its
+                    # lifetime through timeout as well as ordinary completion.
+                    if notice.returncode is None:
+                        with contextlib.suppress(ProcessLookupError):
+                            notice.kill()
+                    await notice.wait()
 
     if observer is not None and observer_task is not None:
         observer.signal(signal.SIGTERM)

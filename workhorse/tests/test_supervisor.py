@@ -21,6 +21,7 @@ import os
 import signal
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -252,16 +253,35 @@ def test_exit_notice_carries_the_code_and_never_changes_it(tmp_path: Path):
     assert seen.read_text() == "5"
 
 
-def test_a_wedged_exit_notice_does_not_hold_the_container_open():
-    rc = _run(
-        supervisor.supervise(
-            _child(code=_exits(0)),
-            None,
-            exit_notice=lambda _: [sys.executable, "-c", "import time; time.sleep(60)"],
-            timeout_s=0.5,
-        )
-    )
-    assert rc == 0
+def test_a_wedged_exit_notice_is_reaped_before_the_container_exits(monkeypatch):
+    processes: list[asyncio.subprocess.Process] = []
+    spawn = asyncio.create_subprocess_exec
+
+    async def capture(*args: str, **kwargs: Any) -> asyncio.subprocess.Process:
+        process = await spawn(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", capture)
+
+    async def scenario() -> None:
+        try:
+            rc = await supervisor.supervise(
+                _child(code=_exits(0)),
+                None,
+                exit_notice=lambda _: [sys.executable, "-c", "import time; time.sleep(60)"],
+                timeout_s=0.5,
+            )
+            assert rc == 0
+            assert len(processes) == 2
+            assert all(process.returncode is not None for process in processes)
+        finally:
+            for process in processes:
+                if process.returncode is None:
+                    process.kill()
+                await process.wait()
+
+    _run(scenario())
 
 
 # --------------------------------------------------------------------------- #
