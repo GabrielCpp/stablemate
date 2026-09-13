@@ -12,6 +12,13 @@ the supplied questions are the complete latest set shown in groom.
 
 ## The rules that do not bend
 
+**Every parked run requires both diagnosis skills.** Before investigating a parked
+run, invoke `/stablemate-diagnosing-bugs` and `/stablemate-root-cause` using the
+Skill tool, and follow the instructions each invocation loads. Apply diagnosing-bugs
+to reproduce and locate the defect, and root-cause to evaluate each proposed fix
+before editing. Invoke both on every parked-run attendance, including a question
+whose answer appears obvious.
+
 **Never answer a gate to make the run move.** An answer asserts that the cause is fixed
 and verified. If it is not, there are exactly two honest outcomes: fix it, or leave the
 gate armed and write what you found. An answer that unsticks a run buys one lap and costs
