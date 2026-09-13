@@ -176,9 +176,11 @@ body {
 .metrics-foot { margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
   font-family:var(--mono); font-size:10.5px; color:var(--text-2); }
 .metrics-foot code { font-family:var(--mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.history-filter { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.history-filter select { width:auto; margin:0; padding:4px 8px; }
 .log-trail { background:var(--bg-0); border:1px solid var(--border); border-radius:5px;
   max-height:340px; overflow:auto; font-family:var(--mono); font-size:11.5px; }
-.log-line { display:grid; grid-template-columns:64px 42px 130px 1fr; gap:8px; padding:2px 8px;
+.log-line { display:grid; grid-template-columns:112px 52px 130px minmax(0, 1fr); gap:8px; padding:2px 8px;
   border-bottom:1px solid var(--bg-2); color:var(--text-1); }
 .log-line:last-child { border-bottom:0; }
 .log-line .lt-ts, .log-line .lt-lvl, .log-line .lt-node { color:var(--text-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

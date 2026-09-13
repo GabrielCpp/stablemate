@@ -1726,12 +1726,27 @@ def query_spans(
 
 
 @_reading
+def detail_metrics(run: str, limit: int = 60) -> list[dict[str, Any]]:
+    """Recent persisted metrics for a pane's initial history snapshot."""
+    rows = _read_connection().execute(
+        "SELECT name, ts, value, attrs_json FROM metrics"
+        " WHERE run_id = ? ORDER BY ts DESC, rowid DESC LIMIT ?",
+        (run, limit),
+    ).fetchall()
+    return [
+        {"name": row["name"], "ts": row["ts"], "value": row["value"],
+         "attrs": json.loads(row["attrs_json"])}
+        for row in rows
+    ]
+
+
+@_reading
 def detail_spans(run: str) -> list[dict[str, Any]]:
     """Compact span identities for an open pane's snapshot and idempotent updates."""
     rows = _read_connection().execute(
-        "SELECT span_id, start_ts, end_ts, status FROM spans"
-        " WHERE run_id = ? AND end_ts >= ?",
-        (run, time.time() - ACTIVE_WINDOW_S),
+        "SELECT span_id, node, name, start_ts, end_ts, status FROM spans"
+        " WHERE run_id = ?",
+        (run,),
     ).fetchall()
     return [dict(row) for row in rows]
 

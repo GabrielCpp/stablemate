@@ -342,7 +342,8 @@ def test_watched_history_is_not_read_again_on_clock_push():
         await groom_app._handle_command({"cmd": "watch", "run_id": "abc123"}, queue)
         queue.get_nowait()
         with patch.object(store, "query_logs", side_effect=AssertionError("polled logs")), \
-             patch.object(store, "detail_spans", side_effect=AssertionError("polled spans")):
+             patch.object(store, "detail_spans", side_effect=AssertionError("polled spans")), \
+             patch.object(store, "detail_metrics", side_effect=AssertionError("polled metrics")):
             await groom_app._push_watched()
         assert queue.get_nowait()["detail"]["found"]
         state.remove_client(queue)
@@ -373,7 +374,7 @@ def test_snapshot_and_ingest_do_not_lose_or_duplicate_a_log(ingest_first):
             await groom_app._handle_command({"cmd": "watch", "run_id": "worker"}, queue)
 
         async def ingest():
-            await groom_app._store_history_batch(rows, store.insert_logs, logs=True)
+            await groom_app._store_history_batch(rows, store.insert_logs, kind="logs")
 
         first, second = (ingest, subscribe) if ingest_first else (subscribe, ingest)
         task = asyncio.create_task(first())

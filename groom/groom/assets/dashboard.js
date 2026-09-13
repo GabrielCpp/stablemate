@@ -509,20 +509,30 @@ function Metrics({ metrics }) {
 }
 
 function LogTrail({ lines }) {
-  if (!lines.length) {
-    return html`<div class="log-trail" role="log" aria-label="Run logs" aria-live="polite">
-      <div class="fd-empty">No log lines for this run (workhorse ships in-process script logs over OTLP).</div>
-    </div>`;
-  }
-  return html`<div class="log-trail" role="log" aria-label="Run logs" aria-live="polite">
-    ${lines.map(
-      (line, i) => html`<div class=${"log-line" + (line.cls ? " " + line.cls : "")} key=${i}>
-        <span class="lt-ts">${line.ts}</span>
-        <span class="lt-lvl">${line.level}</span>
-        <span class="lt-node">${line.node}</span>
-        <span class="lt-body">${line.body}</span>
-      </div>`
-    )}
+  const [kind, setKind] = useState("");
+  const shown = kind ? lines.filter((line) => line.kind === kind) : lines;
+  return html`<div>
+    <label class="history-filter">Show
+      <select aria-label="Telemetry history type" value=${kind}
+        onChange=${(event) => setKind(event.currentTarget.value)}>
+        <option value="">All telemetry</option>
+        <option value="log">Log records</option>
+        <option value="span">Completed spans</option>
+        <option value="metric">Metric samples</option>
+      </select>
+    </label>
+    <div class="log-trail" role="log" aria-label="Telemetry history" aria-live="polite">
+      ${shown.length ? shown.map(
+        (line, i) => html`<div class=${"log-line" + (line.cls ? " " + line.cls : "")} key=${i}>
+          <span class="lt-ts" title=${line.ts}>${line.ts}</span>
+          <span class="lt-lvl">${line.level}</span>
+          <span class="lt-node">${line.node}</span>
+          <span class="lt-body">${line.body}</span>
+        </div>`
+      ) : html`<div class="fd-empty">${lines.length
+        ? "No records of this type in the recent history."
+        : "No telemetry history has been received for this run yet."}</div>`}
+    </div>
   </div>`;
 }
 
@@ -610,7 +620,9 @@ function Detail() {
       Select a run to see its activity, answer its gate, and read its metrics and logs.
     </div>`;
   }
-  if (!detail) return html`<div class="detail-empty">Loading…</div>`;
+  if (!detail) return html`<div class="detail-empty loading" role="status" aria-label="Loading telemetry history" aria-busy="true">
+    <span class="spin" aria-hidden="true"></span>Loading telemetry history…
+  </div>`;
   if (!detail.found) return html`<div class="detail-empty">Run not found.</div>`;
   return html`
     <${RunHead} head=${detail.head} />
@@ -628,8 +640,8 @@ function Detail() {
         <${Metrics} metrics=${detail.metrics} />
       </div>
       <div class="live-sec">
-        <div class="live-sec-head">Logs</div>
-        <${LogTrail} lines=${detail.logs} />
+        <div class="live-sec-head">Recent telemetry history</div>
+        <${LogTrail} key=${detail.id} lines=${detail.history || []} />
       </div>
       <${DiffDisclosure} key=${detail.id} containerId=${detail.id} />
     </div>

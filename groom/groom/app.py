@@ -24,7 +24,7 @@ import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from litestar import Litestar, Request, Response, get, post, websocket
 from litestar.connection import WebSocket
@@ -153,8 +153,8 @@ async def _detail_message(wf: WorkflowContainer) -> dict:
     textarea's DOM node (and whatever is half-typed in it) while a gate that
     opened or closed still appears without a round trip.
     """
-    tel, facts, logs = await _run_facts(wf)
-    return projection.detail_message(wf, tel, facts, logs)
+    tel, facts, logs, history = await _run_facts(wf)
+    return projection.detail_message(wf, tel, facts, logs, history=history)
 
 
 async def _push_detail(container_id: str) -> None:
@@ -471,18 +471,23 @@ async def _run_facts(wf: WorkflowContainer) -> tuple:
                 logs = await pools.QUERY.run(
                     store.query_logs, run=run_id, limit=projection.LOG_TRAIL_LIMIT
                 )
+                metric_rows = await pools.QUERY.run(
+                    store.detail_metrics, run_id, projection.LOG_TRAIL_LIMIT
+                )
                 history.update_spans(spans)
                 history.logs = logs
+                history.metrics = metric_rows
                 history.loaded = True
             if state.watchers_of(wf.container_id):
                 state.HISTORIES[run_id] = history
     facts = next(iter(alerts.live_status(run=run_id)), {}) if run_id else {}
     facts.update(history.facts())
-    return state.RUNS.get(run_id), facts, history.logs
+    return state.RUNS.get(run_id), facts, history.logs, history.recent()
 
 
 async def _store_history_batch(
-    rows: list[dict], writer: Callable[[list[dict]], None], *, logs: bool = False
+    rows: list[dict], writer: Callable[[list[dict]], None], *,
+    kind: Literal["spans", "logs", "metrics"] = "spans"
 ) -> None:
     """Commit and advance watched snapshots atomically with respect to seeding.
 
@@ -498,8 +503,10 @@ async def _store_history_batch(
         await pools.INGEST.run(writer, rows)
         for run_id, history in histories.items():
             batch = [row for row in rows if row["run_id"] == run_id]
-            if logs:
+            if kind == "logs":
                 history.update_logs(batch)
+            elif kind == "metrics":
+                history.update_metrics(batch)
             else:
                 history.update_spans(batch)
 
@@ -522,8 +529,8 @@ async def worker_detail(container_id: Annotated[str, PathParameter()]) -> dict:
     wf = state.WORKFLOWS.get(container_id)
     if wf is None:
         return {"found": False, "id": container_id}
-    tel, facts, logs = await _run_facts(wf)
-    return projection.run_detail(wf, tel, facts, logs)
+    tel, facts, logs, history = await _run_facts(wf)
+    return projection.run_detail(wf, tel, facts, logs, history=history)
 
 
 @get("/diff/{container_id:str}", include_in_schema=False)
@@ -992,7 +999,7 @@ async def otlp_metrics(request: Request) -> Response:
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
     try:
-        await pools.INGEST.run(store.insert_metrics, points)
+        await _store_history_batch(points, store.insert_metrics, kind="metrics")
     except sqlite3.Error:
         # Returning early on purpose: nothing was stored, so evaluating alerts
         # or projecting rows off this batch would publish a state the store
@@ -1023,7 +1030,7 @@ async def otlp_logs(request: Request) -> Response:
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
     try:
-        await _store_history_batch(records, store.insert_logs, logs=True)
+        await _store_history_batch(records, store.insert_logs, kind="logs")
     except sqlite3.Error:
         # Returning early on purpose: nothing was stored, so evaluating alerts
         # or projecting rows off this batch would publish a state the store

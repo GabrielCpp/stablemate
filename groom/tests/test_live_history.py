@@ -22,3 +22,17 @@ def test_replaced_span_updates_errors_without_counting_another_span():
     history.update_spans([{**span, "status": "OK"}])
     assert history.facts()["span_count"] == 1
     assert history.facts()["error_count"] == 0
+
+
+def test_metric_samples_cannot_evict_older_completed_span_history():
+    history = LiveHistory(log_limit=3)
+    history.update_spans([{
+        "span_id": "old", "start_ts": 1, "end_ts": 2, "status": "OK", "name": "plan"
+    }])
+    history.update_metrics([
+        {"name": "workhorse.node.elapsed_s", "ts": ts, "value": ts, "attrs": {}}
+        for ts in range(100, 110)
+    ])
+    rows = history.recent()
+    assert len([row for row in rows if row["kind"] == "metric"]) == 3
+    assert [row["name"] for row in rows if row["kind"] == "span"] == ["plan"]

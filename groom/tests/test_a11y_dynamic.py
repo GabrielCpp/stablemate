@@ -25,6 +25,7 @@ Run: uv run pytest tests/test_a11y_dynamic.py
 from __future__ import annotations
 
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -336,6 +337,39 @@ def test_runs_pane_with_an_open_gate_is_accessible():
     # The densest pane and the only one with a form: run rows, the selected run's
     # detail, the markdown question, and the answer textarea + submit.
     _check_mode("runs")
+
+
+def test_history_shows_loading_then_stored_spans_without_script_logs():
+    from playwright.sync_api import expect
+
+    from groom import store
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    page = _open(live)
+    release = threading.Event()
+    original = store.detail_metrics
+
+    def held(run: str, limit: int = 60) -> list[dict]:
+        assert release.wait(timeout=10)
+        return original(run, limit)
+
+    try:
+        with patch.object(store, "detail_metrics", held):
+            page.get_by_role("button", name=re.compile("author")).click()
+            expect(page.get_by_role("status", name="Loading telemetry history")).to_be_visible()
+            expect(page.get_by_text("No telemetry history", exact=False)).to_have_count(0)
+            release.set()
+            history = page.get_by_role("log", name="Telemetry history")
+            expect(history).to_contain_text("SPAN")
+            expect(history).not_to_contain_text("No telemetry history")
+            page.get_by_role("combobox", name="Telemetry history type").select_option("span")
+            expect(history).to_contain_text("SPAN")
+            expect(history).not_to_contain_text("METRIC")
+            assert not _scan(page)
+    finally:
+        release.set()
+        page.close()
 
 
 def test_files_pane_is_accessible():

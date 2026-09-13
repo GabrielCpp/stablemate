@@ -49,8 +49,12 @@ spans, per-node timings and error status, filterable without leaving the browser
   the run list is additionally re-rendered and broadcast every `GROOM_LIVE_TICK_S`
   (5s), skipped entirely when no tab is connected. That is what makes the dashboard
   safe to leave open and read without refreshing.
-  A selected run loads its span summary and recent logs from SQLite once when
-  its watch subscription opens. Committed OTLP batches update that history in
+  A selected run loads its span summary, recent logs, and metrics from SQLite
+  once when its watch subscription opens. A loading indicator covers that initial
+  read. The history lists timestamped log records, completed spans, and metric
+  observations, including runs with no script logs. The type filter shows up to
+  60 recent records per type; an explicit run selection includes older spans beyond
+  the fleet’s activity window. Committed OTLP batches update the history in
   memory and push it immediately to the watching tabs; the clock tick only
   refreshes elapsed labels, with no database reads. Tabs share the watched history,
   which is released when the last tab leaves. Reopening the run loads a fresh

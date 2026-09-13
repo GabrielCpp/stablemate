@@ -2203,6 +2203,41 @@ def test_logs_receiver_stores_and_returns_200():
             client.__exit__(None, None, None)
 
 
+def test_detail_loads_metric_history_when_no_script_logs_exist():
+    with _TelemetryEnv():
+        state.WORKFLOWS.clear()
+        state.WATCHING.clear()
+        state.HISTORIES.clear()
+        state.HISTORY_LOCK = asyncio.Lock()
+        state.WORKFLOWS["worker"] = WorkflowContainer(
+            container_id="worker", name="worker", run_id="run-1"
+        )
+        client = _hermetic_client()
+        try:
+            assert client.post(
+                "/v1/traces", content=_trace_request([{"name": "older visit", "start": 1000}]),
+                headers={"content-type": "application/x-protobuf"},
+            ).status_code == 200
+            response = client.post(
+                "/v1/metrics",
+                content=_metrics_request("workhorse.wait.elapsed_s", gauge=True, value=600,
+                                         node="review", attrs={"wait_kind": "operator"}),
+                headers={"content-type": "application/x-protobuf"},
+            )
+            assert response.status_code == 200
+            detail = client.get("/worker/worker").json()
+            assert detail["logs"] == []
+            assert any("older visit" in line["body"] for line in detail["history"])
+            assert detail["history"][0]["node"] == "review"
+            assert "operator" in detail["history"][0]["body"].lower()
+            assert "10m" in detail["history"][0]["body"]
+        finally:
+            client.__exit__(None, None, None)
+            state.WORKFLOWS.clear()
+            state.WATCHING.clear()
+            state.HISTORIES.clear()
+
+
 def test_committed_telemetry_pushes_watched_history_without_database_reads():
     with _TelemetryEnv():
         state.WORKFLOWS.clear()
@@ -2220,7 +2255,8 @@ def test_committed_telemetry_pushes_watched_history_without_database_reads():
                 while socket.receive_json()["type"] != "detail":
                     pass
                 with patch.object(store, "query_logs", side_effect=AssertionError("polled logs")), \
-                     patch.object(store, "detail_spans", side_effect=AssertionError("polled spans")):
+                     patch.object(store, "detail_spans", side_effect=AssertionError("polled spans")), \
+                     patch.object(store, "detail_metrics", side_effect=AssertionError("polled metrics")):
                     response = client.post(
                         "/v1/logs", content=_logs_request([{"body": "arrived now"}]),
                         headers={"content-type": "application/x-protobuf"},
@@ -2229,6 +2265,18 @@ def test_committed_telemetry_pushes_watched_history_without_database_reads():
                     message = socket.receive_json()
                     assert message["type"] == "detail"
                     assert message["detail"]["logs"][0]["body"] == "arrived now"
+                    response = client.post(
+                        "/v1/metrics",
+                        content=_metrics_request("workhorse.node.elapsed_s", gauge=True,
+                                                 value=120, node="plan"),
+                        headers={"content-type": "application/x-protobuf"},
+                    )
+                    assert response.status_code == 200
+                    message = socket.receive_json()
+                    while message["type"] != "detail":
+                        message = socket.receive_json()
+                    assert any("node elapsed: 2m" in line["body"]
+                               for line in message["detail"]["history"])
                     payload = _trace_request([{"name": "plan", "error": True}])
                     for _ in range(2):
                         response = client.post(

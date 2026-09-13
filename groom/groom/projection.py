@@ -638,12 +638,43 @@ def log_lines(logs: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     return lines
 
 
+def history_lines(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """History describes timestamped observations, never the run's current state."""
+    lines = []
+    for row in rows:
+        kind = row["kind"]
+        node = str(row.get("node") or "")
+        if kind == "metric":
+            attrs = row.get("attrs") or {}
+            node = str(attrs.get("node") or "")
+            name = str(row["name"]).removeprefix("workhorse.")
+            value = float(row["value"])
+            label = name.replace("_s", "").replace("_", " ").replace(".", " ")
+            wait = str(attrs.get("wait_kind") or "")
+            if wait and name.startswith("wait."):
+                label = f"{wait} {label}"
+            amount = fmt_duration(value) if name.endswith("_s") else f"{value:g}"
+            body = f"{label}: {amount}"
+        elif kind == "span":
+            duration = fmt_duration(float(row["end_ts"]) - float(row["start_ts"]))
+            body = f"{row['name']} · {row['status']} · {duration}"
+        else:
+            body = str(row.get("body") or "")
+        lines.append({
+            "ts": fmt_ts(float(row["ts"])), "kind": kind, "level": kind.upper(), "node": node,
+            "body": body, "cls": SEVERITY_CLASS.get(str(row.get("severity") or ""), ""),
+            "severity": str(row.get("severity") or ""),
+        })
+    return lines
+
+
 def run_live(
     wf: WorkflowContainer,
     tel: RunTelemetry | None = None,
     facts: dict[str, Any] | None = None,
     logs: list[dict[str, Any]] | None = None,
     now: float | None = None,
+    *, history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """The clock-refreshable half of a detail pane: what changes while you watch
     it. Pushed to that run's watchers on every tick, so it holds nothing the
@@ -653,6 +684,7 @@ def run_live(
         "head": head(wf, tel, now),
         "metrics": metrics(wf, tel, facts, now),
         "logs": log_lines(logs),
+        "history": history_lines(history or []),
     }
 
 
@@ -662,6 +694,7 @@ def run_detail(
     facts: dict[str, Any] | None = None,
     logs: list[dict[str, Any]] | None = None,
     now: float | None = None,
+    *, history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """One run, top to bottom: what it is doing, the gates you can answer, its
     live metrics, its log trail. ``GET /worker/{id}`` returns this and the
@@ -675,7 +708,7 @@ def run_detail(
         "state": _row_state(wf, tel),
         "node": tel.current_node if tel else wf.current_node,
         "gates": [gate_dict(gate) for gate in reported_gates(wf, tel)],
-        **run_live(wf, tel, facts, logs, now),
+        **run_live(wf, tel, facts, logs, now, history=history),
     }
 
 
@@ -685,6 +718,7 @@ def detail_message(
     facts: dict[str, Any] | None = None,
     logs: list[dict[str, Any]] | None = None,
     now: float | None = None,
+    *, history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """A pushed detail refresh, addressed to the tabs watching this one run.
 
@@ -700,7 +734,7 @@ def detail_message(
         "type": "detail",
         "ts": now,
         "id": wf.container_id,
-        "detail": run_detail(wf, tel, facts, logs, now),
+        "detail": run_detail(wf, tel, facts, logs, now, history=history),
     }
 
 
