@@ -1222,15 +1222,12 @@ def test_unresolved_gate_body_lists_kind_counts_not_items(
     is precise about *how many* of each kind the pass added. It never
     enumerates targets.
     """
-    # Skip the audit's opencode-catalog pre-warm so the test doesn't depend
-    # on the network.
     (booked / "acme/notes.txt").write_text("Artifact without an extractor.",
                                          encoding="utf-8")
     agent = _SemanticAgent(booked, "unresolved")
     env = _env(tmp_path)
     seen: list[str] = []
     with patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)), \
-         patch("workhorse_workflows.okf_builder.audit.flow.fetch_models_dev_catalog", lambda: None), \
          pytest.raises(_Parked):
         _drive(env, agent)
     assert seen
@@ -1253,14 +1250,12 @@ def test_rework_counter_starts_at_zero_per_run(
                                          encoding="utf-8")
     agent = _SemanticAgent(booked, "unresolved")
     with patch.object(pyflow_driver, "wait_for_answer", _parked_at([])), \
-         patch("workhorse_workflows.okf_builder.audit.flow.fetch_models_dev_catalog", lambda: None), \
          pytest.raises(_Parked):
         _drive(_env(tmp_path), agent)
     first_rework = tmp_path / "runs" / "okf-builder-t" / "behavior-audit" / "rework"
     if first_rework.exists():
         first_rework.write_text("42")
     with patch.object(pyflow_driver, "wait_for_answer", _parked_at([])), \
-         patch("workhorse_workflows.okf_builder.audit.flow.fetch_models_dev_catalog", lambda: None), \
          pytest.raises(_Parked):
         _drive(_env(tmp_path / "second"), agent)
     second_rework = tmp_path / "second" / "runs" / "okf-builder-t" / "behavior-audit" / "rework"
@@ -1295,7 +1290,6 @@ def test_rework_gate_body_changes_at_REWORK_LIMIT(
         path.write_text("STATUS: ANSWERED\n\nCarry on.\n", encoding="utf-8")
 
     with patch.object(pyflow_driver, "wait_for_answer", answer), \
-         patch("workhorse_workflows.okf_builder.audit.flow.fetch_models_dev_catalog", lambda: None), \
          pytest.raises(_Parked):
         _drive(env, agent)
     # The review body is the gate body that fires once `rework` reaches
@@ -1328,7 +1322,6 @@ def test_blocked_unresolved_items_gate_with_actionable_message(
     env = _env(tmp_path)
     seen: list[str] = []
     with patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)), \
-         patch("workhorse_workflows.okf_builder.audit.flow.fetch_models_dev_catalog", lambda: None), \
          pytest.raises(_Parked):
         _drive(env, agent)
     blocked_bodies = [b for b in seen if "MAX_TARGET_ATTEMPTS" in b]

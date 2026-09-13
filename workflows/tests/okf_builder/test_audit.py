@@ -195,7 +195,7 @@ def test_a_spent_reviewer_turn_is_gated_not_fatal(booked: Path, tmp_path: Path) 
 
 
 def test_a_single_transient_blip_does_not_count_against_verdict_budget(
-    booked: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    booked: Path, tmp_path: Path,
 ) -> None:
     """A transient CLI failure (e.g. `models.dev` catalog timeout) rides its own counter.
 
@@ -203,12 +203,6 @@ def test_a_single_transient_blip_does_not_count_against_verdict_budget(
     blip gated. With it, the first blip retries the same packet on a separate counter
     and the audit continues once the CLI recovers.
     """
-    # Skip the pre-warm — the test environment has no network and we are exercising the
-    # audit's mid-run transient path, not its setup-time catalog check.
-    monkeypatch.setattr(
-        "workhorse_workflows.okf_builder.audit.flow.fetch_models_dev_catalog",
-        lambda *a, **kw: None,
-    )
     agent = AuditAgent("transient_then_success")
     env = audit_env(tmp_path, agent)
     # The booked fixture has one packet. The agent fails once transiently then succeeds,
@@ -219,21 +213,10 @@ def test_a_single_transient_blip_does_not_count_against_verdict_budget(
     assert len(agent.packets) == 2, "blip then success on the same packet"
 
 
-def test_three_consecutive_transient_failures_gate_with_models_dev_in_the_message(
-    booked: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+def test_three_consecutive_transient_failures_report_the_selected_backend(
+    booked: Path, tmp_path: Path,
 ) -> None:
-    """A sustained catalog outage gates after TRANSIENT_STREAK_CAP packets.
-
-    The streak cap is the smallest signal that the network, not the packet, is broken:
-    below it a single blip pages the operator on every quiet run, above it a sustained
-    outage lets the audit pass through packets the reviewer never read. The gate
-    message names `https://models.dev/api.json` so the operator fixes the network, not
-    the run.
-    """
-    monkeypatch.setattr(
-        "workhorse_workflows.okf_builder.audit.flow.fetch_models_dev_catalog",
-        lambda *a, **kw: None,
-    )
+    """A backend outage preserves pending work and reports its actual error."""
     from workhorse_workflows.okf_builder.audit.flow import TRANSIENT_STREAK_CAP
 
     # Three packets, each one transient-failing: cap = 3 means the third failure is the
@@ -254,43 +237,23 @@ def test_three_consecutive_transient_failures_gate_with_models_dev_in_the_messag
     gate = env.run_dir / "behavior-audit-context.md"
     assert gate.is_file(), "the streak cap writes a gate file the operator can answer"
     body = gate.read_text()
-    assert "models.dev" in body, "the gate message names the catalog URL"
+    assert "No result text from opencode" in body
+    assert "models.dev" not in body, "do not infer a cause from the backend name"
     assert "consecutive" in body.lower()
 
 
-def test_setup_warmup_failure_gates_before_any_packet_is_dispatched(
-    booked: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+def test_a_healthy_backend_does_not_depend_on_another_backends_catalog(
+    booked: Path, tmp_path: Path,
 ) -> None:
-    """A catalog outage at setup gates the audit before any reviewer turn is spent.
-
-    Without the pre-warm, a hard outage at setup time still produced a drive that
-    dispatched the first packet, exhausted the ladder on the blip, and gated. The
-    pre-warm catches it sooner — at the cost of one network round-trip per drive —
-    and writes a `behavior-audit.json` with `status='invalid'` so the operator sees
-    the same shape they'd see for an evidence-preparation failure.
-    """
-    def unreachable(*args: Any, **kwargs: Any) -> None:
-        raise OSError("simulated DNS failure")
-
-    monkeypatch.setattr(
-        "workhorse_workflows.okf_builder.audit.flow.fetch_models_dev_catalog",
-        unreachable,
-    )
+    """An offline models.dev must not prevent a healthy selected runner from auditing."""
     agent = AuditAgent()
     env = audit_env(tmp_path, agent)
-
-    def parked(*args: Any, **kwargs: Any) -> None:
-        raise InterruptedError("parked")
-
-    with patch.object(driver, "wait_for_answer", parked), pytest.raises(InterruptedError):
-        drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
-    assert len(agent.packets) == 0, "no reviewer turn ran — the pre-warm gated first"
-    gate = env.run_dir / "behavior-audit-context.md"
-    assert gate.is_file()
-    body = gate.read_text()
-    assert "models.dev" in body or "opencode catalog" in body
-    report = BehaviorAuditOutcome.model_validate_json((env.run_dir / "behavior-audit.json").read_text())
-    assert report.status == "invalid"
+    with patch("urllib.request.urlopen", side_effect=OSError("catalog unavailable")), \
+         patch.object(driver, "wait_for_answer", side_effect=AssertionError("unexpected operator gate")):
+        result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
+    assert isinstance(result, BehaviorAuditOutcome)
+    assert len(agent.packets) == result.assessed_packets == 1
+    assert (env.run_dir / "behavior-audit" / agent.packets[0].digest / "report.json").is_file()
 
 
 def test_sampling_and_unsupported_source_are_explicit_partial_reports(booked: Path, tmp_path: Path) -> None:
@@ -600,38 +563,28 @@ def test_in_flight_contract_change_never_marks_reply_current(
 
     class ChangingAgent(AuditAgent):
         def __call__(self, node: Any, ctx: Any, workflow_dir: Path, *args: Any, **kwargs: Any) -> Any:
-            if timing == "before_render":
+            if timing == "before_render" and not self.packets:
                 upgrade()
             reply = super().__call__(node, ctx, workflow_dir, *args, **kwargs)
-            if timing == "after_render":
+            if timing == "after_render" and len(self.packets) == 1:
                 upgrade()
             return reply
 
     agent = ChangingAgent()
     env = replace(audit_env(tmp_path, agent), workflow_dir=prompt.parents[2])
 
-    def parked(*args: Any, **kwargs: Any) -> None:
-        raise InterruptedError("parked")
-
-    with patch.object(driver, "wait_for_answer", parked), pytest.raises(InterruptedError):
-        drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
-    assert len(agent.packets) == 1
+    with patch.object(driver, "wait_for_answer", side_effect=AssertionError("unexpected operator gate")):
+        result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
+    assert isinstance(result, BehaviorAuditOutcome)
+    assert len(agent.packets) == 2
+    assert result.assessed_packets == 1 and not result.error
+    assert result.review_contract != captured
     packet_dir = env.run_dir / "behavior-audit" / agent.packets[0].digest
-    assert (packet_dir / "raw-1.json").is_file()
-    assert not (packet_dir / "review-contract.json").exists()
-    report = BehaviorAuditOutcome.model_validate_json((env.run_dir / "behavior-audit.json").read_text())
-    assert report.status == "invalid" and not report.scope_clear
-    assert "review contract changed" in report.error.lower()
-    assert report.review_contract == captured
-    assert report.review_contract != audit_nodes.review_contract(prompt, audit_nodes.verdict_schema())
-    stable_agent = AuditAgent()
-    stable = drive(Audit(docs_path=str(booked), source_path="acme", service="acme"),
-                   replace(env, agent_runner=StubRunner(stable_agent)))
-    assert len(stable_agent.packets) == 1
-    assert stable.policy_digest != report.policy_digest
+    assert (packet_dir / "raw-1.json").is_file(), "the superseded reply remains inspectable"
     assert (packet_dir / "raw-2.json").is_file()
     policy = audit_nodes.ReceiptPolicy.model_validate_json((packet_dir / "review-contract.json").read_text())
-    assert policy.contract == stable.review_contract
+    assert policy.contract == result.review_contract
+    assert not (env.run_dir / "behavior-audit-context.md").exists()
 
 
 #: `booked` documents one function with one candidate, and a packet of one cannot be
@@ -798,12 +751,7 @@ def test_a_repair_naming_a_foreign_id_is_rejected_not_remembered(
 def test_a_repair_that_also_comes_back_short_still_reaches_the_operator_gate(
     booked: Path, tmp_path: Path,
 ) -> None:
-    """One repair per packet, then the budget the reviewer already had.
-
-    A reviewer that keeps dropping ids is not a reply to salvage; it is a reviewer that
-    cannot answer this packet, which is exactly what the gate is for. The rung must not
-    turn that into an unbounded sequence of ever-smaller packets.
-    """
+    """Repeating an unanswered singleton must not reset progress by expanding the packet."""
     (booked / "acme/service.py").write_text(BRANCHING_SOURCE, encoding="utf-8")
     agent = ShortReviewer(short_turns=99)
     env = audit_env(tmp_path, agent)
@@ -933,3 +881,93 @@ def test_outcome_records_pass_and_rework_counts(booked: Path, tmp_path: Path) ->
     import logging
     from workhorse_workflows.okf_builder.shared.audit import audit_rework_count
     assert audit_rework_count(logging.getLogger("test"), str(env.run_dir), False) == 2
+
+
+class GradualReviewer(ShortReviewer):
+    """Returns one more candidate on each focused turn, as a capacity-limited model can."""
+
+    def __call__(self, node: Any, ctx: Any, workflow_dir: Path, *args: Any, **kwargs: Any) -> Any:
+        packet = AuditPacket.model_validate_json(ctx.as_dict()["packet"])
+        self.packets.append(packet)
+        self.feedback.append(ctx.as_dict()["feedback"])
+        return "scripted", AuditVerdicts(
+            claims=tuple(ClaimVerdict(id=claim.id, status="unresolved", explanation="Needs context")
+                         for claim in packet.claims),
+            candidates=tuple(CandidateVerdict(id=candidate.id, status="missing",
+                                              explanation="The return is undocumented")
+                             for candidate in packet.candidates[:1]),
+        ).model_dump(mode="json")
+
+
+def test_each_productive_repair_reduces_what_the_next_turn_owes(booked: Path, tmp_path: Path) -> None:
+    """A model that can judge one item per turn converges without a human retrying it."""
+    (booked / "acme/service.py").write_text(
+        BRANCHING_SOURCE.replace('    return amount', '    if amount == 0:\n        return 0\n    return amount'),
+        encoding="utf-8",
+    )
+    agent = GradualReviewer()
+    env = audit_env(tmp_path, agent)
+    with patch.object(driver, "wait_for_answer", side_effect=AssertionError("unexpected operator gate")):
+        result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
+    assert isinstance(result, BehaviorAuditOutcome)
+    sizes = [len(packet.candidates) for packet in agent.packets]
+    assert len(sizes) >= 3 and sizes == list(range(sizes[0], 0, -1))
+    full = agent.packets[0]
+    report = json.loads((env.run_dir / "behavior-audit" / full.digest / "report.json").read_text())
+    assert {row["id"] for row in report["verdicts"]["candidates"]} == {c.id for c in full.candidates}
+    assert not result.unaudited_packets and not result.error
+    assert not (env.run_dir / "behavior-audit-context.md").exists()
+
+
+class ConflictingReviewer(AuditAgent):
+    def __init__(self, repair_valid: bool) -> None:
+        super().__init__()
+        self.repair_valid = repair_valid
+
+    def __call__(self, node: Any, ctx: Any, workflow_dir: Path, *args: Any, **kwargs: Any) -> Any:
+        packet = AuditPacket.model_validate_json(ctx.as_dict()["packet"])
+        self.packets.append(packet)
+        candidate_id = self.packets[0].candidates[0].id
+        claim_id = self.packets[0].claims[0].id
+        conflict = len(self.packets) == 1 or not self.repair_valid
+        return "scripted", AuditVerdicts(
+            claims=tuple(ClaimVerdict(
+                id=claim.id, status="contradicted" if claim.id == claim_id else "unresolved",
+                candidate_ids=(candidate_id,) if claim.id == claim_id else (),
+                explanation="The implementation differs from the claim",
+            ) for claim in packet.claims),
+            candidates=tuple(CandidateVerdict(
+                id=candidate.id,
+                status="implementation_detail" if conflict and candidate.id == candidate_id else "missing",
+                explanation="This implementation behavior is not described",
+            ) for candidate in packet.candidates),
+        ).model_dump(mode="json")
+
+
+@pytest.mark.parametrize("repair_valid", [True, False])
+def test_conflicting_verdicts_are_repaired_without_reclassifying_them(
+    booked: Path, tmp_path: Path, repair_valid: bool,
+) -> None:
+    """The live linked-implementation-detail failure needs a model decision on the pair."""
+    (booked / "acme/service.py").write_text(BRANCHING_SOURCE, encoding="utf-8")
+    doc = booked / "docs/features/acme/concepts/charge.md"
+    doc.write_text(doc.read_text() + "\n- consistency: Charge always returns zero.\n"
+                   "- idempotency: Charging twice charges once.\n", encoding="utf-8")
+    agent = ConflictingReviewer(repair_valid)
+    env = audit_env(tmp_path, agent)
+    with patch.object(driver, "wait_for_answer", side_effect=InterruptedError("parked")):
+        if repair_valid:
+            result = drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
+            assert isinstance(result, BehaviorAuditOutcome)
+            assert result.assessed_packets == 1 and len(agent.packets) == 2
+        else:
+            with pytest.raises(InterruptedError):
+                drive(Audit(docs_path=str(booked), source_path="acme", service="acme"), env)
+    full, focused = agent.packets[:2]
+    assert len(focused.claims) == 1 < len(full.claims)
+    assert focused.claims[0].id == full.claims[0].id
+    receipt = env.run_dir / "behavior-audit" / full.digest / "report.json"
+    assert receipt.exists() == repair_valid
+    if repair_valid:
+        report = json.loads(receipt.read_text())
+        assert report["verdicts"]["candidates"][0]["status"] == "missing"

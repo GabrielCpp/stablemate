@@ -1,8 +1,6 @@
 """Standalone read-only model assessment of explicitly selected source and book."""
 from __future__ import annotations
 
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 from ostler.behavior import AuditPreparation, AuditVerdicts
@@ -20,66 +18,19 @@ from workhorse_workflows.okf_builder.shared.audit import (
     stage_repair,
 )
 
-#: Consecutive transient CLI failures (an opencode provider blip that prevents the
-#: reviewer from reading the packet at all, e.g. `https://models.dev/api.json` timing
-#: out) the audit tolerates before paging the operator. Three packets in a row
-#: consistently failing on the same code path is the smallest signal that the network,
-#: not the packet, is broken — fewer than that and a single blip pages the operator on
-#: every quiet run; more and a sustained outage lets the audit pass through packets
-#: the reviewer never read.
+#: Bound repeated failures to invoke the selected backend. The backend owns its
+#: transport and authentication; the workflow retains the packet until it can answer.
 TRANSIENT_STREAK_CAP = 3
 
-#: Operator-gate question for a spent transient streak. Names the catalog fetch so the
-#: operator can fix the network rather than re-answer and re-run the same packet.
+
 def transient_gate_question(digest: str, error: str, report_path: str) -> str:
-    """The gate message for a transient CLI streak that has spent its budget."""
+    """Report the selected backend's observed failure after its transient budget."""
     return (
         f"okf-builder could not reach the agent backend on {TRANSIENT_STREAK_CAP} "
-        f"consecutive packets — last error on packet {digest}: {error}. "
-        f"The opencode catalog fetch at https://models.dev/api.json is the most likely "
-        f"cause; verify with `curl -sS --max-time 5 https://models.dev/api.json | head` "
-        f"and `opencode run -m <model> warmup --print-logs --log-level ERROR`. The "
-        f"report at {report_path} lists what was reviewed before the streak began; "
-        f"set STATUS: ANSWERED to retry the same packets once the cause is cleared."
+        f"consecutive invocations — last error on packet {digest}: {error}. "
+        f"The report at {report_path} lists what was reviewed before the failures; "
+        f"set STATUS: ANSWERED to retry once the selected backend is available."
     )
-
-#: The catalog URL opencode's CLI refreshes when a turn starts. The audit's pre-warm
-#: fetches it directly to fail fast on a network outage instead of burning packets on
-#: a blip that the ladder cannot distinguish from a verdict-validation failure. The
-#: fetch is read-only and returns ~5 MB of JSON; this constant exists so the test can
-#: patch the URL and the gate message can name it.
-MODELS_DEV_CATALOG_URL = "https://models.dev/api.json"
-#: Wall-clock bound for the pre-warm fetch. A 5s ceiling is below the audit's per-turn
-#: timeout (300s) but well above a healthy round-trip; a fetch that takes longer than
-#: this is the same outage the gate is supposed to catch.
-MODELS_DEV_WARMUP_TIMEOUT_S = 5.0
-
-
-def fetch_models_dev_catalog(timeout_s: float = MODELS_DEV_WARMUP_TIMEOUT_S) -> None:
-    """Opencode's CLI refreshes its model catalog from `MODELS_DEV_CATALOG_URL` on every
-    turn. A fetch that times out returns no result text from opencode, which the audit's
-    transient-streak branch already routes to a gate — but only after a few packets of
-    damage. Doing it once at setup catches a hard outage up front.
-
-    The fetch is read-only and small; the timeout is intentionally below the audit's
-    300s per-turn ceiling so a slow network reads as a fast failure here rather than
-    spending a full turn on every packet before the streak gates.
-
-    The User-Agent is set because models.dev returns 403 to the urllib default — opencode
-    itself sends a real UA, which is why its CLI succeeds against the same URL.
-
-    Raises whatever `urllib.request.urlopen` raises (`URLError` on DNS / connect /
-    timeout) so the caller can record the message verbatim on the gate file.
-    """
-    request = urllib.request.Request(  # noqa: S310 - catalog is a public, read-only URL
-        MODELS_DEV_CATALOG_URL,
-        headers={"User-Agent": "okf-builder/audit-prewarm (+workhorse-workflows)"},
-    )
-    with urllib.request.urlopen(request, timeout=timeout_s) as response:
-        # Drain a small prefix so a hung connection that returns headers but stalls
-        # on the body still trips the timeout.
-        response.read(64)
-
 
 class AuditSetup(BaseModel):
     """The audit flow's read-once setting: scope, prepared evidence, and the path it lives on.
@@ -230,43 +181,6 @@ class Audit(Workflow):
         prepared = getattr(self, "_live_prep", None) or setup.preparation
         work = self.call(assess_audit, setup.scope, setup.run_dir, setup.prompt_path,
                          prepared=prepared)
-        # Pre-warm the opencode catalog before the first turn, once per fresh drive.
-        # The transient-streak branch catches a catalog-fetch blip mid-run, but only
-        # after a few packets of damage; doing it here lets a hard outage gate before
-        # the first reviewer call, with the same gate-shaped outcome the invalid-
-        # evidence path already uses. The fetch is best-effort: a healthy network
-        # doesn't notice, and the same URL is the most likely culprit on failure so
-        # the gate message names it directly. Skipped on every resume — `resume_pending`
-        # is only true on the resumed state's first entry, so this branch fires once
-        # per drive rather than once per packet.
-        if not getattr(self, "_warmup_done", False):
-            self._warmup_done = True
-            try:
-                fetch_models_dev_catalog()
-            except (OSError, ValueError) as exc:
-                report_path = Path(setup.run_dir) / "behavior-audit.json"
-                outcome = BehaviorAuditOutcome(
-                    schema_version=2, status="invalid",
-                    report_path=str(report_path),
-                    scope_digest=work.outcome.scope_digest, scope=setup.scope,
-                    error=f"opencode catalog unreachable at audit start: {exc}",
-                    unresolved=(UnresolvedItem(
-                        id="models-dev-catalog",
-                        kind="out_of_scope",
-                        explanation=(
-                            "Agent backend unreachable; resume once "
-                            "https://models.dev/api.json responds."
-                        ),
-                        packet_digest="",
-                    ),),
-                )
-                report_path.write_text(
-                    outcome.model_dump_json(indent=2), encoding="utf-8",
-                )
-                return Await(
-                    report_path.parent / "behavior-audit-context.md",
-                    outcome.error, self.start,
-                ).because("agent backend unreachable at audit start: operator gate")
         if work.outcome.status == "invalid":
             return Await(
                 self.run_dir / "behavior-audit-context.md", work.outcome.error, self.start,
@@ -311,19 +225,24 @@ class Audit(Workflow):
                       setup.prompt_path, setup.scope)
         except ReviewContractChanged as exc:
             self.call(record_audit_error, work.outcome, packet.digest, str(exc))
-            return Await(
-                self.run_dir / "behavior-audit-context.md", str(exc), self.start,
-            ).because("review contract changed: operator gate")
+            # The next assessment reads the current contract and invalidates old
+            # receipts/memos. A changed prompt is new review work, not a question an
+            # operator must answer. Preserve spend so deployment churn respects the
+            # same turn budget as every other kind of review work.
+            return Continue(None, self.start, turns=turns).because(
+                "review contract changed: reassess under the current contract"
+            )
         # A reply that answered for part of the packet is not a worthless reply. Re-asking
         # the whole packet is what dropped the same id twice on the run this rung exists
         # for, so the owing items are reduced into their own packet and asked once, on
-        # their own. One repair per packet: a repair that also comes back short falls
-        # through to the retry below, and then to the gate, which is the budget the
-        # reviewer already had.
+        # their own. Repairs may continue while the dispatched item count strictly
+        # decreases. This finite measure permits a small model to work incrementally
+        # without turning an unchanged failure into an endless retry.
         except IncompleteVerdicts as exc:
-            reduced = (None if repair_digest
-                       else self.call(stage_repair, dispatched, exc.recall, setup.run_dir))
-            if reduced is None:
+            reduced = self.call(stage_repair, exc.packet, exc.recall, setup.run_dir)
+            if (reduced is None
+                    or len(reduced.claims) + len(reduced.candidates)
+                    >= len(dispatched.claims) + len(dispatched.candidates)):
                 self.call(record_audit_error, work.outcome, packet.digest, str(exc))
                 if attempts >= 1:
                     return Await(
@@ -333,10 +252,10 @@ class Audit(Workflow):
                     ).because("invalid verdict budget exhausted: operator gate")
                 return Continue(
                     None, self.start, failed_digest=packet.digest, attempts=attempts + 1,
-                    feedback=str(exc), turns=turns,
-                ).because("incomplete receipt, nothing salvageable: retry the whole packet")
+                    feedback=str(exc), turns=turns, repair_digest=repair_digest,
+                ).because("incomplete receipt, no further reduction: retry the pending work")
             return Continue(
-                None, self.start, failed_digest=packet.digest, attempts=attempts,
+                None, self.start, failed_digest=packet.digest, attempts=0,
                 repair_digest=reduced.digest, turns=turns,
                 # The reduced packet still shows every candidate an owed claim might link
                 # to (see ``reduce_packet``), so the feedback must not call it "only
@@ -384,7 +303,7 @@ class Audit(Workflow):
                 ).because("invalid verdict budget exhausted: operator gate")
             return Continue(
                 None, self.start, failed_digest=packet.digest, attempts=attempts + 1, feedback=str(exc),
-                turns=turns,
+                turns=turns, repair_digest=repair_digest,
             ).because("invalid receipt: retry with validator findings")
         except (ValueError, WorkflowFailed, AgentTimeout) as exc:
             self.call(record_audit_error, work.outcome, packet.digest, str(exc))
@@ -396,6 +315,6 @@ class Audit(Workflow):
                 ).because("invalid verdict budget exhausted: operator gate")
             return Continue(
                 None, self.start, failed_digest=packet.digest, attempts=attempts + 1, feedback=str(exc),
-                turns=turns,
+                turns=turns, repair_digest=repair_digest,
             ).because("invalid receipt: retry with validator findings")
         return Continue(None, self.start, turns=turns, transient_streak=0).because("receipt saved: rebuild scope before next packet")

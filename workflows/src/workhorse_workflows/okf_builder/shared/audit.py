@@ -693,6 +693,10 @@ def _merge_reduced_reply(
     try:
         if foreign:
             raise ValueError(f"verdicts for ids this packet did not supply: foreign IDs {foreign}")
+        # Salvage is provisional, not authority to rewrite the reviewer's decision.
+        # A contradiction in the filled reply must go back to the reviewer before
+        # memo reconciliation can upgrade/demote candidate statuses.
+        validate_verdicts(parent, filled)
         return merge_verdicts(parent, recall, verdicts)
     except ValueError as exc:
         raise _owed_or_original(parent, filled, exc) from exc
