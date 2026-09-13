@@ -1,6 +1,6 @@
 ---
 name: operate
-description: "Acting on a live workhorse run from the terminal — list the runs groom sees, resolve one to its `workflow` and `run_dir`, then `control` it over its socket: `status`, `reload` (pushed code), `switch-cli`, `switch-profile`, `questions`/`answer` (gates), and `inbox read`/`reply`. Load when asked to reload, restart, switch, answer, poke, or find a run — including one named from the groom dashboard. Reading *why* a run is stuck is groom-telemetry; groom's own architecture is groom; writing nodes is workhorse-engine."
+description: "Acting on a live workhorse run from the terminal — list the runs groom sees, resolve one to its `workflow` and `run_dir`, then `control` it over its socket: `status`, `reload` (pushed code), `switch-cli`, `switch-profile`, `questions`/`answer` (gates), `inbox read`/`reply` — and repair a stopped one with `stop --wait`, `status --params`, `rewind --to STATE` and `resume [CLI]`. Load when asked to reload, restart, rewind, resume, switch, answer, poke, or find a run — including one named from the groom dashboard. Reading *why* a run is stuck is groom-telemetry; groom's own architecture is groom; writing nodes is workhorse-engine."
 tags: [cli]
 ---
 
@@ -47,7 +47,8 @@ paste. `groom status --run <run_id> --json` narrows to one run when the id is kn
   process that has since died or been relaunched; `status` is answered by the socket,
   so it is the only proof of *who* serves the dir.
 - **Change backend or models with `switch-cli` / `switch-profile`, never kill and
-  resume.** Other sessions may be watching the run; a kill makes each watcher relaunch
+  resume.** `resume` is for a run that is already dead, or one you stopped on purpose to
+  rewind — not a way to move a live run. Other sessions may be watching the run; a kill makes each watcher relaunch
   it, and three engines end up writing one run dir.
 - **Reload, do not restart, to pick up pushed code.** A reload re-enters from the last
   checkpoint in the same process, pid, root span and wall-clock budget. A restart
@@ -59,7 +60,7 @@ paste. `groom status --run <run_id> --json` narrows to one run when the id is kn
 
 ## Verbs
 
-`workhorse-<workflow> control [--run RUN_DIR] [--gate|--text|--core|--at-boundary] <verb> [NAME]`
+`workhorse-<workflow> control [--run RUN_DIR] [--gate|--text|--core|--at-boundary|--wait|--params|--to …] <verb> [NAME]`
 
 | Verb | Does | Reach for it when | Over HTTP (groom) |
 |---|---|---|---|
@@ -71,11 +72,46 @@ paste. `groom status --run <run_id> --json` narrows to one run when the id is kn
 | `answer` | posts the answer to the open gate (`--gate` picks one, `--text` inlines it) | the cause is fixed **and verified**, never to make it move | `POST /api/run/{run_id}/outbox` |
 | `switch-cli NAME` | moves later turns to another agent backend | the current CLI is wedged or rate-limited | — |
 | `switch-profile NAME` | moves later turns to another model profile | cost or capability needs a different model | — |
+| `stop [--wait [--timeout S]]` | interrupts the run at its checkpoint; `--wait` blocks until the pid is gone | before a `rewind`, or to end a run for good | — |
+| `status --params` | prints `{state, flow, waiting_on, params}` from `checkpoint.json` | before a `rewind`, or when the socket does not answer | — |
+| `rewind --to STATE` | rewrites a **stopped** run's checkpoint to enter `STATE`, validated like a resume | the run is parked or looping in the wrong state, or its params carry a stale verdict | — |
+| `resume [CLI]` | relaunches a **stopped** run detached from `launch.json`, waits until it serves | after a `rewind`, or a run that died (`DEAD?` in groom) | — |
 | `inbox read [--all]` | reads what the run left for its operator: a `failure` handoff, notes | on any wake, before diagnosing | `GET /api/run/{run_id}/inbox` |
 | `inbox reply` | appends an operator message the run reads on its next wait | handing a decision back to the run | `POST /api/run/{run_id}/inbox` |
 
 groom's own `POST /reload` is a different thing: it reloads the *container sidecar* in
 the dev loop. It never reaches a run's control socket.
+
+## Repairing a run in the wrong state
+
+A reload keeps the state the run is in. When the state itself is wrong — parked on a
+question the fix removed, or looped back with params that still carry the verdict that
+sent it there — stop it, move it, bring it back:
+
+```bash
+workhorse-<workflow> control --run <run_dir> stop --wait                # acknowledged is not stopped; this waits
+workhorse-<workflow> control --run <run_dir> status --params            # what the checkpoint holds
+workhorse-<workflow> control --run <run_dir> rewind --to <state> \
+    [--param name=VALUE] [--param-from-turn name=<node-dir>] [--keep name]
+workhorse-<workflow> control --run <run_dir> resume [opencode]          # detached; exits 1 with the log if it dies
+```
+
+- **Never hand-edit `checkpoint.json` or hand-type a `nohup … --resume-run`.** `rewind`
+  checks the state name and every param against the target state's own signature and
+  refuses with the checkpoint untouched; a hand edit is only checked when the relaunched
+  process dies on it. `resume` runs the recorded resume line in its recorded cwd, in its
+  own session, logging to `<run_dir>/resume.log`, and waits for the control socket.
+- **Params carry by name.** Without `--keep`, every old param the target state accepts is
+  carried and the rest are dropped (and printed). `--param` takes JSON or bare text;
+  `--param-from-turn` reads the `output.json` a turn already wrote, so a verdict is never
+  retyped.
+- **Both refuse a live run, with no override.** A pid that answers or a socket that
+  listens means a driver would overwrite the rewind at its next transition, or a second
+  driver would share the dir. A reused pid is the one false refusal — `ps -p` it.
+- **A rewind is recorded.** The old checkpoint is kept as `checkpoint.rewound-<stamp>.json`
+  and `events.jsonl` gets a `phase: "rewind"` line, so the jump is explained afterwards.
+- **A run parked on a cap with no socket answering** is `resume opencode` (or the CLI
+  that has budget); a live one is still `switch-cli`.
 
 ## Confirming a reload landed
 
