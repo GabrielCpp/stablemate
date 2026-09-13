@@ -355,7 +355,10 @@ def settle_stale(
     done = sum(1 for i in items if i.get("status") == "done")
     pending = sum(1 for i in items if i.get("status") == "pending")
     last = data.get("settled_done")
-    due = not isinstance(last, int) or done - last >= every
+    # The done count is not monotonic — a checkpoint requeue and an unblock both reopen
+    # done rows — so a watermark above it was taken before a reopen and is stale, not
+    # a settle `done - last` items in the future.
+    due = not isinstance(last, int) or done < last or done - last >= every
     fixable = any(i.get("status") in ("pending", "blocked") and doctor_row(i) for i in items)
     if not due or not fixable:
         return Settled(pending_count=pending, at_done=done if isinstance(last, int) else 0)

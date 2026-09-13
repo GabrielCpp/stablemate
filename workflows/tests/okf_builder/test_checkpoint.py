@@ -401,3 +401,21 @@ def test_a_settle_with_nothing_to_settle_does_not_read_doctor(
     result = settle_stale(logger, str(worklist), str(tmp_path / "nowhere"), BOOK)
     assert not result.ran and result.pending_count == 1
     assert "settled_done" not in json.loads(worklist.read_text())
+
+
+def test_a_watermark_above_the_done_count_is_stale(
+    dirty: Path, tmp_path: Path, logger: logging.Logger
+) -> None:
+    """Checkpoint requeues move done rows back to pending, so the done count falls.
+
+    A watermark taken at a higher count would otherwise hold the settle off until the
+    drain re-earned every requeued row plus `every` — hundreds of repair turns on rows
+    doctor had already stopped reporting.
+    """
+    from workhorse_workflows.okf_builder.shared.checkpoint import settle_stale
+
+    standing = _standing_repair(dirty)
+    worklist = _stale_worklist(tmp_path / "w.json", standing, settled_done=100)
+    result = settle_stale(logger, str(worklist), str(dirty), BOOK, every=25)
+    assert result.ran and result.settled == 1
+    assert json.loads(worklist.read_text())["settled_done"] == 31
