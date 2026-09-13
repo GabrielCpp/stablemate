@@ -267,11 +267,10 @@ def run_pyflow(invocation: RunInvocation) -> int:
         resume_argv(
             sys.argv[0],
             writer.run_dir,
-            # Named explicitly, unlike the reload's re-exec: `execv` carries the
-            # environment, so a `--core` reload can let `AGENT_CLI` speak for itself, but
-            # a supervisor re-spawning this line hours later is a fresh process with a
-            # fresh environment, and a resume that silently lands on a different backend
-            # than the run has been on is the failure nobody reads back off the record.
+            # Named explicitly, as the reload's re-exec names it: a resume with no `--cli`
+            # re-resolves the backend from the profile `run.json` recorded, and a resume
+            # that silently lands on a different backend than the run has been on is the
+            # failure nobody reads back off the record.
             cli=config.backend.name if config.backend.name != "none" else "",
             profile=config.profile,
             config_path=os.environ.get(CONFIG_PATH_ENV) or "",
@@ -499,8 +498,14 @@ def _drive_reloadable(
                 # exactly as long as the run lasts, and a re-exec is where that stops
                 # being harmless.
                 live = env.agent_runner.profile.name if env.agent_runner else ""
+                # And the live backend when no switch names one. A resume with no `--cli`
+                # re-applies the profile `run.json` recorded ahead of the inherited
+                # `AGENT_CLI`, so a run an earlier `switch-cli` moved would come back on
+                # the CLI it was moved off — the launch record names it for that reason.
+                backend = env.config.backend.name
                 raise _CoreReloadRequested(
-                    exc.cli, live if live != env.config.profile else ""
+                    exc.cli or (backend if backend != "none" else ""),
+                    live if live != env.config.profile else "",
                 ) from exc
             registry, replaced = _reimport(registry)
             env.workflow_dir = registry.directory()

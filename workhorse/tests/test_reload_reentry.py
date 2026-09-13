@@ -514,6 +514,34 @@ def test_a_switch_is_a_core_reload_even_when_nobody_asked_for_one():
     ], fake.events
 
 
+def test_a_plain_core_reload_comes_back_on_the_cli_the_run_is_on():
+    """A run an earlier `switch-cli` moved has no profile and a `run.json` still naming
+    the one it launched with. A resume line with no `--cli` re-applies that recorded
+    profile — ahead of the inherited `AGENT_CLI` — so a later `--core` reload that named
+    nothing put the run back on the CLI the operator had moved it off, and a capped one
+    parked again. The re-exec names the live backend, as the launch record already does."""
+    at_exec: list[tuple[str, str]] = []
+
+    def fake_drive(wf: Any, env: Any, resume: Any = None) -> Any:
+        env.writer.write_state_checkpoint("start", {}, inputs={}, flow="Stub", ctx={})
+        raise reload.ReloadRequested("engine fix pushed", core=True)
+
+    def fake_exec(name: str, run_dir: Path, *, cli: str = "", profile: str = "") -> int:
+        at_exec.append((cli, profile))
+        return reload.RELOAD_EXIT_CODE
+
+    with tempfile.TemporaryDirectory() as tmp:
+        invocation = dataclasses.replace(
+            _invocation(tmp), config=RunConfig(backend=FakeBackend())
+        )
+        with (
+            patch.object(run_mod, "drive", fake_drive),
+            patch.object(run_mod, "_exec_reload", fake_exec),
+        ):
+            assert run_pyflow(invocation) == reload.RELOAD_EXIT_CODE
+    assert at_exec == [("fake", "")], at_exec
+
+
 # ------------------------------------------------------- the re-import, for real
 
 #: The workflow package the re-entry test reloads. Written to disk rather than
