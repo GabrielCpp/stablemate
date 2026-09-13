@@ -17,12 +17,15 @@ a `TypeError` at the transition instead of a silently-dropped discovery list.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from ostler import markdown
+from ostler.model import document_anchors
 from workhorse import worklist as wl
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
 from workhorse_workflows.okf_builder.shared.schemas import Pick, Recorded
@@ -248,6 +251,64 @@ def select_item(
     )
 
 
+def _node_region(text: str, node: str, path: str) -> str | None:
+    """The lines a node owns in one document, or None when the document has no such node.
+
+    A file node — its id is the bare path — owns the whole document. A section node owns its
+    heading through its first child heading: a `#### field:` under a record is its own node,
+    and a repair on it is not a change to the record.
+    """
+    if node == path:
+        return text
+    anchor = node.removeprefix(path + "#")
+    doc = markdown.split(text)
+    anchors = document_anchors(doc)
+    for section in doc.walk_sections():
+        if anchors.get(section.line_start) == anchor:
+            end = section.children[0].line_start if section.children else section.line_end
+            return "\n".join(section.body_lines[section.line_start:end])
+    return None
+
+
+def repair_scope_digest(repo_root: str, context: str) -> str:
+    """A fingerprint of the book text a repair item is about, as it stands on disk now.
+
+    The scope is what the item's own context names: its `node` in `path`, or every member
+    of `related` for a group finding. Two reads are equal exactly when nothing in that scope
+    changed between them — which is the observation `record` needs to tell "the turn's
+    repair did not hold" from "the node is no longer what the turn left".
+
+    Empty when the context names no scope (not a repair item); a missing file or node is
+    part of the fingerprint, so a node that vanished and stayed vanished still compares
+    equal to itself.
+    """
+    try:
+        ctx = json.loads(context) if context else {}
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(ctx, dict):
+        return ""
+    if ctx.get("node") and ctx.get("path"):
+        members = [str(ctx["node"])]
+    else:
+        members = [str(m) for m in ctx.get("related") or []]
+    if not members:
+        return ""
+    root = Path(repo_root)
+    digest = hashlib.sha256()
+    for member in sorted(members):
+        path = member.split("#", 1)[0]
+        try:
+            region = _node_region((root / path).read_text(encoding="utf-8"), member, path)
+        except OSError:
+            region = None
+        digest.update(member.encode())
+        digest.update(b"\0")
+        digest.update(b"\1absent" if region is None else region.encode())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 @blueprint.node
 def record(
     logger: logging.Logger,
@@ -260,6 +321,7 @@ def record(
     unblock: bool = False,
     only: tuple[str, ...] = (),
     settle_fix_items: bool = False,
+    repo_root: str = "",
 ) -> Recorded:
     """Mark the current item done, merge newly-discovered items, and count the re-tries.
 
@@ -301,6 +363,18 @@ def record(
     out, because a repair turn on a finding doctor no longer raises is a turn spent
     confirming there is nothing to do — and a blocked one is a gate asking the operator
     about a finding that is gone (`settle_stale_rows`).
+
+    **An attempt is counted only against the node the turn left.** `repo_root` lets the
+    close store `closed_digest` — `repair_scope_digest` of the row's scope as the turn left
+    it — and lets a requeue compare that to the scope now. A finding still standing over an
+    unchanged scope is the turn's repair failing, and costs an attempt. A finding standing
+    over a *changed* scope says nothing about that turn: a sibling repair rewrote the node,
+    a human edited it, or the run moved to another checkout of the book — and the verdict
+    the row carries is about text that no longer exists. That reopen is free, and the stale
+    verdict is dropped so no block can quote it. Each free reopen needs a real change to the
+    scope by something other than this row's own turn, and those writers are bounded rows
+    themselves, so the per-target bound still holds. A row closed with no digest — before
+    this existed, or by a caller without `repo_root` — is counted as before.
     """
     path = Path(worklist_path)
     data = json.loads(path.read_text())
@@ -329,6 +403,9 @@ def record(
         for i in items:
             if (_norm(i.get("kind")), _norm(i.get("target"))) == ck:
                 i["status"] = "done"
+                if repo_root and (sealed := repair_scope_digest(
+                        repo_root, str(i.get("context", "")))):
+                    i["closed_digest"] = sealed
                 if doc_status:
                     i["doc_status"] = doc_status
                 if note:
@@ -350,10 +427,22 @@ def record(
                 # A blocked row settled `stale` keeps its `blocked_reason`, which is the
                 # last real turn's account, and re-blocks on it.
                 prior = ""
+                sealed = str(existing.pop("closed_digest", "") or "")
+                moved = bool(sealed and repo_root) and sealed != repair_scope_digest(
+                    repo_root, str(existing.get("context", "")))
                 if existing.get("doc_status") == "stale":
                     existing.pop("doc_status", None)
                     existing.pop("note", None)
                     prior = str(existing.get("blocked_reason", ""))
+                    attempts = int(existing.get("attempts", 0) or 0)
+                elif moved:
+                    logger.info(
+                        "'%s' (%s) still stands, but its node changed since the turn closed "
+                        "it — reopening without counting an attempt",
+                        existing.get("target"), existing.get("kind"),
+                    )
+                    existing.pop("doc_status", None)
+                    existing.pop("note", None)
                     attempts = int(existing.get("attempts", 0) or 0)
                 else:
                     attempts = int(existing.get("attempts", 0) or 0) + 1

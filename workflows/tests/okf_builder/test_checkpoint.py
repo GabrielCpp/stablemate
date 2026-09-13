@@ -456,3 +456,66 @@ def test_reopening_a_stale_closure_is_not_a_failed_repair(tmp_path: Path) -> Non
     assert reblocked.blocked_count == 1
     row = json.loads(worklist.read_text())["items"][0]
     assert row["status"] == "blocked" and row["blocked_reason"] == "the source has no verify seam"
+
+
+def _repair_row_fixture(tmp_path: Path) -> tuple[Path, Path, dict, list[dict]]:
+    doc = tmp_path / "docs/features/a.md"
+    doc.parent.mkdir(parents=True)
+    doc.write_text("---\ntype: api\nslug: a\ntitle: A\n---\n# A\n\n## Endpoints\n\n"
+                   "### publish\n- route: `POST /p`\n\n### list\n- route: `GET /p`\n")
+    context = json.dumps({"code": "undeclared-obligation", "path": "docs/features/a.md",
+                          "node": "docs/features/a.md#publish"})
+    target = "docs/features/a.md#docs/features/a.md#publish#undeclared-obligation"
+    row = {"kind": "fix:undeclared-obligation", "target": target, "context": context}
+    worklist = tmp_path / "w.json"
+    worklist.write_text(json.dumps({"items": [{**row, "status": "pending", "attempts": 0}]}))
+    return worklist, doc, row, [{**row, "requeue": True}]
+
+
+def test_a_finding_standing_over_the_node_the_turn_left_costs_an_attempt(tmp_path: Path) -> None:
+    from workhorse_workflows.okf_builder.shared.worklist import record
+
+    worklist, doc, row, standing = _repair_row_fixture(tmp_path)
+    log = logging.getLogger("t")
+    record(log, str(worklist), row, None, doc_status="documented", repo_root=str(tmp_path))
+    # A sibling node changing is not this node changing.
+    doc.write_text(doc.read_text().replace("GET /p", "GET /q"))
+    record(log, str(worklist), None, standing, repo_root=str(tmp_path))
+    item = json.loads(worklist.read_text())["items"][0]
+    assert item["status"] == "pending" and item["attempts"] == 1
+
+
+def test_a_finding_standing_over_a_node_rewritten_since_the_close_is_free(tmp_path: Path) -> None:
+    """The verdict was about text that no longer exists, so it is not a failed repair.
+
+    A run moved to another checkout of the book reopened hundreds of rows its turns had
+    closed on the old tree, and counted every one — escalating the model tier and walking
+    each row toward a block no turn on the current text had earned.
+    """
+    from workhorse_workflows.okf_builder.shared.worklist import record
+
+    worklist, doc, row, standing = _repair_row_fixture(tmp_path)
+    log = logging.getLogger("t")
+    record(log, str(worklist), row, None, doc_status="documented", note="bound a verify",
+           repo_root=str(tmp_path))
+    doc.write_text(doc.read_text().replace("POST /p", "POST /r"))
+    record(log, str(worklist), None, standing, repo_root=str(tmp_path))
+    item = json.loads(worklist.read_text())["items"][0]
+    assert item["status"] == "pending" and item["attempts"] == 0
+    assert "doc_status" not in item and "note" not in item and "closed_digest" not in item
+
+    # The next close seals the new text, and a failure over it counts again.
+    record(log, str(worklist), row, None, doc_status="documented", repo_root=str(tmp_path))
+    record(log, str(worklist), None, standing, repo_root=str(tmp_path))
+    assert json.loads(worklist.read_text())["items"][0]["attempts"] == 1
+
+
+def test_a_close_with_no_digest_is_counted_as_before(tmp_path: Path) -> None:
+    from workhorse_workflows.okf_builder.shared.worklist import record
+
+    worklist, doc, row, standing = _repair_row_fixture(tmp_path)
+    log = logging.getLogger("t")
+    record(log, str(worklist), row, None, doc_status="documented")
+    doc.write_text(doc.read_text().replace("POST /p", "POST /r"))
+    record(log, str(worklist), None, standing, repo_root=str(tmp_path))
+    assert json.loads(worklist.read_text())["items"][0]["attempts"] == 1

@@ -644,6 +644,7 @@ class OkfBuilder(Workflow):
                 discovered,
                 doc_status=doc_status,
                 note=note,
+                repo_root=str(self.ctx.repo_root),
             ),
             self.select,
             rnd=rnd,
@@ -691,6 +692,7 @@ class OkfBuilder(Workflow):
             # that outcome.
             recorded = self.call(
                 record, self.ctx.worklist_path, None, result.fixup_items, settle_fix_items=True,
+                repo_root=str(self.ctx.repo_root),
             )
             if recorded.blocked_count and not recorded.pending_count:
                 # Nothing left to hand out and something the book could not clear: the
