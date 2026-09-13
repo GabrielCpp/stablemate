@@ -44,6 +44,26 @@ byte-identical on disk: the node's `enter` event has no `done` either way, and t
 only record that a human hit Ctrl-C lives in the agent CLI's session transcript. The
 stamp is cleared by the resume that follows it.
 
+To interrupt a run from another terminal, use its control socket:
+
+```bash
+workhorse-okf-builder control --run /absolute/run/dir stop
+```
+
+Every workflow command supports `stop` on Linux, macOS, and Windows through WSL.
+It uses the same interruption cleanup as Ctrl-C: stop the active agent, record the
+interruption, preserve the checkpoint, and exit the run with code 130. The request
+is handled when the run next polls control, including during streaming and waits;
+a busy script node can delay it until a state boundary.
+
+The command prints `stop accepted` and exits 0 when the run acknowledges the
+request, without waiting for shutdown. A missing listener, unsupported action, or
+missing acknowledgment exits 1. Without acknowledgment the outcome is unconfirmed;
+the command does not fall back to sending an OS signal. A run using an older engine
+needs `control --run /absolute/run/dir reload --core` before it supports `stop`.
+`stop` accepts the existing run-selection options, but no `--core` or
+`--at-boundary` flags.
+
 **A SIGKILL/segfault is also recorded, just on the *next* resume.** A signal the engine
 cannot catch itself — `SIGKILL`, a segfault in the interpreter, an OOM kill, host
 power loss — leaves `run.json` looking exactly like a wedged or in-flight run: the

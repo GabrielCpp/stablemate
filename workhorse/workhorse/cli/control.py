@@ -1,4 +1,4 @@
-"""`control` — say something to a run that is already going, without stopping it.
+"""`control` — steer or stop a run that is already going.
 
 `reload` asks a live run to cut whatever it is doing, pick the pushed code up, and
 re-enter its own checkpoint — the operator's half of :mod:`workhorse.reload`. `switch-cli`
@@ -42,7 +42,7 @@ from workhorse.cli.target import resolve_target
 from workhorse.records import PyflowCheckpoint, parse_checkpoint, parse_run_record
 
 NAME = "control"
-HELP = "Signal a run in flight (reload, status, questions, answer, switch-cli, switch-profile)"
+HELP = "Control a run in flight (reload, stop, status, questions, answer, switch-cli, switch-profile)"
 
 SWITCH_CLI = "switch-cli"
 SWITCH_PROFILE = reload.SWITCH_PROFILE
@@ -51,11 +51,15 @@ SWITCH_PROFILE = reload.SWITCH_PROFILE
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "action",
-        choices=["reload", "status", control.QUESTIONS, control.ANSWER, SWITCH_CLI, SWITCH_PROFILE],
+        choices=[
+            "reload", control.STOP, "status", control.QUESTIONS, control.ANSWER,
+            SWITCH_CLI, SWITCH_PROFILE,
+        ],
         help="reload: pick up pushed code and re-enter the checkpoint. status: ask the "
         "run where it is, which is also a proof that this process is the one serving "
         "that run dir. questions: list what the run is blocked asking an operator. "
         "answer: deliver the operator's answer to the gate the run is parked on. "
+        "stop: interrupt the run and preserve its checkpoint for resume. "
         "switch-cli: re-enter the same checkpoint on another agent CLI. "
         "switch-profile: resolve the next turn's models from another named profile.",
     )
@@ -118,6 +122,9 @@ def run(args: argparse.Namespace) -> None:
     run_dir = resolve_target(args.run, runs_dir, args.registry.name)
     cli, profile = _switch_target(args.action, args.target)
     gate, text = _answer_payload(args)
+    if args.action == control.STOP and (args.core or args.at_boundary):
+        print("error: stop takes no --core or --at-boundary", file=sys.stderr)
+        raise SystemExit(1)
     request = control.Request(
         # A CLI switch is a reload on the wire, and deliberately not a verb of its own:
         # honouring it is already what a `--core` reload does — replace the process image
@@ -134,13 +141,21 @@ def run(args: argparse.Namespace) -> None:
     )
     try:
         reply = control.send(run_dir, request)
-    except (OSError, FileNotFoundError) as exc:
+    except (OSError, control.ControlProtocolError) as exc:
         # The honest failure, and the one the request file could never report: a channel
         # exists only while the run does, so nobody listening means nobody will act. Exit
         # nonzero rather than printing a reassuring line about a message that went nowhere.
         print(f"error: {exc}", file=sys.stderr)
         print(f"  run:     {_liveness(run_dir)}", file=sys.stderr)
         sys.exit(1)
+
+    if args.action == control.STOP:
+        if reply.get("ok") is True and reply.get("action") == control.STOP:
+            print(f"stop accepted for {run_dir}")
+            return
+        reason = reply.get("error") or "the run did not acknowledge stop; its outcome is unconfirmed"
+        print(f"error: {reason}", file=sys.stderr)
+        raise SystemExit(1)
 
     if args.action == control.STATUS:
         _report(run_dir, reply)

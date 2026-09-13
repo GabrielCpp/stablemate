@@ -331,7 +331,7 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - code: `workhorse/workhorse/cli/version.py::add_arguments`
 
 ### control
-- usage: `workhorse-<name> control {reload,status,questions,answer,switch-cli,switch-profile} [NAME] [options]`
+- usage: `workhorse-<name> control {reload,stop,status,questions,answer,switch-cli,switch-profile} [NAME] [options]`
 - flags:
   - `--run ID|DIR` — select a run by run id, run-directory name, or path; default: the newest
     unfinished run under `--runs-dir`
@@ -346,7 +346,7 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
   - `NAME` — for `switch-cli`, the agent CLI to use after re-entry; for `switch-profile`, the
     profile used from the next turn; absent for every other action
 - does:
-  - parse exactly one of `reload`, `status`, `questions`, `answer`, `switch-cli`, or
+  - parse exactly one of `reload`, `stop`, `status`, `questions`, `answer`, `switch-cli`, or
     `switch-profile`
   - reject a target name on an action other than `switch-cli` or `switch-profile`
   - reject either switch action when its target name is absent
@@ -356,7 +356,7 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
   - send one request to the selected run and print action-specific evidence
 - errors: print the resolution or control-socket error to stderr when no target or listener can receive the request
 - exits: return `1` for invalid action arguments, target resolution failure, or socket delivery failure
-- exits: return `0` after a request is delivered, except `answer` and a refused `switch-profile`, which return `1` when the run does not confirm the action
+- exits: return `0` after a request is delivered, except `stop`, `answer` and a refused `switch-profile`, which return `1` when the run does not confirm the action
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
 - code: `workhorse/workhorse/cli/control.py::add_arguments`
@@ -553,6 +553,36 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - code: `workhorse/workhorse/cli/inbox.py::run`
 - detail: [run inbox](concepts/run-inbox.md)
 - tests: `workhorse/tests/test_inbox_command.py::test_reply_persists_and_is_read_back_as_answered`, `workhorse/tests/test_inbox_command.py::test_reply_to_a_missing_id_is_an_error`
+
+### stop
+- usage: `workhorse-<name> control --run ID|DIR stop [--runs-dir DIR]`
+- parent: [control](#control)
+- flags:
+  - `--run ID|DIR` — select a run by id, directory name, or path; default: newest unfinished run
+  - `--runs-dir DIR` — run directory root; default: `<cwd>/.agents/runs`
+- args: none
+- does:
+  - send `action=stop` over the selected run's control socket
+- does:
+  - print `stop accepted` after explicit acknowledgment, without waiting for process exit
+- verify: visible(locator="stdout", text="stop accepted")
+- does:
+  - pause the run through its existing interrupt cleanup when control next polls
+- does:
+  - preserve the checkpoint for resume
+- verify: count(subject="resumable checkpoints after stop", equals=1)
+- errors: reject `--core`, `--at-boundary`, a target name, or answer-only flags
+- errors: report a missing listener, unsupported action, or unconfirmed stop without sending OS signals
+- exits: return 0 only after the run explicitly acknowledges stop
+- verify: exit_status(code=0)
+- exits: return 1 when delivery or acknowledgment fails
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/reload.py::cut_by`
+- code: `workhorse/workhorse/reload.py::boundary_requested`
+- detail: [control channel](concepts/control-channel.md)
+- tests: `workhorse/tests/test_stop_control.py::test_stop_cli_requires_explicit_acceptance_over_the_socket`
+- tests: `workhorse/tests/test_stop_control.py::test_socket_stop_reaps_the_streaming_child_and_preserves_resume`
 
 ## Flows
 

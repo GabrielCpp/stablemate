@@ -11,6 +11,10 @@ that arrived during deterministic work. A profile switch is queued and applied a
 it does not cut the current turn. A CLI switch is represented as a core reload because the CLI
 is selected at the process edge.
 
+The same policy sites acknowledge `stop` before unwinding through the run's
+interruption cleanup. Stop is immediate when consumed, including during cap and
+operator waits, and preserves the checkpoint for resume.
+
 - code: `workhorse/workhorse/reload.py::cut_by`
 - tests: `workhorse/tests/test_reload_request.py::test_an_at_boundary_request_is_held_for_the_boundary_not_dropped`
 - detail: [control channel](control-channel.md)
@@ -20,9 +24,12 @@ is selected at the process edge.
 ### cut_requested
 - sig: `cut_requested() -> Request | None`
 - does: returns a reload request that should interrupt the active streaming turn
+- raises: KeyboardInterrupt after acknowledging a stop request
+- verify: count(subject="stop acknowledgments before interruption", equals=1)
 - returns: None for no request, deferred reloads, answers outside a gate wait, profile switches, and unknown actions
 - verify: count(subject="default reload requests accepted by the streaming cut site", equals=1)
 - code: `workhorse/workhorse/reload.py::cut_requested`
+- tests: `workhorse/tests/test_stop_control.py::test_stop_acknowledges_before_interrupting_at_either_site`
 - tests: `workhorse/tests/test_reload_request.py::test_the_default_request_cuts_the_turn`
 
 ### cut_by
@@ -30,9 +37,12 @@ is selected at the process edge.
 - does: acknowledges and holds at-boundary reloads for the state boundary
 - does: acknowledges profile switches as queued without cutting the active turn
 - does: declines unknown actions and answers non-gate answers with an error
+- raises: KeyboardInterrupt after acknowledging a stop request
+- verify: count(subject="stop acknowledgments before interruption", equals=1)
 - returns: a cutting reload request, or None when the request is deferred or declined
 - verify: count(subject="at-boundary reload requests held for later", equals=1)
 - code: `workhorse/workhorse/reload.py::cut_by`
+- tests: `workhorse/tests/test_stop_control.py::test_stop_acknowledges_before_interrupting_at_either_site`
 - tests: `workhorse/tests/test_reload_request.py::test_an_at_boundary_request_is_held_for_the_boundary_not_dropped`,
   `workhorse/tests/test_reload_reentry.py::test_an_unarmed_run_never_stops_at_a_boundary`
 
@@ -41,9 +51,12 @@ is selected at the process edge.
 - does: returns a reload or profile switch outstanding at a state boundary
 - does: acknowledges an at-boundary reload on the way past so the operator's CLI reports a delivered request rather than one that merely went out
 - does: honours a held reload after the state checkpoint is on disk, so re-entry replays the state with the arguments it was bound with
+- raises: KeyboardInterrupt after acknowledging a stop request
+- verify: count(subject="stop acknowledgments before interruption", equals=1)
 - returns: None after a request has been consumed or declined
 - verify: count(subject="one reload request consumed at one state boundary", equals=1)
 - code: `workhorse/workhorse/reload.py::boundary_requested`
+- tests: `workhorse/tests/test_stop_control.py::test_stop_acknowledges_before_interrupting_at_either_site`
 - tests: `workhorse/tests/test_reload_request.py::test_one_request_is_one_reload`,
   `workhorse/tests/test_reload_reentry.py::test_a_boundary_request_is_honoured_after_the_checkpoint_and_before_the_body`
 

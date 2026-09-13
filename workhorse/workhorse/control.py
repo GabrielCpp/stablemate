@@ -57,6 +57,10 @@ QUESTIONS = "questions"
 #: one consumer that accepts it.
 ANSWER = "answer"
 
+#: Pause the run through its existing interrupt cleanup, without an OS signal.
+#: Consumers acknowledge this before unwinding; the transport only delivers it.
+STOP = "stop"
+
 #: The listener, in the run dir. Discovery is "look in the run dir" — see `POINTER_FILE`
 #: for the one case where what is found there is a pointer rather than the socket.
 SOCKET_FILE = "control.sock"
@@ -685,6 +689,7 @@ def _read_message(conn: socket.socket, *, limit: int) -> str:
 
 
 __all__ = [
+    "STOP",
     "ANSWER",
     "ControlProtocolError",
     "NULL_CHANNEL",

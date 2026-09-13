@@ -15,6 +15,10 @@ also the `--at-boundary` request the stream loop deliberately declines.
 Nothing here kills anything. This module says whether a reload is outstanding and what it
 asked for; acting on it belongs to the stream loop and the driver, which is also what
 keeps this importable from a test with no run in flight.
+
+The same decision sites accept `stop`: acknowledge the request, then raise
+`KeyboardInterrupt` so the driver's existing interruption cleanup pauses the run.
+This also reaches requests delivered by cap sleeps and operator waits.
 """
 
 from __future__ import annotations
@@ -90,7 +94,7 @@ class ReloadRequested(Exception):
 
 
 def cut_requested() -> Request | None:
-    """A reload the streaming turn should be cut for, or None. Never raises.
+    """A cutting reload, or None; an accepted stop raises KeyboardInterrupt.
 
     This is what the stream loop calls once per select slice, so every way of not being a
     cut is answered here rather than upstack: another verb is declined, and an
@@ -107,9 +111,15 @@ def cut_by(request: Request | None) -> Request | None:
     than the channel by the time a decision is due. Splitting the judgement from the
     taking is what keeps that site and the stream loop deciding identically instead of
     growing a second, quietly divergent copy of this.
+
+    A stop is acknowledged before raising KeyboardInterrupt, bypassing recovery and
+    using the same cleanup as Ctrl-C. It is never held for a later boundary.
     """
     if request is None:
         return None
+    if request.action == control.STOP:
+        control.answer({"ok": True, "action": control.STOP})
+        raise KeyboardInterrupt("stop requested")
     if request.action == SWITCH_PROFILE:
         # Never a cut, whatever `--at-boundary` says: the turn already streaming was
         # spawned with the model the old profile named, and killing it would buy the new
@@ -144,7 +154,7 @@ def cut_by(request: Request | None) -> Request | None:
 
 
 def boundary_requested() -> Request | None:
-    """A request the state boundary can honour, or None. Never raises.
+    """A boundary action, or None; an accepted stop raises KeyboardInterrupt.
 
     Every reload is honoured here, `--at-boundary` or not: the boundary is where a request
     that arrived while a script node ran, or one the stream loop held, is finally acted on.
@@ -155,6 +165,9 @@ def boundary_requested() -> Request | None:
     request = control.outstanding()
     if request is None:
         return None
+    if request.action == control.STOP:
+        control.answer({"ok": True, "action": control.STOP})
+        raise KeyboardInterrupt("stop requested")
     if request.action == SWITCH_PROFILE:
         return request
     if request.action == control.ANSWER:

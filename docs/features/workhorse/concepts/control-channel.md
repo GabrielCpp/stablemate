@@ -15,10 +15,18 @@ oversized requests are ignored by the run, and a missing listener is reported to
 - tests: `workhorse/tests/test_control_channel.py::test_a_message_sent_to_a_live_run_arrives_with_its_reply`
 - detail: [operator gate file](../operator-gate-file.md)
 
-The CLI uses `Request` actions `reload`, `status`, `questions`, `answer`, and the switch
+The CLI uses `Request` actions `reload`, `stop`, `status`, `questions`, `answer`, and the switch
 actions. `path` identifies an operator gate and `body` carries its answer; `core`,
 `at_boundary`, `cli`, and `profile` carry reload and selection choices. `status` and `questions`
 do not end a wait. `answer` is persisted by the gate consumer before it is acknowledged.
+
+`stop` is delivered to the same policy sites as reload. They reply with
+`{"ok": true, "action": "stop"}` before unwinding through the existing interrupt
+cleanup. The active agent is terminated, the interruption is recorded, and the
+checkpoint remains resumable. The client reports acceptance without waiting for
+process exit. Missing or unsupported acknowledgments fail without OS-signal
+fallback. This uses the existing Unix socket transport on Linux, macOS, and WSL;
+handling waits until the run next polls control.
 
 ## Fields
 
