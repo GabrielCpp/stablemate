@@ -126,6 +126,9 @@ class WorkflowContainer:
     activity: str = ""
     # The run process's OS pid (native runs only; from the telemetry resource).
     pid: int | None = None
+    #: The (pid, resume_generation) the last telemetry point came from — kept so a row can
+    #: render the previous session's state across a reload, until a new point lands.
+    last_session: tuple[int, str] | None = None
 
 
 @dataclass
@@ -199,6 +202,21 @@ class RunTelemetry:
     # Explicit runtime wait. Empty kind means no current wait (or an older producer).
     wait_kind: str = ""
     wait_elapsed_s: float = 0.0
+    # Identity of the currently active gauge series; old zero series remain exported.
+    wait_series: tuple[tuple[str, str], ...] | None = None
+    #: Gate file path the wait is parked on, when `wait_kind` is operator/machine.
+    #: Source of truth for the row's `gate_path` (1:1 with telemetry). Empty otherwise.
+    wait_gate_path: str = ""
+    #: Question text the wait was opened with, when `wait_kind` is operator/machine.
+    #: Carried on the OTLP gauge so the row reflects it without a follow-up file read.
+    wait_gate_question: str = ""
+    #: Wall-clock time of the last OTLP point that landed on this run. The freshness
+    #: label on the row derives from `now - last_telemetry_ts`.
+    last_telemetry_ts: float = 0.0
+    #: `(pid, resume_generation)` of the producer the last telemetry point came from. The
+    #: row keeps the prior session's state visible across a reload (until the new
+    #: session emits), per the "1:1 reflect of telemetry" rule.
+    last_session: tuple[int, str] | None = None
     # The run's remaining gas tank, from the `workhorse.gas` gauge. None until the
     # first reading — pyflow has no tank, and a missing gauge must not read as empty.
     gas: float | None = None

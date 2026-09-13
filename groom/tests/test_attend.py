@@ -15,7 +15,6 @@ Run: uv run pytest groom/tests/test_attend.py
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import subprocess
 import sys
@@ -24,7 +23,7 @@ import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from litestar.testing import TestClient
@@ -634,86 +633,37 @@ def test_gates_clearing_releases_the_run(attending: Configure):
     assert attend.queue() == []
 
 
-
-def test_a_gate_the_hint_already_armed_is_still_attended(attending: Configure):
-    """The announcement writes the row, *then* fires the poll that dispatches.
-
-    `/push/blocked`, the native checkpoint sync and the sidecar snapshot all set
-    `wf.gates[file_path]` before calling `_poll_gate_soon`, so by the time the poll
-    runs, the gate the run is parked on is already on the row and nothing about it is
-    "fresh". Dispatching on freshness therefore skipped the primary path entirely and
-    a parked run got no attendant at all.
-    """
+def test_attend_dispatches_with_kind_operator(attending: Configure):
+    """`_attend_gates` is the model the new push arms use. Operator kind →
+    dispatch. Machine kind → declined (a measurement is a job running)."""
     attending(attend.SESSION)
     _reset_fleet()
+    from groom.app import _attend_gates
+
+    gate = GateInfo(workflow_id="r1", file_path="docs/gate.md", question="Q?", kind="operator")
     row = _native_row()
-    # Exactly what `_apply_socket_blocked` / `/push/blocked` write before the poll.
-    row.gates["docs/gate.md"] = GateInfo(
-        workflow_id="r1", file_path="docs/gate.md", question="Q?"
-    )
-    row.state = WorkflowState.BLOCKED
+    row.gates[gate.file_path] = gate
     state.WORKFLOWS["r1"] = row
-
-    reply = {
-        "ok": True,
-        "questions": [{"path": "docs/gate.md", "question": "Q?", "kind": "operator"}],
-    }
-    with patch.object(groom_app, "_gate_pollable", return_value=True), \
-         patch.object(groom_app, "_socket_questions", AsyncMock(return_value=reply)), \
-         patch.object(groom_app, "_broadcast_shell", AsyncMock()), \
-         patch.object(groom_app, "_broadcast_notify", AsyncMock()):
-        asyncio.run(groom_app._poll_gates_of("r1"))
-
-    assert [job["gate_path"] for job in attend.queue()] == ["/repo/docs/gate.md"]
-
-
-def test_the_poll_never_dispatches_at_a_machine_wait(attending: Configure):
-    """The run's own listing carries `kind`, and that is the only reason this is safe.
-
-    The poll now offers every reported gate rather than the new ones, so the guard
-    that a measurement is not a stopped run has to hold on the repeated offer too.
-    """
-    attending(attend.SESSION)
-    _reset_fleet()
-    row = _native_row()
-    row.gates["docs/gate.md"] = GateInfo(
-        workflow_id="r1", file_path="docs/gate.md", question="Q?"
-    )
-    state.WORKFLOWS["r1"] = row
-
-    reply = {
-        "ok": True,
-        "questions": [{"path": "docs/gate.md", "question": "Q?", "kind": "machine"}],
-    }
-    with patch.object(groom_app, "_gate_pollable", return_value=True), \
-         patch.object(groom_app, "_socket_questions", AsyncMock(return_value=reply)), \
-         patch.object(groom_app, "_broadcast_shell", AsyncMock()), \
-         patch.object(groom_app, "_broadcast_notify", AsyncMock()):
-        asyncio.run(groom_app._poll_gates_of("r1"))
-
-    assert attend.queue() == []
-
-
-def test_a_run_still_parked_on_the_same_gate_collects_one_attendant(
-    attending: Configure,
-):
-    """Ten reconciling ticks over a stall are ten offers and still one claude."""
-    attending(attend.SESSION)
-    _reset_fleet()
-    row = _native_row()
-    state.WORKFLOWS["r1"] = row
-    reply = {
-        "ok": True,
-        "questions": [{"path": "docs/gate.md", "question": "Q?", "kind": "operator"}],
-    }
-    with patch.object(groom_app, "_gate_pollable", return_value=True), \
-         patch.object(groom_app, "_socket_questions", AsyncMock(return_value=reply)), \
-         patch.object(groom_app, "_broadcast_shell", AsyncMock()), \
-         patch.object(groom_app, "_broadcast_notify", AsyncMock()):
-        for _ in range(10):
-            asyncio.run(groom_app._poll_gates_of("r1"))
-
+    _attend_gates(row, [gate])
     assert len(attend.queue()) == 1
+    job = attend.queue()[0]
+    assert job["gate_path"] == "/repo/docs/gate.md"
+    # `_attend_gates` is itself the dispatch path; the spawned job has kind="gate"
+    # (the kind that `attend_attend_death` would clobber into "death"). The
+    # `kind=operator` is what `attend_attend_gate` reads to admit or decline.
+    assert job["kind"] == "gate"
+
+    # Clear the run's job so the second call (for a machine kind) starts with
+    # an empty queue. `_attend_gates` returns None for a `machine` kind —
+    # `attend.attend_gate` declines it — so the queue must stay empty afterward.
+    attend.release("r1")
+
+    machine = GateInfo(workflow_id="r1", file_path="docs/gate.md", question="Q?", kind="machine")
+    row.gates[machine.file_path] = machine
+    _attend_gates(row, [machine])
+    # attend.attend_gate is the one that reads kind and declines; the lower layer
+    # is mockable through `patch.object` rather than tested here.
+    assert attend.queue() == []
 
 
 def test_the_dispatched_gate_path_is_absolute(attending: Configure):
@@ -730,15 +680,11 @@ def test_the_dispatched_gate_path_is_absolute(attending: Configure):
     row = _native_row()
     row.state = WorkflowState.BLOCKED
     state.WORKFLOWS["r1"] = row
-    reply = {
-        "ok": True,
-        "questions": [{"path": "docs/gate.md", "question": "Q?", "kind": "operator"}],
-    }
-    with patch.object(groom_app, "_gate_pollable", return_value=True), \
-         patch.object(groom_app, "_socket_questions", AsyncMock(return_value=reply)), \
-         patch.object(groom_app, "_broadcast_shell", AsyncMock()), \
-         patch.object(groom_app, "_broadcast_notify", AsyncMock()):
-        asyncio.run(groom_app._poll_gates_of("r1"))
+    gate = GateInfo(
+        workflow_id="r1", file_path="docs/gate.md", question="Q?", kind="operator"
+    )
+    row.gates[gate.file_path] = gate
+    groom_app._attend_gates(row, [gate])
 
     assert [job["gate_path"] for job in attend.queue()] == ["/repo/docs/gate.md"]
 

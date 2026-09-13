@@ -546,8 +546,8 @@ function AnswerForm({ workflowId, filePath }) {
 // The whole gate file, fetched only when the disclosure is opened. The question
 // above it is the agent's excerpt (its "Questions" section, capped); the operator
 // answering it usually needs the findings, the evidence and the earlier escalations
-// that sit around it, and `gate.file_path` is relative to the run's workspace —
-// the same base the `/file/` route reads from — so nobody has to go find the file.
+// that sit around it. `/file/` resolves workspace-relative paths and the exact
+// absolute gate path reported by native telemetry.
 function ContextDisclosure({ workflowId, filePath }) {
   const [loaded, setLoaded] = useState(null); // null = untouched, "" = empty file
   const [failed, setFailed] = useState(false);
@@ -574,7 +574,9 @@ function GateBlock({ workflowId, gate }) {
     <div class="gate-path">${gate.file_path}</div>
     <${Markdown} className="question" source=${gate.question} />
     <${ContextDisclosure} workflowId=${workflowId} filePath=${gate.file_path} />
-    <${AnswerForm} workflowId=${workflowId} filePath=${gate.file_path} />
+    ${gate.kind === "machine"
+      ? html`<div class="no-gate">Waiting for a machine result.</div>`
+      : html`<${AnswerForm} workflowId=${workflowId} filePath=${gate.file_path} />`}
   </div>`;
 }
 

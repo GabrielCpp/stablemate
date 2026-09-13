@@ -37,7 +37,6 @@ from groom import (
     archive,
     attend,
     attend_transcript,
-    checkpoints,
     discovery,
     docker_io,
     localfs,
@@ -51,7 +50,7 @@ from groom import (
     store,
     turns,
 )
-from groom.gates import AWAITING, answer_gate, extract_question, status_of
+from groom.gates import answer_gate
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 from workhorse import control, inbox
 from workhorse import reload as reload_mod
@@ -206,162 +205,19 @@ async def _ensure_volumes(container_id: str) -> None:
     )
 
 
-# A flow invoked at a node checkpoints under `<run>/<node>/_flow`, and that flow can
-# invoke another the same way, so the live checkpoint is at the bottom of a chain the
-# root only names the first link of. The bound is a runaway guard, not a real limit —
-# the deepest shipped graph (coder → review → …) is two.
-_SUBFLOW_DIR = "_flow"
-_MAX_FLOW_DEPTH = 8
-
-
-def _active_waiting_on(run_dir: str) -> str:
-    """What the run's *innermost* live flow is blocked on, "" when nothing is.
-
-    The root checkpoint is not the answer on its own: when a state hands off to a
-    sub-flow, the `Await` — and so the `waiting_on` — belongs to the child's
-    checkpoint, while the parent's says only which node it is sitting in. Reading the
-    root alone is why a gate raised inside `coder`'s review flow reached nobody: the
-    run was blocked, the operator was paged by nothing, and the dashboard showed it
-    running. So descend the chain the parent names, deepest `waiting_on` wins.
-
-    Only the current state's child is followed, never a sibling: a flow node inside a
-    loop leaves a finished `_flow` scope behind, and that scope's last checkpoint is
-    not a gate anybody still owes an answer to.
-    """
-    prefix = ""
-    waiting = ""
-    for _ in range(_MAX_FLOW_DEPTH):
-        raw = localfs.read_file(run_dir, f"{prefix}checkpoint.json")
-        if raw is None:
-            break
-        position = checkpoints.parse_position(raw)
-        if position.waiting_on:
-            waiting = position.waiting_on
-        if not position.current_node:
-            break
-        prefix = f"{prefix}{position.current_node}/{_SUBFLOW_DIR}/"
-    return waiting
-
-
-def _native_gate(run: RunTelemetry, waiting_on: str = "") -> GateInfo | None:
-    """The exact gate named by a native pyflow checkpoint, if still pending.
-
-    `waiting_on` is the already-resolved chain, for a caller that needs to tell
-    "no gate" apart from "the chain named nothing" — see :func:`_sync_native_row`.
-    """
-    if not run.run_dir:
-        return None
-    waiting_on = waiting_on or _active_waiting_on(run.run_dir)
-    if not waiting_on:
-        return None
-    path = Path(waiting_on)
-    if path.is_absolute():
-        candidate = path.resolve()
-    elif run.workspace:
-        candidate = (Path(run.workspace).resolve() / path).resolve()
-    else:
-        return None
-    base = Path(run.workspace).resolve() if run.workspace else Path("/")
-    try:
-        relative = candidate.relative_to(base)
-    except ValueError:
-        # The exported workspace is only whatever cwd the session was (re)started
-        # from — a resume launched from some other directory claims a workspace
-        # the gate does not live under. The checkpoint's absolute path is the
-        # truer pointer, so anchor the gate at the filesystem root rather than
-        # dropping it (which left the run blocked with nothing to answer).
-        base = Path("/")
-        relative = candidate.relative_to(base)
-    content = localfs.read_file(str(base), str(relative))
-    if content is None:
-        return None
-    status = status_of(content)
-    if status not in {"", AWAITING}:
-        return None
-    return GateInfo(
-        workflow_id=run.run_id,
-        file_path=str(relative),
-        base="" if run.workspace and base == Path(run.workspace).resolve() else str(base),
-        question=extract_question(content),
-        legacy_headerless=not status,
-    )
-
-
-def _held_gate_pending(run: RunTelemetry, held: GateInfo) -> bool:
-    """Whether a held gate's on-disk status is still AWAITING (or the legacy headerless form).
-
-    The `_sync_native_row` arm that hands off via `held` cannot see the operator
-    answering a gate the walk cannot name — that gate's next checkpoint the run
-    writes won't mention the file. Re-read the file before carrying the cached
-    `GateInfo` forward, so an answered gate does not keep the dashboard row
-    BLOCKED for the rest of the run.
-    """
-    if held.base:
-        base = Path(held.base)
-        candidate = base / held.file_path
-    elif run.workspace:
-        candidate = Path(run.workspace).resolve() / held.file_path
-    else:
-        return False
-    content = localfs.read_file(str(candidate.parent), candidate.name)
-    if content is None:
-        return False
-    return status_of(content) in {"", AWAITING}
-
-
-def _native_ending(run: RunTelemetry) -> str:
-    """Local-host evidence that a native run has ENDED, when telemetry has not said so.
-
-    Liveness is otherwise a telemetry question, and for a containerized run it has to
-    be. But a native run shares groom's host, which makes two facts directly
-    observable that no export can be relied on to deliver:
-
-    * ``run.json``'s terminal — written by the run itself as it stops, and on disk
-      whether or not the exporter got its last flush out;
-    * whether the run's pid still exists — the answer for a run that never got to
-      write anything, the SIGKILL/OOM/segfault class the engine documents as taking
-      the driver down with it.
-
-    Without this the only remaining signal is silence, and silence is deliberately
-    slow: ``LIVE_AFTER_S`` is three minutes, because a healthy run must not flicker.
-    So a native run that died stayed on the dashboard as *running / alive* for
-    minutes — a false green on precisely the event an operator is watching for. Both
-    facts here are same-host reads costing a stat and a signal, so the row can be
-    corrected on the very next tick instead.
-
-    The verdict names the current session only and is self-clearing: a resume rewrites
-    ``run.json`` with a null terminal and exports under a new pid, and the caller
-    stamps ``terminal_ts`` so ``alerts._clear_stale_terminal`` drops it the moment any
-    newer signal lands.
-    """
-    ending = localfs.run_terminal(run.run_dir)
-    if ending:
-        return ending
-    if run.pid and not localfs.pid_alive(run.pid):
-        # Dead with no account of itself — say so plainly rather than borrowing a
-        # word ("done", "fail") the run never actually reached.
-        return "died"
-    return ""
-
-
 def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None) -> bool:
     """Project a run's telemetry hot-cache entry onto a dashboard row when the run
     is **native** — i.e. its dir exists on groom's own host, which is both the test
     for nativeness and exactly the capability the local-FS panels rely on.
 
-    A containerized run also exports telemetry, but its ``run_dir``/``workspace`` are
-    container paths that don't resolve here, so the verdict is False and it never
-    double-lists (its dashboard row stays owned by the docker/sidecar path). The
-    verdict is cached on the run so a containerized run is stat'd once, not per point.
+    Under the new model the row reflects *only* telemetry. The held-bridge and the
+    checkpoint walk are gone — telemetry carries the gate path and question
+    directly, and a reload keeps the previous session's last-known state in place
+    via ``RunTelemetry.last_session`` until a fresh point lands.
 
-    Returns True when a row was created or a visible field changed, so the caller
-    knows to broadcast.
-
-    The row's state is the same recency verdict the liveness chip shows
-    (:func:`groom.projection.is_live`) rather than a separate reading of the run's
-    history, so the dot and the chip cannot disagree about whether the run is up.
-    :func:`_native_ending` feeds that one verdict rather than competing with it: it
-    stamps the telemetry entry's ``terminal``, which both readers already honour.
+    Docker runs use the sidecar hello snapshot (treated as docker's telemetry
+    equivalent); this function is for native runs only. Returns True when a row
+    was created or a visible field changed, so the caller knows to broadcast.
     """
     if run.native is None:
         run.native = localfs.is_local_dir(run.run_dir) or localfs.is_local_dir(
@@ -369,54 +225,28 @@ def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None)
         )
     if not run.native:
         return False
-    if not run.terminal:
-        ending = _native_ending(run)
-        if ending:
-            run.terminal = ending
-            run.terminal_ts = time.time()
-            # The row turning grey is only half of it. This verdict comes from reading
-            # the host, never from an ingest, so no alert rule sees it — and the death
-            # it reports is the SIGKILL/OOM class whose root span never exports, which
-            # is to say the one ending that otherwise pages nobody at all.
-            if fired is not None:
-                fired.extend(alerts.note_native_ending(run, ending))
     before = state.WORKFLOWS.get(run.run_id)
     prev = (
-        (before.state, before.current_node, before.activity, tuple(before.gates))
+        (before.state, before.current_node, before.activity, before.last_session,
+         tuple((g.file_path, g.question, g.kind) for g in before.gates.values()))
         if before
         else None
     )
-    # Two arms discover a native gate, and they are not equals. `_poll_gates` asks
-    # the run over its control socket — the run's own testimony about what it is
-    # blocked on. This arm reconstructs the same fact by walking the checkpoint
-    # chain, and the walk can come up empty for a shape it cannot name: it descends
-    # `<state>/_flow/`, but a sub-flow's directory is named for the flow class, so a
-    # parent whose state is a generic dispatcher (author's `next_stage` handing off
-    # to `StoryAuthor` → `story_author/`) dead-ends. So an empty walk means "this arm
-    # knows nothing", never "there is no gate" — it must not clear what the socket
-    # found, or the ingest that follows every heartbeat erases the question seconds
-    # after the poll raises it, which is exactly how a 3h operator stall showed as
-    # RUNNING with no question. Only a walk that *did* name a wait speaks to whether
-    # that wait is still pending, and only a terminal run clears unconditionally.
-    waiting_on = "" if run.terminal else _active_waiting_on(run.run_dir)
-    gate = _native_gate(run, waiting_on) if waiting_on else None
-    held = {} if before is None or run.terminal else dict(before.gates)
-    # The held dict is the bridge across a `_active_waiting_on` walk that came back
-    # empty: a sub-flow with a non-standard directory name, or the checkpoint chain
-    # not yet rewritten after a state change. It carries the gate forward when the
-    # next walk might name it again. The cost is that the walk cannot see an operator
-    # answering a held gate, so re-read each held gate's file: a STATUS line that is
-    # no longer AWAITING (and not the legacy headerless form) means the gate closed,
-    # and the dashboard row must follow.
-    if held and not waiting_on:
-        held = {fp: g for fp, g in held.items() if _held_gate_pending(run, g)}
-    if run.terminal:
-        gates: dict[str, GateInfo] = {}
-    elif waiting_on:
-        gates = {gate.file_path: gate} if gate is not None else {}
+    # Gate: only the telemetry-derived one carries weight. We do not walk
+    # checkpoints, and we do not retain a held state across ingests — a reload
+    # leaves the row on the previous session's last-known state until a new
+    # telemetry point from the new session swaps it on the same tick.
+    if not run.terminal and run.wait_kind in ("operator", "machine") and run.wait_gate_path:
+        gate = GateInfo(
+            workflow_id=run.run_id,
+            file_path=run.wait_gate_path,
+            question=run.wait_gate_question,
+            kind=run.wait_kind,
+        )
     else:
-        gates = held
-    if not projection.is_live(run, time.time()):
+        gate = None
+    gates = {gate.file_path: gate} if gate is not None else {}
+    if run.terminal:
         new_state = WorkflowState.FINISHED
     elif gates:
         new_state = WorkflowState.BLOCKED
@@ -438,12 +268,16 @@ def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None)
         pid=run.pid,
         state=new_state,
     )
-    wf.gates = gates
+    # Keep the action routing registry on the same gate the telemetry reports.
+    wf.gates = dict(gates)
+    wf.last_session = run.last_session
+    _attend_gates(wf, list(wf.gates.values()))
     return prev is None or prev != (
         wf.state,
         wf.current_node,
         wf.activity,
-        tuple(wf.gates),
+        wf.last_session,
+        tuple((g.file_path, g.question, g.kind) for g in wf.gates.values()),
     )
 
 
@@ -461,15 +295,17 @@ async def _project_native_rows(records: list) -> None:
     run_ids = {r.get("run_id") for r in records if r.get("run_id")}
     changed = []
     newly_blocked = []
-    # A run whose telemetry just landed is rarely the one found dead, but it is the
-    # one that just wrote its own terminal — read here rather than left for the tick.
     fired: list[alerts.Alert] = []
     for run_id in run_ids:
         run = state.RUNS.get(run_id)
         if run is None:
             continue
         existing = state.WORKFLOWS.get(run_id)
-        was_blocked = existing is not None and existing.state == WorkflowState.BLOCKED
+        was_blocked = (
+            existing is not None
+            and existing.state == WorkflowState.BLOCKED
+            and existing.last_session == run.last_session
+        )
         changed.append(_sync_native_row(run, fired))
         wf = state.WORKFLOWS.get(run_id)
         if wf is not None and wf.state == WorkflowState.BLOCKED and not was_blocked:
@@ -480,16 +316,11 @@ async def _project_native_rows(records: list) -> None:
         for run_id in run_ids:
             await _push_detail(run_id)
     for wf in newly_blocked:
-        gate = next(iter(wf.gates.values()))
-        await _broadcast_notify(
-            f"{wf.workflow_type or wf.name} is waiting on {gate.file_path}"
-        )
-        # The row's gate came from the checkpoint, which names the file and not who
-        # owes the answer — and an attendant must never be sent at a machine wait. So
-        # this edge is demoted the same way `/push/blocked` is: it triggers the poll,
-        # and the run's own `questions` listing, which does carry `kind`, is what
-        # dispatches.
-        _poll_gate_soon(wf.container_id)
+        if wf.gates:
+            gate = next(iter(wf.gates.values()))
+            await _broadcast_notify(
+                f"{wf.workflow_type or wf.name} is waiting on {gate.file_path}"
+            )
 
 
 @get("/", include_in_schema=False)
@@ -606,6 +437,13 @@ async def file_content(
     wf = state.WORKFLOWS.get(container_id)
     volume = wf.workspace_volume if wf else ""
     rel = f"{repo}/{path}".lstrip("/") if repo else path
+    if wf and wf.native and not repo:
+        gates = projection.reported_gates(wf, projection.telemetry_for(wf))
+        gate = next((gate for gate in gates if gate.file_path == path), None)
+        if gate is not None:
+            absolute = Path(_gate_abs_path(wf, gate))
+            if absolute.is_absolute():
+                volume, rel = str(absolute.parent), absolute.name
     if not volume or not rel:
         return {"path": path, "content": "", "lang": lang}
     reader = localfs.read_file if wf and wf.native else docker_io.read_file
@@ -689,13 +527,13 @@ async def diff(
 async def outbox_get(run_id: Annotated[str, PathParameter()]) -> dict:
     """The gate this run is parked on, if any — its path, question and status.
 
-    A run has at most one live gate (the one its checkpoint's ``waiting_on``
-    names), so this is the one entry in ``wf.gates`` rather than a scan.
+    The native gate comes from the latest wait telemetry; older containers
+    report their gates through the sidecar snapshot.
     """
     wf = _workflow_by_run_id(run_id)
     if wf is None:
         return {"found": False}
-    gate = next(iter(wf.gates.values()), None)
+    gate = next(iter(projection.reported_gates(wf, projection.telemetry_for(wf))), None)
     if gate is None:
         return {"found": False}
     return {
@@ -934,10 +772,9 @@ async def push_blocked(data: dict) -> dict:
 
     await _broadcast_shell(container_id)
     await _broadcast_notify(f"{wf.name}: {question[:_QUESTION_NOTIFY_LIMIT]}")
-    # The push is a hint; the run's own `questions` listing is the authority.
-    # An immediate poll reconciles the question text (and clears a gate that
-    # was answered before this push landed).
-    _poll_gate_soon(container_id)
+    # Legacy pushes retain gate discovery for producers without wait telemetry.
+    gate = next(iter(wf.gates.values()))
+    _attend_gates(wf, [gate])
     return {"ok": True}
 
 
@@ -1214,41 +1051,42 @@ async def api_live(run: Annotated[str, QueryParameter()] = "") -> list[dict]:
 # caller falls back to the file write (`answer_gate` re-checks AWAITING under
 # its per-gate lock, so a fallback after a socket-persisted answer refuses
 # rather than double-writing). Discovery mirrors that: the pushes (`blocked`
-# frame, /push/blocked, hello snapshot) are hints that trigger an immediate
-# poll, and the periodic poll is the reconciler — a push that never lands is
-# healed one rules tick later, never lost.
+# frame, /push/blocked, hello snapshot) support legacy container producers.
+# Native gates are projected from wait telemetry without a socket poll.
 # --------------------------------------------------------------------------- #
-async def _socket_questions(wf: WorkflowContainer) -> dict | None:
-    """One run's `questions` reply, over whichever transport reaches its
-    control socket — direct for a native run, the sidecar relay for a
-    container. ``None`` means the socket path is unavailable (no listener, no
-    sidecar, RPC failure, or a run too busy to answer inside the timeout) and
-    the file-derived view stays authoritative."""
-    if wf.native:
-        if not wf.runs_volume:
-            return None
-        try:
-            reply = await asyncio.to_thread(
-                control.send, wf.runs_volume, control.Request(action=control.QUESTIONS)
-            )
-        except FileNotFoundError:
-            return None
-        except control.ControlProtocolError as exc:
-            # The run answered and the transport could not carry it. Logged rather than
-            # swallowed with the other misses: every one of those means "the run said
-            # nothing", and this one means the opposite — the question exists and this
-            # arm just lost it. Left to the file-derived arm either way, but an operator
-            # staring at a blocked run with no question now has a line to find.
-            logger.warning("gate poll: %s answered unreadably: %s", wf.container_id, exc)
-            return None
-        return dict(reply) or None
+
+
+def _attend_gates(wf: WorkflowContainer, gates: list[GateInfo]) -> None:
+    """Put an attendant on the gates this row reports being parked on.
+
+    Called by native telemetry projection and legacy gate pushes. Only
+    `operator` waits get an attendant. `machine` waits have a job running
+    somewhere that will read the file when the work finishes; dispatching
+    there would fabricate the job's end.
+
+    Only native rows are attended: a container row's `runs_volume` is a
+    docker volume, and an attendant spawned on this host has nothing to open.
+    Never raises — `/push/*` is the path through, and a stalled push path
+    must not itself be able to stall the watchdog.
+    """
+    if not wf.native:
+        return
     try:
-        reply = await sidecar_hub.ask_questions(wf.container_id)
-    except sidecar_hub.SidecarError:
-        return None
-    if reply.get("error") == "no listener":
-        return None
-    return reply or None
+        if not wf.gates:
+            attend.release(wf.container_id)
+            return
+        for gate in gates:
+            attend.attend_gate(
+                run_id=wf.container_id,
+                workflow=wf.workflow_type or wf.name,
+                run_dir=wf.runs_volume,
+                workspace=wf.workspace_volume,
+                gate_path=_gate_abs_path(wf, gate),
+                question=gate.question,
+                kind=gate.kind or attend.ATTENDABLE_KIND,
+            )
+    except Exception:
+        logger.exception("attend: dispatch failed for %s", wf.container_id)
 
 
 def _same_gate(run_path: str, file_path: str) -> bool:
@@ -1265,15 +1103,16 @@ async def _answer_via_socket(
     """Deliver one answer over the run's control socket, or ``None`` when the
     file fallback should decide instead.
 
-    Ask-first: list the run's pending questions, match the dashboard's gate
-    against them, then answer with the run's *own* path string — the run
-    refuses a path it isn't waiting on, and groom's reconstruction of an
-    absolute path from a row is not guaranteed to be spelled the way the run
-    spells it. "already answered" is the one terminal refusal: the answer is
-    already in the file, so falling back would double-write."""
+    Ask-first: list the run's pending questions over its own control socket, match
+    the dashboard's gate against them, then answer with the run's *own* path string —
+    the run refuses a path it isn't waiting on, and groom's reconstruction of an
+    absolute path from a row is not guaranteed to be spelled the way the run spells
+    it. "already answered" is the one terminal refusal: the answer is already in
+    the file, so falling back would double-write.
+    """
     if wf is None:
         return None
-    listing = await _socket_questions(wf)
+    listing = await _run_questions(wf)
     if not listing or not listing.get("ok"):
         return None
     questions = [q for q in listing.get("questions") or [] if isinstance(q, dict)]
@@ -1309,108 +1148,32 @@ async def _answer_via_socket(
     return None  # mismatch race / unknown action (old workhorse) → file path decides
 
 
-def _gate_from_question(wf: WorkflowContainer, question: dict) -> GateInfo | None:
-    """Project one entry of a run's `questions` reply onto the `GateInfo` shape
-    the row already uses, keyed the way the existing arms key it — so a poll
-    refresh and a push land on the same dict entry instead of doubling it."""
-    run_path = str(question.get("path", ""))
-    if not run_path:
-        return None
-    text = extract_question(str(question.get("question", "")))
-    kind = str(question.get("kind", ""))
-    if not wf.native:
-        # The sidecar's own gate rows are workspace-relative; mirror that.
-        file_path = run_path.removeprefix("/workspace/")
-        return GateInfo(
-            workflow_id=wf.container_id, file_path=file_path, question=text, kind=kind
-        )
-    # Native: same resolution as _native_gate, against the run's exported
-    # workspace, falling back to an absolute anchor when the gate lives outside.
-    path = Path(run_path)
-    workspace = wf.workspace_volume
-    if path.is_absolute():
-        candidate = path.resolve()
-    elif workspace:
-        candidate = (Path(workspace).resolve() / path).resolve()
-    else:
-        return None
-    base = Path(workspace).resolve() if workspace else Path("/")
-    try:
-        relative = candidate.relative_to(base)
-    except ValueError:
-        base = Path("/")
-        relative = candidate.relative_to(base)
-    return GateInfo(
-        workflow_id=wf.container_id,
-        file_path=str(relative),
-        base="" if workspace and base == Path(workspace).resolve() else str(base),
-        question=text,
-        kind=kind,
-    )
+async def _run_questions(wf: WorkflowContainer) -> dict | None:
+    """The one-shot `questions` round-trip — used only by the answer flow.
 
-
-def _apply_questions(
-    wf: WorkflowContainer, questions: list
-) -> tuple[bool, list[GateInfo]]:
-    """Rebuild a row's gates from the run's own listing — the run is the
-    authority on what it is blocked on, so this replaces rather than merges.
-    Returns (anything visible changed, the gates that are new to this row)."""
-    gates: dict[str, GateInfo] = {}
-    for question in questions:
-        if not isinstance(question, dict):
-            continue
-        gate = _gate_from_question(wf, question)
-        if gate is not None:
-            gates[gate.file_path] = gate
-    fresh = [gate for key, gate in gates.items() if key not in wf.gates]
-    changed = set(gates) != set(wf.gates)
-    wf.gates = gates
-    if gates and wf.state in (WorkflowState.RUNNING, WorkflowState.IDLE):
-        wf.state = WorkflowState.BLOCKED
-        changed = True
-    elif not gates and wf.state == WorkflowState.BLOCKED:
-        wf.state = WorkflowState.RUNNING
-        changed = True
-    return changed, fresh
-
-
-def _gate_pollable(wf: WorkflowContainer) -> bool:
-    """Whether asking this row's socket for questions can possibly succeed —
-    a live native run with a known run dir, or a container with a connected
-    sidecar. Everything else would be a guaranteed timeout paid per tick."""
-    if wf.state == WorkflowState.FINISHED:
-        return False
+    Replaces the old `_socket_questions` that the polling code used to call on
+    every tick. Called when an operator submits an answer, not on a timer.
+    """
     if wf.native:
-        run = state.RUNS.get(wf.container_id)
-        return bool(
-            wf.runs_volume
-            and run is not None
-            and not run.terminal
-            and projection.is_live(run, time.time())
-        )
-    return sidecar_hub.get(wf.container_id) is not None
-
-
-async def _poll_gates_of(container_id: str) -> None:
-    """Reconcile one row's gates against its run's own `questions` listing.
-    A socket miss changes nothing: the push arms and the file-derived native
-    sync still own the row, so an old workhorse (no `questions` verb) or a
-    crashed run degrades to exactly the behaviour this feature replaced."""
-    wf = state.WORKFLOWS.get(container_id)
-    if wf is None or not _gate_pollable(wf):
-        return
-    reply = await _socket_questions(wf)
-    if not reply or not reply.get("ok"):
-        return
-    changed, fresh = _apply_questions(wf, list(reply.get("questions") or []))
-    if changed:
-        await _broadcast_shell(wf.container_id)
-    for gate in fresh:
-        await _broadcast_notify(f"{wf.name}: {gate.question[:_QUESTION_NOTIFY_LIMIT]}")
-    # Every gate the run just reported, not just the ones new to the row: the
-    # announcement that triggered this poll has already written them, so `fresh`
-    # is empty on exactly the path that matters. See `_attend_gates`.
-    _attend_gates(wf, list(wf.gates.values()))
+        if not wf.runs_volume:
+            return None
+        try:
+            reply = await asyncio.to_thread(
+                control.send, wf.runs_volume, control.Request(action=control.QUESTIONS)
+            )
+        except FileNotFoundError:
+            return None
+        except control.ControlProtocolError as exc:
+            logger.warning("gate one-shot: %s answered unreadably: %s", wf.container_id, exc)
+            return None
+        return dict(reply) or None
+    try:
+        reply = await sidecar_hub.ask_questions(wf.container_id)
+    except sidecar_hub.SidecarError:
+        return None
+    if reply.get("error") == "no listener":
+        return None
+    return reply or None
 
 
 def _gate_abs_path(wf: WorkflowContainer, gate: GateInfo) -> str:
@@ -1430,91 +1193,12 @@ def _gate_abs_path(wf: WorkflowContainer, gate: GateInfo) -> str:
 
     `workspace_volume` is only a host path on a **native** row — on a container row it is
     a docker volume name, and joining to it would build a path that opens nothing. That
-    is safe to rely on here rather than re-test: `_attend_gates` returns on a
-    non-native row before it reaches this, because an attendant spawned on this host has
-    nothing to open in a container either. This is the same anchor `answer_gate`'s caller
-    resolves with, and the same one `groom.localfs` takes as its base.
+    is safe to rely on here rather than re-test.
     """
     anchor = gate.base or wf.workspace_volume
     if not anchor:
         return gate.file_path
     return str(Path(anchor) / gate.file_path)
-
-
-def _attend_gates(wf: WorkflowContainer, gates: list[GateInfo]) -> None:
-    """Put an attendant on the gates this run reports being parked on, or take one off.
-
-    Every announcement path — the immediate poll a ``/push/blocked`` fires, the sidecar
-    hello snapshot, the native block, the reconciling tick — reaches
-    :func:`_apply_questions`, so hooking it once covers the fleet.
-
-    **These are the run's currently reported gates, not the ones new to the row.** Each
-    announcement writes ``wf.gates`` itself and *then* fires the poll, so by the time
-    this runs the gate is already on the row and ``_apply_questions`` reports nothing
-    fresh — on the primary path, always. Dispatching on freshness meant dispatching
-    only when the hint and the poll happened to key the gate differently or the
-    reconciling tick beat the announcement, which is to say by luck: a run could sit
-    parked on an operator gate indefinitely with no attendant ever sent.
-
-    Freshness was never the dedupe anyway — :func:`attend.attend_gate` is, through its
-    ledger and its ``running`` row, and the ``release`` below is what re-arms a run
-    whose gate cleared. So a still-parked run re-offered on every tick costs one
-    dictionary lookup and dispatches once.
-
-    Only gates from the run's own ``questions`` reply reach here, and that is
-    load-bearing: they carry ``kind``, so a ``machine`` wait is declined by
-    :func:`attend.attend_gate`. The gates the checkpoint walk and the pushes write
-    carry no ``kind``, and dispatching on those would send an attendant at a
-    measurement.
-
-    Only a native row is attended. A container row's ``runs_volume`` is a docker volume
-    name, not a path — an attendant spawned on this host has nothing to open, and
-    reaching into the container is a different mechanism than this one.
-
-    Never raises: it is reached from the poll the reconciler drives, and the watch on a
-    stopped run must not itself be able to stop.
-    """
-    if not wf.native:
-        return
-    try:
-        if not wf.gates:
-            attend.release(wf.container_id)
-            return
-        for gate in gates:
-            attend.attend_gate(
-                run_id=wf.container_id,
-                workflow=wf.workflow_type or wf.name,
-                run_dir=wf.runs_volume,
-                workspace=wf.workspace_volume,
-                gate_path=_gate_abs_path(wf, gate),
-                question=gate.question,
-                kind=gate.kind or attend.ATTENDABLE_KIND,
-            )
-    except Exception:
-        logger.exception("attend: dispatch failed for %s", wf.container_id)
-
-
-async def _poll_gates() -> None:
-    """One reconciliation sweep: every pollable row's socket, concurrently.
-    Rides the rules tick so it runs with no dashboard open — the poll is the
-    arm that recovers a question whose push never landed."""
-    ids = [wf.container_id for wf in _all_workflows() if _gate_pollable(wf)]
-    if ids:
-        await asyncio.gather(*(_poll_gates_of(cid) for cid in ids))
-
-
-# Strong refs: asyncio holds tasks weakly, and a hint-triggered poll losing a
-# GC race would silently re-open the very window the hint exists to close.
-_GATE_POLL_TASKS: set[asyncio.Task] = set()
-
-
-def _poll_gate_soon(container_id: str) -> None:
-    """Schedule an immediate poll of one run — the demotion of the push arms:
-    a push is a hint that something changed, and the run's own listing is what
-    the row is reconciled from."""
-    task = asyncio.create_task(_poll_gates_of(container_id))
-    _GATE_POLL_TASKS.add(task)
-    task.add_done_callback(_GATE_POLL_TASKS.discard)
 
 
 async def _answer(wf: WorkflowContainer | None, container_id: str, file_path: str, answer: str) -> AnswerResult:
@@ -1524,19 +1208,20 @@ async def _answer(wf: WorkflowContainer | None, container_id: str, file_path: st
     from a CLI updates every open tab exactly like one answered from the browser.
     """
     gate = wf.gates.get(file_path) if wf else None
+    tel = projection.telemetry_for(wf) if wf else None
+    if (gate and gate.kind == "machine") or (
+        tel and tel.wait_kind == "machine" and _same_gate(tel.wait_gate_path, file_path)
+    ):
+        return AnswerResult(ok=False, message="machine waits require their producer's result")
     # A gate can live outside the workspace the run exported (a resume launched
     # from another cwd); the gate row carries the base it was actually read from,
     # and the answer must be written back against that same base.
     workspace_volume = (gate.base if gate and gate.base else wf.workspace_volume) if wf else ""
     allow_headerless = bool(gate and gate.legacy_headerless)
     if allow_headerless:
-        run = state.RUNS.get(container_id)
-        current = _native_gate(run) if run is not None else None
-        allow_headerless = bool(
-            current
-            and current.file_path == file_path
-            and current.legacy_headerless
-        )
+        run = projection.telemetry_for(wf) if wf else None
+        allow_headerless = bool(run and run.wait_kind == "operator"
+                                and _same_gate(run.wait_gate_path, file_path))
     socket_result = await _answer_via_socket(wf, file_path, answer)
     if socket_result is not None:
         result = socket_result
@@ -1546,14 +1231,20 @@ async def _answer(wf: WorkflowContainer | None, container_id: str, file_path: st
             # a run that just acknowledged over its socket is alive.
             state.clear_gate(container_id, file_path)
     else:
+        answer_path = file_path
+        if wf and wf.native and gate and Path(file_path).is_absolute():
+            workspace_volume = str(Path(file_path).parent)
+            answer_path = Path(file_path).name
         result = await answer_gate(
             container_id,
-            file_path,
+            answer_path,
             answer,
             workspace_volume=workspace_volume,
             native=bool(wf and wf.native),
             allow_headerless=allow_headerless,
         )
+    if result.ok:
+        state.clear_gate(container_id, file_path)
     state.record_log(
         {
             "event": "answer",
@@ -1762,10 +1453,7 @@ async def _apply_hello(container_id: str, data: dict) -> None:
                 continue
             wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=str(gate.get("question", "")))
         wf.state = WorkflowState.BLOCKED if wf.gates else WorkflowState.RUNNING
-        if wf.gates:
-            # The snapshot's gates come from the sidecar's file scan; the run's
-            # own listing carries the fuller question text and clears faster.
-            _poll_gate_soon(container_id)
+        # No poll — the hello snapshot IS the docker-side telemetry.
     await _broadcast_shell(container_id)
 
 
@@ -1798,8 +1486,11 @@ async def _apply_socket_blocked(container_id: str, data: dict) -> None:
     wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=question)
     await _broadcast_shell(container_id)
     await _broadcast_notify(f"{wf.name}: {question[:_QUESTION_NOTIFY_LIMIT]}")
-    # Hint → immediate poll: the run's own listing reconciles this row.
-    _poll_gate_soon(container_id)
+    # Dispatch attendant off the same push: a parked run gets an offer here,
+    # not at the next reconciling tick. The kind on the gate defaults to
+    # "operator", which is what `attend.attend_gate` admits.
+    if wf.gates:
+        _attend_gates(wf, list(wf.gates.values()))
 
 
 @websocket("/sidecar")
@@ -1897,10 +1588,8 @@ async def _rules_loop() -> None:
         try:
             now = time.time()
             await _dispatch_alerts(alerts.check_time_rules(now))
-            # The gate reconciler: ask every pollable run's socket for its
-            # pending questions, so a question whose push never landed (groom
-            # was down, the frame was dropped) surfaces within one tick.
-            await _poll_gates()
+            # Native state follows received telemetry; legacy containers also
+            # announce their gates through sidecar snapshots and pushes.
             # Free finished/dead runs (and the native rows they back) so RUNS and
             # the per-tick rule walk don't grow unbounded across a week-long serve.
             state.evict_runs(alerts.stale_run_ids(now))

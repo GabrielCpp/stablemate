@@ -47,9 +47,6 @@ def test_native_run_becomes_a_row(tmp_path):
     run_dir = tmp_path / "coder-run"
     run_dir.mkdir()
     alerts.ingest_metrics([
-        # A live pid: this row is about a RUNNING run, and a native run's liveness
-        # now reads the pid directly (see _native_ending), so a made-up one would
-        # correctly retire the row before the assertions below.
         _metric("R1", "workhorse.node.active", 1, run_dir=str(run_dir),
                 workspace=str(tmp_path), pid=os.getpid(), node="plan",
                 **{"activity": "planning ACME-1"}),
@@ -126,9 +123,16 @@ def test_resumed_run_under_the_same_run_id_goes_back_to_running(tmp_path):
     assert state.WORKFLOWS["rerun1"].state == WorkflowState.RUNNING
 
 
-def test_a_run_that_goes_silent_stops_reading_as_running(tmp_path):
-    """The other half: nothing arrives to mark a run stopped — silence is an
-    absence — so the row's state has to be re-derived from the clock."""
+def test_a_run_that_goes_silent_still_reads_as_running(tmp_path):
+    """The new contract: the row reflects telemetry — silence is not state.
+
+    A silent run stayed RUNNING under the old code (if it's not terminal and has
+    no gates, it's RUNNING) and the *liveness chip* is what carries the silence
+    signal. Stopping the run is the run's own job (`terminal` arrives on the
+    root span).
+    This test pins the new contract: an indefinitely silent live run is still
+    RUNNING on the row, with the liveness verdict marking it dead in the UI.
+    """
     _reset()
     run_dir = tmp_path / "r"
     run_dir.mkdir()
@@ -140,90 +144,30 @@ def test_a_run_that_goes_silent_stops_reading_as_running(tmp_path):
     run = state.RUNS["R5"]
     run.last_heartbeat_ts = run.first_seen_ts = run.last_span_ts = stale
     groom_app._sync_native_row(run)
-    assert state.WORKFLOWS["R5"].state == WorkflowState.FINISHED
+    # Telemetry never said terminal. The row stays RUNNING.
+    assert state.WORKFLOWS["R5"].state == WorkflowState.RUNNING
 
 
 # --------------------------------------------------------------------------- #
-# Local-host evidence that a native run ended
+# Disk and process state cannot overwrite received telemetry.
 # --------------------------------------------------------------------------- #
-def test_run_json_terminal_retires_the_row_without_waiting_for_silence(tmp_path):
-    """The root span only reaches the collector if the dying process got its
-    exporter flushed; ``run.json`` is on disk either way. Without reading it, a run
-    that died kept its green *running / alive* row until the silence window expired
-    minutes later — a false green on exactly the event being watched for."""
+def test_disk_terminal_and_dead_pid_do_not_fabricate_telemetry(tmp_path):
     _reset()
-    run_dir = tmp_path / "coder-r6"
+    run_dir = tmp_path / "coder-run"
     run_dir.mkdir()
-    alerts.ingest_metrics([_metric("R6", "workhorse.run.heartbeat", 1,
-                                   run_dir=str(run_dir), pid=os.getpid())])
-    groom_app._sync_native_row(state.RUNS["R6"])
-    assert state.WORKFLOWS["R6"].state == WorkflowState.RUNNING
-
     (run_dir / "run.json").write_text(json.dumps({"terminal": "fail"}))
-    run = state.RUNS["R6"]
-    groom_app._sync_native_row(run)
-    # Still beating by the clock — the row is retired on the record, not on silence.
-    assert run.terminal == "fail"
-    assert state.WORKFLOWS["R6"].state == WorkflowState.FINISHED
-
-
-def test_a_vanished_pid_retires_a_run_that_never_recorded_an_ending(tmp_path):
-    """SIGKILL, an OOM, a segfaulting C extension — the engine documents this class
-    as taking the driver down with it, losing the checkpoint write and the telemetry
-    flush alike. Nothing is written anywhere, so the pid is the only witness left."""
-    _reset()
-    run_dir = tmp_path / "coder-r7"
-    run_dir.mkdir()
-    # A genuinely dead pid, not a made-up number: spawn and reap, so the id is free
-    # here rather than merely unlikely to be in use.
     dead = subprocess.Popen(["true"])
     dead.wait()
-    alerts.ingest_metrics([_metric("R7", "workhorse.run.heartbeat", 1,
-                                   run_dir=str(run_dir), pid=dead.pid)])
-    run = state.RUNS["R7"]
-    groom_app._sync_native_row(run)
-    assert run.terminal == "died"  # not borrowing a word the run never reached
-    assert state.WORKFLOWS["R7"].state == WorkflowState.FINISHED
-
-
-def test_a_live_pid_with_no_record_stays_running(tmp_path):
-    """The other direction, and the one that must not regress: a healthy run has no
-    terminal in ``run.json`` and a pid that exists. A false red here would be worse
-    than the false green — it retires a run that is still working."""
-    _reset()
-    run_dir = tmp_path / "coder-r8"
-    run_dir.mkdir()
-    (run_dir / "run.json").write_text(json.dumps({"terminal": None}))
-    alerts.ingest_metrics([_metric("R8", "workhorse.run.heartbeat", 1,
-                                   run_dir=str(run_dir), pid=os.getpid())])
-    run = state.RUNS["R8"]
-    groom_app._sync_native_row(run)
+    alerts.ingest_metrics([_metric(
+        "reported", "workhorse.run.heartbeat", 1,
+        run_dir=str(run_dir), pid=dead.pid,
+    )])
+    run = state.RUNS["reported"]
+    fired: list[alerts.Alert] = []
+    groom_app._sync_native_row(run, fired)
     assert run.terminal == ""
-    assert state.WORKFLOWS["R8"].state == WorkflowState.RUNNING
-
-
-def test_a_locally_stamped_ending_is_cleared_by_the_resumed_session(tmp_path):
-    """``--resume-run`` reuses the run dir and its id, and re-writes ``run.json``
-    with a null terminal before it does anything. The locally stamped verdict has to
-    clear on the next signal exactly like a root span's would, or the resumed run
-    stays dead on the dashboard for the life of the groom process."""
-    _reset()
-    run_dir = tmp_path / "coder-r9"
-    run_dir.mkdir()
-    (run_dir / "run.json").write_text(json.dumps({"terminal": "fail"}))
-    alerts.ingest_metrics([_metric("R9", "workhorse.run.heartbeat", 1,
-                                   run_dir=str(run_dir))])
-    run = state.RUNS["R9"]
-    groom_app._sync_native_row(run)
-    assert state.WORKFLOWS["R9"].state == WorkflowState.FINISHED
-
-    (run_dir / "run.json").write_text(json.dumps({"terminal": None}))
-    beat = _metric("R9", "workhorse.run.heartbeat", 1, run_dir=str(run_dir))
-    beat["ts"] = run.terminal_ts + 1.0
-    alerts.ingest_metrics([beat])
-    assert run.terminal == ""
-    groom_app._sync_native_row(run)
-    assert state.WORKFLOWS["R9"].state == WorkflowState.RUNNING
+    assert state.WORKFLOWS["reported"].state == WorkflowState.RUNNING
+    assert fired == []
 
 
 def test_native_rows_survive_the_docker_prune(tmp_path):
@@ -294,311 +238,6 @@ def _checkpoint(run_dir: Path, rel: str, state_name: str, waiting_on: str | None
     )
 
 
-def test_native_gate_raised_inside_a_subflow_is_found(tmp_path):
-    """The blocking `Await` belongs to the child flow's checkpoint; the root only
-    names the node that handed off to it. Reading the root alone left the run
-    blocked with nothing on the dashboard to answer."""
-    _reset()
-    run_dir = tmp_path / "runs" / "coder-r1"
-    workspace = tmp_path / "workspace"
-    gate = workspace / "docs" / "story" / "context.md"
-    gate.parent.mkdir(parents=True)
-    gate.write_text("STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\nWhich corpus?\n")
-    _checkpoint(run_dir, "", "review", None)
-    _checkpoint(run_dir, "review/_flow", "read_operator", str(gate))
-
-    alerts.ingest_metrics(
-        [
-            _metric(
-                "C1", "workhorse.run.heartbeat", 1,
-                run_dir=str(run_dir), workspace=str(workspace), node="review",
-            )
-        ],
-        now=time.time(),
-    )
-
-    assert groom_app._sync_native_row(state.RUNS["C1"]) is True
-    wf = state.WORKFLOWS["C1"]
-    assert wf.state == WorkflowState.BLOCKED
-    assert wf.gates["docs/story/context.md"].question == "Which corpus?"
-
-
-def test_native_gate_outside_the_claimed_workspace_still_surfaces(tmp_path):
-    """A ``--resume-run`` launched from some other directory exports THAT cwd as the
-    run's workspace, while the checkpoint still names the gate by absolute path in
-    the real checkout. The gate is readable on this host either way — dropping it
-    because it fails ``relative_to(workspace)`` is how three blocked runs showed
-    ``wait=operator`` with an empty question. Anchor at the root and carry the base."""
-    _reset()
-    run_dir = tmp_path / "runs" / "author-r3"
-    claimed = tmp_path / "somewhere-else"
-    claimed.mkdir()
-    checkout = tmp_path / "checkout"
-    gate = checkout / "docs" / "epics" / "0006" / "context.md"
-    gate.parent.mkdir(parents=True)
-    gate.write_text("STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\nWhich scope?\n")
-    _checkpoint(run_dir, "", "author_epic", str(gate))
-
-    alerts.ingest_metrics(
-        [
-            _metric(
-                "A3", "workhorse.run.heartbeat", 1,
-                run_dir=str(run_dir), workspace=str(claimed), node="author_epic",
-            )
-        ],
-        now=time.time(),
-    )
-
-    assert groom_app._sync_native_row(state.RUNS["A3"]) is True
-    wf = state.WORKFLOWS["A3"]
-    assert wf.state == WorkflowState.BLOCKED
-    rel = str(gate.relative_to("/"))
-    assert wf.gates[rel].question == "Which scope?"
-    assert wf.gates[rel].base == "/"
-    # The workspace panels keep the exported path; only the gate carries its base.
-    assert wf.workspace_volume == str(claimed)
-
-    # And the answer writes back against the gate's own base, not the claimed
-    # workspace — end to end through the shared answer path.
-    result = asyncio.run(groom_app._answer(wf, "A3", rel, "narrow it to commands"))
-    assert result.ok is True
-    written = gate.read_text()
-    assert written.startswith("STATUS: ANSWERED")
-    assert "narrow it to commands" in written
-
-
-def test_native_gate_inside_the_workspace_carries_no_base_override(tmp_path):
-    """The common case stays exactly as it was: a repo-relative gate path, resolved
-    against the row's workspace_volume, with no base of its own."""
-    _reset()
-    run_dir = tmp_path / "runs" / "coder-r4"
-    workspace = tmp_path / "workspace"
-    gate = workspace / "docs" / "context.md"
-    gate.parent.mkdir(parents=True)
-    gate.write_text("STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\nOk?\n")
-    _checkpoint(run_dir, "", "review", str(gate))
-
-    alerts.ingest_metrics(
-        [
-            _metric(
-                "A4", "workhorse.run.heartbeat", 1,
-                run_dir=str(run_dir), workspace=str(workspace), node="review",
-            )
-        ],
-        now=time.time(),
-    )
-
-    groom_app._sync_native_row(state.RUNS["A4"])
-    assert state.WORKFLOWS["A4"].gates["docs/context.md"].base == ""
-
-
-def test_native_gate_ignores_a_finished_siblings_checkpoint(tmp_path):
-    """A flow node inside a loop leaves its `_flow` scope behind. Only the chain the
-    root's current state names is followed, so the previous story's gate — still
-    AWAITING because nobody ever answered it — is not re-raised."""
-    _reset()
-    run_dir = tmp_path / "runs" / "coder-r2"
-    workspace = tmp_path / "workspace"
-    stale = workspace / "docs" / "old.md"
-    stale.parent.mkdir(parents=True)
-    stale.write_text("STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\nStale?\n")
-    _checkpoint(run_dir, "", "dev", None)
-    _checkpoint(run_dir, "dev/_flow", "layer", None)
-    _checkpoint(run_dir, "qa/_flow", "resolve_operator", str(stale))
-
-    alerts.ingest_metrics(
-        [
-            _metric(
-                "C2", "workhorse.run.heartbeat", 1,
-                run_dir=str(run_dir), workspace=str(workspace), node="dev",
-            )
-        ],
-        now=time.time(),
-    )
-
-    groom_app._sync_native_row(state.RUNS["C2"])
-    wf = state.WORKFLOWS["C2"]
-    assert wf.gates == {}
-    assert wf.state == WorkflowState.RUNNING
-
-
-def test_an_ingest_does_not_erase_a_gate_the_run_reported_over_its_socket(tmp_path):
-    """The checkpoint walk descends `<state>/_flow/`, but a sub-flow's directory is
-    named for the flow class — so a parent sitting in a generic dispatcher (author's
-    `next_stage` handing off to `StoryAuthor` → `story_author/`) dead-ends and the
-    walk names nothing. That is "this arm knows nothing", not "there is no gate":
-    clearing on it let every heartbeat's ingest wipe the question `_poll_gates` had
-    just raised, which is how a 3h operator stall showed RUNNING with no question."""
-    _reset()
-    run_dir = tmp_path / "runs" / "author-r4"
-    workspace = tmp_path / "workspace"
-    gate = workspace / "docs" / "story" / "context.md"
-    gate.parent.mkdir(parents=True)
-    gate.write_text("STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\nWhich scope?\n")
-    # The shape the walk cannot follow: the root names `next_stage`, the child lives
-    # under `story_author/`, and neither checkpoint records a `waiting_on`.
-    _checkpoint(run_dir, "", "next_stage", None)
-    _checkpoint(run_dir, "story_author/_flow", "design_mockup", None)
-    assert groom_app._active_waiting_on(str(run_dir)) == ""
-
-    alerts.ingest_metrics(
-        [
-            _metric(
-                "C4", "workhorse.run.heartbeat", 1,
-                run_dir=str(run_dir), workspace=str(workspace), node="next_stage",
-            )
-        ],
-        now=time.time(),
-    )
-    groom_app._sync_native_row(state.RUNS["C4"])
-
-    # What the socket poll would have written on the rules tick.
-    wf = state.WORKFLOWS["C4"]
-    wf.gates = {
-        "docs/story/context.md": GateInfo(
-            workflow_id="C4", file_path="docs/story/context.md", question="Which scope?"
-        )
-    }
-    wf.state = WorkflowState.BLOCKED
-
-    # The next heartbeat's ingest, arriving seconds later.
-    alerts.ingest_metrics(
-        [
-            _metric(
-                "C4", "workhorse.run.heartbeat", 1,
-                run_dir=str(run_dir), workspace=str(workspace), node="next_stage",
-            )
-        ],
-        now=time.time(),
-    )
-    groom_app._sync_native_row(state.RUNS["C4"])
-
-    wf = state.WORKFLOWS["C4"]
-    assert wf.gates["docs/story/context.md"].question == "Which scope?"
-    assert wf.state == WorkflowState.BLOCKED
-
-
-def test_a_walk_that_names_a_resolved_wait_still_clears_the_gate(tmp_path):
-    """Subordinate, not inert. When the chain *does* name a wait, this arm is
-    reading the same file the operator edits, so an answered gate must still drop —
-    otherwise a run whose socket never replies (an old workhorse) would show a
-    question nobody owes an answer to for the rest of the run."""
-    _reset()
-    run_dir = tmp_path / "runs" / "coder-r5"
-    workspace = tmp_path / "workspace"
-    gate = workspace / "docs" / "story" / "context.md"
-    gate.parent.mkdir(parents=True)
-    gate.write_text("STATUS: ANSWERED\n\n## Questions from the agent\nWhich scope?\n")
-    _checkpoint(run_dir, "", "review", None)
-    _checkpoint(run_dir, "review/_flow", "read_operator", str(gate))
-
-    alerts.ingest_metrics(
-        [
-            _metric(
-                "C5", "workhorse.run.heartbeat", 1,
-                run_dir=str(run_dir), workspace=str(workspace), node="review",
-            )
-        ],
-        now=time.time(),
-    )
-    groom_app._sync_native_row(state.RUNS["C5"])
-    state.WORKFLOWS["C5"].gates = {
-        "docs/story/context.md": GateInfo(
-            workflow_id="C5", file_path="docs/story/context.md", question="Which scope?"
-        )
-    }
-
-    alerts.ingest_metrics(
-        [
-            _metric(
-                "C5", "workhorse.run.heartbeat", 1,
-                run_dir=str(run_dir), workspace=str(workspace), node="review",
-            )
-        ],
-        now=time.time(),
-    )
-    groom_app._sync_native_row(state.RUNS["C5"])
-
-    wf = state.WORKFLOWS["C5"]
-    assert wf.gates == {}
-    assert wf.state == WorkflowState.RUNNING
-
-
-def test_active_waiting_on_stops_at_the_depth_bound(tmp_path):
-    """A checkpoint whose state names its own scope would otherwise walk forever."""
-    run_dir = tmp_path / "loop"
-    for depth in range(groom_app._MAX_FLOW_DEPTH + 3):
-        _checkpoint(run_dir, "/".join(["self/_flow"] * depth), "self", None)
-    assert groom_app._active_waiting_on(str(run_dir)) == ""
-
-
-def test_a_walk_that_empties_clears_a_held_gate_whose_file_is_now_answered(tmp_path):
-    """A native run's checkpoint can drop its `waiting_on` while the run is still
-    alive — the workhorse `control answer` flips the file to ANSWERED and the wait
-    script exits, so the next checkpoint the run writes no longer names the gate.
-
-    The `_native_gate` arm then has nothing to walk, and the held dict under
-    `_sync_native_row` is the only thing keeping the gate alive in the dashboard.
-    A held gate whose file no longer reads AWAITING is stale: the operator answered
-    it, the run resumed, the dashboard must follow.
-    """
-    _reset()
-    run_dir = tmp_path / "runs" / "coder-h1"
-    workspace = tmp_path / "workspace"
-    gate = workspace / "audit" / "behavior-audit-context.md"
-    gate.parent.mkdir(parents=True)
-    gate.write_text(
-        "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\nProceed?\n"
-    )
-    # The walk finds the gate the first poll: parent state is `audit` (so the
-    # descended path is `audit/_flow/checkpoint.json`, where the waiting_on points
-    # at the gate).
-    _checkpoint(run_dir, "", "audit", None)
-    _checkpoint(run_dir, "audit/_flow", "start", str(gate))
-
-    alerts.ingest_metrics(
-        [
-            _metric(
-                "H1", "workhorse.run.heartbeat", 1,
-                run_dir=str(run_dir), workspace=str(workspace), node="audit",
-            )
-        ],
-        now=time.time(),
-    )
-    groom_app._sync_native_row(state.RUNS["H1"])
-    wf = state.WORKFLOWS["H1"]
-    assert wf.state == WorkflowState.BLOCKED
-    assert "audit/behavior-audit-context.md" in wf.gates
-
-    # The operator answers. The gate file flips; the wait script exits and the
-    # checkpoint the run writes next no longer names the gate — `waiting_on` is
-    # cleared on the sub-flow scope whose chain was the only link to it.
-    gate.write_text(
-        "STATUS: ANSWERED\n\n## Questions from the agent\nProceed?\n\nyes\n"
-    )
-    _checkpoint(run_dir, "audit/_flow", "start", None)
-
-    alerts.ingest_metrics(
-        [
-            _metric(
-                "H1", "workhorse.run.heartbeat", 1,
-                run_dir=str(run_dir), workspace=str(workspace), node="audit",
-            )
-        ],
-        now=time.time(),
-    )
-    groom_app._sync_native_row(state.RUNS["H1"])
-
-    wf = state.WORKFLOWS["H1"]
-    assert wf.gates == {}, (
-        f"held gate should drop when its file no longer reads AWAITING; got {wf.gates}"
-    )
-    assert wf.state == WorkflowState.RUNNING
-
-
-# --------------------------------------------------------------------------- #
-# Gate answering over local FS
-# --------------------------------------------------------------------------- #
 def test_answer_gate_native_writes_local_file(tmp_path):
     _reset()
     gate = tmp_path / "docs" / "gate.md"
@@ -612,58 +251,6 @@ def test_answer_gate_native_writes_local_file(tmp_path):
     written = gate.read_text()
     assert "STATUS: ANSWERED" in written
     assert "yes, proceed" in written
-
-
-def test_native_pyflow_wait_materializes_and_answers_a_legacy_gate(tmp_path):
-    _reset()
-    run_dir = tmp_path / "runs" / "author-r1"
-    workspace = tmp_path / "workspace"
-    gate = workspace / "docs" / "context.md"
-    run_dir.mkdir(parents=True)
-    gate.parent.mkdir(parents=True)
-    gate.write_text("Which interaction policy should the story use?\n")
-    (run_dir / "checkpoint.json").write_text(
-        "{"
-        '"engine":"pyflow","state":"write_story",'
-        f'"waiting_on":"{gate}"'
-        "}"
-    )
-    alerts.ingest_metrics(
-        [
-            _metric(
-                "A1",
-                "workhorse.run.heartbeat",
-                1,
-                run_dir=str(run_dir),
-                workspace=str(workspace),
-                node="write_story",
-            )
-        ],
-        now=time.time(),
-    )
-
-    assert groom_app._sync_native_row(state.RUNS["A1"]) is True
-    wf = state.WORKFLOWS["A1"]
-    assert wf.state == WorkflowState.BLOCKED
-    assert wf.gates["docs/context.md"].legacy_headerless is True
-
-    result = asyncio.run(
-        gates.answer_gate(
-            "A1",
-            "docs/context.md",
-            "Define it consistently with the epic and mockup.",
-            workspace_volume=str(workspace),
-            native=True,
-            allow_headerless=True,
-        )
-    )
-    assert result.ok is True
-    assert gate.read_text().startswith("STATUS: ANSWERED")
-
-
-if __name__ == "__main__":
-    import pytest
-    raise SystemExit(pytest.main([__file__, "-q"]))
 
 
 def test_a_zombie_pid_is_not_a_live_run():
@@ -686,49 +273,3 @@ def test_a_zombie_pid_is_not_a_live_run():
         assert localfs.pid_alive(child.pid) is False
     finally:
         child.wait()
-
-
-def test_a_vanished_pid_pages_rather_than_only_greying_the_row(tmp_path):
-    """The row turning grey is what an operator sees if they are looking. The whole
-    point of a page is that they are not — and this death is the one class whose root
-    span never exports, so ENDED structurally could not cover it."""
-    _reset()
-    run_dir = tmp_path / "coder-r20"
-    run_dir.mkdir()
-    dead = subprocess.Popen(["true"])
-    dead.wait()
-    alerts.ingest_metrics([_metric("R20", "workhorse.run.heartbeat", 1,
-                                   run_dir=str(run_dir), pid=dead.pid)])
-    run = state.RUNS["R20"]
-    fired: list[alerts.Alert] = []
-    groom_app._sync_native_row(run, fired)
-    assert [a.rule for a in fired] == ["DIED"]
-    assert str(dead.pid) in fired[0].message
-
-    # Once per run, not once per five-second tick.
-    again: list[alerts.Alert] = []
-    groom_app._sync_native_row(run, again)
-    assert again == []
-
-
-def test_a_terminal_read_off_disk_pages_in_the_slot_the_root_span_would_use(tmp_path):
-    """A run that wrote its ending but never flushed its exporter has an account of
-    itself, so it is ENDED news, not DIED news. Firing it under ENDED is also what
-    stops a late-arriving root span from paging a second time about one ending."""
-    _reset()
-    run_dir = tmp_path / "coder-r21"
-    run_dir.mkdir()
-    alerts.ingest_metrics([_metric("R21", "workhorse.run.heartbeat", 1,
-                                   run_dir=str(run_dir), pid=os.getpid())])
-    (run_dir / "run.json").write_text(json.dumps({"terminal": "fail"}))
-    run = state.RUNS["R21"]
-    fired: list[alerts.Alert] = []
-    groom_app._sync_native_row(run, fired)
-    assert [a.rule for a in fired] == ["ENDED"]
-
-    late = alerts.ingest_spans([{
-        "run_id": "R21", "name": "run:coder", "workflow": "coder",
-        "run_dir": str(run_dir), "end_ts": run.terminal_ts - 1,
-        "attrs": {"workhorse.terminal": "fail"},
-    }])
-    assert late == []

@@ -27,9 +27,27 @@ def _tel(run_id="abc123", **kwargs) -> RunTelemetry:
 
 
 def _blocked(container_id="abc123", file_path="docs/a.md", question="Which one?", **kwargs):
-    wf = _wf(container_id, state=WorkflowState.BLOCKED, **kwargs)
+    """A run with a hot-cache wait-kind=operator and a gate_path + question — the
+    telemetry state that drives the row's BLOCKED state under the new model.
+
+    Returns a `(wf, tel)` pair: callers that only need the wf can unpack the first
+    element; tests that assert on the blocked row need both pieces together so the
+    hot cache reflects the telemetry state, not the workflow-container state.
+    """
+    wf = _wf(container_id, **kwargs)
+    tel = RunTelemetry(
+        run_id=kwargs.get("run_id", container_id),
+        activity=kwargs.get("activity", ""),
+        wait_kind="operator",
+        wait_gate_path=file_path,
+        wait_gate_question=question,
+        last_telemetry_ts=kwargs.get("last_telemetry_ts", 1_700_000_000.0),
+    )
+    # The detail pane still reads from `wf.gates` on the docker side. Kept populated
+    # so existing detail-pane assertions hold while the docker migration completes.
     wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=question)
-    return wf
+    wf.state = WorkflowState.BLOCKED
+    return wf, tel
 
 
 class _runs_are:
@@ -64,30 +82,43 @@ class _scanning:
 def test_fleet_rows_include_every_instance():
     # A run with no open gate is still a run, and a run nobody is watching is
     # exactly the one that dies silently.
-    rows = projection.fleet_rows([
-        _wf("run", state=WorkflowState.RUNNING, current_node="write_epic"),
-        _blocked("blk", question="CI is red — pick an option"),
-        _wf("fin", state=WorkflowState.FINISHED, exit_code=0),
-    ])
+    blk_wf, blk_tel = _blocked("blk", question="CI is red — pick an option")
+    with _runs_are({
+        blk_tel.run_id: blk_tel,
+        "run": _tel("run", current_node="write_epic"),
+        "fin": _tel("fin"),
+    }):
+        rows = projection.fleet_rows([
+            _wf("run", state=WorkflowState.RUNNING, current_node="write_epic"),
+            blk_wf,
+            _wf("fin", state=WorkflowState.FINISHED, exit_code=0),
+        ])
     assert {r["id"] for r in rows} == {"run", "blk", "fin"}
     blk = next(r for r in rows if r["id"] == "blk")
-    assert blk["question"] == "CI is red — pick an option"
-    assert blk["gate_path"] == "docs/a.md" and blk["gate_count"] == 1
+    # The row carries the gate path; the question text moves to the detail pane.
+    assert blk["question"] == ""
+    assert blk["gate_path"] == "docs/a.md"
+    assert blk["gate_count"] == 1
+    assert blk["state"] == "blocked"
 
 
 def test_fleet_rows_order_blocked_then_live_then_dead_then_finished():
     now = 1_700_000_000.0
-    wfs = [
-        _wf("fin", name="d", state=WorkflowState.FINISHED, exit_code=0, run_id="fin"),
-        _wf("dead", name="c", state=WorkflowState.RUNNING, run_id="dead"),
-        _wf("live", name="b", state=WorkflowState.RUNNING, run_id="live"),
-        _blocked("blk", name="a", file_path="docs/a.md"),
-    ]
+    blk_wf, blk_tel = _blocked("blk", name="a", file_path="docs/a.md")
     with _runs_are({
         "live": _tel("live", last_heartbeat_ts=now - 5),
         "dead": _tel("dead", last_heartbeat_ts=now - store.LIVE_AFTER_S - 600),
+        blk_tel.run_id: blk_tel,
     }):
-        rows = projection.fleet_rows(wfs, now=now)
+        rows = projection.fleet_rows(
+            [
+                _wf("fin", name="d", state=WorkflowState.FINISHED, exit_code=0, run_id="fin"),
+                _wf("dead", name="c", state=WorkflowState.RUNNING, run_id="dead"),
+                _wf("live", name="b", state=WorkflowState.RUNNING, run_id="live"),
+                blk_wf,
+            ],
+            now=now,
+        )
     assert [r["id"] for r in rows] == ["blk", "live", "dead", "fin"]
     by_id = {r["id"]: r for r in rows}
     assert by_id["live"]["live"] == "live"
@@ -183,12 +214,14 @@ def test_query_filters_the_fleet():
 
 # ---- status bar ----
 def test_status_bar_counts_states():
-    status = projection.status_bar([
-        _blocked("a"),
-        _wf("b", state=WorkflowState.RUNNING),
-        _wf("c", state=WorkflowState.RUNNING),
-        _wf("d", state=WorkflowState.IDLE),
-    ])
+    blk_wf, blk_tel = _blocked("a")
+    with _runs_are({blk_tel.run_id: blk_tel}):
+        status = projection.status_bar([
+            blk_wf,
+            _wf("b", state=WorkflowState.RUNNING),
+            _wf("c", state=WorkflowState.RUNNING),
+            _wf("d", state=WorkflowState.IDLE),
+        ])
     assert status["counts"]["blocked"] == 1
     assert status["counts"]["running"] == 2
     assert status["counts"]["idle"] == 1
@@ -212,9 +245,15 @@ def test_state_message_is_json_serializable():
     # It goes out over the socket as text and out of /api/state as a body; a value
     # that only survives one of those is a bug the other path would find in prod.
     now = 1_700_000_000.0
-    wfs = [_blocked("blk"), _wf("run", state=WorkflowState.RUNNING, run_id="run")]
-    with _runs_are({"run": _tel("run", last_heartbeat_ts=now - 5)}):
-        msg = projection.state_message(wfs, now=now)
+    blk_wf, blk_tel = _blocked("blk")
+    with _runs_are({
+        "run": _tel("run", last_heartbeat_ts=now - 5),
+        blk_tel.run_id: blk_tel,
+    }):
+        msg = projection.state_message(
+            [blk_wf, _wf("run", state=WorkflowState.RUNNING, run_id="run")],
+            now=now,
+        )
     assert json.loads(json.dumps(msg)) == msg
     assert msg["type"] == "state"
     assert {"runs", "status", "scanning", "ts"} <= set(msg)
@@ -224,8 +263,8 @@ def test_run_message_row_matches_the_same_row_in_the_state_message():
     # A single-run delta and the full state must agree about that run, or the
     # fleet drifts depending on which frame arrived last.
     now = 1_700_000_000.0
-    wf = _blocked("blk", name="a")
-    with _runs_are({}):
+    wf, tel = _blocked("blk", name="a")
+    with _runs_are({tel.run_id: tel}):
         full = projection.state_message([wf], now=now)
         one = projection.run_message(wf, now=now)
     assert one["type"] == "run"
@@ -238,10 +277,10 @@ def test_run_detail_carries_gates_head_metrics_and_logs():
     # next, then the numbers, then the trail. Everything the browser needs to draw
     # it arrives in one object, so a fetched pane and a pushed one cannot differ.
     now = 1_700_000_000.0
-    wf = _blocked(file_path="docs/gate.md", activity="reviewing ACME-4")
+    wf, tel = _blocked(file_path="docs/gate.md", activity="reviewing ACME-4")
     detail = projection.run_detail(
         wf,
-        _tel("abc123", activity="reviewing ACME-4", pid=4242),
+        tel,
         {"span_count": 12, "error_count": 0},
         [{"ts": now, "severity": "INFO", "node": "review", "body": "hello"}],
         now=now,
@@ -257,7 +296,7 @@ def test_detail_message_matches_the_fetched_detail():
     # `GET /worker/{id}` and the pushed `detail` frame feed the same client state,
     # so a divergence here shows up as a pane that changes when it refreshes.
     now = 1_700_000_000.0
-    wf = _blocked("blk")
+    wf, _ = _blocked("blk")
     pushed = projection.detail_message(wf, now=now)
     assert pushed["type"] == "detail" and pushed["id"] == "blk"
     assert pushed["detail"] == projection.run_detail(wf, now=now)
@@ -269,7 +308,7 @@ def test_gate_question_travels_as_data_not_markup():
     # verbatim — no server-side markdown, no escaping — because the browser is the
     # only thing that knows whether it is about to build a text node or hand the
     # string to DOMPurify. A server that half-escaped it would double-escape there.
-    wf = _blocked(question="Use <script>alert(1)</script>?")
+    wf, _ = _blocked(question="Use <script>alert(1)</script>?")
     gate = projection.run_detail(wf)["gates"][0]
     assert gate["question"] == "Use <script>alert(1)</script>?"
     assert gate["file_path"] == "docs/a.md"
@@ -278,7 +317,11 @@ def test_gate_question_travels_as_data_not_markup():
 def test_run_detail_lists_every_open_gate():
     # Two gates means two answer forms, keyed by file path — the client needs both
     # paths because the {"cmd": "answer", …} frame is scoped by (run, file).
-    wf = _blocked()
+    # Under the new model, workhorse only ever opens one wait per run, so this
+    # asserts the docker-side hello snapshot can still report multiple gates
+    # populated into the workflow container — the docker migration is incomplete
+    # on this front.
+    wf, _ = _blocked()
     wf.gates["docs/b.md"] = GateInfo(workflow_id="abc123", file_path="docs/b.md", question="Q2?")
     paths = [gate["file_path"] for gate in projection.run_detail(wf)["gates"]]
     assert sorted(paths) == ["docs/a.md", "docs/b.md"]

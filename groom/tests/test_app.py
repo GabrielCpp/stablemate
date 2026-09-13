@@ -14,12 +14,21 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from litestar.testing import TestClient
 
 from groom import app as groom_app
-from groom import discovery, sidecar_hub, state
+from groom import discovery, sidecar_hub, state, store
 from groom.models import AnswerResult, GateInfo, WorkflowContainer, WorkflowState
 from workhorse import inbox
+
+
+@pytest.fixture(autouse=True)
+def isolated_store(monkeypatch, tmp_path):
+    monkeypatch.setenv("GROOM_DB", str(tmp_path / "groom.db"))
+    store.reset()
+    yield
+    store.reset()
 
 
 def _reset() -> None:
@@ -1320,62 +1329,19 @@ def test_a_dead_socket_falls_back_to_the_file_write():
     assert called["file_path"] == "docs/gate.md"
 
 
-def test_the_questions_poll_blocks_a_running_container_row():
-    _reset()
-    wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.RUNNING, workspace_volume="v")
-    state.WORKFLOWS["abc123"] = wf
-    sidecar_hub.CONNECTIONS["abc123"] = _GateConn("abc123", {"getQuestions": _LISTING})
-
-    notified: list = []
-
-    async def _capture_notify(message):
-        notified.append(message)
-
-    with patch.object(groom_app, "_broadcast_notify", _capture_notify):
-        asyncio.run(groom_app._poll_gates_of("abc123"))
-
-    assert wf.state == WorkflowState.BLOCKED
-    # Keyed workspace-relative, like the sidecar's own gate rows; the question
-    # is the extracted section, not the raw file dump.
-    assert list(wf.gates) == ["docs/gate.md"]
-    assert wf.gates["docs/gate.md"].question == "Ship it?"
-    assert notified and "Ship it?" in notified[0]
-
-
-def test_the_questions_poll_clears_a_row_whose_run_answered():
-    _reset()
-    wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.BLOCKED, workspace_volume="v")
-    wf.gates["docs/gate.md"] = GateInfo(workflow_id="abc123", file_path="docs/gate.md", question="Q?")
-    state.WORKFLOWS["abc123"] = wf
-    sidecar_hub.CONNECTIONS["abc123"] = _GateConn(
-        "abc123", {"getQuestions": {"ok": True, "questions": []}}
-    )
-
-    asyncio.run(groom_app._poll_gates_of("abc123"))
-
-    assert wf.gates == {}
-    assert wf.state == WorkflowState.RUNNING
-
-
-def test_a_socket_miss_leaves_the_row_exactly_as_the_pushes_built_it():
-    _reset()
-    wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.BLOCKED, workspace_volume="v")
-    wf.gates["docs/gate.md"] = GateInfo(workflow_id="abc123", file_path="docs/gate.md", question="Q?")
-    state.WORKFLOWS["abc123"] = wf
-    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", error=True)
-
-    asyncio.run(groom_app._poll_gates_of("abc123"))
-
-    assert list(wf.gates) == ["docs/gate.md"]
-    assert wf.state == WorkflowState.BLOCKED
-
-
-def test_push_blocked_schedules_an_immediate_reconciling_poll():
+def test_push_blocked_writes_the_row_and_dispatches_attendant():
+    """`/push/blocked` writes the gate onto the row, broadcasts a notify, and
+    triggers an attendant off the same arm. No reconciling poll — the push is
+    itself the telemetry."""
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="v")
-    polled: list = []
 
-    with patch.object(groom_app, "_poll_gate_soon", polled.append):
+    captured: list[dict] = []
+
+    async def _capture_notify(message):
+        captured.append(message)
+
+    with patch.object(groom_app, "_broadcast_notify", _capture_notify):
         client = _hermetic_client()
         try:
             resp = client.post(
@@ -1386,32 +1352,10 @@ def test_push_blocked_schedules_an_immediate_reconciling_poll():
             client.__exit__(None, None, None)
 
     assert resp.json() == {"ok": True}
-    assert polled == ["abc123"]
-
-
-def test_native_gate_paths_resolve_like_the_checkpoint_arm(tmp_path):
-    """The poll's native projection must key a gate exactly the way
-    `_native_gate` does, or the two arms would double-list one gate."""
-    _reset()
-    workspace = tmp_path / "ws"
-    workspace.mkdir()
-    wf = WorkflowContainer(
-        container_id="run-9", name="w", run_id="run-9", native=True,
-        workspace_volume=str(workspace),
-    )
-    inside = groom_app._gate_from_question(
-        wf, {"path": str(workspace / "docs" / "gate.md"), "question": "## Questions\n\nGo?\n"}
-    )
-    assert inside is not None
-    assert (inside.file_path, inside.base) == ("docs/gate.md", "")
-
-    outside = groom_app._gate_from_question(
-        wf, {"path": "/elsewhere/gate.md", "question": "Go?"}
-    )
-    assert outside is not None
-    # Outside the exported workspace → anchored at the filesystem root, like
-    # the checkpoint arm's fallback.
-    assert (outside.file_path, outside.base) == ("elsewhere/gate.md", "/")
+    assert state.WORKFLOWS["abc123"].gates["docs/gate.md"].question == "Q?"
+    # The notify frame captures the question text so the dashboard toast can
+    # show it without opening the detail pane.
+    assert captured and any("Q?" in m for m in captured)
 
 
 if __name__ == "__main__":

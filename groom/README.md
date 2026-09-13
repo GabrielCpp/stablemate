@@ -49,20 +49,13 @@ spans, per-node timings and error status, filterable without leaving the browser
   the run list is additionally re-rendered and broadcast every `GROOM_LIVE_TICK_S`
   (5s), skipped entirely when no tab is connected. That is what makes the dashboard
   safe to leave open and read without refreshing.
-- That same tick reads **local-host evidence that a native run has ended**, so a dead
-  run stops looking alive without waiting out the silence window. A native run shares
-  groom's host by definition, which makes two facts directly observable that no export
-  can be relied on to deliver: the `terminal` the run wrote into its own `run.json`
-  (on disk the instant it stops, whereas the root span only lands if the dying process
-  got its exporter flushed), and whether the run's pid still exists (the only witness
-  left after a SIGKILL, an OOM, or a segfaulting extension, where nothing is written
-  at all — reported as `died`, rather than borrowing a word the run never reached).
-  Without this the remaining signal is silence, and silence is deliberately slow
-  (`GROOM_LIVE_AFTER_S`, 180s): three minutes of a green *running / alive* row on
-  exactly the failure an operator is watching for. The verdict stamps the same
-  `terminal` a root span would, so the dot and the liveness chip cannot disagree, and
-  it clears itself on the next newer signal — a `--resume-run` re-writes `run.json`
-  with a null terminal before it does anything, so a resumed run goes back to green.
+- Fleet rows and the detail pane project the same received telemetry. Operator and
+  machine wait gauges carry their gate path and question; node, activity, elapsed
+  time and terminal state come from the run's exports. The freshness label shows
+  how old that evidence is. Silence leaves the last reported state visible; groom
+  does not infer completion by reading checkpoints, `run.json`, or the host PID.
+  A resumed process exports a new session identity, replacing the prior session's
+  live values as its telemetry arrives.
   Gate questions render as Markdown (`marked`, sanitized with
   `DOMPurify` before insertion since the content is LLM-authored); a *Full
   context* disclosure under the question fetches the whole gate file through
@@ -76,10 +69,11 @@ spans, per-node timings and error status, filterable without leaving the browser
   delivers the answer on the run's own path spelling; the run persists it into
   the gate file before acknowledging — and falls back to writing the gate file
   from outside only when nothing answers on the control socket.
-  Discovery is a periodic *questions poll* of every live run's socket, so the
-  push arms (the sidecar `blocked` frame, `/push/blocked`, the hello snapshot)
-  are just hints that trigger an immediate poll: a push that never lands is
-  healed by the next poll cycle, never lost.
+  Wait telemetry updates native gate discovery, including after groom reconnects.
+  Socket questions are queried when submitting an answer so the write uses the
+  waiting process's exact path. Machine waits show their pending result without
+  an operator answer form. Container sidecar snapshots and gate pushes retain
+  support for producers without wait telemetry.
 - On startup (or on-demand refresh), `groom` runs a one-shot `docker ps -a` +
   `docker inspect` reconciliation scan so workflows that were already
   blocked before `groom` was started are still picked up.
@@ -244,7 +238,6 @@ with `GROOM_NTFY_URL`) and/or `GROOM_WEBHOOK_URL` (JSON `{"title","message"}`):
 | WATCHDOG | a `watchdog_kill` span event arrives | — |
 | GAVE-UP | a give-up node's span arrives | `GROOM_GIVEUP_NODES` (qa_give_up,fix_give_up) |
 | ENDED | the run's root span arrives — the run is over, whatever the verdict, and nothing is executing for it now | — |
-| DIED | a **native** run's pid is gone and it left no terminal anywhere — killed, OOM'd, or crashed hard enough to lose both the checkpoint write and the telemetry flush | — |
 | BLOCKED | an operator gate opens — the run is parked until someone answers it. A cap wait does not count | — |
 | WAITING | that gate is still unanswered later | `GROOM_WAIT_MIN` (30) |
 
@@ -264,21 +257,9 @@ naming the terminal and the error class, because from outside "it crashed" and
 "it succeeded" are the same silence. A resume reuses the run id and clears the
 fired set, so the next session's ending pages on its own.
 
-DIED is ENDED for the run that never got to say so. ENDED hangs off the root
-span, and a root span only exports if the dying process flushed its exporter —
-so the one class of death worth waking someone for (SIGKILL, the OOM killer, a
-segfaulting extension) was the single ending that reached nobody. The dashboard
-row already went grey on it, because a native run shares groom's host and its pid
-is directly observable; the row was just the only place it was ever said. It is
-native-only for that same reason: a containerized run's pid is in another
-namespace, and the sidecar reports its exit.
-
-The alert names a run directory that now also holds the command to bring it back:
-workhorse writes a `launch.json` beside `run.json` whose `resume_argv`, run from the
-recorded `cwd`, resumes the run in place off its last checkpoint. groom does not run
-it — deciding *whether* a killed run should be restarted is a policy question, and an
-OOM-killed run restarted on the same box gets OOM-killed again — but the page and the
-command are now in the same place.
+A process killed before it exports its terminal remains in its last reported state
+with an aging freshness label. STALL reports the missing telemetry; completion
+requires the run's terminal export.
 
 BLOCKED and WAITING cover the mirror image: a run parked on an operator gate is
 behaving correctly, so no rule described it, and STUCK skips an open wait by

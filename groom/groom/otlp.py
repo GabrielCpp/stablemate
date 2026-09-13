@@ -294,6 +294,7 @@ def parse_metrics(body: bytes) -> list[dict[str, Any]]:
                             "run_dir": run_dir,
                             "workspace": workspace,
                             "pid": pid,
+                            "resume_generation": _int_or_none(resource.get("workhorse.resume_generation")),
                             "name": metric.name,
                             "ts": point.time_unix_nano / _NANOS,
                             "value": float(value),

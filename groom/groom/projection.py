@@ -145,7 +145,7 @@ def telemetry_for(wf: WorkflowContainer) -> RunTelemetry | None:
 def silence_of(tel: RunTelemetry | None, now: float) -> float:
     if tel is None:
         return 0.0
-    return max(0.0, now - max(tel.last_heartbeat_ts, tel.last_span_ts, tel.first_seen_ts))
+    return max(0.0, now - max(tel.last_heartbeat_ts, tel.last_span_ts, tel.first_seen_ts, tel.last_telemetry_ts))
 
 
 def is_live(tel: RunTelemetry | None, now: float) -> bool:
@@ -230,6 +230,7 @@ def gate_dict(gate: GateInfo) -> dict[str, Any]:
         "question": gate.question,
         "preview": question_preview(gate.question),
         "status": gate.status,
+        "kind": gate.kind,
     }
 
 
@@ -237,18 +238,27 @@ def gates_of(wf: WorkflowContainer) -> list[GateInfo]:
     return sorted(wf.gates.values(), key=lambda g: g.file_path)
 
 
+def reported_gates(wf: WorkflowContainer, tel: RunTelemetry | None) -> list[GateInfo]:
+    """Pending gates from telemetry, or a sidecar snapshot for an older producer."""
+    if tel is None:
+        return gates_of(wf)
+    if tel.terminal or tel.wait_kind not in ("operator", "machine") or not tel.wait_gate_path:
+        return []
+    return [GateInfo(workflow_id=wf.container_id, file_path=tel.wait_gate_path,
+                     question=tel.wait_gate_question, kind=tel.wait_kind)]
+
+
 def run_row(
     wf: WorkflowContainer, tel: RunTelemetry | None = None, now: float | None = None
 ) -> dict[str, Any]:
-    """One fleet row. ``doing`` is the single line the row shows under its title:
-    the gate file when the run is parked on one (that is the thing the operator
-    has to go answer), else its exit hint, else the activity it stamped, else the
-    raw node id."""
+    """A fleet row projected from the latest telemetry, with legacy sidecar support."""
     now = now if now is not None else time.time()
-    gates = gates_of(wf)
-    gate = gates[0] if gates else None
     live_cls, live_label = liveness(wf, tel, now)
+    state = _row_state(wf, tel)
+    gates = reported_gates(wf, tel)
+    gate_path = gates[0].file_path if gates else ""
     hint = exit_hint(wf)
+    age = silence_of(tel, now)
     return {
         "id": wf.container_id,
         "run_id": run_id_of(wf),
@@ -257,11 +267,12 @@ def run_row(
         "row_id": row_id(wf),
         "type": wf.workflow_type,
         "type_hue": type_hue(wf.workflow_type),
-        "state": wf.state.value,
+        "state": state,
         "live": live_cls,
         "live_label": live_label,
-        "silence_s": silence_of(tel, now),
-        "node": wf.current_node or (tel.current_node if tel else ""),
+        "silence_s": age,
+        "telemetry_age_s": age,
+        "node": tel.current_node if tel else wf.current_node,
         "node_elapsed_s": tel.node_elapsed_s if tel else 0.0,
         "wait_kind": tel.wait_kind if tel else "",
         "wait_elapsed_s": tel.wait_elapsed_s if tel else 0.0,
@@ -269,19 +280,64 @@ def run_row(
         "turn_elapsed_s": tel.turn_elapsed_s if tel else 0.0,
         "turn_idle_s": tel.turn_idle_s if tel else 0.0,
         "mini": row_mini(tel),
-        "activity": wf.activity or (tel.activity if tel else ""),
-        "doing": gate.file_path if gate else (
-            hint or wf.activity or (tel.activity if tel else "") or wf.current_node
+        "activity": tel.activity if tel else wf.activity,
+        # `doing` is the single line the row shows under its title: the gate file
+        # when blocked, else the activity, else the node. The gate file path is
+        # the cursor an operator clicks to go answer.
+        "doing": (
+            gate_path
+            if gate_path
+            else (tel.activity if tel else "")
+            or (tel.current_node if tel else "")
         ),
-        "question": question_preview(gate.question) if gate and wf.state == WorkflowState.BLOCKED else "",
-        "gate_path": gate.file_path if gate else "",
+        # The question text lives on the detail pane, not on the row. Row just
+        # notes the gate's presence (path is the actionable identifier).
+        "question": "",
+        "gate_path": gate_path,
         "gate_count": len(gates),
         "exit_code": wf.exit_code,
         "exit_hint": hint,
-        "pid": wf.pid,
+        "pid": tel.pid if (tel and tel.pid) else wf.pid,
         "native": bool(wf.native),
-        "rank": fleet_rank(wf, live_cls),
+        "rank": fleet_rank_for(state, live_cls),
     }
+
+
+def _row_state(wf: WorkflowContainer, tel: RunTelemetry | None) -> str:
+    """The row's state, derived purely from telemetry.
+
+    The four cases, in order of precedence:
+
+      * Terminal landed on the root span (``tel.terminal`` is non-empty) → FINISHED.
+      * Wait gauge is operator or machine *and* the run told us a gate path →
+        BLOCKED. This is the one row-state condition that maps onto a human action.
+      * No telemetry and the workflow container is FINISHED → FINISHED (the legacy
+        greeting-snapshot case, while docker hasn't migrated to OTLP).
+      * Otherwise → RUNNING.
+
+    `IDLE` is gone: telemetry never reports a distinct "between nodes" state, and
+    the rendered row's `current_node == ""` carries the same information.
+    """
+    if tel is not None:
+        if tel.terminal:
+            return WorkflowState.FINISHED.value
+        if tel.wait_kind in ("operator", "machine") and tel.wait_gate_path:
+            return WorkflowState.BLOCKED.value
+        return WorkflowState.RUNNING.value
+    # Fallback only: a docker row whose hello has not (yet) emitted to telemetry
+    # still has its workflow-container state, kept here only until the docker
+    # side fully migrates to OTLP ingestion.
+    return wf.state.value
+
+
+def fleet_rank_for(state: str, live_cls: str) -> int:
+    """Blocked first (it is waiting on *you*), then alive, then presumed-dead,
+    then finished — the order in which a run deserves the operator's attention."""
+    if state == WorkflowState.BLOCKED.value:
+        return 0
+    if state == WorkflowState.FINISHED.value or live_cls == "done":
+        return 3
+    return 1 if live_cls == "live" else 2
 
 
 def fleet_rows(
@@ -363,7 +419,13 @@ def run_message(
     wf: WorkflowContainer, tel: RunTelemetry | None = None, now: float | None = None
 ) -> dict[str, Any]:
     """A single-run delta. Same row shape as an entry in ``state.runs``, so the
-    client merges it into the store without a second code path."""
+    client merges it into the store without a second code path.
+
+    The hot cache is the source of truth: when no telemetry was passed, look it
+    up here rather than from the workflow container. Keeps ``run_message`` and
+    ``fleet_rows`` consistent for callers that only have a wf in hand."""
+    if tel is None:
+        tel = telemetry_for(wf)
     now = now if now is not None else time.time()
     return {"type": "run", "ts": now, "run": run_row(wf, tel, now)}
 
@@ -443,18 +505,18 @@ def head(
     return {
         "id": wf.container_id,
         "handle": handle(wf),
-        "state": wf.state.value,
+        "state": _row_state(wf, tel),
         "type": wf.workflow_type,
         "type_hue": type_hue(wf.workflow_type),
         "repo": repo_label(wf),
         "live": live_cls,
         "live_label": live_label,
-        "node": wf.current_node or (tel.current_node if tel else ""),
-        "pid": wf.pid,
+        "node": tel.current_node if tel else wf.current_node,
+        "pid": tel.pid if tel else wf.pid,
         "cli": cli_label(tel),
         "exit_hint": exit_hint(wf),
         "exit_ok": wf.exit_code == 0,
-        "activity": wf.activity or (tel.activity if tel else ""),
+        "activity": tel.activity if tel else wf.activity,
     }
 
 
@@ -479,21 +541,15 @@ def metrics(
     if tel is None and not facts:
         return {"empty": True, "cells": [], "alerts": [], "run_dir": ""}
 
-    node = (tel.current_node if tel else "") or str(facts.get("node") or "")
-    elapsed = (tel.node_elapsed_s if tel else 0.0) or float(facts.get("node_elapsed_s") or 0.0)
-    idle = (tel.turn_idle_s if tel else 0.0) or float(facts.get("turn_idle_s") or 0.0)
-    turn_active = tel.turn_active if tel and tel.turn_active is not None else facts.get("turn_active")
-    turn_elapsed = (tel.turn_elapsed_s if tel else 0.0) or float(
-        facts.get("turn_elapsed_s") or 0.0
-    )
-    wait_kind = (tel.wait_kind if tel else "") or str(facts.get("wait_kind") or "")
-    wait_elapsed = (tel.wait_elapsed_s if tel else 0.0) or float(
-        facts.get("wait_elapsed_s") or 0.0
-    )
-    last_beat = max(
-        (tel.last_heartbeat_ts if tel else 0.0), float(facts.get("last_beat_ts") or 0.0)
-    )
-    started = (tel.first_seen_ts if tel else 0.0) or float(facts.get("first_ts") or 0.0)
+    node = tel.current_node if tel else str(facts.get("node") or "")
+    elapsed = tel.node_elapsed_s if tel else float(facts.get("node_elapsed_s") or 0.0)
+    idle = tel.turn_idle_s if tel else float(facts.get("turn_idle_s") or 0.0)
+    turn_active = tel.turn_active if tel else facts.get("turn_active")
+    turn_elapsed = tel.turn_elapsed_s if tel else float(facts.get("turn_elapsed_s") or 0.0)
+    wait_kind = tel.wait_kind if tel else str(facts.get("wait_kind") or "")
+    wait_elapsed = tel.wait_elapsed_s if tel else float(facts.get("wait_elapsed_s") or 0.0)
+    last_beat = tel.last_heartbeat_ts if tel else float(facts.get("last_beat_ts") or 0.0)
+    started = tel.first_seen_ts if tel else float(facts.get("first_ts") or 0.0)
 
     cells = [
         {"key": "node", "value": node or "—"},
@@ -506,8 +562,9 @@ def metrics(
             "value": fmt_duration(idle) if turn_active is not False and idle else "—",
         },
     ]
-    if facts.get("gas") is not None:
-        cells.append({"key": "gas", "value": f"{float(facts['gas']):g}"})
+    gas = tel.gas if tel and tel.gas is not None else facts.get("gas")
+    if gas is not None:
+        cells.append({"key": "gas", "value": f"{float(gas):g}"})
     cells.append(
         {"key": "last beat", "value": f"{fmt_duration(now - last_beat)} ago" if last_beat else "—"}
     )
@@ -579,9 +636,9 @@ def run_detail(
         "found": True,
         "id": wf.container_id,
         "run_id": run_id_of(wf),
-        "state": wf.state.value,
-        "node": wf.current_node,
-        "gates": [gate_dict(gate) for gate in gates_of(wf)],
+        "state": _row_state(wf, tel),
+        "node": tel.current_node if tel else wf.current_node,
+        "gates": [gate_dict(gate) for gate in reported_gates(wf, tel)],
         **run_live(wf, tel, facts, logs, now),
     }
 

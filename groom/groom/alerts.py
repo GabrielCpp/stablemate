@@ -294,6 +294,48 @@ def _activity(attrs: dict[str, Any]) -> str:
     return str(attrs.get("activity") or attrs.get("wf.activity") or "")
 
 
+def _accept_session(run: RunTelemetry, record: dict[str, Any]) -> bool:
+    """Replace session-local observations on resume; ignore delayed older exports.
+
+    Durable spans/metrics are stored before this hot-cache fold, so refusing an old
+    generation here preserves history without making it the current process again.
+    """
+    generation = record.get("resume_generation")
+    if generation is None:
+        return True
+    session = (int(record.get("pid") or 0), str(generation))
+    if run.last_session == session:
+        return True
+    if run.last_session is not None and int(generation) <= int(run.last_session[1]):
+        return False
+    run.last_session = session
+    run.current_node = ""
+    run.activity = ""
+    run.node_elapsed_s = 0.0
+    run.turn_active = None
+    run.turn_idle_s = 0.0
+    run.turn_elapsed_s = 0.0
+    run.wait_kind = ""
+    run.wait_elapsed_s = 0.0
+    run.wait_gate_path = ""
+    run.wait_gate_question = ""
+    run.wait_series = None
+    run.terminal = ""
+    run.terminal_ts = 0.0
+    run.last_heartbeat_ts = 0.0
+    run.last_beat_ts = 0.0
+    run.backend = ""
+    run.model = ""
+    run.gas = None
+    run.fired.clear()
+    return True
+
+
+def _wait_series(attrs: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    """OTel series identity includes every attribute, including question and labels."""
+    return tuple(sorted((key, str(value)) for key, value in attrs.items()))
+
+
 def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[Alert]:
     """Fold decoded spans into the hot cache and evaluate the ingest-driven
     rules. Returns the alerts that newly fired (already deduped)."""
@@ -305,6 +347,8 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
         if not run_id:
             continue
         run = _run(run_id, now)
+        if not _accept_session(run, span):
+            continue
         _note_alive(run)
         run.workflow = span.get("workflow") or run.workflow
         run.repo = span.get("repo") or run.repo
@@ -313,6 +357,7 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
         run.workspace = span.get("workspace") or run.workspace
         if span.get("pid") is not None:
             run.pid = span.get("pid")
+        run.last_telemetry_ts = now
         run.last_span_ts = now
         _clear_stale_terminal(run, float(span.get("end_ts") or 0.0))
         attrs = span.get("attrs") or {}
@@ -411,6 +456,8 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
         if not run_id:
             continue
         run = _run(run_id, now)
+        if not _accept_session(run, point):
+            continue
         _note_alive(run)
         run.workflow = point.get("workflow") or run.workflow
         run.repo = point.get("repo") or run.repo
@@ -419,11 +466,19 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
         run.workspace = point.get("workspace") or run.workspace
         if point.get("pid") is not None:
             run.pid = point.get("pid")
+        run.last_telemetry_ts = now
         _clear_stale_terminal(run, float(point.get("ts") or 0.0))
         name = point.get("name") or ""
         attrs = point.get("attrs") or {}
         node = str(attrs.get("node", ""))
         value = float(point.get("value") or 0.0)
+        # The SDK retains zero-valued series for every earlier gate. A close or
+        # elapsed value can update only the wait that owns that series.
+        if (run.wait_series is not None and attrs.get("wait_kind")
+                and _wait_series(attrs) != run.wait_series
+                and (name == "workhorse.wait.elapsed_s"
+                     or (name == "workhorse.wait.active" and value < 1))):
+            continue
         if activity := _activity(attrs):
             run.activity = activity
         if name in LIVENESS_METRICS:
@@ -462,7 +517,17 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
                 run.node_elapsed_s = value
         elif name == "workhorse.wait.active":
             if value >= 1:
+                run.wait_series = _wait_series(attrs)
                 run.wait_kind = str(attrs.get("wait_kind") or "unknown")
+                # Path + question are telemetry-only fields: they're only meaningful
+                # for operator/machine waits. Other kinds (cap, retry, reframe,
+                # exec-retry) don't carry a gate file, so leave the rows blank.
+                if run.wait_kind in ("operator", "machine"):
+                    run.wait_gate_path = str(attrs.get("gate_path") or "")
+                    run.wait_gate_question = str(attrs.get("gate_question") or "")
+                else:
+                    run.wait_gate_path = ""
+                    run.wait_gate_question = ""
                 run.fired.discard("STUCK")
                 if run.wait_kind == "operator":
                     _fire(
@@ -475,7 +540,10 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
                     )
             else:
                 run.wait_kind = ""
+                run.wait_series = None
                 run.wait_elapsed_s = 0.0
+                run.wait_gate_path = ""
+                run.wait_gate_question = ""
                 # The gate was answered: both pages assert a wait that is open right
                 # now, so leaving them set badges a moving run as parked forever.
                 run.fired.discard("BLOCKED")
