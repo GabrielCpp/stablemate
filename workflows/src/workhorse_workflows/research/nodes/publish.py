@@ -19,6 +19,7 @@ def publish_results(
     repo_dir: str,
     result_branch: str = "research/auto",
     program_dir: str = "",
+    summary: str = "record research results",
 ) -> PublishResult:
     """Commit whatever the gate produced onto the result branch and push it.
 
@@ -39,7 +40,7 @@ def publish_results(
 
     set_identity(repo_dir, "Research Agent", "research-agent@local")
     checkout(repo_dir, result_branch, reset=True)
-    if not commit_all(repo_dir, f"{program_label}: automated gate update"):
+    if not commit_all(repo_dir, f"docs({program_label}): {summary}"):
         logger.info("no changes to commit")
         return PublishResult(published=False, result_branch=result_branch)
     if push_to_origin(repo_dir, result_branch, force_with_lease=True):

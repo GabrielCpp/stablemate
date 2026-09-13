@@ -221,6 +221,7 @@ class _Run:
         self.waited: list[Path] = fields["waited"]
         self.checkpoints: list[dict[str, Any]] = fields["checkpoints"]
         self.branches: list[str] = fields["branches"]
+        self.subjects: list[str] = fields["subjects"]
         self.ledger: str = fields["ledger"]
         self.history: list[dict[str, Any]] = fields.get("history", [])
 
@@ -341,6 +342,9 @@ def _drive(
             waited=waited,
             checkpoints=checkpoints,
             branches=_branches(repo),
+            subjects=subprocess.check_output(
+                ["git", "log", "--format=%s"], cwd=repo, text=True
+            ).splitlines(),
             ledger=ledger_file.read_text() if ledger_file.exists() else "",
             history=history,
         )
@@ -1515,3 +1519,11 @@ def test_publishing_commits_the_gate_onto_the_result_branch():
     outcome = _run(_script(**{"gate-check": [{"status": "approved"}]}))
 
     assert "alpha/auto" in outcome.branches, outcome.branches
+
+
+def test_publishing_names_the_gate_and_program_verdict():
+    """A research history must distinguish a gate pass from program closure."""
+    outcome = _run(_script(**{"gate-check": [{"status": "approved"}]}))
+    assert "docs(alpha): record G1 pass" in outcome.subjects
+    assert any("record goal" in s for s in outcome.subjects)
+    assert all(s.startswith("docs(alpha): ") for s in outcome.subjects if s != "seed")

@@ -278,7 +278,7 @@ class Research(Workflow):
             f"{gate.read_text(encoding='utf-8').strip()}"
         )
 
-    def _publish(self) -> None:
+    def _publish(self, summary: str) -> None:
         """Commit what the last turn wrote onto the result branch.
 
         Every arm that produces a durable artifact publishes it there and then rather
@@ -291,6 +291,7 @@ class Research(Workflow):
             self.ctx.repo_dir,
             self.ctx.result_branch,
             self.ctx.program_dir,
+            summary=summary,
         )
 
     def _spent(self, budget: Budget) -> tuple[int, int]:
@@ -1102,7 +1103,7 @@ class Research(Workflow):
         """Write the approved gate's outcome, publish, and take the next gate."""
         result = self._record(gate_id)
         self._history("pass", gate_id)
-        self._publish()
+        self._publish(f"record {gate_id} pass")
         return Continue(result, self.start, budget=budget.cycled())
 
     def record_kill(
@@ -1260,7 +1261,7 @@ class Research(Workflow):
         self._history("revive", gate_id, note=result.status)
         spent = budget.reviewed()
         self._persist(spent)
-        self._publish()
+        self._publish(f"revive {gate_id} after lead review")
         return Continue(result, self.start, budget=spent)
 
     def new_direction(
@@ -1300,7 +1301,7 @@ class Research(Workflow):
         )
         spent = budget.reviewed()
         self._persist(spent)
-        self._publish()
+        self._publish(f"redirect research after {gate_id}")
         failure = self._check_target()
         if not failure:
             return Continue(result, self.start, budget=spent)
@@ -1517,7 +1518,7 @@ class Research(Workflow):
             failure = self._check_target(result.new_target)
         if failure and attempt < MAX_RECHARTER_FIXES:
             self._history("recharter", note=f"unresolvable, retrying: {failure}")
-            self._publish()
+            self._publish("record unresolved target recharter")
             return Continue(
                 result,
                 self.recharter,
@@ -1528,7 +1529,7 @@ class Research(Workflow):
             )
         if failure:
             self._history("recharter", note=f"unresolvable, parked: {failure}")
-            self._publish()
+            self._publish("record blocked target recharter")
             return self._blocked(
                 f"The re-chartered target is still not resolvable after "
                 f"{attempt + 1} attempts:\n\n{failure}\n\nThe lead's case: "
@@ -1549,7 +1550,7 @@ class Research(Workflow):
             note=result.reason or review.reason,
         )
         self._persist(spent)
-        self._publish()
+        self._publish(f"record {event.replace('_', ' ')} decision")
         return Continue(result, self.start, budget=spent)
 
     # --- self-extension -----------------------------------------------------
@@ -1639,7 +1640,7 @@ class Research(Workflow):
         )
         spent = budget.extended()
         self._persist(spent)
-        self._publish()
+        self._publish("extend the research gate ladder")
         return Continue(result, self.start, budget=spent)
 
     # --- the one terminal ---------------------------------------------------
@@ -1657,7 +1658,7 @@ class Research(Workflow):
         result = self._record(GOAL, forced=outcome)
         self._history("goal", GOAL, note=outcome)
         self._persist(budget, status=GOAL_STATUS.get(outcome, "active"))
-        self._publish()
+        self._publish(f"record goal {outcome.lower()}")
         return Done(result)
 
 
