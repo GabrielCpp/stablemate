@@ -292,6 +292,36 @@ Read it like this:
 | `alive`, no turn or wait, node age large | **wedged deterministic work** inside the node |
 | no heartbeat (`DEAD?`) | the process is gone — SIGKILL, OOM, crashed host |
 
+## Wait until a run needs attention
+
+```bash
+uv run --all-packages groom wait --run RUN --json
+uv run --all-packages groom wait --run RUN --until blocked,ended
+```
+
+`wait` holds one WebSocket connection to `groom serve` and stays silent during
+normal progress. It returns one event and exits when the named run is blocked,
+ended, stuck, stalled, or gave up. `--until` selects a comma-separated set from
+`blocked,ended,stuck,stalled,gave-up,churn,watchdog,died,waiting`.
+There is no timeout; Ctrl+C cancels the monitor without stopping the workflow.
+
+Current conditions are checked in the initial server snapshot, including runs
+hidden from the dashboard. A run not yet known to the server is watched until
+it reports a matching condition. This uses the server's current cache, not an
+archive search: an ending evicted from that cache is no longer available.
+Machine, capacity and retry waits do not count as operator gates. Starting a
+new waiter while the same condition remains active returns that condition again.
+
+`--run` takes the exact telemetry run ID (or the full container ID for a legacy
+sidecar without one). `GROOM_URL` selects the collector, as for `groom status`.
+Both CLI and server must support the wait protocol; an older server is reported
+as a monitoring error. JSON output contains `run_id`, `event`, `node`, `question`,
+`gate_path`, `terminal`, and `message`; unavailable context is an empty string.
+Exit `0` means a matching event, even if the workflow failed; `1` means the
+connection or protocol failed, `2` means invalid arguments, and `130` means
+cancellation. Disconnections are reported instead of silently reconnecting
+across a gap in monitoring.
+
 ## What was it saying? (`groom logs`)
 
 `status` says *where* a run is; logs say what it was doing on the way there.

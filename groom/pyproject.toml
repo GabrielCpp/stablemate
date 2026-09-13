@@ -18,6 +18,7 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
+  "pydantic>=2.0",
   "litestar[standard]>=2.10",
   "workhorse-agent",
   # The sidecar's filesystem watch. watchfiles rather than a raw inotify binding
@@ -31,8 +32,9 @@ dependencies = [
   # The in-container sidecar dials groom as a WebSocket client for its
   # persistent session (see groom/sidecar.py). websockets also arrives
   # transitively via litestar[standard]'s uvicorn, but the sidecar imports it
-  # directly, so declare it.
-  "websockets>=13",
+  # directly, so declare it. Version 15 adds sync-client keepalive: groom wait
+  # needs ping timeouts to detect a connection that disappears without closing.
+  "websockets>=15",
   # Decode standard OTLP/HTTP protobuf on /v1/traces + /v1/metrics (groom is
   # workhorse's default local collector — see groom/otlp.py). Proto classes
   # only; groom needs no OTel SDK.

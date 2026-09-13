@@ -30,6 +30,7 @@ from datetime import datetime
 from typing import Any
 
 from groom import attend, state, store
+from groom.attention import RULE_EVENTS, AttentionEvent
 from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 
 # Blocked first, then active, then quiet — used for both tree and fleet order.
@@ -393,6 +394,40 @@ def attend_summary() -> dict[str, Any]:
     return {"mode": attend.mode(), "by_run": by_run, "rev": rev, "count": len(by_run)}
 
 
+def attention_events(workflows: list[WorkflowContainer]) -> list[AttentionEvent]:
+    """Current attention conditions, including telemetry without a visible row."""
+    events: list[AttentionEvent] = []
+    for tel in state.RUNS.values():
+        rules = set(tel.fired)
+        if tel.terminal:
+            rules.add("ENDED")
+        elif tel.wait_kind == "operator":
+            rules.add("BLOCKED")
+        for rule in sorted(rules):
+            if rule in RULE_EVENTS:
+                events.append(AttentionEvent(
+                    run_id=tel.run_id, event=RULE_EVENTS[rule], node=tel.current_node,
+                    question=tel.wait_gate_question if rule == "BLOCKED" else "",
+                    gate_path=tel.wait_gate_path if rule == "BLOCKED" else "",
+                    terminal=tel.terminal,
+                ))
+    for wf in workflows:
+        if telemetry_for(wf) is not None:
+            continue
+        for gate in reported_gates(wf, None):
+            if gate.kind in ("", "operator"):
+                events.append(AttentionEvent(
+                    run_id=run_id_of(wf), event="blocked", node=wf.current_node,
+                    question=gate.question, gate_path=gate.file_path,
+                ))
+        if wf.state == WorkflowState.FINISHED:
+            events.append(AttentionEvent(
+                run_id=run_id_of(wf), event="ended", node=wf.current_node,
+                message=f"workflow exited with code {wf.exit_code}",
+            ))
+    return events
+
+
 def state_message(
     workflows: list[WorkflowContainer], query: str = "", now: float | None = None
 ) -> dict[str, Any]:
@@ -405,6 +440,7 @@ def state_message(
         "ts": now,
         "scanning": bool(state.SCANNING),
         "runs": fleet_rows(workflows, query, now),
+        "attention": [event.model_dump() for event in attention_events(workflows)],
         "status": status_bar(workflows),
         # Sibling of "status", not part of it: the fleet counts describe the runs and
         # this describes the collector holding them. A serve whose store has wedged

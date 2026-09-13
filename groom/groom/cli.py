@@ -17,6 +17,9 @@ import ipaddress
 import sys
 from typing import Any
 
+from groom.attention import DEFAULT_EVENTS
+from groom.wait import event_names, wait
+
 # Loopback by default: groom has no authentication, and it exposes docker
 # control and gate answers to anything that can reach its port — the safe
 # default cannot be a warning on the dangerous one. In-container groom-sidecars
@@ -1018,6 +1021,14 @@ def main(argv: list[str] | None = None) -> None:
         "on a trusted network.",
     )
 
+    wait_parser = subparsers.add_parser(
+        "wait", help="Wait silently until a run needs attention; no timeout."
+    )
+    wait_parser.add_argument("--run", required=True, help="Exact run_id to monitor.")
+    wait_parser.add_argument("--until", type=event_names, default=DEFAULT_EVENTS,
+                             help=f"Comma-separated events (default: {DEFAULT_EVENTS}).")
+    wait_parser.add_argument("--json", action="store_true", dest="as_json")
+
     status_parser = subparsers.add_parser(
         "status",
         help="Where each live run is right now (open node, node age, agent idleness). "
@@ -1295,6 +1306,8 @@ def main(argv: list[str] | None = None) -> None:
         serve(
             host=args.host, port=args.port, allow_non_loopback=args.allow_non_loopback
         )
+    elif args.command == "wait":
+        wait(url=_serve_url(), run=args.run, until=args.until, as_json=args.as_json)
     elif args.command == "status":
         status(run=args.run, as_json=args.as_json)
     elif args.command == "logs":

@@ -50,6 +50,7 @@ from groom import (
     store,
     turns,
 )
+from groom.attention import RULE_EVENTS, AttentionEvent, AttentionFrame
 from groom.gates import answer_gate
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 from workhorse import control, inbox
@@ -841,6 +842,15 @@ async def _dispatch_alerts(fired: list[alerts.Alert]) -> None:
     log, the AFK push (ntfy/webhook, off the event loop — urllib blocks), and
     the browser notification path blocked-gates already use."""
     for alert in fired:
+        # Publish before the external notification channel, which may be slow.
+        telemetry = state.RUNS.get(alert.run_id)
+        await state.broadcast(AttentionFrame(events=[AttentionEvent(
+            run_id=alert.run_id, event=RULE_EVENTS[alert.rule], message=alert.message,
+            node=telemetry.current_node if telemetry else "",
+            question=telemetry.wait_gate_question if telemetry else "",
+            gate_path=telemetry.wait_gate_path if telemetry else "",
+            terminal=telemetry.terminal if telemetry else "",
+        )]).model_dump())
         state.record_log(
             {"event": "alert", "rule": alert.rule, "run_id": alert.run_id, "message": alert.message}
         )
