@@ -97,12 +97,19 @@ def _emit_bullet(bullet: markdown.Bullet, uitype: registry.UINodeType,
     return [first, *raw[1:]]
 
 
-def _bullet_run(section: markdown.Section) -> list[markdown.Bullet]:
+def _bullet_run(section: markdown.Section, body_lines: list[str]) -> list[markdown.Bullet]:
     """The leading contiguous run of ``key: value`` metadata bullets (stops at the first prose
-    bullet), so reordering never disturbs a trailing prose list inside the node."""
+    bullet), so reordering never disturbs a trailing prose list inside the node.
+
+    Contiguous in the *lines*, not only in the section's bullet order: the edit replaces the
+    run's whole line span with the bullets alone, so a paragraph between two lists inside it
+    would be deleted. The run stops at the first non-blank line that no bullet owns.
+    """
     run: list[markdown.Bullet] = []
     for bullet in sorted(section.bullets, key=lambda b: b.line_start):
         if _bullet_key(bullet.text) is None:
+            break
+        if run and any(line.strip() for line in body_lines[run[-1].line_end:bullet.line_start]):
             break
         run.append(bullet)
     return run
@@ -112,7 +119,7 @@ def _bullet_edit(section: markdown.Section, uitype: registry.UINodeType,
                  body_lines: list[str]) -> tuple[int, int, list[str]] | None:
     """A (start, end, lines) replacement that reorders + normalizes the node's metadata bullets to
     the canonical ``bullet_keys`` order, or None if already canonical."""
-    run = _bullet_run(section)
+    run = _bullet_run(section, body_lines)
     if not run:
         return None
     order = {b.key: i for i, b in enumerate(uitype.bullet_keys)}

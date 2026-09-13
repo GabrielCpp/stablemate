@@ -111,6 +111,19 @@ def test_reorder_does_not_strand_blank_between_bullets():
     assert body[i_ext + 2] == "## Interactions"
 
 
+def test_prose_between_two_bullet_lists_survives():
+    """The edit rewrites the run's line span; a paragraph inside that span is not a bullet."""
+    text = (
+        "---\ntype: concept\nslug: s\ntitle: T\n---\n# T\n\n"
+        "- customkey: first list\n\n"
+        "A paragraph between the lists.\n\n"
+        "- code: `pkg/mod.py::Thing`\n"
+    )
+    out = fmt.format_text(text)
+    assert "A paragraph between the lists." in out
+    assert fmt.format_text(out) == out
+
+
 def test_unknown_bullet_preserved():
     text = (
         "---\ntype: screen\nslug: s\ntitle: T\n---\n# T\n\n"
