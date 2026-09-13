@@ -23,11 +23,17 @@ the rest is documented, claimed as covered, and never tested.
 You are reading the source right now, so you are the one who can tell which clauses are genuinely
 separate — the success effect, each error case, what is persisted, what is emitted. Split there.
 
-Two ways to get this wrong:
+Three ways to get this wrong:
 
 - **Splitting on punctuation.** A comma is not a requirement boundary. "creates a hold, under the
   caller's name" is one claim with a qualifier; cutting it invents an obligation nobody has to meet
   and a check nobody can write.
+- **Keeping a reason behind a semicolon.** "does not cast the value; that decision belongs to the
+  caller" states one observation and why. The reason is not a second obligation, so it gets no
+  bullet — and left after the semicolon it keeps the finding standing however the bullet is split
+  or merged. Carry it as an aside: "does not cast the value (that decision belongs to the caller)".
+  A clause after a semicolon that *is* a second observation — an error case, a second effect — is
+  split as above.
 - **Collapsing instead of splitting.** Shortening the bullet until it stops tripping the length rule
   deletes the clauses rather than promoting them. That is the forbidden move: the count comes out
   even and the book says less.
