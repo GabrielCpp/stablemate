@@ -248,3 +248,18 @@ def test_a_repeated_heading_gets_the_anchor_github_renders(repo: Path):
     # …and the link resolver agrees with the minting, so `#effects-1` is not a dangling anchor.
     resolver = links.LinkResolver(g)
     assert "effects-1" in resolver.anchors(repo / "docs/features/groom/concepts/queue.md")
+
+
+def test_orphans_are_whole_pages_nothing_reaches(repo: Path):
+    """A heading inside a linked page is reached through its page, and an unlinked page is one orphan."""
+    write(repo / "docs/features/demo/wf.md", NESTED)
+    write(repo / "docs/features/demo/lonely.md", NESTED.replace("slug: wf", "slug: lonely"))
+    write(repo / "docs/features/demo/hub.md",
+          "---\ntype: concept\nslug: hub\ntitle: Hub\n---\n# Hub\n\n"
+          "Runs [a turn](wf.md#run_turn-executes-one-turn).\n")
+    d = graph.build(load(repo))
+    orphans = graph.select(d, orphans=True)
+
+    assert sorted(n["path"] for n in orphans) == ["docs/features/demo/hub.md",
+                                                   "docs/features/demo/lonely.md"]
+    assert all(n["parent"] not in {m["id"] for m in d["nodes"]} for n in orphans)

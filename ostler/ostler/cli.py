@@ -226,7 +226,7 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="ID",
         help="nodes with an out-edge to this node",
     )
-    gp.add_argument("--orphans", action="store_true", help="nodes no edge points to")
+    gp.add_argument("--orphans", action="store_true", help="pages no edge reaches, on the page or any heading in it")
     out = gp.add_mutually_exclusive_group()
     out.add_argument("--tree", action="store_true", help="indented outline (default)")
     out.add_argument("--ids", action="store_true", help="bare node ids, one per line")

@@ -211,6 +211,29 @@ def _hops_to(node: dict, target: str, by_id: dict) -> int | None:
     return None
 
 
+def _root_of(node_id: str, by_id: dict) -> str:
+    """The topmost ancestor of *node_id* inside the graph — the page its heading tree hangs from."""
+    cur, seen = node_id, set()
+    while by_id[cur]["parent"] in by_id and cur not in seen:
+        seen.add(cur)
+        cur = by_id[cur]["parent"]
+    return cur
+
+
+def _orphan_ids(data: dict) -> set[str]:
+    """Pages nothing reaches: no edge lands on the page or on any heading inside it.
+
+    A document is read by containment as well as by links — a section is reached the moment
+    its page is, and a link to one section reaches the page it sits in. So an orphan is a
+    whole page, never a heading of one: the fix for an unreached page is one link, and
+    listing each of its sections as well would ask for that link once per heading.
+    """
+    by_id = {n["id"]: n for n in data["nodes"]}
+    reached = {_root_of(e["to"], by_id) for e in data["edges"] if e["to"] in by_id}
+    return {n["id"] for n in data["nodes"]
+            if n["parent"] not in by_id and n["id"] not in reached}
+
+
 def select(data: dict, *, node_type: str | None = None, title: str | None = None,
            path: str | None = None, under: str | None = None, depth: int | None = None,
            has_bullet: str | None = None, bullet: str | None = None,
@@ -218,7 +241,7 @@ def select(data: dict, *, node_type: str | None = None, title: str | None = None
     """Filter build()'s nodes by any combination of selectors (AND). Returns nodes in graph order."""
     nodes = data["nodes"]
     by_id = {n["id"]: n for n in nodes}
-    incoming = {e["to"] for e in data["edges"] if e["to"]}
+    orphan_ids = _orphan_ids(data) if orphans else set()
     segs: list[tuple[str, str]] = []
     ops: list[str] = []
     if path:
@@ -237,7 +260,7 @@ def select(data: dict, *, node_type: str | None = None, title: str | None = None
                 continue
         if links_to and not any(e["to"] == links_to for e in n["edges"]):
             continue
-        if orphans and n["id"] in incoming:
+        if orphans and n["id"] not in orphan_ids:
             continue
         if under is not None:
             hops = _hops_to(n, under, by_id)

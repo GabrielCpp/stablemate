@@ -182,8 +182,8 @@ subtree (`docs/features/<surface>`).
 ostler graph [--surface S] [--type T] [--title T] [--path 'concept:agent / field:timeout'] \
              [--under ID] [--depth N] [--has-bullet KEY] [--bullet KEY=VAL] \
              [--links-to ID] [--orphans] [--tree | --ids | --json]
-#   query the node/edge/bullet graph. --tree is the default; --orphans finds nodes
-#   no edge points to. In --path, `/` means descendant and `>` means direct child.
+#   query the node/edge/bullet graph. --tree is the default; --orphans finds pages
+#   no edge reaches, on the page or any heading in it. In --path, `/` means descendant and `>` means direct child.
 
 ostler reach --from ID [target] [--surface S] [--json]
 #   derive the documented click-path from one screen to another. Omit `target` to
