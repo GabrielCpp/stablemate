@@ -1,7 +1,7 @@
 [project]
 name = "workhorse-workflows"
 version = "2.0.0"
-description = "The stablemate agent workflows — hello-world, research, author, coder, okf-builder — as an installable package workhorse discovers by entry point."
+description = "The stablemate agent workflows — hello-world, research, author, coder, okf-builder, loop-runner — as an installable package workhorse discovers by entry point."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -94,6 +94,7 @@ workhorse-research = "workhorse_workflows.research.workflow:main"
 workhorse-author = "workhorse_workflows.author.workflow:main"
 workhorse-okf-builder = "workhorse_workflows.okf_builder.workflow:main"
 workhorse-coder = "workhorse_workflows.coder.workflow:main"
+workhorse-loop-runner = "workhorse_workflows.loop_runner.workflow:main"
 
 [project.urls]
 Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/workflows"
