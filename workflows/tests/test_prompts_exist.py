@@ -35,7 +35,7 @@ import workhorse_workflows
 PACKAGE = Path(workhorse_workflows.__file__).parent
 
 #: The workflow packages. `kit` is the shared library and has no prompts of its own.
-WORKFLOWS = ("author", "coder", "hello_world", "okf_builder", "research")
+WORKFLOWS = ("author", "coder", "loop_runner", "okf_builder", "research")
 
 
 def _agent_prompts(source: Path) -> list[tuple[int, ast.expr]]:
