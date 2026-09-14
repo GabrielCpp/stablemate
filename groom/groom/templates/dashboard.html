@@ -31,6 +31,9 @@
       <button type="button" class="act-btn" data-mode="attend" title="Attendant" aria-label="Attendant" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/></svg>
       </button>
+      <button type="button" class="act-btn" data-mode="dispatch" title="Dispatch" aria-label="Dispatch" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>
+      </button>
       <button type="button" class="act-btn" data-mode="settings" title="Settings" aria-label="Settings" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg>
       </button>
@@ -96,6 +99,17 @@
           <div class="attend-list" id="attend-list" role="log" aria-live="polite" aria-label="Attendance sessions"></div>
         </div>
         <div id="attend-detail"><div class="detail-empty">Select an attendance to read what the agent did.</div></div>
+      </div>
+
+      <!-- 5) DISPATCH: config-declared work queues. Occupancy per queue at the
+           top, its items (newest first) below — an item's row carries its own
+           cancel/stop button, live-updated the same way the runs list is. -->
+      <div id="dispatch-pane" class="pane">
+        <div class="pane-head">
+          <span>Dispatch — config-declared work queues</span>
+        </div>
+        <div id="dispatch-queues" role="log" aria-live="polite" aria-label="Dispatch queues"></div>
+        <div id="dispatch-items" role="log" aria-live="polite" aria-label="Dispatch items"></div>
       </div>
 
       <!-- settings -->

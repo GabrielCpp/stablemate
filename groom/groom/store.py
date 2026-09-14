@@ -188,6 +188,21 @@ CREATE TABLE IF NOT EXISTS attend_sessions (
 );
 CREATE INDEX IF NOT EXISTS attend_recent ON attend_sessions(started_at DESC);
 CREATE INDEX IF NOT EXISTS attend_run ON attend_sessions(run_id, status);
+CREATE TABLE IF NOT EXISTS dispatch_items (
+    item_id       TEXT PRIMARY KEY,
+    queue         TEXT NOT NULL DEFAULT '',
+    command       TEXT NOT NULL DEFAULT '',
+    params        TEXT NOT NULL DEFAULT '',
+    status        TEXT NOT NULL DEFAULT 'pending',
+    run_id        TEXT NOT NULL DEFAULT '',
+    pid           INTEGER,
+    exit_code     INTEGER,
+    enqueued_at   REAL NOT NULL DEFAULT 0,
+    started_at    REAL,
+    ended_at      REAL
+);
+CREATE INDEX IF NOT EXISTS dispatch_queue_status ON dispatch_items(queue, status);
+CREATE INDEX IF NOT EXISTS dispatch_recent ON dispatch_items(enqueued_at DESC);
 """
 
 
@@ -347,12 +362,17 @@ def _estimated(model: str, tokens: dict[str, Any]) -> float | None:
 # is what makes adding one a one-line change rather than a schema question.
 _ADDED_ATTEND_COLUMNS: tuple[tuple[str, str], ...] = ()
 
+# Columns added to `dispatch_items` after it first shipped — same reason as
+# `_ADDED_ATTEND_COLUMNS`.
+_ADDED_DISPATCH_COLUMNS: tuple[tuple[str, str], ...] = ()
+
 
 def _migrate(conn: sqlite3.Connection) -> None:
     for table, added in (
         ("spans", _ADDED_SPAN_COLUMNS),
         ("logs", _ADDED_LOG_COLUMNS),
         ("attend_sessions", _ADDED_ATTEND_COLUMNS),
+        ("dispatch_items", _ADDED_DISPATCH_COLUMNS),
     ):
         existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
         for column, decl in added:
@@ -2713,3 +2733,172 @@ def attend_orphans() -> list[dict[str, Any]]:
         (ATTEND_RUNNING,),
     )
     return [_attend_row(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# dispatch_items: one row per item enqueued onto a groom dispatch queue
+# ---------------------------------------------------------------------------
+
+#: The five states a dispatch item is ever in (independent of the underlying
+#: `RunRecord`'s own resumable/terminal model — `docs/plans/groom-dispatch-queue-and-loop-runner.md`
+#: §3.2). `cancelled` is groom's own bookkeeping the moment a stop is sent, or the
+#: moment a still-`pending` item is dropped before it ever ran.
+DISPATCH_PENDING = "pending"
+DISPATCH_RUNNING = "running"
+DISPATCH_DONE = "done"
+DISPATCH_FAILED = "failed"
+DISPATCH_CANCELLED = "cancelled"
+
+
+def _dispatch_row(row: sqlite3.Row) -> dict[str, Any]:
+    """A row with ``params`` back as the object it was enqueued with.
+
+    Stored as a JSON blob passed through verbatim (§3.4) — parsed back here the same
+    way `_attend_row` parses `session_ids`, so a caller never touches raw JSON text.
+    """
+    record = dict(row)
+    raw = record.get("params") or ""
+    try:
+        record["params"] = json.loads(raw) if raw else {}
+    except ValueError:
+        record["params"] = {}
+    return record
+
+
+@_resilient
+def dispatch_enqueue(
+    item_id: str,
+    *,
+    queue: str,
+    command: str,
+    params: dict[str, Any] | None = None,
+    enqueued_at: float | None = None,
+) -> None:
+    """Record a new item as ``pending``. ``command`` is copied from the queue's config
+    now, not re-read at launch time, so a later config edit never changes what an
+    already-pending item runs (§3.4)."""
+    with _STORE.writing() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO dispatch_items (item_id, queue, command, params,"
+            " status, run_id, pid, exit_code, enqueued_at, started_at, ended_at)"
+            " VALUES (?, ?, ?, ?, ?, '', NULL, NULL, ?, NULL, NULL)",
+            (
+                item_id,
+                queue,
+                command,
+                json.dumps(params or {}),
+                DISPATCH_PENDING,
+                float(enqueued_at if enqueued_at is not None else time.time()),
+            ),
+        )
+
+
+@_resilient
+def dispatch_start(
+    item_id: str,
+    *,
+    run_id: str = "",
+    pid: int | None = None,
+    started_at: float | None = None,
+) -> None:
+    """Flip a `pending` row to `running` — called by the thread launching the process."""
+    with _STORE.writing() as conn:
+        conn.execute(
+            "UPDATE dispatch_items SET status = ?, run_id = ?, pid = ?, started_at = ?"
+            " WHERE item_id = ?",
+            (
+                DISPATCH_RUNNING,
+                run_id,
+                pid,
+                float(started_at if started_at is not None else time.time()),
+                item_id,
+            ),
+        )
+
+
+@_resilient
+def dispatch_finish(
+    item_id: str,
+    *,
+    status: str,
+    exit_code: int | None = None,
+    ended_at: float | None = None,
+) -> None:
+    """Flip a row to a terminal state (`done` / `failed` / `cancelled`). Called by the
+    thread that owned the process, or by `stop`/cancel on an operator's say-so."""
+    with _STORE.writing() as conn:
+        conn.execute(
+            "UPDATE dispatch_items SET status = ?, exit_code = ?, ended_at = ?"
+            " WHERE item_id = ?",
+            (
+                status,
+                exit_code,
+                float(ended_at if ended_at is not None else time.time()),
+                item_id,
+            ),
+        )
+
+
+@_resilient
+def dispatch_cancel_pending(item_id: str) -> bool:
+    """Cancel a still-`pending` item without ever spawning a process. `False` if the
+    item is not `pending` (already running, or already terminal) — a `running` item is
+    `stop`'s job, not this one's."""
+    with _STORE.writing() as conn:
+        cursor = conn.execute(
+            "UPDATE dispatch_items SET status = ?, ended_at = ?"
+            " WHERE item_id = ? AND status = ?",
+            (DISPATCH_CANCELLED, time.time(), item_id, DISPATCH_PENDING),
+        )
+        return cursor.rowcount > 0
+
+
+@_reading
+def dispatch_get(item_id: str) -> dict[str, Any] | None:
+    row = (
+        _read_connection()
+        .execute("SELECT * FROM dispatch_items WHERE item_id = ?", (item_id,))
+        .fetchone()
+    )
+    return _dispatch_row(row) if row is not None else None
+
+
+@_reading
+def dispatch_list(queue: str, limit: int = 200) -> list[dict[str, Any]]:
+    """Every item in this queue, newest first."""
+    rows = _read_connection().execute(
+        "SELECT * FROM dispatch_items WHERE queue = ? ORDER BY enqueued_at DESC LIMIT ?",
+        (queue, max(1, limit)),
+    )
+    return [_dispatch_row(row) for row in rows]
+
+
+@_reading
+def dispatch_pending_for_queue(queue: str) -> list[dict[str, Any]]:
+    """This queue's `pending` items, oldest first — the order they are launched in."""
+    rows = _read_connection().execute(
+        "SELECT * FROM dispatch_items WHERE queue = ? AND status = ? ORDER BY enqueued_at ASC",
+        (queue, DISPATCH_PENDING),
+    )
+    return [_dispatch_row(row) for row in rows]
+
+
+@_reading
+def dispatch_running_for_queue(queue: str) -> list[dict[str, Any]]:
+    """This queue's `running` items — its current occupancy."""
+    rows = _read_connection().execute(
+        "SELECT * FROM dispatch_items WHERE queue = ? AND status = ? ORDER BY started_at ASC",
+        (queue, DISPATCH_RUNNING),
+    )
+    return [_dispatch_row(row) for row in rows]
+
+
+@_reading
+def dispatch_orphans() -> list[dict[str, Any]]:
+    """Every row still claiming to be `running`, across every queue — what boot
+    recovery re-checks (§3.5)."""
+    rows = _read_connection().execute(
+        "SELECT * FROM dispatch_items WHERE status = ? ORDER BY started_at ASC",
+        (DISPATCH_RUNNING,),
+    )
+    return [_dispatch_row(row) for row in rows]

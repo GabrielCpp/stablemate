@@ -1102,3 +1102,62 @@ def write_attend_settings(settings: AttendSettings) -> None:
             "deny": list(settings.deny),
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# groom's dispatch queues: static, named, config-declared (never created by an
+# enqueue call — docs/plans/groom-dispatch-queue-and-loop-runner.md §3.1/R4Q1)
+# ---------------------------------------------------------------------------
+
+#: The table groom's dispatch queues live in: ``[groom.dispatch.<name>]``. Additive,
+#: like :data:`ATTEND_SECTION` — it does not bump CONFIG_VERSION, and it is read but
+#: never written by groom itself: a queue is declared by an operator editing the home
+#: config, not minted by an enqueue call.
+DISPATCH_SECTION = "groom.dispatch"
+
+#: A queue with no configured concurrency runs one item at a time — the safest default
+#: for a queue an operator forgot to size, rather than an unbounded one.
+DEFAULT_DISPATCH_CONCURRENCY = 1
+
+
+@dataclass(frozen=True)
+class DispatchQueueSettings:
+    """One configured queue: its name, the workflow command it launches, and how many
+    of its items may run at once."""
+
+    name: str
+    command: str
+    concurrency: int = DEFAULT_DISPATCH_CONCURRENCY
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"name": self.name, "command": self.command, "concurrency": self.concurrency}
+
+
+def resolve_dispatch_queues(cfg: dict[str, Any] | None = None) -> dict[str, DispatchQueueSettings]:
+    """Every configured ``[groom.dispatch.<name>]`` queue, keyed by name.
+
+    No environment fallback (unlike :func:`resolve_attend_settings`) — a dispatch
+    queue has no legacy single-instance spelling to stay compatible with; it is new,
+    config-only, and a queue that is not in the table simply does not exist.
+
+    A malformed entry (no ``command``) is skipped rather than raising: one operator
+    typo in one queue's table must not take down every other queue's dispatch.
+    """
+    data = cfg if cfg is not None else load_config()
+    table = get_config_value(DISPATCH_SECTION, data)
+    section: dict[str, Any] = table if isinstance(table, dict) else {}
+    queues: dict[str, DispatchQueueSettings] = {}
+    for name, raw in section.items():
+        if not isinstance(raw, dict):
+            continue
+        command = str(raw.get("command") or "").strip()
+        if not command:
+            continue
+        try:
+            concurrency = int(raw.get("concurrency", DEFAULT_DISPATCH_CONCURRENCY))
+        except (TypeError, ValueError):
+            concurrency = DEFAULT_DISPATCH_CONCURRENCY
+        queues[name] = DispatchQueueSettings(
+            name=name, command=command, concurrency=max(1, concurrency)
+        )
+    return queues

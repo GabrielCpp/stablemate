@@ -1004,6 +1004,127 @@ def archive_status(as_json: bool = False) -> None:
         print(f"  {name:<26} {count}")
 
 
+def _dispatch_request(
+    method: str, path: str, body: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """One HTTP round trip to the running ``groom serve``'s ``/api/dispatch/*``
+    surface — the CLI has no store access of its own for this feature because a
+    dispatch item's semaphore slot lives only in the server process's memory,
+    the same reason ``status`` above must ask over HTTP rather than read SQLite.
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    url = f"{_serve_url()}/api/dispatch/{path}"
+    data = _json.dumps(body).encode() if body is not None else None
+    request = urllib.request.Request(  # noqa: S310 - local http url
+        url, data=data, method=method, headers={"Content-Type": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as resp:  # noqa: S310
+            return _json.load(resp)
+    except urllib.error.HTTPError as exc:
+        return _json.load(exc)
+    except (urllib.error.URLError, TimeoutError) as exc:
+        print(
+            f"groom serve is not reachable at {_serve_url()} ({exc}).\n"
+            "  Dispatch queues live in the running server's memory — start it\n"
+            "  with `groom serve`, or point GROOM_URL at where it listens.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from exc
+
+
+def dispatch_queues(as_json: bool = False) -> None:
+    """List every configured queue, its concurrency, and how many items are running."""
+    import json as _json
+
+    result = _dispatch_request("GET", "queues")
+    rows = result.get("queues", [])
+    if as_json:
+        print(_json.dumps(rows, indent=2))
+        return
+    if not rows:
+        print(
+            "no dispatch queues configured.\n"
+            "  A queue is declared in the home config under [groom.dispatch.<name>],\n"
+            "  not created by enqueuing against it."
+        )
+        return
+    header = f"{'queue':<24}{'running':>9}{'/':1}{'cap':<6}  command"
+    lines = [header, "-" * len(header)]
+    for row in rows:
+        lines.append(
+            f"{row['name']:<24}{row['running']:>9}{'/':1}{row['concurrency']:<6}"
+            f"  {row['command']}"
+        )
+    print("\n".join(lines))
+
+
+def dispatch_enqueue(queue: str, params: str = "{}", as_json: bool = False) -> None:
+    """Enqueue one item onto a configured queue, with a JSON params object."""
+    import json as _json
+
+    try:
+        parsed = _json.loads(params)
+    except _json.JSONDecodeError as exc:
+        print(f"--params is not valid JSON: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    result = _dispatch_request("POST", f"{queue}/items", {"params": parsed})
+    if as_json:
+        print(_json.dumps(result, indent=2))
+        return
+    if not result.get("ok"):
+        print(f"error: {result.get('error', 'enqueue failed')}", file=sys.stderr)
+        raise SystemExit(1)
+    print(f"enqueued {result['item']['item_id']} onto {queue}")
+
+
+def _format_dispatch_items(rows: list[dict]) -> str:
+    if not rows:
+        return "no items on this queue."
+    header = f"{'item':<14}{'status':<11}{'pid':>8}{'exit':>6}  params"
+    lines = [header, "-" * len(header)]
+    for row in rows:
+        lines.append(
+            f"{row['item_id']:<14}{row['status']:<11}"
+            f"{(row.get('pid') or '-'):>8}{(row.get('exit_code') if row.get('exit_code') is not None else '-'):>6}"
+            f"  {row.get('params') or {}}"
+        )
+    return "\n".join(lines)
+
+
+def dispatch_items(queue: str, as_json: bool = False) -> None:
+    """List a queue's items, newest first."""
+    import json as _json
+
+    result = _dispatch_request("GET", f"{queue}/items")
+    rows = result.get("items", [])
+    if as_json:
+        print(_json.dumps(rows, indent=2))
+        return
+    print(_format_dispatch_items(rows))
+
+
+def dispatch_cancel(queue: str, item: str) -> None:
+    """Drop a still-pending item before it ever spawns."""
+    result = _dispatch_request("DELETE", f"{queue}/items/{item}")
+    if result.get("ok"):
+        print(f"cancelled {item}")
+    else:
+        print(f"{item} was not pending (already running or already terminal)")
+
+
+def dispatch_stop(queue: str, item: str) -> None:
+    """Kill a running item's process and free its queue slot."""
+    result = _dispatch_request("POST", f"{queue}/items/{item}/stop")
+    if result.get("ok"):
+        print(f"stopped {item}")
+    else:
+        print(f"{item} was not running")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="groom", description="Local dashboard for workhorse operator gates."
@@ -1301,6 +1422,50 @@ def main(argv: list[str] | None = None) -> None:
         help="Skip the VACUUM afterwards (faster, but the file keeps its old size).",
     )
 
+    dispatch_parser = subparsers.add_parser(
+        "dispatch",
+        help="Named work queues: enqueue an item, watch it run, cancel or stop it. "
+        "Queues are config-declared ([groom.dispatch.<name>]), never created here. "
+        "Asks the running `groom serve` over HTTP — a queue's slots live in its memory.",
+    )
+    dispatch_verbs = dispatch_parser.add_subparsers(dest="verb", required=True)
+
+    dp_queues = dispatch_verbs.add_parser(
+        "queues", help="List every configured queue, its concurrency, and occupancy."
+    )
+    dp_queues.add_argument(
+        "--json", action="store_true", dest="as_json", help="Machine-readable."
+    )
+
+    dp_enqueue = dispatch_verbs.add_parser(
+        "enqueue", help="Enqueue one item onto a configured queue."
+    )
+    dp_enqueue.add_argument("queue", help="The queue's configured name.")
+    dp_enqueue.add_argument(
+        "--params", default="{}", help="JSON object passed to the workflow (default: {})."
+    )
+    dp_enqueue.add_argument(
+        "--json", action="store_true", dest="as_json", help="Machine-readable."
+    )
+
+    dp_items = dispatch_verbs.add_parser("items", help="List a queue's items, newest first.")
+    dp_items.add_argument("queue", help="The queue's configured name.")
+    dp_items.add_argument(
+        "--json", action="store_true", dest="as_json", help="Machine-readable."
+    )
+
+    dp_cancel = dispatch_verbs.add_parser(
+        "cancel", help="Drop a still-pending item before it ever spawns."
+    )
+    dp_cancel.add_argument("queue", help="The queue's configured name.")
+    dp_cancel.add_argument("item", help="The item id, from `enqueue` or `items`.")
+
+    dp_stop = dispatch_verbs.add_parser(
+        "stop", help="Kill a running item's process and free its queue slot."
+    )
+    dp_stop.add_argument("queue", help="The queue's configured name.")
+    dp_stop.add_argument("item", help="The item id, from `enqueue` or `items`.")
+
     args = parser.parse_args(argv)
     if args.command == "serve":
         serve(
@@ -1384,6 +1549,17 @@ def main(argv: list[str] | None = None) -> None:
         print(store.db_path())
     elif args.command == "purge-tests":
         purge_tests(dry_run=args.dry_run, vacuum=args.vacuum)
+    elif args.command == "dispatch":
+        if args.verb == "queues":
+            dispatch_queues(as_json=args.as_json)
+        elif args.verb == "enqueue":
+            dispatch_enqueue(queue=args.queue, params=args.params, as_json=args.as_json)
+        elif args.verb == "items":
+            dispatch_items(queue=args.queue, as_json=args.as_json)
+        elif args.verb == "cancel":
+            dispatch_cancel(queue=args.queue, item=args.item)
+        elif args.verb == "stop":
+            dispatch_stop(queue=args.queue, item=args.item)
 
 
 def sidecar_main(argv: list[str] | None = None) -> None:

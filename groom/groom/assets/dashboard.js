@@ -59,6 +59,9 @@ const store = {
     diff: { status: "idle", files: [], idx: -1 },
     // the attendant: a per-run summary rides every `state` frame, the log does not
     attend: { mode: "off", by_run: {}, rev: 0, status: "idle", sessions: [], selected: null, record: null },
+    // dispatch queues have no socket push — occupancy changes on a launch/exit
+    // that only the server's own threads see — so this pane polls while open.
+    dispatch: { status: "idle", queues: [], selectedQueue: null, items: [] },
     settings: { status: "idle", attend: null, saving: false },
     palette: { open: false, query: "", active: 0 },
   },
@@ -1205,6 +1208,134 @@ function saveAttendEnabled(enabled) {
 }
 
 // --------------------------------------------------------------------------- //
+// Dispatch panel — config-declared work queues
+// --------------------------------------------------------------------------- //
+// No socket push (a queue's occupancy lives only in the semaphores a request
+// thread holds, never broadcast state), so this pane polls while it is open —
+// the same tradeoff `doRefresh` makes for a manual docker rescan, just on a timer
+// instead of a button. `_dispatchPoll` is cleared whenever the mode changes away.
+let _dispatchPoll = null;
+
+function DispatchQueueRow({ row }) {
+  return html`<div class="dispatch-queue-row">
+    <button
+      type="button"
+      class=${"dispatch-queue-open" + (store.get().dispatch.selectedQueue === row.name ? " active" : "")}
+      onClick=${() => selectDispatchQueue(row.name)}
+    >
+      <span class="repo-branch">${row.name}</span>
+      <span class="wid">${row.running}/${row.concurrency} running</span>
+      <span class="attend-meta">${row.command}</span>
+    </button>
+  </div>`;
+}
+
+function DispatchQueues() {
+  const { dispatch } = useStore();
+  if (dispatch.status === "idle" || dispatch.status === "loading") {
+    return html`<div class="empty loading"><span class="spin"></span>Loading queues…</div>`;
+  }
+  if (dispatch.status === "error") return html`<div class="empty">failed to load</div>`;
+  if (!dispatch.queues.length) {
+    return html`<div class="empty">
+      No dispatch queues configured — add a [groom.dispatch.&lt;name&gt;] section to enable one.
+    </div>`;
+  }
+  return dispatch.queues.map((row) => html`<${DispatchQueueRow} key=${row.name} row=${row} />`);
+}
+
+function DispatchItemRow({ item, queue }) {
+  const pending = item.status === "pending";
+  const running = item.status === "running";
+  return html`<div class="dispatch-item-row">
+    <span class=${"attend-status " + item.status}>${item.status}</span>
+    <span class="wid">${item.item_id}</span>
+    <span class="attend-meta">${item.exit_code === null || item.exit_code === undefined ? "" : "exit " + item.exit_code}</span>
+    ${pending
+      ? html`<button type="button" class="attend-stop" onClick=${() => cancelDispatchItem(queue, item.item_id)}>Cancel</button>`
+      : null}
+    ${running
+      ? html`<button type="button" class="attend-stop" onClick=${() => stopDispatchItem(queue, item.item_id)}>Stop</button>`
+      : null}
+  </div>`;
+}
+
+function DispatchItems() {
+  const { dispatch } = useStore();
+  if (!dispatch.selectedQueue) {
+    return html`<div class="detail-empty">Select a queue to see its items.</div>`;
+  }
+  if (!dispatch.items.length) {
+    return html`<div class="empty">no items on this queue.</div>`;
+  }
+  return dispatch.items.map(
+    (item) => html`<${DispatchItemRow} key=${item.item_id} item=${item} queue=${dispatch.selectedQueue} />`
+  );
+}
+
+function loadDispatchQueues() {
+  setIn("dispatch", { status: store.get().dispatch.status === "ready" ? "ready" : "loading" });
+  fetch("/api/dispatch/queues")
+    .then((r) => r.json())
+    .then((body) => setIn("dispatch", { status: "ready", queues: body.queues || [] }))
+    .catch(() => setIn("dispatch", { status: "error", queues: [] }));
+}
+
+function loadDispatchItems(queue) {
+  fetch("/api/dispatch/" + encodeURIComponent(queue) + "/items")
+    .then((r) => r.json())
+    .then((body) => {
+      if (store.get().dispatch.selectedQueue !== queue) return; // a later click won
+      setIn("dispatch", { items: body.items || [] });
+    });
+}
+
+function selectDispatchQueue(queue) {
+  setIn("dispatch", { selectedQueue: queue, items: [] });
+  loadDispatchItems(queue);
+}
+
+function cancelDispatchItem(queue, itemId) {
+  fetch("/api/dispatch/" + encodeURIComponent(queue) + "/items/" + encodeURIComponent(itemId), {
+    method: "DELETE",
+  })
+    .then((r) => r.json())
+    .then((body) => {
+      if (!body.ok) pushToast("blocked", "✗ not cancelled", "That item was already running or done.", 5000);
+      loadDispatchItems(queue);
+      loadDispatchQueues();
+    });
+}
+
+function stopDispatchItem(queue, itemId) {
+  fetch("/api/dispatch/" + encodeURIComponent(queue) + "/items/" + encodeURIComponent(itemId) + "/stop", {
+    method: "POST",
+  })
+    .then((r) => r.json())
+    .then((body) => {
+      if (!body.ok) pushToast("blocked", "✗ not stopped", "That item was already gone.", 5000);
+      loadDispatchItems(queue);
+      loadDispatchQueues();
+    });
+}
+
+function loadDispatch() {
+  loadDispatchQueues();
+  const selected = store.get().dispatch.selectedQueue;
+  if (selected) loadDispatchItems(selected);
+  if (_dispatchPoll) clearInterval(_dispatchPoll);
+  _dispatchPoll = setInterval(() => {
+    if (store.get().mode !== "dispatch") return;
+    loadDispatch();
+  }, 5000);
+}
+
+function stopDispatchPoll() {
+  if (_dispatchPoll) clearInterval(_dispatchPoll);
+  _dispatchPoll = null;
+}
+
+// --------------------------------------------------------------------------- //
 // Activity bar (mode switch)
 // --------------------------------------------------------------------------- //
 function setMode(mode) {
@@ -1216,9 +1347,11 @@ function setMode(mode) {
   });
   store.set({ mode: mode });
   closeRepoMenu();
+  if (mode !== "dispatch") stopDispatchPoll();
   if (mode === "files") loadFiles();
   else if (mode === "diff") loadDiff();
   else if (mode === "attend") loadAttend();
+  else if (mode === "dispatch") loadDispatch();
   else if (mode === "settings") loadAttendSettings();
 }
 
@@ -1491,6 +1624,8 @@ const ISLANDS = [
   ["diff-view", DiffView],
   ["attend-list", AttendList],
   ["attend-detail", AttendDetail],
+  ["dispatch-queues", DispatchQueues],
+  ["dispatch-items", DispatchItems],
   ["setting-attend", AttendSetting],
   ["palette-results", PaletteResults],
 ];

@@ -248,6 +248,20 @@ body {
   color:var(--text-1); font-family:var(--sans); font-size:12px; text-align:left; cursor:pointer; }
 .attend-link:hover { border-color:var(--accent); color:var(--text-0); }
 
+/* ---- dispatch pane (config-declared work queues) ---- */
+#dispatch-pane { display:flex; flex-direction:column; }
+#dispatch-queues { flex:none; max-height:40%; overflow-y:auto; border-bottom:1px solid var(--border); }
+#dispatch-items { flex:1; overflow-y:auto; }
+.dispatch-queue-row { border-bottom:1px solid var(--border); }
+.dispatch-queue-open { width:100%; display:flex; align-items:center; gap:10px; padding:6px 10px;
+  cursor:pointer; background:none; font:inherit; color:inherit; text-align:left; border:0;
+  border-left:2px solid transparent; }
+.dispatch-queue-open:hover { background:var(--bg-2); }
+.dispatch-queue-open.active { background:var(--bg-3); border-left-color:var(--accent); }
+.dispatch-item-row { display:flex; align-items:center; gap:10px; padding:6px 10px;
+  border-bottom:1px solid var(--border); }
+.dispatch-item-row:hover { background:var(--bg-2); }
+
 /* ---- settings ---- */
 .settings-panel { padding:16px; max-width:640px; }
 .settings-panel h2 { font-size:13px; margin:0 0 10px; }
@@ -331,6 +345,7 @@ body {
 .app[data-mode="diff"]      #diff-pane      { display:flex; flex-direction:column; }
 .app[data-mode="settings"]  #settings-pane  { display:block; overflow:auto; }
 .app[data-mode="attend"]    #attend-pane    { display:grid; grid-template-columns:1.1fr 1.4fr; }
+.app[data-mode="dispatch"]  #dispatch-pane  { display:flex; }
 
 .alert-chip { font-family:var(--mono); font-size:9.5px; text-transform:uppercase; letter-spacing:.05em;
   padding:0 5px; border-radius:3px; border:1px solid var(--blocked); color:var(--blocked); }

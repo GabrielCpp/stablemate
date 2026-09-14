@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Literal
 
-from litestar import Litestar, Request, Response, get, post, websocket
+from litestar import Litestar, Request, Response, delete, get, post, websocket
 from litestar.connection import WebSocket
 from litestar.enums import MediaType
 from litestar.exceptions import WebSocketDisconnect
@@ -39,6 +39,7 @@ from groom import (
     attend,
     attend_transcript,
     discovery,
+    dispatch,
     docker_io,
     localfs,
     notify,
@@ -783,6 +784,59 @@ async def attend_settings_post(data: dict) -> dict:
     attend.forget_settings()
     await _broadcast_shell()
     return (await asyncio.to_thread(attend.settings)).as_dict()
+
+
+@get("/api/dispatch/queues", include_in_schema=False)
+async def dispatch_queues() -> dict:
+    """Every configured queue, with its concurrency and current occupancy.
+
+    The dashboard's dispatch pane and `groom dispatch queues` both read this and
+    nothing else — occupancy is computed from the store on every call rather than
+    tracked in memory, so it is correct even right after a groom restart, before any
+    item on that queue has been touched again.
+    """
+    return {"queues": await asyncio.to_thread(dispatch.queue_status)}
+
+
+@post("/api/dispatch/{queue:str}/items", include_in_schema=False)
+async def dispatch_enqueue(queue: Annotated[str, PathParameter()], data: dict) -> Response:
+    """Enqueue one item onto this queue. 404s a queue with no `[groom.dispatch.<name>]`
+    entry — this endpoint cannot create one, only config can (§3, R4Q1)."""
+    params = data.get("params") if isinstance(data.get("params"), dict) else {}
+    try:
+        item = await asyncio.to_thread(dispatch.enqueue, queue, params)
+    except dispatch.UnknownQueue:
+        return Response(content={"ok": False, "error": f"no such queue: {queue}"}, status_code=404)
+    await _broadcast_shell()
+    return Response(content={"ok": True, "item": item})
+
+
+@get("/api/dispatch/{queue:str}/items", include_in_schema=False)
+async def dispatch_items(queue: Annotated[str, PathParameter()]) -> dict:
+    """This queue's items, newest first — the latest 200, same cap `attend_sessions` uses."""
+    rows = await asyncio.to_thread(store.dispatch_list, queue, 200)
+    return {"items": rows}
+
+
+@delete("/api/dispatch/{queue:str}/items/{item_id:str}", include_in_schema=False, status_code=200)
+async def dispatch_delete(
+    queue: Annotated[str, PathParameter()], item_id: Annotated[str, PathParameter()]
+) -> dict:
+    """Cancel a still-`pending` item before it ever spawns. `ok: False` if it is
+    already running (or already terminal) — a running item is stopped, not deleted."""
+    del queue
+    return {"ok": await asyncio.to_thread(dispatch.cancel_pending, item_id)}
+
+
+@post("/api/dispatch/{queue:str}/items/{item_id:str}/stop", include_in_schema=False)
+async def dispatch_stop(
+    queue: Annotated[str, PathParameter()], item_id: Annotated[str, PathParameter()]
+) -> dict:
+    """Kill this item's process and free its queue slot for the next `pending` one."""
+    del queue
+    stopped = await asyncio.to_thread(dispatch.stop, item_id)
+    await _broadcast_shell()
+    return {"ok": stopped}
 
 
 @post("/push/blocked", include_in_schema=False)
@@ -1774,6 +1828,22 @@ async def _recover_attend() -> None:
         logger.info("attend: restarted %d attendant(s) left running by a dead groom", restarted)
 
 
+async def _recover_dispatch() -> None:
+    """on_startup hook: mark every `running` dispatch row dead pids own as `failed`.
+
+    Off the event loop like `_recover_attend`, and deliberately not the same recovery
+    rule: dispatch never relaunches a dead item into its old row (§3.5) — see
+    `groom.dispatch`'s own docstring for why.
+    """
+    try:
+        closed = await asyncio.to_thread(dispatch.recover_orphans)
+    except Exception:
+        logger.exception("dispatch: boot recovery failed")
+        return
+    if closed:
+        logger.info("dispatch: marked %d orphaned item(s) failed after a dead groom", closed)
+
+
 async def _spawn_scan() -> None:
     """on_startup hook: only *schedule* discovery and return immediately, so
     uvicorn finishes lifespan-startup and binds the port right away instead of
@@ -1805,6 +1875,11 @@ def create_app() -> Litestar:
             attend_stop,
             attend_settings_get,
             attend_settings_post,
+            dispatch_queues,
+            dispatch_enqueue,
+            dispatch_items,
+            dispatch_delete,
+            dispatch_stop,
             push_blocked,
             push_exited,
             otlp_traces,
@@ -1816,6 +1891,13 @@ def create_app() -> Litestar:
             reload,
             create_static_files_router(path="/assets", directories=[ASSETS_DIR]),
         ],
-        on_startup=[_spawn_scan, _spawn_rules, _spawn_live, _spawn_archive, _recover_attend],
+        on_startup=[
+            _spawn_scan,
+            _spawn_rules,
+            _spawn_live,
+            _spawn_archive,
+            _recover_attend,
+            _recover_dispatch,
+        ],
         on_shutdown=[_stop_rules, _stop_live, _stop_archive, pools.shutdown_all],
     )
