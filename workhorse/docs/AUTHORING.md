@@ -258,6 +258,26 @@ These are **real values, not templates**: the state computes the path in Python 
 passes it. (They are still Jinja-rendered on the way through, so a literal path is a
 no-op render and a template string would also work — but nothing needs one.)
 
+### A tree the turn does not own (`PROTECT_WORKTREE`)
+
+When several runs drive agents in one checkout, or a flow leaves its work uncommitted
+until a final commit step, the tree holds uncommitted edits the current turn did not
+make. Git cannot tell whose change `git stash`, `git checkout -- <path>`, `git restore`,
+a `reset --hard` or `git clean` throws away, and an agent reaches for exactly those to
+see "the file before my edit". Forbidding it in the prompt does not hold.
+
+```python
+class Build(Workflow):
+    PROTECT_WORKTREE: ClassVar[bool] = True
+```
+
+Every `self.agent` turn of that class then runs with `workhorse.runner.worktree_guard`
+first on `PATH`: its `git` refuses those commands with a message naming the read-only
+alternative (`git show HEAD:<path>`, `git diff -- <path>`) and passes everything else to
+the real git. Deterministic nodes run in the driver's process and never see it, so the
+flow's own commit step works unchanged. It is a guard against a reflex, not a sandbox —
+an agent that spells out `/usr/bin/git` is not stopped.
+
 ## Session chains (`session=`), for a loop that repairs its own work
 
 The default is one clean context per turn: the engine unlinks `.session_id` before each

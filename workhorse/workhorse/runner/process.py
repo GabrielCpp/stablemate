@@ -21,7 +21,7 @@ from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.failure import BackendInvocationError
 from workhorse.runner.waits import RecoveryWaitBudget, active_recovery_wait_budget
 from workhorse.runner.redact import SecretRedactor
-from workhorse.runner import transcript
+from workhorse.runner import transcript, worktree_guard
 
 
 def _align_pwd(popen_kwargs: dict[str, Any]) -> None:
@@ -335,6 +335,9 @@ class ProcessSupervisor:
             return on_line(line)
 
         env = {**os.environ, "WORKHORSE_NODE_ID": node_id, **(env_extra or {})}
+        # Inside a `worktree_guard.guarding` scope the turn's first `git` is the guard's,
+        # layered last so an operator's own PATH knob cannot route around it.
+        env["PATH"] = worktree_guard.guarded_path(env.get("PATH", ""))
         proc = self.spawn(
             cmd,
             node_id,

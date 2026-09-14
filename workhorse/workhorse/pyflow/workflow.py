@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Iterable, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
 from logging import Logger
 from pathlib import Path
@@ -30,6 +31,7 @@ from workhorse.pyflow.errors import (
     WorkflowFrozenError,
 )
 from workhorse.pyflow.names import NameIndex
+from workhorse.runner import worktree_guard
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -187,6 +189,14 @@ class Workflow(BaseModel):
     #: items, `WORKHORSE_MAX_RUNTIME_S` gates the clock, and both stop a run that is
     #: progressing — which is what a budget on *stalling* must not do.
     REFUEL_ON: ClassVar[frozenset[str]] = frozenset()
+    #: Whether this workflow's agent turns share a working tree whose uncommitted work
+    #: they do not own — concurrent runs in one checkout, or a flow that commits only at
+    #: the end. When True every `agent` turn runs with `workhorse.runner.worktree_guard`
+    #: first on `PATH`, so a `git stash` or `git checkout -- <path>` an agent reaches for
+    #: to see "the file before my edit" is refused instead of silently discarding another
+    #: run's edits. A prompt forbidding git does not hold; this does. Deterministic nodes
+    #: run in-process and are unaffected, so the flow's own commit step still works.
+    PROTECT_WORKTREE: ClassVar[bool] = False
 
     # --- registration -------------------------------------------------------
 
@@ -378,18 +388,24 @@ class Workflow(BaseModel):
         `docs/AUTHORING.md` has the rules. To continue a conversation whose id you were
         handed, `seed_session` the key first — `session=` never takes an id.
         """
-        return self._require_engine().agent(
-            prompt,
-            returns=returns,
-            args=args or {},
-            power=power,
-            timeout=timeout,
-            retries=retries,
-            invoke_retries=invoke_retries,
-            cwd=cwd,
-            add_dirs=add_dirs,
-            session=session,
+        engine = self._require_engine()
+        guard = (
+            worktree_guard.guarding(engine.run_dir)
+            if type(self).PROTECT_WORKTREE else nullcontext()
         )
+        with guard:
+            return engine.agent(
+                prompt,
+                returns=returns,
+                args=args or {},
+                power=power,
+                timeout=timeout,
+                retries=retries,
+                invoke_retries=invoke_retries,
+                cwd=cwd,
+                add_dirs=add_dirs,
+                session=session,
+            )
 
     def seed_session(self, key: str, session_id: str) -> None:
         """Start chain `key` on a session id another turn — or another flow — minted.
