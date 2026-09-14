@@ -434,3 +434,27 @@ def test_a_recorded_conflict_is_an_error_on_the_story_until_cleared(repo: Path):
     assert "ostler conflict 01-foo --clear" in found[0].suggestion
     crud.set_conflict(load(repo), "01-foo", "")
     assert conflicts() == []
+
+
+def test_path_scope_keeps_only_that_files_findings(repo: Path):
+    write(repo / "docs/features/area/rec.md", "---\nslug: rec\ntitle: Rec\n---\n# rec\n\nbody\n")
+    write(repo / "docs/features/area/rec2.md", "---\nslug: rec2\ntitle: Rec2\n---\n# rec2\n\nbody\n")
+    report = doctor.run(load(repo))
+    assert {f.path for f in report.findings if f.code == "okf-missing-type"} >= {
+        "docs/features/area/rec.md", "docs/features/area/rec2.md"}
+
+    scoped = doctor.scope_to_paths(report, ["docs/features/area/rec.md"])
+
+    assert scoped.findings
+    assert {f.path for f in scoped.findings} == {"docs/features/area/rec.md"}
+    assert {f.path for f in doctor.scope_to_paths(report, ["docs/features/area/"]).findings} >= {
+        "docs/features/area/rec.md", "docs/features/area/rec2.md"}
+
+
+def test_path_scope_keeps_a_group_finding_through_its_related_member():
+    member = doctor.Finding("warn", "competing-implementations", "m",
+                            path="docs/features/a.md", related=["docs/features/b.md#node-b"])
+    other = doctor.Finding("warn", "unparsed-check", "m", path="docs/features/c.md")
+    report = doctor.Report(org="acme", profile="full", findings=[member, other])
+
+    assert doctor.scope_to_paths(report, ["docs/features/b.md"]).findings == [member]

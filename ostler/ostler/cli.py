@@ -103,6 +103,11 @@ def _build_parser() -> argparse.ArgumentParser:
     d = sub.add_parser("doctor", help="referential-integrity check")
     d.add_argument("--epic", help="restrict checks to one epic (name or folder)")
     d.add_argument(
+        "--path", action="append", default=[], metavar="PATH",
+        help="report only the findings about this file or folder (repeatable); the whole "
+             "book is still checked, and the exit code counts only what is reported",
+    )
+    d.add_argument(
         "--json", action="store_true", help="emit the structured report as JSON"
     )
     d.add_argument(
@@ -1042,8 +1047,22 @@ def _cmd_locators(graph, args) -> int:
     return 1 if broken else 0
 
 
+def _repo_relative(graph, path: str) -> str:
+    """*path* as the repo-relative spelling a finding carries.
+
+    Read from where the command was typed first, so a shell completion works; a path that
+    does not land inside the book from there (typed under `-C`) is taken as repo-relative.
+    """
+    try:
+        return Path(path).resolve().relative_to(graph.root.resolve()).as_posix()
+    except ValueError:
+        return Path(path).as_posix()
+
+
 def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
     report = doctor.run(graph, epic_filter=args.epic, check_schema=not args.no_schema)
+    if args.path:
+        report = doctor.scope_to_paths(report, [_repo_relative(graph, p) for p in args.path])
     if args.json:
         # The hit/miss line is *added* to the report, never substituted for it: a caller
         # that gates on `errors` must not have to learn a new shape to keep doing so.

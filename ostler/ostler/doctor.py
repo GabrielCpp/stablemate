@@ -74,6 +74,35 @@ class Report:
         }
 
 
+def scope_to_paths(report: Report, paths: list[str]) -> Report:
+    """*report* keeping only the findings about *paths* (repo-relative files or folders).
+
+    The run is not scoped, only the answer: most checks resolve links and symbols across the
+    whole book, so a finding on one file is known only after every file is read. What a
+    scope buys is a report the size of the question. The caller it exists for is an agent
+    that has just repaired one file and must see whether its findings cleared: over a real
+    book the unscoped report is megabytes, so it went unread and the turn closed on a guess
+    instead — a grep for the finding's shape that missed every bullet spanning two lines.
+
+    A group finding stays when any of its `related` locations is in scope, because editing
+    one member is exactly the edit that has to see the group.
+    """
+    wanted = [p.strip("/") for p in paths]
+
+    def inside(path: str) -> bool:
+        return any(path == p or path.startswith(p + "/") for p in wanted)
+
+    return Report(
+        org=report.org,
+        profile=report.profile,
+        epics=report.epics,
+        findings=[
+            f for f in report.findings
+            if inside(f.path) or any(inside(r.split("#", 1)[0]) for r in f.related)
+        ],
+    )
+
+
 def diff_reports(indexed: Report, uncached: Report, *, context: int = 2) -> list[str]:
     """The unified diff between two runs' reports, empty when they agree.
 
