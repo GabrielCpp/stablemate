@@ -161,6 +161,13 @@ def _build_parser() -> argparse.ArgumentParser:
              "the catalog. Scoped by --path when given, the whole book otherwise. Mutually "
              "exclusive with --node.",
     )
+    st.add_argument(
+        "--keep-catalog", action="store_true",
+        help="with --from-catalog and no --path (whole-book mode), stamp every page but "
+             "leave sources.json in place instead of deleting it -- for a staged "
+             "migration. With --path, the catalog is always left in place regardless of "
+             "this flag.",
+    )
     st.add_argument("--json", action="store_true", help="emit a per-page summary as JSON")
 
     # ---- retrieval --------------------------------------------------------
@@ -1142,13 +1149,30 @@ def _cmd_stamp_from_catalog(graph, args) -> int:
             return 2
         pages = sorted({rel for rel in scope if rel is not None})
     else:
+        # Whole-book mode: every page under the book's single features root, not just the
+        # pages one surface happens to own. `_feature_paths` (ostler/model.py) recursively
+        # globs the whole `graph.doc_roots["features"]` tree -- the exact directory
+        # `source_snapshots.catalog_path` derives `sources.json` from -- so one graph load's
+        # `graph.ui_nodes` structurally can never be narrower than the catalog it shares that
+        # root with, even when several surfaces/services nest under it. No row can be left
+        # behind for this to silently drop.
         pages = sorted({node.path.relative_to(graph.root).as_posix() for node in graph.ui_nodes})
     results = [stamp_mod.stamp_page_from_catalog(graph.root, page, catalog) for page in pages]
     catalog_path = source_snapshots.catalog_path(graph.root)
-    catalog_path.unlink(missing_ok=True)
+    # A --path migration only ever stamps the pages named on the command line; every other
+    # still-unmigrated page's catalog row is the only place its digest lives until it is
+    # migrated in a later invocation. Deleting the catalog here would destroy those rows
+    # permanently -- the exact drift-goes-invisible failure this migration exists to avoid.
+    # Only whole-book mode (no --path) may delete it, and only when --keep-catalog opts out.
+    deleted = not args.path and not args.keep_catalog
+    if deleted:
+        catalog_path.unlink(missing_ok=True)
     _print_stamp_results(results, args)
     if not args.json:
-        _out(f"deleted {catalog_path.relative_to(graph.root)}")
+        if deleted:
+            _out(f"deleted {catalog_path.relative_to(graph.root)}")
+        else:
+            _out(f"kept {catalog_path.relative_to(graph.root)}")
     return 0
 
 

@@ -255,3 +255,145 @@ def test_cli_stamp_from_catalog_migrates_the_whole_book_and_deletes_the_catalog(
     assert f"`src/service.py::charge` @{stale_digest[:12]}" in text
     assert "`src/uncatalogued.py::other`\n" in text
     assert not catalog_path.exists()
+
+
+def test_cli_stamp_from_catalog_with_path_leaves_the_catalog_and_other_pages_migratable(
+    tmp_path: Path,
+):
+    # A --path migration only stamps the pages named on the command line. The catalog must
+    # survive so a later invocation can still migrate the page that was left out this time --
+    # deleting it here would permanently lose that page's digest (bug: c0237c3b).
+    billing = tmp_path / "docs/features/billing/charge.md"
+    billing.parent.mkdir(parents=True, exist_ok=True)
+    billing.write_text(
+        "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
+        "# Charge\n\n- code: `src/service.py::charge`\n",
+        encoding="utf-8",
+    )
+    refund = tmp_path / "docs/features/billing/refund.md"
+    refund.write_text(
+        "---\ntype: concept\nslug: refund\ntitle: Refund\n---\n"
+        "# Refund\n\n- code: `src/refund.py::refund`\n",
+        encoding="utf-8",
+    )
+    _service(tmp_path)
+    (tmp_path / "src/refund.py").write_text("def refund(amount):\n    return -amount\n",
+                                             encoding="utf-8")
+
+    service_digest = hashlib.sha256(SERVICE.encode()).hexdigest()
+    refund_digest = hashlib.sha256(b"stale refund text\n").hexdigest()
+    catalog = source_snapshots.SourceCatalog(
+        repositories=(
+            source_snapshots.RepositorySnapshot(
+                id=source_snapshots.SELF_REPOSITORY, base="", head="WORKTREE",
+                files=(
+                    source_snapshots.SourceFile(path="src/service.py",
+                                                 content_sha256=service_digest),
+                    source_snapshots.SourceFile(path="src/refund.py",
+                                                 content_sha256=refund_digest),
+                ),
+            ),
+        ),
+    )
+    catalog_path = source_snapshots.catalog_path(tmp_path)
+    catalog_path.parent.mkdir(parents=True, exist_ok=True)
+    catalog_path.write_text(catalog.model_dump_json(), encoding="utf-8")
+
+    assert main([
+        "-C", str(tmp_path), "stamp", "--from-catalog", "--path",
+        "docs/features/billing/charge.md",
+    ]) == 0
+
+    assert f"@{service_digest[:12]}" in billing.read_text(encoding="utf-8")
+    assert "@" not in refund.read_text(encoding="utf-8")
+    assert catalog_path.exists(), "a --path migration must not delete the catalog"
+
+    # The still-unmigrated page's row is still readable -- nothing was lost.
+    assert main([
+        "-C", str(tmp_path), "stamp", "--from-catalog", "--path",
+        "docs/features/billing/refund.md",
+    ]) == 0
+    assert f"@{refund_digest[:12]}" in refund.read_text(encoding="utf-8")
+    assert catalog_path.exists(), "a --path migration must not delete the catalog"
+
+
+def test_cli_stamp_from_catalog_whole_book_keep_catalog_flag_skips_deletion(tmp_path: Path):
+    feature = tmp_path / "docs/features/billing/charge.md"
+    feature.parent.mkdir(parents=True, exist_ok=True)
+    feature.write_text(
+        "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
+        "# Charge\n\n- code: `src/service.py::charge`\n",
+        encoding="utf-8",
+    )
+    _service(tmp_path)
+    service_digest = hashlib.sha256(SERVICE.encode()).hexdigest()
+    catalog = source_snapshots.SourceCatalog(
+        repositories=(
+            source_snapshots.RepositorySnapshot(
+                id=source_snapshots.SELF_REPOSITORY, base="", head="WORKTREE",
+                files=(
+                    source_snapshots.SourceFile(path="src/service.py",
+                                                 content_sha256=service_digest),
+                ),
+            ),
+        ),
+    )
+    catalog_path = source_snapshots.catalog_path(tmp_path)
+    catalog_path.parent.mkdir(parents=True, exist_ok=True)
+    catalog_path.write_text(catalog.model_dump_json(), encoding="utf-8")
+
+    assert main(["-C", str(tmp_path), "stamp", "--from-catalog", "--keep-catalog"]) == 0
+
+    assert f"@{service_digest[:12]}" in feature.read_text(encoding="utf-8")
+    assert catalog_path.exists(), "--keep-catalog must skip deletion even in whole-book mode"
+
+
+def test_cli_stamp_from_catalog_whole_book_covers_every_surface_sharing_one_catalog(
+    tmp_path: Path,
+):
+    # One `sources.json` can be shared by several sibling surfaces under the same features
+    # root (e.g. several books in a multi-repo workspace). Whole-book `--from-catalog` must
+    # migrate every one of them before deleting the catalog -- if `graph.ui_nodes` only saw
+    # a subset, deleting afterward would permanently lose the rest's digests.
+    billing = tmp_path / "docs/features/billing/charge.md"
+    billing.parent.mkdir(parents=True, exist_ok=True)
+    billing.write_text(
+        "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
+        "# Charge\n\n- code: `src/service.py::charge`\n",
+        encoding="utf-8",
+    )
+    shipping = tmp_path / "docs/features/shipping/track.md"
+    shipping.parent.mkdir(parents=True, exist_ok=True)
+    shipping.write_text(
+        "---\ntype: concept\nslug: track\ntitle: Track\n---\n"
+        "# Track\n\n- code: `src/tracking.py::track`\n",
+        encoding="utf-8",
+    )
+    _service(tmp_path)
+    (tmp_path / "src/tracking.py").write_text("def track(order):\n    return order\n",
+                                               encoding="utf-8")
+
+    service_digest = hashlib.sha256(SERVICE.encode()).hexdigest()
+    tracking_digest = hashlib.sha256(b"def track(order):\n    return order\n").hexdigest()
+    catalog = source_snapshots.SourceCatalog(
+        repositories=(
+            source_snapshots.RepositorySnapshot(
+                id=source_snapshots.SELF_REPOSITORY, base="", head="WORKTREE",
+                files=(
+                    source_snapshots.SourceFile(path="src/service.py",
+                                                 content_sha256=service_digest),
+                    source_snapshots.SourceFile(path="src/tracking.py",
+                                                 content_sha256=tracking_digest),
+                ),
+            ),
+        ),
+    )
+    catalog_path = source_snapshots.catalog_path(tmp_path)
+    catalog_path.parent.mkdir(parents=True, exist_ok=True)
+    catalog_path.write_text(catalog.model_dump_json(), encoding="utf-8")
+
+    assert main(["-C", str(tmp_path), "stamp", "--from-catalog"]) == 0
+
+    assert f"@{service_digest[:12]}" in billing.read_text(encoding="utf-8")
+    assert f"@{tracking_digest[:12]}" in shipping.read_text(encoding="utf-8")
+    assert not catalog_path.exists()
