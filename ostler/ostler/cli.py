@@ -144,6 +144,14 @@ def _build_parser() -> argparse.ArgumentParser:
              "section are restamped, leaving the rest of the page untouched",
     )
     st.add_argument(
+        "--file", action="append", default=[], metavar="PATH",
+        help="paired with --node at the same position (repeatable): restamp only the `code:` "
+             "target citing this file within that node, leaving the node's other citations "
+             "untouched. Omit entirely to restamp every citation in the given --node(s), as "
+             "before. A node may recur across several --node/--file pairs to assign it more "
+             "than one target file.",
+    )
+    st.add_argument(
         "--path", action="append", default=[], metavar="PATH",
         help="a book page to stamp (repeatable); requires --whole-page",
     )
@@ -1192,6 +1200,13 @@ def _cmd_stamp(graph, args) -> int:
     if args.node and args.whole_page:
         print("ostler stamp: --whole-page only applies to --path", file=sys.stderr)
         return 2
+    if args.file and not args.node:
+        print("ostler stamp: --file requires --node (paired at the same position)",
+              file=sys.stderr)
+        return 2
+    if args.file and len(args.file) != len(args.node):
+        print("ostler stamp: --file must be repeated exactly once per --node", file=sys.stderr)
+        return 2
     if not args.node and not args.path:
         print("ostler stamp: pass --node or --path --whole-page", file=sys.stderr)
         return 2
@@ -1199,15 +1214,26 @@ def _cmd_stamp(graph, args) -> int:
 
     if args.node:
         pages: dict[str, list[tuple[int, int]]] = {}
-        for ident in args.node:
+        only_targets: dict[str, dict[tuple[int, int], set[str]]] = {}
+        for i, ident in enumerate(args.node):
             node = graph.find_ui_node(ident)
             if node is None:
                 print(f"ostler stamp: --node {ident} is not a node of this book", file=sys.stderr)
                 return 2
             rel = node.path.relative_to(graph.root).as_posix()
-            pages.setdefault(rel, []).append(_node_line_range(graph, node))
+            node_range = _node_line_range(graph, node)
+            pages.setdefault(rel, []).append(node_range)
+            if args.file:
+                file_target = _repo_relative(graph, args.file[i]) or args.file[i]
+                only_targets.setdefault(rel, {}).setdefault(node_range, set()).add(file_target)
         results = [
-            stamp_mod.stamp_page(graph.root, features_root, rel, line_ranges=ranges)
+            stamp_mod.stamp_page(
+                graph.root, features_root, rel, line_ranges=ranges,
+                only_targets=(
+                    {r: frozenset(t) for r, t in only_targets[rel].items()}
+                    if rel in only_targets else None
+                ),
+            )
             for rel, ranges in pages.items()
         ]
     else:

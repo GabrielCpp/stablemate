@@ -92,7 +92,8 @@ class StampResult:
 
 
 def stamp_page(root: Path, features_root: Path, page: str, *,
-                line_ranges: list[tuple[int, int]] | None = None) -> StampResult:
+                line_ranges: list[tuple[int, int]] | None = None,
+                only_targets: dict[tuple[int, int], frozenset[str]] | None = None) -> StampResult:
     """Stamp a book page's ``code:`` bullets with their cited files' current digests.
 
     ``page`` is repo-relative, resolved against ``root``. A target this checkout cannot read —
@@ -107,6 +108,13 @@ def stamp_page(root: Path, features_root: Path, page: str, *,
     falls in one of them are restamped; every other ``code:`` bullet on the page is left byte
     for byte alone. ``None`` restamps the whole page, which is what ``--whole-page`` asks for —
     no okf-builder workflow does; a turn only ever finishes editing specific nodes.
+
+    ``only_targets``, when given, further narrows one of those ranges to the specific cited
+    files a caller decided to restamp — a repair turn's regrounding row assigns a citation to
+    one file, not to every ``code:`` target the node happens to carry, and restamping the rest
+    would mark them freshly-read when nothing re-checked them. Keyed by the same ``(start,
+    end)`` tuple as its ``line_ranges`` entry; a range absent from the mapping (or the mapping
+    itself being ``None``) is unrestricted, same as today.
     """
     path = root / page
     text = path.read_text(encoding="utf-8")
@@ -121,24 +129,37 @@ def stamp_page(root: Path, features_root: Path, page: str, *,
         absolute = bullet_line_start + doc.body_offset + 1  # 0-indexed body -> 1-based file
         return any(start <= absolute < end for start, end in line_ranges)
 
-    def digest_for(raw_target: str) -> str | None:
-        nonlocal stamped
-        normalized = normalize_ref(raw_target)
-        try:
-            ref = parse_code_ref(normalized)
-        except ValueError:
-            unresolved.append(raw_target)
+    def allowed_targets(bullet_line_start: int) -> frozenset[str] | None:
+        if not only_targets or line_ranges is None:
             return None
-        if ref.repository and ref.repository != repository:
-            unresolved.append(raw_target)
-            return None
-        try:
-            source_text = (root / ref.path).read_text(encoding="utf-8")
-        except OSError:
-            unresolved.append(raw_target)
-            return None
-        stamped += 1
-        return digest_file(source_text)
+        absolute = bullet_line_start + doc.body_offset + 1
+        for start, end in line_ranges:
+            if start <= absolute < end and (start, end) in only_targets:
+                return only_targets[(start, end)]
+        return None
+
+    def make_digest_for(targets: frozenset[str] | None) -> Callable[[str], str | None]:
+        def digest_for(raw_target: str) -> str | None:
+            nonlocal stamped
+            normalized = normalize_ref(raw_target)
+            try:
+                ref = parse_code_ref(normalized)
+            except ValueError:
+                unresolved.append(raw_target)
+                return None
+            if ref.repository and ref.repository != repository:
+                unresolved.append(raw_target)
+                return None
+            if targets is not None and ref.path not in targets:
+                return None  # not this row's assignment: left exactly as it was, no digest
+            try:
+                source_text = (root / ref.path).read_text(encoding="utf-8")
+            except OSError:
+                unresolved.append(raw_target)
+                return None
+            stamped += 1
+            return digest_file(source_text)
+        return digest_for
 
     body_lines = doc.body.split("\n")
     changed = False
@@ -151,7 +172,7 @@ def stamp_page(root: Path, features_root: Path, page: str, *,
         key, sep, rest = raw.partition(":")
         if not sep:
             continue
-        new_rest = restamp_leading_code_spans(rest, digest_for)
+        new_rest = restamp_leading_code_spans(rest, make_digest_for(allowed_targets(bullet.line_start)))
         if new_rest == rest:
             continue
         new_lines = (key + ":" + new_rest).split("\n")

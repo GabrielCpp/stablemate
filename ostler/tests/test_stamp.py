@@ -157,6 +157,57 @@ def test_stamp_page_scoped_to_a_line_range_leaves_the_other_nodes_bullet_stale(t
     assert "- code: `src/service.py::charge`" == after[beta_line + 1]
 
 
+def test_stamp_page_only_targets_leaves_a_sibling_citation_on_the_same_node_untouched(
+    tmp_path: Path,
+):
+    # One node cites two files but only one of them was regrounded this turn; the other
+    # citation must be left exactly as it was, not silently refreshed.
+    feature = _book(tmp_path, "`src/service.py::charge`, `src/other.py::other`")
+    _service(tmp_path)
+    other = tmp_path / "src/other.py"
+    other.write_text("def other():\n    pass\n", encoding="utf-8")
+
+    lines = feature.read_text(encoding="utf-8").splitlines()
+    heading_line = next(i for i, line in enumerate(lines, start=1) if line == "# Charge")
+    node_range = (heading_line, len(lines) + 1)
+
+    result = stamp.stamp_page(
+        tmp_path, tmp_path, "docs/features/billing/charge.md",
+        line_ranges=[node_range],
+        only_targets={node_range: frozenset({"src/service.py"})},
+    )
+
+    expected = stamp.digest_file(SERVICE)
+    assert result.stamped == 1
+    text = feature.read_text(encoding="utf-8")
+    assert f"`src/service.py::charge` @{expected}" in text
+    assert "`src/other.py::other`" in text
+    assert "`src/other.py::other` @" not in text
+
+
+def test_cli_stamp_node_file_pair_scopes_the_restamp_to_one_citation(
+    tmp_path: Path, capsys,
+):
+    feature = _book(tmp_path, "`src/service.py::charge`, `src/other.py::other`")
+    _service(tmp_path)
+    (tmp_path / "src/other.py").write_text("def other():\n    pass\n", encoding="utf-8")
+
+    rc = main([
+        "-C", str(tmp_path), "stamp", "--no-index",
+        "--node", "docs/features/billing/charge.md", "--file", "src/service.py",
+    ])
+    assert rc == 0
+    text = feature.read_text(encoding="utf-8")
+    assert "`src/service.py::charge` @" in text
+    assert "`src/other.py::other` @" not in text
+
+
+def test_cli_stamp_file_without_node_is_rejected(tmp_path: Path, capsys):
+    _book(tmp_path, "`src/service.py::charge`")
+    rc = main(["-C", str(tmp_path), "stamp", "--no-index", "--file", "src/service.py"])
+    assert rc == 2
+
+
 def test_stamp_page_reports_a_bullet_whose_line_count_changed_as_unresolved(
     tmp_path: Path, monkeypatch,
 ):
