@@ -38,6 +38,12 @@ class Finding:
     line: int = 0              # 1-based, file-absolute
     suggestion: str = ""       # expected form / nearest match
     fixable: bool = False      # `ostler fmt`/`scaffold`/relink can apply the remedy
+    #: The node id this finding is about, when the finding is scoped to exactly one node.
+    #: Every finding already carries the id as a `f"{node.id}: ..."` message prefix by
+    #: convention; this field exists so a consumer that needs to group findings by node
+    #: (okf-builder's stale-citation regrounding, the RESTAMP doctor gate) does not have to
+    #: parse prose to recover it. Left empty for a finding not about a single node.
+    node: str = ""
     #: The *other* book locations this one finding is also about, `<path>#<node-id>` each.
     #: Empty for the ordinary finding, which is about the one place `path`/`line` name.
     #:
@@ -1063,7 +1069,7 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
                             "error", "stale-citation",
                             f"{node.id}: `code:` target '{ref}' — '{target_path}' has changed "
                             f"since this citation was stamped",
-                            path=rel, line=node.line, ref=ref,
+                            path=rel, line=node.line, ref=ref, node=node.id,
                             suggestion=f"re-read '{target_path}' and correct this node's claims "
                                        "if they no longer hold; the citation is restamped when "
                                        "the turn commits"))
