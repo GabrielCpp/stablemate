@@ -94,6 +94,10 @@ book is not an empty gap.
    a surface root. Ignore nested `field`/`method` members (and other typed sections already contained
    by a documented parent); their parent containment is the structural pointer, and giving every
    member an artificial inbound link creates redundant work rather than reachability.
+   Queue each orphan page as `{"kind": "unreachable", "target": "<page path>"}`, the same kind
+   the worklist builder queues. That kind makes a duplicate merge with an existing row, and it
+   carries the closing check. A `fixup` for an orphan is a second row for the same page, and it
+   is still worked after the page is linked.
 4. **Stubs / below-bar** — scan documented nodes for incompleteness (a lone `code:` bullet, a
    `does:` with no effects, flags with no per-flag detail, a concept with no parts). Each → a
    re-visit item of its kind.
