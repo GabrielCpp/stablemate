@@ -126,8 +126,9 @@ hiding it.
   claim is about. When the context says `"grounded": true` the finding does **not** carry the value —
   it must come out of the source, cited in prose.
 - **Check your repair with the checker that raised it, never with a grep.** After `ostler fmt <the
-  file you touched>`, run `ostler doctor --path <that file>` (about forty seconds: it reads the
-  whole book but prints only this file's findings). Any finding it still reports under this item's
+  file you touched>`, run `ostler doctor --path <that file>` (under a minute: it reads the
+  whole book but prints only this file's findings). Give the command a timeout of at least
+  120 seconds; a 15- or 30-second timeout kills it with no output, which checks nothing. Any finding it still reports under this item's
   codes is not repaired: fix it and check once more. Report `documented` only when none of them is
   left; after the second check, return `partial` naming what still stands. A pattern search is not
   a check. It misses every bullet that wraps onto a second line, and a turn that closed on one
