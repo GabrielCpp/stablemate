@@ -35,7 +35,8 @@ Two further joins sit beside them:
   dangling in a different way (the file is gone), so the bullets are cut, the node is queued
   for authored removal if it lost its last bullet, and the neighbours are queued for review
   so a journey whose third step vanished is read against the book rather than the file.
-- **`unreachable`** — orphan nodes `graph --orphans` already computes. Authored removal,
+- **`unreachable`** — orphan pages `graph --orphans` already computes: a page no edge reaches,
+  on the page or any heading in it, so one link clears the page and its sections. Authored removal,
   queued the same way the rest of the work is.
 - **`1-hop`** — when file B changes, every file that imports B is treated as changed too,
   so its cited units are re-grounded rather than silently skipped. One hop, never unbounded,
@@ -144,7 +145,7 @@ Two further joins sit beside them:
 - verify: count(subject="trim-bullet rows from the builder", equals=1)
 - does: emits one `trim-review` row per caller of a node whose citations now trim
 - verify: count(subject="trim-review rows from the builder", equals=1)
-- does: emits one `unreachable` row per orphan node when `paths` is `None`
+- does: emits one `unreachable` row per orphan page, never per heading, when `paths` is `None`
 - verify: count(subject="unreachable rows from the whole-tree builder", equals=1)
 - does: skips the unreachable join when `paths` is supplied — a scoped build does not own
   the whole graph's reachability
