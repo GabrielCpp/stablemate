@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from ostler import crud, doctor
+from ostler.cli import main
 from ostler.model import load
 
 from conftest import epic_md, story_md, write
@@ -458,3 +459,23 @@ def test_path_scope_keeps_a_group_finding_through_its_related_member():
     report = doctor.Report(org="acme", profile="full", findings=[member, other])
 
     assert doctor.scope_to_paths(report, ["docs/features/b.md"]).findings == [member]
+
+
+def test_path_scoped_doctor_leads_with_its_verdict_about_that_file(repo: Path, capsys):
+    write(repo / "docs/features/area/rec.md", "---\nslug: rec\ntitle: Rec\n---\n# rec\n\nbody\n")
+
+    main(["-C", str(repo), "doctor", "--no-index", "--path", "docs/features/area/rec.md"])
+
+    out = capsys.readouterr().out
+    first = out.splitlines()[0]
+    assert first.endswith("in docs/features/area/rec.md") and "error(s)" in first
+    assert "epic " not in out and "org:" not in out
+
+
+def test_path_outside_the_book_is_refused_rather_than_reported_clean(repo: Path, capsys):
+    write(repo / "notes/copy.md", "---\nslug: copy\ntitle: Copy\n---\n# copy\n\nbody\n")
+
+    for path in ("notes/copy.md", "docs/features/area/missing.md"):
+        assert main(["-C", str(repo), "doctor", "--no-index", "--path", path]) == 2
+        captured = capsys.readouterr()
+        assert "not a file of this book" in captured.err and not captured.out

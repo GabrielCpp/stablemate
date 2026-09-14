@@ -1047,22 +1047,39 @@ def _cmd_locators(graph, args) -> int:
     return 1 if broken else 0
 
 
-def _repo_relative(graph, path: str) -> str:
-    """*path* as the repo-relative spelling a finding carries.
+def _repo_relative(graph, path: str) -> str | None:
+    """*path* as the repo-relative spelling a finding carries, or None when it is not the book's.
 
     Read from where the command was typed first, so a shell completion works; a path that
     does not land inside the book from there (typed under `-C`) is taken as repo-relative.
+    A path must exist under one of the book's doc roots: anywhere else no finding can ever
+    be reported, so the answer would be a clean report about a file doctor never read.
     """
-    try:
-        return Path(path).resolve().relative_to(graph.root.resolve()).as_posix()
-    except ValueError:
-        return Path(path).as_posix()
+    root = graph.root.resolve()
+    typed = Path(path).resolve()
+    candidate = typed if typed.exists() and typed.is_relative_to(root) else root / path
+    candidate = candidate.resolve()
+    if not candidate.exists():
+        return None
+    if not any(candidate.is_relative_to(r.resolve()) for r in graph.doc_roots.values()):
+        return None
+    return candidate.relative_to(root).as_posix()
 
 
 def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
+    scope = [_repo_relative(graph, p) for p in args.path]
+    outside = [p for p, rel in zip(args.path, scope, strict=True) if rel is None]
+    if outside:
+        roots = ", ".join(sorted(r.relative_to(graph.root).as_posix()
+                                 for r in graph.doc_roots.values()
+                                 if r.is_relative_to(graph.root)))
+        print(f"ostler doctor: --path {', '.join(outside)} is not a file of this book "
+              f"(its doc roots: {roots})", file=sys.stderr)
+        return 2
+    wanted = [rel for rel in scope if rel is not None]
     report = doctor.run(graph, epic_filter=args.epic, check_schema=not args.no_schema)
-    if args.path:
-        report = doctor.scope_to_paths(report, [_repo_relative(graph, p) for p in args.path])
+    if wanted:
+        report = doctor.scope_to_paths(report, wanted)
     if args.json:
         # The hit/miss line is *added* to the report, never substituted for it: a caller
         # that gates on `errors` must not have to learn a new shape to keep doing so.
@@ -1070,8 +1087,13 @@ def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
         payload["index"] = store.stats()
         _out(json.dumps(payload, indent=2))
         return 1 if report.errors else 0
-    _out(f"org: {report.org}   profile: {report.profile}")
-    for facts in report.epics:
+    if args.path:
+        # The verdict leads: the caller is a repair turn reading the head of the output,
+        # and the epic summary below is about the whole book, not the file it asked about.
+        _out(f"{report.errors} error(s), {report.warnings} warning(s) in {', '.join(wanted)}")
+    else:
+        _out(f"org: {report.org}   profile: {report.profile}")
+    for facts in [] if args.path else report.epics:
         orphans = facts["orphanActiveSeeds"]
         _out(
             f"  epic {facts['dir']}: {facts['storyCount']} stories, "
