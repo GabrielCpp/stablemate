@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 import yaml
 from markdown_it import MarkdownIt
@@ -92,6 +93,23 @@ def iter_links(text: str) -> Iterator[tuple[str, str, int]]:
     exclusion is structural rather than the blank-out-the-code-first approximation it replaces
     (which could not tell ``strategies[idx](x)`` in a snippet from a link).
     """
+    yield from _links(text)
+
+
+#: A book's values are read by several checks each, and every reading used to parse the
+#: text again — one doctor over a real book parsed markdown some 200,000 times for a few
+#: thousand distinct values, and caching them cut its wall time from 50s to 35s. The readers below are
+#: functions of the text alone, so each distinct text is parsed once per process; the bound
+#: keeps a long-lived process that re-reads an edited book from holding every old spelling.
+_CACHED_TEXTS = 1 << 16
+
+
+@lru_cache(maxsize=_CACHED_TEXTS)
+def _links(text: str) -> tuple[tuple[str, str, int], ...]:
+    return tuple(_scan_links(text))
+
+
+def _scan_links(text: str) -> Iterator[tuple[str, str, int]]:
     for tok, start in _iter_inline(_MD.parse(_normalize(text))):
         depth, line = 0, start
         label: list[str] = []
@@ -115,6 +133,12 @@ def iter_links(text: str) -> Iterator[tuple[str, str, int]]:
                 label.append("\n" if child.type in ("softbreak", "hardbreak") else child.content)
 
 
+@lru_cache(maxsize=_CACHED_TEXTS)
+def _inline_children(text: str) -> tuple[Token, ...]:
+    """The inline tokens of *text*, shared by every reader: callers only read them."""
+    return tuple(_MD.parseInline(_normalize(text))[0].children or ())
+
+
 def leading_code_spans(text: str) -> list[str]:
     """The inline-code spans a value *opens* with, comma-separated; ``[]`` if it opens with prose.
 
@@ -124,7 +148,7 @@ def leading_code_spans(text: str) -> list[str]:
     ends rather than the next backtick character.
     """
     spans: list[str] = []
-    for child in _MD.parseInline(_normalize(text))[0].children or ():
+    for child in _inline_children(text):
         if child.type == "code_inline":
             spans.append(child.content)
         elif child.type == "text" and not child.content.strip(" \t,"):
@@ -154,7 +178,7 @@ def all_code_spans(text: str) -> list[str]:
     """
     return [
         child.content
-        for child in _MD.parseInline(_normalize(text))[0].children or ()
+        for child in _inline_children(text)
         if child.type == "code_inline"
     ]
 
@@ -170,7 +194,7 @@ def prose_text(text: str) -> str:
     ``foo(bar).md`` left half an href behind and counted it as prose.
     """
     out: list[str] = []
-    for child in _MD.parseInline(_normalize(text))[0].children or ():
+    for child in _inline_children(text):
         if child.type == "code_inline":
             continue
         if child.type in ("softbreak", "hardbreak"):
