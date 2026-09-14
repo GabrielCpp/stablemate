@@ -190,7 +190,7 @@ shape change.
 
 ### RunRecord
 - code: `workhorse/workhorse/records.py::RunRecord`
-- sig: `RunRecord(workflow: str, run_id: str, started_at: str, ended_at: str | None, terminal: str | None, interrupted_at: str | None, error: str | None, previous_process_died_at: str | None, previous_process_pid: int | None, pid: int | None, repo_start: RepoObservation | None, repo_end: RepoObservation | None, profile: str, profile_config: dict[str, Any])`
+- sig: `RunRecord(workflow: str, run_id: str, started_at: str, ended_at: str | None, terminal: str | None, interrupted_at: str | None, error: str | None, previous_process_died_at: str | None, previous_process_pid: int | None, pid: int | None, repo_start: RepoObservation | None, repo_end: RepoObservation | None, profile: str, profile_config: dict[str, Any], worktree_path: str, worktree_branch: str)`
 
 `RunRecord` distinguishes an in-progress, interrupted, terminal, failed, or previously-died run
 while preserving start/end repository observations, prior-process death detection, and selected
@@ -213,6 +213,22 @@ profile metadata.
 - verify: json_path(path="$.previous_process_pid", equals="null")
 - code: `workhorse/workhorse/records.py::RunRecord`
 - tests: `workhorse/tests/test_artifacts_previous_death.py::test_a_fresh_run_does_not_stamp_a_previous_process_death`
+
+#### field: worktree_path
+- type: `str`
+- default: `""`
+- required: false
+- semantics: the git worktree this run was dispatched into via `--worktree`, or empty when the run used the invoking repo directly; set once at dispatch and reused, never re-cut, on resume.
+- verify: json_path(path="$.worktree_path", equals="")
+- code: `workhorse/workhorse/records.py::RunRecord`
+
+#### field: worktree_branch
+- type: `str`
+- default: `""`
+- required: false
+- semantics: the branch cut for a `--worktree` dispatch, or empty when the run used the invoking repo directly.
+- verify: json_path(path="$.worktree_branch", equals="")
+- code: `workhorse/workhorse/records.py::RunRecord`
 
 ### LaunchRecord
 - code: `workhorse/workhorse/records.py::LaunchRecord`
