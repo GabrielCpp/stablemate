@@ -519,3 +519,62 @@ def test_a_close_with_no_digest_is_counted_as_before(tmp_path: Path) -> None:
     doc.write_text(doc.read_text().replace("POST /p", "POST /r"))
     record(log, str(worklist), None, standing, repo_root=str(tmp_path))
     assert json.loads(worklist.read_text())["items"][0]["attempts"] == 1
+
+
+def test_the_drain_reopens_a_done_repair_whose_finding_still_stands(
+    dirty: Path, tmp_path: Path, logger: logging.Logger
+) -> None:
+    """The settle's doctor read reopens a standing done row now, not when the drain goes dry.
+
+    The row carries no `closed_digest`, so the reopen is a counted attempt — the rule
+    `record` applies at the checkpoint, run sooner, so the row batches with the file's
+    other pending work instead of costing a second turn on it later.
+    """
+    from workhorse_workflows.okf_builder.shared.checkpoint import settle_stale
+
+    standing = _standing_repair(dirty)
+    worklist = _stale_worklist(tmp_path / "w.json", standing)
+    data = json.loads(worklist.read_text())
+    data["items"][0].update(status="done", doc_status="documented", note="turn said so")
+    worklist.write_text(json.dumps(data))
+
+    result = settle_stale(logger, str(worklist), str(dirty), BOOK)
+
+    assert result.ran and result.reopened == 1 and result.settled == 1
+    row = {i["target"]: i for i in json.loads(worklist.read_text())["items"]}[standing["target"]]
+    assert row["status"] == "pending" and row["attempts"] == 1
+
+
+def test_a_done_repair_standing_only_on_fixable_findings_is_left_to_the_checkpoint(
+    tmp_path: Path, logger: logging.Logger, monkeypatch
+) -> None:
+    """The checkpoint's autofix clears a `fixable` finding before its doctor read; the settle
+    must not rewrite the book, so reopening that row mid-drain would buy a turn for nothing."""
+    from workhorse_workflows.okf_builder.shared import checkpoint
+
+    fixable = {**_finding("dangling-link"), "fixable": True}
+    shaped = _finding("compound-normative-bullet", path=f"{BOOK}/b.md")
+    items = _repair_items([fixable, shaped])
+
+    class _Doctor:
+        data: dict = {}
+
+    class _Ostler:
+        def __init__(self, _root: str) -> None: ...
+
+        def doctor(self) -> _Doctor:
+            return _Doctor()
+
+    monkeypatch.setattr(checkpoint, "Ostler", _Ostler)
+    monkeypatch.setattr(checkpoint, "scoped_findings", lambda *_a: [fixable, shaped])
+    worklist = tmp_path / "w.json"
+    worklist.write_text(json.dumps({"items": [
+        {"kind": i["kind"], "target": i["target"], "status": "done", "context": i["context"],
+         "attempts": 0} for i in items
+    ]}))
+
+    result = checkpoint.settle_stale(logger, str(worklist), str(tmp_path), BOOK)
+
+    assert result.reopened == 1
+    status = {i["kind"]: i["status"] for i in json.loads(worklist.read_text())["items"]}
+    assert status == {"fix:dangling-link": "done", "fix:compound-normative-bullet": "pending"}

@@ -160,6 +160,66 @@ def settle_stale_rows(
     return settled
 
 
+def reopen_row(
+    logger: logging.Logger,
+    existing: dict[str, Any],
+    standing: dict[str, Any],
+    repo_root: str,
+    max_attempts: int = MAX_TARGET_ATTEMPTS,
+) -> bool:
+    """Reopen a `done` row whose finding still stands; True when it went back to `pending`.
+
+    The one requeue rule, shared by `record` (the checkpoint's write) and
+    `checkpoint.settle_stale` (the same doctor read, mid-drain) — see `record` for why an
+    attempt is counted only against the node the turn left. A row that has spent
+    `max_attempts` goes `blocked` instead, and False is returned.
+    """
+    # A `stale` close was the settle's, not a repair turn's: no turn tried the
+    # finding, so reopening it spends no attempt, and the settle's note must not
+    # survive to be quoted as the reason a standing finding could not be fixed.
+    # A blocked row settled `stale` keeps its `blocked_reason`, which is the
+    # last real turn's account, and re-blocks on it.
+    prior = ""
+    sealed = str(existing.pop("closed_digest", "") or "")
+    moved = bool(sealed and repo_root) and sealed != repair_scope_digest(
+        repo_root, str(existing.get("context", "")))
+    if existing.get("doc_status") == "stale":
+        existing.pop("doc_status", None)
+        existing.pop("note", None)
+        prior = str(existing.get("blocked_reason", ""))
+        attempts = int(existing.get("attempts", 0) or 0)
+    elif moved:
+        logger.info(
+            "'%s' (%s) still stands, but its node changed since the turn closed "
+            "it — reopening without counting an attempt",
+            existing.get("target"), existing.get("kind"),
+        )
+        existing.pop("doc_status", None)
+        existing.pop("note", None)
+        attempts = int(existing.get("attempts", 0) or 0)
+    else:
+        attempts = int(existing.get("attempts", 0) or 0) + 1
+    existing["attempts"] = attempts
+    if attempts >= max_attempts:
+        last = str(existing.get("doc_status", ""))
+        reason = str(existing.get("note", "")) or prior or (
+            f"the last turn reported `{last}` and the finding still stands"
+            if last
+            else "the turn gave no reason"
+        )
+        existing["status"] = "blocked"
+        existing["blocked_reason"] = reason
+        logger.warning(
+            "'%s' (%s) survived %d repair attempts — blocking it rather than "
+            "re-queueing: %s",
+            existing.get("target"), existing.get("kind"), attempts, reason,
+        )
+        return False
+    existing["status"] = "pending"
+    existing["context"] = standing.get("context", existing.get("context", ""))
+    return True
+
+
 def _repair_scope(row: dict[str, Any]) -> tuple[str, list[dict[str, Any]]] | None:
     """The one book file a repair row is about, and its findings — or None if it has none.
 
@@ -515,50 +575,8 @@ def record(
             continue
         existing = by_key.get(k)
         if existing:
-            if d.get("requeue") is True and existing.get("status") == "done":
-                # A `stale` close was the settle's, not a repair turn's: no turn tried the
-                # finding, so reopening it spends no attempt, and the settle's note must not
-                # survive to be quoted as the reason a standing finding could not be fixed.
-                # A blocked row settled `stale` keeps its `blocked_reason`, which is the
-                # last real turn's account, and re-blocks on it.
-                prior = ""
-                sealed = str(existing.pop("closed_digest", "") or "")
-                moved = bool(sealed and repo_root) and sealed != repair_scope_digest(
-                    repo_root, str(existing.get("context", "")))
-                if existing.get("doc_status") == "stale":
-                    existing.pop("doc_status", None)
-                    existing.pop("note", None)
-                    prior = str(existing.get("blocked_reason", ""))
-                    attempts = int(existing.get("attempts", 0) or 0)
-                elif moved:
-                    logger.info(
-                        "'%s' (%s) still stands, but its node changed since the turn closed "
-                        "it — reopening without counting an attempt",
-                        existing.get("target"), existing.get("kind"),
-                    )
-                    existing.pop("doc_status", None)
-                    existing.pop("note", None)
-                    attempts = int(existing.get("attempts", 0) or 0)
-                else:
-                    attempts = int(existing.get("attempts", 0) or 0) + 1
-                existing["attempts"] = attempts
-                if attempts >= max_attempts:
-                    last = str(existing.get("doc_status", ""))
-                    reason = str(existing.get("note", "")) or prior or (
-                        f"the last turn reported `{last}` and the finding still stands"
-                        if last
-                        else "the turn gave no reason"
-                    )
-                    existing["status"] = "blocked"
-                    existing["blocked_reason"] = reason
-                    logger.warning(
-                        "'%s' (%s) survived %d repair attempts — blocking it rather than "
-                        "re-queueing: %s",
-                        existing.get("target"), existing.get("kind"), attempts, reason,
-                    )
-                    continue
-                existing["status"] = "pending"
-                existing["context"] = d.get("context", existing.get("context", ""))
+            if (d.get("requeue") is True and existing.get("status") == "done"
+                    and reopen_row(logger, existing, d, repo_root, max_attempts)):
                 added += 1
             continue
         items.append({

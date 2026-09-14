@@ -176,6 +176,9 @@ class Settled(OkfResult):
     ran: bool = False
     #: Pending `fix:` rows closed as `stale` because doctor no longer names them.
     settled: int = 0
+    #: `done` repair rows returned to `pending` because doctor still reports their finding
+    #: (a row out of attempts goes `blocked` instead and is not counted here).
+    reopened: int = 0
     #: Repair items a fresh doctor pass would queue — the rows that still have a finding.
     standing: int = 0
     pending_count: int = 0

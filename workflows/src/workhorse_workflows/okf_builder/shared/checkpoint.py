@@ -32,7 +32,12 @@ from ostler.fmt import run_fmt
 from workhorse_workflows.okf_builder.shared import stubs
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
 from workhorse_workflows.okf_builder.shared.schemas import Checkpoint, Settled
-from workhorse_workflows.okf_builder.shared.worklist import doctor_row, settle_stale_rows
+from workhorse_workflows.okf_builder.shared.worklist import (
+    doctor_row,
+    reopen_row,
+    repair_keys,
+    settle_stale_rows,
+)
 
 #: Findings whose remedy cannot be read off the finding: the value has to come from the
 #: source. Everything else is mechanical and stays a `fixup`.
@@ -325,7 +330,8 @@ def settle_stale(
     features_root: str = "",
     every: int = SETTLE_EVERY,
 ) -> Settled:
-    """Mid-drain, close the open repair rows doctor no longer reports.
+    """Mid-drain, reconcile the repair rows against doctor: close the open rows it no longer
+    reports, and reopen the done rows it still does.
 
     `record` already settles stale `fix:` rows — but only on the checkpoint's write, and
     the checkpoint only runs when the drain goes dry. On a book queued with hundreds of
@@ -342,10 +348,23 @@ def settle_stale(
     checkpoint would queue (`scoped_findings` → `_repair_items`), so a row this pass keeps
     is a row the checkpoint would keep too.
 
+    **Both directions, because the read is the observation and the row is only a claim.** A
+    turn closes its row on its own report; whether the finding cleared is known only when
+    doctor reads the book again. Closing what stopped firing and leaving standing done rows
+    for the checkpoint read the same report half-way: every survivor waited until the drain
+    went dry, then cost a second turn on a file the drain had meanwhile repaired for other
+    rows — measured on a live worklist, 849 standing findings on done rows across 94 files,
+    61 of those files still being drained, 275 batched turns where 219 would do. The reopen
+    goes through `reopen_row`, `record`'s own rule, so attempts and blocks are counted
+    exactly as the checkpoint would count them — just sooner. Findings doctor marks
+    `fixable` are left to the checkpoint: its autofix clears them before its doctor read, and
+    this pass must not rewrite the book, so reopening them here would buy a turn for work
+    no agent has to do.
+
     `every=0` makes the pass unconditional — the blocked gate's call, which has to print
     what doctor reports at the moment it asks, not what it reported rounds ago.
 
-    A pass that finds nothing open to settle skips the doctor read; a doctor failure is
+    A worklist with no doctor row at all skips the doctor read; a doctor failure is
     reported and the watermark still advances, so a broken doctor costs one warning per
     `every` items rather than a minute per pick.
     """
@@ -359,17 +378,27 @@ def settle_stale(
     # done rows — so a watermark above it was taken before a reopen and is stale, not
     # a settle `done - last` items in the future.
     due = not isinstance(last, int) or done < last or done - last >= every
-    fixable = any(i.get("status") in ("pending", "blocked") and doctor_row(i) for i in items)
+    fixable = any(
+        i.get("status") in ("pending", "blocked", "done") and doctor_row(i) for i in items
+    )
     if not due or not fixable:
         return Settled(pending_count=pending, at_done=done if isinstance(last, int) else 0)
 
     error = ""
     standing: list[dict[str, Any]] = []
-    settled = 0
+    settled = reopened = 0
     try:
         findings = scoped_findings(Ostler(repo_root).doctor().data, repo_root, features_root)
         standing = _repair_items(findings)
         settled = settle_stale_rows(items, standing, where="mid-drain")
+        by_key = {key: i for i in items if doctor_row(i) for key in repair_keys([i])}
+        for item in standing:
+            row = by_key.get(next(iter(repair_keys([item]))))
+            if row is None or row.get("status") != "done":
+                continue
+            if all(f.get("fixable") for f in json.loads(item["context"])["findings"]):
+                continue
+            reopened += reopen_row(logger, row, item, repo_root)
     except (OSError, ValueError, RuntimeError) as exc:
         error = str(exc)
         logger.warning("settle skipped — ostler doctor failed: %s", exc)
@@ -382,11 +411,13 @@ def settle_stale(
     path.write_text(json.dumps(data, indent=2))
     pending = sum(1 for i in items if i.get("status") == "pending")
     logger.info(
-        "settle at %d done: %d standing repair item(s), closed %d stale row(s), %d pending",
-        done, len(standing), settled, pending,
+        "settle at %d done: %d standing repair item(s), closed %d stale row(s), "
+        "reopened %d standing row(s), %d pending",
+        done, len(standing), settled, reopened, pending,
     )
     return Settled(
-        ran=True, settled=settled, standing=len(standing), pending_count=pending,
+        ran=True, settled=settled, reopened=reopened, standing=len(standing),
+        pending_count=pending,
         at_done=done, error=error,
     )
 
