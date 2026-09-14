@@ -8,7 +8,7 @@ body:
       label: Package
       options:
         - workhorse (the engine)
-        - workflows (hello-world, author, coder, okf-builder, research)
+        - workflows (loop-runner, author, coder, okf-builder, research)
         - farrier (the installer)
         - ostler (the doc-graph validator)
         - groom (the dashboard)

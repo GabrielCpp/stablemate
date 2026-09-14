@@ -14,7 +14,7 @@ body:
       label: Package
       options:
         - workhorse (the engine)
-        - workflows (hello-world, author, coder, okf-builder, research)
+        - workflows (loop-runner, author, coder, okf-builder, research)
         - farrier (the installer)
         - ostler (the doc-graph validator)
         - groom (the dashboard)
@@ -47,7 +47,7 @@ body:
     attributes:
       label: Reproduction
       description: >-
-        The smallest set of commands that shows it. `workhorse-hello-world run --dry-run`
+        The smallest set of commands that shows it. `workhorse-loop-runner run --dry-run`
         needs no agent CLI and no repository, so a repro built on it is the easiest kind
         to act on.
       render: shell
