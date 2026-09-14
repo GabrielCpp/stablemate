@@ -20,7 +20,7 @@ from ostler.vet import placement as placement_mod
 from ostler import refs as refs_mod
 from ostler.model import Graph, Epic, Story, read_doc, required_section_problems
 from ostler.path import specs_root_in
-from ostler.qa import fixtures as fixtures_mod, runbook as runbook_mod
+from ostler.qa import fixtures as fixtures_mod, runbook as runbook_mod, sensitivity
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
 from ostler.source_snapshots import load_catalog
@@ -152,6 +152,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
     _check_ui(graph, f, resolver)
     _check_judgment(graph, f, resolver)
     _check_unspecified(graph, f, resolver)
+    _check_sensitivity(graph, f)
     _check_runbook(graph, f)
     # One build, shared. Each of these needs the resolved node/edge dump, and on a large book a
     # rebuild costs more than every other check in this function put together.
@@ -2281,6 +2282,34 @@ def _check_ui(graph: Graph, f: list[Finding],
                                      f"{rel}: link '{href}' — file exists but `#{target.anchor}` "
                                      f"heading not found", path=rel, line=line, ref=ref,
                                      fixable=True))
+
+
+def _check_sensitivity(graph: Graph, f: list[Finding]) -> None:
+    """A claim's checks must be able to go red, not just able to run.
+
+    `weak-check` above catches the two spellings that are *statically* rubber stamps — a bare
+    2xx `http_status`, a presence-only `json_path` — by reading the call's own arguments. That
+    is a list of known shapes; the property it stands in for is bigger, and `sensitivity.report`
+    measures it directly by experiment: a witness observation is synthesized from the claim's
+    declared calls, perturbed the way a real defect would perturb it, and re-verified. A claim
+    whose checks stay green through every perturbation would have passed whatever the product
+    did, which is `weak-check`'s finding widened past the two shapes it can see statically.
+
+    Skips `undeclared` claims (no `verify:` at all) — that is `undeclared-obligation`'s finding,
+    not this one's; asking sensitivity of a claim with no check would just repeat it.
+    """
+    for row in sensitivity.report(graph):
+        if row.status != "insensitive":
+            continue
+        reasons = "; ".join(f"`{t.call}` — survived: {', '.join(t.survived)}"
+                            for t in row.trials if t.witnessed)
+        f.append(Finding(
+            "error", "insensitive-check",
+            f"{row.claim}: every check declared for this claim stayed green through every "
+            f"perturbation tried against it — {reasons or 'no perturbation could be witnessed'}",
+            path=row.path, line=row.line, ref=row.claim,
+            suggestion="assert a value the defect would actually change: name the route, the "
+                       "field's content, or the title the claim turns on"))
 
 
 def cmd_doctor(graph: Graph, *, epic: str | None = None,

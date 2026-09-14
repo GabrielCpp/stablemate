@@ -440,6 +440,19 @@ def test_one_discriminating_check_answers_the_claim_it_was_written_under(repo: P
     assert "weak-check" not in all_codes(_run(repo))
 
 
+def test_a_pattern_that_admits_any_value_is_insensitive_not_weak(repo: Path):
+    # `matches=".*"` names a real field and is not one of `weak-check`'s two static
+    # shapes (a bare 2xx status, a presence-only path) — it only fails experimentally,
+    # by surviving the mutation it should have caught.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          _method('json_path(path="$.state", matches=".*")'))
+    found = all_codes(_run(repo))
+    assert "weak-check" not in found
+    finding = next(f for f in _run(repo).findings if f.code == "insensitive-check")
+    assert finding.severity == "error"
+    assert "#publish:returns:1" in finding.ref
+
+
 def test_a_creation_verified_only_afterwards_is_reported(repo: Path):
     # The pass this exists to withhold: `201` and a present id say the same thing whether the
     # revision was created or was already there.

@@ -1,6 +1,6 @@
 # Doctor codes
 
-Every finding `ostler doctor` can raise: **72 codes, 57 error and 15 warn**. An error is a
+Every finding `ostler doctor` can raise: **73 codes, 58 error and 15 warn**. An error is a
 mechanical defect with a mechanical remedy — the exit code counts errors, so a story can be gated
 on it. A warn is a finding whose remedy is authoring judgment, which is why `doctor` cannot
 converge on it the way it converges on `fmt`. Companion to [`../SKILL.md`](../SKILL.md); the
@@ -36,7 +36,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 - **A surface can declare itself not exercised.** `exercised: false` in the frontmatter of
   `docs/features/<surface>/index.md` (a reserved file no loader reads as a node) drops the
   obligation-class findings under that surface — `undeclared-obligation`, `unminted-claim`,
-  `compound-normative-bullet`, `weak-check`, `unstated-precondition`,
+  `compound-normative-bullet`, `weak-check`, `insensitive-check`, `unstated-precondition`,
   `relation-without-subject`. A legacy app kept documented while nothing drives it is not owed a
   check per claim, because no QA plan will ever be asked to prove one. Everything mechanical
   still fires — a dangling link, a missing bullet, a locator collision are about the book. The
@@ -165,6 +165,7 @@ files.
 | `unminted-claim` | warn | A node that mints nothing has a bullet that reads like a claim, under a key this type never grades. Nothing will ever ask a plan to prove it. Move it under a normative key, or into prose. |
 | `unparsed-check` | error | A `verify:` value is not a well-formed call. The suggestion echoes **that check's** own signature. A test path here belongs in `tests:`. |
 | `weak-check` | error | Every check declared for one claim passes on the defect it is meant to catch. Raised **per claim**, not per node, because the binding of a check to a claim is written down (`attributed_checks`). |
+| `insensitive-check` | error | Every check declared for one claim stayed green through every perturbation `ostler qa sensitivity` tried against it — a synthesized witness observation survived every mutation a real defect would have caused. `weak-check` catches the two spellings that are statically a rubber stamp; this is the same finding widened to the experimental method. Raised **per claim**. Assert a value the defect would actually change: the route, the field's content, or the title the claim turns on. |
 | `unstated-precondition` | warn | A bullet states a lifecycle change and the checks read only the state afterwards — the same state a no-op leaves when the subject was already there. Declare the change as a change: `created(subject=…)` / `removed(subject=…)`. |
 | `undeclared-obligation` | warn | A node mints obligations and declares **no** check at all, so a QA plan claiming them can assert anything and still pass. Declare a check per observation; `ostler checks` lists the vocabulary. `field` nodes are exempt: they are observed through the record that carries them. |
 | `competing-implementations` | warn | Two or more nodes of the same type — unrelated by containment or `extends:` — ground themselves in one `path::symbol` and share no `detail:` concept, so a reader reaching either cannot learn which to use. Write the concept that states the selection rule ([node-types/concept.md](node-types/concept.md)) and point every competitor at it with `detail:`. A competition the source does not settle is recorded as a competition, not resolved by invention. |
