@@ -521,6 +521,70 @@ def test_a_close_with_no_digest_is_counted_as_before(tmp_path: Path) -> None:
     assert json.loads(worklist.read_text())["items"][0]["attempts"] == 1
 
 
+def _behavior_repair_row_fixture(tmp_path: Path) -> tuple[Path, Path, dict, list[dict]]:
+    doc = tmp_path / "docs/features/a.md"
+    doc.parent.mkdir(parents=True)
+    doc.write_text("# A\n\nOriginal claim.\n")
+    target = "docs/features/a.md"
+    row = {"kind": "behavior-repair", "target": target,
+           "context": "partial: the claim does not name the retry cap"}
+    worklist = tmp_path / "w.json"
+    worklist.write_text(json.dumps({"items": [{**row, "status": "pending", "attempts": 0}]}))
+    return worklist, doc, row, [{**row, "requeue": True}]
+
+
+def test_a_behavior_repair_standing_over_a_target_rewritten_since_the_close_is_free(
+    tmp_path: Path,
+) -> None:
+    """A `behavior-repair` row's context is the auditor's prose, not a `{node, path}` scope,
+    so the free reopen a `fix:` row gets when its node changes under it used to be
+    unreachable for these rows — every reopen was counted, even one over a target the
+    previous turn had genuinely rewritten, and a repair that landed still walked the row to
+    `blocked`.
+    """
+    from workhorse_workflows.okf_builder.shared.worklist import record
+
+    worklist, doc, row, standing = _behavior_repair_row_fixture(tmp_path)
+    log = logging.getLogger("t")
+    record(log, str(worklist), row, None, doc_status="documented", repo_root=str(tmp_path))
+    doc.write_text(doc.read_text() + "\nThe retry cap is three attempts.\n")
+    record(log, str(worklist), None, standing, repo_root=str(tmp_path))
+    item = json.loads(worklist.read_text())["items"][0]
+    assert item["status"] == "pending" and item["attempts"] == 0
+
+
+def test_a_behavior_repair_settled_by_a_coverage_waiver_is_free(tmp_path: Path) -> None:
+    """An undocumented-file `behavior-repair` is legitimately settled by a
+    `coverage-waivers.json` entry for its `target`, not by an edit to the target itself —
+    so the digest that decides whether a reopen is free has to see the waivers file too,
+    when `features_root` is given.
+    """
+    from workhorse_workflows.okf_builder.shared import paths
+    from workhorse_workflows.okf_builder.shared.worklist import record
+
+    features = tmp_path / "docs/features/a"
+    features.mkdir(parents=True)
+    src = tmp_path / "a/mock.go"
+    src.parent.mkdir(parents=True)
+    src.write_text("package a\n")
+    target = "a/mock.go"
+    row = {"kind": "behavior-repair", "target": target,
+           "context": "Undocumented file a/mock.go: no claim in the book cites this file."}
+    worklist = tmp_path / "w.json"
+    worklist.write_text(json.dumps({"items": [{**row, "status": "pending", "attempts": 0}]}))
+    standing = [{**row, "requeue": True}]
+    log = logging.getLogger("t")
+    record(log, str(worklist), row, None, doc_status="documented",
+           repo_root=str(tmp_path), features_root=str(features))
+    paths.waivers_path(str(features)).write_text(
+        json.dumps([{"code": target, "reason": "test double"}])
+    )
+    record(log, str(worklist), None, standing,
+           repo_root=str(tmp_path), features_root=str(features))
+    item = json.loads(worklist.read_text())["items"][0]
+    assert item["status"] == "pending" and item["attempts"] == 0
+
+
 def test_the_drain_reopens_a_done_repair_whose_finding_still_stands(
     dirty: Path, tmp_path: Path, logger: logging.Logger
 ) -> None:

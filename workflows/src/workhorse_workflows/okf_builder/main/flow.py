@@ -691,6 +691,7 @@ class OkfBuilder(Workflow):
                 doc_status=doc_status,
                 note=note,
                 repo_root=str(self.ctx.repo_root),
+                features_root=str(self.ctx.features_root),
                 batch=batch or [],
             ),
             self.select,
@@ -1255,7 +1256,7 @@ class OkfBuilder(Workflow):
                 {"kind": "behavior-repair", "target": item.target,
                  "context": item.context, "requeue": True}
                 for item in result.repairs
-            ])
+            ], repo_root=str(self.ctx.repo_root), features_root=str(self.ctx.features_root))
             if recorded.blocked_count:
                 return Await(
                     paths.operator_context_path(Path(self.ctx.repo_root), self.service, self.ctx.scope_id),
@@ -1273,7 +1274,10 @@ class OkfBuilder(Workflow):
         # the operator reads the worklist to see the rows.
         requeue = _audit_unresolved_to_requeue(result.unresolved)
         if requeue:
-            recorded = self.call(record, self.ctx.worklist_path, None, requeue)
+            recorded = self.call(
+                record, self.ctx.worklist_path, None, requeue,
+                repo_root=str(self.ctx.repo_root), features_root=str(self.ctx.features_root),
+            )
             counts = last_added_counts(self.ctx.worklist_path, recorded.added)
             blocked = [b for b in recorded.blocked
                        if b.get("kind") in {"behavior-repair", "reground:no-source"}]

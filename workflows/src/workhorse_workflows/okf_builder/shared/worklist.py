@@ -28,6 +28,7 @@ from typing import Any
 from ostler import markdown
 from ostler.model import document_anchors
 from workhorse import worklist as wl
+from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
 from workhorse_workflows.okf_builder.shared.schemas import Pick, Recorded
 
@@ -172,6 +173,7 @@ def reopen_row(
     standing: dict[str, Any],
     repo_root: str,
     max_attempts: int = MAX_TARGET_ATTEMPTS,
+    features_root: str = "",
 ) -> bool:
     """Reopen a `done` row whose finding still stands; True when it went back to `pending`.
 
@@ -188,7 +190,9 @@ def reopen_row(
     prior = ""
     sealed = str(existing.pop("closed_digest", "") or "")
     moved = bool(sealed and repo_root) and sealed != repair_scope_digest(
-        repo_root, str(existing.get("context", "")))
+        repo_root, str(existing.get("context", "")), str(existing.get("target", "")),
+        features_root,
+    )
     if existing.get("doc_status") == "stale":
         existing.pop("doc_status", None)
         existing.pop("note", None)
@@ -450,28 +454,43 @@ def _node_region(text: str, node: str, path: str) -> str | None:
     return None
 
 
-def repair_scope_digest(repo_root: str, context: str) -> str:
+def repair_scope_digest(
+    repo_root: str, context: str, target: str = "", features_root: str = "",
+) -> str:
     """A fingerprint of the book text a repair item is about, as it stands on disk now.
 
     The scope is what the item's own context names: its `node` in `path`, or every member
-    of `related` for a group finding. Two reads are equal exactly when nothing in that scope
-    changed between them — which is the observation `record` needs to tell "the turn's
-    repair did not hold" from "the node is no longer what the turn left".
+    of `related` for a group finding. A `behavior-repair` row's context is the auditor's
+    prose, not a scope contract, and names neither — it falls back to `target`, the one
+    file the finding is about, whole. A `behavior-repair` raised over an undocumented file
+    is legitimately settled by a `coverage-waivers.json` entry rather than an edit to that
+    file, so when this fallback applies and `features_root` is given, the waivers file's
+    content joins the fingerprint too — it is the artifact that exists to record exactly
+    that settlement, and a row with a real node scope has no need of it.
 
-    Empty when the context names no scope (not a repair item); a missing file or node is
-    part of the fingerprint, so a node that vanished and stayed vanished still compares
-    equal to itself.
+    Two reads are equal exactly when nothing in that scope changed between them — which is
+    the observation `record` needs to tell "the turn's repair did not hold" from "the node
+    is no longer what the turn left".
+
+    Empty when the item names no scope at all — no structured context and no `target`; a
+    missing file or node is part of the fingerprint, so a node that vanished and stayed
+    vanished still compares equal to itself.
     """
     try:
         ctx = json.loads(context) if context else {}
     except json.JSONDecodeError:
-        return ""
-    if not isinstance(ctx, dict):
-        return ""
-    if ctx.get("node") and ctx.get("path"):
+        ctx = None
+    if isinstance(ctx, dict) and ctx.get("node") and ctx.get("path"):
+        scoped = True
         members = [str(ctx["node"])]
-    else:
+    elif isinstance(ctx, dict) and ctx.get("related"):
+        scoped = True
         members = [str(m) for m in ctx.get("related") or []]
+    elif target:
+        scoped = False
+        members = [target]
+    else:
+        return ""
     if not members:
         return ""
     root = Path(repo_root)
@@ -485,6 +504,13 @@ def repair_scope_digest(repo_root: str, context: str) -> str:
         digest.update(member.encode())
         digest.update(b"\0")
         digest.update(b"\1absent" if region is None else region.encode())
+        digest.update(b"\0")
+    if not scoped and features_root:
+        try:
+            waivers = paths.waivers_path(features_root).read_text(encoding="utf-8")
+        except OSError:
+            waivers = "\1absent"
+        digest.update(waivers.encode())
         digest.update(b"\0")
     return digest.hexdigest()
 
@@ -502,6 +528,7 @@ def record(
     only: tuple[str, ...] = (),
     settle_fix_items: bool = False,
     repo_root: str = "",
+    features_root: str = "",
     batch: list[dict[str, Any]] | None = None,
 ) -> Recorded:
     """Mark the current item done, merge newly-discovered items, and count the re-tries.
@@ -555,7 +582,10 @@ def record(
     verdict is dropped so no block can quote it. Each free reopen needs a real change to the
     scope by something other than this row's own turn, and those writers are bounded rows
     themselves, so the per-target bound still holds. A row closed with no digest — before
-    this existed, or by a caller without `repo_root` — is counted as before.
+    this existed, or by a caller without `repo_root` — is counted as before. `features_root`
+    lets a `behavior-repair` row's digest see `coverage-waivers.json` too, for the finding
+    an undocumented-file audit settles there instead of in the target — see
+    `repair_scope_digest`.
     """
     path = Path(worklist_path)
     data = json.loads(path.read_text())
@@ -587,7 +617,9 @@ def record(
             if (_norm(i.get("kind")), _norm(i.get("target"))) in closed:
                 i["status"] = "done"
                 if repo_root and (sealed := repair_scope_digest(
-                        repo_root, str(i.get("context", "")))):
+                        repo_root, str(i.get("context", "")), str(i.get("target", "")),
+                        features_root,
+                )):
                     i["closed_digest"] = sealed
                 if doc_status:
                     i["doc_status"] = doc_status
@@ -604,7 +636,7 @@ def record(
         existing = by_key.get(k)
         if existing:
             if (d.get("requeue") is True and existing.get("status") == "done"
-                    and reopen_row(logger, existing, d, repo_root, max_attempts)):
+                    and reopen_row(logger, existing, d, repo_root, max_attempts, features_root)):
                 added += 1
             continue
         items.append({
