@@ -19,6 +19,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+from workhorse._vendor.stablemate_core import config as cfgmod
 from workhorse.pyflow import Registry
 
 cli_mod = importlib.import_module("workhorse.cli")
@@ -164,11 +165,24 @@ model = "qwen"
 
 [profiles.cli-only]
 cli = "codex"
+
+[profiles.claude]
+cli = "claude"
+
+[profiles.claude.powers.high]
+model = "opus"
+effort = "high"
 """
 
 
 def _run_profiled(argv: list[str], config: Path) -> dict:
-    """Drive `run` against a config file, capturing what the invocation carried."""
+    """Drive `run` against a config file, capturing what the invocation carried.
+
+    Also spies on `select_active_profile` to capture the *table* it returned — not
+    just the name `invocation.config` carries — so a caller can assert what a node
+    would actually resolve a power tier against, not merely that a name string
+    matches.
+    """
     captured: dict = {}
 
     def fake_run_pyflow(invocation):
@@ -176,12 +190,21 @@ def _run_profiled(argv: list[str], config: Path) -> dict:
         captured["backend"] = invocation.config.backend.name
         return 0
 
+    real_select_active_profile = run_cmd.select_active_profile
+
+    def spy_select_active_profile(cfg, **kwargs):
+        result = real_select_active_profile(cfg, **kwargs)
+        captured["profile_table"] = result
+        return result
+
     with tempfile.TemporaryDirectory() as tmp:
         launch = Path(tmp) / "repo"
         launch.mkdir()
         env = {k: v for k, v in os.environ.items() if k != "AGENT_CLI"}
         with patch.dict(os.environ, env, clear=True), patch.object(
             run_cmd, "run_pyflow", fake_run_pyflow
+        ), patch.object(
+            run_cmd, "select_active_profile", spy_select_active_profile
         ), patch.object(run_cmd.Path, "cwd", staticmethod(lambda: launch)):
             _main(["run", "--config", str(config), *argv])
     return captured
@@ -191,6 +214,26 @@ def _profiles_config(tmp_path: Path) -> Path:
     path = tmp_path / "config.toml"
     path.write_text(_PROFILES)
     return path
+
+
+def test_bare_cli_auto_selects_the_profile_keyed_to_that_cli(tmp_path):
+    """`--cli claude` with no `--profile` is not "no profile" — `[profiles.claude]`
+    (key matches the `cli` field) is auto-selected, exactly as if `--profile claude`
+    had been passed. This is the CLI-integration counterpart of core's
+    `test_auto_select_finds_the_profile_whose_key_matches_the_cli`; that test proves
+    the resolver, this one proves `run` actually calls it for a bare `--cli`."""
+    captured = _run_profiled(["--cli", "claude"], _profiles_config(tmp_path))
+
+    # `invocation.config.profile` only ever records an *explicit* `--profile` name
+    # (see `RunConfig.profile`'s docstring) — the auto-picked profile is not named
+    # there. What proves the auto-pick happened is the resolved backend and the
+    # profile *table* `select_active_profile` actually returned.
+    assert captured["profile"] == ""
+    assert captured["backend"] == "claude"
+    assert captured["profile_table"].get("cli") == "claude"
+
+    power = cfgmod.resolve_power("high", "claude", captured["profile_table"])
+    assert (power.model, power.effort) == ("opus", "high")
 
 
 def test_profile_travels_to_the_run_and_carries_its_default_cli(tmp_path):
