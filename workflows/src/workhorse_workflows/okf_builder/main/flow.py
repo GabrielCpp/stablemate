@@ -231,9 +231,14 @@ def _audit_gate_message(
     return "\n".join(lines)
 
 
-def repair_power(current_item: dict[str, Any], item_context: str) -> str:
-    """Choose the repair turn's model tier from deterministic worklist context."""
-    attempts = _attempts(current_item)
+def repair_power(
+    current_item: dict[str, Any], item_context: str, batch: list[dict[str, Any]] | None = None
+) -> str:
+    """Choose the repair turn's model tier from deterministic worklist context.
+
+    A batched turn is as hard as its most-retried row, and it spans several nodes.
+    """
+    attempts = max(_attempts(row) for row in [current_item, *(batch or [])])
     if attempts >= 2:
         return "high"
     if attempts == 1:
@@ -249,6 +254,7 @@ def repair_power(current_item: dict[str, Any], item_context: str) -> str:
     paths_in_scope = context.get("paths")
     if (
         context.get("grounded") is True
+        or bool(batch)
         or (isinstance(related, list) and bool(related))
         or (isinstance(paths_in_scope, list) and len(paths_in_scope) > 1)
         or (isinstance(findings, list) and len(findings) >= 3)
@@ -480,8 +486,10 @@ class OkfBuilder(Workflow):
             pick,
             self.investigate,
             current_item=pick.current_item,
+            batch=pick.batch,
             item_kind=pick.item_kind,
             item_code=pick.item_code,
+            item_codes=pick.item_codes,
             item_target=pick.item_target,
             item_context=pick.item_context,
             progress=pick.progress,
@@ -533,8 +541,10 @@ class OkfBuilder(Workflow):
         stall: int = 0,
         signature: str = "",
         refuels: int = 0,
+        batch: list[dict] | None = None,
+        item_codes: list[str] | None = None,
     ) -> Continue:
-        """The heart: document ONE item to the spec-complete bar, or repair one finding.
+        """The heart: document ONE item to the spec-complete bar, or repair one file's findings.
 
         The turn returns the deeper items it revealed — elements, code layers, concepts,
         formats, journeys — and nothing else here reads them; `record_item` does. Keeping the
@@ -546,7 +556,9 @@ class OkfBuilder(Workflow):
         construction carries one doctor code on one node — gets `repair.md`, which dispatches
         to a fragment written for that code. That dispatch is the whole reason the checkpoint
         splits items per code: a prompt can only be written for a defect that is known before
-        the turn starts.
+        the turn starts. `select_item` hands a repair out together with the other open rows on
+        its file (`batch`), and the prompt then includes one fragment per code in
+        `item_codes`: the rows stay per code, the turn is per file (`worklist._batch`).
 
         A repair turn also carries the **check vocabulary and its signatures**, rendered from
         `ostler.checks` rather than described. The first live backfill turns wrote
@@ -558,7 +570,11 @@ class OkfBuilder(Workflow):
         """
         repair = item_kind.startswith("fix:")
         behavior_repair = item_kind == "behavior-repair"
+        batch = batch or []
+        item_codes = item_codes or ([item_code] if item_code else [])
         where = f"{'repairing' if repair else 'documenting'} {item_kind} {item_target}"
+        if batch:
+            where += f" (+{len(batch)} row(s) on its file)"
         self.logger.info(
             "%s%s", where, f" · {progress}" if progress else "", extra={"activity": True}
         )
@@ -580,7 +596,7 @@ class OkfBuilder(Workflow):
             "main/prompts/repair.md" if repair else "main/prompts/investigate.md",
             returns=Investigation,
             power=(
-                "medium" if behavior_repair else repair_power(current_item, item_context)
+                "medium" if behavior_repair else repair_power(current_item, item_context, batch)
                 if repair
                 else investigation_power(current_item)
             ),
@@ -589,6 +605,7 @@ class OkfBuilder(Workflow):
             args={
                 "item_kind": item_kind,
                 "item_code": item_code,
+                "item_codes": item_codes,
                 "item_target": item_target,
                 "item_context": item_context,
                 "result_schema": json.dumps(Investigation.model_json_schema(), indent=2),
@@ -613,6 +630,7 @@ class OkfBuilder(Workflow):
             result,
             self.record_item,
             current_item=current_item,
+            batch=batch,
             discovered=result.discovered,
             item_kind=item_kind,
             item_context=item_context,
@@ -643,6 +661,7 @@ class OkfBuilder(Workflow):
         stall: int = 0,
         signature: str = "",
         refuels: int = 0,
+        batch: list[dict] | None = None,
     ) -> Continue:
         """`record`: close the item the turn documented, open what it revealed.
 
@@ -671,6 +690,7 @@ class OkfBuilder(Workflow):
                 doc_status=doc_status,
                 note=note,
                 repo_root=str(self.ctx.repo_root),
+                batch=batch or [],
             ),
             self.select,
             rnd=rnd,

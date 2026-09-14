@@ -154,11 +154,11 @@ def _repair_items(findings: list[dict]) -> list[dict[str, Any]]:
     one defect. An item mixing a dangling link with an unfalsifiable check has no such
     fragment: the only prompt that fits it is the generic one that made both repairs shallow.
 
-    Grouping by *node* as well as file is the price of that. An earlier version grouped by
-    file alone so a component with a hundred findings was one reading rather than a hundred
-    turns; here the file stays in the key (so a node's findings never scatter across
-    documents) but a document with three codes over two nodes is six items. What that buys
-    back is that each of the six is a single, checkable question.
+    The row is the unit of tracking, not the unit of work: a document with three codes over
+    two nodes is six rows, each a single, checkable question with its own attempts, but
+    `worklist.select_item` hands every open row on one file to a single turn, and the prompt
+    carries one fragment per code in it. What a turn costs is reading the file and its source,
+    and that is paid once per file however the rows are keyed.
 
     Findings stay sorted by line so an agent works top-down, and each chunk is bounded by
     `MAX_FINDINGS_PER_ITEM` — a node with forty compound bullets is two items.

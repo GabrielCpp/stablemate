@@ -147,10 +147,16 @@ class Pick(OkfResult):
     over_budget: bool = False
     #: The item as stored, so `record` can close exactly what was opened.
     current_item: dict[str, Any] = {}
+    #: The other repair rows on `current_item`'s file that this turn also takes, as stored
+    #: — `record` closes them with it (`worklist._batch`). Empty for a single-row turn.
+    batch: list[dict[str, Any]] = []
     item_kind: str = ""
     #: For a repair item (`kind == "fix:<code>"`), the bare doctor code — the one value the
     #: repair prompt dispatches its per-remedy fragment on. Empty for a discovery item.
     item_code: str = ""
+    #: Every distinct doctor code across `current_item` and `batch`, in drain order — one
+    #: fragment each in the repair prompt. `[item_code]` for a single-row turn.
+    item_codes: list[str] = []
     item_target: str = ""
     item_context: str = ""
     pending_count: int = 0

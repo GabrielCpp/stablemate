@@ -2,25 +2,28 @@
 agent: agent
 ---
 
-# okf-builder — repair one doctor finding, on one node
+{% set codes = workhorse_var('item_codes') or [workhorse_var('item_code')] %}
+# okf-builder — repair the doctor findings on one book file
 
-The convergence checkpoint read `ostler doctor` over the book and queued this item. Every finding in
-it is the **same code** on the **same node**, which is why the instructions below are written for
-that one defect rather than for repairs in general.
+The convergence checkpoint read `ostler doctor` over the book and queued this item. Its findings sit
+in **one file**, and each code in it (`{{ codes | join('`, `') }}`) has instructions below written for
+that defect rather than for repairs in general. You read the file and its source once, and repair
+every finding in it this turn.
 
 Load the method and obey it: {{ skill_load_ref("ostler-okf", skill_dir() + "/ostler-okf/SKILL.md") }}
-{% if workhorse_var('item_code') in ['undeclared-obligation', 'weak-check', 'unstated-precondition', 'unparsed-check', 'compound-normative-bullet', 'unminted-claim'] %}
-This finding is about whether a claim can ever be observed, so read the bar it is measured
+{% if codes | select('in', ['undeclared-obligation', 'weak-check', 'unstated-precondition', 'unparsed-check', 'compound-normative-bullet', 'unminted-claim']) | list %}
+A finding here is about whether a claim can ever be observed, so read the bar it is measured
 against: `{{ skill_path_ref("ostler-okf", "references/falsifiable-verification.md") }}`.
 {% endif %}
 
 ## This item
 
-- code: `{{ workhorse_var('item_code') }}`
+- codes: `{{ codes | join('`, `') }}`
 - target: `{{ workhorse_var('item_target') }}`
-- context (JSON — `code`, `grounded`, `findings`, plus either `node`/`path` (the one node this
-  item is about) **or**, on a group finding, `citation` (the `path::symbol` the group is about),
-  `related` (every node this item covers) and `paths` (their files)):
+- context (JSON — `grounded` and `findings`, each finding carrying its own `code`, plus one of:
+  `code`/`node`/`path` (the one node this item is about); `codes`/`nodes`/`path` (the nodes of one
+  file this item covers); or, on a group finding, `code`, `citation` (the `path::symbol` the group
+  is about), `related` (every node this item covers) and `paths` (their files)):
 
 ```json
 {{ workhorse_var('item_context') }}
@@ -111,17 +114,19 @@ hiding it.
 
 - **Docs only.** You write **only** under `docs/features/**`. Never modify source code, never run
   `git`, never run builds or tests. You are documenting the code, not changing it.
-- **One node.** Open the `path` in the context and repair the node the findings name. Do not tour
-  the book; other nodes' findings are other items. **Unless the context carries `related`** —
+- **One file.** Open the `path` in the context and repair the nodes the findings name. Do not tour
+  the book; other files' findings are other items. **Unless the context carries `related`** —
   then those locations *are* this item: open every one of them (`paths` lists the files) and
   repair the group as a whole. That finding is one defect spread over several nodes and it does
   not clear until each of them is edited. `related` is the whole of the exception — a node not
   in that list is still another item's work.
+- **Every code is this turn's.** A finding's own `code` says which section below is its remedy.
+  Where two findings touch the same bullet, make one edit that satisfies both.
 - **Read the source before you write a value.** The node's `code:` bullet points at the symbol this
   claim is about. When the context says `"grounded": true` the finding does **not** carry the value —
   it must come out of the source, cited in prose.
 - **Do not run a full `ostler doctor`.** It lints the whole repository to answer a question about
-  one node. Run `ostler fmt <the file you touched>` and stop. The checkpoint re-runs doctor once per
+  one file. Run `ostler fmt <the file you touched>` and stop. The checkpoint re-runs doctor once per
   round and re-queues anything you missed.
 - **The book was committed just before this turn**, so `git diff -- {{ workhorse_var('features_root') }}`
   is exactly what you changed, including what `ostler fmt` rewrote (keep that), and undoing an
@@ -155,7 +160,9 @@ Three ways that rule gets broken while looking like a repair, all seen in a real
 
 Where the rule bites, per code, is below.
 
-{% include ["main/prompts/repair/" ~ workhorse_var('item_code') ~ ".md", "main/prompts/repair/_default.md"] %}
+{% for code in codes %}
+{% include ["main/prompts/repair/" ~ code ~ ".md", "main/prompts/repair/_default.md"] %}
+{% endfor %}
 
 ## Output
 

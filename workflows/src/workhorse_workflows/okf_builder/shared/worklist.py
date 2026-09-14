@@ -41,6 +41,12 @@ from workhorse_workflows.okf_builder.shared.schemas import Pick, Recorded
 MAX_TARGET_ATTEMPTS = 3
 
 
+#: How many findings one repair turn may carry across the rows it batches. The same bound
+#: as one checkpoint item (`checkpoint.MAX_FINDINGS_PER_ITEM`): past it a large turn invites
+#: a shallow pass over its tail, whether the tail is one row or several.
+MAX_BATCH_FINDINGS = 25
+
+
 def _norm(s: object) -> str:
     return " ".join(str(s or "").split()).strip().lower()
 
@@ -154,6 +160,79 @@ def settle_stale_rows(
     return settled
 
 
+def _repair_scope(row: dict[str, Any]) -> tuple[str, list[dict[str, Any]]] | None:
+    """The one book file a repair row is about, and its findings — or None if it has none.
+
+    A row joins a batch only when its scope is one file: a group finding (`related`) spans
+    several, and a `fix:stale-citation` row moves its own watermark when it closes
+    (`advance_watermark` reads one row's context), so both stay turns of their own.
+    """
+    kind = str(row.get("kind", ""))
+    if not kind.startswith("fix:") or kind == "fix:stale-citation":
+        return None
+    try:
+        ctx = json.loads(str(row.get("context", "") or ""))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(ctx, dict) or ctx.get("related") or not ctx.get("path"):
+        return None
+    findings = ctx.get("findings")
+    return str(ctx["path"]), findings if isinstance(findings, list) else []
+
+
+def _batch(rows: list[dict[str, Any]], first: int) -> list[int]:
+    """The rows one repair turn takes: `first`, plus the open repair rows on its file.
+
+    **The row is the unit of tracking; the file is the unit of work.** A checkpoint row is
+    one `(file, node, code)`, so a finding keeps one identity and one `attempts` count
+    across rounds, and its prompt fragment is known before the turn starts. But the cost of
+    a turn is orientation — loading the method, reading the document and the source it
+    cites — and that is paid per file, not per code. Handing a document's rows out one turn
+    each paid it once per row: on a backfilled book the median document carried 10–21
+    rows. Instructions compose where orientation does not, so the turn takes every open
+    row on the file and the prompt includes one fragment per distinct code.
+
+    Rows are taken in worklist order, which is the checkpoint's drain order, while their
+    findings total at most `MAX_BATCH_FINDINGS`. `first` is always taken, whatever its size.
+    An `active` row is one a crashed turn already held, so the same batch re-forms on the
+    re-pick.
+    """
+    scope = _repair_scope(rows[first])
+    if scope is None:
+        return [first]
+    path, findings = scope
+    taken, total = [first], len(findings)
+    for n, row in enumerate(rows):
+        if n == first or row.get("status") not in ("active", "pending"):
+            continue
+        other = _repair_scope(row)
+        if other is None or other[0] != path:
+            continue
+        if total + len(other[1]) > MAX_BATCH_FINDINGS:
+            continue
+        taken.append(n)
+        total += len(other[1])
+    return taken
+
+
+def _batch_context(rows: list[dict[str, Any]]) -> str:
+    """One repair context over several rows on one file: every node, code and finding.
+
+    The keys a single row's context carries keep their meaning — `path`, `grounded`,
+    `findings` — so the prompt and `repair_power` read a batch the way they read one row;
+    `node`/`code` become the lists `nodes`/`codes`.
+    """
+    contexts = [json.loads(str(r.get("context", ""))) for r in rows]
+    findings = [f for c in contexts for f in (c.get("findings") or [])]
+    return json.dumps({
+        "path": contexts[0]["path"],
+        "nodes": list(dict.fromkeys(str(c.get("node", "")) for c in contexts)),
+        "codes": list(dict.fromkeys(str(r.get("kind", "")).removeprefix("fix:") for r in rows)),
+        "grounded": any(c.get("grounded") is True for c in contexts),
+        "findings": sorted(findings, key=lambda f: int(f.get("line", 0) or 0)),
+    }, indent=2)
+
+
 @blueprint.node
 def select_item(
     logger: logging.Logger,
@@ -222,27 +301,40 @@ def select_item(
         )
 
     resumed = pick.status == "active"
-    pick.status = "active"
+    rows = [it.model_dump(exclude_unset=True) for it in items]
+    taken = _batch(rows, next(n for n, it in enumerate(items) if it is pick))
+    for n in taken:
+        items[n].status = "active"
+        rows[n]["status"] = "active"
     # `exclude_unset` so writing the file back adds no key okf never wrote — the worklist
-    # is the workflow's document, and this node only flips one status in it.
-    data["items"] = [it.model_dump(exclude_unset=True) for it in items]
+    # is the workflow's document, and this node only flips statuses in it.
+    data["items"] = rows
     path.write_text(json.dumps(data, indent=2))
-    pend = wl.counts(items).pending  # one fewer after the flip
+    pend = wl.counts(items).pending  # fewer after the flip
     target = str(getattr(pick, "target", "") or "")
+    batch = [rows[n] for n in taken]
+    kinds = [str(r.get("kind", "")) for r in batch]
+    codes = list(dict.fromkeys(k.removeprefix("fix:") for k in kinds if k.startswith("fix:")))
     logger.info(
-        "picked %s item '%s' (%s), %d still pending",
+        "picked %s item '%s' (%s)%s, %d still pending",
         "resumed active" if resumed else "next pending",
-        target or "?", pick.kind or "?", pend,
+        target or "?", pick.kind or "?",
+        f" with {len(batch) - 1} more row(s) on its file" if len(batch) > 1 else "",
+        pend,
     )
     return Pick(
         has_item=True,
-        current_item=pick.model_dump(exclude_unset=True),
+        current_item=batch[0],
+        batch=batch[1:],
         item_kind=pick.kind,
         # `fix:<code>` is the checkpoint's spelling for a repair item; splitting the code out
         # here keeps the template's `{% include %}` from having to parse the kind.
-        item_code=pick.kind.removeprefix("fix:") if pick.kind.startswith("fix:") else "",
+        item_code=codes[0] if codes else "",
+        item_codes=codes,
         item_target=target,
-        item_context=str(getattr(pick, "context", "") or ""),
+        item_context=(
+            _batch_context(batch) if len(batch) > 1 else str(getattr(pick, "context", "") or "")
+        ),
         pending_count=pend,
         done_count=done,
         done_this_run=this_run,
@@ -322,6 +414,7 @@ def record(
     only: tuple[str, ...] = (),
     settle_fix_items: bool = False,
     repo_root: str = "",
+    batch: list[dict[str, Any]] | None = None,
 ) -> Recorded:
     """Mark the current item done, merge newly-discovered items, and count the re-tries.
 
@@ -393,15 +486,17 @@ def record(
             for key in ("blocked_reason", "verdict", "chain"):
                 i.pop(key, None)
 
-    if current:
-        ck = (_norm(current.get("kind")), _norm(current.get("target")))
+    closing = [row for row in [current, *(batch or [])] if row]
+    closed = {(_norm(row.get("kind")), _norm(row.get("target"))) for row in closing}
+    for row in closing:
         logger.info(
             "marking item '%s' (%s) done%s",
-            current.get("target", "?"), current.get("kind", "?"),
+            row.get("target", "?"), row.get("kind", "?"),
             f" ({doc_status})" if doc_status else "",
         )
+    if closed:
         for i in items:
-            if (_norm(i.get("kind")), _norm(i.get("target"))) == ck:
+            if (_norm(i.get("kind")), _norm(i.get("target"))) in closed:
                 i["status"] = "done"
                 if repo_root and (sealed := repair_scope_digest(
                         repo_root, str(i.get("context", "")))):
