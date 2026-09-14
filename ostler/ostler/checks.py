@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import ast
 import re
+import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -263,6 +264,19 @@ def literal(value: CheckValue) -> str:
     return '"' + value.replace('"', '\\"') + '"'
 
 
+def parse_expression(text: str) -> ast.Expression:
+    """*text* parsed as one Python expression, without Python's warnings about its literals.
+
+    A check's arguments are regexes as often as not, and `matches="\\d+"` is the author's
+    exact intent here, where Python would warn that `\\d` is an invalid escape. Left on,
+    that warning is printed once per such bullet on every doctor run, ahead of the report,
+    and a reader piping the report through `head` sees only the warnings.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)
+        return ast.parse(text, mode="eval")
+
+
 def parse_check(value: str) -> CheckCall | str:
     """Parse one `verify:` value, or return the sentence explaining why it is not a check.
 
@@ -275,7 +289,7 @@ def parse_check(value: str) -> CheckCall | str:
     if not text:
         return "empty"
     try:
-        expression = ast.parse(text, mode="eval").body
+        expression = parse_expression(text).body
     except SyntaxError:
         return _not_a_call(text)
     if not isinstance(expression, ast.Call) or not isinstance(expression.func, ast.Name):
@@ -360,7 +374,7 @@ def expected_form(value: str) -> str:
     """
     text = _unwrap(value)
     try:
-        expression = ast.parse(text, mode="eval").body
+        expression = parse_expression(text).body
     except SyntaxError:
         expression = None
     if isinstance(expression, ast.Call) and isinstance(expression.func, ast.Name):

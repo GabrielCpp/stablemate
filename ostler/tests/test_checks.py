@@ -304,3 +304,12 @@ def test_owning_keys_include_code_on_every_type_and_only_the_flagged_others() ->
     assert "file" in registry.owning_keys("format")
     assert registry.owning_keys("untyped") == ("code",)
 
+
+
+def test_a_regex_argument_parses_without_a_python_escape_warning():
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        call = checks.parse_check(r'json_path(path="$.id", matches="^\d+$")')
+    assert isinstance(call, checks.CheckCall)

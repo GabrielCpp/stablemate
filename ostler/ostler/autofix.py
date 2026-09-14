@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ostler import markdown, refs, registry
-from ostler.checks import CheckCall, parse_check
+from ostler.checks import CheckCall, parse_check, parse_expression
 from ostler.fmt import _target_files
 from ostler.model import Graph, _file_main_section, _inline_type
 
@@ -96,7 +96,7 @@ def _is_null_equals(value: str) -> bool:
     so the rewrite cannot leave a call asserting two things at once.
     """
     try:
-        tree = ast.parse(value.strip(), mode="eval")
+        tree = parse_expression(value.strip())
     except SyntaxError:
         return False
     call = tree.body
