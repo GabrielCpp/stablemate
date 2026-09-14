@@ -917,6 +917,46 @@ def _declares(path: Path, symbol: str) -> bool:
     return inventory.declares_at(path, symbol)
 
 
+def _check_test_subject(node, rel: str, f: list[Finding]) -> None:
+    """`code:` cites the product, never the test suite (`refs.is_test_source`).
+
+    A book is a contract a user can assert against the running product. A mock, a fake declared
+    in a test file or a fixture helper is how the product's tests are built, so a node citing
+    only those documents an implementation detail no user can observe, and every obligation
+    doctor then asks of it — a `verify:` per claim, a grounded symbol — is work spent making a
+    test double provable. Two findings, because the remedies differ:
+
+    - `test-subject`: every citation is test source. The node documents no product and is
+      deleted — the whole page when it is the page's own node.
+    - `code-cites-test`: product and test citations mixed. The test citations come out of
+      `code:`; a test that proves the claim belongs under `tests:`.
+    """
+    cited: dict[str, None] = {}
+    for value in refs_mod.code_refs(node.meta.get("code")):
+        try:
+            cited[refs_mod.parse_code_ref(value).path] = None
+        except ValueError:
+            cited[value.partition("::")[0]] = None
+    tests = [path for path in cited if refs_mod.is_test_source(path)]
+    if not tests:
+        return
+    ref = f"{node.id}#code"
+    if len(tests) == len(cited):
+        f.append(Finding(
+            "error", "test-subject",
+            f"{node.id}: every `code:` citation is test source ({', '.join(tests)}) — a book "
+            f"documents product behavior a user can observe, not the test suite's mocks, fakes "
+            f"or fixtures", path=rel, line=node.line, ref=ref,
+            suggestion="delete the node (the whole page when it is the page's own node) and "
+                       "the links that point at it"))
+        return
+    f.append(Finding(
+        "error", "code-cites-test",
+        f"{node.id}: `code:` cites test source ({', '.join(tests)}) beside the product it "
+        f"documents", path=rel, line=node.line, ref=ref,
+        suggestion="keep only product citations in `code:`; cite a proving test under `tests:`"))
+
+
 def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
     """`code:` targets name a file that exists, and a symbol that file declares.
 
@@ -943,6 +983,7 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
         if uitype is None or "code" not in uitype.bullet_by_key:
             continue
         rel = node.path.relative_to(graph.root).as_posix()
+        _check_test_subject(node, rel, f)
         for ref in refs_mod.code_refs(node.meta.get("code")):
             try:
                 parsed = refs_mod.parse_code_ref(ref)

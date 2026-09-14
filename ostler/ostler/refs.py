@@ -89,6 +89,30 @@ def render_code_ref(ref: CodeRef) -> str:
     return f"{target}::{ref.symbol}" if ref.symbol else target
 
 
+#: Directory names that hold tests and their doubles, never the product. Shared with
+#: okf-builder's source inventory, which leaves the same trees out of what a book must cover.
+TEST_DIRS = frozenset({"__tests__", "mocks", "test", "tests"})
+TEST_SUFFIXES = (
+    "_test.go", ".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx", "_test.py", "Test.php",
+)
+#: pytest's convention is a prefix, and a `conftest.py` is a fixture file with no name pattern.
+TEST_PREFIXES = ("test_",)
+TEST_FILES = ("conftest.py",)
+
+
+def is_test_source(path: str) -> bool:
+    """Whether a repo-relative source path is a test, a test double or a test fixture file.
+
+    A book documents the product a user can observe. A mock, a fake declared in a `_test.go`
+    or a pytest fixture is how the product's own tests are built — an implementation detail
+    of the test suite — so a `code:` citation into one documents nothing a user can assert.
+    """
+    parts = path.replace("\\", "/").split("/")
+    name = parts[-1]
+    return (bool(TEST_DIRS.intersection(parts[:-1])) or name.endswith(TEST_SUFFIXES)
+            or name.startswith(TEST_PREFIXES) or name in TEST_FILES)
+
+
 def normalize_ref(value: str) -> str:
     """Strip the decoration a single ``code:`` target may carry (backticks, commas, space)."""
     return value.strip().strip("`, ").strip()
@@ -187,9 +211,11 @@ def ref_path(ref: str) -> str:
 
 __all__ = [
     "CodeRef",
+    "TEST_DIRS",
     "bullet_ref",
     "code_refs",
     "collision_ref",
+    "is_test_source",
     "normalize_ref",
     "parse_code_ref",
     "ref_path",
