@@ -87,9 +87,27 @@ of the auto behavior above):
 | `--resume-run <path-or-name>` | Resume a specific run dir from its checkpoint |
 | `--resume-latest` | Resume the most recent unfinished run under `--runs-dir` |
 | `--params '<json>'` / `--params-file <path>` | Set the workflow's declared inputs on a fresh start (also keys the default run dir) |
+| `--worktree` | Cut a fresh branch and git worktree for this run and dispatch it there instead of the invoking repo, recording both on the run (see [Worktree dispatch](#worktree-dispatch) below) |
+| `--worktree-branch <name>` / `--worktree-base <ref>` | Override `--worktree`'s default branch name (`run/<workflow>-<run-id>`) and base ref (the invoking repo's `HEAD`) |
 
 "Survives reboot" therefore covers both the *work products* (commits, sessions,
 artifacts) **and** position in the machine — an interrupted run auto-resumes mid-flight.
+
+## Worktree dispatch
+
+`--worktree` cuts a fresh branch and `git worktree add`s it under a configured
+`worktree_dir` (see `farrier config set-worktree`), then dispatches the run there
+instead of the invoking repo — `repo_dir` resolves to the new worktree for the rest of
+the run. The branch and worktree directory are recorded on `run.json`
+(`worktree_branch`, `worktree_path`) the moment they are cut, and a resume
+(`--resume-run` / `--resume-latest` / auto-resume-in-place) always reuses that recorded
+worktree rather than cutting another one — passing `--worktree` again on a resume, with
+or without different `--worktree-branch`/`--worktree-base` overrides, is ignored with a
+printed note naming the recorded worktree. `--worktree` requires `worktree_dir` to be
+configured and fails fast, creating nothing, on a branch or directory collision;
+`--worktree --dry-run` reports what it would cut without touching git. A workflow that
+sets `PROTECT_WORKTREE = True` does not get the guard on a worktree-dispatched run,
+since that run already owns its tree exclusively.
 
 ## Run artifacts
 
