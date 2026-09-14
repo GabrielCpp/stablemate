@@ -60,3 +60,24 @@ function or inject the dependency the test needs to control.
 when the caller and helper deliberately separate effects from a pure decision and therefore do not
 forward the same parameter set; or when generated code, recursion, or a third-party registration
 requires the helper's independent identity. A hoped-for future caller is not a caller.
+
+## 2.4 A section banner mid-file is the split, deferred
+
+**Statement.** A comment that visually separates one named block from the rest of a module — a row
+of dashes, equals signs, or similar — announces a second capability the module has already grown,
+not a subheading within its one capability. This is 2.1 caught later: nobody revisits a docstring
+once it is written, but a banner gets typed at the exact moment a second concern lands, which is
+still while splitting is cheap.
+
+**Trigger.** A banner-style divider comment (`# ---...---`, `// ===...===`, and equivalents) that
+introduces a named block partway through a module that already implements something else above it.
+
+**Fix.** The section under the banner becomes its own module, named for what the banner calls out.
+If the module is already imported by its existing path from outside the package, leave a facade
+behind (2.1's counter-case) rather than moving nothing.
+
+**Counter-case.** A divider separating *public API* from *private helpers* within the same
+capability, or grouping related constants that all belong to the one thing the module already does.
+Those organize one concern; they do not name a second one. The test: can the block under the banner
+be titled with a noun phrase that is *not* also a fair title for the whole module? If yes, this
+rule fires; if the title would just restate the module's own docstring, it does not.

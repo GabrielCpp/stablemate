@@ -47,9 +47,10 @@ reason the rule exists. Each carries a quarter of the rule set:
 - **[references/objects.md](references/objects.md)** — rules 1.1–1.4. When a pile of functions
   becomes an object, and the stop condition that says it does not. Read it when you are weighing a
   function against a class, growing a parameter list, or looking at module-level mutable state.
-- **[references/modules.md](references/modules.md)** — rules 2.1–2.3. When one module is really
+- **[references/modules.md](references/modules.md)** — rules 2.1–2.4. When one module is really
   two, or one function is only a corridor to another. Read it when writing a module's docstring,
-  when an entry point started doing the work, or when a private helper has only one caller.
+  when an entry point started doing the work, when a private helper has only one caller, or when a
+  section banner just went into a file that already does something else.
 - **[references/boundaries.md](references/boundaries.md)** — rules 3.1–3.3. Values written and read
   back, returns with several pieces, and payloads from a schema you do not own. Read it when
   designing a checkpoint, a wire format, or a reader for another tool's output.
@@ -96,6 +97,7 @@ but this is the exception that is real.
 | [2.1](references/modules.md) | a module docstring that needs bullets | one module per bullet |
 | [2.2](references/modules.md) | wiring and >1 command body in one file | one module per command |
 | [2.3](references/modules.md) | one caller only forwards to one private helper | inline the helper |
+| [2.4](references/modules.md) | a banner-style divider comment naming a new section mid-file | that section is its own module |
 | [3.1](references/boundaries.md) | literal in, key-lookup-with-default out | one model owns both directions |
 | [3.2](references/boundaries.md) | 3+-tuple, documented map keys, mutated argument | a named record |
 | [3.3](references/boundaries.md) | a strict model mirroring a foreign schema | tolerant read, owned type |
