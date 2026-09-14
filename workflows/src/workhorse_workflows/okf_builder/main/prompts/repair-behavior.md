@@ -10,6 +10,12 @@ If a finding cannot be grounded, return `partial` with the unresolved reason ins
 of inventing behavior or removing a claim merely to clear the audit. Discoveries name
 additional documentation work, not implementation changes.
 
+Docs only: write under `{{ features_root }}` and nowhere else. Never run `git` commands
+that change the tree — `stash`, `checkout`, `restore`, `reset` — other runs are editing
+this checkout uncommitted, and those commands discard their work. To see a file as
+committed use `git show HEAD:<path>`; to see your change use `git diff -- <path>`. Do not
+run a full `ostler doctor`; the next gate runs it.
+
 Target: {{ item_target }}
 
 {{ item_context }}

@@ -273,6 +273,12 @@ class OkfBuilder(Workflow):
     #: a drain that stops closing items still dies on the same 1,000.
     REFUEL_ON: ClassVar[frozenset[str]] = frozenset({"progress"})
 
+    #: Several builds share one target checkout and nothing is committed until a book is
+    #: clean, so every repair lives uncommitted beside other runs' repairs for hours. An
+    #: agent's `git stash` to diff "before my edit" dropped those, and the same findings
+    #: came back every checkpoint.
+    PROTECT_WORKTREE: ClassVar[bool] = True
+
     #: Which `<features-root>/<service>` book to build, the root being ostler's answer;
     #: `""` = the whole tree.
     service: str = ""
