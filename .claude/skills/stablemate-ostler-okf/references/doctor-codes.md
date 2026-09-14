@@ -8,7 +8,7 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-ostler-
 
 # Doctor codes
 
-Every finding `ostler doctor` can raise: **73 codes, 58 error and 15 warn**. An error is a
+Every finding `ostler doctor` can raise: **74 codes, 58 error and 16 warn**. An error is a
 mechanical defect with a mechanical remedy — the exit code counts errors, so a story can be gated
 on it. A warn is a finding whose remedy is authoring judgment, which is why `doctor` cannot
 converge on it the way it converges on `fmt`. Companion to [`../SKILL.md`](../SKILL.md); the
@@ -74,7 +74,6 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `story-id-mismatch` | error | The immutable id in a story's parent epic block differs from the id in `story.md`. Make the two copies agree; do not mint a replacement. |
 | `story-key-collision` | error | One id, slug, or provider-neutral `externalKey` names multiple stories. Keep every accepted story spelling graph-global and unambiguous. |
 | `story-status-mismatch` | error | Frontmatter `status` differs from the `## Implementation Status` value. |
-| `source-catalog-invalid` | error | The generated external source catalog is malformed or unreadable. Rebuild multi-repository context; do not hand-repair derived hashes or symbol tables. |
 | `unwritten-story` | error | A story is still a bare `ostler create story` scaffold. |
 | `story-section-order` | error | A story carries its required sections out of contract order. |
 | `story-conflict` | error | The story's frontmatter `conflict:` records two acceptance criteria that cannot both hold — the adjudicator's `story` verdict, with its chain. Rewriting intent is the operator's: edit the criteria so one intent holds, then `ostler conflict <slug> --clear`. |
@@ -123,6 +122,8 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `code-cites-test` | error | The node cites production code *and* test source. Remove the test citations from `code:`; a test that proves the claim goes under `tests:` where the type admits it. |
 | `dangling-repository-ref` | error | A repository-qualified `code:` target names no repository in the generated source catalog. Refresh multi-repository context with the workspace repository available; never remove the qualifier and guess by path. |
 | `missing-code-symbol` | error | The file exists but does not **declare** that symbol. A re-export does not ground a citation. Read the file, find the symbol that now owns the behaviour, repoint the bullet — never waive it and never restore an old name. |
+| `stale-citation` | error | A local `code:` target's `@digest` stamp disagrees with the file's current content — the citation was stamped, then the file changed under it. Re-read the file, confirm the claim still holds, then run `ostler stamp` on the node. |
+| `unstamped-citation` | warn | A local `code:` target carries no `@digest` yet — the migration-in-flight case, before `ostler stamp --from-catalog` has run on this book. Run `ostler stamp` on the page once migrated; never hand-write the digest. |
 | `unresolved-relation` | error | A relation bullet (`on:`/`parent:`/`extends:`/`detail:`/…) does not resolve. `fixable`. |
 | `dangling-link` | error | A markdown link's target file does not exist. `fixable`. |
 | `missing-anchor` | error | The link's file exists but the `#anchor` heading is not in it. `fixable`. |

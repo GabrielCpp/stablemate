@@ -209,6 +209,33 @@ def test_a_grounded_code_ref_is_green(repo: Path):
     assert not (codes(report) & {"dangling-code-ref", "missing-code-symbol"})
 
 
+def test_an_unstamped_code_ref_is_a_warning(repo: Path):
+    # Migration-in-flight: no book has an `@digest` yet, and that must not be an error —
+    # only `ostler stamp` clears it, once a turn has actually re-read the citation.
+    write(repo / "groom/groom/diff.py", "class Diff:\n    pass\n")
+    report = _concept_report(repo, "groom/groom/diff.py::Diff")
+    assert "unstamped-citation" in codes(report, "warn")
+    assert not (codes(report) & {"stale-citation"})
+
+
+def test_a_stamped_code_ref_whose_file_changed_is_stale(repo: Path):
+    from ostler.stamp import digest_file
+    write(repo / "groom/groom/diff.py", "class Diff:\n    pass\n")
+    stale_digest = digest_file("class Diff:\n    pass\n    x = 1\n")
+    report = _concept_report(repo, f"groom/groom/diff.py::Diff@{stale_digest}")
+    assert "stale-citation" in codes(report)
+    assert "unstamped-citation" not in codes(report, "warn")
+
+
+def test_a_stamped_code_ref_matching_the_file_is_green(repo: Path):
+    from ostler.stamp import digest_file
+    text = "class Diff:\n    pass\n"
+    write(repo / "groom/groom/diff.py", text)
+    report = _concept_report(repo, f"groom/groom/diff.py::Diff@{digest_file(text)}")
+    assert not (codes(report) & {"stale-citation", "dangling-code-ref", "missing-code-symbol"})
+    assert not (codes(report, "warn") & {"unstamped-citation"})
+
+
 def test_a_receiver_qualified_symbol_grounds_against_go(repo: Path):
     # The book's grammar, not the tool's: every part of a qualified symbol must be declared.
     write(repo / "api/claims.go",

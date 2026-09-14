@@ -23,6 +23,7 @@ from ostler.path import specs_root_in
 from ostler.qa import fixtures as fixtures_mod, runbook as runbook_mod, sensitivity
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
+from ostler import stamp as stamp_mod
 from ostler.source_snapshots import load_catalog
 
 
@@ -966,6 +967,14 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
     been deleted. The grammar is the book's own (OKF UI profile §5):
     `<path-relative-to-repo-root>::<symbol>`, the symbol qualified by its owner when it has one.
 
+    A local (non-repository-qualified) target's `@digest` stamp is checked here too:
+    `stale-citation` when it disagrees with the file's current content, `unstamped-citation`
+    while the citation carries none yet — the migration-in-flight case, a warning rather than
+    an error since no book has been stamped until `ostler stamp --from-catalog` runs. A
+    repository-qualified target is left out of both: `ostler stamp` does not resolve a foreign
+    checkout yet (see `stamp.stamp_page`), so it can never earn a digest, and warning about
+    that forever would be a defect no edit could clear.
+
     Note this cannot route through the link scan: `links.is_doc_link` rejects any href
     containing `::`, and a backticked `` `x.go::S` `` is inline code, not a markdown link — so
     `markdown.iter_links` never yields it. The bullets are read directly, as the
@@ -973,11 +982,7 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
     """
     try:
         catalog = load_catalog(graph.root)
-    except (OSError, ValueError) as exc:
-        f.append(Finding(
-            "error", "source-catalog-invalid",
-            f"the external source catalog cannot be read: {exc}",
-            path="docs/features/sources.json"))
+    except (OSError, ValueError):
         catalog = None
     for node in graph.ui_nodes:
         uitype = registry.ui_type(node.type)
@@ -1023,6 +1028,27 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
                     path=rel, line=node.line, ref=ref,
                     suggestion="a path relative to the repo root, as `path::symbol`"))
                 continue
+            if parsed.digest is None:
+                f.append(Finding(
+                    "warn", "unstamped-citation",
+                    f"{node.id}: `code:` target '{ref}' carries no `@digest` stamp",
+                    path=rel, line=node.line, ref=ref,
+                    suggestion="run `ostler stamp` on this page once the book has migrated "
+                               "off the source catalog"))
+            else:
+                try:
+                    source_text = target.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    pass  # unreadable tells us nothing; same call this check makes below
+                else:
+                    if stamp_mod.digest_file(source_text) != parsed.digest:
+                        f.append(Finding(
+                            "error", "stale-citation",
+                            f"{node.id}: `code:` target '{ref}' — '{target_path}' has changed "
+                            f"since this citation was stamped",
+                            path=rel, line=node.line, ref=ref,
+                            suggestion="re-read the file, confirm the claim still holds, then "
+                                       "run `ostler stamp` on this node"))
             if not (separator and symbol):
                 continue  # a whole-file unit (a template renders a screen): existence is enough
             if _SPACE.search(symbol):
