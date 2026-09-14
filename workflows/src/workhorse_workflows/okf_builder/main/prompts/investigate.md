@@ -184,6 +184,27 @@ missing rather than re-reading the whole tree.
 - **journey** — trace a user path across surfaces by following the **leads-to** edges (start
   precondition → ordered steps → outcome) and write the `flow` node with linked `steps:`. Emit
   nothing (or a missing element you noticed).
+The next three kinds are not discovery. The builder queued each one because a condition in the
+graph is mechanically true, and the item closes only when that condition is false. Documenting
+the node more deeply changes nothing about it: a turn that expanded an orphan page's bullets and
+reported `documented` left it just as orphaned, and the row came back as a lost turn.
+
+- **unreachable** — `target` is a page no edge reaches, on the page or on any heading in it.
+  Find what in the book *uses* the thing the page documents: the concept whose port it
+  implements, the harness or tier that uses it, the surface that calls it (`ostler graph
+  --bullet 'code=<symbol>'` and `grep -rl` over `docs/features/{{ workhorse_var('service') }}`
+  find them). Add a link to the page, in that node's opening prose or in the bullet the
+  relation belongs to. If nothing real uses it and the page documents nothing that still
+  exists, delete the page and say so. Then check with `timeout 120 ostler graph --surface
+  {{ workhorse_var('service') }} --orphans --ids`. Report `documented` only when `target` is no
+  longer listed. If the page must stay unlinked, report `skipped` and give the reason.
+- **trim-bullet** — `target` cites `citation`, which lives under `missing_path`, a file the
+  source no longer has. Retire the bullets that cite it. If the node documented nothing else,
+  remove the node. Do not re-point the bullet at a neighbouring symbol that happens to exist.
+- **trim-review** — `target` links to `trimmed_node`, whose citations now point at deleted
+  files. Re-read the target's steps and relations against the book as it is now. Remove or
+  rewrite the step that no longer exists, so the caller never lists a step with nothing behind it.
+
 Repair items (`fix:‹code›`, queued by the convergence checkpoint) are **not** yours: they render a
 different prompt written for the one doctor code they carry. If you were handed one, say so in
 `doc_status` rather than guessing at a remedy.
