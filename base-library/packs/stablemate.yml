@@ -27,5 +27,4 @@ skills:
 # either: the ask arrives with no file open ("reload the run I see in groom"), so
 # it is the request-triggered `workhorse-operate` skill, and the file-scoped
 # `workhorse-engine` skill points at it from the moment a fix is pushed.
-prompts:
-  - stablemate/babysit-run
+prompts: []
