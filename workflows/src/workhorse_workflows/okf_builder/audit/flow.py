@@ -216,7 +216,12 @@ class Audit(Workflow):
                     # prompt, not of the session, so a fresh session alone does not clear
                     # it. Compaction is the ladder's own answer to that (see
                     # runner/failure.py); the reframe is what remains when it is not.
-                    power="medium", retries=1, invoke_retries=3, timeout=300,
+                    # That ladder only sees an exhausted budget if the turn lives long enough
+                    # to spend it: the wall clock must outlast a full 32k-token generation at
+                    # the slowest provider rate measured (~70 tok/s on MiniMax, ~450s). At 300s
+                    # a third of packets were reaped mid-reasoning as plain timeouts, which the
+                    # reframe then re-rolled instead of compaction answering them.
+                    power="medium", retries=1, invoke_retries=3, timeout=600,
                     cwd=Path(setup.run_dir) / "behavior-audit" / dispatched.digest,
                     args={"packet": dispatched.model_dump_json(indent=2), "feedback": feedback,
                           "result_schema": work.result_schema},
