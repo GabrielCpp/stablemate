@@ -1244,6 +1244,74 @@ function DispatchQueues() {
   return dispatch.queues.map((row) => html`<${DispatchQueueRow} key=${row.name} row=${row} />`);
 }
 
+// One control per `params` entry the selected queue's config declares — a select
+// for a fixed choice (e.g. which agent CLI to run on), a text input otherwise (e.g.
+// a plan path). The form is uncontrolled, like `AnswerForm`: Preact never owns the
+// input values, so `wireDispatchEnqueueForm`'s delegated submit handler reads them
+// straight off the DOM via `FormData` at submit time.
+function DispatchEnqueueField({ param }) {
+  const label = html`<label class="dispatch-field-label">${param.label}${param.required ? " *" : ""}</label>`;
+  const control =
+    param.type === "select"
+      ? html`<select name=${param.name} required=${param.required}>
+          ${param.default ? null : html`<option value="">select…</option>`}
+          ${(param.options || []).map(
+            (opt) => html`<option value=${opt} selected=${opt === param.default}>${opt}</option>`
+          )}
+        </select>`
+      : html`<input type="text" name=${param.name} required=${param.required} value=${param.default} />`;
+  return html`<div class="dispatch-field">${label}${control}</div>`;
+}
+
+function DispatchEnqueueForm() {
+  const { dispatch } = useStore();
+  const queue = dispatch.selectedQueue;
+  if (!queue) return null;
+  const row = dispatch.queues.find((q) => q.name === queue);
+  const params = (row && row.params) || [];
+  if (!params.length) return null;
+  return html`<form class="dispatch-enqueue" data-dispatch-enqueue key=${queue}>
+    <input type="hidden" name="queue" value=${queue} />
+    ${params.map((param) => html`<${DispatchEnqueueField} key=${param.name} param=${param} />`)}
+    <div class="dispatch-enqueue-actions"><button type="submit" class="btn">Enqueue</button></div>
+  </form>`;
+}
+
+function enqueueDispatchItem(queue, params) {
+  return fetch("/api/dispatch/" + encodeURIComponent(queue) + "/items", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(params),
+  })
+    .then((r) => r.json())
+    .then((body) => {
+      loadDispatchItems(queue);
+      loadDispatchQueues();
+      return body;
+    })
+    .catch(() => {
+      pushToast("blocked", "✗ not enqueued", "groom did not accept the item.", 7000);
+    });
+}
+
+// Delegated the same way `wireAnswerForm` is: the form is re-rendered whenever the
+// selected queue's items change, so a handler bound per-form would go stale.
+function wireDispatchEnqueueForm() {
+  document.addEventListener("submit", (e) => {
+    const form = e.target.closest("form[data-dispatch-enqueue]");
+    if (!form) return;
+    e.preventDefault();
+    const data = new FormData(form);
+    const queue = data.get("queue");
+    data.delete("queue");
+    const params = {};
+    data.forEach((value, key) => {
+      params[key] = value;
+    });
+    enqueueDispatchItem(queue, params);
+  });
+}
+
 function DispatchItemRow({ item, queue }) {
   const pending = item.status === "pending";
   const running = item.status === "running";
@@ -1625,6 +1693,7 @@ const ISLANDS = [
   ["attend-list", AttendList],
   ["attend-detail", AttendDetail],
   ["dispatch-queues", DispatchQueues],
+  ["dispatch-enqueue", DispatchEnqueueForm],
   ["dispatch-items", DispatchItems],
   ["setting-attend", AttendSetting],
   ["palette-results", PaletteResults],
@@ -1633,4 +1702,5 @@ ISLANDS.forEach(([id, Component]) => render(html`<${Component} />`, document.get
 
 wireEvents();
 wireAnswerForm();
+wireDispatchEnqueueForm();
 startConnection();

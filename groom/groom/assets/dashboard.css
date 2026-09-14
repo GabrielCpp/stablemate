@@ -261,6 +261,12 @@ body {
 .dispatch-item-row { display:flex; align-items:center; gap:10px; padding:6px 10px;
   border-bottom:1px solid var(--border); }
 .dispatch-item-row:hover { background:var(--bg-2); }
+.dispatch-enqueue { display:flex; flex-direction:column; gap:8px; padding:10px;
+  border-bottom:1px solid var(--border); }
+.dispatch-field { display:flex; flex-direction:column; gap:4px; }
+.dispatch-field-label { font-size:12px; color:var(--text-2); }
+.dispatch-field input, .dispatch-field select { font:inherit; padding:4px 6px; }
+.dispatch-enqueue-actions { display:flex; justify-content:flex-end; }
 
 /* ---- settings ---- */
 .settings-panel { padding:16px; max-width:640px; }

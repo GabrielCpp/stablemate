@@ -107,10 +107,21 @@ def _launch(item_id: str, command: str, params: dict[str, Any]) -> subprocess.Po
     ``--run-id`` is the item id itself: a workflow console script names its own run
     directory from it, so a dispatch item's run artifacts are addressable by the id
     the queue already gave it, with nothing to look up in between.
+
+    A ``cli`` key in ``params`` is not a workflow param — it is `workhorse run`'s own
+    ``--cli`` flag, letting one queue's enqueue form pick the target agent CLI
+    (claude/codex/copilot/cline/opencode) per item rather than baking one backend into
+    the queue's ``command``. Popped out here rather than forwarded inside ``--params``,
+    the one place that split has to happen.
     """
+    launch_params = dict(params)
+    cli = str(launch_params.pop("cli", "") or "").strip()
+    argv = [command, "run", "--params", json.dumps(launch_params), "--run-id", item_id]
+    if cli:
+        argv.extend(["--cli", cli])
     supervisor = ProcessSupervisor()
     return supervisor.spawn(
-        [command, "run", "--params", json.dumps(params), "--run-id", item_id],
+        argv,
         f"dispatch:{item_id}",
         resilience=AgentResilience(),
         cwd=os.getcwd(),
@@ -157,9 +168,32 @@ def enqueue(queue: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
     if settings is None:
         raise UnknownQueue(queue)
     item_id = uuid.uuid4().hex[:12]
-    store.dispatch_enqueue(item_id, queue=queue, command=settings.command, params=params or {})
+    expanded = _apply_templates(settings, params or {})
+    store.dispatch_enqueue(item_id, queue=queue, command=settings.command, params=expanded)
     _drain(queue)
     return store.dispatch_get(item_id) or {}
+
+
+def _apply_templates(
+    settings: core_config.DispatchQueueSettings, params: dict[str, Any]
+) -> dict[str, Any]:
+    """Expand each param whose queue-config field declares a ``template``.
+
+    ``{value}`` in the template is replaced with the operator's raw input before it
+    is sent on as the actual workflow param — the config-only mechanism that turns a
+    bare "plan path" field into whatever a target workflow's prompt actually needs
+    (e.g. a ``/goal ...`` invocation for `workhorse-loop-runner`'s ``plan`` param),
+    with no workflow-specific logic here.
+    """
+    result = dict(params)
+    for param in settings.params:
+        if not param.template:
+            continue
+        value = result.get(param.name)
+        if value is None:
+            continue
+        result[param.name] = param.template.replace("{value}", str(value))
+    return result
 
 
 def _drain(queue: str) -> None:
@@ -269,6 +303,7 @@ def queue_status() -> list[dict[str, Any]]:
                 "command": settings.command,
                 "concurrency": settings.concurrency,
                 "running": len(running),
+                "params": [param.as_dict() for param in settings.params],
             }
         )
     return result

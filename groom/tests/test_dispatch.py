@@ -8,6 +8,7 @@ Run: uv run pytest groom/tests/test_dispatch.py
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -47,6 +48,16 @@ def _write_config(tmp_path: Path, queues: dict[str, dict[str, Any]]) -> None:
         lines.append(f'command = "{opts["command"]}"')
         if "concurrency" in opts:
             lines.append(f"concurrency = {opts['concurrency']}")
+        for param in opts.get("params", []):
+            lines.append(f"[[groom.dispatch.{name}.params]]")
+            for key, value in param.items():
+                if isinstance(value, bool):
+                    lines.append(f"{key} = {str(value).lower()}")
+                elif isinstance(value, list):
+                    rendered = ", ".join(f'"{item}"' for item in value)
+                    lines.append(f"{key} = [{rendered}]")
+                else:
+                    lines.append(f'{key} = "{value}"')
     (tmp_path / "config.toml").write_text("\n".join(lines) + "\n")
 
 
@@ -326,3 +337,72 @@ def test_get_queues_reports_concurrency_and_occupancy_under_load(
         client.__exit__(None, None, None)
         for proc in procs:
             proc.done.set()
+
+
+# ---- params schema & templates ---------------------------------------------------
+def test_queue_status_exposes_the_configured_params_schema(dispatching: Configure):
+    """The dashboard's enqueue form renders straight off this — no hardcoded fields."""
+    dispatching(
+        q=dict(
+            command="workhorse-loop-runner",
+            params=[
+                dict(name="plan", label="Plan path", required=True),
+                dict(name="cli", label="Agent CLI", type="select", options=["claude", "codex"]),
+            ],
+        )
+    )
+    rows = dispatch.queue_status()
+    row = next(r for r in rows if r["name"] == "q")
+    params = {p["name"]: p for p in row["params"]}
+    assert params["plan"]["label"] == "Plan path"
+    assert params["plan"]["required"] is True
+    assert params["cli"]["type"] == "select"
+    assert params["cli"]["options"] == ["claude", "codex"]
+    # `template` is a launch-time detail, not something the form needs to see.
+    assert "template" not in params["plan"]
+
+
+def test_enqueue_expands_a_param_with_a_template_before_storing_it(
+    dispatching: Configure, monkeypatch: pytest.MonkeyPatch,
+):
+    """A queue-config `template` composes the operator's raw input into whatever the
+    target workflow's prompt actually needs — no per-workflow logic in `dispatch.py`."""
+    dispatching(
+        q=dict(
+            command="workhorse-loop-runner",
+            params=[
+                dict(
+                    name="plan",
+                    label="Plan path",
+                    template="/goal implement all phases of plan {value}. Commit your work before finishing",
+                )
+            ],
+        )
+    )
+    monkeypatch.setattr(dispatch, "_launch", lambda item_id, command, params: _FakeProc())
+    item = dispatch.enqueue("q", {"plan": "docs/plans/x.md"})
+    assert item["params"]["plan"] == (
+        "/goal implement all phases of plan docs/plans/x.md. Commit your work before finishing"
+    )
+
+
+def test_launch_forwards_cli_as_its_own_flag_not_inside_params(
+    dispatching: Configure, monkeypatch: pytest.MonkeyPatch,
+):
+    """`--cli` is `workhorse run`'s own flag, not a workflow param — a `cli` key in the
+    enqueue params must not leak into the `--params` JSON blob `_launch` builds."""
+    dispatching(q=dict(command="workhorse-loop-runner"))
+    captured: dict[str, Any] = {}
+
+    class _FakeSupervisor:
+        def spawn(self, argv: list[str], *_args: Any, **_kwargs: Any) -> _FakeProc:
+            captured["argv"] = argv
+            return _FakeProc()
+
+    monkeypatch.setattr(dispatch, "ProcessSupervisor", _FakeSupervisor)
+    dispatch._launch("item1", "workhorse-loop-runner", {"plan": "x", "cli": "codex"})
+    argv = captured["argv"]
+    assert "--cli" in argv
+    assert argv[argv.index("--cli") + 1] == "codex"
+    params_json = argv[argv.index("--params") + 1]
+    assert "cli" not in json.loads(params_json)

@@ -1121,16 +1121,86 @@ DEFAULT_DISPATCH_CONCURRENCY = 1
 
 
 @dataclass(frozen=True)
+class DispatchParamSettings:
+    """One field of a queue's enqueue-time form, declared as ``[[groom.dispatch.<name>.params]]``.
+
+    A flat list rather than a nested JSON-Schema object: groom's dashboard renders one
+    form control per entry, in table order, and the operator authoring the config never
+    has to write a ``properties``/``required`` split to get there.
+    """
+
+    name: str
+    label: str
+    type: str = "string"
+    required: bool = False
+    default: str = ""
+    options: tuple[str, ...] = ()
+    #: When set, the value the operator types is substituted for ``{value}`` in this
+    #: string before it is sent as the workflow param — the config-only way to turn a
+    #: bare field ("plan path") into whatever a target workflow actually expects (e.g.
+    #: ``/goal implement all phases of plan {value}. Commit your work before finishing``
+    #: for `workhorse-loop-runner`'s `plan` param), with no new workflow and no
+    #: templating logic outside this one queue's config entry.
+    template: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "label": self.label,
+            "type": self.type,
+            "required": self.required,
+            "default": self.default,
+            "options": list(self.options),
+        }
+
+
+@dataclass(frozen=True)
 class DispatchQueueSettings:
-    """One configured queue: its name, the workflow command it launches, and how many
-    of its items may run at once."""
+    """One configured queue: its name, the workflow command it launches, how many of
+    its items may run at once, and the enqueue-time fields its dashboard form offers."""
 
     name: str
     command: str
     concurrency: int = DEFAULT_DISPATCH_CONCURRENCY
+    params: tuple[DispatchParamSettings, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "command": self.command, "concurrency": self.concurrency}
+        return {
+            "name": self.name,
+            "command": self.command,
+            "concurrency": self.concurrency,
+            "params": [param.as_dict() for param in self.params],
+        }
+
+
+def _parse_dispatch_params(raw: Any) -> tuple[DispatchParamSettings, ...]:
+    """The ``params`` array of a queue's table, tolerating a malformed entry the same
+    way the queue itself tolerates a malformed table: skip it, keep the rest."""
+    if not isinstance(raw, list):
+        return ()
+    params: list[DispatchParamSettings] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name") or "").strip()
+        if not name:
+            continue
+        options_raw = entry.get("options")
+        options = (
+            tuple(str(opt) for opt in options_raw) if isinstance(options_raw, list) else ()
+        )
+        params.append(
+            DispatchParamSettings(
+                name=name,
+                label=str(entry.get("label") or name),
+                type=str(entry.get("type") or "string").strip().lower() or "string",
+                required=bool(entry.get("required", False)),
+                default=str(entry.get("default") or ""),
+                options=options,
+                template=str(entry.get("template") or ""),
+            )
+        )
+    return tuple(params)
 
 
 def resolve_dispatch_queues(cfg: dict[str, Any] | None = None) -> dict[str, DispatchQueueSettings]:
@@ -1158,6 +1228,9 @@ def resolve_dispatch_queues(cfg: dict[str, Any] | None = None) -> dict[str, Disp
         except (TypeError, ValueError):
             concurrency = DEFAULT_DISPATCH_CONCURRENCY
         queues[name] = DispatchQueueSettings(
-            name=name, command=command, concurrency=max(1, concurrency)
+            name=name,
+            command=command,
+            concurrency=max(1, concurrency),
+            params=_parse_dispatch_params(raw.get("params")),
         )
     return queues
