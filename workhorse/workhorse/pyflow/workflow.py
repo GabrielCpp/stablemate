@@ -196,6 +196,8 @@ class Workflow(BaseModel):
     #: to see "the file before my edit" is refused instead of silently discarding another
     #: run's edits. A prompt forbidding git does not hold; this does. Deterministic nodes
     #: run in-process and are unaffected, so the flow's own commit step still works.
+    #: Overridden to off for a `--worktree`-dispatched run regardless of this setting —
+    #: a worktree cut for one run exclusively is not the shared tree this guards.
     PROTECT_WORKTREE: ClassVar[bool] = False
 
     # --- registration -------------------------------------------------------
@@ -391,7 +393,8 @@ class Workflow(BaseModel):
         engine = self._require_engine()
         guard = (
             worktree_guard.guarding(engine.run_dir)
-            if type(self).PROTECT_WORKTREE else nullcontext()
+            if type(self).PROTECT_WORKTREE and not engine.worktree_dispatched
+            else nullcontext()
         )
         with guard:
             return engine.agent(

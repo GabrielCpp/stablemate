@@ -143,6 +143,29 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "no state may be unreachable; nodes and agent turns are stubbed. The "
         "failure this catches is a typo found at hour 30 of an unattended run.",
     )
+    parser.add_argument(
+        "--worktree",
+        action="store_true",
+        help="Cut a fresh branch and git worktree for this run and dispatch it "
+        "there instead of the invoking repo. Requires a configured worktree_dir "
+        "(see `farrier config set-worktree`). Ignored, with a printed note, on a "
+        "--resume-run/--resume-latest of a run that already recorded one — the "
+        "recorded worktree is used as-is.",
+    )
+    parser.add_argument(
+        "--worktree-branch",
+        default=None,
+        metavar="NAME",
+        help="Override the default 'run/<workflow>-<run-id>' branch name cut by "
+        "--worktree. Meaningless without --worktree.",
+    )
+    parser.add_argument(
+        "--worktree-base",
+        default=None,
+        metavar="REF",
+        help="Override the base ref --worktree branches from (default: HEAD of "
+        "the invoking repo). Meaningless without --worktree.",
+    )
     resume_group = parser.add_mutually_exclusive_group()
     resume_group.add_argument(
         "--resume-run",
@@ -283,6 +306,9 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         no_cache=getattr(args, "no_cache", False),
         dry_run=getattr(args, "dry_run", False),
         context_manifest=_load_context_manifest(args.context_file),
+        worktree=getattr(args, "worktree", False),
+        worktree_branch=getattr(args, "worktree_branch", None),
+        worktree_base=getattr(args, "worktree_base", None),
         # Read last, after `--cli` and the repo-dir default above have had their say,
         # so what the run is given is the environment as the CLI finally settled it.
         config=replace(

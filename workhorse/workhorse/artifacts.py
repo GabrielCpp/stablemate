@@ -162,6 +162,9 @@ class ArtifactWriter:
         # run dir exists before that, so the first write of run.json carries neither.
         self._profile = ""
         self._profile_config: dict[str, Any] = {}
+        # No worktree at construction: `record_worktree` sets these once, at dispatch.
+        self._worktree_path = ""
+        self._worktree_branch = ""
         # No previous attempt to detect — fresh start has no `pid` to look up.
         self._previous_process_died_at = None
         self._previous_process_pid = None
@@ -176,6 +179,16 @@ class ArtifactWriter:
         """ISO-8601 UTC start time. For a resumed run this is the ORIGINAL
         start restored from run.json, so wall-clock budgets survive --resume."""
         return self._started_at
+
+    @property
+    def worktree_path(self) -> str:
+        """The worktree this run was dispatched into, or "" if it was not."""
+        return self._worktree_path
+
+    @property
+    def worktree_branch(self) -> str:
+        """The branch cut for this run's worktree, or "" if it was not dispatched."""
+        return self._worktree_branch
 
     @classmethod
     def resume(cls, run_dir: Path) -> "ArtifactWriter":
@@ -215,6 +228,10 @@ class ArtifactWriter:
         # would erase.
         self._profile = record.profile
         self._profile_config = dict(record.profile_config)
+        # Carried unconditionally, like the profile above: the recorded worktree is
+        # authoritative across every resume, never re-derived from a flag.
+        self._worktree_path = record.worktree_path
+        self._worktree_branch = record.worktree_branch
         # Detect a previous attempt that died ungracefully — SIGKILL, segfault, OOM
         # kill, host power loss — and left the dir with ``terminal: null`` and a
         # ``pid`` that is no longer alive. ``operator_interrupt`` (Ctrl-C) already
@@ -263,6 +280,8 @@ class ArtifactWriter:
         self._repo_start = _observe_repo()
         self._profile = ""
         self._profile_config = {}
+        self._worktree_path = ""
+        self._worktree_branch = ""
         # A nested scope is a fresh start (see :meth:`at`'s docstring); there is
         # no previous attempt to detect here. Resume-via-`subscope(resume=True)`
         # goes through the other constructor above and sets these itself.
@@ -582,6 +601,18 @@ class ArtifactWriter:
         self._profile_config = dict(tables or {})
         self._write_run_json(terminal=None)
 
+    def record_worktree(self, path: str, branch: str) -> None:
+        """Record the worktree and branch this run was dispatched into.
+
+        Written once, at dispatch, and never again: a resume carries these fields
+        forward from ``run.json`` (see ``resume()``) rather than re-deriving them, so
+        the recorded worktree stays authoritative even if a later ``--worktree``
+        override disagrees.
+        """
+        self._worktree_path = path
+        self._worktree_branch = branch
+        self._write_run_json(terminal=None)
+
     def record_launch(self, argv: list[str], resume_argv: list[str], cwd: str) -> None:
         """Record how *this process* was launched, in ``launch.json`` beside ``run.json``.
 
@@ -650,6 +681,8 @@ class ArtifactWriter:
             repo_end=_observe_repo() if terminal else None,
             profile=self._profile,
             profile_config=self._profile_config,
+            worktree_path=self._worktree_path,
+            worktree_branch=self._worktree_branch,
             # Set by `resume()` when the previous attempt's pid is no longer alive,
             # sticky through the lifetime of this run, cleared by `finish()`. Never
             # default-populated: a fresh run is `None` here, not "unknown".

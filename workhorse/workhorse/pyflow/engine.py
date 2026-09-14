@@ -185,6 +185,11 @@ class RunEnv:
     #: distinction the presence of a child checkpoint cannot make. The driver owns
     #: both the setting and the clearing; nothing else writes it.
     resume_pending: bool = False
+    #: True when this run's `repo_dir` is a worktree `--worktree` cut for it exclusively
+    #: (fresh dispatch or a resume of one). Overrides a workflow's own `PROTECT_WORKTREE`
+    #: to off: the guard exists for a tree several runs may share, which a dedicated
+    #: worktree by construction is not.
+    worktree_dispatched: bool = False
 
     def __post_init__(self) -> None:
         """Bind the run's ladder to the run's clock, once.
@@ -227,6 +232,10 @@ class Engine:
     @property
     def run_id(self) -> str:
         return self.env.run_id
+
+    @property
+    def worktree_dispatched(self) -> bool:
+        return self.env.worktree_dispatched
 
     # --- self.call ----------------------------------------------------------
 

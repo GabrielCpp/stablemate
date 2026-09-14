@@ -169,6 +169,11 @@ class RunRecord(BaseModel):
     #: back into the run. It is what answers "which model was at `high` in March" once
     #: the config has moved on, which the profile *name* alone cannot.
     profile_config: dict[str, Any] = Field(default_factory=dict)
+    #: The worktree this run was dispatched into, and the branch cut for it — set once
+    #: at dispatch, carried unchanged across every resume. Empty for a run that was not
+    #: worktree-dispatched.
+    worktree_path: str = ""
+    worktree_branch: str = ""
 
 
 class LaunchRecord(BaseModel):

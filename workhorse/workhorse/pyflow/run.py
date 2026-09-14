@@ -25,7 +25,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from workhorse._vendor.stablemate_core.config import CONFIG_PATH_ENV
+from workhorse._vendor.stablemate_core.config import CONFIG_PATH_ENV, resolve_worktree_dir
 from workhorse import control, gitstate, inbox, logsetup, otel, reload
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
@@ -41,6 +41,8 @@ from workhorse.pyflow.errors import (
 from workhorse.pyflow.graph import preflight, registry_graphs
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.workflow import Workflow
+from workhorse.pyflow.worktree import WorktreeError
+from workhorse.pyflow import worktree as worktree_mod
 from workhorse.records import PyflowCheckpoint, parse_checkpoint
 from workhorse.references import format_missing, missing_references
 from workhorse.rundir import (
@@ -85,6 +87,17 @@ class RunInvocation:
     context_manifest: ManifestContext = field(default_factory=ManifestContext)
     config: RunConfig = field(default_factory=RunConfig)
     telemetry: otel.TelemetryHost = field(default_factory=otel.TelemetryHost)
+    #: Cut a fresh branch and worktree for this run and dispatch it there instead of the
+    #: invoking repo — see `docs/plans/workhorse-worktree-dispatch.md`. Ignored (with a
+    #: printed note) on a resume of a run that already recorded one: the recorded
+    #: worktree is authoritative, never re-derived from this flag.
+    worktree: bool = False
+    #: Overrides the default `run/<workflow>-<run_id>` branch name. Meaningless without
+    #: `worktree`.
+    worktree_branch: str | None = None
+    #: Overrides the default base ref (the invoking repo's current HEAD). Meaningless
+    #: without `worktree`.
+    worktree_base: str | None = None
 
 
 class _CoreReloadRequested(Exception):
@@ -105,6 +118,73 @@ class _CoreReloadRequested(Exception):
         super().__init__(cli)
         self.cli = cli
         self.profile = profile
+
+
+def _dispatch_worktree(
+    *,
+    invocation: RunInvocation,
+    writer: ArtifactWriter,
+    params: dict[str, Any],
+    name: str,
+    dry_run: bool,
+) -> int | None:
+    """Fresh-dispatch worktree creation for `--worktree` (plan §§4-5, §10).
+
+    Called only when `_open_run` returned no resume — a resume's worktree is looked
+    up, never re-cut; see `_resume_worktree`. Returns an exit code the caller should
+    return immediately (nothing has been armed yet, so no cleanup is needed), or
+    `None` on success, including a `--dry-run` that reported without touching git.
+    """
+    repo_dir = Path(params.get("repo_dir") or Path.cwd()).resolve()
+    default_branch, _ = worktree_mod.default_names(workflow=name, run_id=writer.run_id)
+    branch = invocation.worktree_branch or default_branch
+    sanitized_branch = branch.replace("/", "-")
+    base_ref = invocation.worktree_base or "HEAD"
+
+    worktree_dir = resolve_worktree_dir()
+    if worktree_dir is None:
+        print(
+            "[workhorse] ERROR: --worktree requires a configured worktree_dir. "
+            "Set one with `farrier config set-worktree <path>`."
+        )
+        return 1
+
+    dir_name = worktree_mod.dir_name_for(repo_dir, sanitized_branch)
+
+    if dry_run:
+        print(
+            f"[workhorse] --dry-run: would cut branch '{branch}' from '{base_ref}' "
+            f"into worktree '{worktree_dir / dir_name}'"
+        )
+        return None
+
+    try:
+        cut = worktree_mod.add(
+            repo_dir=repo_dir,
+            worktree_dir=worktree_dir,
+            branch=branch,
+            base_ref=base_ref,
+            dir_name=dir_name,
+        )
+    except WorktreeError as exc:
+        print(f"[workhorse] ERROR: {exc}")
+        return 1
+
+    writer.record_worktree(str(cut.path), cut.branch)
+    params["repo_dir"] = str(cut.path)
+    return None
+
+
+def _resume_worktree(invocation: RunInvocation, writer: ArtifactWriter, params: dict[str, Any]) -> None:
+    """Resume of a worktree-dispatched run: the recorded worktree wins (plan §8)."""
+    if not writer.worktree_path:
+        return
+    if invocation.worktree or invocation.worktree_branch or invocation.worktree_base:
+        print(
+            "[workhorse] --worktree ignored on resume: this run already recorded a "
+            f"worktree at '{writer.worktree_path}' (branch '{writer.worktree_branch}')."
+        )
+    params["repo_dir"] = writer.worktree_path
 
 
 def run_pyflow(invocation: RunInvocation) -> int:
@@ -169,6 +249,16 @@ def run_pyflow(invocation: RunInvocation) -> int:
     writer, resume = _open_run(
         name, runs_dir, resume_run_dir, run_id=run_id, params=params, no_cache=no_cache
     )
+
+    if resume is None:
+        if invocation.worktree:
+            code = _dispatch_worktree(
+                invocation=invocation, writer=writer, params=params, name=name, dry_run=dry_run,
+            )
+            if code is not None:
+                return code
+    else:
+        _resume_worktree(invocation, writer, params)
 
     # Which profile the models come from, on the run rather than only in the shell history
     # that launched it. A resume with no `--profile` reads it back off this file, so a run
@@ -238,6 +328,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
         # here would make every reader downstream re-derive a shape only `as_context`
         # is supposed to know.
         manifest=invocation.context_manifest,
+        worktree_dispatched=bool(writer.worktree_path),
     )
 
     verb = "resuming" if resume else "starting"
