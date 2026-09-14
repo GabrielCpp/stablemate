@@ -61,7 +61,7 @@ const store = {
     attend: { mode: "off", by_run: {}, rev: 0, status: "idle", sessions: [], selected: null, record: null },
     // dispatch queues have no socket push — occupancy changes on a launch/exit
     // that only the server's own threads see — so this pane polls while open.
-    dispatch: { status: "idle", queues: [], selectedQueue: null, items: [] },
+    dispatch: { status: "idle", queues: [], selectedQueue: null, items: [], selectedItem: null },
     settings: { status: "idle", attend: null, saving: false },
     palette: { open: false, query: "", active: 0 },
   },
@@ -1285,6 +1285,8 @@ function enqueueDispatchItem(queue, params) {
     .then((body) => {
       loadDispatchItems(queue);
       loadDispatchQueues();
+      if (body.ok) closeDispatchEnqueue();
+      else pushToast("blocked", "✗ not enqueued", "groom did not accept the item.", 7000);
       return body;
     })
     .catch(() => {
@@ -1306,22 +1308,47 @@ function wireDispatchEnqueueForm() {
     data.forEach((value, key) => {
       params[key] = value;
     });
+    // Read the fields before clearing them: the form is uncontrolled, so this is
+    // the only place its values ever exist, and the operator expects a blank form
+    // back the moment they hit submit rather than their last plan path lingering.
+    form.reset();
     enqueueDispatchItem(queue, params);
   });
 }
 
-function DispatchItemRow({ item, queue }) {
+function DispatchItemRow({ item, queue, active }) {
   const pending = item.status === "pending";
   const running = item.status === "running";
-  return html`<div class="dispatch-item-row">
+  return html`<div
+    class=${"dispatch-item-row" + (active ? " active" : "")}
+    onClick=${() => selectDispatchItem(item.item_id)}
+  >
     <span class=${"attend-status " + item.status}>${item.status}</span>
     <span class="wid">${item.item_id}</span>
     <span class="attend-meta">${item.exit_code === null || item.exit_code === undefined ? "" : "exit " + item.exit_code}</span>
     ${pending
-      ? html`<button type="button" class="attend-stop" onClick=${() => cancelDispatchItem(queue, item.item_id)}>Cancel</button>`
+      ? html`<button
+          type="button"
+          class="attend-stop"
+          onClick=${(e) => {
+            e.stopPropagation();
+            cancelDispatchItem(queue, item.item_id);
+          }}
+        >
+          Cancel
+        </button>`
       : null}
     ${running
-      ? html`<button type="button" class="attend-stop" onClick=${() => stopDispatchItem(queue, item.item_id)}>Stop</button>`
+      ? html`<button
+          type="button"
+          class="attend-stop"
+          onClick=${(e) => {
+            e.stopPropagation();
+            stopDispatchItem(queue, item.item_id);
+          }}
+        >
+          Stop
+        </button>`
       : null}
   </div>`;
 }
@@ -1335,8 +1362,42 @@ function DispatchItems() {
     return html`<div class="empty">no items on this queue.</div>`;
   }
   return dispatch.items.map(
-    (item) => html`<${DispatchItemRow} key=${item.item_id} item=${item} queue=${dispatch.selectedQueue} />`
+    (item) => html`<${DispatchItemRow}
+      key=${item.item_id}
+      item=${item}
+      queue=${dispatch.selectedQueue}
+      active=${dispatch.selectedItem === item.item_id}
+    />`
   );
+}
+
+// The item detail: params and pid, read straight off the already-loaded items
+// list — `loadDispatchItems` carries both on every row, so selecting an item is a
+// pure store update, no second fetch.
+function DispatchItemDetail() {
+  const { dispatch } = useStore();
+  if (!dispatch.selectedItem) {
+    return html`<div class="detail-empty">Select an item to see its parameters.</div>`;
+  }
+  const item = dispatch.items.find((i) => i.item_id === dispatch.selectedItem);
+  if (!item) {
+    return html`<div class="detail-empty">That item is no longer on this queue.</div>`;
+  }
+  return html`
+    <div class="at-head-line">
+      <span class="repo-branch">${item.queue || dispatch.selectedQueue || ""}</span>
+      <span class="wid">${item.item_id}</span>
+      <span class=${"attend-status " + item.status}>${item.status}</span>
+    </div>
+    <div class="dispatch-detail-row"><span class="dispatch-detail-label">command</span><span class="attend-meta">${item.command || ""}</span></div>
+    <div class="dispatch-detail-row"><span class="dispatch-detail-label">pid</span><span class="attend-meta">${item.pid ?? "—"}</span></div>
+    <div class="dispatch-detail-row"><span class="dispatch-detail-label">exit code</span><span class="attend-meta">${
+      item.exit_code === null || item.exit_code === undefined ? "—" : item.exit_code
+    }</span></div>
+    <div class="dispatch-detail-row"><span class="dispatch-detail-label">started</span><span class="attend-meta">${attendWhen(item.started_at)}</span></div>
+    <div class="dispatch-detail-label">params</div>
+    <pre class="at-tool-body">${JSON.stringify(item.params || {}, null, 2)}</pre>
+  `;
 }
 
 function loadDispatchQueues() {
@@ -1357,8 +1418,13 @@ function loadDispatchItems(queue) {
 }
 
 function selectDispatchQueue(queue) {
-  setIn("dispatch", { selectedQueue: queue, items: [] });
+  setIn("dispatch", { selectedQueue: queue, items: [], selectedItem: null });
   loadDispatchItems(queue);
+  document.getElementById("btn-dispatch-new").disabled = false;
+}
+
+function selectDispatchItem(itemId) {
+  setIn("dispatch", { selectedItem: itemId });
 }
 
 function cancelDispatchItem(queue, itemId) {
@@ -1496,6 +1562,27 @@ function closePalette() {
   if (palInvoker && palInvoker.focus && pal.contains(document.activeElement)) palInvoker.focus();
 }
 
+// --------------------------------------------------------------------------- //
+// Dispatch "new run" dialog
+// --------------------------------------------------------------------------- //
+const dispatchModal = document.getElementById("dispatch-enqueue-modal");
+let dispatchModalInvoker = null; // focus goes back here on close — never dropped to <body>
+
+function openDispatchEnqueue(invoker) {
+  dispatchModalInvoker = invoker || document.activeElement;
+  dispatchModal.classList.add("open");
+  const firstField = dispatchModal.querySelector("input, select");
+  if (firstField) firstField.focus();
+}
+
+function closeDispatchEnqueue() {
+  if (!dispatchModal.classList.contains("open")) return;
+  dispatchModal.classList.remove("open");
+  if (dispatchModalInvoker && dispatchModalInvoker.focus && dispatchModal.contains(document.activeElement)) {
+    dispatchModalInvoker.focus();
+  }
+}
+
 function movePaletteActive(delta) {
   const snap = store.get();
   const hits = paletteHits(snap.runs, snap.palette.query);
@@ -1612,6 +1699,19 @@ function wireEvents() {
       openPalette(palBtn);
       return;
     }
+    const newRunBtn = e.target.closest("#btn-dispatch-new");
+    if (newRunBtn && !newRunBtn.disabled) {
+      openDispatchEnqueue(newRunBtn);
+      return;
+    }
+    if (e.target.closest(".dispatch-enqueue-close")) {
+      closeDispatchEnqueue();
+      return;
+    }
+    if (e.target === dispatchModal) {
+      closeDispatchEnqueue();
+      return;
+    }
   });
 
   palIn.addEventListener("input", (e) => setIn("palette", { query: e.target.value, active: 0 }));
@@ -1631,6 +1731,7 @@ function wireEvents() {
     if (e.key === "Escape") {
       closePalette();
       closeRepoMenu();
+      closeDispatchEnqueue();
       return;
     }
     // modal focus trap: the palette's only focusable element is its input
@@ -1693,6 +1794,7 @@ const ISLANDS = [
   ["dispatch-queues", DispatchQueues],
   ["dispatch-enqueue", DispatchEnqueueForm],
   ["dispatch-items", DispatchItems],
+  ["dispatch-detail", DispatchItemDetail],
   ["setting-attend", AttendSetting],
   ["palette-results", PaletteResults],
 ];
