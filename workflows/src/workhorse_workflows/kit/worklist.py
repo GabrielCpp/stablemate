@@ -237,13 +237,14 @@ def _ref_path(ref: str) -> str:
 
 
 def _orphan_rows(repo_root: Path, service: str | None) -> list[WorklistRow]:
-    """``unreachable`` rows for every node nothing in the book links to.
+    """``unreachable`` rows for every page nothing in the book reaches.
 
     The concept nobody ever linked to and the flow whose only incoming edge was
     the page that just got trimmed both read as orphans under ``graph --orphans``,
     and both queue the same authored-removal row. The check is the one the OKF
-    graph already computes — its ``select(orphans=True)`` reads incoming edges
-    and yields every node with none.
+    graph already computes — its ``select(orphans=True)`` yields every page no
+    edge reaches, on the page or any heading in it, so a heading of a linked
+    page is never a row of its own.
     """
     try:
         okf = Ostler(repo_root)

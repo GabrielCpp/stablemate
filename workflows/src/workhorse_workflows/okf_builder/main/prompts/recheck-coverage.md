@@ -89,7 +89,7 @@ book is not an empty gap.
    A web GUI's server node is incomplete unless it has top-level `launch`, `working-directory`,
    `entry-url`, `health-path`, and unique response-body `identity` bullets that can start and verify
    the app locally; requeue that server when any field is absent.
-3. **Orphans** — `ostler graph --surface ‹service› --orphans` lists nodes no graph edge points to.
+3. **Orphans** — `ostler graph --surface ‹service› --orphans` lists pages no graph edge reaches (a link to the page or to any heading in it reaches the whole page).
    Repair only top-level/file nodes and independent surface elements that should be reachable from
    a surface root. Ignore nested `field`/`method` members (and other typed sections already contained
    by a documented parent); their parent containment is the structural pointer, and giving every
