@@ -31,6 +31,7 @@ language-shaped: symbols are the unit for Go/TS, the file is the unit for a temp
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,20 @@ def _values(value: Any) -> list[str]:
     return [str(value)] if value else []
 
 
+def _undigested(ref: str) -> str:
+    """A citation's identity for the coverage join, with any stamped ``@digest`` dropped.
+
+    The inventory's own ``code`` values never carry one — they are read straight off the
+    source, which knows nothing about the book — so a ref compared against them digest-and-all
+    would match nothing the moment its citation was ever stamped. The digest marks *freshness*,
+    a fact `doctor`'s `stale-citation` check owns; it is not part of *which unit* this is.
+    """
+    try:
+        return refs_mod.render_code_ref(dataclasses.replace(refs_mod.parse_code_ref(ref), digest=None))
+    except ValueError:
+        return ref
+
+
 def citations(graph: Graph, surface: str | None = None) -> dict[str, list[str]]:
     """Every ``code:`` target the book cites → the node ids citing it.
 
@@ -60,7 +75,7 @@ def citations(graph: Graph, surface: str | None = None) -> dict[str, list[str]]:
     data = graph_mod.build(graph, surface=surface)
     for node in data["nodes"]:
         for ref in refs_mod.code_refs(node["bullets"].get("code")):
-            out.setdefault(ref, []).append(node["id"])
+            out.setdefault(_undigested(ref), []).append(node["id"])
     return out
 
 
