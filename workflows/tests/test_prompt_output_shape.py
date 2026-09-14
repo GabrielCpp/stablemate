@@ -32,8 +32,10 @@ import workhorse_workflows
 
 PACKAGE = Path(workhorse_workflows.__file__).parent
 
-#: The workflow packages whose turns declare a model. `hello_world` is the quick start and is
-#: covered end-to-end by `test_hello_world.py`; `kit` is the shared library and has no prompts.
+#: The workflow packages whose turns declare a model. `loop_runner`'s one turn also
+#: declares `Outcome`, but its prompt is the plan handed straight through with no
+#: room for a worked example of the reply shape, so it is left out here; `kit` is the
+#: shared library and has no prompts.
 WORKFLOWS = ("author", "coder", "okf_builder", "research")
 
 #: A fenced ```json block. A prompt may carry several — an artifact it must write, an example

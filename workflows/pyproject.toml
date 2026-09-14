@@ -1,7 +1,7 @@
 [project]
 name = "workhorse-workflows"
 version = "2.0.0"
-description = "The stablemate agent workflows — hello-world, research, author, coder, okf-builder, loop-runner — as an installable package workhorse discovers by entry point."
+description = "The stablemate agent workflows — loop-runner, research, author, coder, okf-builder — as an installable package workhorse discovers by entry point."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -83,18 +83,17 @@ test = ["pytest>=8.0"]
 # table the single source of truth — a workflow with no row here has no command at all,
 # which is a gap you notice at install time rather than at resolution time.
 #
-# `hello-world` is deliberately first: it is the one a reader runs before they trust any
+# `loop-runner` is deliberately first: it is the one a reader runs before they trust any
 # of the others, and it needs no repo, no manifest and — under `--dry-run` — no agent CLI.
 #
-#     workhorse-hello-world run --dry-run
+#     workhorse-loop-runner run --dry-run
 #     workhorse-coder run qa --params '{"story":"CASE-1234"}'
 [project.scripts]
-workhorse-hello-world = "workhorse_workflows.hello_world.workflow:main"
+workhorse-loop-runner = "workhorse_workflows.loop_runner.workflow:main"
 workhorse-research = "workhorse_workflows.research.workflow:main"
 workhorse-author = "workhorse_workflows.author.workflow:main"
 workhorse-okf-builder = "workhorse_workflows.okf_builder.workflow:main"
 workhorse-coder = "workhorse_workflows.coder.workflow:main"
-workhorse-loop-runner = "workhorse_workflows.loop_runner.workflow:main"
 
 [project.urls]
 Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/workflows"
