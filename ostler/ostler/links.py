@@ -54,6 +54,10 @@ class LinkResolver:
     def __init__(self, graph: Graph) -> None:
         self.graph = graph
         self._anchors: dict[Path, set[str]] = {}
+        # A book links the same few hundred files from thousands of bullets, and doctor and the
+        # graph build resolve every one of them, so the file side of a link is settled once per
+        # (directory, path) for the run, as the anchor sets above already are.
+        self._files: dict[tuple[Path, str], tuple[Path, bool, str]] = {}
 
     def anchors(self, path: Path) -> set[str]:
         if path not in self._anchors:
@@ -70,18 +74,24 @@ class LinkResolver:
         # heading onto one anchor and rejected `#effects-1`, the one GitHub actually renders.
         return set(document_anchors(doc).values())
 
+    def _settle_file(self, source: Path, path_part: str) -> tuple[Path, bool, str]:
+        target = source if path_part == "" else (source.parent / path_part).resolve()
+        try:
+            rel = target.relative_to(self.graph.root).as_posix()
+        except ValueError:
+            rel = target.as_posix()
+        return target, target.is_file(), rel
+
     def resolve(self, source: Path, href: str) -> LinkTarget | None:
         """Resolve *href* found in *source*. None if it isn't a doc link (URL / code ref)."""
         if not is_doc_link(href):
             return None
         path_part, _, anchor = href.strip().partition("#")
-        target = source if path_part == "" else (source.parent / path_part).resolve()
-        file_exists = target.is_file()
+        key = (source if path_part == "" else source.parent, path_part)
+        if key not in self._files:
+            self._files[key] = self._settle_file(source, path_part)
+        target, file_exists, rel = self._files[key]
         anchor_exists = bool(anchor) and file_exists and anchor in self.anchors(target)
-        try:
-            rel = target.relative_to(self.graph.root).as_posix()
-        except ValueError:
-            rel = target.as_posix()
         node_id = f"{rel}#{anchor}" if anchor else rel
         return LinkTarget(href=href.strip(), path=target, anchor=anchor,
                           file_exists=file_exists, anchor_exists=anchor_exists, node_id=node_id)
