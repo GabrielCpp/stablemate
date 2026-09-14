@@ -1,4 +1,4 @@
-"""Tests for `_mint_qa_secrets` in `coder.qa.nodes.qa` — the per-run credential mint.
+"""Tests for `_mint_qa_secrets` in `workhorse_workflows.qa.runner` — the per-run credential mint.
 
 A short-lived credential goes stale between QA-plan authoring and the run that actually
 spends it, so the recipes that produce one live on the book's runbook as `secrets:` and
@@ -16,8 +16,8 @@ import logging
 import subprocess
 from pathlib import Path
 
-from workhorse_workflows.coder.qa.nodes import qa as qa_nodes
-from workhorse_workflows.coder.qa.nodes.qa import _mint_qa_secrets
+from workhorse_workflows.qa import runner as qa_runner
+from workhorse_workflows.qa.runner import _mint_qa_secrets
 
 _LOGGER = logging.getLogger("test")
 
@@ -76,7 +76,7 @@ def test_reports_empty_stdout_as_an_error(tmp_path: Path):
 
 
 def test_reports_a_timeout_as_an_error(monkeypatch, tmp_path: Path):
-    monkeypatch.setattr(qa_nodes, "SECRET_MINT_TIMEOUT_S", 0.1)
+    monkeypatch.setattr(qa_runner, "SECRET_MINT_TIMEOUT_S", 0.1)
     minted, error = _mint_qa_secrets({"QA_EDITOR_ID_TOKEN": "sleep 5"}, tmp_path, _LOGGER)
     assert minted == {}
     assert "could not be run" in error

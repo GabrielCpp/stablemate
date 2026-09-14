@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from workhorse_workflows.coder.qa.nodes import evidence
+from workhorse_workflows.qa import evidence
 
 
 def _report(spec: Path, run_id: str) -> None:

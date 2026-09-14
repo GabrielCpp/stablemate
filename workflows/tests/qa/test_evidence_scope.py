@@ -14,7 +14,7 @@ still held to the strict reading.
 """
 from __future__ import annotations
 
-from workhorse_workflows.coder.qa.nodes import evidence
+from workhorse_workflows.qa import evidence
 
 #: A verdict shaped the way a runner writes one for an obligation it actually proved.
 PROVED = {"verdict": "pass", "log_refs": ["qa/qa-run.ndjson#3"]}

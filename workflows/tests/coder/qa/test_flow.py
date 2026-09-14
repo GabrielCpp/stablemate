@@ -44,13 +44,14 @@ from ostler.qa.source_context import SourceRepository
 
 from workhorse_workflows.coder.qa import flow as qa_flow
 from workhorse_workflows.coder.qa.flow import Qa
-from workhorse_workflows.coder.qa.nodes import evidence as evidence_nodes
 from workhorse_workflows.coder.qa.nodes import qa as qa_nodes
 from workhorse_workflows.coder.qa.nodes import regression as regression_nodes
 from workhorse_workflows.coder.qa.nodes.qa import QA_SCRATCH_DIRNAME
 from workhorse_workflows.coder.shared import okf as okf_nodes
 from workhorse_workflows.coder.shared import qa_support
 from workhorse_workflows.coder.shared.dev import resolve_impl_context
+from workhorse_workflows.qa import evidence as qa_evidence_mod
+from workhorse_workflows.qa import runner as qa_runner_mod
 
 STORY = "STORY-1"
 EPIC = "EPIC-1"
@@ -295,14 +296,19 @@ class _Ostler:
         self.context_args: list[dict[str, Any]] = []
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> _Ostler:
-        """Stand in for the `Ostler` the nodes construct, in all three modules that do.
+        """Stand in for the `Ostler` the nodes construct, in every module that does.
 
         A session subclasses the real facade rather than replacing it, so the methods this
         script says nothing about — `qa_lint`, `qa_tools_catalog` — still run for real
         against the repo under test, and a signature that drifts from the API fails at
         type-check rather than passing a test that no longer describes anything.
+
+        `ensure_stack`/`run_qa_plan`/`verify_qa_evidence` now delegate to the family-neutral
+        `workhorse_workflows.qa.runner`/`evidence` modules, which hold their own `Ostler`
+        bindings independent of `qa_nodes` — both need patching too. `coder.qa.nodes.evidence`
+        no longer imports `Ostler` at all, so it is not in this list.
         """
-        for module in (okf_nodes, qa_nodes, evidence_nodes):
+        for module in (okf_nodes, qa_nodes, qa_runner_mod, qa_evidence_mod):
             monkeypatch.setattr(module, "Ostler", self._session)
         return self
 

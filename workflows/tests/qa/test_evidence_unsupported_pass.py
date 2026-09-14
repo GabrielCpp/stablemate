@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from workhorse_workflows.coder.qa.nodes import evidence
+from workhorse_workflows.qa import evidence
 
 
 def _spec_dir(tmp_path: Path, *records: dict) -> Path:
