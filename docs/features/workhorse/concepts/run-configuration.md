@@ -106,10 +106,10 @@ are frozen. Values are captured from environment mappings only by their `from_en
 
 ### field: cap_default_wait_s
 - type: `float`
-- default: `3600.0`
+- default: `600.0`
 - required: true
 - semantics: fallback wait in seconds when a provider cap has no reported reset time
-- verify: json_path(path="$.cap_default_wait_s", equals=3600.0)
+- verify: json_path(path="$.cap_default_wait_s", equals=600.0)
 - code: `workhorse/workhorse/config_run.py::AgentResilience`
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
@@ -144,10 +144,10 @@ are frozen. Values are captured from environment mappings only by their `from_en
 
 ### field: max_cap_waits
 - type: `int`
-- default: `128`
+- default: `1536`
 - required: true
 - semantics: maximum consecutive cap waits during one node visit
-- verify: json_path(path="$.max_cap_waits", equals=128)
+- verify: json_path(path="$.max_cap_waits", equals=1536)
 - code: `workhorse/workhorse/config_run.py::AgentResilience`
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 

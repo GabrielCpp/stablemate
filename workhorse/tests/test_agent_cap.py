@@ -728,6 +728,19 @@ def test_probing_can_span_the_whole_cap_wait_budget():
     assert RESILIENCE.max_cap_waits > RESILIENCE.cap_wait_budget_s / RESILIENCE.cap_probe_s
 
 
+def test_an_unknown_reset_cap_can_be_re_attempted_across_the_whole_budget():
+    """A cap naming no reset re-attempts every ``cap_default_wait_s``; that cadence too
+    must outlast the cumulative budget rather than end on the wait count."""
+    assert RESILIENCE.max_cap_waits > RESILIENCE.cap_wait_budget_s / RESILIENCE.cap_default_wait_s
+
+
+def test_an_unknown_reset_cap_is_re_attempted_well_inside_the_hour():
+    """With no reset time, every second of the wait may be spent after the window has
+    reopened; an hour-long guess re-parked runs for a second hour when the reset fell
+    minutes after their probe. A still-capped re-attempt costs one failing call."""
+    assert RESILIENCE.cap_default_wait_s <= RESILIENCE.cap_tick_s
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

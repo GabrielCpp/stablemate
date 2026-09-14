@@ -135,7 +135,14 @@ class AgentResilience:
     #: on a SEPARATE thread SIGKILLs the whole process group once the turn overruns
     #: its budget by this grace, regardless of stream state.
     watchdog_grace_s: float = 120.0
-    cap_default_wait_s: float = 3600.0
+    #: Wait before re-attempting a cap whose error names no reset time (MiniMax's
+    #: "Token Plan usage limit reached" names none). Nothing is known about when the
+    #: window reopens, so every second of this wait is time the run may spend parked
+    #: after it already has: an hour here repeatedly re-parked a fleet for a second
+    #: hour when its probe fired minutes before the reset. A re-attempt while still
+    #: capped is one CLI call that fails at once and spends no tokens, so the wait is
+    #: sized by the time worth losing, not by the cost of asking.
+    cap_default_wait_s: float = 600.0
     cap_wait_margin_s: float = 120.0
     cap_tick_s: float = 600.0
     #: Longest SINGLE sleep before re-attempting a capped turn, regardless of how far
@@ -146,13 +153,15 @@ class AgentResilience:
     #: run within the interval when it is not. 0 disables probing (sleep the whole
     #: reported reset in one wait, the pre-probe behaviour).
     #:
-    #: ``max_cap_waits`` must exceed ``cap_wait_budget_s / cap_probe_s`` or the wait
-    #: count, not the budget, becomes what ends a legitimately long cap.
+    #: ``max_cap_waits`` must exceed ``cap_wait_budget_s`` divided by the shorter of this
+    #: and ``cap_default_wait_s``, or the wait count, not the budget, becomes what ends
+    #: a legitimately long cap.
     cap_probe_s: float = 7200.0
-    #: Consecutive cap waits allowed in one node visit. Sized so that probing every
-    #: ``cap_probe_s`` can span the whole ``cap_wait_budget_s`` (8d / 2h = 96) with
-    #: room to spare: the cumulative budget is meant to be the binding limit.
-    max_cap_waits: int = 128
+    #: Consecutive cap waits allowed in one node visit. Sized so that re-attempting an
+    #: unknown-reset cap every ``cap_default_wait_s`` can span the whole
+    #: ``cap_wait_budget_s`` (8d / 10min = 1152) with room to spare: the cumulative
+    #: budget is meant to be the binding limit.
+    max_cap_waits: int = 1536
     cap_max_wait_s: float = float(8 * 24 * 3600)
     #: Cumulative cap sleep per node: one maximum structured reset plus its margin.
     cap_wait_budget_s: float = float(8 * 24 * 3600 + 120)
@@ -189,11 +198,11 @@ class AgentResilience:
             invoke_backoff_cap_s=_nonnegative_float(e, "AGENT_INVOKE_BACKOFF_CAP_S", 1800.0),
             retry_wait_budget_s=_nonnegative_float(e, "AGENT_RETRY_WAIT_BUDGET_S", 97305.0),
             watchdog_grace_s=_float(e, "AGENT_WATCHDOG_GRACE_S", 120.0),
-            cap_default_wait_s=_nonnegative_float(e, "AGENT_CAP_DEFAULT_WAIT_S", 3600.0),
+            cap_default_wait_s=_nonnegative_float(e, "AGENT_CAP_DEFAULT_WAIT_S", 600.0),
             cap_wait_margin_s=_nonnegative_float(e, "AGENT_CAP_WAIT_MARGIN_S", 120.0),
             cap_tick_s=_positive_float(e, "AGENT_CAP_TICK_S", 600.0),
             cap_probe_s=_nonnegative_float(e, "AGENT_CAP_PROBE_S", 7200.0),
-            max_cap_waits=_int(e, "AGENT_MAX_CAP_WAITS", 128),
+            max_cap_waits=_int(e, "AGENT_MAX_CAP_WAITS", 1536),
             cap_max_wait_s=_nonnegative_float(
                 e, "AGENT_CAP_MAX_WAIT_S", float(8 * 24 * 3600)
             ),

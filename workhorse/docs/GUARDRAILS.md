@@ -165,11 +165,11 @@ same CLI configuration as the conversation it is compacting.
 | `AGENT_INVOKE_BACKOFF_BASE_S` | 15 | Base seconds for exponential backoff |
 | `AGENT_INVOKE_BACKOFF_CAP_S` | 1800 | Maximum backoff delay in seconds — the coarsest useful poll for "is the network back" |
 | `AGENT_RETRY_WAIT_BUDGET_S` | 97305 (~27h) | Cumulative transient-backoff sleep for one agent-node visit; shared by output retries and reframes |
-| `AGENT_CAP_DEFAULT_WAIT_S` | 3600 | Default wait when cap reset time can't be parsed |
+| `AGENT_CAP_DEFAULT_WAIT_S` | 600 | Wait before re-attempting a cap whose reset time can't be parsed. Short because the whole wait may fall after the window reopened, and a still-capped re-attempt is one failing call |
 | `AGENT_CAP_WAIT_MARGIN_S` | 120 | Extra seconds added after parsed reset time |
 | `AGENT_CAP_TICK_S` | 600 | Interval for "still paused" messages during long waits |
 | `AGENT_CAP_PROBE_S` | 7200 | Longest single cap sleep before re-attempting the turn, however far out the reported reset is. A weekly window reopens ~6 days out, and sleeping that in one shot means the run cannot notice the cap clearing EARLY — a manual reset, a plan change, topped-up credits. A re-attempt costs one CLI invocation that fails immediately while the cap still holds. 0 restores the pre-probe behaviour (one sleep to the reported reset) |
-| `AGENT_MAX_CAP_WAITS` | 128 | Maximum consecutive cap waits before giving up. Sized so probing every `AGENT_CAP_PROBE_S` can span the whole `AGENT_CAP_WAIT_BUDGET_S` (8d / 2h = 96) with room to spare: the cumulative budget, not the wait count, is meant to be what ends a legitimately long cap |
+| `AGENT_MAX_CAP_WAITS` | 1536 | Maximum consecutive cap waits before giving up. Sized so re-attempting an unknown-reset cap every `AGENT_CAP_DEFAULT_WAIT_S` can span the whole `AGENT_CAP_WAIT_BUDGET_S` (8d / 10min = 1152) with room to spare: the cumulative budget, not the wait count, is meant to be what ends a legitimately long cap |
 | `AGENT_CAP_WAIT_BUDGET_S` | 691320 (8 days + 120s) | Cumulative cap sleep for one agent-node visit; a reset beyond the remaining allowance stops immediately rather than sleeping partway |
 | `AGENT_EXEC_RETRY_MAX` | 5 | Short spawn retries when the agent-CLI binary is momentarily un-exec'able during a self-update (`ETXTBSY`/`ENOENT`/`ENOEXEC`/`ESTALE`) before escalating to the transient ladder. If the CLI launched earlier in this process, a later absence remains transient even when `which` is temporarily blind; a CLI absent from the first launch fails after these bounded retries. |
 | `AGENT_EXEC_RETRY_BASE_S` | 1 | Base seconds for the exec-retry exponential backoff |

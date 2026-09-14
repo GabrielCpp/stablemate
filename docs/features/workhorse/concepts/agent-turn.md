@@ -69,7 +69,7 @@ resolves any of them.
   [`extract_outputs`](extract-outputs.md) to parse.
 - consistency: backend-invocation-error — `BackendInvocationError` propagates immediately for non-transient failures, after
   `resilience.max_invoke_retries` short retries, or after `resilience.max_cap_waits` cap waits
-  (default `128`, the backstop against a cap that never actually clears).
+  (default `1536`, the backstop against a cap that never actually clears).
 - emits: `budget_scaled` otel event, carrying `scale` and `base_timeout_s`, when `budget_scale` is
   not `1.0` — silent on an unscaled turn, so an unscaled run says nothing about scaling at all.
 - verify: emitted(event="budget_scaled", count=1)

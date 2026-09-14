@@ -84,7 +84,7 @@ same `now` this function received.
 When parsing succeeds, `delay = parsed + resilience.cap_wait_margin_s`; the label is computed
 from that same `now` plus `delay` and formatted as `"%a %H:%M"`. When parsing fails, neither a
 structured epoch nor a parseable reset time is available, so the result uses
-`resilience.cap_default_wait_s` (env `AGENT_CAP_DEFAULT_WAIT_S`, default `3600` = 1 hour) with the
+`resilience.cap_default_wait_s` (env `AGENT_CAP_DEFAULT_WAIT_S`, default `600` = 10 minutes) with the
 fixed label `"unknown reset — using default wait"`.
 
 Two of the four branches (structured-past, text-not-found) return a **fixed** label string instead
