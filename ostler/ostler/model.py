@@ -736,6 +736,7 @@ class _Cached:
     doc: markdown.MarkdownDoc
     store: index.IndexStore | None       # the store this content was computed under, if any
     ui_nodes: list[UINode] | None        # stored form, straight off the entry; see `_DocProducts`
+    links: tuple[tuple[str, str, int], ...] | None = None   # see `read_links`
 
 
 _DOC_CACHE: dict[Path, _Cached] = {}
@@ -763,6 +764,9 @@ class _DocProducts:
     #: link targets too, and only :func:`_feature_doc` has the repo root a node's id is minted
     #: against. Such an entry is completed in place the first time a run does want them.
     ui_nodes: list[UINode] | None = None
+    #: The whole file's ``(text, href, line)`` links, as :func:`markdown.iter_links` yields them
+    #: over its bytes. ``None`` until a reader asks for them; see :func:`read_links`.
+    links: tuple[tuple[str, str, int], ...] | None = None
 
 
 def read_doc(path: Path) -> markdown.MarkdownDoc:
@@ -812,7 +816,7 @@ def _read_products(path: Path, data: bytes, digest: str,
     """
     payload = _products_of(store.get(path, sha=digest)) if store is not None else None
     if payload is not None:
-        return _Cached(digest, _doc_from_products(payload), store, payload.ui_nodes)
+        return _Cached(digest, _doc_from_products(payload), store, payload.ui_nodes, payload.links)
     doc = markdown.split(data.decode("utf-8"))
     # Force the lazy section parse now. The sections — and the bullets, tables and links hanging
     # off them — are the expensive half, and an entry carrying only the frontmatter would make
@@ -829,8 +833,38 @@ def _persist(store: index.IndexStore, path: Path, cached: _Cached) -> None:
     store.put(path, _DocProducts(
         frontmatter=cached.doc.frontmatter, raw_frontmatter=cached.doc.raw_frontmatter,
         body=cached.doc.body, sections=cached.doc.sections, ui_nodes=cached.ui_nodes,
+        links=cached.links,
     ), sha=cached.digest)
     cached.store = store
+
+
+def read_links(path: Path) -> tuple[tuple[str, str, int], ...]:
+    """Every link in the file at *path*, outside code, as ``(text, href, line)``.
+
+    Doctor's link validation is document-wide, so it scans every file in the book on every run,
+    and scanning is a full markdown parse of the file's text. The link list is a function of the
+    bytes alone, so it goes into the same index entry as the document: without it, a warm
+    doctor served every document from the index and then parsed each one again for its links,
+    which was the largest single cost left in the run. The entry is completed in place, as
+    :func:`_ui_nodes` does, because the document and its links go stale together.
+
+    Raises ``OSError`` when the file cannot be read, as :func:`read_doc` does.
+    """
+    target = Path(path)
+    doc = read_doc(target)
+    cached = _DOC_CACHE[target]
+    if cached.links is not None:
+        return cached.links
+    data = target.read_bytes()
+    links = tuple(markdown.iter_links(data.decode("utf-8")))
+    # Stored only against the bytes it was scanned from: a writer phase may have moved the file
+    # since `read_doc` hashed it, and those links filed under the old digest would be served stale.
+    if cached.doc is doc and index.content_sha(data) == cached.digest:
+        cached.links = links
+        store = index.active()
+        if store is not None:
+            _persist(store, target, cached)
+    return links
 
 
 def _products_of(payload: object) -> _DocProducts | None:

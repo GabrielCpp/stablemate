@@ -86,7 +86,9 @@ INDEX_DIR_NAME = "ostler-index"
 #: bytes did not move, so nothing else in this file's keying would notice: an entry written
 #: before that change hands back the old, colliding ids forever on a source checkout, where
 #: the version in the epoch never moves.
-SCHEMA_VERSION = 5
+#: 6: an entry carries its file's ``links`` (:func:`ostler.model.read_links`), a field added to
+#: the stored ``_DocProducts``.
+SCHEMA_VERSION = 6
 
 #: How long an entry may go unwritten before a prune removes it. Two weeks: long enough
 #: that an occasional book survives a quiet fortnight, short enough that an unattended

@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ostler import (checks, dynamic_registry, freeze, inventory, links as links_mod, markdown,
-                    registry, schemas, select)
+                    model, registry, schemas, select)
 from ostler import graph as graph_mod, locators as loc_mod, reach
 from ostler.vet import placement as placement_mod
 from ostler import refs as refs_mod
@@ -2211,11 +2211,11 @@ def _check_ui(graph: Graph, f: list[Finding],
                 continue
             rel = path.relative_to(graph.root).as_posix()
             try:
-                body = path.read_text(encoding="utf-8")
+                links = model.read_links(path)
             except OSError:
                 continue
             seen: set = set()
-            for _text, href, line in markdown.iter_links(body):
+            for _text, href, line in links:
                 if not links_mod.is_doc_link(href) or href in seen:
                     continue
                 seen.add(href)

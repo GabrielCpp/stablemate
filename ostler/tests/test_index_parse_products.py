@@ -196,6 +196,37 @@ def test_the_ui_nodes_come_off_the_index_too(
     assert {(n.id, n.type, n.line, n.parent, n.path) for n in nodes} == expected
 
 
+def test_a_warm_doctor_scans_no_file_for_its_links(
+        ui_book: Path, tmp_path: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch):
+    """Link validation is document-wide: every file in the book, every run.
+
+    Served every document off the index, a warm doctor still parsed each file's whole text again
+    to list its links, which on a real book was the largest cost left in the run. The link list
+    is a function of the bytes, so it rides in the same entry.
+    """
+    real = importlib.import_module("ostler.model")
+    directory = tmp_path / "index"
+    dash = ui_book / "docs" / "features" / "ui" / "dash.md"
+    expected = tuple(markdown.iter_links(dash.read_text(encoding="utf-8")))
+    assert expected, "the fixture file has no links to serve"
+    warm_index(ui_book, directory)
+
+    real._DOC_CACHE.clear()
+    scanned: list[str] = []
+    iter_links = markdown.iter_links
+
+    def scan(text: str):
+        scanned.append(text)
+        return iter_links(text)
+
+    monkeypatch.setattr(markdown, "iter_links", scan)
+    with index.session(ui_book, directory=directory):
+        links = real.read_links(dash)
+
+    assert not scanned, "re-scanned a file's links on a warm index"
+    assert links == expected
+
+
 # ---------------------------------------------------------------------------
 # (2) read-only callers share; a writer never gets the shared document
 # ---------------------------------------------------------------------------
