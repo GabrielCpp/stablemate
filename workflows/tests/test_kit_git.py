@@ -79,6 +79,27 @@ def test_commit_paths_is_false_when_the_scope_did_not_change(tmp_path: Path) -> 
     assert _head_subject(root) == "init"
 
 
+def _reject_commits(root: Path) -> None:
+    """Install a pre-commit hook that refuses every commit."""
+    hook = root / ".git" / "hooks" / "pre-commit"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\necho refused by the repo hook >&2\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+
+
+def test_commit_paths_runs_the_repo_hooks_unless_told_not_to(tmp_path: Path) -> None:
+    root = make_git_repo(tmp_path / "acme")
+    _reject_commits(root)
+    _write(root, "docs/features/api/index.md")
+
+    with pytest.raises(GitError):
+        commit_paths(root, "docs: update the book", "docs")
+    assert _head_subject(root) == "init"
+
+    assert commit_paths(root, "docs: update the book", "docs", verify=False) is True
+    assert _tracked(root) == {"docs/features/api/index.md"}
+
+
 def test_commit_all_still_sweeps_the_whole_tree(tmp_path: Path) -> None:
     """The deliberate sweep survives — it is correct in a checkout the run owns."""
     root = make_git_repo(tmp_path / "acme")

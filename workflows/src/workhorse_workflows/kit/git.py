@@ -173,7 +173,7 @@ def commits_ahead(path: str | Path, branch: str, base: str) -> int:
         return -1
 
 
-def commit_paths(path: str | Path, message: str, *pathspecs: str) -> bool:
+def commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool = True) -> bool:
     """Stage exactly ``pathspecs`` and commit them.
 
     Returns False when nothing was staged (or the commit failed), True when a
@@ -184,7 +184,14 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str) -> bool:
     ``git add -A``, which turns a caller whose "what changed" list came out empty — the
     normal shape ``commit_paths(root, msg, *changed)`` — into a caller that commits the
     entire working tree, including work the run never did. Sweeping is a different
-    intent and has its own name: :func:`commit_all`."""
+    intent and has its own name: :func:`commit_all`.
+
+    ``verify=False`` commits with ``--no-verify``: the target repo's ``pre-commit`` and
+    ``commit-msg`` hooks do not run. A repo's hooks are written for the people and agents
+    who change its code; a workflow whose every commit is scoped to paths it alone writes,
+    and whose content it has already gated itself, is not that committer. A hook that
+    checks the whole working tree then fails such a commit on an unrelated edit somebody
+    else left there. Leave it True anywhere the commit carries code."""
     if not pathspecs:
         return False
     scope = ["--", *pathspecs]
@@ -204,7 +211,7 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str) -> bool:
         return False  # nothing staged
     except GitCommandError:
         pass  # staged changes present
-    repo.git.commit("-m", message, *scope)
+    repo.git.commit("-m", message, *(() if verify else ("--no-verify",)), *scope)
     return True
 
 
