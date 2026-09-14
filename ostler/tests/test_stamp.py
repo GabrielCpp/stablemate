@@ -4,7 +4,8 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from ostler import stamp
+from ostler import source_snapshots, stamp
+from ostler.cli import main
 
 SERVICE = "def charge(amount):\n    return amount\n"
 
@@ -172,3 +173,85 @@ def test_stamp_page_reports_a_bullet_whose_line_count_changed_as_unresolved(
     assert result.unresolved == ["- code: `src/service.py::charge`"]
     assert result.changed is False
     assert "@" not in feature.read_text(encoding="utf-8")
+
+
+def test_stamp_page_from_catalog_uses_the_catalogs_digest_not_the_live_files(tmp_path: Path):
+    # The file on disk has drifted since the catalog was last built. Migration must stamp
+    # the *catalog's* stale digest, not re-read the file — so `stale-citation` fires right
+    # after migration, instead of the drift silently looking fresh.
+    root = tmp_path
+    _book(root, "`src/service.py::charge`")
+    _service(root, "def charge(amount):\n    return amount * 2\n")
+    stale_digest = hashlib.sha256(SERVICE.encode()).hexdigest()
+    catalog = source_snapshots.SourceCatalog(
+        repositories=(
+            source_snapshots.RepositorySnapshot(
+                id=source_snapshots.SELF_REPOSITORY, base="", head="WORKTREE",
+                files=(
+                    source_snapshots.SourceFile(path="src/service.py", content_sha256=stale_digest),
+                ),
+            ),
+        ),
+    )
+    result = stamp.stamp_page_from_catalog(root, "docs/features/billing/charge.md", catalog)
+    assert result.stamped == 1
+    assert result.unresolved == []
+    text = (root / "docs/features/billing/charge.md").read_text(encoding="utf-8")
+    assert f"`src/service.py::charge` @{stale_digest[:12]}" in text
+    assert stale_digest[:12] != stamp.digest_file(
+        (root / "src/service.py").read_text(encoding="utf-8")
+    )
+
+
+def test_stamp_page_from_catalog_leaves_a_file_with_no_catalog_row_unstamped(tmp_path: Path):
+    _book(tmp_path, "`src/missing_from_catalog.py::charge`")
+    catalog = source_snapshots.SourceCatalog(
+        repositories=(
+            source_snapshots.RepositorySnapshot(
+                id=source_snapshots.SELF_REPOSITORY, base="", head="WORKTREE", files=(),
+            ),
+        ),
+    )
+    result = stamp.stamp_page_from_catalog(tmp_path, "docs/features/billing/charge.md", catalog)
+    assert result.stamped == 0
+    assert result.unresolved == ["src/missing_from_catalog.py::charge"]
+    assert result.changed is False
+
+
+def test_cli_stamp_from_catalog_migrates_the_whole_book_and_deletes_the_catalog(
+    tmp_path: Path,
+):
+    feature = tmp_path / "docs/features/billing/charge.md"
+    feature.parent.mkdir(parents=True, exist_ok=True)
+    feature.write_text(
+        "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
+        "# Charge\n\n"
+        "- code: `src/service.py::charge`\n"
+        "- code: `src/uncatalogued.py::other`\n",
+        encoding="utf-8",
+    )
+    _service(tmp_path)
+    (tmp_path / "src/uncatalogued.py").write_text("def other():\n    pass\n", encoding="utf-8")
+
+    stale_digest = hashlib.sha256(SERVICE.encode()).hexdigest()
+    catalog = source_snapshots.SourceCatalog(
+        repositories=(
+            source_snapshots.RepositorySnapshot(
+                id=source_snapshots.SELF_REPOSITORY, base="", head="WORKTREE",
+                files=(
+                    source_snapshots.SourceFile(path="src/service.py",
+                                                 content_sha256=stale_digest),
+                ),
+            ),
+        ),
+    )
+    catalog_path = source_snapshots.catalog_path(tmp_path)
+    catalog_path.parent.mkdir(parents=True, exist_ok=True)
+    catalog_path.write_text(catalog.model_dump_json(), encoding="utf-8")
+
+    assert main(["-C", str(tmp_path), "stamp", "--from-catalog"]) == 0
+
+    text = feature.read_text(encoding="utf-8")
+    assert f"`src/service.py::charge` @{stale_digest[:12]}" in text
+    assert "`src/uncatalogued.py::other`\n" in text
+    assert not catalog_path.exists()

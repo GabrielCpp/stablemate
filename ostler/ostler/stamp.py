@@ -31,7 +31,7 @@ from pathlib import Path
 
 from ostler.markdown import split
 from ostler.refs import normalize_ref, parse_code_ref
-from ostler.source_snapshots import book_repository
+from ostler.source_snapshots import SourceCatalog, book_repository
 
 #: 12 hex characters of a sha256 digest — plenty to catch a changed file, short enough to sit
 #: in a bullet.
@@ -160,6 +160,73 @@ def stamp_page(root: Path, features_root: Path, page: str, *,
             # was not what was expected (e.g. it nests another list) — leave it alone rather
             # than risk corrupting the file, but say so: a silently-skipped bullet reads as
             # stamped to anyone who only checks `stamped`/`changed`.
+            unresolved.append(raw)
+            continue
+        body_lines[bullet.line_start:bullet.line_end] = new_lines
+        changed = True
+
+    if changed:
+        doc.replace_body(body_lines)
+        path.write_text(doc.render(), encoding="utf-8")
+
+    return StampResult(page=page, stamped=stamped, unresolved=unresolved, changed=changed)
+
+
+def stamp_page_from_catalog(root: Path, page: str, catalog: SourceCatalog) -> StampResult:
+    """Migrate a page's ``code:`` bullets onto the digests the whole-book catalog already has.
+
+    Stamps with the *catalog's* recorded digest for the cited file, never the file's current
+    bytes — a file that has drifted on disk since the catalog was last advanced must show
+    `stale-citation` the moment doctor next runs, not look freshly re-read just because
+    migration touched its bullet. This is the one caller allowed to do that; everywhere else,
+    a stamp is supposed to mean "read as of now."
+
+    Unlike `stamp_page`, this resolves every target the catalog has a row for, including one
+    qualified with a repository other than the book's own — the catalog already snapshotted
+    those checkouts when it was built, so there is no live checkout to be missing here. A
+    target with no catalog row (new since the catalog was last written, or never grounded)
+    is left unstamped, same as `stamp_page` leaves an unreadable one — `unstamped-citation`
+    or `unreachable-citation` is how doctor surfaces that afterward, not this function.
+    """
+    path = root / page
+    text = path.read_text(encoding="utf-8")
+    doc = split(text)
+    unresolved: list[str] = []
+    stamped = 0
+
+    def digest_for(raw_target: str) -> str | None:
+        nonlocal stamped
+        normalized = normalize_ref(raw_target)
+        try:
+            ref = parse_code_ref(normalized)
+        except ValueError:
+            unresolved.append(raw_target)
+            return None
+        snapshot = catalog.repository(ref.repository)
+        source = (
+            next((item for item in snapshot.files if item.path == ref.path), None)
+            if snapshot else None
+        )
+        if source is None:
+            unresolved.append(raw_target)
+            return None
+        stamped += 1
+        return source.content_sha256[:DIGEST_LENGTH]
+
+    body_lines = doc.body.split("\n")
+    changed = False
+    for bullet in doc.walk_bullets():
+        if bullet.label != "code":
+            continue
+        raw = "\n".join(body_lines[bullet.line_start:bullet.line_end])
+        key, sep, rest = raw.partition(":")
+        if not sep:
+            continue
+        new_rest = restamp_leading_code_spans(rest, digest_for)
+        if new_rest == rest:
+            continue
+        new_lines = (key + ":" + new_rest).split("\n")
+        if len(new_lines) != bullet.line_end - bullet.line_start:
             unresolved.append(raw)
             continue
         body_lines[bullet.line_start:bullet.line_end] = new_lines

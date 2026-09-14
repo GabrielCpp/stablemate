@@ -153,6 +153,14 @@ def _build_parser() -> argparse.ArgumentParser:
              "no okf-builder workflow calls this; it exists for catalog migration and one-off "
              "repair",
     )
+    st.add_argument(
+        "--from-catalog", action="store_true",
+        help="one-time migration: stamp every `code:` bullet with the digest the whole-book "
+             "sources.json catalog already recorded for its file (not the file's current "
+             "bytes, so drift already on disk shows stale-citation immediately), then delete "
+             "the catalog. Scoped by --path when given, the whole book otherwise. Mutually "
+             "exclusive with --node.",
+    )
     st.add_argument("--json", action="store_true", help="emit a per-page summary as JSON")
 
     # ---- retrieval --------------------------------------------------------
@@ -1101,7 +1109,55 @@ def _node_line_range(graph, node) -> tuple[int, int]:
     return node.line, end
 
 
+def _print_stamp_results(results: list[stamp_mod.StampResult], args) -> None:
+    if args.json:
+        _out(json.dumps(
+            [{"page": r.page, "stamped": r.stamped, "unresolved": r.unresolved,
+              "changed": r.changed} for r in results],
+            indent=2,
+        ))
+    else:
+        for r in results:
+            _out(f"{r.page}: {r.stamped} stamped" + (" (unchanged)" if not r.changed else ""))
+            for target in r.unresolved:
+                _out(f"  unresolved: {target}")
+
+
+def _cmd_stamp_from_catalog(graph, args) -> int:
+    try:
+        catalog = source_snapshots.load_catalog(graph.root)
+    except (OSError, ValueError) as exc:
+        print(f"ostler stamp --from-catalog: unreadable sources.json: {exc}", file=sys.stderr)
+        return 2
+    if catalog is None:
+        print("ostler stamp --from-catalog: no docs/features/sources.json to migrate from",
+              file=sys.stderr)
+        return 2
+    if args.path:
+        scope = [_repo_relative(graph, p) for p in args.path]
+        outside = [p for p, rel in zip(args.path, scope, strict=True) if rel is None]
+        if outside:
+            print(f"ostler stamp: --path {', '.join(outside)} is not a file of this book",
+                  file=sys.stderr)
+            return 2
+        pages = sorted({rel for rel in scope if rel is not None})
+    else:
+        pages = sorted({node.path.relative_to(graph.root).as_posix() for node in graph.ui_nodes})
+    results = [stamp_mod.stamp_page_from_catalog(graph.root, page, catalog) for page in pages]
+    catalog_path = source_snapshots.catalog_path(graph.root)
+    catalog_path.unlink(missing_ok=True)
+    _print_stamp_results(results, args)
+    if not args.json:
+        _out(f"deleted {catalog_path.relative_to(graph.root)}")
+    return 0
+
+
 def _cmd_stamp(graph, args) -> int:
+    if args.from_catalog and args.node:
+        print("ostler stamp: --from-catalog and --node are mutually exclusive", file=sys.stderr)
+        return 2
+    if args.from_catalog:
+        return _cmd_stamp_from_catalog(graph, args)
     if args.node and args.path:
         print("ostler stamp: --node and --path are mutually exclusive", file=sys.stderr)
         return 2
@@ -1141,17 +1197,7 @@ def _cmd_stamp(graph, args) -> int:
             stamp_mod.stamp_page(graph.root, features_root, rel)
             for rel in scope if rel is not None
         ]
-    if args.json:
-        _out(json.dumps(
-            [{"page": r.page, "stamped": r.stamped, "unresolved": r.unresolved,
-              "changed": r.changed} for r in results],
-            indent=2,
-        ))
-    else:
-        for r in results:
-            _out(f"{r.page}: {r.stamped} stamped" + (" (unchanged)" if not r.changed else ""))
-            for target in r.unresolved:
-                _out(f"  unresolved: {target}")
+    _print_stamp_results(results, args)
     return 1 if any(r.unresolved for r in results) else 0
 
 
