@@ -557,8 +557,9 @@ class OkfBuilder(Workflow):
         to a fragment written for that code. That dispatch is the whole reason the checkpoint
         splits items per code: a prompt can only be written for a defect that is known before
         the turn starts. `select_item` hands a repair out together with the other open rows on
-        its file (`batch`), and the prompt then includes one fragment per code in
-        `item_codes`: the rows stay per code, the turn is per file (`worklist._batch`).
+        its file and its sibling files (`batch`), and the prompt then includes one fragment per
+        code in `item_codes`: the rows stay per code, the turn is per folder-sized batch
+        (`worklist._batch`).
 
         A repair turn also carries the **check vocabulary and its signatures**, rendered from
         `ostler.checks` rather than described. The first live backfill turns wrote
@@ -574,7 +575,7 @@ class OkfBuilder(Workflow):
         item_codes = item_codes or ([item_code] if item_code else [])
         where = f"{'repairing' if repair else 'documenting'} {item_kind} {item_target}"
         if batch:
-            where += f" (+{len(batch)} row(s) on its file)"
+            where += f" (+{len(batch)} row(s) on its file and siblings)"
         self.logger.info(
             "%s%s", where, f" · {progress}" if progress else "", extra={"activity": True}
         )

@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import posixpath
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,11 @@ MAX_TARGET_ATTEMPTS = 3
 #: as one checkpoint item (`checkpoint.MAX_FINDINGS_PER_ITEM`): past it a large turn invites
 #: a shallow pass over its tail, whether the tail is one row or several.
 MAX_BATCH_FINDINGS = 25
+
+#: How many book files one repair turn may span once its own file's rows are taken. Sibling
+#: files share a folder, and so usually a subject and its source, but each one is still a
+#: document to read: past a handful the turn is a tour, whatever the findings total.
+MAX_BATCH_FILES = 5
 
 
 def _norm(s: object) -> str:
@@ -241,7 +247,8 @@ def _repair_scope(row: dict[str, Any]) -> tuple[str, list[dict[str, Any]]] | Non
 
 
 def _batch(rows: list[dict[str, Any]], first: int) -> list[int]:
-    """The rows one repair turn takes: `first`, plus the open repair rows on its file.
+    """The rows one repair turn takes: `first`, the open repair rows on its file, then on
+    its sibling files.
 
     **The row is the unit of tracking; the file is the unit of work.** A checkpoint row is
     one `(file, node, code)`, so a finding keeps one identity and one `attempts` count
@@ -252,6 +259,12 @@ def _batch(rows: list[dict[str, Any]], first: int) -> list[int]:
     rows. Instructions compose where orientation does not, so the turn takes every open
     row on the file and the prompt includes one fragment per distinct code.
 
+    The method is loaded once per turn whatever it covers, and on a mostly-repaired book
+    that fixed part outweighs the per-file part: turns of two or three findings cost
+    several times more per finding than turns of fifteen. So once its own file is taken, a
+    turn with room left takes the open rows of files in the **same folder** — a feature's
+    documents, which cite neighbouring source — up to `MAX_BATCH_FILES` files.
+
     Rows are taken in worklist order, which is the checkpoint's drain order, while their
     findings total at most `MAX_BATCH_FINDINGS`. `first` is always taken, whatever its size.
     An `active` row is one a crashed turn already held, so the same batch re-forms on the
@@ -261,35 +274,49 @@ def _batch(rows: list[dict[str, Any]], first: int) -> list[int]:
     if scope is None:
         return [first]
     path, findings = scope
-    taken, total = [first], len(findings)
-    for n, row in enumerate(rows):
-        if n == first or row.get("status") not in ("active", "pending"):
+    taken, total, files = [first], len(findings), [path]
+    open_scopes = [
+        (n, other) for n, row in enumerate(rows)
+        if n != first and row.get("status") in ("active", "pending")
+        and (other := _repair_scope(row)) is not None
+    ]
+    folder = posixpath.dirname(path)
+    same_file = [(n, o) for n, o in open_scopes if o[0] == path]
+    siblings = [(n, o) for n, o in open_scopes
+                if o[0] != path and posixpath.dirname(o[0]) == folder]
+    for n, (other_path, other_findings) in [*same_file, *siblings]:
+        if total + len(other_findings) > MAX_BATCH_FINDINGS:
             continue
-        other = _repair_scope(row)
-        if other is None or other[0] != path:
-            continue
-        if total + len(other[1]) > MAX_BATCH_FINDINGS:
-            continue
+        if other_path not in files:
+            if len(files) >= MAX_BATCH_FILES:
+                continue
+            files.append(other_path)
         taken.append(n)
-        total += len(other[1])
+        total += len(other_findings)
     return taken
 
 
 def _batch_context(rows: list[dict[str, Any]]) -> str:
-    """One repair context over several rows on one file: every node, code and finding.
+    """One repair context over several rows: every node, code and finding.
 
     The keys a single row's context carries keep their meaning — `path`, `grounded`,
     `findings` — so the prompt and `repair_power` read a batch the way they read one row;
-    `node`/`code` become the lists `nodes`/`codes`.
+    `node`/`code` become the lists `nodes`/`codes`. A batch over several files carries
+    `paths` instead of `path`, in the order they were taken, and its findings are ordered
+    by file then line — each finding names its own `path`.
     """
     contexts = [json.loads(str(r.get("context", ""))) for r in rows]
     findings = [f for c in contexts for f in (c.get("findings") or [])]
+    paths = list(dict.fromkeys(str(c["path"]) for c in contexts))
+    order = {p: i for i, p in enumerate(paths)}
+    scope: dict[str, Any] = {"path": paths[0]} if len(paths) == 1 else {"paths": paths}
     return json.dumps({
-        "path": contexts[0]["path"],
+        **scope,
         "nodes": list(dict.fromkeys(str(c.get("node", "")) for c in contexts)),
         "codes": list(dict.fromkeys(str(r.get("kind", "")).removeprefix("fix:") for r in rows)),
         "grounded": any(c.get("grounded") is True for c in contexts),
-        "findings": sorted(findings, key=lambda f: int(f.get("line", 0) or 0)),
+        "findings": sorted(findings, key=lambda f: (
+            order.get(str(f.get("path", "")), 0), int(f.get("line", 0) or 0))),
     }, indent=2)
 
 
@@ -379,7 +406,8 @@ def select_item(
         "picked %s item '%s' (%s)%s, %d still pending",
         "resumed active" if resumed else "next pending",
         target or "?", pick.kind or "?",
-        f" with {len(batch) - 1} more row(s) on its file" if len(batch) > 1 else "",
+        f" with {len(batch) - 1} more row(s) on its file and its siblings"
+        if len(batch) > 1 else "",
         pend,
     )
     return Pick(

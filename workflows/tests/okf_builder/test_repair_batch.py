@@ -1,8 +1,11 @@
-"""A repair turn takes every open doctor row on its file, and closes all of them.
+"""A repair turn takes every open doctor row on its file and its sibling files, and closes all
+of them.
 
 The checkpoint's row is one `(file, node, code)` — the unit a finding is tracked by across
-rounds. The turn is one file, because what a turn costs is reading the file and its source,
-and that is paid once however many codes the file carries (`worklist._batch`).
+rounds. The turn is one file first, because what a turn costs is reading the file and its
+source, and that is paid once however many codes the file carries; then files in the same
+folder, because loading the method is paid once however many files the turn covers
+(`worklist._batch`).
 """
 from __future__ import annotations
 
@@ -14,10 +17,16 @@ from workhorse.templates import render
 
 import workhorse_workflows
 from workhorse_workflows.okf_builder.main.flow import repair_power
-from workhorse_workflows.okf_builder.shared.worklist import MAX_BATCH_FINDINGS, record, select_item
+from workhorse_workflows.okf_builder.shared.worklist import (
+    MAX_BATCH_FILES,
+    MAX_BATCH_FINDINGS,
+    record,
+    select_item,
+)
 
 WORKFLOW_DIR = Path(workhorse_workflows.__file__).parent / "okf_builder"
 BOOK = "docs/features/acme"
+OTHER = "docs/features/globex"
 LOG = logging.getLogger("t")
 
 
@@ -29,7 +38,7 @@ def _row(code: str, path: str, node: str, *lines: int, status: str = "pending") 
         "attempts": 0,
         "context": json.dumps({
             "code": code, "node": node, "path": path, "grounded": False,
-            "findings": [{"code": code, "line": n, "message": "…"} for n in lines],
+            "findings": [{"code": code, "path": path, "line": n, "message": "…"} for n in lines],
         }),
     }
 
@@ -58,12 +67,12 @@ def _statuses(path: Path) -> list[str]:
     return [row["status"] for row in json.loads(path.read_text())["items"]]
 
 
-def test_a_repair_takes_every_open_row_on_its_file_and_nothing_else(tmp_path: Path) -> None:
+def test_a_repair_takes_every_open_row_on_its_file_and_no_other_folder(tmp_path: Path) -> None:
     a = f"{BOOK}/a.md"
     worklist = _worklist(
         tmp_path,
         _row("dangling-link", a, "refund", 30),
-        _row("dangling-link", f"{BOOK}/b.md", "refund", 4),
+        _row("dangling-link", f"{OTHER}/b.md", "refund", 4),
         _row("weak-check", a, "refund", 12),
         _group_row(a),
         _row("stale-citation", a, "refund", 8),
@@ -80,6 +89,35 @@ def test_a_repair_takes_every_open_row_on_its_file_and_nothing_else(tmp_path: Pa
     assert context["path"] == a
     assert context["nodes"] == ["refund", "capture"]
     assert [f["line"] for f in context["findings"]] == [12, 30, 50]
+
+
+def test_a_repair_fills_from_its_own_file_before_its_siblings(tmp_path: Path) -> None:
+    a, b = f"{BOOK}/a.md", f"{BOOK}/b.md"
+    worklist = _worklist(
+        tmp_path,
+        _row("dangling-link", a, "refund", 30),
+        _row("weak-check", b, "capture", 7),
+        _row("weak-check", a, "refund", *range(1, MAX_BATCH_FINDINGS - 1)),
+    )
+
+    pick = select_item(LOG, str(worklist))
+
+    # a.md's second row fills the bound to one short of full; b.md is taken only with room left.
+    assert [r["target"] for r in pick.batch] == [f"{a}#refund#weak-check", f"{b}#capture#weak-check"]
+    context = json.loads(pick.item_context)
+    assert "path" not in context
+    assert context["paths"] == [a, b]
+    assert [(f["path"], f["line"]) for f in context["findings"]][-2:] == [(a, 30), (b, 7)]
+
+
+def test_a_batch_spans_at_most_the_file_bound(tmp_path: Path) -> None:
+    files = [f"{BOOK}/{n}.md" for n in range(MAX_BATCH_FILES + 2)]
+    worklist = _worklist(tmp_path, *(_row("weak-check", f, "refund", 1) for f in files))
+
+    pick = select_item(LOG, str(worklist))
+
+    assert json.loads(pick.item_context)["paths"] == files[:MAX_BATCH_FILES]
+    assert _statuses(worklist) == ["active"] * MAX_BATCH_FILES + ["pending"] * 2
 
 
 def test_the_batch_stops_at_the_findings_bound_but_always_takes_the_first(tmp_path: Path) -> None:
@@ -110,7 +148,7 @@ def test_record_closes_every_row_the_turn_took(tmp_path: Path) -> None:
         tmp_path,
         _row("dangling-link", a, "refund", 3),
         _row("weak-check", a, "refund", 9),
-        _row("weak-check", f"{BOOK}/b.md", "refund", 9),
+        _row("weak-check", f"{OTHER}/b.md", "refund", 9),
     )
     pick = select_item(LOG, str(worklist))
 

@@ -6,9 +6,9 @@ agent: agent
 # okf-builder — repair the doctor findings on one book file
 
 The convergence checkpoint read `ostler doctor` over the book and queued this item. Its findings sit
-in **one file**, and each code in it (`{{ codes | join('`, `') }}`) has instructions below written for
-that defect rather than for repairs in general. You read the file and its source once, and repair
-every finding in it this turn.
+in **one file** or, when the context carries `paths`, in the few sibling files it lists — and each code in it (`{{ codes | join('`, `') }}`) has instructions below written for
+that defect rather than for repairs in general. You read each file and its source once, and repair
+every finding in them this turn.
 
 Load the method and obey it: {{ skill_load_ref("ostler-okf", skill_dir() + "/ostler-okf/SKILL.md") }}
 {% if codes | select('in', ['undeclared-obligation', 'weak-check', 'unstated-precondition', 'unparsed-check', 'compound-normative-bullet', 'unminted-claim']) | list %}
@@ -22,7 +22,8 @@ against: `{{ skill_path_ref("ostler-okf", "references/falsifiable-verification.m
 - target: `{{ workhorse_var('item_target') }}`
 - context (JSON — `grounded` and `findings`, each finding carrying its own `code`, plus one of:
   `code`/`node`/`path` (the one node this item is about); `codes`/`nodes`/`path` (the nodes of one
-  file this item covers); or, on a group finding, `code`, `citation` (the `path::symbol` the group
+  file this item covers); `codes`/`nodes`/`paths` without `related` (the nodes of the sibling
+  files this item covers, each finding naming its own `path`); or, on a group finding, `code`, `citation` (the `path::symbol` the group
   is about), `related` (every node this item covers) and `paths` (their files)):
 
 ```json
@@ -114,8 +115,9 @@ hiding it.
 
 - **Docs only.** You write **only** under `docs/features/**`. Never modify source code, never run
   `git`, never run builds or tests. You are documenting the code, not changing it.
-- **One file.** Open the `path` in the context and repair the nodes the findings name. Do not tour
-  the book; other files' findings are other items. **Unless the context carries `related`** —
+- **One file, or the listed files.** Open the `path` in the context — or, when it carries `paths`
+  and no `related`, each of those files — and repair the nodes the findings name, file by file.
+  Do not tour the book; a file not in the context is another item's work. **Unless the context carries `related`** —
   then those locations *are* this item: open every one of them (`paths` lists the files) and
   repair the group as a whole. That finding is one defect spread over several nodes and it does
   not clear until each of them is edited. `related` is the whole of the exception — a node not
@@ -127,7 +129,8 @@ hiding it.
   it must come out of the source, cited in prose.
 - **Check your repair with the checker that raised it, never with a grep.** After `ostler fmt <the
   file you touched>`, run `ostler doctor --path <that file>` (under a minute: it reads the
-  whole book but prints only this file's findings). Give the command a timeout of at least
+  whole book but prints only this file's findings). Over several files, pass `--path` once per
+  file in one run — `ostler doctor --path <a> --path <b>` — rather than one run per file. Give the command a timeout of at least
   120 seconds; a 15- or 30-second timeout kills it with no output, which checks nothing. Any finding it still reports under this item's
   codes is not repaired: fix it and check once more. Report `documented` only when none of them is
   left; after the second check, return `partial` naming what still stands. A pattern search is not
