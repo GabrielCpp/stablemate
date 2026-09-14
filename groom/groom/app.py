@@ -1043,40 +1043,6 @@ async def otlp_logs(request: Request) -> Response:
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
 
 
-@get("/traces", include_in_schema=False)
-async def traces(
-    run: Annotated[str, QueryParameter()] = "",
-    node: Annotated[str, QueryParameter()] = "",
-    status: Annotated[str, QueryParameter()] = "",
-    slower_than: Annotated[str, QueryParameter()] = "",
-    show_ended: Annotated[str, QueryParameter()] = "",
-) -> dict:
-    """Telemetry search over the SQLite spans table — a per-run summary strip
-    and the matching spans, as ``{"runs": [...], "spans": [...]}``. Pulled by the
-    telemetry pane on demand (the live pushes are the alerts, not this). Raw SQL
-    on groom.db stays the ad-hoc path.
-
-    Only runs connected right now are returned, unless ``show_ended`` is truthy
-    or the caller named a ``run``: asking for a run by id is asking for that run,
-    finished or not."""
-    try:
-        threshold = float(slower_than) if slower_than.strip() else None
-    except ValueError:
-        threshold = None
-    # Both store reads off the loop, on the dashboard's own pool: they share the
-    # one store lock with every OTLP write, so run inline they would hold the whole
-    # server behind a scan. live_run_ids reads only the in-memory cache and stays
-    # inline.
-    spans = await pools.QUERY.run(
-        store.query_spans, run=run, node=node, status=status, slower_than=threshold
-    )
-    return projection.traces_view(
-        await pools.QUERY.run(store.run_summaries, run=run.strip()),
-        spans,
-        state.RUNS,
-        alerts.live_run_ids(),
-        connected_only=not (run.strip() or _truthy(show_ended)),
-    )
 
 
 @get("/api/live", include_in_schema=False)
@@ -1844,7 +1810,6 @@ def create_app() -> Litestar:
             otlp_traces,
             otlp_metrics,
             otlp_logs,
-            traces,
             api_live,
             dashboard_ws,
             dashboard_sidecar,

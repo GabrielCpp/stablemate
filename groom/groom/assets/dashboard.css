@@ -331,35 +331,9 @@ body {
 .app[data-mode="diff"]      #diff-pane      { display:flex; flex-direction:column; }
 .app[data-mode="settings"]  #settings-pane  { display:block; overflow:auto; }
 .app[data-mode="attend"]    #attend-pane    { display:grid; grid-template-columns:1.1fr 1.4fr; }
-.app[data-mode="telemetry"] #telemetry-pane { display:flex; flex-direction:column; }
 
-/* ---- telemetry pane (trace search over the SQLite fleet index) ---- */
-#telemetry { display:flex; flex-direction:column; min-height:0; flex:1; }
-.traces-filter { margin-left:auto; display:flex; gap:6px; align-items:center; }
-.traces-filter .filter { max-width:130px; }
-.traces-filter select.filter { appearance:none; }
-.traces-filter .traces-toggle { display:flex; align-items:center; gap:4px; cursor:pointer;
-  font-size:11px; color:var(--text-2); white-space:nowrap; }
-.traces-filter .traces-toggle input { accent-color:var(--accent); cursor:pointer; }
-.traces-list { flex:1; overflow:auto; padding:8px 10px; }
-.run-cards { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
-.run-card { background:var(--bg-1); border:1px solid var(--border); border-radius:5px;
-  padding:6px 10px; display:flex; flex-direction:column; gap:3px; min-width:220px; }
-.run-card .line1 { display:flex; align-items:center; gap:7px; }
-.run-card .repo-branch { font-family:var(--mono); font-size:11.5px; color:var(--text-0); }
-.run-card .wid { font-family:var(--mono); font-size:11px; color:var(--text-2); }
-.run-card .run-meta { font-family:var(--mono); font-size:10.5px; color:var(--text-2); }
-.run-card .tr-err { color:var(--blocked); }
 .alert-chip { font-family:var(--mono); font-size:9.5px; text-transform:uppercase; letter-spacing:.05em;
   padding:0 5px; border-radius:3px; border:1px solid var(--blocked); color:var(--blocked); }
-table.traces { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:11.5px; }
-table.traces th { text-align:left; color:var(--text-2); font-weight:500; padding:3px 8px;
-  border-bottom:1px solid var(--border); position:sticky; top:-8px; background:var(--bg-0); }
-table.traces td { padding:3px 8px; border-bottom:1px solid var(--bg-2); color:var(--text-1); white-space:nowrap; }
-table.traces .tr-run { color:var(--text-2); }
-table.traces .tr-dur { text-align:right; color:var(--text-0); }
-table.traces .tr-status { color:var(--text-2); }
-table.traces .tr-status.tr-error { color:var(--blocked); font-weight:600; }
 
 /* ---- status bar ---- */
 #statusbar { grid-area:status; background:var(--bg-1); border-top:1px solid var(--border);

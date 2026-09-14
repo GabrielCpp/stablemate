@@ -17,7 +17,7 @@
 //
 // Every panel is a Preact island mounted into an id the static shell already
 // ships (`#runs-list`, `#statusbar`, `#detail`, `#repo-menu`, the files/diff
-// trees and views, `#traces-list`, `#palette-results`), so the live-region and
+// trees and views, `#palette-results`), so the live-region and
 // landmark attributes stay on elements that outlive every update. Nothing on
 // either side of the wire is HTML any more: the server sends data, this module
 // decides what it looks like, and the only strings that ever reach `innerHTML`
@@ -57,7 +57,6 @@ const store = {
     repo: { loading: false, groups: [], query: "", active: 0, container: null, dir: "", label: null },
     files: { status: "idle", paths: [], path: null, view: { status: "idle", path: "", content: "", lang: "" } },
     diff: { status: "idle", files: [], idx: -1 },
-    traces: { status: "idle", runs: [], spans: [], ended: false },
     // the attendant: a per-run summary rides every `state` frame, the log does not
     attend: { mode: "off", by_run: {}, rev: 0, status: "idle", sessions: [], selected: null, record: null },
     settings: { status: "idle", attend: null, saving: false },
@@ -949,79 +948,6 @@ function loadDiff() {
 }
 
 // --------------------------------------------------------------------------- //
-// Telemetry panel
-// --------------------------------------------------------------------------- //
-function RunCard({ card }) {
-  return html`<div class="run-card">
-    <span class="line1">
-      <${StateDot} state=${card.live ? "running" : "finished"} />
-      <span class="repo-branch">${card.workflow}</span>
-      <span class="wid">${card.run_id}</span>
-      ${card.alerts.map((rule) => html`<span class="alert-chip" key=${rule}>${rule}</span>`)}
-      ${card.doing ? html`<span class="run-doing">${card.doing}</span>` : null}
-    </span>
-    <span class="run-meta">
-      ${card.window} · ${card.spans} spans ${card.errors ? html`<span class="tr-err">${card.errors} err</span>` : null}
-    </span>
-  </div>`;
-}
-
-function Traces() {
-  const { traces } = useStore();
-  if (traces.status === "idle") return html`<div class="empty">No telemetry yet.</div>`;
-  if (traces.status === "error") return html`<div class="empty">failed to load</div>`;
-  const strip = traces.runs.length
-    ? html`<div class="run-cards">${traces.runs.map((card) => html`<${RunCard} key=${card.run_id} card=${card} />`)}</div>`
-    : null;
-  if (!traces.spans.length) {
-    return html`
-      ${strip}
-      <div class="empty">
-        ${traces.ended || traces.runs.length
-          ? html`No spans match — a run exports automatically once this collector is reachable, provided workhorse
-              has the otel extra installed.`
-          : html`No run is connected right now. Tick <em>show ended</em> to read the runs that already finished.`}
-      </div>
-    `;
-  }
-  return html`
-    ${strip}
-    <table class="traces">
-      <thead>
-        <tr>
-          <th>started</th><th>run</th><th>node</th><th>span</th><th>duration</th><th>status</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${traces.spans.map(
-          (span, i) => html`<tr key=${i}>
-            <td>${span.started}</td>
-            <td class="tr-run">${span.run_id}</td>
-            <td>${span.node}</td>
-            <td>${span.name}</td>
-            <td class="tr-dur">${span.duration}</td>
-            <td class=${"tr-status" + (span.status === "ERROR" ? " tr-error" : "")}>${span.status}</td>
-          </tr>`
-        )}
-      </tbody>
-    </table>
-  `;
-}
-
-// The `show_ended` checkbox rides along in the FormData when it is checked and
-// is simply absent when it is not — which is exactly the shape /traces reads, so
-// the default view is the connected runs and nothing here has to say so.
-function loadTraces() {
-  const form = document.getElementById("traces-filter");
-  const params = new URLSearchParams(new FormData(form));
-  const ended = form.elements.show_ended.checked;
-  fetch("/traces?" + params.toString())
-    .then((r) => r.json())
-    .then((body) => setIn("traces", { status: "ready", runs: body.runs || [], spans: body.spans || [], ended: ended }))
-    .catch(() => setIn("traces", { status: "error", runs: [], spans: [], ended: ended }));
-}
-
-// --------------------------------------------------------------------------- //
 // Attendant panel — the log of claudes groom sent at a stopped run
 // --------------------------------------------------------------------------- //
 // Two states and no refresh button, by design: a row is written `running` before
@@ -1292,7 +1218,6 @@ function setMode(mode) {
   closeRepoMenu();
   if (mode === "files") loadFiles();
   else if (mode === "diff") loadDiff();
-  else if (mode === "telemetry") loadTraces();
   else if (mode === "attend") loadAttend();
   else if (mode === "settings") loadAttendSettings();
 }
@@ -1468,13 +1393,6 @@ function wireEvents() {
     store.set({ query: e.target.value });
   });
 
-  document.getElementById("traces-filter").addEventListener("input", loadTraces);
-  document.getElementById("traces-filter").addEventListener("change", loadTraces);
-  document.getElementById("traces-filter").addEventListener("submit", (e) => {
-    e.preventDefault();
-    loadTraces();
-  });
-
   // Worker selection + the status-bar/settings buttons, delegated: the rows are
   // re-rendered on every push, and a delegated handler outlives every one of them.
   document.body.addEventListener("click", (e) => {
@@ -1571,7 +1489,6 @@ const ISLANDS = [
   ["file-view", FileView],
   ["diff-tree", DiffTree],
   ["diff-view", DiffView],
-  ["traces-list", Traces],
   ["attend-list", AttendList],
   ["attend-detail", AttendDetail],
   ["setting-attend", AttendSetting],

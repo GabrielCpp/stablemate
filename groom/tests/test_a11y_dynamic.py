@@ -40,7 +40,7 @@ AXE = Path(__file__).resolve().parent / "vendor" / "axe.min.js"
 
 # The panes an operator can reach, and how to get there. Each entry is scanned
 # with axe after `_goto` has driven the page into that state.
-MODES = ("runs", "files", "diff", "telemetry", "settings")
+MODES = ("runs", "files", "diff", "settings")
 
 
 def _free_port() -> int:
@@ -135,9 +135,9 @@ def _seed(workspace: Path) -> None:
             for i in range(12)
         ]
     )
-    # A heartbeat inside the live window: the telemetry pane shows the runs that
-    # are connected *now*, so span history alone leaves it empty. Liveness is
-    # memory-only — the beat goes into the ingest cache, never the store.
+    # A heartbeat inside the live window: the run detail's "Recent telemetry
+    # history" widget reads spans plus liveness for the run under view. Liveness
+    # is memory-only — the beat goes into the ingest cache, never the store.
     from groom import alerts
 
     alerts.ingest_metrics(
@@ -313,8 +313,6 @@ def _drive(page, mode: str) -> None:
         page.wait_for_selector(f"#{tree} .tree-file", timeout=10000)
         page.click(f"#{tree} .tree-file")
         page.wait_for_selector(f"#{view} :not(.fd-empty)", timeout=10000)
-    elif mode == "telemetry":
-        page.wait_for_selector("#traces-list table.traces tbody tr", timeout=10000)
 
 
 # --------------------------------------------------------------------------- #
@@ -384,10 +382,6 @@ def test_diff_pane_is_accessible():
     _check_mode("diff")
 
 
-def test_telemetry_pane_is_accessible():
-    _check_mode("telemetry")
-
-
 def test_settings_pane_is_accessible():
     _check_mode("settings")
 
@@ -413,10 +407,10 @@ def test_the_activity_rail_is_reachable_and_operable_by_keyboard():
         assert reached, "an activity-rail button is not in the tab order"
         # Operable, not merely focusable: focus one and press Enter, and the pane
         # must actually change — a click-only handler would fail here.
-        page.focus('.act-btn[data-mode="telemetry"]')
+        page.focus('.act-btn[data-mode="diff"]')
         page.keyboard.press("Enter")
-        page.wait_for_function("() => document.querySelector('.app').dataset.mode === 'telemetry'", timeout=5000)
-        pressed = page.get_attribute('.act-btn[data-mode="telemetry"]', "aria-pressed")
+        page.wait_for_function("() => document.querySelector('.app').dataset.mode === 'diff'", timeout=5000)
+        pressed = page.get_attribute('.act-btn[data-mode="diff"]', "aria-pressed")
         assert pressed == "true", "the rail does not announce which pane is current"
     finally:
         page.close()

@@ -213,7 +213,6 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - dom: icon-only native `<button type="button">`, fourth in the rail and the last before the spacer; an inline `aria-hidden` sparkline SVG and no text node.
 - leads-to: [select activity telemetry mode](#select-activity-telemetry-mode), which shows the telemetry pane containing the span filter and [telemetry traces table](#telemetry-traces-table).
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-telemetry-mode.png
-- known-defect: stablemate-01M20X67QXFMXFWTHH9P1HXGNR ambiguous-locator — TreeDir/leaf buttons (dashboard.js:311-323) name tree rows by bare repo entry name with no qualifying prefix, so a file/dir named 'Telemetry' collides role=button name='Telemetry' with the always-mounted activity-rail Telemetry button — same defect as the existing stablemate-01M20X2HWR7MDGSZG3XJSKRYQ0 / stablemate-01M20X0XEEFYDZQRAKKYET9H4Z / stablemate-01M20WYV4PDZDZQMW55XEA47X4 seeds; activity-telemetry-mode only needs the matching known-defect bullet.
 
 ### activity-settings-mode
 

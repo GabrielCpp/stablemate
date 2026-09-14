@@ -156,51 +156,6 @@ def test_telemetry_outranks_the_containers_exit_state():
     assert row["live"] == "live" and row["live_label"] == "alive"
 
 
-# ---- telemetry pane: live is "emitting now", never span history ----
-def test_run_card_live_comes_from_the_hot_cache_not_the_span_history():
-    now = 5_000.0
-    summary = {"run_id": "rerun1", "workflow": "author", "span_count": 740,
-               "error_count": 0, "first_ts": 1.0, "last_ts": now}
-    # A resumed run has a root span from its *previous* session in the store. That
-    # is history; the fresh heartbeat is the run.
-    tel = _tel("rerun1", last_heartbeat_ts=now - 2, first_seen_ts=1.0,
-               terminal="interrupted", terminal_ts=100.0, current_node="write_story")
-    assert projection.run_card(summary, tel, now=now)["live"] is False  # terminal not yet cleared
-    tel.terminal, tel.terminal_ts = "", 0.0
-    card = projection.run_card(summary, tel, now=now)
-    assert card["live"] is True and card["doing"] == "write_story"
-
-
-def test_run_card_falls_back_to_the_stores_live_ids_when_not_in_the_cache():
-    # A groom that just restarted has an empty hot cache; the store still knows
-    # who was beating inside the window.
-    summary = {"run_id": "R7", "workflow": "coder", "span_count": 3, "error_count": 0}
-    assert projection.run_card(summary, None, {"R7"})["live"] is True
-    assert projection.run_card(summary, None, set())["live"] is False
-
-
-def test_traces_view_passes_live_ids_through_to_every_card():
-    view = projection.traces_view(
-        [{"run_id": "R7", "workflow": "coder"}, {"run_id": "R8", "workflow": "coder"}],
-        [], {}, {"R7"}, connected_only=False,
-    )
-    assert {r["run_id"]: r["live"] for r in view["runs"]} == {"R7": True, "R8": False}
-
-
-def test_traces_view_shows_only_connected_runs_by_default():
-    # The store keeps two weeks of runs; the pane is for watching, so a card and
-    # its spans are dropped together — a span table full of a hidden run's nodes
-    # is telemetry from nowhere.
-    summaries = [{"run_id": "R7", "workflow": "coder"}, {"run_id": "R8", "workflow": "coder"}]
-    spans = [
-        {"run_id": "R7", "node": "plan", "name": "plan", "start_ts": 1.0, "end_ts": 2.0},
-        {"run_id": "R8", "node": "plan", "name": "plan", "start_ts": 1.0, "end_ts": 2.0},
-    ]
-    view = projection.traces_view(summaries, spans, {}, {"R7"})
-    assert [r["run_id"] for r in view["runs"]] == ["R7"]
-    assert [s["run_id"] for s in view["spans"]] == ["R7"]
-
-
 # ---- filtering ----
 def test_query_filters_the_fleet():
     wfs = [

@@ -28,9 +28,6 @@
       <button type="button" class="act-btn" data-mode="diff" title="Diff" aria-label="Diff" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7 7h10M7 7l3-3M7 7l3 3"/><path d="M17 17H7M17 17l-3-3M17 17l-3 3"/></svg>
       </button>
-      <button type="button" class="act-btn" data-mode="telemetry" title="Telemetry" aria-label="Telemetry" aria-pressed="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>
-      </button>
       <button type="button" class="act-btn" data-mode="attend" title="Attendant" aria-label="Attendant" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/></svg>
       </button>
@@ -87,29 +84,7 @@
         </div>
       </div>
 
-      <!-- 4) TELEMETRY: SQLite-backed trace search (runs export via OTLP) -->
-      <div id="telemetry-pane" class="pane">
-        <div id="telemetry">
-          <div class="pane-head">
-            <span>Telemetry — fleet traces</span>
-            <form id="traces-filter" class="traces-filter">
-              <input class="filter" type="search" name="run" aria-label="Filter by run id" placeholder="run id…">
-              <input class="filter" type="search" name="node" aria-label="Filter by node" placeholder="node…">
-              <select class="filter" name="status" aria-label="Filter by span status">
-                <option value="">any status</option>
-                <option value="ERROR">ERROR</option>
-                <option value="OK">OK</option>
-                <option value="UNSET">UNSET</option>
-              </select>
-              <input class="filter" type="search" name="slower_than" aria-label="Minimum duration in seconds" placeholder="slower than (s)…">
-              <label class="traces-toggle"><input type="checkbox" name="show_ended" value="1"> show ended</label>
-            </form>
-          </div>
-          <div class="traces-list" id="traces-list"><div class="empty">No telemetry yet.</div></div>
-        </div>
-      </div>
-
-      <!-- 5) ATTENDANT: every claude groom dispatched at a run that stopped.
+      <!-- 4) ATTENDANT: every claude groom dispatched at a run that stopped.
            A list and a record, and nothing else: no paging, no date filter, no
            refresh button. The list is the latest 200, newest first, and nothing is
            ever pruned from it — the point is reading a season back at once. -->

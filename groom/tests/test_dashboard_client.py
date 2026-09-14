@@ -63,7 +63,7 @@ def test_every_endpoint_is_read_as_json():
     # expects an object and fail silently at runtime, not at import.
     src = CLIENT.read_text()
     assert ".text()" not in src
-    for route in ("/api/state", "/worker/", "/repos", "/files/", "/file/", "/diff/", "/traces"):
+    for route in ("/api/state", "/worker/", "/repos", "/files/", "/file/", "/diff/"):
         assert route in src, route
 
 
