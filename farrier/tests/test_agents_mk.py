@@ -50,7 +50,7 @@ def test_no_workflow_name_is_ever_written_into_the_file():
     """The whole reversal in one assertion. This file is tracked; the installed set
     belongs to the machine. A name baked in here is drift waiting to happen."""
     mk = render_agents_mk()
-    for name in ("coder", "author", "okf-builder", "research", "hello-world"):
+    for name in ("coder", "author", "okf-builder", "research", "loop-runner"):
         assert name not in mk, name
 
 
