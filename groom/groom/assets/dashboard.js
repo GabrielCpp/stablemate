@@ -1238,7 +1238,7 @@ function DispatchQueues() {
   if (dispatch.status === "error") return html`<div class="empty">failed to load</div>`;
   if (!dispatch.queues.length) {
     return html`<div class="empty">
-      No dispatch queues configured — add a [groom.dispatch.&lt;name&gt;] section to enable one.
+      No dispatch queues configured — add a [groom.dispatch.${"<name>"}] section to enable one.
     </div>`;
   }
   return dispatch.queues.map((row) => html`<${DispatchQueueRow} key=${row.name} row=${row} />`);
