@@ -661,6 +661,10 @@ boilerplate — placement folders are `--param` values, never baked into the lib
 adopted a workflow gate. Its only nonzero result is an unreadable or invalid `agents.yml`.
 
 ### hooks
+
+The hook-wiring behaviour is implemented by `_run_hooks_install` after the hooks command became
+an install/list subcommand group.
+
 - usage: `farrier hooks [--repo DIR]`
 - flags:
   - `--repo <dir>` — repository root whose hook manager is wired. Default: current working
@@ -694,7 +698,7 @@ adopted a workflow gate. Its only nonzero result is an unreadable or invalid `ag
 - verify: persists(subject="configured repository hook-manager fence")
 - verify: unchanged(subject="user-owned lines outside hook-manager fence")
 - verify: persists(subject="githooks core.hooksPath")
-- code: `farrier/farrier/cli.py::_run_hooks`
+- code: `farrier/farrier/cli.py::_run_hooks_install`
 - detail: [hook manager wiring](concepts/hook-manager-wiring.md)
 - tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_wires_a_repo_whose_packs_do_not_resolve`
 - tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_falls_back_to_detection_with_no_agents_yml`

@@ -36,6 +36,7 @@ The format's contract — which keys the dictionary carries, who produces it, wh
 - required: true
 - verify: json_path(path="$.event", equals="answer")
 - code: groom/groom/app.py::_answer
+- detail: [dashboard answer command artifacts](concepts/dashboard-answer-command-artifacts.md)
 - key: `event`
 - source: fixed literal set by the dashboard websocket command handler.
 - domain: exactly `"answer"` for all first-party entries of this format.
@@ -50,6 +51,7 @@ The format's contract — which keys the dictionary carries, who produces it, wh
 - semantics: container/workflow identifier used for the answer attempt and retained for process-local diagnostics
 - verify: json_path(path="$.container_id", absent=false)
 - code: groom/groom/app.py::_answer
+- detail: [dashboard answer command artifacts](concepts/dashboard-answer-command-artifacts.md)
 - key: `container_id`
 - source: submitted `workflow_id` value from the handled [dashboard websocket answer frame](dashboard-websocket-answer-frame.md) after `str(value)` normalization.
 - domain: any string produced by normalization; missing values become the empty string and the handler does not truncate the id for this log entry.
@@ -66,6 +68,7 @@ The format's contract — which keys the dictionary carries, who produces it, wh
 - semantics: gate context-file path this answer attempt was addressed to, retained for process-local diagnostics
 - verify: json_path(path="$.file_path", matches=".*")
 - code: groom/groom/app.py::_answer
+- detail: [dashboard answer command artifacts](concepts/dashboard-answer-command-artifacts.md)
 - key: `file_path`
 - source: submitted gate context-file path from the handled [dashboard websocket answer frame](dashboard-websocket-answer-frame.md) after `str(value)` normalization.
 - domain: any string produced by normalization; missing values become the empty string and this format does not enforce path safety or existence.
@@ -79,6 +82,7 @@ The format's contract — which keys the dictionary carries, who produces it, wh
 - required: true
 - verify: json_path(path="$.ok", matches="^(true|false)$")
 - code: groom/groom/app.py::_answer
+- detail: [dashboard answer command artifacts](concepts/dashboard-answer-command-artifacts.md)
 - key: `ok`
 - source: copied from `AnswerResult.ok` in the gate-answering [answer result](answer-result.md).
 - domain: first-party values are `true` or `false`.
@@ -90,9 +94,14 @@ The format's contract — which keys the dictionary carries, who produces it, wh
 - type: `str`
 - default: none
 - required: true
-- semantics: operator-facing outcome text copied verbatim from `AnswerResult.message`; first-party values are the success and failure messages defined by [answer result](answer-result.md), and the format does not synthesize or normalize them.
+- semantics: operator-facing outcome text is copied verbatim from `AnswerResult.message`.
+- verify: json_path(path="$.message", matches=".*")
+- semantics: first-party values are the success and failure messages defined by [answer result](answer-result.md).
+- verify: json_path(path="$.message", matches=".*")
+- semantics: the format does not synthesize or normalize the outcome text.
 - verify: json_path(path="$.message", matches=".*")
 - code: groom/groom/app.py::_answer
+- detail: [dashboard answer command artifacts](concepts/dashboard-answer-command-artifacts.md)
 - key: `message`
 - source: copied from [`AnswerResult.message`](answer-result.md#field-message) in the gate-answering [answer result](answer-result.md).
 - domain: first-party values are the success and failure messages defined by [answer result](answer-result.md); the log entry also accepts the empty string or any arbitrary string already present on the result.
@@ -106,6 +115,7 @@ The format's contract — which keys the dictionary carries, who produces it, wh
 - required: true
 - verify: json_path(path="$.via", matches="^(socket|file)$")
 - code: groom/groom/app.py::_answer
+- detail: [dashboard answer command artifacts](concepts/dashboard-answer-command-artifacts.md)
 - key: `via`
 - source: derived from the dashboard websocket answer handler's local `socket_result` variable: `"socket"` when the gate-answering call returned a non-`None` result from the same handler's socket-arm path, `"file"` when the answer attempt fell through to the gate file writer via `answer_gate`.
 - domain: exactly one of the closed set `{"socket", "file"}` for first-party entries.

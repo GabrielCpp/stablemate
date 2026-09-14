@@ -294,11 +294,13 @@ reaping. The observer is optional and never changes the run's outcome.
 - does: installs SIGTERM and SIGINT handlers that signal only the run child
 - does: restarts the run only when its exit code is the reserved reload code and it has not been stopped
 - does: sends the final run exit code to the optional exit-notice process without changing that code
+- does: kills and reaps the exit-notice process when `timeout_s` elapses before it completes, so cancelling the await does not leave the OS process orphaned
+- verify: emitted(event="wedged exit-notice process reaped before container exit", count=1)
 - does: terminates and waits for the observer after the run ends, bounded by `timeout_s`
 - returns: the final workflow exit code as the container exit code
 - verify: exit_status(code=7)
 - code: `workhorse/supervisor.py::supervise`
-- tests: `workhorse/tests/test_supervisor.py::test_run_completes_with_no_observer_at_all`, `workhorse/tests/test_supervisor.py::test_run_exit_code_is_the_containers_with_no_observer`, `workhorse/tests/test_supervisor.py::test_observer_that_crashes_immediately_does_not_touch_the_run`, `workhorse/tests/test_supervisor.py::test_observer_that_outlives_the_run_is_torn_down`, `workhorse/tests/test_supervisor.py::test_the_run_restarts_on_the_reload_code_with_the_source_restaged`, `workhorse/tests/test_supervisor.py::test_a_run_that_fails_after_a_reload_is_not_restarted_again`, `workhorse/tests/test_supervisor.py::test_exit_notice_carries_the_code_and_never_changes_it`, `workhorse/tests/test_supervisor.py::test_a_wedged_exit_notice_does_not_hold_the_container_open`
+- tests: `workhorse/tests/test_supervisor.py::test_run_completes_with_no_observer_at_all`, `workhorse/tests/test_supervisor.py::test_run_exit_code_is_the_containers_with_no_observer`, `workhorse/tests/test_supervisor.py::test_observer_that_crashes_immediately_does_not_touch_the_run`, `workhorse/tests/test_supervisor.py::test_observer_that_outlives_the_run_is_torn_down`, `workhorse/tests/test_supervisor.py::test_the_run_restarts_on_the_reload_code_with_the_source_restaged`, `workhorse/tests/test_supervisor.py::test_a_run_that_fails_after_a_reload_is_not_restarted_again`, `workhorse/tests/test_supervisor.py::test_exit_notice_carries_the_code_and_never_changes_it`, `workhorse/tests/test_supervisor.py::test_a_wedged_exit_notice_is_reaped_before_the_container_exits`
 
 ### main
 - sig: `main(argv: Sequence[str] | None = None) -> int`

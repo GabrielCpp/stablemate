@@ -337,20 +337,29 @@ questions travel as data rather than markup.
 
 - sig: `head(wf: WorkflowContainer, tel: RunTelemetry | None = None, now: float | None = None) -> dict[str, Any]`
 - abstract: false
-- does: Projects the detail pane's identity and handle, workflow type and its stable hue, repository, liveness verdict and its label, active node, process id, agent label, exit verdict and exit-ok flag, and activity.
+- does: Projects the detail pane's identity and handle.
 - verify: json_path(path="$.id", matches=".+")
 - verify: json_path(path="$.handle", matches=".+")
+- does: Projects the workflow's state.
 - verify: json_path(path="$.state", matches=".+")
+- does: Projects the workflow type and its stable hue.
 - verify: json_path(path="$.type", matches=".+")
 - verify: json_path(path="$.type_hue", matches="\\d+")
+- does: Projects the repository label.
 - verify: json_path(path="$.repo", matches=".+")
+- does: Projects the liveness verdict and its label.
 - verify: json_path(path="$.live", matches=".+")
 - verify: json_path(path="$.live_label", matches=".*")
+- does: Projects the active node.
 - verify: json_path(path="$.node", matches=".*")
+- does: Projects the process id.
 - verify: json_path(path="$.pid", matches=".*")
+- does: Projects the agent label.
 - verify: json_path(path="$.cli", matches=".*")
+- does: Projects the exit verdict and exit-ok flag.
 - verify: json_path(path="$.exit_hint", matches=".+")
 - verify: json_path(path="$.exit_ok", matches="(true|false)")
+- does: Projects the activity.
 - verify: json_path(path="$.activity", matches=".*")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)

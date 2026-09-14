@@ -30,7 +30,8 @@ The closed enumeration an attendance's `status` column is drawn from. An attenda
 - required: true
 - semantics: groom has dispatched an attendant and not yet observed it exit — the attendant's process is presumed alive
 - semantics: the claim is conditional — a headless attendant's pid may have died since the last query, which is what boot recovery re-checks at startup via [`attend_orphans`](#attend_orphans) so a stale dispatch is re-armed with a fresh session rather than left as an orphan the rules engine would never reclaim
-- semantics: persisted to `attend_sessions.status` by [`attend_start`](#method-attend_start) on dispatch and by [`attend_append_session`](#attend_append_session) on boot-recovery re-arm; the row is rewritten in place rather than re-inserted, so a recovery never produces a duplicate
+- semantics: persisted to `attend_sessions.status` by [`attend_start`](#method-attend_start) on dispatch and by [`attend_append_session`](#attend_append_session) on boot-recovery re-arm
+- semantics: the row is rewritten in place rather than re-inserted, so a recovery never produces a duplicate
 - code: `groom/groom/store.py::ATTEND_RUNNING`
 - verify: json_path(path="status", equals="running")
 - tests: `groom/tests/test_attend.py::test_a_row_is_running_until_the_owner_finishes_it`

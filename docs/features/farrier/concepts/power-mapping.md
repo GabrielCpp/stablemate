@@ -33,6 +33,10 @@ backend default. Missing or malformed tables produce an empty mapping rather tha
 - type: `float | None`
 - default: `None`
 - required: false
-- semantics: multiplier applied to every per-node wall-clock budget resolved at this tier, so a slower model's clock is pinned alongside its name; only a strictly positive finite number is honoured, anything else reads as unset
+- semantics: multiplier applied to every per-node wall-clock budget resolved at this tier, so a slower model's clock is pinned alongside its name
+- verify: json_path(path="$.timeout_scale", equals=2.0)
+- semantics: only a strictly positive finite number is honoured
+- verify: json_path(path="$.timeout_scale", equals=2.0)
+- semantics: every other value reads as unset
 - verify: json_path(path="$.timeout_scale", absent=true)
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::PowerMapping.timeout_scale`

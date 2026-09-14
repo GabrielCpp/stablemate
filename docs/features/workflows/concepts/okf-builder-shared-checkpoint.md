@@ -23,7 +23,7 @@ to count unchanged stalls.
 - code: `workflows/tests/okf_builder/test_checkpoint.py::test_a_grounded_code_is_a_flag_not_a_kind`
 - code: `workflows/tests/okf_builder/test_checkpoint.py::test_a_node_past_the_chunk_cap_splits_into_distinct_items`
 - code: `workflows/tests/okf_builder/test_checkpoint.py::test_a_book_with_warnings_and_no_errors_is_dirty`
-- code: `workflows/tests/okf_builder/test_checkpoint.py::test_a_pending_repair_whose_finding_stopped_firing_is_closed_at_the_checkpoint`
+- code: `workflows/tests/okf_builder/test_checkpoint.py::test_an_open_repair_whose_finding_stopped_firing_is_closed_at_the_checkpoint` (renamed from `test_a_pending_repair_…`)
 - code: `workflows/tests/okf_builder/test_checkpoint.py::test_the_drain_settles_a_stale_repair_before_it_is_picked`
 - code: `workflows/tests/okf_builder/test_checkpoint.py::test_the_settle_is_amortized_over_the_drain`
 - code: `workflows/tests/okf_builder/test_checkpoint.py::test_a_settle_with_nothing_to_settle_does_not_read_doctor`
@@ -82,7 +82,7 @@ to count unchanged stalls.
 - returns: settlement status, pending item count, standing repair count, and settled count
 - verify: created(subject="OKF-builder settlement results")
 - code: `workflows/src/workhorse_workflows/okf_builder/shared/checkpoint.py::settle_stale`
-- tests: `workflows/tests/okf_builder/test_checkpoint.py::test_a_pending_repair_whose_finding_stopped_firing_is_closed_at_the_checkpoint`
+- tests: `workflows/tests/okf_builder/test_checkpoint.py::test_an_open_repair_whose_finding_stopped_firing_is_closed_at_the_checkpoint` (renamed from `test_a_pending_repair_…`)
 - tests: `workflows/tests/okf_builder/test_checkpoint.py::test_the_drain_settles_a_stale_repair_before_it_is_picked`
 - tests: `workflows/tests/okf_builder/test_checkpoint.py::test_the_settle_is_amortized_over_the_drain`
 - tests: `workflows/tests/okf_builder/test_checkpoint.py::test_a_settle_with_nothing_to_settle_does_not_read_doctor`

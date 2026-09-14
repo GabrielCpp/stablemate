@@ -80,6 +80,7 @@ resolved back to Ostler's numbered directory name before it is passed to later n
 - verify: count(subject="epic document selection choices", equals=1)
 - code: `workflows/src/workhorse_workflows/author/main/nodes/epics.py::select_epic_document`
 - code: `workflows/tests/author/test_workflow.py::test_roadmap_authoring_selects_only_its_milestone_epics`
+- detail: [Author epic selector roles](author-epic-selector-roles.md)
 - tests: `workflows/tests/author/test_workflow.py::test_roadmap_authoring_selects_only_its_milestone_epics`
 
 ### select_epic
@@ -93,5 +94,6 @@ resolved back to Ostler's numbered directory name before it is passed to later n
 - code: `workflows/src/workhorse_workflows/author/main/nodes/epics.py::select_epic`
 - code: `workflows/tests/author/test_workflow.py::test_author_nodes_use_milestones_when_todo_is_absent`
 - code: `workflows/tests/author/test_workflow.py::test_roadmap_authoring_selects_only_its_milestone_epics`
+- detail: [Author epic selector roles](author-epic-selector-roles.md)
 - tests: `workflows/tests/author/test_workflow.py::test_author_nodes_use_milestones_when_todo_is_absent`
 - tests: `workflows/tests/author/test_workflow.py::test_roadmap_authoring_selects_only_its_milestone_epics`

@@ -59,11 +59,12 @@ runs when `groom.state` is first imported.
   reference) does not re-run the assignment — Python's module cache returns the same
   module object, the existing `LOG` deque is preserved with whatever entries have been
   appended, and no reset, clear, or rebuild step takes place
-- concurrency: no synchronization primitive participates in initialization; the
-  single-process, single-event-loop assumption guarantees the assignment is observed by
-  every subsequent caller without coordination
-- code: `groom/groom/state.py::LOG`
+- concurrency: answer-event-log — no synchronization primitive participates in initialization
+- verify: keys_unchanged(subject="LOG")
+- concurrency: the single-process, single-event-loop assumption guarantees the assignment is
+  observed by every subsequent caller without coordination
 - verify: count(subject="LOG entries after a fresh groom.state import", equals=0)
+- code: `groom/groom/state.py::LOG`
 
 ## Fields
 
@@ -87,7 +88,8 @@ runs when `groom.state` is first imported.
 - abstract: false
 - raises: no domain-specific errors.
 - raises: ordinary container append errors would propagate to the caller.
-- returns: `None` — the method appends the supplied dictionary to the bounded `LOG` deque exactly once and returns no payload; the append's success or failure is observed through ordinary container behaviour, not through a returned value.
+- returns: `None` — the method appends the supplied dictionary to the bounded `LOG` deque exactly once
+- returns: `None` — the method returns no payload; the append's success or failure is observed through ordinary container behaviour, not through a returned value.
 - verify: count(subject="LOG entries after one record_log call", equals=1)
 - verify: json_path(path="exception.type", equals="RuntimeError")
 - code: groom/groom/state.py::record_log

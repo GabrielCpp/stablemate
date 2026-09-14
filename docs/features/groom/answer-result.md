@@ -64,8 +64,11 @@ Regression coverage for this format includes `groom/tests/test_gates.py::test_an
 - default: `""` — an omitted `message` argument exposes `message=""`
 - verify: json_path(path="$.message", equals="")
 - required: false for construction — callers may omit `message` and the field defaults to the empty string
-- semantics: operator-facing outcome text describing the success path or failure reason; first-party non-empty values are the success and failure strings listed in the parent contract, and the dataclass itself does not restrict the string.
+- semantics: operator-facing outcome text describing the result's success path or failure reason.
 - verify: json_path(path="$.message", matches=".*")
+- semantics: first-party non-empty values are the success and failure strings listed in the parent contract.
+- verify: json_path(path="$.message", matches="^(answered|answered and restarted|answer written but restart failed — start the container manually|unknown workspace volume for this container|gate file not found|already answered in another tab|failed to write answer)$")
+- semantics: the dataclass itself does not restrict the string.
 - code: groom/groom/models.py::AnswerResult
 - tests: groom/tests/test_gates.py::test_answer_gate_rejects_when_already_answered
 - tests: groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running

@@ -53,15 +53,15 @@ reply from entering the retry/compact/reframe ladder and then defaulting to null
 prompt described an unparsable shape. This prevents a coder reply from entering its retry ladder
 with a wrapper or missing top-level field and then taking a default branch after parsing fails.
 
-The OKF-builder package contributes five model-returning turns to this contract. `OkfBuilder`
-enumerates entry surfaces with `Discovery`, investigates one worklist item with `Investigation`,
-adjudicates one blocked finding with `Adjudication`, and adjudicates the computed uncovered list
-with `Recheck`. Its web walkthrough flow drives one journey or screen with `WalkTurn`. The
-investigation call has two literal prompt arms: `main/prompts/investigate.md` for discovery items
-and `main/prompts/repair.md` for `fix:<doctor-code>` items. The static sweep checks both arms, while
-the runtime chooses one from the item kind. Every turn passes a literal or statically resolvable
-argument dictionary, including service paths and turn-specific evidence; unresolved argument
-construction is a finding rather than a partial variable vocabulary.
+The OKF-builder package contributes four model-returning turns to this contract. `OkfBuilder`
+investigates one worklist item with `Investigation`, adjudicates one blocked finding with
+`Adjudication`, and adjudicates the computed uncovered list with `Recheck`. Its web walkthrough
+flow drives one journey or screen with `WalkTurn`. The investigation call has two literal prompt
+arms: `main/prompts/investigate.md` for discovery items and `main/prompts/repair.md` for
+`fix:<doctor-code>` items. The static sweep checks both arms, while the runtime chooses one from
+the item kind. Every turn passes a literal or statically resolvable argument dictionary, including
+service paths and turn-specific evidence; unresolved argument construction is a finding rather
+than a partial variable vocabulary.
 
 The research package contributes eleven model-returning turns from the `Research` workflow. The
 sweep includes the private recording helper as well as every public state method, because a helper
@@ -73,8 +73,6 @@ the importing `workflow.py` module.
 
 The package-specific call sites are:
 
-- `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.enumerate_surfaces` →
-  `main/prompts/enumerate-surfaces.md`, `Discovery`
 - `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.investigate` → the two
   investigation/repair prompts, `Investigation`
 - `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.adjudicate` →
@@ -134,7 +132,6 @@ model. The corresponding sweep and shape checks are:
 - code: `workflows/tests/test_prompt_variables.py::_referenced`
 - code: `workflows/tests/test_prompt_output_shape.py::_model_fields`
 - code: `workflows/tests/test_prompt_output_shape.py::_turns`
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.enumerate_surfaces`
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.investigate`
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.adjudicate`
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.recheck`

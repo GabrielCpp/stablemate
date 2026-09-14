@@ -68,11 +68,13 @@ Called by the attendant pane API before rendering; retries the copy exactly once
 
 ### method: attend_root
 - sig: `() -> Path`
-- does: resolve the path by joining `turns.transcripts_root()` with the module-level constant `ATTEND_DIR` ("attend"); the filesystem is not touched (no `mkdir`, no `stat`, no read)
+- does: resolve the path by joining `turns.transcripts_root()` with the module-level constant `ATTEND_DIR` ("attend") — the filesystem is not touched (no `mkdir`, no `stat`, no read)
 - verify: json_path(path="result", matches=".*/transcripts/attend$")
-- returns: a `pathlib.Path` to `<groom data dir>/transcripts/attend`; the directory may or may not exist on disk at the moment of the call — this method does not create it
+- returns: a `pathlib.Path` to `<groom data dir>/transcripts/attend`
 - verify: json_path(path="result", matches=".*/transcripts/attend$")
-- persistence: attend-root — names the persistent storage location for attendant session transcripts (see the module intro); the directory sits beside the run-major tree so an attendant record outlives its run
+- returns: the directory may or may not exist on disk at the moment of the call — this method does not create it
+- verify: json_path(path="result", matches=".*/transcripts/attend$")
+- persistence: attend-root — names the persistent storage location for attendant session transcripts (see the module intro; the directory sits beside the run-major tree, so an attendant record outlives its run)
 - verify: json_path(path="result", matches=".*/transcripts/attend$")
 - code: `groom/groom/attend_transcript.py::attend_root`
 
@@ -129,7 +131,7 @@ prose, and thinking tokens are dropped.
 - tests: `groom/tests/test_attend.py::test_a_session_reads_back_as_a_conversation`
 - tests: `groom/tests/test_attend.py::test_a_session_with_nothing_copied_renders_empty_rather_than_raising`
 
-Called by the `GET /api/attend/sessions/{session_id}` handler in [`groom/groom/app.py`](../../../groom/groom/app.py) (registered as `attend_session`, called via `asyncio.to_thread`) — the single function the dashboard pane reaches through that endpoint, the one that decides what the operator reads.
+Called by the `GET /api/attend/sessions/{session_id}` handler in [`groom/groom/app.py`](../../../../groom/groom/app.py) (registered as `attend_session`, called via `asyncio.to_thread`) — the single function the dashboard pane reaches through that endpoint, the one that decides what the operator reads.
 
 ### method: _entries
 - sig: `(path: Path, sidechain: bool = False) -> list[dict[str, Any]]`
@@ -378,4 +380,3 @@ The shape of one rendered transcript entry — a tagged union over the `kind` fi
 - semantics: present only when `kind == "divider"`, between sidechain blocks
 - verify: json_path(path="result.entries[?(@.kind=='divider')].label", matches="^subagent · .+$")
 - code: `groom/groom/attend_transcript.py::render_session`
-

@@ -25,8 +25,9 @@ before a budget-partial audit ships), `since` (optional revision for a diff-scop
 The machine first resolves the docs root, source root, feature root, worklist, and optional diff
 scope. It refuses to start when the source is outside the repository, is not a directory, the
 OKF graph cannot load, the installed OKF reference corpus is incomplete, or an explicitly
-requested `since` revision cannot be resolved. An empty book is seeded from entry surfaces; an
-existing book is reconciled from its checkpoint, doctor findings, and source watermark.
+requested `since` revision cannot be resolved. An empty book and an existing book both enter
+checkpoint reconciliation: the coverage join reports missing source units, then `recheck`
+classifies genuine surface, runbook, environment, and harness work for the drain.
 
 The drain selects one pending worklist item. A discovery item renders `main/prompts/investigate.md`
 and a repair item renders `main/prompts/repair.md`; the result closes the current row and opens
@@ -49,10 +50,10 @@ no-op when the book has no web surface — and then commits only the service fea
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder`
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::investigation_power`
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::repair_power`
+- code: `workflows/tests/okf_builder/test_workflow.py::test_repair_power_routes_difficult_first_attempts_to_medium`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_repair_power_keeps_a_single_mechanical_first_attempt_low`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_repair_power_routes_difficult_first_attempts_to_medium`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_repair_power_climbs_the_ladder_only_after_each_tier_fails`
-- code: `workflows/tests/okf_builder/test_workflow.py::test_repair_power_routes_difficult_first_attempts_to_medium`
 - detail: [OKF-builder workflow composition root](okf-builder-workflow-composition-root.md)
 - detail: [workhorse-okf-builder](../workhorse-okf-builder.md)
 - detail: [source inventory filtering](source-inventory-filter.md)
@@ -85,26 +86,28 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: exit_status(code=1)
 - does: routes an existing book to checkpoint reconciliation
 - verify: count(subject="existing-book reconciliation starts", equals=1)
-- does: routes an empty book to entry-surface enumeration
-- verify: count(subject="empty-book surface enumerations", equals=1)
+- does: routes an empty book to checkpoint reconciliation, where coverage classifies its missing source units
+- verify: count(subject="empty-book coverage reconciliations", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.start`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_an_empty_book_is_filled_top_down_from_the_code_s_surfaces`
 
 ### enumerate_surfaces
 
-- sig: `enumerate_surfaces() -> Continue`
-- does: asks the low-power agent to identify every entry surface within the configured source scope
-- verify: count(subject="OKF-builder surface enumeration turns", equals=1)
-- returns: a continuation carrying discovered surface, runbook, environment, and harness work items
+- sig: `recheck(rnd: int = 0, rescan: int = 0, refuels: int = 0) -> Continue`
+- does: asks the medium-power agent to adjudicate every source unit the coverage join reports missing within the configured source scope
+- verify: count(subject="OKF-builder missing-unit adjudication turns", equals=1)
+- returns: a continuation carrying discovered surface, runbook, environment, and harness work items that the adjudication classified as genuine gaps
 - verify: count(subject="OKF-builder surface discovery batches", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.enumerate_surfaces`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.recheck`
+- detail: [OKF-builder recheck coverage selection](okf-builder-recheck-coverage.md)
 
 ### seed_surfaces
 
-- sig: `seed_surfaces(discovered: list[dict]) -> Continue`
-- does: records discovered surface items as pending work without closing an existing item
+- sig: `seed_recheck(discovered: list[dict], rnd: int = 0, rescan: int = 0, refuels: int = 0) -> Continue`
+- does: records the adjudicated surface, runbook, environment, and harness gaps as pending work without closing an existing item
 - verify: count(subject="OKF-builder surface worklist seeds", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.seed_surfaces`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.seed_recheck`
+- detail: [OKF-builder seed_recheck selection](okf-builder-seed-recheck.md)
 
 ### select
 
@@ -198,8 +201,8 @@ no-op when the book has no web surface — and then commits only the service fea
 - does: hands a complete coverage result to the semantic audit
 - verify: count(subject="OKF-builder semantic audit dispatches", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.rescan_coverage`
-- tests: `workflows/tests/okf_builder/test_regrounding.py::test_a_symbol_that_changed_under_its_citation_is_queued_not_converged`
 - detail: [Workflow kit worklist builder](workflow-kit-worklist.md)
+- tests: `workflows/tests/okf_builder/test_regrounding.py::test_a_symbol_that_changed_under_its_citation_is_queued_not_converged`
 
 ### recheck
 
@@ -209,6 +212,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - does: returns the prompt's real gaps for worklist seeding and its waivers for the next computed join
 - verify: count(subject="OKF-builder coverage gap batches", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.recheck`
+- detail: [OKF-builder recheck coverage selection](okf-builder-recheck-coverage.md)
 
 ### seed_recheck
 
@@ -216,6 +220,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - does: records real coverage gaps and returns to the drain with fresh stall and finding state
 - verify: count(subject="OKF-builder coverage gap seeds", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.seed_recheck`
+- detail: [OKF-builder seed_recheck selection](okf-builder-seed-recheck.md)
 
 ### semantic_audit
 

@@ -7,12 +7,14 @@ title: Home config file (config.toml)
 
 The shared, machine-local settings file every stablemate tool reads and writes — holding the
 overlay [library directory](concepts/library-directory.md) candidate, the base-library path, the
-local `stablemate` checkout path, and the per-backend `power`/`harness` tables workhorse resolves
+local `stablemate` checkout path, and the `[profiles.*]` / `[cli.*]` tables workhorse resolves
 against. It lives in `stablemate_core`, not in farrier: the keys are shared, so workhorse
 inheriting a farrier-set `library_dir` is the point rather than a leak. Read by `load_config`
 (farrier spells the same function `read_config`; it is an alias, not a second implementation),
 written key-by-key by `write_config_key`, and surfaced to the user by
-[`farrier config show`](farrier.md#config).
+[`farrier config show`](farrier.md#config). The schema is versioned: a config older than this
+build's `CONFIG_VERSION` is carried forward in-memory on read, so resolvers always see the current
+shape; the file on disk is lifted to the current version only when a write touches it.
 
 - file: `config.toml` under `platformdirs.user_config_dir("stablemate")` — e.g.
   `~/.config/stablemate/config.toml` on Linux, `~/Library/Application Support/stablemate/config.toml`
@@ -27,8 +29,11 @@ written key-by-key by `write_config_key`, and surfaced to the user by
 ## Fields
 
 A TOML table. `write_config_key` merges into whatever keys already exist rather than replacing the
-file, so any key is legal — these are the ones the tools actually read back. (`power.*` and
-`harness.*` are nested tables owned by workhorse; see workhorse's own docs for their shape.)
+file, so any key is legal — these are the ones the tools actually read back. (`[profiles.*]` and
+`[cli.*]` are nested tables owned by workhorse; see workhorse's own docs for their shape. The
+table names evolved across schema versions — the v1 `[power.*]` / `[harness.*]` shape is carried
+forward into the v2 `[profiles.*]` / `[cli.*]` shape by `_migrate_forward`, so an older config keeps
+working until a write lifts it.)
 
 ### library_dir
 - type: `string` — required: no — default: unset
@@ -60,15 +65,17 @@ overlay-only setup working.
 - code: `farrier/farrier/user_library.py::user_library_tables`
 
 ### config_version
-- type: `integer` — required: no — default: absent (treated as version 0)
+- type: `integer` — required: no — default: absent (treated as version 1)
 
-The schema version this file was last written under, stamped on **every** write. It is not the
-`stablemate-core` package version: coupling the two would bump the schema on every patch release and
-lock out every tool that had not upgraded yet. A file newer than the running build's
-`CONFIG_VERSION` makes `write_config_key` refuse with `ConfigVersionError` rather than clobber it —
-the one guard that holds however the tools were installed, because it defends the file rather than
-trusting the code that reaches it. An older file is carried forward by `_migrate_forward` before the
-write lands, so a write never mixes schemas.
+The schema version this file was last written under, stamped on **every** write. An absent key
+reads as version 1 because v1 IS the unified file — every config predating the `config_version` key
+is v1-shaped by definition. It is not the `stablemate-core` package version: coupling the two would
+bump the schema on every patch release and lock out every tool that had not upgraded yet. A file
+newer than the running build's `CONFIG_VERSION` makes `write_config_key` refuse with
+`ConfigVersionError` rather than clobber it — the one guard that holds however the tools were
+installed, because it defends the file rather than trusting the code that reaches it. An older
+file is carried forward by `_migrate_forward` before the write lands, so a write never mixes
+schemas.
 
 ## Reading and writing
 
@@ -118,7 +125,7 @@ write lands, so a write never mixes schemas.
 - does: checks the supplied config or loaded config against the supported schema
 - raises: `ConfigVersionError` when the config declares a newer schema
 - returns: the supported schema version when the config is acceptable
-- verify: exit_status(code=1)
+- verify: json_path(path="$.exception.type", equals="ConfigVersionError")
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::check_config_version`
 
 ### profile_names
@@ -130,46 +137,49 @@ write lands, so a write never mixes schemas.
 
 ### select_profile
 - sig: `select_profile(cfg: dict[str, Any] | None, name: str) -> dict[str, Any]`
-- does: returns the original config unchanged when `name` is empty
-- does: replaces top-level resolution tables with the named profile mapping
+- does: returns an empty mapping when `name` is empty
+- does: hands back the named profile's own table so resolvers see one CLI's view
+- does: validates the named profile declares a `cli` field
 - raises: `UnknownProfileError` when the named profile is not defined
-- returns: the selected profile mapping
-- verify: json_path(path="$.power.high.claude.model", equals="haiku")
+- raises: `ConfigError` when the named profile has no `cli` field
+- returns: the selected profile mapping, or `{}` for an empty `name`
+- verify: json_path(path="$.cli", equals="opencode")
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::select_profile`
 
 ### profile_backends
 - sig: `profile_backends(profile: dict[str, Any]) -> list[str]`
-- does: collects backend names from tier tables and the profile default table
-- does: excludes each tier's `default` fallback key
-- returns: distinct backend names sorted lexicographically
-- verify: count(subject="profile backend names", equals=1)
+- does: returns the profile's declared CLI as a single-element list
+- does: returns an empty list when the profile has no usable `cli` field
+- returns: the lowercased CLI name as a one-element list, or `[]` when missing
+- verify: count(subject="profile backends", equals=1)
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::profile_backends`
 
 ### profile_has_backend
 - sig: `profile_has_backend(profile: dict[str, Any], backend: str) -> bool`
-- does: reports true when a tier backend, tier fallback, or default backend can provide a mapping
-- returns: false when no mapping can resolve the backend
-- verify: json_path(path="$.profile_has_backend", equals=true)
+- does: reports true when the profile's `cli` field equals `backend`
+- returns: false when the profile has no `cli` field or the names differ
+- verify: json_path(path="$", equals=true)
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::profile_has_backend`
 
 ### resolve_power
 - sig: `resolve_power(power: str | None, backend: str, cfg: dict[str, Any] | None = None) -> PowerMapping`
-- does: returns an empty mapping when no power tier, tier table, backend table, or fallback exists
-- does: chooses the backend table before the tier's `default` fallback
-- returns: the selected non-empty `model` and `effort` strings
+- does: returns an empty mapping when no power tier, no tier table, or the profile's `cli` field disagrees with `backend`
+- does: reads the tier entry directly from `profile.powers.<power>` (no per-backend nesting in v2)
+- returns: a `PowerMapping` carrying `model`, `effort`, and `timeout_scale`
 - verify: json_path(path="$.model", equals="haiku")
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_power`
 
 ### resolve_backend_default
 - sig: `resolve_backend_default(backend: str, cfg: dict[str, Any] | None = None) -> PowerMapping`
-- does: reads the backend mapping from the top-level `default` table
-- returns: an empty mapping when the table or backend entry is absent or malformed
+- does: reads the mapping from the profile's `default` table
+- does: returns an empty mapping when the profile's `cli` field disagrees with `backend`
+- returns: a `PowerMapping` carrying `model`, `effort`, and `timeout_scale`, or an empty mapping when the table is absent
 - verify: json_path(path="$.model", equals="opus")
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_backend_default`
 
 ### resolve_harness_env
 - sig: `resolve_harness_env(backend: str, cfg: dict[str, Any] | None = None) -> dict[str, str]`
-- does: selects `harness.<backend>.env`
+- does: reads `cli.<backend>.env` from the unnarrowed config so every profile that runs this CLI inherits the table
 - does: drops non-string keys and values instead of coercing them
 - returns: the valid string environment mapping, or `{}` when absent or malformed
 - verify: json_path(path="$.OPENCODE_DISABLE_AUTOCOMPACT", equals="1")

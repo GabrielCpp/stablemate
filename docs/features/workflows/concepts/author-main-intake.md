@@ -27,6 +27,7 @@ consuming repository from the explicit `repo_dir` input using the survey resolve
 - code: `workflows/tests/author/test_workflow.py::backlogged`
 - code: `workflows/tests/author/test_workflow.py::with_epic`
 - code: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`
+- detail: [Author backlogged fixture contexts](author-backlogged-fixture-context.md)
 - tests: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`
 
 ### validate_roadmap_milestone

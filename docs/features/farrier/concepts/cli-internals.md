@@ -53,11 +53,13 @@ These helpers form the command parser and dispatch seams behind the public `farr
 - verify: count(subject="registered farrier subcommands", equals=10)
 - code: `farrier/farrier/cli.py::_build_parser`
 
-### method: _run_hooks
-- sig: `_run_hooks(args: argparse.Namespace) -> int`
-- does: wire the repository hook manager without resolving or rendering a library
+### method: _run_hooks_install
+- sig: `_run_hooks_install(args: argparse.Namespace) -> int`
+- does: wire the repository hook manager without requiring a resolved library
 - verify: exit_status(code=0)
-- code: `farrier/farrier/cli.py::_run_hooks`
+- does: leave outputs other than the hook manager and its runner unchanged while wiring repository hooks
+- verify: unchanged(subject="repository outputs other than the hook manager and runner")
+- code: `farrier/farrier/cli.py::_run_hooks_install`
 
 ### method: _selected_layer
 - sig: `_selected_layer(args: argparse.Namespace) -> str | None`

@@ -167,82 +167,148 @@
         },
         {
           "path": "farrier/farrier/_vendor/stablemate_core/config.py",
-          "content_sha256": "88b02687f5b530b32c078c7788ddf34b7e2d2851dcc7f607089a45f19ba7febd",
+          "content_sha256": "451a081294d09d810fe9d6a8abbae04e7934c4547265d40b02cc02af743f3d6a",
           "symbols": [
+            "ATTEND_CLI_ENV",
+            "ATTEND_DENY_ENV",
+            "ATTEND_HEADLESS",
+            "ATTEND_MODE_ENV",
+            "ATTEND_OFF",
+            "ATTEND_SECTION",
+            "ATTEND_SESSION",
+            "AttendSettings",
             "BACKEND_FALLBACK_KEY",
+            "BUILTIN_ATTEND_CLI",
             "BUILTIN_DEFAULT_CLI",
+            "CLI_ENV_KEY",
+            "CLI_KEY",
             "CONFIG_PATH_ENV",
+            "CONFIG_SOURCE",
             "CONFIG_VERSION",
             "CONFIG_VERSION_KEY",
+            "ConfigError",
             "ConfigVersionError",
             "DEFAULT_CLI_KEY",
+            "DEFAULT_SOURCE",
+            "ENV_SOURCE",
             "LEGACY_CONFIG_PATH_ENV",
             "PROFILES_KEY",
+            "PROFILE_CLI_KEY",
+            "PROFILE_DEFAULT_KEY",
+            "PROFILE_POWERS_KEY",
             "PowerMapping",
             "UnknownProfileError",
+            "_ATTEND_MODES",
             "_LEGACY_APPS",
             "_MIGRATIONS",
+            "_attend_mode",
             "_core_version",
             "_default_config_path",
+            "_ensure_cli_profile",
             "_mapping_from_table",
             "_migrate_forward",
+            "_migrate_v1_to_v2",
             "_path_is_explicit",
             "_positive_finite",
             "_profiles_table",
             "_read",
+            "_reject_duplicate_cli",
             "_too_new_message",
+            "_walk_migrations",
             "_warn_if_too_new",
             "_warned_too_new",
+            "as_dict",
+            "auto_select_profile",
             "backend_table",
             "backup",
             "cfg",
             "check_config_version",
+            "cli",
+            "cli_table",
             "config_path",
             "config_version_of",
             "configured",
             "data",
             "default_table",
+            "deny",
             "effort",
+            "entry",
+            "env_cli",
+            "env_mode",
             "env_table",
             "found",
             "get_config_value",
-            "harness_table",
+            "harness",
             "known",
+            "last_mode",
+            "legacy",
             "legacy_config_paths",
-            "level_table",
             "listed",
             "load_config",
             "logger",
+            "match",
             "merged",
+            "mode",
             "model",
-            "names",
+            "nested",
+            "nested_default",
+            "nested_power",
+            "normalized",
+            "parts",
             "path",
-            "power_table",
+            "power",
+            "powers",
             "profile",
             "profile_backends",
+            "profile_cli",
             "profile_has_backend",
             "profile_names",
+            "profiles",
             "raw",
+            "raw_cli",
+            "raw_deny",
+            "raw_env",
             "read_config",
+            "resolve_attend_settings",
             "resolve_backend_default",
             "resolve_default_cli",
             "resolve_harness_env",
             "resolve_power",
             "resolve_stablemate_dir",
             "resolve_worktree_dir",
+            "section",
+            "seen",
+            "select_active_profile",
             "select_profile",
+            "sources",
             "step",
             "table",
+            "text",
+            "tier_table",
             "timeout_scale",
             "value",
+            "write_attend_settings",
             "write_base_dir",
             "write_config_key",
+            "write_config_section",
             "write_default_cli",
             "write_library_dir",
             "write_stablemate_dir",
             "write_worktree_dir"
           ],
           "declarations": [
+            {
+              "name": "AttendSettings",
+              "content_sha256": "a606dc765bce851581790e31d2ec20e324d6d97e7ca3fd010e1c316dd9e6a9a8"
+            },
+            {
+              "name": "AttendSettings.as_dict",
+              "content_sha256": "327b61674191f4566466c3f3ae5640553673e15834e5dd6d30b3ea508a89d9db"
+            },
+            {
+              "name": "ConfigError",
+              "content_sha256": "34e0c7f579651bc8c2287b61a5653acc764cb6789395c940f2faee9b299855f2"
+            },
             {
               "name": "ConfigVersionError",
               "content_sha256": "a6ba25f76eb50d231b4de8ad8960246226bc0b14e34325474917c92aaf76927e"
@@ -256,6 +322,10 @@
               "content_sha256": "594c70b0daea7d34a7b8cc49bb0ca81bacff67770df86902501014c9d7263032"
             },
             {
+              "name": "_attend_mode",
+              "content_sha256": "57537695137c8d705438c9c97b14f74348da8de5f7b19ea431baa2bc7b95133a"
+            },
+            {
               "name": "_core_version",
               "content_sha256": "f0cd22f9b0f3a4625304b4008976ad774cf8741ffe66f18ce736882c4286ae06"
             },
@@ -264,12 +334,20 @@
               "content_sha256": "45fd4865b23ccc0843e5aa43130aa58c4477eba81da3a84022310ccaa3c9f887"
             },
             {
+              "name": "_ensure_cli_profile",
+              "content_sha256": "29f125f512f3e8bffcc1b36d3bfea71cf3430d99d3fbbc88aaa5e2a1820e4c8a"
+            },
+            {
               "name": "_mapping_from_table",
               "content_sha256": "8bf511ba1eb8f949fc7a3c50b45ba61990cc09d6b4ec10ecd28f5b54bca72bd7"
             },
             {
               "name": "_migrate_forward",
-              "content_sha256": "f66a3b08453d64e428fee8a12cc100c6de3e0766c29f7a97a8c5a9fe3b18d98a"
+              "content_sha256": "3a7293fc3e3617cc29bad8842a9c1ff54b5121f7088646fd4e79d3ee8a4444a0"
+            },
+            {
+              "name": "_migrate_v1_to_v2",
+              "content_sha256": "7babadd0437af6cf5d1e6ca0b6e96773a422fe8875b1311e09b188fafc04cba0"
             },
             {
               "name": "_path_is_explicit",
@@ -288,12 +366,24 @@
               "content_sha256": "1bba21b16719a9b4c38b08280740711e132acfaa773964e8cd6daab7e33dfe32"
             },
             {
+              "name": "_reject_duplicate_cli",
+              "content_sha256": "f741e4c02ae60153b1d01600e3e82daa6cdf59119da3ff2c36abcf400c41cd6c"
+            },
+            {
               "name": "_too_new_message",
               "content_sha256": "1ae3edb63e79a391d807db889ec96db25a20db1db9973e69fab51caf71f82705"
             },
             {
+              "name": "_walk_migrations",
+              "content_sha256": "9620b87f9e0662f1b418e74bc8205faf8549e4f82abf927a69797ef003a86eaa"
+            },
+            {
               "name": "_warn_if_too_new",
               "content_sha256": "ee5246bd08ef73c2fd282f7c054f905a8dadcb1672020e48f0045c2b4bef4e6c"
+            },
+            {
+              "name": "auto_select_profile",
+              "content_sha256": "bc165bdb26fab1f6f299d6cf4c96eea434af2d541653a8308f0a53579dc2c729"
             },
             {
               "name": "check_config_version",
@@ -317,23 +407,31 @@
             },
             {
               "name": "load_config",
-              "content_sha256": "edb5cd346c003f6c70bb58932638132277be1bc2ff39c6f174dc94bf181165ff"
+              "content_sha256": "8240ce202593f592bf0c188e46229034d017011ae55dfda559aa055329c20f24"
             },
             {
               "name": "profile_backends",
-              "content_sha256": "7421142752031e1a20cc69b842f6b1cc90ffe08151e45614102a0b1edebe659b"
+              "content_sha256": "03f92fc0290bfd07d47be67429db3482d3d157daba91078e4afff18a58bcc0e7"
+            },
+            {
+              "name": "profile_cli",
+              "content_sha256": "1e762219c515af67bf991476ae5e7c91db9a6f9fc5be94231b944ce5ca3d6f7d"
             },
             {
               "name": "profile_has_backend",
-              "content_sha256": "55d118fe914c073bf0c726a57c061b2620aa570e8e5b6466adfd5a63a4083e78"
+              "content_sha256": "762b1b64272061d8899b632632aa9c744b8e5bf0914a114f2e700cda8d476b09"
             },
             {
               "name": "profile_names",
               "content_sha256": "34607cee6a39ac5b6b68191a214290881ddb0efcfff9ca4b0c49a0c56afaf740"
             },
             {
+              "name": "resolve_attend_settings",
+              "content_sha256": "10384efff134ae92bb03a9bbcd401905d828c0dd46a03d09212fdb82a7c19fbb"
+            },
+            {
               "name": "resolve_backend_default",
-              "content_sha256": "a785921415aee5d99996415c4bceebf17250a725c3d5ba491b20cfc87e92cf44"
+              "content_sha256": "b5827b7fc7ce54046881f5985efce0006a2c4e1a0a8c526ee1f977fb1baf696a"
             },
             {
               "name": "resolve_default_cli",
@@ -341,11 +439,11 @@
             },
             {
               "name": "resolve_harness_env",
-              "content_sha256": "3265e5b6db3e28837474daddc68a281b633fd46b09d68c251671f16da7f3b42c"
+              "content_sha256": "5ac999e9512592dd1955832036ce651482d6da14a8adb31f01d1d66f8562775b"
             },
             {
               "name": "resolve_power",
-              "content_sha256": "318a57d0f58d31607a8f959f3422e5176c8069e8aa5b93f73c89d2c657e2022a"
+              "content_sha256": "2b9b467bddeb9b88460b442f50850117ecb4051d6a70af5a2598db8704c7796f"
             },
             {
               "name": "resolve_stablemate_dir",
@@ -356,8 +454,16 @@
               "content_sha256": "bc9166ecc6fa843a32b98a47f59f27bd5ec2ae33993cff84b797add5655b576d"
             },
             {
+              "name": "select_active_profile",
+              "content_sha256": "b0099967f1c13b79253903c655c354a9b569d277b8ee955433434df061e75a37"
+            },
+            {
               "name": "select_profile",
-              "content_sha256": "a0b45b49c109963fe70da1f4f6f084043e1d8ac4c11ed191addaf1b1de939f76"
+              "content_sha256": "a56135a79d39636ad9b4fd74b7e71fad35f82b418caeeccc874759954f433583"
+            },
+            {
+              "name": "write_attend_settings",
+              "content_sha256": "b5550104f7d576d6f5c6be8db1d6b5a9b9759aebae08702d9d268372b9c60941"
             },
             {
               "name": "write_base_dir",
@@ -365,7 +471,11 @@
             },
             {
               "name": "write_config_key",
-              "content_sha256": "4eafc3daf789279f76709433e2ec702d90d90a308c7ccad7ff361b9859607e0a"
+              "content_sha256": "1463a10937fd3be3e39fe64930efb82208d07b56d427b918ea02b4bdfb270617"
+            },
+            {
+              "name": "write_config_section",
+              "content_sha256": "2788688dee1810e2ee002295f9b41a1c6f04892339c1c1a9035ed99d15efa7f1"
             },
             {
               "name": "write_default_cli",
@@ -19567,7 +19677,7 @@
         },
         {
           "path": "workhorse/supervisor.py",
-          "content_sha256": "7c6e720f29f02bb7ecfbe7aeb5423315ef3e6b10ce356d5cf6017d32c00364ad",
+          "content_sha256": "65e402ff1f6393ccd80adc965b496933223398fb395263e0085d69b9ba34bc34",
           "symbols": [
             "Child",
             "Layout",
@@ -19704,7 +19814,7 @@
             },
             {
               "name": "supervise",
-              "content_sha256": "9a4de69bab7e179ee935dc638da7c5d72abb89af4cf4840e098242f80ff7d85d"
+              "content_sha256": "f6bc475bdbf72b8ad3a1ba57807d9f5c839bae70c53afa3913ad995532a3245e"
             },
             {
               "name": "supervise_observer",
@@ -19718,7 +19828,7 @@
         },
         {
           "path": "workhorse/tests/_fakes.py",
-          "content_sha256": "44e83facb3f947dfd2e0959ddbefdfa636d4f8d973b04f5776090ffd037f73dc",
+          "content_sha256": "3465f6f9cdde2d31476815953822cacb564ee0c46b1f50482fb19b52a336df55",
           "symbols": [
             "FakeBackend",
             "FakeClock",
@@ -19797,11 +19907,11 @@
             },
             {
               "name": "RecordingTelemetry",
-              "content_sha256": "2d04f3a1c3d2b171ceaf67f225a501adae404f721a2f55f01923b1a1f7eee0d2"
+              "content_sha256": "61f8e9890af37a6129e6a3d0ca657014ad163795c1e9895917f88208eee11364"
             },
             {
               "name": "RecordingTelemetry.__init__",
-              "content_sha256": "337c57ff2bb52fdcaefed594ca3740db0dc1898c1e494e1c9fc56af714b420af"
+              "content_sha256": "27963486936286e263ba049ddbe309c337361d7d22ae89168d29135b55d83ce2"
             },
             {
               "name": "RecordingTelemetry.enabled",
@@ -19849,7 +19959,7 @@
             },
             {
               "name": "RecordingTelemetry.wait_start",
-              "content_sha256": "404b4035444613a5bd969aa931d17bc5b57edee077efd83b89b7e85450255cb1"
+              "content_sha256": "6cd9b0f74acd081a3343b2bbf3cb20369121ebee2dcfe9fb98fb70d51a05d462"
             },
             {
               "name": "fake_groom",
@@ -20407,7 +20517,7 @@
         },
         {
           "path": "workhorse/workhorse/artifacts.py",
-          "content_sha256": "4876e19c48a114546c86cd876bb5288a8c4246348c674a55c9e1b0e36248d244",
+          "content_sha256": "db240823dab726a227263ba37559babfc1dbd84736bd40fac3bc2fe582365c39",
           "symbols": [
             "ArtifactWriter",
             "CHECKPOINT_FILE",
@@ -20444,6 +20554,7 @@
             "record_launch",
             "record_node",
             "record_profile",
+            "record_worktree",
             "resume",
             "run_id",
             "self",
@@ -20455,19 +20566,22 @@
             "target",
             "tmp",
             "visit_dir",
+            "worktree_branch",
+            "worktree_path",
             "write_branch",
             "write_final_context",
             "write_state_checkpoint",
-            "write_step"
+            "write_step",
+            "write_unlinked"
           ],
           "declarations": [
             {
               "name": "ArtifactWriter",
-              "content_sha256": "a77f4091f3d3d1256331326d0f4ece697dbf71315c6a85dd89b5d4254d923cb2"
+              "content_sha256": "af9c42db14e49fdcb2082211a9c27f7a57af0dad9a72a10ec26ea169de73817a"
             },
             {
               "name": "ArtifactWriter.__init__",
-              "content_sha256": "69436ad7dd5ebe14deea300c0461bedd2a018732f4695be2f92adbce65b0e49b"
+              "content_sha256": "0c49085d052286fcf9cdc6687e5d3835e8f65a72e8825553c11ca5c2bb450b35"
             },
             {
               "name": "ArtifactWriter._append_event",
@@ -20487,15 +20601,15 @@
             },
             {
               "name": "ArtifactWriter._write_run_json",
-              "content_sha256": "3e0870c43c360806946cd7eea4ce311a511a873dd7178b95862c45e826ca8c5b"
+              "content_sha256": "9afe895cce6a242a7baf42a01f18667a64b471135a89effc89130977ffed49e1"
             },
             {
               "name": "ArtifactWriter._write_unlinked",
-              "content_sha256": "e44ec06447eba41fee77b8bb5be952623d73b583d0bc9ff87a22f8eeb1c18e27"
+              "content_sha256": "8214c5072e84b56381a8373d744d4db5a4488b3161b36deb010b7efbc8f190d2"
             },
             {
               "name": "ArtifactWriter.at",
-              "content_sha256": "69df6ff519f19a617cd657c4649956241cfe96df9f57569419593fff21bf8f8f"
+              "content_sha256": "f201b7bb05ff0f8256e1db565f673ca335e6f18656fb44dba1da8993f4b21a3c"
             },
             {
               "name": "ArtifactWriter.finish",
@@ -20538,8 +20652,12 @@
               "content_sha256": "c2e1ba364ddea03bf388d6e728963ac57cd1cb58e57a9a8024f5921a2be1231d"
             },
             {
+              "name": "ArtifactWriter.record_worktree",
+              "content_sha256": "9cf1792cf4e438cf5e074c7ec8ff023bc8a4776cfd41eda9db8f0c85b382f296"
+            },
+            {
               "name": "ArtifactWriter.resume",
-              "content_sha256": "12847e283ed578d66b712bad3b342580b4742deb44c01523f318ca74c12dab3e"
+              "content_sha256": "b0c68af7330e0fa95c7b8e6475e548b00fb330c73cb26a7de490a4f38f46c86b"
             },
             {
               "name": "ArtifactWriter.run_id",
@@ -20556,6 +20674,14 @@
             {
               "name": "ArtifactWriter.visit_dir",
               "content_sha256": "7f43ab6f25ca1737a3b13c1ac9dfa7011db55c0f4a00c888de4e63604c3e03c7"
+            },
+            {
+              "name": "ArtifactWriter.worktree_branch",
+              "content_sha256": "3ee14c71998627d6485fffe73152ac230629cdb93be7ae7c6259b0f9e12a82bc"
+            },
+            {
+              "name": "ArtifactWriter.worktree_path",
+              "content_sha256": "4063b7d38cf0dda2437fcbb581c9ce13427d23934c1e8e95886b02315637c773"
             },
             {
               "name": "ArtifactWriter.write_branch",
@@ -20584,6 +20710,10 @@
             {
               "name": "_process_alive",
               "content_sha256": "a6a0708d9463e6a4d0d1001b799519bd0ef413aa2289746c7e5a7477bfcabcc9"
+            },
+            {
+              "name": "write_unlinked",
+              "content_sha256": "baf4298cc83e80dc80e63d81423682f54ee5dab2b20c545cd2b1e63b82be1694"
             }
           ]
         },

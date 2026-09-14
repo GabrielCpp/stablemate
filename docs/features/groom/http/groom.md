@@ -477,7 +477,9 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Folds the `hello` frame's identity and snapshot into the visible workflow fleet through the [sidecar hello applier](../concepts/sidecar-hello-applier.md), rebuilding gates from the snapshot and broadcasting the resulting shell.
   - Resolves `rpc_result` frames against pending host-to-sidecar RPCs so `/files`, `/file`, `/diff`, and `/reload` can use the same connected socket.
   - Applies `progress` and `blocked` frames as live workflow state deltas and broadcasts the resulting dashboard updates.
-  - Schedules a [sidecar turn pull](../concepts/sidecar-turn-pulling.md) on `turn` frames — the container's hint that one of its turn records moved; the host goes and re-fetches rather than letting the sidecar push the record itself.
+  - Schedules a [sidecar turn pull](../concepts/sidecar-turn-pulling.md) on `turn` frames — the container's signal that one of its turn records moved.
+  - verify: emitted(event="sidecar.turn_pull_scheduled")
+  - The host re-fetches rather than letting the sidecar push the record itself.
   - Treats a websocket disconnect as normal session end and unregisters only the current connection, failing any in-flight RPCs so callers can fall back instead of hanging.
 - verify: created(subject="the sidecar connection registered for the container id in the sidecar connection registry")
 - verify: json_path(path="hello.snapshot.current_node", equals="await_operator")

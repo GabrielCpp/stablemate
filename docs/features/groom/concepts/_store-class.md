@@ -31,8 +31,10 @@ The instance attributes set in [`__init__`](#init) and read/mutated by the metho
 - type: `sqlite3.Connection | None`
 - default: `None`
 - required: false — None until first `connect()` call, and None again after `_close_quietly()`
-- semantics: the open write-mode connection for the writer singleton, or `None`; held in instance memory only, never persisted, and never observed outside the class except through [`connect()`](#connect) returning the descriptor
-- semantics: every read and write happens under [`lock`](#lock) — `connect()`, `writing()`, `recycle()`, and `_close_quietly()` all enter the RLock before touching `_conn`, so concurrent callers serialize on the same descriptor rather than racing two opens against the same file
+- semantics: the open write-mode connection for the writer singleton, or `None`
+- semantics: held in instance memory only, never persisted, and never observed outside the class except through [`connect()`](#connect) returning the descriptor
+- semantics: every read and write happens under [`lock`](#lock)
+- semantics: `connect()`, `writing()`, `recycle()`, and `_close_quietly()` all enter the RLock before touching `_conn`, so concurrent callers serialize on the same descriptor rather than racing two opens against the same file
 
 ### _path
 
@@ -149,13 +151,17 @@ defaults, so each is documented as its own nested field below.
 The paired writer state with [`_reopens`](#_reopens) — read on every call into [`recycle()`](#recycle) once `_reopens` is non-zero, written only on a successful recycle, cleared by [`reset()`](#reset). The cooldown gate at `if self._reopens and now - self._last_reopen_at < REOPEN_COOLDOWN_S` is the one behavior in the entire class that depends on this field; without it, every recycle would reopen and a broken file would thrash on every request.
 
 - type: `float` — monotonic-clock seconds from the injected [`monotonic`](#monotonic) callable (`self.monotonic()`), not wall-clock seconds from `time.time()`
-- default: `0.0` — `0.0` is the "no reopen yet" sentinel; the gate short-circuits on `_reopens and …` so the default is never actually consulted while a decision is being made
-- required: true — `recycle()` reads this on every call after the first successful reopen to decide whether to re-raise; the contract this field carries is the cooldown itself
+- default: `0.0` — the "no reopen yet" sentinel
+- default: `0.0` — held by a fresh `_Store` or one that has just called [`reset()`](#reset), until the first successful [`recycle()`](#recycle) stamps it
+- required: true — `recycle()` reads this on every call after the first successful reopen to decide whether to re-raise (the cooldown is the contract this field carries)
 - semantics: stamped using `self.monotonic()` (the same injectable clock [`monotonic`](#monotonic) declares) rather than `time.time()`, so the cooldown comparison `now - self._last_reopen_at < REOPEN_COOLDOWN_S` runs on a single monotonic timeline that does not jump when wall-clock does — and that the test suite can advance by injection, the reason the cooldown is testable in the first place
 - semantics: stamped only after the cooldown gate has passed — the assignment sits after the `raise exc` branch inside the cooldown, so a `recycle()` that raises inside the cooldown leaves `_last_reopen_at` unchanged (the timer is for successful reopens, not attempts; a raise counts as an attempt but not a reopen)
-- semantics: consulted only by the cooldown gate — the only reader is the `if self._reopens and now - self._last_reopen_at < REOPEN_COOLDOWN_S` line itself, and the `_reopens and …` short-circuit means `_last_reopen_at` is not consulted at all until the first `_reopens += 1`
+- semantics: read only by the cooldown gate — the sole reader is the `if self._reopens and now - self._last_reopen_at < REOPEN_COOLDOWN_S` line in [`recycle()`](#recycle)
+- semantics: not consulted until the first reopen — the `_reopens and …` short-circuit in that line means `_last_reopen_at` is never read while `_reopens == 0`
 - semantics: cleared by [`reset()`](#reset) alongside the other failure-tracking state, so a test that switches `$GROOM_DB` between cases cannot let one case's reopen time leak into the next — and the same set of counters being reset together is what makes `reset()` a single seam rather than per-field handlers
-- semantics: not surfaced through [`health()`](#health) — there is no `last_reopen_at` on [`StoreHealth`](#field-storehealth); the field is private bookkeeping for the cooldown gate, not an operator metric, and a viewer can derive its currency from `reopens == 1 and last_error_ts > 0` instead
+- semantics: not surfaced through [`health()`](#health) — there is no `last_reopen_at` on [`StoreHealth`](#field-storehealth)
+- semantics: private bookkeeping for the cooldown gate, not an operator metric — deliberately kept off [`StoreHealth`](#field-storehealth) so the cooldown contract stays internal to the class
+- semantics: a viewer can derive its currency from `reopens == 1 and last_error_ts > 0` instead — the same implication holds without surfacing the field itself
 - tests: `groom/tests/test_telemetry.py::test_reopen_is_rate_limited` — the only test that injects a controlled `monotonic` clock (`iter([0.0, 1.0, 2.0, 3.0])`) and exercises the gate; does not observe `_last_reopen_at` directly, but proves the cooldown behavior that depends on it by re-raising the second `recycle()` inside the 5 s window
 - persistence: instance-only — held in `_Store` memory only, never persisted to disk, lost on process restart
 - concurrency: lock-protected — read at the gate and written at the assignment, both inside `_Store.lock` inside [`recycle()`](#recycle), so the cooldown comparison and the timestamp write serialize on the same RLock as the rest of the writer state
@@ -213,17 +219,23 @@ The trio of wall-clock timestamps [`health()`](#health) reads into the matching 
 
 The single bit the WAL-checkpoint tick records so a dashboard reader can see whether the recurring checkpoint is keeping up. SQLite's `PRAGMA wal_checkpoint(TRUNCATE)` returns one result row `(busy, log_frames, checkpointed)` — `busy == 1` is the only signal that the file was left alone, the one row that gets thrown away when the loop only logs and the failure mode by which a 293 MB database can carry a 376 MB WAL beside it. The field carries nothing else.
 
+`_last_checkpoint_busy` is an instance attribute rather than a declared class symbol: [`__init__()`](#init) initializes it, [`note_checkpoint()`](#note_checkpoint) records the latest result, [`reset()`](#reset) clears it, and [`health()`](#health) exposes it.
+
 - type: `int` — the `busy` column from the `PRAGMA wal_checkpoint(TRUNCATE)` result row (0 or 1)
-- default: `0` — the "no checkpoint yet" sentinel; a fresh `_Store` or one that has just called [`reset()`](#reset) reports this until the first [`note_checkpoint()`](#note_checkpoint) call
+- default: `0` — the "no checkpoint yet" sentinel
+- default: `0` — a fresh `_Store` or one that has just called [`reset()`](#reset) reports this until the first [`note_checkpoint()`](#note_checkpoint) call
 - required: false — surfaced as `StoreHealth.last_checkpoint_busy` for operator visibility, not asserted on by any caller
 - semantics: stamped by [`note_checkpoint()`](#note_checkpoint) to the `busy` value SQLite returned from the most recent `PRAGMA wal_checkpoint(TRUNCATE)` — `1` when a reader was holding a snapshot and the WAL was left alone, `0` when the checkpoint actually truncated the file
 - semantics: surfaced through `StoreHealth.last_checkpoint_busy` so the operator dashboard can see whether the recurring checkpoint is keeping up — a steady `1` across many checkpoints means a reader is pinning the WAL indefinitely, which is the failure mode the field exists to make visible
 - semantics: cleared to `0` by [`reset()`](#reset) along with the rest of the writer state — the test harness calls `reset()` between cases to switch `$GROOM_DB`, and a previous case's `busy` value would leak into the next case's first `health()` call otherwise
-- code: `groom/groom/store.py::_Store._last_checkpoint_busy`
+- code: `groom/groom/store.py::_Store.__init__`
+- code: `groom/groom/store.py::_Store.note_checkpoint`
+- code: `groom/groom/store.py::_Store.reset`
+- code: `groom/groom/store.py::_Store.health`
 - tests: `groom/tests/test_telemetry.py::test_a_blocked_checkpoint_is_reported_and_never_poisons`
 - persistence: instance-only — held in `_Store` memory only, never persisted to disk, lost on process restart
-- verify: json_path(path="$.last_checkpoint_busy", equals=1) — observed after a checkpoint runs while a reader holds a long-lived snapshot open in a transaction
-- verify: json_path(path="$.last_checkpoint_busy", equals=0) — the boot-state sentinel on a fresh `_Store`, and again after [`reset()`](#reset)
+- verify: json_path(path="$.last_checkpoint_busy", equals=1)
+- verify: json_path(path="$.last_checkpoint_busy", equals=0)
 
 ## Methods
 
@@ -280,8 +292,8 @@ The single bit the WAL-checkpoint tick records so a dashboard reader can see whe
 - abstract: context manager for one atomic write transaction
 - does: take the RLock before entering (all writes are serialized)
 - verify: conflict_on_stale(subject="concurrent writing() attempt", token="writing() context open")
-- does: call `BEGIN IMMEDIATE` to take the write lock upfront — if a transaction would fail half-way through on a snapshot conflict, detecting it before the conflict is the point
-- verify: conflict_on_stale(subject="concurrent writing() attempt", token="writing() context open") — concurrent `writing()` blocks on the writer lock from the first `BEGIN IMMEDIATE`, not from the first statement, so the snapshot the transaction would otherwise upgrade against is already taken
+- does: call `BEGIN IMMEDIATE` to take the write lock upfront — if a transaction would fail half-way through on a snapshot conflict, detecting it before the conflict is the point; concurrent `writing()` blocks on the writer lock from the first `BEGIN IMMEDIATE`, not from the first statement, so the snapshot the transaction would otherwise upgrade against is already taken
+- verify: conflict_on_stale(subject="concurrent writing() attempt", token="writing() context open")
 - does: yield the connection (caller executes statements)
 - verify: json_path(path="$.yielded_type", equals="sqlite3.Connection")
 - does: `ROLLBACK` on any exception (including KeyboardInterrupt or task cancellation)
@@ -389,26 +401,28 @@ The single bit the WAL-checkpoint tick records so a dashboard reader can see whe
 - tests: `groom/tests/test_store_reads.py::test_reset_retires_the_calling_threads_handle`
 - concurrency: thread-local — operates only on `self._readers` and takes no `_Store.lock`, because closing another thread's connection while it is mid-statement is a crash rather than a cleanup
 - idempotency: self-clearing — calling twice in a row is equivalent to calling once, because the first call sets `_readers.handle` to None and the second call sees `cached is None`, skipping the conditional close
-- consistency: reader-retirement — readers retire themselves the next time `read_connection()` sees `_generation` has moved; `retire_reader()` is the explicit form of that retirement, called when a read fails or the writer is being torn down
+- consistency: implicit-reader-retirement — readers retire themselves the next time `read_connection()` sees `_generation` has moved
+- consistency: explicit-reader-retirement — `retire_reader()` is the explicit form of that retirement, called when a read fails or the writer is being torn down
 
 ### recycle_reader
 
 - sig: `recycle_reader(self, exc: BaseException, where: str) -> None`
 - abstract: a read failed; retire that handle and leave the writer alone. Deliberately not the same as [`recycle()`](#recycle) — a reader's broken handle says nothing about the writer's state, and closing the writer here would abort whatever transaction another thread has open. The body is a fixed sequence: stamp the three failure fields, log the failure at `ERROR` level for operator diagnostics, and call [`retire_reader()`](#retire_reader) on this thread
-- does: increment `_failures` by one — the read path's contribution to the same health counter [`recycle()`](#recycle) increments on the writer path
-- verify: json_path(path="$.failures", equals=1) — observed on `health()` after one `recycle_reader()` call on a fresh `_Store`
-- does: write `_last_error` to `f"{type(exc).__name__}: {exc}"` — the same formatted exception message [`recycle()`](#recycle) writes, so a viewer reading `health().last_error` cannot tell which path captured it
-- verify: json_path(path="$.last_error", matches="^.*:.*$") — the formatted exception on `health()` after `recycle_reader()` captured a `sqlite3.OperationalError`
-- does: write `_last_error_ts` to `time.time()` — the wall-clock seconds, on the same timeline [`_last_ok_ts`](#_last_ok_ts) and [`_last_write_ts`](#_last_write_ts) sit on
-- verify: json_path(path="$.last_error_ts", matches="^[0-9]+(\\.[0-9]+)?$") — the wall-clock timestamp on `health()` after `recycle_reader()`
-- does: call [`retire_reader()`](#retire_reader) so the calling thread's next query opens a fresh handle — the only state this method mutates beyond the three failure fields
-- verify: absent(subject="read connection from thread-local cache") — the calling thread's cached `_Reader` is gone after `recycle_reader()` runs against a thread that had one cached
-- raises: none — the body never raises; any `sqlite3.Error` from closing the retired handle is suppressed inside [`retire_reader()`](#retire_reader)
-- verify: json_path(path="$.exception", absent=true) — `recycle_reader()` does not raise on its own
+- does: increment `_failures` by one — the read path's contribution to the same health counter [`recycle()`](#recycle) increments on the writer path; after one call on a fresh `_Store`, `health().failures` is one
+- verify: json_path(path="$.failures", equals=1)
+- does: write `_last_error` to `f"{type(exc).__name__}: {exc}"` — the same formatted exception message [`recycle()`](#recycle) writes, so a viewer reading `health().last_error` cannot tell which path captured it; a captured `sqlite3.OperationalError` is reported with its type and message separated by `: `
+- verify: json_path(path="$.last_error", matches="^OperationalError: .+$")
+- does: write `_last_error_ts` to `time.time()` — the wall-clock seconds, on the same timeline [`_last_ok_ts`](#_last_ok_ts) and [`_last_write_ts`](#_last_write_ts) sit on; `health().last_error_ts` is a numeric wall-clock timestamp after the call
+- verify: json_path(path="$.last_error_ts", matches="^[0-9]+(\\.[0-9]+)?$")
+- does: call [`retire_reader()`](#retire_reader) so the calling thread's next query opens a fresh handle — the only state this method mutates beyond the three failure fields; a calling thread that had a cached `_Reader` has none afterwards
+- verify: absent(subject="read connection from thread-local cache")
+- raises: none — the body never raises (`sqlite3.Error` from closing the retired handle is suppressed inside [`retire_reader()`](#retire_reader))
+- verify: json_path(path="$.exception", absent=true)
 - code: `groom/groom/store.py::_Store.recycle_reader`
-- tests: `groom/tests/test_store_reads.py::test_a_broken_read_handle_is_retired_without_disturbing_the_writer` — closes the cached read handle so the next query raises, exercises the [`_reading`](#_reading) wrapper's catch path that calls `recycle_reader()`, and asserts the writer handle is the same object afterwards
+- tests: `groom/tests/test_store_reads.py::test_a_broken_read_handle_is_retired_without_disturbing_the_writer` — closes the cached read handle so the next query raises, exercises the [`_reading`](#method-_reading) wrapper's catch path that calls `recycle_reader()`, and asserts the writer handle is the same object afterwards
 - concurrency: reader-path-unlocked — none of the writes happen under `_Store.lock`, because the writer lock is what a read exists to avoid and taking it to record a number is exactly the wait this path was built to avoid
-- concurrency: increment-may-race-with-recycle — `self._failures += 1` is a read-modify-write that can lose increments when a [`recycle()`](#recycle) and a `recycle_reader()` interleave on the same `_Store`; a lost increment under a race is the cheaper of the two waits
+- concurrency: increment-may-race-with-recycle — `self._failures += 1` is a read-modify-write that can lose increments when a [`recycle()`](#recycle) and a `recycle_reader()` interleave on the same `_Store`
+- concurrency: accept-lost-increment — a lost increment under a race is the cheaper of the two waits
 
 ### note_ok
 
@@ -419,7 +433,7 @@ The single bit the WAL-checkpoint tick records so a dashboard reader can see whe
 - raises: none
 - verify: json_path(path="$.exception", absent=true)
 - code: `groom/groom/store.py::_Store.note_ok`
-- tests: `groom/tests/test_telemetry.py::test_store_health_rides_the_state_payload` — drives an `insert_spans` through the `_resilient` wrapper (so [`_resilient`](#_resilient)'s post-success branch calls `_STORE.note_ok()`), breaks the handle, drives a second call that fails and is recycled (so [`_last_error_ts`](#_last_error_ts) is stamped), then drives a third call that succeeds and is again stamped by `note_ok()`; asserts `health["ok"] is True`, which only holds when the final `note_ok()` left [`_last_ok_ts`](#_last_ok_ts) newer than [`_last_error_ts`](#_last_error_ts)
+- tests: `groom/tests/test_telemetry.py::test_store_health_rides_the_state_payload` — drives an `insert_spans` through the `_resilient` wrapper (so [`_resilient`](#method-_resilient)'s post-success branch calls `_STORE.note_ok()`), breaks the handle, drives a second call that fails and is recycled (so [`_last_error_ts`](#_last_error_ts) is stamped), then drives a third call that succeeds and is again stamped by `note_ok()`; asserts `health["ok"] is True`, which only holds when the final `note_ok()` left [`_last_ok_ts`](#_last_ok_ts) newer than [`_last_error_ts`](#_last_error_ts)
 
 `_last_ok_ts` is the upper bound against which [`health()`](#health) compares `_last_error_ts`: a failure older than the last good call has been healed; one newer has not.
 
@@ -698,4 +712,3 @@ The five load-bearing design choices behind `_Store`, the process's one SQLite h
 **Per-thread readers** exist because a sqlite3 connection carries one transaction and one snapshot, so handing the same one to two pool threads interleaves their statements. The pools are small and long-lived, so this is a handful of handles for the life of the process, not one per request.
 
 **WAL mode** gives a reader a consistent snapshot alongside the writer without blocking it, which is why readers need no lock at all.
-

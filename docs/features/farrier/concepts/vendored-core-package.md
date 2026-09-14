@@ -15,6 +15,13 @@ core has no dependency on Farrier, workhorse, or ostler, and each tool owns its 
 vendored copy. The cache, clock, configuration, discovery, and layout modules below are the
 public contracts used by Farrier's command and library-resolution paths.
 
+The configuration contract persists one versioned, platform-appropriate shared config file. It
+reads legacy per-tool files only when that unified file is absent, carries older schemas forward
+in memory, and backs up then stamps an older file on its first write. A writer refuses a file
+whose schema is newer than the vendored core understands, preserving settings it could otherwise
+drop. Named profiles select the model and effort mapping for one CLI, while CLI environment
+settings remain global to that CLI across profiles.
+
 - code: `farrier/farrier/_vendor/__init__.py`
 - code: `farrier/farrier/_vendor/stablemate_core/__init__.py`
 - code: `farrier/farrier/_vendor/stablemate_core/base_cache.py`

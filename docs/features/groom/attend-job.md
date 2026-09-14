@@ -43,7 +43,8 @@ One stopped run and everything an attendant needs to start on it. Holds both gat
 ### run_dir
 - type: `str`
 - required: true
-- semantics: the path groom uses to read the run's state — `inbox.jsonl` is read from it to parse the failure class and node for a `death` job, and `checkpoint.json` is read from it to compute the released state when the attendant finishes
+- semantics: the path groom uses to read the run's state — `inbox.jsonl` is read from it to parse the failure class and node for a `death` job
+- semantics: `checkpoint.json` is read from it to compute the released state when the attendant finishes
 - verify: json_path(path="run_dir", matches="^.+$")
 - semantics: passed as the attendant process's working directory (`cwd`) when no `workspace` is supplied — `_launch` falls back to `run_dir` before `os.getcwd()` so the attendant still operates inside the run's tree
 - code: `groom/groom/attend.py::AttendJob.run_dir`
@@ -100,7 +101,10 @@ One stopped run and everything an attendant needs to start on it. Holds both gat
 - default: `""`
 - semantics: (death kind only) the verbatim `body` of the last inbox message with `kind="failure"` in `<run_dir>/inbox.jsonl` — the same entry `read_failure` parses for `failure_class` and `node`, so the field carries every `key: value` line the driver appended (including `error:`, `trace:`, any sibling keys), not just the two groom surfaces
 - verify: json_path(path="$.detail", matches="boom")
-- semantics: (death kind only) the empty string when no handoff exists — `read_failure` returns `("", "", "")` for a missing or unreadable `inbox.jsonl` or one with no failure entries, and `facts()` then renders `(no failure handoff — read checkpoint.json and events.jsonl)` so the attendant is steered to the run's own trail rather than given an empty body
+- semantics: (death kind only) the empty string when no handoff exists — `read_failure` returns `("", "", "")` for a missing or unreadable `inbox.jsonl` or one with no failure entries
+- verify: json_path(path="$.detail", equals="")
+- semantics: when `detail` is empty, `facts()` renders `(no failure handoff — read checkpoint.json and events.jsonl)` so the attendant is steered to the run's own trail rather than given an empty body
+- verify: json_path(path="$", matches="no failure handoff — read checkpoint.json and events.jsonl")
 - semantics: (death kind only) re-read from `inbox.jsonl` on each rebuild — the column is absent from the `attend_sessions` insert (`attend_start` writes the 16 named columns and no more), so `_job_from_row` always asks the run dir what the failure body now says and a resurrected attendant sees whatever was written after its prior attempt died
 - code: `groom/groom/attend.py::AttendJob.detail`
 - tests: `groom/tests/test_attend.py::test_a_dead_run_is_routed_by_the_class_it_recorded`
@@ -145,4 +149,3 @@ Two consumers, both rows-and-strings. `spawn_headless` is the only call site: it
 - returns: the full prompt that will be passed on stdin to the spawned attendant
 - verify: json_path(path="$", matches="## The run")
 - code: `groom/groom/attend.py::AttendJob.prompt`
-

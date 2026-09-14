@@ -190,6 +190,8 @@ shape change.
 
 ### RunRecord
 - code: `workhorse/workhorse/records.py::RunRecord`
+- detail: [run record field selection](run-record-field-selection.md)
+- detail: [run record process-death field selection](run-record-process-death-selection.md)
 - sig: `RunRecord(workflow: str, run_id: str, started_at: str, ended_at: str | None, terminal: str | None, interrupted_at: str | None, error: str | None, previous_process_died_at: str | None, previous_process_pid: int | None, pid: int | None, repo_start: RepoObservation | None, repo_end: RepoObservation | None, profile: str, profile_config: dict[str, Any], worktree_path: str, worktree_branch: str)`
 
 `RunRecord` distinguishes an in-progress, interrupted, terminal, failed, or previously-died run
@@ -200,27 +202,42 @@ profile metadata.
 - type: `str | None`
 - default: `None`
 - required: false
-- semantics: ISO timestamp set by a resume that found the previous attempt's `pid` no longer running on this host — SIGKILL, segfault, OOM kill, or any other signal the engine could not catch itself. `None` on a fresh run, a finished run, or a run still in flight; together with `terminal: null` this reads as "previous attempt died ungracefully; this process resumed it" — distinct from a wedged run that groom should still show as in-flight.
+- semantics: ISO timestamp set by a resume that found the previous attempt's `pid` no longer running on this host — SIGKILL, segfault, OOM kill, or any other signal the engine could not catch itself.
+- verify: json_path(path="$.previous_process_died_at", matches="^\\d{4}-\\d{2}-\\d{2}T")
+- semantics: `None` on a fresh run, a finished run, or a resume whose prior PID is still running.
 - verify: json_path(path="$.previous_process_died_at", equals="null")
+- semantics: while the resumed run remains in flight, a non-null timestamp with `terminal: null` reads as "previous attempt died ungracefully" (this process has resumed the previous attempt), distinct from a wedged run that groom should still show as in-flight.
+- verify: json_path(path="$.terminal", equals="null")
+- verify: json_path(path="$.previous_process_died_at", matches="^\\d{4}-\\d{2}-\\d{2}T")
 - code: `workhorse/workhorse/records.py::RunRecord`
+- detail: [run record field selection](run-record-field-selection.md)
+- detail: [run record process-death field selection](run-record-process-death-selection.md)
 - tests: `workhorse/tests/test_artifacts_previous_death.py::test_a_fresh_run_does_not_stamp_a_previous_process_death`
 
 #### field: previous_process_pid
 - type: `int | None`
 - default: `None`
 - required: false
-- semantics: pid that was alive at the last write of the previous process and gone at the next resume — recorded for forensics; groom does not read it back. Cleared on `finish()` because the new run has its own end-state to record.
+- semantics: records for forensics the PID that was alive at the previous process's last write and gone at the next resume.
+- verify: json_path(path="$.previous_process_pid", matches="^[0-9]+$")
+- semantics: groom does not read `previous_process_pid` back.
+- verify: omits(subject="groom run display", text="previous_process_pid")
+- semantics: clears the previous process pid on `finish()` because the new run has its own end-state to record.
 - verify: json_path(path="$.previous_process_pid", equals="null")
 - code: `workhorse/workhorse/records.py::RunRecord`
+- detail: [run record field selection](run-record-field-selection.md)
+- detail: [run record process-death field selection](run-record-process-death-selection.md)
 - tests: `workhorse/tests/test_artifacts_previous_death.py::test_a_fresh_run_does_not_stamp_a_previous_process_death`
 
 #### field: worktree_path
 - type: `str`
 - default: `""`
 - required: false
-- semantics: the git worktree this run was dispatched into via `--worktree`, or empty when the run used the invoking repo directly; set once at dispatch and reused, never re-cut, on resume.
+- semantics: the git worktree this run was dispatched into via `--worktree`, or empty when the run used the invoking repo directly
 - verify: json_path(path="$.worktree_path", equals="")
+- semantics: set once at dispatch and reused, never re-cut, on resume
 - code: `workhorse/workhorse/records.py::RunRecord`
+- detail: [run record field selection](run-record-field-selection.md)
 
 #### field: worktree_branch
 - type: `str`
@@ -229,6 +246,7 @@ profile metadata.
 - semantics: the branch cut for a `--worktree` dispatch, or empty when the run used the invoking repo directly.
 - verify: json_path(path="$.worktree_branch", equals="")
 - code: `workhorse/workhorse/records.py::RunRecord`
+- detail: [run record field selection](run-record-field-selection.md)
 
 ### LaunchRecord
 - code: `workhorse/workhorse/records.py::LaunchRecord`

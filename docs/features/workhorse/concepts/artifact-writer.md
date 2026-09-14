@@ -37,19 +37,23 @@ or an old run directory can tell what it was for.
 
 ## Instance state
 
-Every constructor sets the same nine attributes: `run_dir: Path`; `_turns_root: Path` — where
-the per-visit archive actually lives (a flow's nested scope reuses the parent run's root, so
-its child writer cannot empty prior visits — see [`subscope`](#subscope));
-`_started_at: str` (ISO-8601 UTC, set once and preserved across a resume); `_workflow_name:
-str`; `_run_id: str`; `_seq: int` — the monotonic checkpoint sequence; `_repo_start:
-RepoObservation | None` — the working tree observed at the first process of the run, or
-restored from `run.json` on a resume; `_profile: str` and `_profile_config: dict` — what
-[`record_profile`](#record_profile) later carries to `run.json`; and `_previous_process_died_at:
-str | None` plus `_previous_process_pid: int | None` — set by [`resume`](#resume) when the
-prior attempt's pid is no longer alive, sticky through the rest of this run, cleared by
-[`finish`](#finish). `run_id` and `started_at` are exposed as read-only properties;
-`started_at` is what anchors the run's wall-clock budget (`WORKHORSE_MAX_RUNTIME_S`) to the
-*original* start rather than to the latest resume.
+Every constructor sets the same set of attributes on a fresh writer: `run_dir: Path`;
+`_turns_root: Path` — where the per-visit archive actually lives (a flow's nested scope reuses
+the parent run's root, so its child writer cannot empty prior visits — see
+[`subscope`](#subscope)); `_started_at: str` (ISO-8601 UTC, set once and preserved across a
+resume); `_workflow_name: str`; `_run_id: str`; `_seq: int` — the monotonic checkpoint
+sequence; `_repo_start: RepoObservation | None` — the working tree observed at the first
+process of the run, or restored from `run.json` on a resume; `_profile: str` and
+`_profile_config: dict` — what [`record_profile`](#record_profile) later carries to
+`run.json`; `_worktree_path: str` and `_worktree_branch: str` — the worktree and branch this
+run was dispatched into, or `""` when it was not; and `_previous_process_died_at: str | None`
+plus `_previous_process_pid: int | None` — set by [`resume`](#resume) when the prior
+attempt's pid is no longer alive, sticky through the rest of this run, cleared by
+[`finish`](#finish). `run_id`, `started_at`, `worktree_path` and `worktree_branch` are
+exposed as read-only properties; `started_at` is what anchors the run's wall-clock budget
+(`WORKHORSE_MAX_RUNTIME_S`) to the *original* start rather than to the latest resume; the
+two worktree properties are what the run reports back to callers reading what it was
+dispatched into.
 
 ## Constructors
 
@@ -78,8 +82,11 @@ restarts — which is what `run_pyflow`'s `auto_resolve` always supplies (the ex
 3. Sets `_started_at` to now, `_workflow_name`, `_run_id`, `_seq = 0`, and the visit-archive
    bookkeeping — `_turns_root = self.run_dir` (a top-level run's archive lives inside its
    own dir; [`subscope`](#subscope) rebinds this on the *child*), `_repo_start` from
-   `_observe_repo()`, `_profile = ""`, `_profile_config = {}`, `_previous_process_died_at
-   = None`, `_previous_process_pid = None` (a fresh run has no prior attempt to detect).
+   `_observe_repo()`, `_profile = ""`, `_profile_config = {}`, `_worktree_path = ""`,
+   `_worktree_branch = ""` (a fresh run has not yet been dispatched into a worktree —
+   [`record_worktree`](#record_worktree) sets these once, at dispatch), and the
+   prior-process fields `_previous_process_died_at = None`, `_previous_process_pid = None`
+   (a fresh run has no prior attempt to detect).
 4. Calls `_write_run_json(terminal=None)`.
 
 - code: `workhorse/workhorse/artifacts.py::_clear_stale_run`
@@ -100,7 +107,11 @@ touching its step artifacts.
 4. Restore the carried state: `_repo_start = record.repo_start or _observe_repo()` (so the
    resume does not re-observe *now's* tree and silently overwrite what the prior process
    saw), `_profile = record.profile`, `_profile_config = dict(record.profile_config)` (a
-   resume inherits the run's profile unless it states a new one via `record_profile`).
+   resume inherits the run's profile unless it states a new one via `record_profile`),
+   `_worktree_path = record.worktree_path`, `_worktree_branch = record.worktree_branch`
+   (carried unconditionally, like the profile — the recorded worktree is authoritative
+   across every resume and is never re-derived from a flag, so a later `--worktree`
+   override cannot silently move the run).
 5. **Previous-process-death stamp.** When the loaded `record` has `terminal is None` *and*
    `pid is not None` *and* `_process_alive(record.pid)` is false, set
    `_previous_process_died_at = <now>` and `_previous_process_pid = record.pid`. The stamp
@@ -125,10 +136,11 @@ full-directory wipe, not a partial unlink, because a flow node inside a loop re-
 scope within a single run and the prior story's per-node subdirectories would otherwise be
 misread as this story's), sets `_started_at`/`_workflow_name`/`_run_id`/`_seq = 0` plus the
 visit-archive bookkeeping (`_turns_root = run_dir` here, rebindable by the caller — see
-[`subscope`](#subscope)) and the same nulled prior-process fields as `__init__`, and calls
-`_write_run_json(terminal=None)`. Used for a handoff's nested scope (see
-[`subscope`](#subscope)), where the run dir is a
-node's own subdirectory rather than a sibling of other runs under `runs_dir`.
+[`subscope`](#subscope)), the same nulled profile/worktree fields as `__init__` (a fresh
+nested scope has no profile and no worktree yet), and the same nulled prior-process fields
+as `__init__`, and calls `_write_run_json(terminal=None)`. Used for a handoff's nested
+scope (see [`subscope`](#subscope)), where the run dir is a node's own subdirectory rather
+than a sibling of other runs under `runs_dir`.
 
 ### `subscope`
 `subscope(node_id, flow_name, *, resume=False) -> ArtifactWriter`
@@ -217,6 +229,17 @@ respawn, and the flag is the one fact a host-side reader cannot recover from the
 itself. Best-effort: a write failure is swallowed, because a directory that cannot be
 written is a run that is worse off unwatched, not a run that should stop.
 - code: `workhorse/workhorse/artifacts.py::ArtifactWriter.record_launch`
+
+### `record_worktree`
+`record_worktree(path, branch)` records the worktree and branch this run was dispatched
+into. Sets `_worktree_path` / `_worktree_branch` on the writer and calls
+`_write_run_json(terminal=None)` so `run.json` carries them. Written **once**, at dispatch,
+and never again: a resume carries these fields forward from `run.json` (see
+[`resume`](#resume)) rather than re-deriving them, so the recorded worktree stays
+authoritative even if a later `--worktree` override disagrees. The two read-only
+properties `worktree_path` and `worktree_branch` are what callers read back to find out
+where the run was actually dispatched.
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.record_worktree`
 
 ### `write_step`
 `write_step(node_id, prompt, output, context_after, next_node=None)`
@@ -316,9 +339,12 @@ Writes `run.json` = `{workflow: _workflow_name, run_id: _run_id, started_at: _st
 <now if terminal else null>, terminal, interrupted_at: <now if error and not terminal else null>,
 error, pid: os.getpid(), repo_start, repo_end: <only at a terminal — observed at the same moment
 this call has terminal truth, then cleared by a resume like `ended_at`>, profile, profile_config,
-previous_process_died_at: <only set by [`resume`](#resume) when the prior pid is no longer
-alive; cleared by [`finish`](#finish) and never default-populated>, previous_process_pid}`. Called
-by every constructor (`terminal=None`), by `finish` (`terminal="terminal"`/`"fail"`), and by
+worktree_path, worktree_branch: <written once by [`record_worktree`](#record_worktree) and
+carried by every subsequent rewrite, so a resume re-derives neither>, previous_process_died_at:
+<only set by [`resume`](#resume) when the prior pid is no longer alive; cleared by
+[`finish`](#finish) and never default-populated>, previous_process_pid}`. Called by every
+constructor (`terminal=None`), by `record_profile` / `record_worktree` (each writing its own
+field through a `terminal=None` rewrite), by `finish` (`terminal="terminal"`/`"fail"`), and by
 `record_interrupt` (`terminal=None`, `error=<why the run stopped>`). Every call rewrites the
 whole file, so `interrupted_at`/`error` survive only until the run resumes or ends. The `pid` is
 also a telemetry resource attribute; it is recorded here so it survives with telemetry off.

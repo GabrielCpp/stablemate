@@ -62,12 +62,6 @@ are resolved through Ostler; run artifacts stay in the ignored `.agents/okf-buil
 - verify: count(subject="OKF-builder worklist path derivations", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/shared/paths.py::worklist_path`
 
-### diff_scope_path
-- sig: `diff_scope_path(root: Path, service: str) -> Path`
-- does: names the changed-paths artifact used by a since-scoped build
-- verify: count(subject="OKF-builder diff scope path derivations", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/paths.py::diff_scope_path`
-
 ### operator_context_path
 - sig: `operator_context_path(root: Path, service: str, scope_id: str = "") -> Path`
 - does: names the checkpointed operator context file for a budget or blocked-row gate
