@@ -236,6 +236,24 @@ def test_a_stamped_code_ref_matching_the_file_is_green(repo: Path):
     assert not (codes(report, "warn") & {"unstamped-citation"})
 
 
+def test_an_unstamped_foreign_repository_ref_is_unreachable_not_unstamped(repo: Path):
+    # A foreign checkout is never something `ostler stamp` can resolve today (see
+    # `stamp.stamp_page`), so warning as if a turn editing this node would ever clear it —
+    # `unstamped-citation`'s promise — would be a defect no edit could fix.
+    from ostler.source_snapshots import RepositorySnapshot, SourceCatalog, SourceFile, catalog_path
+
+    catalog = SourceCatalog(repositories=(
+        RepositorySnapshot(id="api-service", base="", head="", files=(
+            SourceFile(path="src/service.py", content_sha256="x", symbols=("create_invoice",)),
+        )),
+    ))
+    catalog_path(repo).parent.mkdir(parents=True, exist_ok=True)
+    catalog_path(repo).write_text(catalog.model_dump_json(), encoding="utf-8")
+    report = _concept_report(repo, "repo://api-service/src/service.py::create_invoice")
+    assert "unreachable-citation" in codes(report, "warn")
+    assert "unstamped-citation" not in codes(report, "warn")
+
+
 def test_a_receiver_qualified_symbol_grounds_against_go(repo: Path):
     # The book's grammar, not the tool's: every part of a qualified symbol must be declared.
     write(repo / "api/claims.go",

@@ -19,12 +19,12 @@ from ostler import graph as graph_mod, locators as loc_mod, reach
 from ostler.vet import placement as placement_mod
 from ostler import refs as refs_mod
 from ostler.model import Graph, Epic, Story, read_doc, required_section_problems
-from ostler.path import specs_root_in
+from ostler.path import features_root as features_root_of, specs_root_in
 from ostler.qa import fixtures as fixtures_mod, runbook as runbook_mod, sensitivity
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
 from ostler import stamp as stamp_mod
-from ostler.source_snapshots import load_catalog
+from ostler.source_snapshots import book_repository, load_catalog
 
 
 @dataclass
@@ -971,9 +971,12 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
     `stale-citation` when it disagrees with the file's current content, `unstamped-citation`
     while the citation carries none yet — the migration-in-flight case, a warning rather than
     an error since no book has been stamped until `ostler stamp --from-catalog` runs. A
-    repository-qualified target is left out of both: `ostler stamp` does not resolve a foreign
-    checkout yet (see `stamp.stamp_page`), so it can never earn a digest, and warning about
-    that forever would be a defect no edit could clear.
+    target qualified with a *foreign* repository (not the book's own, per
+    `source_snapshots.book_repository`) earns `unreachable-citation` instead of
+    `unstamped-citation` when it carries no digest: `ostler stamp` does not resolve a foreign
+    checkout yet (see `stamp.stamp_page`), so it can never earn one here, and that is a
+    different fact than "this book hasn't migrated yet" — `unstamped-citation` on a target
+    this checkout could stamp today, once a turn touches it, would be the wrong hint.
 
     Note this cannot route through the link scan: `links.is_doc_link` rejects any href
     containing `::`, and a backticked `` `x.go::S` `` is inline code, not a markdown link — so
@@ -983,7 +986,12 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
     try:
         catalog = load_catalog(graph.root)
     except (OSError, ValueError):
+        # Until (e) removes the catalog, this check still leans on it for the existence check
+        # above and for `backfill`'s watermark, so a load failure is tolerated rather than
+        # raised. When (e) lands the catalog goes away and this whole try/except goes with it —
+        # not just the call inside it.
         catalog = None
+    own_repository = book_repository(features_root_of(graph))
     for node in graph.ui_nodes:
         uitype = registry.ui_type(node.type)
         if uitype is None or "code" not in uitype.bullet_by_key:
@@ -1018,6 +1026,15 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
                         "error", "missing-code-symbol",
                         f"{node.id}: `code:` target '{ref}' — '{target_path}' does not declare "
                         f"'{symbol}'", path=rel, line=node.line, ref=ref))
+                if parsed.digest is None and parsed.repository != own_repository:
+                    f.append(Finding(
+                        "warn", "unreachable-citation",
+                        f"{node.id}: `code:` target '{ref}' carries no `@digest` stamp and "
+                        f"names a repository ('{parsed.repository}') this checkout cannot "
+                        f"restamp",
+                        path=rel, line=node.line, ref=ref,
+                        suggestion="stamped once `ostler stamp` resolves foreign checkouts; "
+                                   "no action to take on this book alone"))
                 continue
             separator = "::" if symbol else ""
             target = graph.root / target_path
@@ -1033,8 +1050,8 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
                     "warn", "unstamped-citation",
                     f"{node.id}: `code:` target '{ref}' carries no `@digest` stamp",
                     path=rel, line=node.line, ref=ref,
-                    suggestion="run `ostler stamp` on this page once the book has migrated "
-                               "off the source catalog"))
+                    suggestion="stamped by `ostler stamp --from-catalog` (migration) or when "
+                               "a turn that edits this node commits"))
             else:
                 try:
                     source_text = target.read_text(encoding="utf-8")
@@ -1047,8 +1064,9 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
                             f"{node.id}: `code:` target '{ref}' — '{target_path}' has changed "
                             f"since this citation was stamped",
                             path=rel, line=node.line, ref=ref,
-                            suggestion="re-read the file, confirm the claim still holds, then "
-                                       "run `ostler stamp` on this node"))
+                            suggestion=f"re-read '{target_path}' and correct this node's claims "
+                                       "if they no longer hold; the citation is restamped when "
+                                       "the turn commits"))
             if not (separator and symbol):
                 continue  # a whole-file unit (a template renders a screen): existence is enough
             if _SPACE.search(symbol):

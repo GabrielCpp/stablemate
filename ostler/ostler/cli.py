@@ -139,8 +139,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "stamp", help="write a content-hash @digest onto each cited file's `code:` bullets"
     )
     st.add_argument(
-        "--path", action="append", default=[], required=True, metavar="PATH",
-        help="a book page to stamp (repeatable); the whole file's `code:` bullets are restamped",
+        "--node", action="append", default=[], metavar="ID",
+        help="a node id to stamp (repeatable); only the `code:` bullets in that node's own "
+             "section are restamped, leaving the rest of the page untouched",
+    )
+    st.add_argument(
+        "--path", action="append", default=[], metavar="PATH",
+        help="a book page to stamp (repeatable); requires --whole-page",
+    )
+    st.add_argument(
+        "--whole-page", action="store_true",
+        help="with --path, restamp every `code:` bullet on the page, not just edited nodes' — "
+             "no okf-builder workflow calls this; it exists for catalog migration and one-off "
+             "repair",
     )
     st.add_argument("--json", action="store_true", help="emit a per-page summary as JSON")
 
@@ -1076,18 +1087,60 @@ def _repo_relative(graph, path: str) -> str | None:
     return candidate.relative_to(root).as_posix()
 
 
+def _node_line_range(graph, node) -> tuple[int, int]:
+    """*node*'s own extent: its heading line up to (not including) the next node's, in its file.
+
+    Every heading is promoted to a node (`model._promote_section`), so the next node in the
+    same file — at any level — is exactly where this one's own content stops and either a
+    child's or a sibling's begins.
+    """
+    siblings = sorted(
+        (n.line for n in graph.ui_nodes if n.path == node.path and n.line > node.line),
+    )
+    end = siblings[0] if siblings else len(node.path.read_text(encoding="utf-8").splitlines()) + 1
+    return node.line, end
+
+
 def _cmd_stamp(graph, args) -> int:
-    scope = [_repo_relative(graph, p) for p in args.path]
-    outside = [p for p, rel in zip(args.path, scope, strict=True) if rel is None]
-    if outside:
-        print(f"ostler stamp: --path {', '.join(outside)} is not a file of this book",
+    if args.node and args.path:
+        print("ostler stamp: --node and --path are mutually exclusive", file=sys.stderr)
+        return 2
+    if args.path and not args.whole_page:
+        print("ostler stamp: --path requires --whole-page (stamp --node to scope to a node)",
               file=sys.stderr)
         return 2
+    if args.node and args.whole_page:
+        print("ostler stamp: --whole-page only applies to --path", file=sys.stderr)
+        return 2
+    if not args.node and not args.path:
+        print("ostler stamp: pass --node or --path --whole-page", file=sys.stderr)
+        return 2
     features_root = path_mod.features_root(graph)
-    results = [
-        stamp_mod.stamp_page(graph.root, features_root, rel)
-        for rel in scope if rel is not None
-    ]
+
+    if args.node:
+        pages: dict[str, list[tuple[int, int]]] = {}
+        for ident in args.node:
+            node = graph.find_ui_node(ident)
+            if node is None:
+                print(f"ostler stamp: --node {ident} is not a node of this book", file=sys.stderr)
+                return 2
+            rel = node.path.relative_to(graph.root).as_posix()
+            pages.setdefault(rel, []).append(_node_line_range(graph, node))
+        results = [
+            stamp_mod.stamp_page(graph.root, features_root, rel, line_ranges=ranges)
+            for rel, ranges in pages.items()
+        ]
+    else:
+        scope = [_repo_relative(graph, p) for p in args.path]
+        outside = [p for p, rel in zip(args.path, scope, strict=True) if rel is None]
+        if outside:
+            print(f"ostler stamp: --path {', '.join(outside)} is not a file of this book",
+                  file=sys.stderr)
+            return 2
+        results = [
+            stamp_mod.stamp_page(graph.root, features_root, rel)
+            for rel in scope if rel is not None
+        ]
     if args.json:
         _out(json.dumps(
             [{"page": r.page, "stamped": r.stamped, "unresolved": r.unresolved,

@@ -117,3 +117,58 @@ def test_restamping_an_unchanged_file_is_a_noop_write(tmp_path: Path):
     result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
     assert result.changed is False
     assert feature.read_text(encoding="utf-8") == before
+
+
+def _two_node_book(root: Path, code: str) -> Path:
+    feature = root / "docs/features/billing/charge.md"
+    feature.parent.mkdir(parents=True, exist_ok=True)
+    feature.write_text(
+        "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
+        "# Charge\n\n"
+        "## Alpha\n\n"
+        f"- code: {code}\n\n"
+        "## Beta\n\n"
+        f"- code: {code}\n",
+        encoding="utf-8",
+    )
+    return feature
+
+
+def test_stamp_page_scoped_to_a_line_range_leaves_the_other_nodes_bullet_stale(tmp_path: Path):
+    # Two nodes on one page cite the same changed file. Stamping only "Alpha"'s line range
+    # must not touch "Beta"'s bullet — the whole point of node-scoped stamping.
+    feature = _two_node_book(tmp_path, "`src/service.py::charge`")
+    _service(tmp_path)
+    lines = feature.read_text(encoding="utf-8").splitlines()
+    alpha_line = next(i for i, line in enumerate(lines, start=1) if line == "## Alpha")
+    beta_line = next(i for i, line in enumerate(lines, start=1) if line == "## Beta")
+
+    result = stamp.stamp_page(
+        tmp_path, tmp_path, "docs/features/billing/charge.md",
+        line_ranges=[(alpha_line, beta_line)],
+    )
+
+    expected = stamp.digest_file(SERVICE)
+    assert result.stamped == 1
+    assert result.changed is True
+    after = feature.read_text(encoding="utf-8").splitlines()
+    assert f"- code: `src/service.py::charge` @{expected}" == after[alpha_line + 1]
+    assert "- code: `src/service.py::charge`" == after[beta_line + 1]
+
+
+def test_stamp_page_reports_a_bullet_whose_line_count_changed_as_unresolved(
+    tmp_path: Path, monkeypatch,
+):
+    feature = _book(tmp_path, "`src/service.py::charge`")
+    _service(tmp_path)
+    # `restamp_leading_code_spans` never adds or removes a line on its own; force the
+    # mismatch branch by handing it a `digest_for` that turns one line into two.
+    original = stamp.restamp_leading_code_spans
+    monkeypatch.setattr(
+        stamp, "restamp_leading_code_spans",
+        lambda value, digest_for: original(value, digest_for) + "\nextra",
+    )
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    assert result.unresolved == ["- code: `src/service.py::charge`"]
+    assert result.changed is False
+    assert "@" not in feature.read_text(encoding="utf-8")

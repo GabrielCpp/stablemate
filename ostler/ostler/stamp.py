@@ -33,7 +33,8 @@ from ostler.markdown import split
 from ostler.refs import normalize_ref, parse_code_ref
 from ostler.source_snapshots import book_repository
 
-#: Half a sha256 digest — plenty to catch a changed file, short enough to sit in a bullet.
+#: 12 hex characters of a sha256 digest — plenty to catch a changed file, short enough to sit
+#: in a bullet.
 DIGEST_LENGTH = 12
 
 #: A code span never contains a backtick (that is what makes it a span), so — unlike almost
@@ -90,8 +91,9 @@ class StampResult:
     changed: bool = False
 
 
-def stamp_page(root: Path, features_root: Path, page: str) -> StampResult:
-    """Stamp every ``code:`` bullet on one book page with its cited file's current digest.
+def stamp_page(root: Path, features_root: Path, page: str, *,
+                line_ranges: list[tuple[int, int]] | None = None) -> StampResult:
+    """Stamp a book page's ``code:`` bullets with their cited files' current digests.
 
     ``page`` is repo-relative, resolved against ``root``. A target this checkout cannot read —
     a missing file, or a ``repo://`` target naming a repository other than the book's own
@@ -99,6 +101,12 @@ def stamp_page(root: Path, features_root: Path, page: str) -> StampResult:
     than guessed at; ``unstamped-citation`` is how doctor is meant to surface that, not a
     fabricated digest. Repository-qualified checkouts are not resolved here yet — only the
     graph's own repository (an unqualified ref, or one qualified with the book's own id).
+
+    ``line_ranges``, when given, is a list of ``(start, end)`` 1-based file-line pairs (*end*
+    exclusive) — a node's own extent, heading to next heading. Only bullets whose leading line
+    falls in one of them are restamped; every other ``code:`` bullet on the page is left byte
+    for byte alone. ``None`` restamps the whole page, which is what ``--whole-page`` asks for —
+    no okf-builder workflow does; a turn only ever finishes editing specific nodes.
     """
     path = root / page
     text = path.read_text(encoding="utf-8")
@@ -106,6 +114,12 @@ def stamp_page(root: Path, features_root: Path, page: str) -> StampResult:
     repository = book_repository(features_root)
     unresolved: list[str] = []
     stamped = 0
+
+    def in_scope(bullet_line_start: int) -> bool:
+        if line_ranges is None:
+            return True
+        absolute = bullet_line_start + doc.body_offset + 1  # 0-indexed body -> 1-based file
+        return any(start <= absolute < end for start, end in line_ranges)
 
     def digest_for(raw_target: str) -> str | None:
         nonlocal stamped
@@ -131,6 +145,8 @@ def stamp_page(root: Path, features_root: Path, page: str) -> StampResult:
     for bullet in doc.walk_bullets():
         if bullet.label != "code":
             continue
+        if not in_scope(bullet.line_start):
+            continue
         raw = "\n".join(body_lines[bullet.line_start:bullet.line_end])
         key, sep, rest = raw.partition(":")
         if not sep:
@@ -142,7 +158,9 @@ def stamp_page(root: Path, features_root: Path, page: str) -> StampResult:
         if len(new_lines) != bullet.line_end - bullet.line_start:
             # A digest never adds or removes a line; a mismatch means the bullet's raw slice
             # was not what was expected (e.g. it nests another list) — leave it alone rather
-            # than risk corrupting the file.
+            # than risk corrupting the file, but say so: a silently-skipped bullet reads as
+            # stamped to anyone who only checks `stamped`/`changed`.
+            unresolved.append(raw)
             continue
         body_lines[bullet.line_start:bullet.line_end] = new_lines
         changed = True

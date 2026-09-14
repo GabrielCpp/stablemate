@@ -56,7 +56,7 @@ from typing import Any
 
 from ostler.markdown import leading_code_spans
 
-#: 12 hex characters — half a sha256 digest, plenty to catch a changed file and short enough
+#: 12 hex characters of a sha256 digest, plenty to catch a changed file and short enough
 #: to sit in a bullet without dominating it.
 _DIGEST_SUFFIX = re.compile(r"@([0-9a-f]{12})$")
 
