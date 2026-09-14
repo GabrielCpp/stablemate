@@ -17,17 +17,21 @@ from ostler.model import Graph, UINode
 
 
 def _rel(path: Path, root: Path) -> str:
+    """*root* is already resolved (``find_root`` resolves once at startup) and every node path
+    is built from it, so a plain ``relative_to`` matches what ``doctor.py`` already trusts for the
+    same computation — re-resolving both sides here paid a realpath syscall per node for no path
+    this codebase ever produces relative or symlinked."""
     try:
-        return path.resolve().relative_to(root.resolve()).as_posix()
-    except (ValueError, OSError):
+        return path.relative_to(root).as_posix()
+    except ValueError:
         return path.as_posix()
 
 
 def _surface_of(node: UINode, features_root: Path) -> str:
     """The service a node belongs to: the first path component under ``docs/features/``."""
     try:
-        rel = node.path.resolve().relative_to(features_root.resolve())
-    except (ValueError, OSError):
+        rel = node.path.relative_to(features_root)
+    except ValueError:
         return ""
     return rel.parts[0] if rel.parts else ""
 
@@ -51,7 +55,8 @@ def _edge_sources(node: UINode) -> dict[str, str]:
     return via
 
 
-def _node_dict(node: UINode, resolver: LinkResolver, graph: Graph, features_root: Path) -> dict:
+def _node_dict(node: UINode, resolver: LinkResolver, graph: Graph, features_root: Path,
+               path_cache: dict[Path, tuple[str, str]]) -> dict:
     edges = []
     via = _edge_sources(node)
     for text, href in node.links:
@@ -60,12 +65,20 @@ def _node_dict(node: UINode, resolver: LinkResolver, graph: Graph, features_root
             continue
         edges.append({"text": text, "href": href, "to": lt.node_id, "resolves": lt.resolved,
                       "via": via.get(href, "prose")})
+    # Several section nodes share one file's `path`; a book runs this per node, so computing the
+    # same relative path and surface once per file (instead of once per heading) is most of the
+    # saving on a file with many `### id` sections.
+    cached = path_cache.get(node.path)
+    if cached is None:
+        cached = (_rel(node.path, graph.root), _surface_of(node, features_root))
+        path_cache[node.path] = cached
+    rel, surface = cached
     return {
         "id": node.id,
         "type": node.type,
         "kind": node.kind,  # "file" | "section"
-        "surface": _surface_of(node, features_root),
-        "path": _rel(node.path, graph.root),
+        "surface": surface,
+        "path": rel,
         "anchor": node.anchor,
         "title": node.title,
         "line": node.line,
@@ -111,10 +124,11 @@ def build(graph: Graph, *, etype: str | None = None, surface: str | None = None,
     by_id = {n.id: n for n in graph.ui_nodes}
     nodes: list[dict] = []
     edges: list[dict] = []
+    path_cache: dict[Path, tuple[str, str]] = {}
     for n in graph.ui_nodes:
         if etype and n.type != etype:
             continue
-        d = _node_dict(n, resolver, graph, features_root)
+        d = _node_dict(n, resolver, graph, features_root, path_cache)
         if surface and d["surface"] != surface:
             continue
         d["title_path"], d["type_path"] = _paths(n.id, by_id)
