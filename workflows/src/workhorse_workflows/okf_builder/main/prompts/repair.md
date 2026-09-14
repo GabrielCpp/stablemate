@@ -123,12 +123,12 @@ hiding it.
 - **Do not run a full `ostler doctor`.** It lints the whole repository to answer a question about
   one node. Run `ostler fmt <the file you touched>` and stop. The checkpoint re-runs doctor once per
   round and re-queues anything you missed.
-- **Your change is measured against the baseline, never `HEAD`.** `{{ workhorse_var('baseline') }}`
-  is a copy of the book taken just before this turn: `diff -ru {{ workhorse_var('baseline') }}
-  {{ workhorse_var('features_root') }}` is exactly what you changed, including what `ostler fmt`
-  rewrote (keep that), and undoing an edit means copying the file back from the baseline. The
-  run commits the book only when it is complete, so `git diff` and `git show HEAD:<path>` also
-  show this run's earlier repairs — uncommitted, and erased if you restore from `HEAD`.
+- **The book was committed just before this turn**, so `git diff -- {{ workhorse_var('features_root') }}`
+  is exactly what you changed, including what `ostler fmt` rewrote (keep that), and undoing an
+  edit means editing the file back. `{{ workhorse_var('baseline') }}` is the same book as a plain
+  copy, for when that commit could not land: `diff -ru {{ workhorse_var('baseline') }}
+  {{ workhorse_var('features_root') }}`. Do not commit yourself; the run commits the book after
+  this turn under the `commit_message` you return.
 
 ## The one rule every repair shares
 
@@ -160,8 +160,12 @@ Where the rule bites, per code, is below.
 ## Output
 
 ```json
-{"discovered": [], "doc_status": "documented"}
+{"discovered": [], "doc_status": "documented", "commit_message": "docs(<service>): <what the repair changed>"}
 ```
+
+`commit_message` is the subject of the commit that records this turn: `docs(<service>):` then a
+lowercase imperative saying what changed in the book, not which finding was raised, 72 characters
+at most. Leave it empty when you changed nothing.
 
 `doc_status` ∈ `documented` (every finding in the item repaired) | `partial` (some left standing —
 say which and why) | `skipped` (the finding is wrong about this node; say so).

@@ -9,7 +9,7 @@ package's contents legible as "the build's own work":
 * `adjudicate` — the other side of a blocked finding: the story it answers to, and the
   routing of the verdict (`book` re-queues, `code` seeds and records, `story` conflicts)
 * `baseline` — the book as a repair turn found it, the "before" its change is read against
-* `finalize` — the scoped commit that records a completed book
+* `finalize` — the scoped commits that record each turn and the completed book
 
 The drain's own primitives (`worklist`), the convergence gate (`checkpoint`), the
 `blueprint` every node registers on and the stand-ins are in `shared/`, because the
@@ -39,7 +39,7 @@ from workhorse_workflows.okf_builder.main.nodes.coverage import (
     compute_coverage,
     inventory_source,
 )
-from workhorse_workflows.okf_builder.main.nodes.finalize import commit_book
+from workhorse_workflows.okf_builder.main.nodes.finalize import commit_book, commit_turn
 from workhorse_workflows.okf_builder.main.nodes.prepare import prepare
 
 __all__ = [
@@ -48,6 +48,7 @@ __all__ = [
     "blocked_rows",
     "compute_coverage",
     "commit_book",
+    "commit_turn",
     "gather_evidence",
     "inventory_source",
     "prepare",

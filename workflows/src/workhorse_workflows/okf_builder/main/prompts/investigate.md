@@ -261,7 +261,11 @@ Emit the items your investigation revealed (empty list if none). Deduped downstr
 (kind, target), so re-emitting a known item is harmless.
 
 ```json
-{"discovered": [{"kind": "element", "target": "…", "context": "…"}], "doc_status": "documented"}
+{"discovered": [{"kind": "element", "target": "…", "context": "…"}], "doc_status": "documented", "commit_message": "docs(<service>): <what you documented>"}
 ```
+
+`commit_message` is the subject of the commit that records this turn's book edits — the run
+commits them, so do not commit yourself: `docs(<service>):` then a lowercase imperative saying
+what the book now documents, 72 characters at most. Leave it empty when you changed nothing.
 
 `doc_status` ∈ `documented` | `skipped` (nothing real to document for this item) | `partial`.

@@ -358,6 +358,9 @@ class Investigation(Discovery):
     #: operator gate that a repeatedly-unrepairable target eventually blocks on, so the
     #: person reading it sees the turn's own sentence rather than only a code and a count.
     note: str = ""
+    #: The subject of the commit that records this turn's book edits, in the target repo's
+    #: `type(scope): description` form. Empty when the turn changed nothing.
+    commit_message: str = ""
 
 
 class Recheck(Discovery):

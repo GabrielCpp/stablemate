@@ -15,11 +15,11 @@ that change the tree — `stash`, `checkout`, `restore`, `reset` — other runs 
 this checkout uncommitted, and those commands discard their work. Do not run a full
 `ostler doctor`; the next gate runs it.
 
-Your change is measured against `{{ baseline }}`, a copy of the book taken just before
-this turn: `diff -ru {{ baseline }} {{ features_root }}` shows exactly what you changed,
-and undoing an edit means copying that file back from the baseline. Never use `HEAD` for
-either — this run commits the book only when it is complete, so `git diff` also shows the
-run's earlier uncommitted repairs, and restoring from `HEAD` erases them.
+The book was committed just before this turn, so `git diff -- {{ features_root }}` shows exactly
+what you changed, and undoing an edit means editing the file back. `{{ baseline }}` is the same
+book as a plain copy, for when that commit could not land. Do not commit yourself: the run commits
+the book after this turn under your `commit_message`, a `docs({{ service }}): <what changed>`
+subject of 72 characters at most, left empty when you changed nothing.
 
 Target: {{ item_target }}
 

@@ -135,6 +135,7 @@ class _Agent:
         writes: dict[str, dict[str, str]] | None = None,
         verdict: str = "story",
         lands_on: str = "",
+        commit_message: str = "",
     ) -> None:
         self.repo = repo
         self.surfaces = [dict(SURFACE)] if surfaces is None else surfaces
@@ -156,6 +157,8 @@ class _Agent:
         #: A substring of a repair item's context that makes the turn land — how a test
         #: says "the repair turn can fix it once it is told this".
         self.lands_on = lands_on
+        #: The subject a turn asks its book edits to be committed under.
+        self.commit_message = commit_message
         self.explode = set(explode or ())
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
@@ -213,6 +216,7 @@ class _Agent:
             "doc_status": status,
             "note": self.note if status != "documented" else "",
             "discovered": self.spawn.get(target, []),
+            "commit_message": self.commit_message,
         }
 
     #: A `fix:` item renders `main/prompts/repair.md` instead, so the dispatch above sees a
@@ -323,7 +327,9 @@ def test_fully_cited_book_cannot_commit_with_behavior_gaps(
     seen: list[str] = []
     with patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
         _drive(env, agent)
-    assert Repo(booked).head.commit.hexsha == before
+    # Turns commit as they go; only the completed book's commit is withheld.
+    subjects = [c.summary for c in Repo(booked).iter_commits(f"{before}..HEAD")]
+    assert "docs: update the OKF book" not in subjects, subjects
     assert agent.counts()["behavior-audit"] == (2 if mode == "invalid" else 1)
     assert not (env.run_dir / "walkthrough_web").exists()
     assert not (env.run_dir / "commit_book").exists()
@@ -687,6 +693,32 @@ def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
     assert result.is_webapp is False, result
 
 
+def test_a_turn_commits_its_book_edits_under_its_own_subject_past_a_rejecting_hook(
+    dirty: Path, tmp_path: Path
+) -> None:
+    """Each turn lands as its own commit, so `HEAD` is where the next turn starts.
+
+    The subject is the one the turn wrote, because only the turn knows what it changed, and
+    the target repo's hooks are skipped: they are written for its coders, and one rejecting
+    every commit must not keep the book uncommitted.
+    """
+    hook = dirty / ".git/hooks/pre-commit"
+    hook.write_text("#!/bin/sh\nexit 1\n")
+    hook.chmod(0o755)
+    before = Repo(dirty).head.commit.hexsha
+    subject = "docs(acme): drop the refund concept citing no symbol"
+
+    _drive(_env(tmp_path), _Agent(dirty, repair=True, commit_message=subject))
+
+    repo = Repo(dirty)
+    subjects = [c.summary for c in repo.iter_commits(f"{before}..HEAD")]
+    assert subject in subjects, subjects
+    turn = next(c for c in repo.iter_commits(f"{before}..HEAD") if c.summary == subject)
+    # The turn's commit is its edit alone: the parent still holds what the repair deleted.
+    assert f"{BOOK}/concepts/refund.md" not in repo.git.ls_tree("-r", "--name-only", turn.hexsha)
+    assert f"{BOOK}/concepts/refund.md" in repo.git.ls_tree("-r", "--name-only", turn.parents[0].hexsha)
+
+
 def test_a_repair_that_never_lands_blocks_the_target_and_parks_on_the_gate(
     dirty: Path, tmp_path: Path
 ) -> None:
@@ -1016,7 +1048,8 @@ def test_legacy_completion_checkpoints_require_a_current_audit(
         drive(OkfBuilder(**resume.inputs),
               replace(_env(tmp_path, run_dir=env.run_dir), agent_runner=StubRunner(agent)), resume)
     assert agent.counts()["behavior-audit"] == 1
-    assert Repo(booked).head.commit.hexsha == before
+    subjects = [c.summary for c in Repo(booked).iter_commits(f"{before}..HEAD")]
+    assert "docs: update the OKF book" not in subjects, subjects
     assert not (env.run_dir / "walkthrough_web").exists()
 
 

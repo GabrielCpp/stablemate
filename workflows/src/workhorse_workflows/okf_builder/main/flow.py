@@ -77,6 +77,7 @@ from workhorse_workflows.okf_builder.main.nodes import (
     apply_verdict,
     blocked_rows,
     commit_book,
+    commit_turn,
     compute_coverage,
     gather_evidence,
     inventory_source,
@@ -561,9 +562,14 @@ class OkfBuilder(Workflow):
         self.logger.info(
             "%s%s", where, f" · {progress}" if progress else "", extra={"activity": True}
         )
-        # The book as this turn finds it. The drain commits only a completed book, so HEAD
-        # predates every repair this run has landed; a turn needs this copy, not git, to
-        # tell its own edit from those (`nodes/baseline.py`).
+        # Every turn starts from a commit and ends in one (`nodes/finalize.py`), so `HEAD` is
+        # where the turn began and the turn's own subject records what it changed.
+        self.call(
+            commit_turn, self.ctx.repo_root, self.ctx.features_root,
+            f"docs({self.service}): record book edits before the next turn", self.story,
+        )
+        # The book as this turn finds it: the reference that still holds when a pre-turn
+        # commit could not land (`nodes/baseline.py`).
         baseline = (
             self.call(snapshot_book, self.ctx.features_root, str(self.run_dir / "turn-baseline")).path
             if repair or behavior_repair
@@ -598,6 +604,10 @@ class OkfBuilder(Workflow):
                 "source_root": self.ctx.source_root,
                 "source_excludes": self.ctx.source_excludes,
             },
+        )
+        self.call(
+            commit_turn, self.ctx.repo_root, self.ctx.features_root,
+            result.commit_message or f"docs({self.service}): {where}", self.story,
         )
         return Continue(
             result,
