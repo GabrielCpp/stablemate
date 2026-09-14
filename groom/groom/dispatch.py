@@ -144,10 +144,14 @@ def _own(item_id: str, queue: str, proc: subprocess.Popen[str], slot: threading.
             code = proc.wait()
         except Exception:
             logger.exception("dispatch: lost the process for %s/%s", queue, item_id)
-        finally:
-            slot.release()
         status = store.DISPATCH_DONE if code == 0 else store.DISPATCH_FAILED
-        store.dispatch_finish(item_id, status=status, exit_code=code)
+        # `stop()` may have already marked this row `cancelled` and released its slot
+        # the moment it sent the kill, well before this wait() call returns — in that
+        # case `dispatch_finish` no-ops (the row is already terminal) and this thread
+        # must not release the slot or drain a second time for the same item.
+        if not store.dispatch_finish(item_id, status=status, exit_code=code):
+            return
+        slot.release()
         # The slot just freed is this queue's own signal to launch its next `pending`
         # item — without this call a queue that never gets `stop`ped would drain only
         # once, at capacity, and then sit on a full backlog forever.
@@ -247,7 +251,14 @@ def stop(item_id: str) -> bool:
             except OSError:
                 break
             time.sleep(0.2)
-    store.dispatch_finish(item_id, status=store.DISPATCH_CANCELLED, exit_code=None)
+    # If the item's own process happened to exit naturally in the gap between the
+    # status check above and here, `_own`'s `_wait` thread may already have flipped
+    # this row to `done`/`failed` and freed its slot — in that case this call loses
+    # the race and must not release a slot a second time or report a cancel that
+    # didn't happen.
+    won = store.dispatch_finish(item_id, status=store.DISPATCH_CANCELLED, exit_code=None)
+    if not won:
+        return False
     queue = str(row.get("queue") or "")
     settings = queues().get(queue)
     if settings is not None:

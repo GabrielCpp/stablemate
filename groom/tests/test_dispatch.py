@@ -227,6 +227,31 @@ def test_stop_kills_a_running_item_and_frees_its_slot(dispatching: Configure):
     assert dispatch._slot("q", 1).acquire(blocking=False) is True
 
 
+def test_stop_prevails_over_the_killed_process_own_exit_code(
+    dispatching: Configure, monkeypatch: pytest.MonkeyPatch,
+):
+    """`stop()` marks the row `cancelled` the moment it sends the kill. The process's
+    own `wait()` reporting back later with the nonzero exit code the kill produced
+    must not relabel the row `failed`, and must not free the queue's slot a second
+    time on top of the one `stop()` already freed."""
+    dispatching(q=dict(command="workhorse-loop-runner", concurrency=1))
+    proc = _FakeProc(pid=100, code=-15)
+    monkeypatch.setattr(dispatch, "_launch", lambda item_id, command, params: proc)
+
+    item = dispatch.enqueue("q")
+    item_id = item["item_id"]
+    _await(lambda: _status(item_id) == store.DISPATCH_RUNNING, "the item to start running")
+
+    assert dispatch.stop(item_id) is True
+    assert _status(item_id) == store.DISPATCH_CANCELLED
+
+    # The process's own wait() now returns, as if the kill had just landed.
+    proc.done.set()
+    _await(lambda: dispatch._slot("q", 1).acquire(blocking=False), "the slot to free exactly once")
+    assert dispatch._slot("q", 1).acquire(blocking=False) is False
+    assert _status(item_id) == store.DISPATCH_CANCELLED
+
+
 # ---- boot recovery ------------------------------------------------------------
 def test_boot_recovery_leaves_an_alive_item_running_and_fails_a_dead_one(
     dispatching: Configure,

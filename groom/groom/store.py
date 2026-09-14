@@ -2823,20 +2823,28 @@ def dispatch_finish(
     status: str,
     exit_code: int | None = None,
     ended_at: float | None = None,
-) -> None:
-    """Flip a row to a terminal state (`done` / `failed` / `cancelled`). Called by the
-    thread that owned the process, or by `stop`/cancel on an operator's say-so."""
+) -> bool:
+    """Flip a row to a terminal state (`done` / `failed` / `cancelled`) — but only if
+    it is not terminal already. Called both by the thread that owned the process, once
+    it exits, and by `stop` on an operator's say-so the moment it sends the kill —
+    whichever gets here first wins, so a process `stop()` already marked `cancelled`
+    cannot be relabelled `failed` a moment later by the exit code its own kill
+    produced. Returns whether this call is the one that won, which is also whether its
+    caller is the one that now owns the item's queue slot to release."""
     with _STORE.writing() as conn:
-        conn.execute(
+        cursor = conn.execute(
             "UPDATE dispatch_items SET status = ?, exit_code = ?, ended_at = ?"
-            " WHERE item_id = ?",
+            " WHERE item_id = ? AND status IN (?, ?)",
             (
                 status,
                 exit_code,
                 float(ended_at if ended_at is not None else time.time()),
                 item_id,
+                DISPATCH_PENDING,
+                DISPATCH_RUNNING,
             ),
         )
+        return cursor.rowcount > 0
 
 
 @_resilient
