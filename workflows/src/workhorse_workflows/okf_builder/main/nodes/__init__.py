@@ -8,6 +8,7 @@ package's contents legible as "the build's own work":
 * `coverage` — the source inventory and the join that decides whether the book covers it
 * `adjudicate` — the other side of a blocked finding: the story it answers to, and the
   routing of the verdict (`book` re-queues, `code` seeds and records, `story` conflicts)
+* `baseline` — the book as a repair turn found it, the "before" its change is read against
 * `finalize` — the scoped commit that records a completed book
 
 The drain's own primitives (`worklist`), the convergence gate (`checkpoint`), the
@@ -32,6 +33,7 @@ from workhorse_workflows.okf_builder.main.nodes.adjudicate import (
     blocked_rows,
     gather_evidence,
 )
+from workhorse_workflows.okf_builder.main.nodes.baseline import snapshot_book
 from workhorse_workflows.okf_builder.main.nodes.coverage import (
     advance_watermark,
     compute_coverage,
@@ -49,4 +51,5 @@ __all__ = [
     "gather_evidence",
     "inventory_source",
     "prepare",
+    "snapshot_book",
 ]

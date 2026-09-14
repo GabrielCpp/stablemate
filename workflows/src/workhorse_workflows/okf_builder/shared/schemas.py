@@ -125,6 +125,12 @@ class Prepared(OkfResult):
     diff_scope_count: int = 0
 
 
+class Baseline(OkfResult):
+    """Where the book was copied as a repair turn found it."""
+
+    path: str = ""
+
+
 class Committed(OkfResult):
     """Whether the completed book produced a git commit."""
 

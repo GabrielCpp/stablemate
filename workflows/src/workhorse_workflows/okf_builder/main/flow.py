@@ -81,6 +81,7 @@ from workhorse_workflows.okf_builder.main.nodes import (
     gather_evidence,
     inventory_source,
     prepare,
+    snapshot_book,
 )
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared.audit import (
@@ -560,6 +561,14 @@ class OkfBuilder(Workflow):
         self.logger.info(
             "%s%s", where, f" · {progress}" if progress else "", extra={"activity": True}
         )
+        # The book as this turn finds it. The drain commits only a completed book, so HEAD
+        # predates every repair this run has landed; a turn needs this copy, not git, to
+        # tell its own edit from those (`nodes/baseline.py`).
+        baseline = (
+            self.call(snapshot_book, self.ctx.features_root, str(self.run_dir / "turn-baseline")).path
+            if repair or behavior_repair
+            else ""
+        )
         result = self.agent(
             "main/prompts/repair-behavior.md" if behavior_repair else
             "main/prompts/repair.md" if repair else "main/prompts/investigate.md",
@@ -584,6 +593,7 @@ class OkfBuilder(Workflow):
                 ),
                 "service": self.service,
                 "features_root": self.ctx.features_root,
+                "baseline": baseline,
                 "repo_root": self.ctx.repo_root,
                 "source_root": self.ctx.source_root,
                 "source_excludes": self.ctx.source_excludes,

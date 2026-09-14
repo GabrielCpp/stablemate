@@ -123,6 +123,12 @@ hiding it.
 - **Do not run a full `ostler doctor`.** It lints the whole repository to answer a question about
   one node. Run `ostler fmt <the file you touched>` and stop. The checkpoint re-runs doctor once per
   round and re-queues anything you missed.
+- **Your change is measured against the baseline, never `HEAD`.** `{{ workhorse_var('baseline') }}`
+  is a copy of the book taken just before this turn: `diff -ru {{ workhorse_var('baseline') }}
+  {{ workhorse_var('features_root') }}` is exactly what you changed, including what `ostler fmt`
+  rewrote (keep that), and undoing an edit means copying the file back from the baseline. The
+  run commits the book only when it is complete, so `git diff` and `git show HEAD:<path>` also
+  show this run's earlier repairs — uncommitted, and erased if you restore from `HEAD`.
 
 ## The one rule every repair shares
 

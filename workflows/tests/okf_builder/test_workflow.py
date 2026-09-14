@@ -676,6 +676,12 @@ def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
     assert args["item_code"] == "missing-code-symbol", args
     # The finding's own JSON travels to the turn as its context, not just the file name.
     assert "missing-code-symbol" in args["item_context"]
+    # The turn is handed the book as it found it, outside the tree it edits: the repair
+    # deleted the doc, and the baseline still holds it — the "before" HEAD cannot be while
+    # the run's earlier repairs sit uncommitted.
+    baseline = Path(args["baseline"])
+    assert not baseline.is_relative_to(dirty), baseline
+    assert (baseline / Path(REFUND).relative_to(BOOK)).is_file(), sorted(baseline.rglob("*"))
 
     assert not (dirty / REFUND).exists()
     assert result.is_webapp is False, result

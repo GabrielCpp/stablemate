@@ -12,9 +12,14 @@ additional documentation work, not implementation changes.
 
 Docs only: write under `{{ features_root }}` and nowhere else. Never run `git` commands
 that change the tree — `stash`, `checkout`, `restore`, `reset` — other runs are editing
-this checkout uncommitted, and those commands discard their work. To see a file as
-committed use `git show HEAD:<path>`; to see your change use `git diff -- <path>`. Do not
-run a full `ostler doctor`; the next gate runs it.
+this checkout uncommitted, and those commands discard their work. Do not run a full
+`ostler doctor`; the next gate runs it.
+
+Your change is measured against `{{ baseline }}`, a copy of the book taken just before
+this turn: `diff -ru {{ baseline }} {{ features_root }}` shows exactly what you changed,
+and undoing an edit means copying that file back from the baseline. Never use `HEAD` for
+either — this run commits the book only when it is complete, so `git diff` also shows the
+run's earlier uncommitted repairs, and restoring from `HEAD` erases them.
 
 Target: {{ item_target }}
 
