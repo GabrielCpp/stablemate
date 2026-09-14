@@ -111,6 +111,8 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | Code | Sev | Trigger and remedy |
 | --- | --- | --- |
 | `dangling-code-ref` | error | A `code:` target names no such file. The value is a path relative to the repo root, as `path::symbol`. |
+| `test-subject` | error | Every `code:` citation on the node is test source — a mock, a fake in a `_test.go`, a fixture (`refs.is_test_source`). A book documents product behaviour a user can observe; the test suite's doubles are an implementation detail. Delete the node — the whole page when it is the page's own node — and the links into it. Never repoint it at production code to keep it. |
+| `code-cites-test` | error | The node cites production code *and* test source. Remove the test citations from `code:`; a test that proves the claim goes under `tests:` where the type admits it. |
 | `dangling-repository-ref` | error | A repository-qualified `code:` target names no repository in the generated source catalog. Refresh multi-repository context with the workspace repository available; never remove the qualifier and guess by path. |
 | `missing-code-symbol` | error | The file exists but does not **declare** that symbol. A re-export does not ground a citation. Read the file, find the symbol that now owns the behaviour, repoint the bullet — never waive it and never restore an old name. |
 | `unresolved-relation` | error | A relation bullet (`on:`/`parent:`/`extends:`/`detail:`/…) does not resolve. `fixable`. |
