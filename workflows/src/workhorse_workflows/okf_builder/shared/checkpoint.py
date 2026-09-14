@@ -83,7 +83,8 @@ GROUNDED_CODES = frozenset({
     "template-outside-repeat",
 })
 
-#: The drain's spend order, as code families from upstream to downstream. Grounding first:
+#: The drain's spend order, as code families from upstream to downstream. Scope first — a
+#: node documenting test source is deleted, so no other repair on it is worth a turn. Then grounding:
 #: a claim about a symbol that no longer exists is not worth rephrasing, and a check bound
 #: to it observes nothing. Then claim shape (what the book asserts), then obligations (how
 #: each assertion is observed), then the UI contract. A code in no family sorts after all
@@ -91,6 +92,7 @@ GROUNDED_CODES = frozenset({
 #: graph itself. The point is where a *bounded* run's allowance goes — the gate ("no
 #: standing finding") is unchanged.
 _CODE_FAMILIES: tuple[frozenset[str], ...] = (
+    frozenset({"test-subject", "code-cites-test"}),
     frozenset({"missing-code-symbol", "dangling-code-ref", "dangling-link",
                "missing-anchor", "unresolved-relation"}),
     frozenset({"compound-normative-bullet", "overlong-normative-bullet",
@@ -150,6 +152,40 @@ def _related_of(finding: dict) -> list[str]:
     return [str(member) for member in related] if isinstance(related, list) else []
 
 
+#: A node documenting a test double rather than the product (ostler `test-subject`).
+TEST_SUBJECT = "test-subject"
+
+
+def _without_test_subjects(findings: list[dict]) -> list[dict]:
+    """Drop every finding on a node doctor says documents test source, bar that verdict.
+
+    The repair for `test-subject` is deleting the node — the whole page when the verdict sits
+    on the page's own node — so any other finding on it asks a turn to make a mock provable
+    and is undone by the deletion. Queuing them is what spent thousands of turns on legacy
+    mock pages; once the node is gone doctor stops reporting them, and `settle_stale` closes
+    rows already held for them as stale.
+
+    A page-level verdict (`ref` is `<path>#code`, the file node's id being the bare path)
+    covers every node on the page, its own node-level `test-subject` findings included: one
+    deletion, one row.
+    """
+    pages = {str(f.get("path", "")) for f in findings
+             if f.get("code") == TEST_SUBJECT and f.get("ref") == f"{f.get('path', '')}#code"}
+    nodes = {_node_of(str(f.get("ref", "") or ""), str(f.get("path", "")))
+             for f in findings if f.get("code") == TEST_SUBJECT}
+    kept = []
+    for finding in findings:
+        path = str(finding.get("path", ""))
+        page_verdict = finding.get("code") == TEST_SUBJECT and finding.get("ref") == f"{path}#code"
+        if path in pages and not page_verdict:
+            continue
+        node = _node_of(str(finding.get("ref", "") or ""), path)
+        if node in nodes and finding.get("code") != TEST_SUBJECT:
+            continue
+        kept.append(finding)
+    return kept
+
+
 def _repair_items(findings: list[dict]) -> list[dict[str, Any]]:
     """One item per `(file, node, code)`, chunked, carrying that group's findings only.
 
@@ -188,7 +224,7 @@ def _repair_items(findings: list[dict]) -> list[dict[str, Any]]:
     rather than derived from the finding text.
     """
     groups: dict[tuple[str, str, str], list[dict]] = {}
-    for finding in findings:
+    for finding in _without_test_subjects(findings):
         path = str(finding.get("path", ""))
         if _related_of(finding):
             # A group finding is about N book locations and `path` names one of them

@@ -642,3 +642,51 @@ def test_a_done_repair_standing_only_on_fixable_findings_is_left_to_the_checkpoi
     assert result.reopened == 1
     status = {i["kind"]: i["status"] for i in json.loads(worklist.read_text())["items"]}
     assert status == {"fix:dangling-link": "done", "fix:compound-normative-bullet": "pending"}
+
+
+def test_a_page_documenting_a_test_double_is_one_deletion_row() -> None:
+    """Everything on a `test-subject` page is undone by deleting it, so only the verdict queues.
+
+    A mock page's methods each carry their own verify and grounding findings, and the node-level
+    `test-subject` verdicts repeat the page's. Queuing any of them spends a turn making a mock
+    provable — thousands of turns on a real book — before the deletion that erases the work.
+    """
+    mock = f"{BOOK}/mock-billing.md"
+    product = f"{BOOK}/billing.md"
+    findings = [
+        {**_finding("test-subject", "error", path=mock), "ref": f"{mock}#code"},
+        {**_finding("test-subject", "error", path=mock), "ref": f"{mock}#method-charge#code"},
+        {**_finding("undeclared-obligation", path=mock), "ref": f"{mock}#method-charge#does"},
+        {**_finding("missing-code-symbol", "error", path=mock), "ref": f"{mock}#code"},
+        {**_finding("undeclared-obligation", path=product), "ref": f"{product}#charge#does"},
+    ]
+
+    assert sorted(i["target"] for i in _repair_items(findings)) == [
+        f"{product}#{product}#charge#undeclared-obligation",
+        f"{mock}#{mock}#code#test-subject",
+    ]
+
+
+def test_a_test_double_node_on_a_product_page_drops_only_its_own_findings() -> None:
+    doc = f"{BOOK}/billing.md"
+    findings = [
+        {**_finding("test-subject", "error", path=doc), "ref": f"{doc}#fake-stripe#code"},
+        {**_finding("weak-check", path=doc), "ref": f"{doc}#fake-stripe#verify"},
+        {**_finding("weak-check", path=doc), "ref": f"{doc}#charge#verify"},
+    ]
+
+    assert sorted(i["kind"] for i in _repair_items(findings)) == [
+        "fix:test-subject", "fix:weak-check"]
+    (weak,) = [i for i in _repair_items(findings) if i["kind"] == "fix:weak-check"]
+    assert "#charge#" in weak["target"]
+
+
+def test_test_subjects_drain_before_everything_else() -> None:
+    """Deleting a mock page first spares the turns every other row would spend on it."""
+    doc = f"{BOOK}/billing.md"
+    findings = [
+        {**_finding("missing-code-symbol", "error", path=doc), "ref": f"{doc}#charge#code"},
+        {**_finding("code-cites-test", "error", path=doc), "ref": f"{doc}#refund#code"},
+    ]
+
+    assert _repair_items(findings)[0]["kind"] == "fix:code-cites-test"
