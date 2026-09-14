@@ -106,6 +106,12 @@ _CACHED_TEXTS = 1 << 16
 
 @lru_cache(maxsize=_CACHED_TEXTS)
 def _links(text: str) -> tuple[tuple[str, str, int], ...]:
+    # Most values a doctor reads are distinct, so the cache above misses on them, and most hold
+    # no link at all. In the commonmark preset (no linkify) a `link_open` comes only from the
+    # `link` rule, which opens on `[`, or `autolink`, which opens on `<`: a text with neither
+    # yields nothing, and skipping its parse took a real 33s doctor run to 26s.
+    if "[" not in text and "<" not in text:
+        return ()
     return tuple(_scan_links(text))
 
 
