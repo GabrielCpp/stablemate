@@ -20,6 +20,7 @@ Two layers, deliberately kept separate:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -145,6 +146,12 @@ def _inline_children(text: str) -> tuple[Token, ...]:
     return tuple(_MD.parseInline(_normalize(text))[0].children or ())
 
 
+#: A stamped citation's trailing digest, sitting just after its span, outside the backticks:
+#: `` `path::symbol` @3f9a1c07b2e4 ``. It attaches to the span that precedes it, not to the
+#: separator that follows — so a multi-target bullet keeps parsing past it (see below).
+_TRAILING_DIGEST = re.compile(r"^(\s*@[0-9a-f]{12})(.*)$", re.DOTALL)
+
+
 def leading_code_spans(text: str) -> list[str]:
     """The inline-code spans a value *opens* with, comma-separated; ``[]`` if it opens with prose.
 
@@ -152,13 +159,27 @@ def leading_code_spans(text: str) -> list[str]:
     ``code_inline`` tokens rather than a backtick regex is what makes ``` ``a `b` c`` ``` and
     a backslash-escaped fence come out right, and it is the parser that decides where a span
     ends rather than the next backtick character.
+
+    A span may carry a stamped ``@digest`` immediately after it — plain text, since a digest
+    is not part of the citation's own backtick-quoted grammar. Read verbatim, that text is
+    prose and would end the run right after the *first* target, silently dropping every
+    citation after it in a stamped multi-target bullet. So it is recognized here and folded
+    onto the span it follows before the ordinary separator check runs on whatever remains.
     """
     spans: list[str] = []
     for child in _inline_children(text):
         if child.type == "code_inline":
             spans.append(child.content)
-        elif child.type == "text" and not child.content.strip(" \t,"):
-            continue  # the separator between two spans
+        elif child.type == "text":
+            content = child.content
+            if spans:
+                digest_match = _TRAILING_DIGEST.match(content)
+                if digest_match:
+                    spans[-1] += digest_match.group(1).strip()
+                    content = digest_match.group(2)
+            if not content.strip(" \t,"):
+                continue  # the separator between two spans
+            break         # prose — the run is over
         elif child.type in ("softbreak", "hardbreak"):
             # A wrapped bullet. The newline between two spans is whitespace like any other,
             # but the parser hands it back as its own token rather than as text — so reading

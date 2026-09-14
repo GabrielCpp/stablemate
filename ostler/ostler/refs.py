@@ -40,27 +40,44 @@ a bare list was already unreadable.
 
 Per this package's standing rule — when the book and the tool disagree about grammar, the
 book wins; a tool that cannot parse it is the defect.
+
+A citation may also carry a **stamped digest**: a 12-hex-character suffix, ``@3f9a1c07b2e4``,
+appended after everything else (after the symbol, if any). It records the content hash of
+the file the citation pointed at when ``ostler stamp`` last read it — a per-target freshness
+mark, replacing the whole-book source catalog. Only ``ostler stamp`` writes it; nothing else
+reads or writes the file the digest was computed from.
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from ostler.markdown import leading_code_spans
 
+#: 12 hex characters — half a sha256 digest, plenty to catch a changed file and short enough
+#: to sit in a bullet without dominating it.
+_DIGEST_SUFFIX = re.compile(r"@([0-9a-f]{12})$")
+
 
 @dataclass(frozen=True, slots=True)
 class CodeRef:
-    """A code citation, optionally qualified by its repository."""
+    """A code citation, optionally qualified by its repository and/or stamped with a digest."""
 
     repository: str
     path: str
     symbol: str = ""
+    digest: str | None = None
 
 
 def parse_code_ref(value: str) -> CodeRef:
-    """Parse a legacy or repository-qualified code reference."""
+    """Parse a legacy or repository-qualified code reference, with an optional ``@digest``."""
+    digest = None
+    digest_match = _DIGEST_SUFFIX.search(value)
+    if digest_match:
+        digest = digest_match.group(1)
+        value = value[: digest_match.start()]
     target, separator, symbol = value.partition("::")
     repository = ""
     path = target
@@ -73,6 +90,7 @@ def parse_code_ref(value: str) -> CodeRef:
         repository=repository,
         path=path.replace("\\", "/"),
         symbol=symbol if separator else "",
+        digest=digest,
     )
 
 
@@ -86,7 +104,8 @@ def render_code_ref(ref: CodeRef) -> str:
         target = f"repo://{ref.repository}/{path}"
     else:
         target = path
-    return f"{target}::{ref.symbol}" if ref.symbol else target
+    rendered = f"{target}::{ref.symbol}" if ref.symbol else target
+    return f"{rendered}@{ref.digest}" if ref.digest else rendered
 
 
 #: Directory names that hold tests and their doubles, never the product. Shared with

@@ -190,3 +190,55 @@ def test_render_roundtrips_parsed_refs(value: str):
 def test_ref_path_returns_only_the_qualified_path_portion():
     assert refs.ref_path("repo://acme/api/handlers.py::serve") == "api/handlers.py"
 
+
+def test_parse_strips_a_trailing_stamped_digest():
+    assert refs.parse_code_ref("api/handlers.py::serve@3f9a1c07b2e4") == refs.CodeRef(
+        repository="", path="api/handlers.py", symbol="serve", digest="3f9a1c07b2e4",
+    )
+
+
+def test_parse_qualified_ref_with_a_digest():
+    assert refs.parse_code_ref("repo://acme/src/main.py::run@abcdef012345") == refs.CodeRef(
+        repository="acme", path="src/main.py", symbol="run", digest="abcdef012345",
+    )
+
+
+def test_a_digest_shorter_or_longer_than_twelve_hex_chars_is_not_one():
+    """The suffix pattern is exact-width — anything else is data the ref happens to end with."""
+    assert refs.parse_code_ref("api/a.py::x@abc").digest is None
+    assert refs.parse_code_ref("api/a.py::x@" + "a" * 13).digest is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "api/handlers.py@3f9a1c07b2e4",
+        "api/handlers.py::serve@3f9a1c07b2e4",
+        "repo://acme/api/handlers.py::serve@3f9a1c07b2e4",
+    ],
+)
+def test_render_roundtrips_a_stamped_ref(value: str):
+    assert refs.render_code_ref(refs.parse_code_ref(value)) == value
+
+
+def test_a_stamped_multi_target_bullet_still_cites_both():
+    """The parsing regression this grammar risked: a digest sits outside the backtick span as
+    plain text, which — read verbatim — is prose and would end the leading run right after the
+    first target, silently dropping every citation after it."""
+    value = "`api/a.py` @3f9a1c07b2e4, `api/b.py` @abcdef012345"
+    assert refs.code_refs(value) == [
+        "api/a.py@3f9a1c07b2e4", "api/b.py@abcdef012345",
+    ]
+
+
+def test_a_stamped_bullet_wrapped_across_lines_still_cites_both():
+    value = "`api/a.py` @3f9a1c07b2e4,\n`api/b.py` @abcdef012345"
+    assert refs.code_refs(value) == [
+        "api/a.py@3f9a1c07b2e4", "api/b.py@abcdef012345",
+    ]
+
+
+def test_a_trailing_gloss_after_a_stamped_ref_is_still_dropped():
+    value = "`web/app/Navbar.tsx::Navbar` @3f9a1c07b2e4 (inline JSX, not a named export)"
+    assert refs.code_refs(value) == ["web/app/Navbar.tsx::Navbar@3f9a1c07b2e4"]
+

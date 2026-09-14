@@ -18,6 +18,7 @@ from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
 from ostler import index as index_mod
 from ostler import source_snapshots
+from ostler import stamp as stamp_mod
 from ostler import behavior_cli
 from ostler.model import find_root, load
 
@@ -133,6 +134,15 @@ def _build_parser() -> argparse.ArgumentParser:
 
     t = sub.add_parser("trace", help="walk the graph from a node")
     t.add_argument("token", help="seed id, story slug, surface or doc path")
+
+    st = sub.add_parser(
+        "stamp", help="write a content-hash @digest onto each cited file's `code:` bullets"
+    )
+    st.add_argument(
+        "--path", action="append", default=[], required=True, metavar="PATH",
+        help="a book page to stamp (repeatable); the whole file's `code:` bullets are restamped",
+    )
+    st.add_argument("--json", action="store_true", help="emit a per-page summary as JSON")
 
     # ---- retrieval --------------------------------------------------------
     ls = sub.add_parser("list", help="list Concepts of a type")
@@ -1066,6 +1076,32 @@ def _repo_relative(graph, path: str) -> str | None:
     return candidate.relative_to(root).as_posix()
 
 
+def _cmd_stamp(graph, args) -> int:
+    scope = [_repo_relative(graph, p) for p in args.path]
+    outside = [p for p, rel in zip(args.path, scope, strict=True) if rel is None]
+    if outside:
+        print(f"ostler stamp: --path {', '.join(outside)} is not a file of this book",
+              file=sys.stderr)
+        return 2
+    features_root = path_mod.features_root(graph)
+    results = [
+        stamp_mod.stamp_page(graph.root, features_root, rel)
+        for rel in scope if rel is not None
+    ]
+    if args.json:
+        _out(json.dumps(
+            [{"page": r.page, "stamped": r.stamped, "unresolved": r.unresolved,
+              "changed": r.changed} for r in results],
+            indent=2,
+        ))
+    else:
+        for r in results:
+            _out(f"{r.page}: {r.stamped} stamped" + (" (unchanged)" if not r.changed else ""))
+            for target in r.unresolved:
+                _out(f"  unresolved: {target}")
+    return 1 if any(r.unresolved for r in results) else 0
+
+
 def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
     scope = [_repo_relative(graph, p) for p in args.path]
     outside = [p for p, rel in zip(args.path, scope, strict=True) if rel is None]
@@ -1711,6 +1747,8 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
 
     if c == "doctor":
         return _cmd_doctor(graph, args, store)
+    if c == "stamp":
+        return _cmd_stamp(graph, args)
     if c == "audit":
         return behavior_cli.run(graph, args)
     if c == "trace":
