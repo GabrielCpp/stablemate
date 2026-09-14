@@ -101,7 +101,7 @@ def _farrier_globals(
     def skill_dir() -> str:
         return skill_dir_value if skill_dir_value else str(workflow_dir)
 
-    # A run with no context manifest at all (hello-world, most tests) resolves nothing
+    # A run with no context manifest at all (loop-runner, most tests) resolves nothing
     # by design, so "unresolved" is its normal state and not worth a word. A manifest
     # that IS present and still misses a name is the failure this warns about.
     manifest_present = manifest.present

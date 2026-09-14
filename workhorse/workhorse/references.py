@@ -27,7 +27,7 @@ preflight for not having one.
 
 Two further limits. Only *constant* arguments are checkable — ``instruction_ref(
 skill)`` names something known at render time only, and is skipped rather than
-guessed at. And a run with **no** manifest (hello-world, most tests) is skipped
+guessed at. And a run with **no** manifest (loop-runner, most tests) is skipped
 whole: there, unresolved is the normal state, not a symptom.
 """
 from __future__ import annotations

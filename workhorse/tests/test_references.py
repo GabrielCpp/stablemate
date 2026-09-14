@@ -257,7 +257,7 @@ def test_docs_outside_prompts_are_not_scanned(tmp_path: Path) -> None:
 
 
 def test_no_manifest_at_all_is_skipped_whole(tmp_path: Path) -> None:
-    """hello-world and most tests run manifest-free: unresolved is their normal state."""
+    """loop-runner and most tests run manifest-free: unresolved is their normal state."""
     root = _workflow(tmp_path, plan="{{ instruction_ref('anything') }}")
     assert missing_references(root, {}) == []
 

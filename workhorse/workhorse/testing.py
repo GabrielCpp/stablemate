@@ -34,8 +34,7 @@ Example::
         )
         assert_json_file(repo, "docs/state.json", {"status": "done"})
 
-See ``docs/features/workhorse/flows/workhorse-author-test.md`` for the walkthrough,
-and ``workflows/tests/test_hello_world.py`` for this example as running code.
+See ``docs/features/workhorse/flows/workhorse-author-test.md`` for the walkthrough.
 """
 
 from __future__ import annotations

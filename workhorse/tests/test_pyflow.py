@@ -1453,7 +1453,7 @@ def test_the_context_manifest_is_the_outer_layer_of_an_agent_turn():
 
 
 def test_a_run_with_no_manifest_renders_exactly_its_arguments():
-    """The manifest-free case (hello-world, most tests) must add no keys at all —
+    """The manifest-free case (loop-runner, most tests) must add no keys at all —
     an empty seat, not a placeholder one."""
     with tempfile.TemporaryDirectory() as tmp:
         seen: list[Any] = []

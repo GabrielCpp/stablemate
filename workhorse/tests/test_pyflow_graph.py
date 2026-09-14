@@ -698,7 +698,7 @@ def test_an_unresolvable_skill_reference_warns_a_real_run_and_fails_a_dry_one():
 
 
 def test_a_run_carrying_no_manifest_is_not_warned_about_references():
-    """Unresolved is the normal state for a manifest-free run (hello-world, tests);
+    """Unresolved is the normal state for a manifest-free run (loop-runner, tests);
     warning there would train the operator to ignore the warning that matters."""
     code, out = _run_with_manifest(ManifestContext(), dry_run=True)
     assert code == 0, out

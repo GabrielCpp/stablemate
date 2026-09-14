@@ -186,7 +186,7 @@ class ContextManifest(BaseModel):
 class ManifestContext:
     """What a run carries: the manifest, resolved for this backend and this repo.
 
-    The default instance is the manifest-free case — hello-world and most tests —
+    The default instance is the manifest-free case — loop-runner and most tests —
     and it is a real value rather than ``None`` so no caller branches on absence.
     ``present`` is what tells the two apart: a run with no manifest adds no context
     keys at all, and its unresolved references are normal rather than a symptom.
@@ -267,7 +267,7 @@ def load_context_manifest(context_file: str | None) -> ManifestContext:
     Codex/Copilot run resolve ``instruction_ref`` to its own adapter files
     (``.github/skills`` etc.) rather than Claude's. When none is present the run
     proceeds with an absent manifest (the farrier helpers degrade to placeholders /
-    ``False``) — manifest-free workflows like hello-world need no repo context.
+    ``False``) — manifest-free workflows like loop-runner need no repo context.
     Workflows that DO need it (e.g. coder) always pass ``--context-file`` via the
     generated Makefile, so the miss is caught there."""
     if context_file:
