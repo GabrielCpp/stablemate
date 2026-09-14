@@ -1253,13 +1253,11 @@ function DispatchEnqueueField({ param }) {
   const label = html`<label class="dispatch-field-label">${param.label}${param.required ? " *" : ""}</label>`;
   const control =
     param.type === "select"
-      ? html`<select name=${param.name} required=${param.required}>
+      ? html`<select name=${param.name} required=${param.required} defaultValue=${param.default || ""}>
           ${param.default ? null : html`<option value="">select…</option>`}
-          ${(param.options || []).map(
-            (opt) => html`<option value=${opt} selected=${opt === param.default}>${opt}</option>`
-          )}
+          ${(param.options || []).map((opt) => html`<option value=${opt}>${opt}</option>`)}
         </select>`
-      : html`<input type="text" name=${param.name} required=${param.required} value=${param.default} />`;
+      : html`<input type="text" name=${param.name} required=${param.required} defaultValue=${param.default} />`;
   return html`<div class="dispatch-field">${label}${control}</div>`;
 }
 
@@ -1281,7 +1279,7 @@ function enqueueDispatchItem(queue, params) {
   return fetch("/api/dispatch/" + encodeURIComponent(queue) + "/items", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(params),
+    body: JSON.stringify({ params: params }),
   })
     .then((r) => r.json())
     .then((body) => {
