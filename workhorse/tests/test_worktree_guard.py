@@ -150,6 +150,7 @@ class _Engine:
 
     def __init__(self, run_dir: Path) -> None:
         self.run_dir = run_dir
+        self.worktree_dispatched = False
         self.paths: list[str] = []
 
     def agent(self, prompt: str, **_: Any) -> None:
