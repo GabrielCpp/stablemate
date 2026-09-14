@@ -8,16 +8,17 @@ It assumes you can already run a workflow. If you cannot yet, run the shipped qu
 first — it needs no repository and, under `--dry-run`, no agent CLI at all:
 
 ```bash
-workhorse-hello-world run --dry-run
+workhorse-loop-runner run --dry-run
 ```
 
-Its whole source is one commented ~90-line file,
-[`workflows/src/workhorse_workflows/hello_world/workflow.py`](https://github.com/GabrielCpp/stablemate/blob/main/workflows/src/workhorse_workflows/hello_world/workflow.py),
-carrying one of each thing this document describes: a node, two states, an agent turn and
-a registry. **Copy its directory** — that file plus the `prompts/` beside it — and edit
-the copy; every example below is a variation on it. Copying `workflow.py` alone leaves the
-agent turn with no template, and a dry run says so before it runs anything:
-`state 'greet' renders 'prompts/greet.md', which does not exist`.
+Its whole source is one short file,
+[`workflows/src/workhorse_workflows/loop_runner/workflow.py`](https://github.com/GabrielCpp/stablemate/blob/main/workflows/src/workhorse_workflows/loop_runner/workflow.py),
+demonstrating a narrower slice of what this document describes: one state, an agent turn
+and a registry — no node, no second state. **Copy its directory** — that file plus the
+`prompts/` beside it — and edit the copy; the node/state constructs it does not show are
+illustrated in prose only, in "A worked example" below. Copying `workflow.py` alone leaves
+the agent turn with no template, and a dry run says so before it runs anything: `state
+'start' renders 'prompts/run.md', which does not exist`.
 
 Which is the habit to form: `--dry-run` is the check to run after **every** edit below, not
 only the first. Before it drives anything it reads your states' own source and fails on a
@@ -43,8 +44,8 @@ my_workflow/
     └── step.md
 ```
 
-`nodes.py` there is a *split*, not a requirement — `hello_world` keeps its one node in
-`workflow.py`, and when the split stops being taste is
+`nodes.py` there is a *split*, not a requirement — the smallest workflows, like
+`loop_runner`, have no node to split out at all, and when the split stops being taste is
 [workflows/README.md](https://github.com/GabrielCpp/stablemate/blob/main/workflows/README.md#layout),
 where that rule is stated normatively — along with what the layout becomes once a workflow
 grows sub-flows: one directory per machine, each holding the `nodes/` and `prompts/` only
@@ -105,7 +106,7 @@ uv tool install ./acme-workflows      # or: pipx install ./acme-workflows
 workhorse-greeter run --dry-run
 ```
 
-Copying `hello_world/` and changing the `Registry("hello-world")` name and its
+Copying `loop_runner/` and changing the `Registry("loop-runner")` name and its
 `[project.scripts]` row is the shortest route to a green run of your own; everything below is what you add next.
 
 **Agent prompts** must output JSON matching the model the turn declared in `returns=`:
@@ -143,9 +144,11 @@ the model said it.
 
 ## A worked example
 
-Illustrative, and deliberately a step past the quick start: it adds `setup()`, a loop and
-a second state. The runnable counterpart is `hello-world` above — reach for that one when
-you want something you can execute rather than read.
+Illustrative, and deliberately a step past the quick start: it adds a node, `setup()`, a
+loop and a second state. There is no runnable counterpart to this one — `loop-runner`
+above demonstrates a narrower slice (an agent turn and a registry, no node, no second
+state) — so the node/state/loop constructs below are illustrated here in prose only, not
+in a file you can execute.
 
 ```python
 from workhorse.cli import console_script
