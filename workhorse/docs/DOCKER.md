@@ -127,8 +127,8 @@ farrier's gitignore block excludes `.agents/worktrees/`, so none of it is commit
 Leave `AGENT_SOURCE_MODE` unset (or `clone`) for the older model: a disposable clone
 of `REPO_URL` inside the `workspace` volume, reset to the remote on each restart.
 
-For an auth/image smoke test, `WORKFLOW=hello-world` runs the shipped quick start in the
-container. On the host, `workhorse-hello-world run --dry-run` covers the same ground and
+For an auth/image smoke test, `WORKFLOW=loop-runner` runs the shipped quick start in the
+container. On the host, `workhorse-loop-runner run --dry-run` covers the same ground and
 needs no agent CLI at all — see the [README](../README.md#quick-start).
 
 ## Environment variables

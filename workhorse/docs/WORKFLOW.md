@@ -212,11 +212,11 @@ main = console_script(workflow.entry_point(Example))
 That pair is a translation, not a runnable file: `prompts/step.md` is whatever prompt the
 YAML workflow already had. For something that does run as written — the same shape, with
 the prompt and the console script actually in place — read
-[`workflows/src/workhorse_workflows/hello_world/workflow.py`](https://github.com/GabrielCpp/stablemate/blob/main/workflows/src/workhorse_workflows/hello_world/workflow.py)
+[`workflows/src/workhorse_workflows/loop_runner/workflow.py`](https://github.com/GabrielCpp/stablemate/blob/main/workflows/src/workhorse_workflows/loop_runner/workflow.py)
 and check your port against it:
 
 ```bash
-workhorse-hello-world run --dry-run
+workhorse-loop-runner run --dry-run
 ```
 
 The package layout around it — `pyproject.toml` console script, prompt directory, node

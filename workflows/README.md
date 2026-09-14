@@ -1,6 +1,6 @@
 # workhorse-workflows
 
-The stablemate agent workflows as an installable Python distribution: `hello-world`,
+The stablemate agent workflows as an installable Python distribution: `loop-runner`,
 `research`, `author`, `okf-builder` and `coder`, each a checkpointed state machine.
 Workhorse is the engine; this is its content.
 
@@ -10,7 +10,7 @@ interpreter, because a workflow runs in workhorse's own process:
 
 ```bash
 uv tool install workhorse-workflows    # or: pipx install workhorse-workflows
-workhorse-hello-world run --dry-run    # the install check; needs no agent CLI
+workhorse-loop-runner run --dry-run    # the install check; needs no agent CLI
 ```
 
 Working on the workflows themselves wants a checkout of the
@@ -23,8 +23,9 @@ shipped and is now kept only for its reasoning.
 
 ## The workflows
 
-- **`hello-world`** — two states, one agent turn; the install check and the smallest
-  example to copy when [shipping your own](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md#shipping-your-own-outside-this-repo).
+- **`loop-runner`** — one state, one agent turn: hands a plan to the agent's own
+  tool-loop and lets it run to completion. The install check and, with hello-world gone,
+  the smallest example to copy when [shipping your own](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md#shipping-your-own-outside-this-repo).
 - **`author`** — turns an approved roadmap into the plan: milestones, epics, stories
   with acceptance criteria, seeds and coverage, as a normalized planning graph ostler
   validates. The feature book is read-only to it.

@@ -164,7 +164,7 @@ packages that work alongside an agent prompt library:
 | Package | PyPI | Role |
 | --- | --- | --- |
 | [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft engine (a library, not a command) that drives an agent CLI — Claude, Codex, Copilot, Cline or OpenCode — through a checkpointed Python state machine, unattended for days. |
-| [`workflows/`](workflows/) | [`workhorse-workflows`](https://pypi.org/project/workhorse-workflows/) | The workflows themselves — `hello-world`, `author`, `coder`, `okf-builder`, `research` — as Python, each declaring its own `workhorse-<name>` command. |
+| [`workflows/`](workflows/) | [`workhorse-workflows`](https://pypi.org/project/workhorse-workflows/) | The workflows themselves — `loop-runner`, `author`, `coder`, `okf-builder`, `research` — as Python, each declaring its own `workhorse-<name>` command. |
 | [`farrier/`](farrier/) | [`farrier`](https://pypi.org/project/farrier/) | Renders an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters and launcher. |
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph through its CLI and the in-process facade workflows use. |
 | [`groom/`](groom/) | — (unpublished) | Local dashboard + OTLP collector for running workflows: answers operator gates from the browser and pages you when a run stalls. Optional. |
@@ -204,7 +204,7 @@ commands on your `PATH`:
 ```bash
 uv tool install workhorse-workflows     # or: pipx install workhorse-workflows
 uv tool install farrier                 # renders the library into a repository
-workhorse-hello-world run --dry-run     # the install check; needs no agent CLI
+workhorse-loop-runner run --dry-run     # the install check; needs no agent CLI
 ```
 
 That last line is the whole install check — see [Your first run](#your-first-run). The
@@ -229,7 +229,7 @@ installed from source, and the git hooks this repo depends on:
 ```bash
 git clone https://github.com/GabrielCpp/stablemate.git && cd stablemate
 make install                                 # the workspace venv + the git hooks
-uv run workhorse-hello-world run --dry-run
+uv run workhorse-loop-runner run --dry-run
 ```
 
 `groom` and `saddlebag` are optional add-ons — no base workflow requires either — and
@@ -266,62 +266,60 @@ in [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Your first run
 
-`hello-world` is the smallest workflow that runs: two states, one node, one agent turn.
-It needs no repository, no context manifest and — under `--dry-run` — no agent CLI at
-all, so it is the one command that tells you the install worked.
+`loop-runner` is the smallest workflow that runs: one state, one agent turn. It needs
+no repository, no context manifest and — under `--dry-run` — no agent CLI at all, so it
+is the one command that tells you the install worked.
 
 ```bash
-workhorse-hello-world run --dry-run     # from a checkout: uv run workhorse-hello-world …
+workhorse-loop-runner run --dry-run     # from a checkout: uv run workhorse-loop-runner …
 ```
 
 ```
-[workhorse] starting 'hello-world' HelloWorld (run: hello-world-dry-run)
 [workhorse.engine] [workhorse] state  → start
-[workhorse.engine] [workhorse] call   → measure (dry-run)
-[workhorse.engine] [workhorse] state  → greet
-[workhorse.engine] [workhorse] agent  → greet (dry-run)
-[workhorse.engine] Hello from a dry run.
-[workhorse] dry-run ok — every node ran its stand-in — artifacts in …/.agents/runs/hello-world-dry-run
+[workhorse.engine] [workhorse] agent  → run (dry-run)
+[workhorse.engine] Dry run: plan not actually carried out.
+[workhorse.engine] [workhorse] done   ← start
+[workhorse] starting 'loop-runner' LoopRunner (run: loop-runner-dry-run)
+[workhorse] dry-run ok — every node ran its stand-in — artifacts in …/.agents/runs/loop-runner-dry-run
 ```
 
-The four `state`/`call`/`agent` lines are the whole model. A **state** is a method that
-returns the next state; a **node** is a plain function `self.call` runs; an **agent turn**
-renders a Jinja prompt, runs an agent CLI and validates the reply into a declared model.
-Every one of them left a directory behind:
+The `state`/`agent` lines are the whole model. A **state** is a method that returns the
+next state; an **agent turn** renders a Jinja prompt, runs an agent CLI and validates
+the reply into a declared model. It left a directory behind:
 
 ```bash
-ls .agents/runs/hello-world-dry-run/
-# checkpoint.json  context.json  events.jsonl  launch.json  run.json  measure/  greet/  resume_generation
+ls .agents/runs/loop-runner-dry-run/
+# checkpoint.json  context.json  events.jsonl  launch.json  run.json  run/  resume_generation
 ```
 
-`--dry-run` answered both seams from stand-ins the workflow declares itself, which is what
-let it finish with nothing installed — so `greet/prompt.md` holds a placeholder rather than
-a rendered prompt. Drop the flag and it all happens for real; that one needs an agent CLI
-(`claude` by default; `--cli codex|copilot|cline|opencode`):
+`--dry-run` answered the agent-turn seam from the stand-in the workflow declares itself,
+which is what let it finish with nothing installed — so `run/prompt.md` holds a
+placeholder rather than a rendered prompt. Drop the flag and it all happens for real;
+that one needs an agent CLI (`claude` by default; `--cli codex|copilot|cline|opencode`)
+and a plan to hand it:
 
 ```bash
-uv run workhorse-hello-world run --params '{"name": "globex"}'
+uv run workhorse-loop-runner run --params '{"plan": "Add a LICENSE file with the MIT license."}'
 ```
 
 ```
-[workhorse.engine] [workhorse] call   → measure
-[workhorse.engine] measuring 'globex'
-[workhorse.engine] [workhorse] agent  → greet
-[greet] 🚀 Invoking claude (model: claude-sonnet-5)
-[greet] ✓ result received (10921 ms)
-[workhorse.engine] Hello, globex — what a great name, and it's got 6 letters!
+[workhorse.engine] [workhorse] state  → start
+[workhorse.engine] [workhorse] agent  → run
+[run] 🚀 Invoking claude (model: claude-sonnet-5)
+[run] ✓ result received (41302 ms)
+[workhorse.engine] Added LICENSE (MIT).
 ```
 
-That run gets its own directory (`hello-world-<id>`), and this time `greet/prompt.md` is
-the prompt as the agent received it — `{{ name }}` and `{{ letters }}` filled in:
+That run gets its own directory (`loop-runner-<id>`), and this time `run/prompt.md` is
+the prompt as the agent received it — `{{ plan }}` filled in:
 
 ```bash
-cat .agents/runs/hello-world-*/greet/prompt.md
-uv run workhorse-hello-world dot           # the same machine as a graphviz diagram
+cat .agents/runs/loop-runner-*/run/prompt.md
+uv run workhorse-loop-runner dot           # the same machine as a graphviz diagram
 ```
 
-Now read the source, which is under 90 lines and commented to be read in this order:
-[`workflows/src/workhorse_workflows/hello_world/workflow.py`](workflows/src/workhorse_workflows/hello_world/workflow.py).
+Now read the source, which is one short file:
+[`workflows/src/workhorse_workflows/loop_runner/workflow.py`](workflows/src/workhorse_workflows/loop_runner/workflow.py).
 Copy that directory, rename it, and give it a console script of its own —
 [Shipping your own, outside this repo](workhorse/docs/AUTHORING.md#shipping-your-own-outside-this-repo)
 is the whole `pyproject.toml` and the one install command it takes, and it does not

@@ -72,7 +72,7 @@ Install a workflow distribution and run one of the commands it brings. You need 
 agent CLI (`claude` by default) installed and authenticated:
 
 ```bash
-workhorse-hello-world run
+workhorse-loop-runner run
 workhorse-coder run qa --params '{"story":"CASE-1234","target_env":"dev"}'
 ```
 

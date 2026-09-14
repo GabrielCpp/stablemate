@@ -18,7 +18,7 @@ workhorse parses the workflow's `prompts/**/*.md`, resolves every constant refer
 against the loaded context manifest, and prints the ones that will not resolve, with the
 fix (add them to the repo's `agents.yml` selection and re-run `make agent-install`). It is
 a warning, not an error: the run is degraded, not impossible. A run carrying **no**
-manifest at all (`hello-world`, most tests) is skipped — there, unresolved is the normal
+manifest at all (`loop-runner`, most tests) is skipped — there, unresolved is the normal
 state. References built from a computed argument can't be seen statically; those log a
 `[template] ⚠` line when they render instead.
 
