@@ -181,7 +181,7 @@ jobs:
             "${links[@]}" \
             dist/workhorse-workflows/*.whl
           uv pip check --python /tmp/workhorse-workflows-release/bin/python
-          /tmp/workhorse-workflows-release/bin/workhorse-hello-world run --dry-run
+          /tmp/workhorse-workflows-release/bin/workhorse-loop-runner run --dry-run
           /tmp/workhorse-workflows-release/bin/workhorse-author dot >/dev/null
 
       # Publish only after every candidate is known to resolve, in dependency order.
