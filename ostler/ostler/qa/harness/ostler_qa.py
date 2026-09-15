@@ -1457,11 +1457,14 @@ class Qa:
             parsed[key] = value
         return parsed
 
-    def _resolve_ref(self, value: str) -> str:
+    def _resolve_ref(self, fixture: str, value: str) -> str:
         """A `needs:` binding's value, substituted if it is a whole `@node.key` or `$name`.
 
         A literal stays a literal: only a value that is *entirely* one reference resolves,
-        matching the grammar `ostler.qa.references.parse_reference` checks statically.
+        matching the grammar `ostler.qa.references.parse_reference` checks statically. Either
+        reference form failing to resolve is a book/code defect — the binding names something
+        that was never going to exist — so it emits a fault record before raising, the same
+        as every other fixture-side failure in this harness.
         """
         stripped = value.strip()
         matched = _NODE_REF.fullmatch(stripped)
@@ -1469,14 +1472,21 @@ class Qa:
             node, key = matched.group(1), matched.group(2)
             facts = self._node_facts.get(node)
             if facts is None or key not in facts:
-                raise RuntimeError(
-                    f"qa fixture reference @{node}.{key} has no resolved value — "
+                detail = (
+                    f"reference @{node}.{key} has no resolved value — "
                     f"{node!r} has not run (or does not provide {key!r})"
                 )
+                self._fault(fixture, -1, "reference", "defect", detail)
+                raise RuntimeError(f"qa fixture {fixture!r} {detail}")
             return facts[key]
         matched = _CAPTURE_REF.fullmatch(stripped)
         if matched:
-            return self._captures[matched.group(1)]
+            captured = matched.group(1)
+            if captured not in self._captures:
+                detail = f"reference ${captured} has no resolved value — nothing has captured it"
+                self._fault(fixture, -1, "reference", "defect", detail)
+                raise RuntimeError(f"qa fixture {fixture!r} {detail}")
+            return self._captures[captured]
         return value
 
     def _fault(self, fixture: str, step_index: int, step_kind: str, fault_class: str, detail: str) -> None:
@@ -1569,7 +1579,7 @@ class Qa:
             # cannot resolve until the fixture it names has already produced its facts.
             self._exec_book_fixture(str(need["fixture"]), {})
             for key, value in need.get("args", {}).items():
-                env[key] = self._resolve_ref(value)
+                env[key] = self._resolve_ref(name, value)
         for secret_name in spec.get("secrets", []):
             value = os.environ.get(secret_name)
             if value is None:

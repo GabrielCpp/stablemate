@@ -251,6 +251,59 @@ def test_a_shared_need_runs_exactly_once_per_scenario(tmp_path: Path) -> None:
     assert globex_out.read_text(encoding="utf-8") == "acc-1"
 
 
+def test_a_needs_binding_naming_an_unresolvable_node_key_is_a_defect(tmp_path: Path) -> None:
+    acme_script = tmp_path / "seed-acme.sh"
+    _seed_step(acme_script, '#!/bin/sh\necho \'{"id": "acc-1"}\'\n')
+    globex_script = tmp_path / "seed-globex.sh"
+    _seed_step(globex_script, "#!/bin/sh\necho '{}'\n")
+    module = _write(tmp_path, NEEDS_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "command": str(acme_script), "cwd": str(tmp_path)}],
+            "args": [], "provides": ["id"], "needs": [], "secrets": [],
+        },
+        "seeded-globex": {
+            "steps": [{"kind": "seed", "command": str(globex_script), "cwd": str(tmp_path)}],
+            "args": ["id"], "provides": [],
+            # Wrong key — seeded-acme provides "id", not "no_such_key".
+            "needs": [{"fixture": "seeded-acme", "args": {"id": "@seeded-acme.no_such_key"}}],
+            "secrets": [],
+        },
+    }
+    code, stdout, records = _run(module, "a-project-needs-an-account", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0, stdout
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "defect"
+    assert fault["fixture"] == "seeded-globex"
+    assert "no_such_key" in fault["detail"]
+
+
+def test_a_needs_binding_naming_an_uncaptured_dollar_name_is_a_defect(tmp_path: Path) -> None:
+    acme_script = tmp_path / "seed-acme.sh"
+    _seed_step(acme_script, '#!/bin/sh\necho \'{"id": "acc-1"}\'\n')
+    globex_script = tmp_path / "seed-globex.sh"
+    _seed_step(globex_script, "#!/bin/sh\necho '{}'\n")
+    module = _write(tmp_path, NEEDS_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "command": str(acme_script), "cwd": str(tmp_path)}],
+            "args": [], "provides": ["id"], "needs": [], "secrets": [],
+        },
+        "seeded-globex": {
+            "steps": [{"kind": "seed", "command": str(globex_script), "cwd": str(tmp_path)}],
+            "args": ["id"], "provides": [],
+            "needs": [{"fixture": "seeded-acme", "args": {"id": "$never_captured"}}],
+            "secrets": [],
+        },
+    }
+    code, stdout, records = _run(module, "a-project-needs-an-account", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0, stdout
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "defect"
+    assert fault["fixture"] == "seeded-globex"
+    assert "never_captured" in fault["detail"]
+
+
 NAMESPACE_SCENARIO = '''\
 @scenario(target=api, mechanism="live", covers=["ac:1"])
 def a_capture_and_a_provide_share_no_namespace(qa: Qa) -> None:
