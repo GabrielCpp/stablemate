@@ -121,21 +121,6 @@ def _uncovered(join: dict) -> list[StaleUnit]:
     ]
 
 
-def _undigested(ref: str) -> str:
-    """A citation's identity for matching against `cited`, with any stamped `@digest` dropped.
-
-    `coverage.citations` keys `cited` the same way (its own private `_undigested`) because its
-    values come straight off the source inventory, which never carries a digest. A dangling
-    finding's `ref` is the raw bullet text, though, and a citation stamped before the file or
-    symbol went missing still carries its `@digest` — so a bare-string match against `cited`
-    would silently drop that row.
-    """
-    try:
-        return refs_mod.render_code_ref(dataclasses.replace(refs_mod.parse_code_ref(ref), digest=None))
-    except ValueError:
-        return ref
-
-
 def _dangling(findings: Iterable[Finding], cited: dict[str, list[str]]) -> list[StaleUnit]:
     """Doctor's verdict on citations that point at nothing.
 
@@ -145,13 +130,18 @@ def _dangling(findings: Iterable[Finding], cited: dict[str, list[str]]) -> list[
     Only refs this book actually cites are kept. Doctor reads the whole graph, and a plan
     scoped to one surface that reports another book's broken bullets is a plan whose count
     cannot be acted on by the run that asked for it.
+
+    `cited` (`coverage.citations`) is keyed digest-free, but a dangling finding's `ref` is the
+    raw bullet text, and a citation stamped before its file or symbol went missing still
+    carries its `@digest` — so it is stripped the same way (`ostler.refs.strip_digest`) before
+    the lookup, or a bare-string match against `cited` would silently drop the row.
     """
     rows: list[StaleUnit] = []
     seen: set[str] = set()
     for finding in findings:
         if finding.code not in DANGLING_CODES or not finding.ref or finding.ref in seen:
             continue
-        key = _undigested(finding.ref)
+        key = refs_mod.strip_digest(finding.ref)
         if key not in cited:
             continue
         seen.add(finding.ref)

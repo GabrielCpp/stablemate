@@ -51,7 +51,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from ostler.markdown import leading_code_spans
@@ -237,6 +237,23 @@ def collision_ref(node_id: str, collision: Mapping[str, Any]) -> str:
     return f"{node_id}#" + ":".join(parts)
 
 
+def strip_digest(ref: str) -> str:
+    """A citation's identity with any stamped ``@digest`` dropped, rendered back canonically.
+
+    The digest marks *freshness* — a fact ``doctor``'s ``stale-citation`` check owns — not
+    *which unit* a citation names, so several callers that group or join citations by identity
+    (``coverage.citations``'s inventory join, ``backfill``'s dangling/uncovered matching,
+    ``doctor``'s ``competing-implementations`` grouping, ``worklist``'s relocated-trim
+    matching, the workflows-side result ledger's fingerprint) all need the same digest-free key.
+    A ref that fails to parse (not this package's problem to reject) is returned unchanged,
+    the same tolerance :func:`code_refs` already extends.
+    """
+    try:
+        return render_code_ref(replace(parse_code_ref(ref), digest=None))
+    except ValueError:
+        return ref
+
+
 def ref_path(ref: str) -> str:
     """The file part of a normalized ``path::symbol`` ref (the whole ref when it has none)."""
     try:
@@ -257,4 +274,5 @@ __all__ = [
     "parse_code_ref",
     "ref_path",
     "render_code_ref",
+    "strip_digest",
 ]

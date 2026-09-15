@@ -1479,14 +1479,7 @@ def _check_judgment(graph: Graph, f: list[Finding],
             # Strip the `@digest` stamp before grouping: two citations of the identical
             # symbol at different stamp states are still the identical competition, not
             # two separate ones that each look like a lone implementation.
-            try:
-                parsed_ref = refs_mod.parse_code_ref(ref)
-            except ValueError:
-                key_ref = ref
-            else:
-                key_ref = refs_mod.render_code_ref(
-                    refs_mod.CodeRef(repository=parsed_ref.repository, path=parsed_ref.path,
-                                      symbol=parsed_ref.symbol))
+            key_ref = refs_mod.strip_digest(ref)
             by_citation.setdefault((node.type, key_ref), []).append(node)
     for (ntype, ref), nodes in sorted(by_citation.items()):
         if len(nodes) < 2:
