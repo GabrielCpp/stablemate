@@ -986,8 +986,11 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
     packet, not of the book alone — so it is computed here from a `Gap` list a caller
     already has (`compile_plan_gaps`), never rediscovered by walking the graph.
     """
-    return [Finding("error", gap.kind, f"{gap.obligation_id}: {gap.detail}", ref=gap.obligation_id)
-            for gap in gaps]
+    findings: list[Finding] = []
+    for gap in gaps:
+        code = "unresolved-precondition" if gap.kind == "unresolved-precondition" else "uncompilable-claim"
+        findings.append(Finding("error", code, f"{gap.obligation_id}: {gap.detail}", ref=gap.obligation_id))
+    return findings
 
 
 def _check_milestone_cycles(graph: Graph, f: list[Finding]) -> None:
