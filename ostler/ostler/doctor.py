@@ -1388,10 +1388,18 @@ def _check_code_grounding(graph: Graph, f: list[Finding],
                 continue
             try:
                 grounded = _declares(target, symbol)
-            except (OSError, UnicodeDecodeError):
+            except OSError:
                 # A file that exists but cannot be read tells us nothing about the citation, and
-                # silence about a file is not evidence against the book — same reading the text
-                # read gave it when this check did its own `read_text`.
+                # silence about a file is not evidence against the book.
+                continue
+            except UnicodeDecodeError:
+                f.append(Finding(
+                    "error", "undecodable-code-symbol",
+                    f"{node.id}: `code:` target '{ref}' — '{target_path}' is not valid UTF-8, "
+                    f"so '{symbol}' cannot be checked against it",
+                    path=rel, line=node.line, ref=ref,
+                    suggestion="cite a source file the symbol grounding pass can decode, or a "
+                               "whole-file unit with no `::symbol`"))
                 continue
             if not grounded:
                 f.append(Finding(

@@ -1,6 +1,6 @@
 # Doctor codes
 
-Every finding `ostler doctor` can raise: **96 codes, 77 error and 19 warn**. An error is a
+Every finding `ostler doctor` can raise: **97 codes, 78 error and 19 warn**. An error is a
 mechanical defect with a mechanical remedy — the exit code counts errors, so a story can be gated
 on it. A warn is a finding whose remedy is authoring judgment, which is why `doctor` cannot
 converge on it the way it converges on `fmt`. Companion to [`../SKILL.md`](../SKILL.md); the
@@ -124,6 +124,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `test-subject` | error | Every `code:` citation on the node is test source — a mock, a fake in a `_test.go`, a fixture (`refs.is_test_source`). A book documents product behaviour a user can observe; the test suite's doubles are an implementation detail. Delete the node — the whole page when it is the page's own node — and the links into it. Never repoint it at production code to keep it. |
 | `code-cites-test` | error | The node cites production code *and* test source. Remove the test citations from `code:`; a test that proves the claim goes under `tests:` where the type admits it. |
 | `missing-code-symbol` | error | The file exists but does not **declare** that symbol. A re-export does not ground a citation. Read the file, find the symbol that now owns the behaviour, repoint the bullet — never waive it and never restore an old name. |
+| `undecodable-code-symbol` | error | A `code:` target names a `path::symbol`, but the file is not valid UTF-8, so the symbol grounding check cannot read it. Cite a decodable source file, or drop `::symbol` for a whole-file unit. |
 | `stale-citation` | error | A local `code:` target's `@digest` stamp disagrees with the file's current content — the citation was stamped, then the file changed under it. Re-read the file and correct the node's claims if they no longer hold; the citation is restamped when the turn commits — never hand-write the digest. |
 | `unstamped-citation` | warn | A local `code:` target carries no `@digest` yet. Stamped automatically when a turn that edits this node commits, or by the one-time catalog migration — never hand-write the digest, and never invoke `ostler stamp` yourself. |
 | `unreachable-citation` | warn | A repository-qualified `code:` target names a repository this run was given no checkout for — there is nothing under this run to check the citation against. Pass `--checkout <repository>=<path>`; not a fix to the book. |
