@@ -33,7 +33,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ostler.qa.tools import opted_in_tools, qa_block
+from ostler.qa.outcome import QaOutcome
+from ostler.qa.tools import opted_in_tools, qa_block, resolved_commands
 
 #: Where a repo's Python fixture modules live, relative to the directory holding its
 #: specs. A fixed name rather than a configurable path: a plan imports `_fixtures.x`, and
@@ -178,6 +179,87 @@ def declared_modules(root: Path) -> set[str]:
     """
     values = qa_block(root).get("fixture_modules", [])
     return {str(value) for value in values} if isinstance(values, list) else set()
+
+
+def _title(name: str) -> str:
+    return name.replace("-", " ").replace("_", " ").strip().capitalize()
+
+
+def migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) -> QaOutcome:
+    """One-shot, mechanical migration of every `qa: {fixtures:}` entry into a fixture-node file.
+
+    Per the settled design: each `FixtureSpec` becomes a node with one `run:` step holding the
+    *resolved* command (via `tools.resolved_commands`, never the bare `tool:` name) plus its
+    literal `args:`, joined the same way `Tool.run` would have invoked them — an argv, not a
+    tool-name-plus-args pair a reader would have to resolve by hand.
+
+    `provides:`/`args:` carry no mechanical equivalent and are deliberately left off the
+    migrated node: the old `provides:` is one free-text sentence, not the itemized `key —
+    prose` list the node grammar wants, and the old `args:` are literal invocation tokens, not
+    named parameters a `fixture:` caller would bind. The original prose survives as a comment
+    for a human to turn into real `provides:` keys. `qa: {fixture_modules:}` is untouched —
+    it stays declared until the later retirement commit.
+    """
+    specs, errors = declared(root)
+    if errors:
+        return QaOutcome(ok=False, message="\n".join(errors))
+    if not specs:
+        return QaOutcome(ok=True, message="no qa: {fixtures:} declared — nothing to migrate")
+
+    commands = resolved_commands(root, cfg=cfg)
+    unresolved = sorted(name for name, spec in specs.items() if spec.tool not in commands)
+    if unresolved:
+        return QaOutcome(
+            ok=False,
+            message="\n".join(
+                f"qa fixture {name!r} names tool {specs[name].tool!r}, which is not in this "
+                "repo's resolved qa: {tools:} catalog"
+                for name in unresolved
+            ),
+        )
+
+    dest = Path(out_dir)
+    if not dest.is_absolute():
+        dest = root / dest
+    collisions = sorted(name for name in specs if (dest / f"{name}.md").exists())
+    if collisions:
+        return QaOutcome(
+            ok=False,
+            message=f"already exist, refusing to overwrite: {', '.join(collisions)}",
+        )
+
+    dest.mkdir(parents=True, exist_ok=True)
+    written: list[str] = []
+    for name, spec in sorted(specs.items()):
+        run = shlex.join([commands[spec.tool], *spec.args])
+        title = _title(name)
+        body = (
+            f"---\ntype: fixture\ntitle: {title}\n---\n"
+            f"# {title}\n\n"
+            f"<!-- migrated from agents.yml's `qa: {{fixtures:}}` "
+            f"— original provides: {spec.provides!r} -->\n\n"
+            "## Steps\n\n"
+            "### run-it\n\n"
+            "- kind: run\n"
+            f"- run: {run}\n"
+        )
+        path = dest / f"{name}.md"
+        path.write_text(body, encoding="utf-8")
+        written.append(str(path.relative_to(root)))
+
+    return QaOutcome(
+        ok=True,
+        message=f"migrated {len(written)} qa fixture(s) into {dest.relative_to(root)}",
+        data={"paths": written},
+    )
+
+
+def cmd_migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) -> QaOutcome:
+    """CLI-shaped wrapper: `migrate`'s errors, plus an on-disk write failure as one more."""
+    try:
+        return migrate(root, out_dir, cfg=cfg)
+    except OSError as exc:
+        return QaOutcome(ok=False, message=f"could not write migrated fixture node: {exc}")
 
 
 def preflight_errors(root: Path, *, spec_root: Path | None = None) -> list[str]:

@@ -860,6 +860,20 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_tools_list = qa_tools_ops.add_parser("list", help="list opted-in tools and whether they resolve")
     qa_tools_list.add_argument("--json", action="store_true")
 
+    qa_fixtures = qas.add_parser("fixtures", help="this repo's app-language QA fixtures")
+    qa_fixtures_ops = qa_fixtures.add_subparsers(dest="fixtures_op", required=True)
+    qa_fixtures_migrate = qa_fixtures_ops.add_parser(
+        "migrate",
+        help="one-shot: write every agents.yml `qa: {fixtures:}` entry as a fixture-node "
+        "file, mechanically (a `run:` step holding the resolved command; no `provides:`/"
+        "`args:` — neither carries over)",
+    )
+    qa_fixtures_migrate.add_argument(
+        "--in", dest="in_dir", required=True,
+        help="directory the migrated fixture-node files are written into",
+    )
+    qa_fixtures_migrate.add_argument("--json", action="store_true")
+
     qa_context = qas.add_parser(
         "context", help="build the base/head changed-code to OKF obligation packet"
     )
@@ -1717,6 +1731,14 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
                 _out(f"{row['name']} ({row['command']}) [{mark}] - {row['description']}")
             for error in result.data["errors"]:
                 _out(f"error: {error}")
+        return 0 if result.ok else 1
+
+    if op == "fixtures":
+        result = qa_mod.fixtures.cmd_migrate(root, args.in_dir)
+        if args.json:
+            _out(json.dumps(result.data, indent=2))
+        else:
+            _out(result.message)
         return 0 if result.ok else 1
 
     if op == "context":
