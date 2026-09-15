@@ -31,6 +31,7 @@ from pathlib import Path
 
 from ostler.markdown import split
 from ostler.model import Graph, UINode
+from ostler.provenance import checkout_for
 from ostler.refs import normalize_ref, parse_code_ref
 from ostler.source_snapshots import SourceCatalog, book_repository
 
@@ -94,15 +95,16 @@ class StampResult:
 
 def stamp_page(root: Path, features_root: Path, page: str, *,
                 line_ranges: list[tuple[int, int]] | None = None,
-                only_targets: dict[tuple[int, int], frozenset[str]] | None = None) -> StampResult:
+                only_targets: dict[tuple[int, int], frozenset[str]] | None = None,
+                checkouts: dict[str, Path] | None = None) -> StampResult:
     """Stamp a book page's ``code:`` bullets with their cited files' current digests.
 
     ``page`` is repo-relative, resolved against ``root``. A target this checkout cannot read —
-    a missing file, or a ``repo://`` target naming a repository other than the book's own
-    declared one (:func:`ostler.source_snapshots.book_repository`) — is left unstamped rather
-    than guessed at; ``unstamped-citation`` is how doctor is meant to surface that, not a
-    fabricated digest. Repository-qualified checkouts are not resolved here yet — only the
-    graph's own repository (an unqualified ref, or one qualified with the book's own id).
+    a missing file, or a ``repo://`` target naming a repository this call has no checkout for
+    (:func:`ostler.provenance.checkout_for`, seeded from ``checkouts`` and the book's own
+    declared repository, :func:`ostler.source_snapshots.book_repository`) — is left unstamped
+    rather than guessed at; ``unstamped-citation``/``unreachable-citation`` is how doctor is
+    meant to surface that, not a fabricated digest.
 
     ``line_ranges``, when given, is a list of ``(start, end)`` 1-based file-line pairs (*end*
     exclusive) — a node's own extent, heading to next heading. Only bullets whose leading line
@@ -116,11 +118,17 @@ def stamp_page(root: Path, features_root: Path, page: str, *,
     would mark them freshly-read when nothing re-checked them. Keyed by the same ``(start,
     end)`` tuple as its ``line_ranges`` entry; a range absent from the mapping (or the mapping
     itself being ``None``) is unrestricted, same as today.
+
+    ``checkouts``, when given, maps a repository id to the local checkout a ``repo://``-
+    qualified target in that repository should be read from — the same shape ``ostler query``
+    already takes via its own ``--checkout`` flag. Omitted (or a repository absent from it)
+    leaves that target unstamped, same as before this parameter existed.
     """
     path = root / page
     text = path.read_text(encoding="utf-8")
     doc = split(text)
     repository = book_repository(features_root)
+    checkout_map = checkouts or {}
     unresolved: list[str] = []
     stamped = 0
 
@@ -148,13 +156,17 @@ def stamp_page(root: Path, features_root: Path, page: str, *,
             except ValueError:
                 unresolved.append(raw_target)
                 return None
+            source_root = root
             if ref.repository and ref.repository != repository:
-                unresolved.append(raw_target)
-                return None
+                checkout = checkout_for(ref.repository, checkout_map, default=repository)
+                if checkout is None:
+                    unresolved.append(raw_target)
+                    return None
+                source_root = checkout
             if targets is not None and ref.path not in targets:
                 return None  # not this row's assignment: left exactly as it was, no digest
             try:
-                source_text = (root / ref.path).read_text(encoding="utf-8")
+                source_text = (source_root / ref.path).read_text(encoding="utf-8")
             except OSError:
                 unresolved.append(raw_target)
                 return None
@@ -209,7 +221,8 @@ def node_line_range(graph: Graph, node: UINode) -> tuple[int, int]:
 
 
 def stamp_targets(
-    graph: Graph, features_root: Path, pairs: Iterable[tuple[str, str]],
+    graph: Graph, features_root: Path, pairs: Iterable[tuple[str, str]], *,
+    checkouts: dict[str, Path] | None = None,
 ) -> list[StampResult]:
     """Stamp exactly the ``(node, cited-file)`` pairs given — never a node's other citations.
 
@@ -218,7 +231,8 @@ def stamp_targets(
     not shell out (ostler is called as a library there, never a subprocess). ``pairs`` may name
     the same node more than once, once per file it should stamp; a node id this graph does not
     resolve is reported back via a synthetic result rather than raising, so one bad pair does
-    not abort every other stamp the turn is entitled to.
+    not abort every other stamp the turn is entitled to. ``checkouts`` is forwarded to
+    :func:`stamp_page` unchanged.
     """
     pages: dict[str, list[tuple[int, int]]] = {}
     only_targets: dict[str, dict[tuple[int, int], set[str]]] = {}
@@ -236,6 +250,7 @@ def stamp_targets(
         stamp_page(
             graph.root, features_root, rel, line_ranges=ranges,
             only_targets={r: frozenset(t) for r, t in only_targets[rel].items()},
+            checkouts=checkouts,
         )
         for rel, ranges in pages.items()
     ]

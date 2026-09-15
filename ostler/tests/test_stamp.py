@@ -101,6 +101,39 @@ def test_stamp_page_leaves_a_ref_to_a_different_repository_unresolved(tmp_path: 
     assert result.changed is False
 
 
+def test_stamp_page_resolves_a_foreign_repository_ref_through_a_supplied_checkout(
+    tmp_path: Path,
+):
+    (tmp_path / "repository.txt").write_text("acme\n", encoding="utf-8")
+    feature = _book(tmp_path, "`repo://globex/src/service.py::charge`")
+    checkout = tmp_path / "checkouts" / "globex"
+    _service(checkout)
+    result = stamp.stamp_page(
+        tmp_path, tmp_path, "docs/features/billing/charge.md",
+        checkouts={"globex": checkout},
+    )
+    expected = stamp.digest_file(SERVICE)
+    assert result.stamped == 1
+    assert result.unresolved == []
+    assert f"`repo://globex/src/service.py::charge` @{expected}" in feature.read_text(
+        encoding="utf-8",
+    )
+
+
+def test_stamp_page_leaves_an_unmapped_foreign_repository_ref_unreachable(tmp_path: Path):
+    (tmp_path / "repository.txt").write_text("acme\n", encoding="utf-8")
+    _book(tmp_path, "`repo://globex/src/service.py::charge`")
+    checkout = tmp_path / "checkouts" / "other-repo"
+    _service(checkout)
+    result = stamp.stamp_page(
+        tmp_path, tmp_path, "docs/features/billing/charge.md",
+        checkouts={"other-repo": checkout},
+    )
+    assert result.stamped == 0
+    assert result.unresolved == ["repo://globex/src/service.py::charge"]
+    assert result.changed is False
+
+
 def test_stamp_page_resolves_a_ref_qualified_with_the_books_own_repository(tmp_path: Path):
     (tmp_path / "repository.txt").write_text("acme\n", encoding="utf-8")
     feature = _book(tmp_path, "`repo://acme/src/service.py::charge`")
@@ -201,6 +234,33 @@ def test_cli_stamp_node_file_pair_scopes_the_restamp_to_one_citation(
     text = feature.read_text(encoding="utf-8")
     assert "`src/service.py::charge` @" in text
     assert "`src/other.py::other` @" not in text
+
+
+def test_cli_stamp_checkout_flag_resolves_a_foreign_repository_ref(tmp_path: Path):
+    (tmp_path / "repository.txt").write_text("acme\n", encoding="utf-8")
+    feature = _book(tmp_path, "`repo://globex/src/service.py::charge`")
+    checkout = tmp_path / "checkouts" / "globex"
+    _service(checkout)
+
+    rc = main([
+        "-C", str(tmp_path), "stamp", "--no-index",
+        "--path", "docs/features/billing/charge.md", "--whole-page",
+        "--checkout", f"globex={checkout}",
+    ])
+    assert rc == 0
+    expected = stamp.digest_file(SERVICE)
+    assert f"@{expected}" in feature.read_text(encoding="utf-8")
+
+
+def test_cli_stamp_checkout_flag_rejects_a_malformed_value(tmp_path: Path, capsys):
+    _book(tmp_path, "`src/service.py::charge`")
+    rc = main([
+        "-C", str(tmp_path), "stamp", "--no-index",
+        "--path", "docs/features/billing/charge.md", "--whole-page",
+        "--checkout", "not-a-pair",
+    ])
+    assert rc == 2
+    assert "--checkout must be REPOSITORY=PATH" in capsys.readouterr().err
 
 
 def test_node_line_range_runs_to_end_of_file_for_a_lone_node(tmp_path: Path):

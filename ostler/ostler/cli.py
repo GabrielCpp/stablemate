@@ -176,6 +176,14 @@ def _build_parser() -> argparse.ArgumentParser:
              "migration. With --path, the catalog is always left in place regardless of "
              "this flag.",
     )
+    st.add_argument(
+        "--checkout",
+        action="append",
+        default=[],
+        metavar="REPOSITORY=PATH",
+        help="local checkout a repo://-qualified code: target resolves against; repeat per "
+             "repository. A target naming a repository not given here is left unstamped.",
+    )
     st.add_argument("--json", action="store_true", help="emit a per-page summary as JSON")
 
     # ---- retrieval --------------------------------------------------------
@@ -1013,6 +1021,22 @@ def _use_handles(graph, args) -> None:
     _HANDLES = ids_mod.table(ids_mod.known(graph)) if _HANDLES_ON else {}
 
 
+def _parse_checkouts(raw_checkouts: list[str]) -> dict[str, Path] | None:
+    """Parse repeated ``--checkout REPOSITORY=PATH`` flags, or ``None`` on a malformed one.
+
+    A caller prints the error and returns 2 when this comes back ``None``; the malformed
+    value itself already went to stderr from here, so the caller need not repeat it.
+    """
+    checkouts: dict[str, Path] = {}
+    for raw in raw_checkouts:
+        repository, separator, checkout = raw.partition("=")
+        if not separator or not repository or not checkout:
+            print(f"error: --checkout must be REPOSITORY=PATH, got {raw!r}", file=sys.stderr)
+            return None
+        checkouts[repository] = Path(checkout).expanduser().resolve()
+    return checkouts
+
+
 def _out(value="") -> None:
     """Print, abbreviating any full id in what is printed when this run renders handles."""
     print(ids_mod.shorten(value, _HANDLES) if _HANDLES_ON else value)
@@ -1210,6 +1234,9 @@ def _cmd_stamp(graph, args) -> int:
     if not args.node and not args.path:
         print("ostler stamp: pass --node or --path --whole-page", file=sys.stderr)
         return 2
+    checkouts = _parse_checkouts(args.checkout)
+    if checkouts is None:
+        return 2
     features_root = path_mod.features_root(graph)
 
     if args.node:
@@ -1233,6 +1260,7 @@ def _cmd_stamp(graph, args) -> int:
                     {r: frozenset(t) for r, t in only_targets[rel].items()}
                     if rel in only_targets else None
                 ),
+                checkouts=checkouts,
             )
             for rel, ranges in pages.items()
         ]
@@ -1244,7 +1272,7 @@ def _cmd_stamp(graph, args) -> int:
                   file=sys.stderr)
             return 2
         results = [
-            stamp_mod.stamp_page(graph.root, features_root, rel)
+            stamp_mod.stamp_page(graph.root, features_root, rel, checkouts=checkouts)
             for rel in scope if rel is not None
         ]
     _print_stamp_results(results, args)

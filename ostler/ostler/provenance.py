@@ -281,7 +281,7 @@ def node_provenance(
     return [{"node": _node_row(graph, node) if node else {"id": node_id}, "stories": stories}]
 
 
-def _checkout_for(repository: str, checkouts: dict[str, Path],
+def checkout_for(repository: str, checkouts: dict[str, Path],
                   *, default: str = "") -> Path | None:
     """The checkout a ``code:`` target lives in.
 
@@ -312,7 +312,7 @@ def default_repository(graph: Graph) -> str:
 
     A book that documents one service in one repository of a workspace writes the id at
     its root; a multi-repo workspace that has not declared one has no default here, and
-    :func:`_checkout_for` falls back to the single-checkout heuristic or returns ``None``.
+    :func:`checkout_for` falls back to the single-checkout heuristic or returns ``None``.
     The function reads the declaration from the graph's *own* features root — the book
     the graph loads — because the declaration is per-book, not per-graph.
     """
@@ -347,7 +347,7 @@ def story_for_node(
         except ValueError:
             warnings.append(f"malformed code ref {ref!r}")
             continue
-        checkout = _checkout_for(parsed.repository, checkouts,
+        checkout = checkout_for(parsed.repository, checkouts,
                                  default=default_repository(graph))
         if checkout is None:
             warnings.append(
