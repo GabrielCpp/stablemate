@@ -166,6 +166,19 @@ TEST_SUBJECT = "test-subject"
 #: findings are actionable — `_repair_items`'s own body stays about grouping, not eligibility.
 NON_ACTIONABLE_CODES = frozenset({"unstamped-citation", "unreachable-citation"})
 
+#: `stale-citation` is a turn's to repair, but never through this path: `coverage.py`'s
+#: `_regrounding` join already reads doctor's raw `stale-citation` findings and files them
+#: as its own `fix:stale-citation` row, one per drifted file, naming every node that cites
+#: it (`stale-citation.md`'s fragment is written for exactly that context shape — `file`,
+#: `nodes`, `citations`). Left in `_repair_items`, the same finding would *also* mint a
+#: second, node-scoped `fix:stale-citation` row here, whose context (`node`, `path`,
+#: `findings`) the same fragment cannot read — two competing rows for one defect, one of
+#: them prompting off keys that do not exist. Dropping it from the checkpoint's actionable
+#: set (so a book with only `stale-citation` standing still reads as clean) is what lets the
+#: book reach `compute_coverage`, where the regrounding join is the one place this code is
+#: filed.
+REGROUNDING_CODES = frozenset({"stale-citation"})
+
 
 def _actionable_findings(findings: list[dict]) -> list[dict]:
     """Drop findings no agent turn can act on: test-subject nodes and ostler-only codes.
@@ -191,7 +204,7 @@ def _actionable_findings(findings: list[dict]) -> list[dict]:
              for f in findings if f.get("code") == TEST_SUBJECT}
     kept = []
     for finding in findings:
-        if finding.get("code") in NON_ACTIONABLE_CODES:
+        if finding.get("code") in NON_ACTIONABLE_CODES or finding.get("code") in REGROUNDING_CODES:
             continue
         path = str(finding.get("path", ""))
         page_verdict = finding.get("code") == TEST_SUBJECT and finding.get("ref") == f"{path}#code"
@@ -556,7 +569,13 @@ def checkpoint_book(
     except (OSError, ValueError, RuntimeError) as exc:
         findings = [{"severity": "error", "message": str(exc), "path": features_root}]
         out = str(exc)
-    clean = not findings
+    # A book carrying only NON_ACTIONABLE_CODES findings has nothing left for a turn to
+    # repair — `unstamped-citation` in particular fires on every citation a from-scratch
+    # book has never run through `stamp_turn`, so gating on the raw list never converges:
+    # nothing repairs it, nothing reduces it, and the drain loop parks forever waiting on
+    # work it will never queue. `_actionable_findings` is the same filter `_repair_items`
+    # already applies to decide what to queue; the gate now agrees with what it queues.
+    clean = not _actionable_findings(findings)
 
     signature = _signature(findings)
     if clean:
