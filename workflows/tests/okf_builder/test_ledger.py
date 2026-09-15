@@ -109,6 +109,69 @@ def test_fingerprint_unreadable_cited_file_is_stable_not_a_crash(tmp_path: Path)
     assert claim_fingerprint(["missing.py"], {}, "plan-1", tmp_path) == fingerprint
 
 
+def test_repo_qualified_ref_does_not_silently_hash_the_local_file(tmp_path: Path) -> None:
+    """A foreign-repository ref must not fall back onto the local checkout's own file.
+
+    `a.py` exists locally at the same relative path a `repo://other/a.py` ref names. With no
+    `checkouts` supplied, resolving the qualified ref against `repo_root` would silently
+    fingerprint *that* unrelated local file instead of reporting the citation unreadable — a
+    wrong-file fingerprint, not a missing-file one. It must instead fold into the same
+    sentinel an unreadable citation always does, so it is indistinguishable from "cannot be
+    read" rather than tracking content that has nothing to do with the citation.
+    """
+    local = tmp_path / "a.py"
+    local.write_text("def foo(): return 'wrong file'\n", encoding="utf-8")
+
+    qualified_with_local_file = claim_fingerprint(["repo://other/a.py"], {}, "plan-1", tmp_path)
+    qualified_with_no_local_file = claim_fingerprint(
+        ["repo://other/a.py"], {}, "plan-1", tmp_path / "nonexistent-root"
+    )
+
+    # Whether the local checkout happens to have a file at that same relative path makes no
+    # difference: neither root resolves the foreign repository, so both fold into the same
+    # unreadable sentinel rather than the one with a local file hashing it by accident.
+    assert qualified_with_local_file == qualified_with_no_local_file
+    # And it must not equal what fingerprinting the local file's real bytes would produce.
+    local_hash = claim_fingerprint(["a.py"], {}, "plan-1", tmp_path)
+    assert qualified_with_local_file != local_hash
+
+
+def test_repo_qualified_ref_resolves_against_its_named_checkout(tmp_path: Path) -> None:
+    """A `repo://` ref with a matching entry in `checkouts` resolves there, not against `repo_root`."""
+    other_checkout = tmp_path / "other-checkout"
+    other_checkout.mkdir()
+    (other_checkout / "a.py").write_text("def foo(): return 'other repo'\n", encoding="utf-8")
+    local = tmp_path / "a.py"
+    local.write_text("def foo(): return 'local repo'\n", encoding="utf-8")
+
+    resolved = claim_fingerprint(
+        ["repo://other/a.py"], {}, "plan-1", tmp_path, checkouts={"other": other_checkout}
+    )
+    unreadable = claim_fingerprint(["missing-anywhere.py"], {}, "plan-1", tmp_path)
+    local_hash = claim_fingerprint(["a.py"], {}, "plan-1", tmp_path)
+
+    assert resolved != unreadable
+    assert resolved != local_hash
+
+    (other_checkout / "a.py").write_text("def foo(): return 'changed'\n", encoding="utf-8")
+    changed = claim_fingerprint(
+        ["repo://other/a.py"], {}, "plan-1", tmp_path, checkouts={"other": other_checkout}
+    )
+    assert changed != resolved
+
+
+def test_repo_qualified_ref_naming_the_books_own_repository_is_local(tmp_path: Path) -> None:
+    """A ref qualified with the book's own repository resolves against `repo_root`, like a bare one."""
+    local = tmp_path / "a.py"
+    local.write_text("def foo(): return 1\n", encoding="utf-8")
+
+    bare = claim_fingerprint(["a.py"], {}, "plan-1", tmp_path, own_repository="acme")
+    own_qualified = claim_fingerprint(
+        ["repo://acme/a.py"], {}, "plan-1", tmp_path, own_repository="acme"
+    )
+    assert bare == own_qualified
+
+
 def test_load_ledger_missing_file_is_empty(tmp_path: Path) -> None:
     assert load_ledger(tmp_path / "nope.ledger.json") == {"claims": {}}
 

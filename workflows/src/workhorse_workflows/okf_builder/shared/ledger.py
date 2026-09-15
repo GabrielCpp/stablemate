@@ -19,6 +19,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from ostler.provenance import checkout_for
 from ostler.refs import parse_code_ref
 from ostler.stamp import digest_file
 
@@ -35,6 +36,9 @@ def claim_fingerprint(
     fixture_texts: Mapping[str, str],
     claim_content: str,
     repo_root: Path,
+    *,
+    own_repository: str = "",
+    checkouts: Mapping[str, Path] | None = None,
 ) -> str:
     """A fingerprint over what one claim's targeted re-run depends on.
 
@@ -42,14 +46,26 @@ def claim_fingerprint(
     optionally carrying a stamped `@digest` that this function does not read: a stamp is a
     copy of a hash the book kept, not the thing itself, and either a stale stamp (nothing
     re-reads the file behind it) or a bare, unstamped citation (nothing to read at all)
-    would make a real code change invisible to the fingerprint. Instead each ref is stripped
-    to its bare path (`ostler.refs.parse_code_ref`, the same digest-stripping the doctor's own
-    citation grouping uses) and resolved against `repo_root`, and the fingerprint hashes the
-    file's own bytes at that path (`ostler.stamp.digest_file`) — the actual content a targeted
-    re-run would execute against, not any copy of it the book happens to be carrying. A file
-    that cannot be read (moved, deleted, a repository-qualified ref this checkout does not
-    have) folds in a fixed sentinel instead of raising, so a broken citation still produces a
-    stable fingerprint rather than crashing the caller.
+    would make a real code change invisible to the fingerprint. Instead each ref is parsed
+    (`ostler.refs.parse_code_ref`, the same digest-stripping the doctor's own citation
+    grouping uses) and resolved to the checkout its repository names, and the fingerprint
+    hashes the file's own bytes at that path (`ostler.stamp.digest_file`) — the actual
+    content a targeted re-run would execute against, not any copy of it the book happens to
+    be carrying. A file that cannot be read (moved, deleted, a repository-qualified ref this
+    run has no checkout for) folds in a fixed sentinel instead of raising, so a broken
+    citation still produces a stable fingerprint rather than crashing the caller — and,
+    critically, rather than resolving against some *other* file that happens to sit at the
+    same relative path in the wrong checkout.
+
+    `repo_root` is the checkout for the book's own repository (`own_repository`, and every
+    unqualified ref). `checkouts`, when given, maps a repository id to the local checkout a
+    `repo://`-qualified target in that repository should be read from — the same shape
+    `ostler.stamp.stamp_page`/`ostler.doctor`'s `_check_code_grounding` already take, resolved
+    through the same `ostler.provenance.checkout_for` helper. A ref qualified with a
+    repository other than `own_repository` and absent from `checkouts` (or given no
+    `checkouts` at all) has no root to resolve against and folds into the unreadable
+    sentinel — it is never resolved against `repo_root`, which would silently hash whatever
+    unrelated file happens to exist at that path in this checkout.
 
     `fixture_texts` is each fixture node's own text the claim's preconditions reach, keyed by
     node id, so a change to a fixture's setup steps changes the fingerprint without any code
@@ -57,9 +73,7 @@ def claim_fingerprint(
     obligation or plan step — whatever slice 6 actually executes — supplied by the caller:
     this module has no opinion on what that shape is, only that a book-side repair (an edited
     expected value, a rewritten step) must move the fingerprint even when no cited file or
-    fixture changed. `repo_root` is the checkout the caller already resolved `code_refs`
-    against — a plain filesystem read, not an ostler/context extraction concern, so this
-    module still reaches into no compile/registry internals of its own.
+    fixture changed.
 
     Two claims that cite the same files and fixtures in a different order still fingerprint
     equal — the set is what changed re-execution cares about, not the order a caller happened
@@ -68,14 +82,18 @@ def claim_fingerprint(
     digest = hashlib.sha256()
     digest.update(claim_content.encode())
     digest.update(b"\0")
+    checkout_map = dict(checkouts) if checkouts else {}
     for ref in sorted(set(code_refs)):
         try:
-            path = parse_code_ref(ref).path
+            parsed = parse_code_ref(ref)
+            path, repository = parsed.path, parsed.repository
         except ValueError:
-            path = ref
+            path, repository = ref, ""
         digest.update(path.encode())
         digest.update(b"\0")
-        digest.update(_cited_file_digest(repo_root, path).encode())
+        digest.update(
+            _cited_file_digest(repo_root, path, repository, own_repository, checkout_map).encode()
+        )
         digest.update(b"\0")
     for node_id in sorted(fixture_texts):
         digest.update(node_id.encode())
@@ -85,10 +103,29 @@ def claim_fingerprint(
     return digest.hexdigest()
 
 
-def _cited_file_digest(repo_root: Path, path: str) -> str:
-    """The byte digest of one cited, digest-stripped path, or a fixed sentinel when unreadable."""
+def _cited_file_digest(
+    repo_root: Path,
+    path: str,
+    repository: str,
+    own_repository: str,
+    checkouts: dict[str, Path],
+) -> str:
+    """The byte digest of one cited, digest-stripped path, or a fixed sentinel when unreadable.
+
+    A ref qualified with a repository other than the book's own resolves against
+    `checkouts[repository]` (via `ostler.provenance.checkout_for`), never against
+    `repo_root` — `repo_root` is only ever the right root for `own_repository` and for an
+    unqualified ref. A foreign repository this run has no checkout for is unreadable, not a
+    fallback onto whatever file happens to exist at the same relative path locally.
+    """
+    source_root = repo_root
+    if repository and repository != own_repository:
+        checkout = checkout_for(repository, checkouts, default=own_repository)
+        if checkout is None:
+            return _UNREADABLE
+        source_root = checkout
     try:
-        data = (repo_root / path).read_bytes()
+        data = (source_root / path).read_bytes()
     except OSError:
         return _UNREADABLE
     return digest_file(data)
