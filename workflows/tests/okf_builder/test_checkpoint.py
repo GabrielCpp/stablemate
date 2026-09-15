@@ -706,3 +706,70 @@ def test_unstamped_and_unreachable_citations_queue_no_repair_row() -> None:
     ]
 
     assert _repair_items(findings) == []
+
+
+def _stub_ostler(monkeypatch, findings: list[dict]) -> None:
+    """Point `checkpoint_book` at a fake `Ostler`/`scoped_findings` instead of a real book.
+
+    `checkpoint_book` also calls `run_autofix`/`run_fmt` when `features_root` is given; an
+    empty one takes the "no book to canonicalize" branch instead, so a plain findings list is
+    enough to drive the gate.
+    """
+    from workhorse_workflows.okf_builder.shared import checkpoint
+
+    class _Doctor:
+        data: dict = {}
+
+    class _Ostler:
+        def __init__(self, _root: str) -> None: ...
+
+        def doctor(self) -> _Doctor:
+            return _Doctor()
+
+    monkeypatch.setattr(checkpoint, "Ostler", _Ostler)
+    monkeypatch.setattr(checkpoint, "scoped_findings", lambda *_a: findings)
+
+
+def test_a_book_standing_only_on_non_actionable_and_regrounding_codes_is_clean(
+    logger: logging.Logger, monkeypatch,
+) -> None:
+    """The gate agrees with the queue: nothing here is a turn's to fix, so nothing is queued.
+
+    `cc580da0` widened `_actionable_findings` past `NON_ACTIONABLE_CODES` to also drop
+    `stale-citation` (`REGROUNDING_CODES`) — `_repair_items` already refused to queue it as a
+    node-scoped row, since `coverage.py`'s `_regrounding` join is its one intended source. What
+    was untested is that `checkpoint_book`'s own `clean` gate, which reuses the same filter,
+    reads a book carrying only these three codes as clean rather than parking on a row nothing
+    would ever queue.
+    """
+    doc = f"{BOOK}/billing.md"
+    findings = [
+        {**_finding("unstamped-citation", path=doc), "ref": f"{doc}#charge#code"},
+        {**_finding("unreachable-citation", path=doc), "ref": f"{doc}#refund#code"},
+        {**_finding("stale-citation", severity="error", path=doc), "ref": f"{doc}#refund#code"},
+    ]
+    _stub_ostler(monkeypatch, findings)
+
+    result = checkpoint_book(logger, ".", "")
+
+    assert result.checkpoint_clean, result.doctor_output
+    assert result.fixup_items == []
+
+
+def test_a_finding_beside_them_keeps_the_book_dirty(
+    logger: logging.Logger, monkeypatch,
+) -> None:
+    """One actionable finding alongside the excused codes is enough to reopen the gate."""
+    doc = f"{BOOK}/billing.md"
+    findings = [
+        {**_finding("unstamped-citation", path=doc), "ref": f"{doc}#charge#code"},
+        {**_finding("unreachable-citation", path=doc), "ref": f"{doc}#refund#code"},
+        {**_finding("stale-citation", severity="error", path=doc), "ref": f"{doc}#refund#code"},
+        {**_finding("missing-code-symbol", severity="error", path=doc), "ref": f"{doc}#refund#code"},
+    ]
+    _stub_ostler(monkeypatch, findings)
+
+    result = checkpoint_book(logger, ".", "")
+
+    assert not result.checkpoint_clean, result.doctor_output
+    assert result.fixup_items
