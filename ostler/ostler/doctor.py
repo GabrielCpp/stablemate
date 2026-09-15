@@ -1037,8 +1037,8 @@ def _check_code_grounding(graph: Graph, f: list[Finding],
                     "warn", "unstamped-citation",
                     f"{node.id}: `code:` target '{ref}' carries no `@digest` stamp",
                     path=rel, line=node.line, ref=ref, node=node.id,
-                    suggestion="stamped by `ostler stamp --from-catalog` (migration) or when "
-                               "a turn that edits this node commits"))
+                    suggestion="stamped when a turn that edits this node commits, or by the "
+                               "catalog migration"))
             else:
                 try:
                     source_text = target.read_text(encoding="utf-8")
