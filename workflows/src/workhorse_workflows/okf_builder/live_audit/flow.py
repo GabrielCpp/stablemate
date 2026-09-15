@@ -31,6 +31,7 @@ from pydantic import BaseModel, ConfigDict
 from workhorse.pyflow import Done, Workflow
 
 from workhorse_workflows.kit import find_docs_root, find_repo_root
+from workhorse_workflows.okf_builder.shared.blueprint import blueprint
 from workhorse_workflows.okf_builder.shared.ledger import (
     claim_fingerprint, load_ledger, needs_rerun, record_result,
 )
@@ -89,6 +90,7 @@ def _covered_node_ids(covers: list[Any]) -> list[str]:
     return ids
 
 
+@blueprint.node
 def audit_one_spec(
     logger: logging.Logger,
     spec_dir: str,
@@ -170,6 +172,7 @@ def audit_one_spec(
     )
 
 
+@blueprint.node
 def discover_spec_dirs(logger: logging.Logger, docs_path: str = "", repo_dir: str = "") -> list[str]:
     """Every spec directory under the book's `specs` root that declares a `qa_plan.py`.
 
