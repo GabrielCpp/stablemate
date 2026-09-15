@@ -17,7 +17,9 @@ is not valid UTF-8 (a cited ``.docx``, a stray binary) stamps and reads back exa
 other file instead of crashing. The retired catalog builder decoded-then-hashed instead
 (``read_text(encoding="utf-8").encode()``, which also collapses CRLF to LF on the way through
 ``read_text``'s universal-newline translation), so a digest computed here disagrees with one
-recorded in an old catalog even for a file nobody has touched since.
+recorded in an old catalog even for a file nobody has touched since. `stamp_page_from_catalog`
+carries a private one-time bridge to migrate a catalog's row onto the new byte digest without
+losing that "unchanged since the catalog was built" signal; see its docstring.
 
 Only this module writes ``@digest`` suffixes. Nothing else should: doctor reads them, a repair
 prompt must never write or edit one, and only okf-builder's turn-finalize path calls ``ostler
@@ -313,6 +315,25 @@ def stamp_targets(
     return results
 
 
+def _legacy_text_digest(path: Path) -> str | None:
+    """The retired catalog builder's own recipe: decode as UTF-8, then hash the *text*.
+
+    Bridge-only — exists solely so `stamp_page_from_catalog` can tell whether a local file
+    has changed since the catalog was built, by reproducing exactly the digest the catalog
+    would have recorded for it back then. Nothing else should call this: the live stamping
+    path hashes raw bytes (`digest_file`), and this helper should be deleted along with
+    `stamp_page_from_catalog` once the ``--from-catalog`` migration path retires.
+
+    Returns ``None`` — never raises — for a file this can't decode or read, since "can't tell
+    if it changed" and "it changed" get the same answer here: keep the catalog's digest as-is.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    return hashlib.sha256(text.encode()).hexdigest()[:DIGEST_LENGTH]
+
+
 def stamp_page_from_catalog(root: Path, page: str, catalog: SourceCatalog) -> StampResult:
     """Migrate a page's ``code:`` bullets onto the digests the whole-book catalog already has.
 
@@ -321,6 +342,19 @@ def stamp_page_from_catalog(root: Path, page: str, catalog: SourceCatalog) -> St
     `stale-citation` the moment doctor next runs, not look freshly re-read just because
     migration touched its bullet. This is the one caller allowed to do that; everywhere else,
     a stamp is supposed to mean "read as of now."
+
+    One-time bridge for a **local** target (no ``repo://`` qualifier — this function has no
+    ``checkouts`` parameter, so a foreign repository's live tree is never guaranteed to be
+    here to re-hash): the catalog's own digest was computed by the retired builder's
+    decode-then-hash recipe (`_legacy_text_digest`), not the byte digest `digest_file` now
+    stamps everywhere else. If the file's current legacy-text digest still equals the
+    catalog's recorded digest, nothing has touched the file since the catalog was written, so
+    this migrates it forward onto its current *byte* digest instead of the catalog's — the
+    same value live stamping would produce, so `stale-citation` never fires on a file the
+    switch to byte hashing alone would otherwise make look changed. Any mismatch (including an
+    unreadable/undecodable file) means either real drift or "can't tell" — either way this
+    keeps the catalog's digest as recorded, exactly like today, so `stale-citation` still
+    fires on real drift once doctor next runs.
 
     Unlike `stamp_page`, this resolves every target the catalog has a row for, including one
     qualified with a repository other than the book's own — the catalog already snapshotted
@@ -352,7 +386,16 @@ def stamp_page_from_catalog(root: Path, page: str, catalog: SourceCatalog) -> St
             unresolved.append(raw_target)
             return None
         stamped += 1
-        return source.content_sha256[:DIGEST_LENGTH]
+        catalog_digest = source.content_sha256[:DIGEST_LENGTH]
+        if not ref.repository:
+            local_path = root / ref.path
+            if _legacy_text_digest(local_path) == catalog_digest:
+                try:
+                    current_bytes = local_path.read_bytes()
+                except OSError:
+                    return catalog_digest
+                return digest_file(current_bytes)
+        return catalog_digest
 
     body_lines = doc.body.split("\n")
     changed = False

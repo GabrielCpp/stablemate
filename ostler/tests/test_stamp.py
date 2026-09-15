@@ -794,3 +794,85 @@ def test_stamp_page_stamps_a_non_utf8_file_without_crashing(tmp_path: Path):
     expected = stamp.digest_file(data)
     assert f"`src/legacy.php` @{expected}" in feature.read_text(encoding="utf-8")
 
+
+def test_stamp_page_from_catalog_migrates_an_unchanged_crlf_file_to_its_byte_digest(
+    tmp_path: Path,
+):
+    # The retired catalog's own recipe decoded then hashed the text, which `read_text`
+    # translates CRLF -> LF on the way through -- so a CRLF file's legacy digest never equals
+    # its byte digest. A file unchanged since the catalog was built must still migrate forward
+    # onto its *byte* digest (what live stamping produces from here on), not the catalog's
+    # value, or `stale-citation` would immediately fire on a file nobody touched.
+    from ostler import doctor
+    from ostler.model import load
+
+    root = tmp_path
+    _book(root, "`src/service.py::charge`")
+    crlf_bytes = SERVICE.replace("\n", "\r\n").encode()
+    target = _service(root)
+    target.write_bytes(crlf_bytes)
+    legacy_digest = hashlib.sha256(SERVICE.encode()).hexdigest()  # read_text's CRLF -> LF
+    catalog = source_snapshots.SourceCatalog(
+        repositories=(
+            source_snapshots.RepositorySnapshot(
+                id=source_snapshots.SELF_REPOSITORY, base="", head="WORKTREE",
+                files=(
+                    source_snapshots.SourceFile(path="src/service.py",
+                                                 content_sha256=legacy_digest),
+                ),
+            ),
+        ),
+    )
+
+    result = stamp.stamp_page_from_catalog(root, "docs/features/billing/charge.md", catalog)
+
+    byte_digest = stamp.digest_file(crlf_bytes)
+    assert byte_digest != legacy_digest[:12]
+    assert result.stamped == 1
+    text = (root / "docs/features/billing/charge.md").read_text(encoding="utf-8")
+    assert f"`src/service.py::charge` @{byte_digest}" in text
+
+    report = doctor.run(load(root))
+    assert not any(
+        f.ref.startswith("src/service.py::charge@")
+        for f in report.findings if f.code == "stale-citation"
+    )
+
+
+def test_stamp_page_from_catalog_keeps_a_changed_crlf_files_catalog_digest_and_it_reports_stale(
+    tmp_path: Path,
+):
+    from ostler import doctor
+    from ostler.model import load
+
+    root = tmp_path
+    _book(root, "`src/service.py::charge`")
+    original_crlf = SERVICE.replace("\n", "\r\n").encode()
+    legacy_digest = hashlib.sha256(SERVICE.encode()).hexdigest()
+    catalog = source_snapshots.SourceCatalog(
+        repositories=(
+            source_snapshots.RepositorySnapshot(
+                id=source_snapshots.SELF_REPOSITORY, base="", head="WORKTREE",
+                files=(
+                    source_snapshots.SourceFile(path="src/service.py",
+                                                 content_sha256=legacy_digest),
+                ),
+            ),
+        ),
+    )
+    # The live file has drifted since the catalog was built: different content entirely, not
+    # just the CRLF translation the bridge tolerates.
+    target = _service(root, "def charge(amount):\n    return amount * 2\n")
+    target.write_bytes(target.read_text(encoding="utf-8").replace("\n", "\r\n").encode())
+
+    result = stamp.stamp_page_from_catalog(root, "docs/features/billing/charge.md", catalog)
+
+    assert result.stamped == 1
+    text = (root / "docs/features/billing/charge.md").read_text(encoding="utf-8")
+    assert f"`src/service.py::charge` @{legacy_digest[:12]}" in text
+    assert f"@{legacy_digest[:12]}" != f"@{stamp.digest_file(original_crlf)}"
+
+    report = doctor.run(load(root))
+    stale_refs = {f.ref for f in report.findings if f.code == "stale-citation"}
+    assert any(ref.startswith("src/service.py::charge@") for ref in stale_refs)
+
