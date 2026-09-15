@@ -662,6 +662,11 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
                     f"{step.id}: `kind: {kind}` is not a fixture step kind",
                     path=rel, line=step.line, ref=kind,
                     suggestion="- kind: " + "|".join(sorted(_FIXTURE_STEP_KINDS))))
+            if not _bullet_value(step.meta, "run"):
+                f.append(Finding(
+                    "error", "fixture-step-no-run",
+                    f"{step.id}: no `run:` bullet — this step would run nothing",
+                    path=rel, line=step.line))
 
     _check_fixture_needs_cycles(graph, fixtures, f)
     _check_needs_binding_args(graph, by_name, f)

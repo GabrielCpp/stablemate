@@ -60,7 +60,7 @@ title: Acme accounts
 
 
 def _fixture_book(*, args: str = "", provides: str = "", needs: str = "",
-                   step_kind: str = "seed", secrets: str = "") -> str:
+                   step_kind: str = "seed", secrets: str = "", no_run: bool = False) -> str:
     lines = ["---", "type: fixture", "title: Seeded acme", "---", "# Seeded acme", ""]
     if args:
         lines.append(f"- args: {args}")
@@ -70,8 +70,10 @@ def _fixture_book(*, args: str = "", provides: str = "", needs: str = "",
         lines += ["- needs:"] + [f"  - {n}" for n in needs.split(";")]
     if secrets:
         lines += ["- secrets:"] + [f"  - {s}" for s in secrets.split(";")]
-    lines += ["", "## Steps", "", "### seed-it", f"- kind: {step_kind}",
-              "- run: ./scripts/seed-acme.sh", ""]
+    lines += ["", "## Steps", "", "### seed-it", f"- kind: {step_kind}"]
+    if not no_run:
+        lines.append("- run: ./scripts/seed-acme.sh")
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -288,6 +290,21 @@ def test_fixture_secret_name_is_clean_for_a_valid_env_var_name(repo: Path) -> No
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id", secrets="API_TOKEN"))
     assert _findings(repo, "fixture-secret-name") == []
+
+
+def test_fixture_step_no_run_when_a_step_has_no_run_bullet(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+          _fixture_book(provides="id — the seeded account's id", no_run=True))
+    found = _findings(repo, "fixture-step-no-run")
+    assert [f.severity for f in found] == ["error"]
+
+
+def test_fixture_step_no_run_is_clean_when_the_step_has_a_run_bullet(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+          _fixture_book(provides="id — the seeded account's id"))
+    assert _findings(repo, "fixture-step-no-run") == []
 
 
 def test_fixture_checks_are_skipped_with_no_stack_runbook(repo: Path) -> None:

@@ -304,6 +304,62 @@ def test_a_needs_binding_naming_an_uncaptured_dollar_name_is_a_defect(tmp_path: 
     assert "never_captured" in fault["detail"]
 
 
+def test_a_step_with_no_run_command_is_a_defect_not_a_silent_skip(tmp_path: Path) -> None:
+    module = _write(tmp_path, SECRET_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "missing_run": True}],
+            "args": [], "provides": [], "needs": [], "secrets": [],
+        }
+    }
+    code, stdout, records = _run(module, "needs-a-secret", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0, stdout
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "defect"
+    assert fault["fixture"] == "seeded-acme"
+
+
+def test_an_unresolvable_needs_link_is_a_defect_not_a_silent_skip(tmp_path: Path) -> None:
+    globex_script = tmp_path / "seed-globex.sh"
+    _seed_step(globex_script, "#!/bin/sh\necho '{}'\n")
+    module = _write(tmp_path, NEEDS_SCENARIO)
+    book_fixtures = {
+        "seeded-globex": {
+            "steps": [{"kind": "seed", "command": str(globex_script), "cwd": str(tmp_path)}],
+            "args": [], "provides": [],
+            "needs": [{"fixture": None, "unresolved": "no-such-fixture.md", "args": {}}],
+            "secrets": [],
+        },
+    }
+    code, stdout, records = _run(module, "a-project-needs-an-account", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0, stdout
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "defect"
+    assert fault["fixture"] == "seeded-globex"
+    assert "no-such-fixture.md" in fault["detail"]
+
+
+def test_an_arg_colliding_with_a_secret_name_is_a_defect(tmp_path: Path) -> None:
+    script = tmp_path / "seed.sh"
+    _seed_step(script, "#!/bin/sh\necho '{}'\n")
+    module = _write(tmp_path, ENV_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "command": str(script), "cwd": str(tmp_path)}],
+            "args": ["id"], "provides": [], "needs": [], "secrets": ["id"],
+        }
+    }
+    code, stdout, records = _run(
+        module, "passes-args-through-env-not-shell-text", tmp_path,
+        book_fixtures=book_fixtures, env={"id": "should-not-be-overridden"},
+    )
+    assert code != 0, stdout
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "defect"
+    assert fault["fixture"] == "seeded-acme"
+    assert "id" in fault["detail"]
+
+
 NAMESPACE_SCENARIO = '''\
 @scenario(target=api, mechanism="live", covers=["ac:1"])
 def a_capture_and_a_provide_share_no_namespace(qa: Qa) -> None:

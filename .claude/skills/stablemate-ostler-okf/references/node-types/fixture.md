@@ -83,8 +83,8 @@ title: Seeded acme
 ## Doctor codes it can trip
 
 See [`../doctor-codes.md`](../doctor-codes.md): `unknown-book-fixture`, `fixture-step-kind`,
-`fixture-arg-mismatch`, `fixture-needs-target-args`, `fixture-needs-cycle`,
-`fixture-undeclared-provides`, `fixture-secret-name`.
+`fixture-step-no-run`, `fixture-arg-mismatch`, `fixture-needs-target-args`,
+`fixture-needs-cycle`, `fixture-undeclared-provides`, `fixture-secret-name`.
 
 ## When bullets are not enough
 

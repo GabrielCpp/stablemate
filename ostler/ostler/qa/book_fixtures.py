@@ -78,6 +78,10 @@ def _needs_of(graph: Graph, node: UINode, by_name: dict[str, UINode]) -> list[di
         text, href = links[0]
         target = graph.find_ui_node(graph.resolve_doc_ref(href, origin=node.path))
         if target is None:
+            # A `needs:` link that does not resolve is a book defect, not something to run
+            # the consumer without silently — the harness raises a fault when it reaches
+            # this marker instead of skipping the dependency it names.
+            bindings.append({"fixture": None, "unresolved": href, "args": {}})
             continue
         rest = value.replace(f"[{text}]({href})", "", 1).strip()
         stem = Path(target.id).stem
@@ -96,6 +100,10 @@ def _steps_of(graph: Graph, node: UINode) -> list[dict[str, Any]]:
         kind = runbook_mod.bullet_value(step.meta, "kind")
         command = runbook_mod.step_command(step, graph.root, ".")
         if command is None:
+            # No `run:` bullet — the step would execute nothing. Carried as a marker
+            # rather than dropped, so the harness raises a fault when it reaches this
+            # step instead of running the fixture incomplete with no signal.
+            steps.append({"kind": kind, "missing_run": True})
             continue
         entry: dict[str, Any] = {
             "kind": kind,

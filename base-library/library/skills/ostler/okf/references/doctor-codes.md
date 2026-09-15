@@ -91,6 +91,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `qa-fixture-bullet` | error | A `fixture:` bullet in the book is not a fixture reference. |
 | `unknown-book-fixture` | error | A `fixture:` bullet, or an `@<id>` reference, names a fixture (or fixture key) this repo does not declare — including a `fixture:` bullet on `environment`/`command`/`endpoint`/`interaction`/`invocation`/`method`/`field` naming no [`fixture`](node-types/fixture.md) node. |
 | `fixture-step-kind` | error | A `fixture` node's own `## Steps` uses a `kind:` outside `seed`/`run`/`verify` — narrower than a runbook step's kinds, because a fixture only ever seeds, runs, or verifies. |
+| `fixture-step-no-run` | error | A `fixture` node's own step carries no `run:` bullet — it would execute nothing, leaving the fixture incomplete with no signal at run time. |
 | `fixture-arg-mismatch` | error | A `fixture:` bullet's `name=value` args do not match the target fixture's declared `args:` (after crediting args the target's own `needs:` bindings already supply), or a fixture's own `needs:` binding names an arg it does not itself declare under `args:`. |
 | `fixture-needs-target-args` | error | A `needs:` link's target itself declares `args:` — runtime always runs a needs target with no args (it is a shared, once-per-scenario dependency), so a needs target's own `args:` can never be satisfied. |
 | `fixture-needs-cycle` | error | A fixture's `needs:` chain cycles back to itself. |

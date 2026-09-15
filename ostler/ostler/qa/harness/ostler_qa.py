@@ -1572,7 +1572,12 @@ class Qa:
             return cached
         spec = self._book_fixtures[name]
         env: dict[str, str] = {}
+        secrets = spec.get("secrets", [])
         for need in spec.get("needs", []):
+            if need.get("fixture") is None:
+                detail = f"needs a fixture link that does not resolve ({need.get('unresolved')!r})"
+                self._fault(name, -1, "needs", "defect", detail)
+                raise RuntimeError(f"qa fixture {name!r} {detail}")
             # A need's own `args:` bind into *this* fixture's env once the need has run —
             # they are how this fixture receives a dependency's `@node.key` provides, not
             # arguments passed to the dependency (which takes none here): the reference
@@ -1580,7 +1585,7 @@ class Qa:
             self._exec_book_fixture(str(need["fixture"]), {})
             for key, value in need.get("args", {}).items():
                 env[key] = self._resolve_ref(name, value)
-        for secret_name in spec.get("secrets", []):
+        for secret_name in secrets:
             value = os.environ.get(secret_name)
             if value is None:
                 self._fault(name, -1, "secret", "environment",
@@ -1592,10 +1597,18 @@ class Qa:
             env[secret_name] = value
         for arg_name in spec.get("args", []):
             if arg_name in args:
+                if arg_name in secrets:
+                    detail = f"arg {arg_name!r} collides with a declared secret name of the same name"
+                    self._fault(name, -1, "args", "defect", detail)
+                    raise RuntimeError(f"qa fixture {name!r} {detail}")
                 env[arg_name] = args[arg_name]
         steps = spec.get("steps", [])
         result: ToolResult | None = None
         for index, step in enumerate(steps):
+            if step.get("missing_run"):
+                detail = "step has no `run:` command"
+                self._fault(name, index, str(step.get("kind", "")), "defect", detail)
+                raise RuntimeError(f"qa fixture {name!r} step {index}: {detail}")
             result = self._run_book_step(name, index, step, env)
         self._node_facts[name] = self._extract_provides(name, spec.get("provides", []), result, len(steps) - 1)
         if result is None:
