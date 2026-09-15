@@ -801,7 +801,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "lint", help="statically lint a qa_plan.py's AST without importing or executing it"
     )
     qa_lint.add_argument("plan_file", type=Path)
-    qa_lint.add_argument("--spec", default=None, type=Path)
     qa_lint.add_argument("--json", action="store_true")
 
     qa_validate = qas.add_parser(
@@ -1663,10 +1662,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         return 0 if result.ok else 1
 
     if op == "lint":
-        spec_dir = args.spec
-        if spec_dir is not None and not spec_dir.is_absolute():
-            spec_dir = root / spec_dir
-        result = qa_mod.cmd_lint(args.plan_file, spec_dir, root=root)
+        result = qa_mod.cmd_lint(args.plan_file, root=root)
         if args.json:
             _out(json.dumps(result.data, indent=2))
         else:

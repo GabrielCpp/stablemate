@@ -31,7 +31,6 @@ qa:
       tool: node
       args: ["auth/seed.mjs"]
       provides: "an adjuster and two holders exist in the auth emulator"
-  fixture_modules: [identity]
 """
 
 
@@ -41,7 +40,6 @@ def _findings(repo: Path, code: str) -> list[doctor.Finding]:
 
 def _declare(repo: Path, body: str = AGENTS) -> None:
     write(repo / "agents.yml", body)
-    write(repo / "docs/specs/_fixtures/identity.py", "TOKEN = 'x'\n")
 
 
 def test_a_story_that_arranges_nothing_is_clean(repo: Path) -> None:
@@ -65,29 +63,19 @@ def test_a_plan_asking_for_a_fixture_the_story_does_not_state_is_an_error(repo: 
     assert [(f.severity, f.ref) for f in found] == [("error", "seeded-accounts")]
 
 
-def test_an_imported_fixture_module_counts_as_arranged_with(repo: Path) -> None:
-    _declare(repo)
-    write(repo / FOO_PLAN, "from _fixtures.identity import bearer\n")
-    assert [f.ref for f in _findings(repo, "undeclared-story-fixture")] == ["identity"]
-
-    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", fixtures=["identity"]))
-    assert _findings(repo, "undeclared-story-fixture") == []
-    assert doctor.run(load(repo)).errors == 0
-
-
 def test_a_stated_fixture_no_plan_asks_for_is_a_warning(repo: Path) -> None:
     _declare(repo)
-    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", fixtures=["identity"]))
+    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", fixtures=["seeded-accounts"]))
     write(repo / FOO_PLAN, "PLAN = 1\n")
     found = _findings(repo, "unused-story-fixture")
-    assert [(f.severity, f.ref) for f in found] == [("warn", "identity")]
+    assert [(f.severity, f.ref) for f in found] == [("warn", "seeded-accounts")]
     assert doctor.run(load(repo)).errors == 0
 
 
 def test_a_story_with_no_plan_yet_is_not_in_disagreement(repo: Path) -> None:
     """The plan phase has not run. Only the repo-level half of the rule applies."""
     _declare(repo)
-    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", fixtures=["identity"]))
+    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", fixtures=["seeded-accounts"]))
     assert _findings(repo, "unused-story-fixture") == []
     assert doctor.run(load(repo)).errors == 0
 
@@ -107,13 +95,6 @@ def test_a_declaration_that_does_not_stand_up_is_an_error(repo: Path) -> None:
     found = _findings(repo, "qa-fixture-declaration")
     assert [f.severity for f in found] == ["error"]
     assert "opted into" in found[0].message
-
-
-def test_a_declared_module_with_no_file_behind_it_is_an_error(repo: Path) -> None:
-    write(repo / "agents.yml", AGENTS)
-    found = _findings(repo, "qa-fixture-declaration")
-    assert [f.severity for f in found] == ["error"]
-    assert "identity" in found[0].message
 
 
 def test_a_story_missing_the_section_entirely_reads_as_unwritten(repo: Path) -> None:
@@ -164,6 +145,32 @@ def test_a_declared_book_fixture_is_clean(repo: Path) -> None:
     write(repo / BOOK_PATH, BOOK.format(bullet="seeded-accounts 2 — two claims on file"))
     assert _findings(repo, "unknown-book-fixture") == []
     assert _findings(repo, "qa-fixture-bullet") == []
+
+
+def test_a_hand_written_fixture_with_no_book_node_behind_it_is_a_warning(repo: Path) -> None:
+    """The retirement nudge: a `qa: {fixtures:}` entry is still the permanent fallback tier,
+    but one with no book fixture node behind it is a candidate `ostler qa fixtures migrate`
+    has not yet been run on."""
+    _declare(repo)
+    found = _findings(repo, "unmigrated-fixture-declaration")
+    assert [(f.severity, f.ref) for f in found] == [("warn", "seeded-accounts")]
+
+
+def test_a_hand_written_fixture_with_a_book_node_behind_it_is_clean(repo: Path) -> None:
+    _declare(repo)
+    write(repo / BOOK_PATH, BOOK.format(bullet="seeded-accounts 2 — two claims on file"))
+    write(
+        repo / "docs/features/area/fixtures/seeded-accounts.md",
+        "---\ntype: fixture\ntitle: Seeded accounts\n---\n"
+        "# Seeded accounts\n\n"
+        "- provides:\n"
+        "  - id — the adjuster's id\n\n"
+        "## Steps\n\n"
+        "### seed-it\n\n"
+        "- kind: seed\n"
+        "- run: ./scripts/seed-accounts.sh\n",
+    )
+    assert _findings(repo, "unmigrated-fixture-declaration") == []
 
 
 def test_a_book_fixture_that_is_not_a_reference_is_an_error(repo: Path) -> None:

@@ -93,8 +93,8 @@ STORY_DEPS_NONE = "(none)"
 # shape as the blockers above and for the same reason: one bullet per fixture, and the bare
 # `(none)` when the story needs no arrangement, so "this story arranges nothing" is a stated fact
 # rather than an empty section that might equally mean nobody wrote it down. A fixture named here
-# is checked twice — the repo must declare it (`qa: {fixtures:}` / `{fixture_modules:}`), and the
-# story's own `qa_plan.py` must be the thing that asks for it.
+# is checked twice — the repo must declare it (a book fixture node, or a hand-written
+# `qa: {fixtures:}` entry), and the story's own `qa_plan.py` must be the thing that asks for it.
 STORY_FIXTURES_HEADING = "Fixtures"
 STORY_FIXTURES_LABEL = "Fixture"       # `- Fixture: <declared-name>`
 STORY_FIXTURES_NONE = "(none)"

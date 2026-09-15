@@ -781,12 +781,11 @@ class Ostler:
 
         return cmd_context_validate(self._resolve(spec))
 
-    def qa_lint(self, plan_file: str | Path, *, spec: str | Path | None = None) -> QaOutcome:
+    def qa_lint(self, plan_file: str | Path) -> QaOutcome:
         """Statically lint a ``qa_plan.py``'s AST without importing or executing it
         (``ostler qa lint``)."""
 
-        return cmd_lint(Path(plan_file),
-                        self._resolve(spec) if spec else None, root=self.root)
+        return cmd_lint(Path(plan_file), root=self.root)
 
     def qa_validate(self, plan_file: str | Path, *, spec: str | Path | None = None) -> QaOutcome:
         """Validate a ``qa_plan.py`` without executing it (``ostler qa validate``)."""

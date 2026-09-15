@@ -7,16 +7,16 @@ arrangement was either a compose boot step nothing could name, or a block of Pyt
 copied into every plan that needed it, and the second is how a field came to be spelled
 two ways in one repo (`note` for `decision_note`) with no gate able to notice.
 
-Two tiers, split by who owns the code:
+A **book fixture node** (`docs/features/<surface>/fixtures/<name>.md`) is the primary way
+to declare one: setup steps in the book's own step vocabulary, `params:` it takes, and the
+`provides:` keys its last step yields. `Qa.fixture` runs a book node first.
 
-- **App-language fixtures** (`qa: {fixtures: {...}}`) run a command the *app* ships, so
-  the app's own integration tests and the QA lane arrange state through the same code.
-  Drift is impossible by construction rather than by review. This is the tier that
-  matters, and the one a fixture should be in unless it cannot be.
-- **Python fixture modules** (`qa: {fixture_modules: [...]}`) are for arrangements that
-  exist only for QA — signing a token, shaping a request body — and are plain modules
-  under `<spec-root>/_fixtures/`, importable by a plan and linted by the *same* AST
-  allowlist a plan is. They add no capability; they end triplication.
+This module covers the older, hand-written tier it falls back to: `qa: {fixtures: {...}}`
+runs a command the *app* ships, so the app's own integration tests and the QA lane arrange
+state through the same code. Drift is impossible by construction rather than by review. It
+stays a permanent fallback — not every repo has migrated every fixture into a book node —
+but a fixture should be in the book unless it cannot be, and `migrate()` below turns an
+existing entry into a book node mechanically.
 
 A fixture entry names a tool from the repo's own `qa: {tools: [...]}` opt-in and nothing
 else. That is the containment property and it is checkable without running anything: a
@@ -35,17 +35,6 @@ from typing import Any
 
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.tools import opted_in_tools, qa_block, resolved_commands
-
-#: Where a repo's Python fixture modules live, relative to the directory holding its
-#: specs. A fixed name rather than a configurable path: a plan imports `_fixtures.x`, and
-#: an import root that moved per repo would make that spelling a lie in some of them.
-FIXTURES_DIRNAME = "_fixtures"
-
-#: The package name a declared fixture module is imported under. Absolute, because
-#: `ostler.qa.lint` bans relative imports in plan code and that ban is not being widened
-#: for this — the harness puts the spec root on `sys.path` and the import resolves the
-#: same way `ostler_qa` does.
-FIXTURES_PACKAGE = "_fixtures"
 
 #: Seconds a fixture command may take before its result is a timeout. Generous, because
 #: an arrangement is often a container talking to another container, and stingy defaults
@@ -171,16 +160,6 @@ def declared(root: Path) -> tuple[dict[str, FixtureSpec], list[str]]:
     return specs, errors
 
 
-def declared_modules(root: Path) -> set[str]:
-    """The Python fixture module names a plan in this repo may import.
-
-    A module absent from this list is not importable even if the file exists, which is the
-    same posture `tools:` takes: presence on disk is not permission.
-    """
-    values = qa_block(root).get("fixture_modules", [])
-    return {str(value) for value in values} if isinstance(values, list) else set()
-
-
 def _title(name: str) -> str:
     return name.replace("-", " ").replace("_", " ").strip().capitalize()
 
@@ -197,8 +176,7 @@ def migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) -> Q
     migrated node: the old `provides:` is one free-text sentence, not the itemized `key —
     prose` list the node grammar wants, and the old `args:` are literal invocation tokens, not
     named parameters a `fixture:` caller would bind. The original prose survives as a comment
-    for a human to turn into real `provides:` keys. `qa: {fixture_modules:}` is untouched —
-    it stays declared until the later retirement commit.
+    for a human to turn into real `provides:` keys.
     """
     specs, errors = declared(root)
     if errors:
@@ -267,11 +245,10 @@ def cmd_migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) 
         return QaOutcome(ok=False, message=f"could not write migrated fixture node: {exc}")
 
 
-def preflight_errors(root: Path, *, spec_root: Path | None = None) -> list[str]:
+def preflight_errors(root: Path) -> list[str]:
     """Every reason this repo's declared fixtures could not be used right now.
 
-    Three failures, all static: a malformed declaration, a fixture naming a tool the repo
-    never opted into, and a declared module with no file behind it. The second is the
+    One failure, static: a fixture naming a tool the repo never opted into. This is the
     containment check — it is what keeps `fixtures:` from becoming a second, unwatched
     door onto the process — so it is an error even when the command happens to exist.
     """
@@ -284,19 +261,11 @@ def preflight_errors(root: Path, *, spec_root: Path | None = None) -> list[str]:
         for spec in specs.values()
         if spec.tool not in opted_in
     )
-    if spec_root is not None:
-        directory = spec_root / FIXTURES_DIRNAME
-        errors.extend(
-            f"qa fixture module {name!r} is declared but there is no "
-            f"{FIXTURES_DIRNAME}/{name}.py under {spec_root}"
-            for name in sorted(declared_modules(root))
-            if not (directory / f"{name}.py").is_file()
-        )
     return errors
 
 
-def referenced(plan: Path) -> tuple[set[str], set[str]]:
-    """`(fixture names, module names)` one plan asks for, read off its AST.
+def referenced(plan: Path) -> set[str]:
+    """The fixture names one plan asks for, read off its AST.
 
     Read statically rather than by grep, for the same reason `covers=` is: a name built at
     runtime claims nothing a static check could verify, and a caller would rather see none
@@ -306,10 +275,9 @@ def referenced(plan: Path) -> tuple[set[str], set[str]]:
     try:
         tree = ast.parse(plan.read_text(encoding="utf-8"))
     except (OSError, SyntaxError):
-        return set(), set()
+        return set()
 
     names: set[str] = set()
-    modules: set[str] = set()
     for node in ast.walk(tree):
         if (
             isinstance(node, ast.Call)
@@ -320,16 +288,7 @@ def referenced(plan: Path) -> tuple[set[str], set[str]]:
             and isinstance(node.args[0].value, str)
         ):
             names.add(node.args[0].value)
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            parts = node.module.split(".")
-            if parts[0] == FIXTURES_PACKAGE and len(parts) > 1:
-                modules.add(parts[1])
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                parts = alias.name.split(".")
-                if parts[0] == FIXTURES_PACKAGE and len(parts) > 1:
-                    modules.add(parts[1])
-    return names, modules
+    return names
 
 
 def resolved(root: Path) -> dict[str, dict[str, Any]]:

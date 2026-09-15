@@ -1,9 +1,8 @@
 """`ostler.qa.fixtures` — the declared arrangements a plan may ask for.
 
-Two tiers with two different failure modes, and both are static. An app-language fixture
-can name a tool the repo never opted into, which would be a second door onto the process;
-a Python fixture module can be declared with nothing behind it, which is the shape of the
-defect declaring fixtures exists to catch. Every case below is one of those edges.
+The one failure mode is static and containment-shaped: an app-language fixture can name
+a tool the repo never opted into, which would be a second, unwatched door onto the
+process. Every case below is one of those edges.
 """
 
 from __future__ import annotations
@@ -30,7 +29,6 @@ qa:
 
 def test_a_repo_with_no_qa_block_declares_no_fixtures(tmp_path: Path) -> None:
     assert fixtures.declared(tmp_path) == ({}, [])
-    assert fixtures.declared_modules(tmp_path) == set()
     assert fixtures.preflight_errors(tmp_path) == []
 
 
@@ -75,35 +73,17 @@ def test_a_malformed_entry_is_an_error_and_never_a_silent_skip(tmp_path: Path) -
     assert errors == ["qa fixture 'seeded' must be a mapping, not str"]
 
 
-def test_a_declared_module_with_no_file_behind_it_is_a_preflight_error(tmp_path: Path) -> None:
-    _agents_yml(tmp_path, "qa:\n  fixture_modules: [claims]\n")
-    specs = tmp_path / "docs" / "specs"
-    specs.mkdir(parents=True)
-    assert fixtures.declared_modules(tmp_path) == {"claims"}
-    problems = fixtures.preflight_errors(tmp_path, spec_root=specs)
-    assert len(problems) == 1
-    assert "_fixtures/claims.py" in problems[0]
-
-    (specs / fixtures.FIXTURES_DIRNAME).mkdir()
-    (specs / fixtures.FIXTURES_DIRNAME / "claims.py").write_text("", encoding="utf-8")
-    assert fixtures.preflight_errors(tmp_path, spec_root=specs) == []
-
-
 # ---------------------------------------------------------------------------
 # `referenced` — what one plan asks for, read off its AST
 # ---------------------------------------------------------------------------
 def test_a_plan_reference_is_read_off_the_ast(tmp_path: Path) -> None:
     plan = tmp_path / "qa_plan.py"
     plan.write_text(
-        "from _fixtures.identity import bearer\n"
-        "import _fixtures.claims\n"
-        "\n"
         "def scenario(qa):\n"
-        "    qa.fixture('seeded-accounts')\n"
-        "    return bearer\n",
+        "    qa.fixture('seeded-accounts')\n",
         encoding="utf-8",
     )
-    assert fixtures.referenced(plan) == ({"seeded-accounts"}, {"identity", "claims"})
+    assert fixtures.referenced(plan) == {"seeded-accounts"}
 
 
 def test_a_computed_fixture_name_is_not_read_as_a_fragment(tmp_path: Path) -> None:
@@ -111,7 +91,7 @@ def test_a_computed_fixture_name_is_not_read_as_a_fragment(tmp_path: Path) -> No
     half of one, which is what a grep would have returned."""
     plan = tmp_path / "qa_plan.py"
     plan.write_text("def s(qa, env):\n    qa.fixture('seeded-' + env)\n", encoding="utf-8")
-    assert fixtures.referenced(plan) == (set(), set())
+    assert fixtures.referenced(plan) == set()
 
 
 def test_an_unparseable_plan_yields_nothing(tmp_path: Path) -> None:
@@ -119,7 +99,7 @@ def test_an_unparseable_plan_yields_nothing(tmp_path: Path) -> None:
     nobody."""
     plan = tmp_path / "qa_plan.py"
     plan.write_text("def broken(:\n", encoding="utf-8")
-    assert fixtures.referenced(plan) == (set(), set())
+    assert fixtures.referenced(plan) == set()
 
 
 def test_a_bare_name_is_the_whole_bullet() -> None:

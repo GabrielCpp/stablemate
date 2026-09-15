@@ -99,15 +99,6 @@ def test_an_existing_destination_file_is_never_overwritten(tmp_path: Path) -> No
     assert (dest / "three-identities.md").read_text(encoding="utf-8") == "hand-written\n"
 
 
-def test_fixture_modules_are_left_declared(tmp_path: Path) -> None:
-    _agents_yml(tmp_path, ONE_FIXTURE + "  fixture_modules: [claims]\n")
-
-    result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures", cfg=_CFG)
-
-    assert result.ok
-    assert fixtures.declared_modules(tmp_path) == {"claims"}
-
-
 def test_an_out_dir_outside_the_repo_root_refuses_cleanly(tmp_path: Path) -> None:
     _agents_yml(tmp_path, ONE_FIXTURE)
     outside = tmp_path.parent / f"{tmp_path.name}-outside-fixtures"

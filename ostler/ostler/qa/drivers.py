@@ -160,7 +160,7 @@ class PythonDriver(QaDriver):
         # fail loudly later, it is a declaration nothing behind it can honour.
         problems = [
             *qa_tools.preflight_errors(self.root),
-            *qa_fixtures.preflight_errors(self.root, spec_root=self.session.spec_dir.parent),
+            *qa_fixtures.preflight_errors(self.root),
         ]
         if problems:
             raise DriverBlocked("; ".join(problems))

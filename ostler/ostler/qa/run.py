@@ -389,7 +389,7 @@ def cmd_validate(
             status="invalid",
         )
 
-    lint_result = lint_mod.cmd_lint(resolved_plan, spec_dir, root=root)
+    lint_result = lint_mod.cmd_lint(resolved_plan, root=root)
     if not lint_result.ok:
         return lint_result
 

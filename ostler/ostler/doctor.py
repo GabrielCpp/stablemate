@@ -544,17 +544,22 @@ def _check_fixtures(graph: Graph, f: list[Finding]) -> None:
     not run — so only the repo-level half applies to it.
     """
     spec_root = specs_root_in(graph.root)
-    for message in fixtures_mod.preflight_errors(graph.root, spec_root=spec_root):
+    for message in fixtures_mod.preflight_errors(graph.root):
         f.append(Finding("error", "qa-fixture-declaration", message))
 
     specs, _errors = fixtures_mod.declared(graph.root)
-    known = (
-        set(specs)
-        | fixtures_mod.declared_modules(graph.root)
-        | {Path(n.id).stem for n in graph.ui_nodes_of_type("fixture")}
-    )
+    book_fixtures = {Path(n.id).stem for n in graph.ui_nodes_of_type("fixture")}
+    known = set(specs) | book_fixtures
 
     _check_book_fixtures(graph, known, f)
+
+    for name in sorted(set(specs) - book_fixtures):
+        f.append(Finding(
+            "warn", "unmigrated-fixture-declaration",
+            f"qa fixture '{name}' is still a hand-written `qa: {{fixtures:}}` entry in "
+            f"agents.yml with no book fixture node behind it — migrate it with "
+            f"`ostler qa fixtures migrate`",
+            ref=name))
 
     for epic in graph.epics:
         for story in epic.stories:
@@ -574,18 +579,18 @@ def _check_fixtures(graph: Graph, f: list[Finding]) -> None:
                     f.append(Finding(
                         "error", "unknown-story-fixture",
                         f"story '{story.slug}' names fixture '{name}', which this repo does not "
-                        f"declare — add it to `qa: {{fixtures:}}` or `qa: {{fixture_modules:}}` "
-                        f"in agents.yml. Declared here: "
-                        f"{', '.join(sorted(known)) or '(none)'}",
+                        f"declare — add a fixture node under `docs/features/<surface>/fixtures/"
+                        f"{name}.md`, or a hand-written `qa: {{fixtures:}}` entry in agents.yml. "
+                        f"Declared here: {', '.join(sorted(known)) or '(none)'}",
                         epic.name, name, path=rel, line=1))
 
             plan = spec_root / story.slug / "qa_plan.py"
             if not plan.is_file():
                 continue
-            names, modules = fixtures_mod.referenced(plan)
+            names = fixtures_mod.referenced(plan)
             plan_rel = plan.relative_to(graph.root).as_posix()
             stated = set(story.fixtures)
-            for name in sorted((names | modules) - stated):
+            for name in sorted(names - stated):
                 f.append(Finding(
                     "error", "undeclared-story-fixture",
                     f"story '{story.slug}' arranges state with fixture '{name}' in its "
@@ -593,7 +598,7 @@ def _check_fixtures(graph: Graph, f: list[Finding]) -> None:
                     f"`- {registry.STORY_FIXTURES_LABEL}: {name}` under "
                     f"`## {registry.STORY_FIXTURES_HEADING}`",
                     epic.name, name, path=rel, line=1))
-            for name in sorted(stated - (names | modules)):
+            for name in sorted(stated - names):
                 f.append(Finding(
                     "warn", "unused-story-fixture",
                     f"story '{story.slug}' names fixture '{name}' but its qa_plan.py never asks "
@@ -629,9 +634,9 @@ def _check_book_fixtures(graph: Graph, known: set[str], f: list[Finding]) -> Non
                 f.append(Finding(
                     "error", "unknown-book-fixture",
                     f"{node.id}: `{key}:` names fixture '{parsed.name}', which this repo does "
-                    f"not declare — add it to `qa: {{fixtures:}}` or `qa: {{fixture_modules:}}` "
-                    f"in agents.yml. Declared here: "
-                    f"{', '.join(sorted(known)) or '(none)'}",
+                    f"not declare — add a fixture node under `docs/features/<surface>/fixtures/"
+                    f"{parsed.name}.md`, or a hand-written `qa: {{fixtures:}}` entry in "
+                    f"agents.yml. Declared here: {', '.join(sorted(known)) or '(none)'}",
                     path=rel, line=node.line, ref=parsed.name))
 
 
