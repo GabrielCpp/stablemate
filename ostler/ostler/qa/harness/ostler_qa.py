@@ -2087,13 +2087,13 @@ class Qa:
     # written as `qa.page.get_by_text(...)` is invisible to that check.
 
     def by_role(self, role: str, *, name: str | None = None, **kwargs: Any) -> Any:
-        return self.browser_page.get_by_role(role, name=name, **kwargs)
+        return self.browser_page.get_by_role(role, name=name if name is None else self.resolve(name), **kwargs)
 
     def by_label(self, text: str, **kwargs: Any) -> Any:
-        return self.browser_page.get_by_label(text, **kwargs)
+        return self.browser_page.get_by_label(self.resolve(text), **kwargs)
 
     def by_test_id(self, value: str) -> Any:
-        return self.browser_page.get_by_test_id(value)
+        return self.browser_page.get_by_test_id(self.resolve(value))
 
     def by_text(self, text: str | re.Pattern[str], **kwargs: Any) -> Any:
         # Playwright's own default (`exact=False`, whitespace-normalised substring), not a
@@ -2103,14 +2103,33 @@ class Qa:
         # locator that cannot match. `str | Pattern` for the same reason `by_label` takes
         # `**kwargs`: an author who needs a case-insensitive match should not have to drop
         # to `qa.page.get_by_text`, which `extract_locators` cannot see.
-        return self.browser_page.get_by_text(text, **kwargs)
+        #
+        # A pattern is never a reference — `resolve` only ever substitutes a whole string —
+        # so only the `str` arm goes through it.
+        return self.browser_page.get_by_text(text if isinstance(text, re.Pattern) else self.resolve(text), **kwargs)
 
     def by_css(self, selector: str) -> Any:
-        return self.browser_page.locator(selector)
+        return self.browser_page.locator(self.resolve(selector))
 
     def goto(self, url: str, **kwargs: Any) -> Any:
         """Navigate, resolving a relative path against the target's `base_url`."""
-        return self.browser_page.goto(self.http.url_for(url), **kwargs)
+        return self.browser_page.goto(self.http.url_for(self.resolve(url)), **kwargs)
+
+    def capture_text(self, key: str, locator: Any) -> str:
+        """Capture a locator's text — a defect if it matches nothing on the page.
+
+        The UI half of `capture_field`: a locator built from `qa.by_role`/`qa.by_text`/etc.
+        that matches zero elements is a book/code defect the same way an absent JSON path
+        is — the scenario named something the page was never going to have — so this
+        raises here rather than handing a later step a reference that can never resolve.
+        """
+        if locator.count() == 0:
+            detail = f"capture {key!r} locator matched no elements on the page"
+            self._fault(self.scenario_id, -1, "capture", "defect", detail)
+            raise RuntimeError(f"qa {self.scenario_id!r}: {detail}")
+        value = locator.inner_text()
+        self.capture(key, value)
+        return value
 
     def screenshot(self, name: str = "") -> Path:
         """Photograph the page, measure where it put its content, and register both.

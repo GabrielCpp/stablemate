@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -889,3 +890,78 @@ def test_a_capture_that_finds_nothing_is_a_defect_fault(tmp_path: Path) -> None:
     assert fault["fault_class"] == "defect"
     assert "no_such_field" in fault["detail"]
     assert "missing_id" in fault["detail"]
+
+
+class _FakeLocator:
+    """Just enough of Playwright's `Locator` for `capture_text`: `count()` and `inner_text()`."""
+
+    def __init__(self, text: str = "", count: int = 1) -> None:
+        self._text = text
+        self._count = count
+
+    def count(self) -> int:
+        return self._count
+
+    def inner_text(self) -> str:
+        return self._text
+
+
+class _FakePage:
+    """Just enough of Playwright's `Page` for `qa.by_text` — records what it was asked for."""
+
+    def __init__(self) -> None:
+        self.text_calls: list[str] = []
+
+    def get_by_text(self, text: str, **kwargs: object) -> _FakeLocator:
+        self.text_calls.append(text)
+        if text == "Welcome, acme":
+            return _FakeLocator("Welcome, acme", count=1)
+        return _FakeLocator(count=0)
+
+
+def _ui_qa(tmp_path: Path) -> Any:
+    """A `Qa` built the way `test_a_browser_problem_...` builds one: no subprocess, no
+    real Playwright — just enough of the harness's own object to exercise `qa.page`."""
+    harness = load_harness_module("ostler_qa")
+    recorder = harness._Recorder(fd=-1)
+    recorder.emit = lambda record: None
+    return harness.Qa(
+        scenario_id="greeting-flows",
+        target=harness.Target("web", driver="playwright"),
+        root=tmp_path,
+        spec_dir=tmp_path,
+        qa_dir=tmp_path / "qa",
+        covers=["ac:1"],
+        recorder=recorder,
+    )
+
+
+def test_a_ui_capture_feeds_a_later_locator(tmp_path: Path) -> None:
+    """Text captured off one locator substitutes into a later `by_text` call — the UI half
+    of the API capture-into-a-later-request test above."""
+    qa = _ui_qa(tmp_path)
+    page = _FakePage()
+    qa.page = page
+
+    banner = qa.by_text("Welcome, acme")
+    qa.capture_text("greeting", banner)
+    qa.by_text("$greeting")
+
+    assert page.text_calls == ["Welcome, acme", "Welcome, acme"]
+
+
+def test_a_ui_capture_that_finds_nothing_is_a_defect_fault(tmp_path: Path) -> None:
+    """A locator that matches zero elements is a book/code defect, not a silent miss —
+    the UI half of `test_a_capture_that_finds_nothing_is_a_defect_fault` above."""
+    qa = _ui_qa(tmp_path)
+    emitted: list[dict[str, Any]] = []
+    qa._recorder.emit = emitted.append  # noqa: SLF001
+    qa.page = _FakePage()
+
+    missing = qa.by_text("Nothing here")
+    with pytest.raises(RuntimeError, match="matched no elements"):
+        qa.capture_text("missing_greeting", missing)
+
+    [fault] = [r for r in emitted if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "defect"
+    assert "missing_greeting" in fault["detail"]
