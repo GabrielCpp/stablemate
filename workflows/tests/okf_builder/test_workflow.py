@@ -812,9 +812,14 @@ def _park_stale_citation(repo: Path) -> None:
     """A `fix:stale-citation` row for `charge` that has already spent its attempts."""
     wl = paths.worklist_path(repo, SERVICE)
     data = json.loads(wl.read_text())
+    node = f"{BOOK}/concepts/charge.md"
     data["items"].append({
-        "kind": "fix:stale-citation", "target": f"{BOOK}/concepts/charge.md",
-        "context": "{}", "status": "blocked", "attempts": MAX_TARGET_ATTEMPTS,
+        "kind": "fix:stale-citation", "target": "acme/service.py",
+        "context": json.dumps({
+            "code": "stale-citation", "grounded": True, "file": "acme/service.py",
+            "nodes": [node], "citations": {node: "acme/service.py::charge"},
+        }),
+        "status": "blocked", "attempts": MAX_TARGET_ATTEMPTS,
         "blocked_reason": "the last turn reported `partial` and the finding still stands",
     })
     wl.write_text(json.dumps(data))
@@ -839,8 +844,8 @@ def test_a_blocked_regrounding_row_with_nothing_uncovered_parks_on_the_gate(
         _drive(_env(tmp_path / "again"), agent)
 
     assert len(seen) == 1, seen
-    assert "cannot re-ground 1 node(s)" in seen[0], seen[0]
-    assert "concepts/charge.md" in seen[0], seen[0]
+    assert "cannot re-ground 1 file(s)" in seen[0], seen[0]
+    assert "acme/service.py" in seen[0], seen[0]
     assert "recheck-coverage" not in agent.counts(), agent.counts()
     rows = [i for i in _worklist(booked) if i["kind"] == "fix:stale-citation"]
     assert [(i["status"], i["attempts"]) for i in rows] == [("blocked", MAX_TARGET_ATTEMPTS)]

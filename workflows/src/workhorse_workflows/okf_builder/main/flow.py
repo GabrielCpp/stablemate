@@ -979,15 +979,15 @@ class OkfBuilder(Workflow):
 
     @staticmethod
     def _regrounding_gate_question(recorded: Recorded) -> str:
-        """Every node whose cited source moved spent its re-grounding attempts."""
+        """Every changed file whose citing nodes spent their re-grounding attempts."""
         lines = "\n".join(
             f"  - {b.get('target', '?')} — {b.get('attempts', 0)} attempt(s); last turn said: "
             f"{b.get('reason') or 'nothing'}"
             for b in recorded.blocked
         )
         return (
-            f"okf-builder cannot re-ground {recorded.blocked_count} node(s) whose cited "
-            f"source moved or changed under them. Each was handed to a repair turn "
+            f"okf-builder cannot re-ground {recorded.blocked_count} file(s) whose cited "
+            f"source changed under the nodes citing them. Each was handed to a repair turn "
             f"{MAX_TARGET_ATTEMPTS} times and the coverage join still reports the drift, "
             f"and there is no other work left on the worklist:\n\n{lines}\n\n"
             f"Re-read each bullet against the symbol it cites (or fix what makes the turn "

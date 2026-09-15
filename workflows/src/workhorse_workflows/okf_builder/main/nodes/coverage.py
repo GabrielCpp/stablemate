@@ -34,8 +34,6 @@ from ostler import Ostler, graph as graph_mod
 # word-presence test, so a facade module re-exporting a name kept a moved symbol's citation
 # green. Importing it means the join and the grounding check cannot disagree again.
 from ostler.inventory import SOURCE_SUFFIXES, symbols
-from ostler import backfill as backfill_mod
-from ostler import coverage as coverage_mod
 from ostler import refs
 from ostler import source_snapshots
 from workhorse_workflows.kit import short_sha
@@ -302,52 +300,62 @@ def _screen_count(okf: Ostler, service: str) -> int:
     return len(data["nodes"])
 
 
-#: The stale reasons this join owns. `uncovered` is the join's own arithmetic and is already
-#: reported as `missing`; `dangling` is the checkpoint's channel — a doctor code, queued as a
-#: `fix:` item rounds earlier — and queuing it twice hands two turns the same edit.
-REGROUNDING_REASONS = ("drifted", "moved")
+#: At most this many citing nodes seeded per regrounding row. A file with more stale
+#: citations than this gets `ceil(N/5)` rows instead of one — the same reasoning as the
+#: sibling-folder repair batch: a turn that reads one changed file and edits five nodes
+#: against it is a turn an agent can hold in its head; a turn editing fifty is not.
+_REGROUNDING_BATCH = 5
 
 
-def _regrounding(okf: Ostler, inventory_path: str, service: str,
-                 waivers: dict[str, str]) -> tuple[list[dict[str, Any]], str]:
-    """The nodes whose citations no longer describe the code they point at.
+def _regrounding(okf: Ostler, service: str) -> tuple[list[dict[str, Any]], str]:
+    """The book's stale citations, one worklist row per changed file (batched, see above).
 
-    This is the half of staleness the join cannot see. `ostler coverage` asks only whether every
-    unit is *cited*, so a book stays at covered == total while the symbols under it are rewritten
-    — measured downstream, four books reported complete with their anchors 187 commits behind.
-    The watermark in `sources.json` is what makes that an answerable question, and this is the
-    caller that asks it.
+    This is the half of staleness the join cannot see. `ostler coverage` asks only whether
+    every unit is *cited*, so a book stays at covered == total while the symbols under it are
+    rewritten — measured downstream, four books reported complete with their citations
+    describing code that no longer existed in that shape. `doctor`'s `stale-citation` check is
+    what makes that an answerable question — a per-citation content digest, not a whole-book
+    catalog — and this is the caller that asks it.
 
-    A book with no watermark yet yields nothing, which is correct rather than lucky: an absent
-    catalog means "nothing has been recorded", and reading drift out of its absence would requeue
-    every node in the book on the first run after this shipped.
+    Row key is the *cited file*, not a node: several nodes citing the same changed file share
+    a row (so one re-read of the file answers every row member's claims), and one node citing
+    several changed files legitimately appears in more than one file's row.
     """
     try:
-        stale = backfill_mod.plan(
-            okf.graph,
-            coverage_mod.load_inventory(inventory_path),
-            source_snapshots.load_catalog(okf.root),
-            surface=service or None,
-            waivers=waivers,
-        )
+        outcome = okf.doctor()
     except (OSError, ValueError, RuntimeError) as exc:
         return [], f"could not compute the regrounding set: {exc}"
-    items: list[dict[str, Any]] = []
-    for row in stale.units:
-        if row.reason not in REGROUNDING_REASONS:
+    findings = (outcome.data or {}).get("findings", []) if outcome.data else []
+    in_scope: set[str] | None = None
+    if service:
+        try:
+            in_scope = {n["id"] for n in graph_mod.build(okf.graph, surface=service)["nodes"]}
+        except (OSError, ValueError, RuntimeError):
+            in_scope = None
+
+    by_file: dict[str, list[tuple[str, str]]] = {}
+    for finding in findings:
+        if finding.get("code") != "stale-citation":
             continue
-        for node in row.nodes:
+        node, ref = finding.get("node") or "", finding.get("ref") or ""
+        if not node or not ref or (in_scope is not None and node not in in_scope):
+            continue
+        target_path = refs.ref_path(refs.normalize_ref(ref))
+        by_file.setdefault(target_path, []).append((node, ref))
+
+    items: list[dict[str, Any]] = []
+    for target_path, citing in sorted(by_file.items()):
+        for start in range(0, len(citing), _REGROUNDING_BATCH):
+            chunk = citing[start:start + _REGROUNDING_BATCH]
             items.append({
                 "kind": "fix:stale-citation",
-                "target": node,
+                "target": target_path,
                 "context": json.dumps({
                     "code": "stale-citation",
                     "grounded": True,
-                    "node": node,
-                    "reason": row.reason,
-                    "citation": row.unit,
-                    "moved_to": row.target,
-                    "evidence": row.evidence,
+                    "file": target_path,
+                    "nodes": [node for node, _ in chunk],
+                    "citations": dict(chunk),
                 }, sort_keys=True),
                 "requeue": True,
             })
@@ -444,9 +452,7 @@ def compute_coverage(
             }, indent=2) + "\n", encoding="utf-8")
             coverage_path = str(out)
 
-    regrounding, regrounding_error = _regrounding(
-        okf, inventory_path, service, coverage_mod.load_waivers(waivers_path or None)
-    )
+    regrounding, regrounding_error = _regrounding(okf, service)
     # A cited symbol that was rewritten under its node is a gap the join cannot see, so the
     # verdict is not the join's alone. Without this, the loop ends on `covered == total` over a
     # book describing code that no longer exists in that shape — which is the state every
@@ -498,8 +504,7 @@ def advance_watermark(
         return Watermarked()
     try:
         context = json.loads(item_context or "{}")
-        citation = str(context.get("moved_to") or context.get("citation") or "")
-        path = refs.parse_code_ref(citation).path if citation else ""
+        path = str(context.get("file") or "")
     except (ValueError, TypeError) as exc:
         return Watermarked(watermark_error=f"unreadable regrounding context: {exc}")
     if not path:
