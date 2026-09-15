@@ -295,6 +295,52 @@ def test_a_relocated_symbol_keeps_the_dangling_row_instead_of_trim(
     )
 
 
+def test_a_relocated_symbol_with_a_stamped_digest_is_still_excluded_from_trim(
+    booked_repo: Path, write: Callable[[Path, str], Path]
+) -> None:
+    """A relocated citation stamped with ``@digest`` is still excluded from trim.
+
+    Regression test for 795114d4: `_trim_rows` compared `coverage.citations`' digest-free
+    keys against `relocated`, which carries the raw dangling-finding ref verbatim —
+    still `@digest`-suffixed when the citation was stamped before its symbol moved. A
+    bare-string comparison silently failed to recognise the relocation, so the citation
+    was both kept alive as `fix:dangling` *and* wrongly trimmed as `trim-bullet`.
+    """
+    features = booked_repo / "docs/features/acme"
+    inv = features / ".source-inventory.json"
+    inv.parent.mkdir(parents=True, exist_ok=True)
+
+    # The book's citation carries a stamped digest, as `ostler stamp` would have left it.
+    write(
+        booked_repo / "docs/features/acme/concepts/charge.md",
+        _feature_text(["acme/service.py::charge@aaaaaaaaaaaa"]),
+    )
+
+    # The cited file is gone; `charge` now lives, uniquely, at a new path.
+    (booked_repo / "acme/service.py").unlink()
+    write(booked_repo / "acme/moved.py", "def charge(amount):\n    return amount\n")
+
+    from workhorse_workflows.okf_builder.main.nodes.coverage import inventory_source
+    import logging
+    inventory_source(
+        logging.getLogger("test"), str(booked_repo / "acme"), str(inv), "", str(booked_repo),
+    )
+
+    result = build_worklist(booked_repo, features, SERVICE)
+    dangling = [r for r in result.rows if r["kind"] == "fix:dangling"]
+    contexts = [json.loads(r["context"]) for r in dangling]
+    assert any(
+        c["citation"] == "acme/service.py::charge@aaaaaaaaaaaa"
+        and c.get("relocated_to") == "acme/moved.py::charge"
+        for c in contexts
+    )
+    trim_rows = [r for r in result.rows if r["kind"] == "trim-bullet"]
+    assert all(
+        json.loads(r["context"])["citation"] != "acme/service.py::charge@aaaaaaaaaaaa"
+        for r in trim_rows
+    )
+
+
 def test_a_repeated_symbol_name_elsewhere_still_trims(
     booked_repo: Path, write: Callable[[Path, str], Path]
 ) -> None:
