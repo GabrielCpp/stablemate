@@ -50,13 +50,13 @@ convention-owned cleanup target solely so an older install's per-workflow Compos
 removed; current expected-output and extra-file scans do not inspect it. This is the compatibility
 boundary between the retired YAML-era launcher and the current installed-workflow launcher.
 
-- code: `farrier/farrier/launcher.py::render_agents_mk`
-- code: `farrier/farrier/launcher.py::LAUNCHER_AGENTS_MK`
-- code: `farrier/farrier/launcher.py::LAUNCHER_CONTEXT_MANIFEST`
-- code: `farrier/farrier/launcher.py::LAUNCHER_CONTEXT_MANIFEST_FMT`
-- code: `farrier/farrier/launcher.py::LAUNCHER_ROOT_MAKEFILE`
-- code: `farrier/farrier/launcher.py::LAUNCHER_COMPOSE`
-- code: `farrier/farrier/outputs.py::remove_targets`
+- code: `farrier/farrier/launcher.py::render_agents_mk` @a972806707c9
+- code: `farrier/farrier/launcher.py::LAUNCHER_AGENTS_MK` @a972806707c9
+- code: `farrier/farrier/launcher.py::LAUNCHER_CONTEXT_MANIFEST` @a972806707c9
+- code: `farrier/farrier/launcher.py::LAUNCHER_CONTEXT_MANIFEST_FMT` @a972806707c9
+- code: `farrier/farrier/launcher.py::LAUNCHER_ROOT_MAKEFILE` @a972806707c9
+- code: `farrier/farrier/launcher.py::LAUNCHER_COMPOSE` @a972806707c9
+- code: `farrier/farrier/outputs.py::remove_targets` @3967ecfa24a2
 - tests: `farrier/tests/test_launcher_make.py::test_a_discovered_workflow_becomes_a_real_target`
 - tests: `farrier/tests/test_launcher_make.py::test_a_workflow_nobody_installed_fails_instead_of_launching_nothing`
 - tests: `farrier/tests/test_launcher_make.py::test_an_unrelated_target_never_pays_for_discovery`
@@ -79,6 +79,6 @@ boundary between the retired YAML-era launcher and the current installed-workflo
 - returns: `None` after the configured cleanup passes complete
 - verify: removed(subject="assumed-owned output")
 - verify: unchanged(subject="untagged file during output cleanup")
-- code: `farrier/farrier/outputs.py::remove_targets`
+- code: `farrier/farrier/outputs.py::remove_targets` @3967ecfa24a2
 - detail: [output cleanup selection](output-cleanup-selection.md)
 - detail: [output cleanup documentation](output-cleanup-documentation.md)

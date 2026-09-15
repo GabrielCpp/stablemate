@@ -8,7 +8,7 @@ title: Power mapping
 Power resolution returns the three optional settings a backend may receive from a power tier or a
 backend default. Missing or malformed tables produce an empty mapping rather than an error.
 
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::PowerMapping`
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::PowerMapping` @451a081294d0
 - detail: [home config](../home-config.md)
 
 ## Fields
@@ -19,7 +19,7 @@ backend default. Missing or malformed tables produce an empty mapping rather tha
 - required: false
 - semantics: optional model name selected for the backend
 - verify: json_path(path="$.model", absent=true)
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::PowerMapping.model`
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::PowerMapping.model` @451a081294d0
 
 ### effort
 - type: `str | None`
@@ -27,7 +27,7 @@ backend default. Missing or malformed tables produce an empty mapping rather tha
 - required: false
 - semantics: optional effort setting selected for the backend
 - verify: json_path(path="$.effort", absent=true)
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::PowerMapping.effort`
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::PowerMapping.effort` @451a081294d0
 
 ### timeout_scale
 - type: `float | None`
@@ -39,4 +39,4 @@ backend default. Missing or malformed tables produce an empty mapping rather tha
 - verify: json_path(path="$.timeout_scale", equals=2.0)
 - semantics: every other value reads as unset
 - verify: json_path(path="$.timeout_scale", absent=true)
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::PowerMapping.timeout_scale`
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::PowerMapping.timeout_scale` @451a081294d0

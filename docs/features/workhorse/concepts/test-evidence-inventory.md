@@ -17,14 +17,14 @@ or `1` on the first failure, so the file can be invoked with `python workhorse/t
 for a quick local check of the failure-classification and configuration surfaces without going
 through pytest.
 
-- code: `workhorse/tests/conftest.py`
-- code: `workhorse/tests/conftest.py::_no_base_fetch`
-- code: `workhorse/tests/conftest.py::_no_real_config`
-- code: `workhorse/tests/_fakes.py::present`
-- code: `workhorse/tests/_fakes.py::FakeBackend`
-- code: `workhorse/tests/_fakes.py::FakeClock`
-- code: `workhorse/tests/_fakes.py::RecordingTelemetry`
-- code: `workhorse/tests/_fakes.py::fake_groom`
+- code: `workhorse/tests/conftest.py` @0ca650f303e0
+- code: `workhorse/tests/conftest.py::_no_base_fetch` @0ca650f303e0
+- code: `workhorse/tests/conftest.py::_no_real_config` @0ca650f303e0
+- code: `workhorse/tests/_fakes.py::present` @3465f6f9cdde
+- code: `workhorse/tests/_fakes.py::FakeBackend` @3465f6f9cdde
+- code: `workhorse/tests/_fakes.py::FakeClock` @3465f6f9cdde
+- code: `workhorse/tests/_fakes.py::RecordingTelemetry` @3465f6f9cdde
+- code: `workhorse/tests/_fakes.py::fake_groom` @3465f6f9cdde
 - code: `workhorse/tests/test_otel.py::FakeSpan`
 - code: `workhorse/tests/test_otel.py::FakeTracer`
 - code: `workhorse/tests/test_otel.py::FakeTraceApi`

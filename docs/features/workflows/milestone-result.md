@@ -11,7 +11,7 @@ through the operator-awaiting path.
 
 - file: none — in-memory Pydantic model
 - config: none
-- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneResult`
+- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneResult` @3a9fb1b3e42d
 - detail: [author milestone subflow](concepts/author-milestone-subflow.md)
 - tests: `workflows/tests/author/milestone/test_flow.py::_Agent.__call__`
 
@@ -23,7 +23,7 @@ through the operator-awaiting path.
 - required: true
 - semantics: selects successful milestone authoring or operator blocking
 - verify: json_path(path="$.status", equals="complete")
-- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneResult`
+- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneResult` @3a9fb1b3e42d
 - detail: [milestone result fields](concepts/milestone-result-fields.md)
 
 ### notes
@@ -32,5 +32,5 @@ through the operator-awaiting path.
 - required: true
 - semantics: describes the created or reused milestone, or explains the blocking question
 - verify: json_path(path="$.notes", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneResult`
+- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneResult` @3a9fb1b3e42d
 - detail: [milestone result fields](concepts/milestone-result-fields.md)

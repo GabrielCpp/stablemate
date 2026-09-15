@@ -14,5 +14,5 @@ Use `epic` and `story` to identify the requested target. Use `epic_dir`, `story_
 `scaffolded` and `scaffold_message` to inspect whether preparation completed and what Ostler
 reported. These fields are not alternative implementations and are carried together.
 
-- code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget`
+- code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget` @8eca5014bca5
 - rule: select the field by the target representation or preparation outcome the caller requires; no field supersedes another

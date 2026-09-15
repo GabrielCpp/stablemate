@@ -20,7 +20,7 @@ rather than the current `attempt_prompt`, to `timeout_retry_prompt`
 (`workhorse/workhorse/runner/ladder.py::AgentRunner.turn`), so repeated timeouts do not accumulate
 warning notices.
 
-- code: `workhorse/workhorse/runner/reframe.py::timeout_retry_prompt`
+- code: `workhorse/workhorse/runner/reframe.py::timeout_retry_prompt` @b98209bdc64e
 - tests: `workhorse/tests/test_agent_cap.py::test_budget_timeout_warns_retry_with_time_budget`,
   `workhorse/tests/test_agent_cap.py::test_non_timeout_transient_retries_prompt_unchanged`
 

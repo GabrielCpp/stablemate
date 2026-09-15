@@ -9,7 +9,7 @@ The verdict `setup-fix.md` reports on the attempt to repair the QA environment s
 
 - file: none — agent reply and checkpoint value
 - config: `SetupResult` agent-turn output contract
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::SetupResult`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::SetupResult` @2e918886779f
 - detail: [coder QA schema contracts](concepts/coder-qa-schema-contracts.md)
 
 ## Fields
@@ -24,7 +24,7 @@ The verdict `setup-fix.md` reports on the attempt to repair the QA environment s
 - verify: json_path(path="$.status", equals="ready")
 - semantics: `unfixable` only for a true wall that needs a human
 - verify: json_path(path="$.status", equals="unfixable")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::SetupResult.status`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::SetupResult.status` @2e918886779f
 
 ### notes
 
@@ -35,5 +35,5 @@ The verdict `setup-fix.md` reports on the attempt to repair the QA environment s
 - verify: json_path(path="$.notes", matches=".*")
 - semantics: when unfixable, exactly which human-only resource is needed
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::SetupResult.notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::SetupResult.notes` @2e918886779f
 

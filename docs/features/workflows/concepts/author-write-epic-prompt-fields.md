@@ -14,5 +14,5 @@ No field is a fallback or replacement for another. Select a field by the directi
 of the value: provide the four context fields to request an authoring turn, then read the two
 result fields to act on that turn's outcome.
 
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic`
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @60dae86955d2
 - rule: use input fields for caller context and result fields for the authoring outcome; no ranking exists within either group

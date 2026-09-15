@@ -26,8 +26,8 @@ The [author workflow composition root](author-workflow-composition-root.md) regi
 its package-local blueprint. Its state-machine contract is the [author story-author flow](../flows/author-story-author.md).
 The four agent-facing templates are specified in [author story-author prompt contracts](author-story-author-prompt-contracts.md).
 
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor`
-- code: `workflows/src/workhorse_workflows/author/story_author/nodes/_blueprint.py::blueprint`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor` @6c2b77a93e13
+- code: `workflows/src/workhorse_workflows/author/story_author/nodes/_blueprint.py::blueprint` @941c0efdf281
 - tests: `workflows/tests/author/story_author/test_flow.py::test_flow_prepares_explicit_story_before_authoring_without_git_side_effects`
 - detail: [author story-author prompt contracts](author-story-author-prompt-contracts.md)
 
@@ -38,14 +38,14 @@ The four agent-facing templates are specified in [author story-author prompt con
 - does: provides the registration target for deterministic story-author nodes
 - returns: returns a blueprint named `author-story-author`
 - verify: json_path(path="$.name", equals="author-story-author")
-- code: `workflows/src/workhorse_workflows/author/story_author/nodes/_blueprint.py::blueprint`
+- code: `workflows/src/workhorse_workflows/author/story_author/nodes/_blueprint.py::blueprint` @941c0efdf281
 
 ### setup
 - sig: `setup() -> Config`
 - does: loads author configuration in `story-author` mode
 - verify: count(subject="story-author configuration loads", equals=1)
 - returns: returns the resolved author configuration to the flow context
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.setup`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.setup` @6c2b77a93e13
 
 ### labels
 - sig: `labels() -> dict[str, str]`
@@ -53,14 +53,14 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: json_path(path="$.progress", equals="authoring one story")
 - returns: returns the selected story, parent epic, and progress text `authoring one story`
 - verify: json_path(path="$.work_id", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.labels`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.labels` @6c2b77a93e13
 
 ### state_labels
 - sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
 - does: adds the `reworks`, `resolves`, and `audit_reworks` counters to run labels
 - returns: returns the base story labels combined with counter labels
 - verify: json_path(path="$.reworks", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.state_labels`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.state_labels` @6c2b77a93e13
 
 ### _abs
 - sig: `_abs(relative: str) -> Path`
@@ -68,7 +68,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: json_path(path="$.resolved_path", matches=".+")
 - returns: returns the joined absolute path without changing the supplied relative path
 - verify: json_path(path="$.relative_path", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._abs`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._abs` @6c2b77a93e13
 
 ### _resolve
 - sig: `_resolve(target: StoryTarget, notes: str) -> OperatorResolution`
@@ -78,7 +78,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: json_path(path="$.block_stage", equals="write-story")
 - returns: returns the resolver's typed operator resolution
 - verify: json_path(path="$.decision", equals="escalated")
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve` @6c2b77a93e13
 
 ### start
 - sig: `start() -> Continue`
@@ -88,7 +88,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: count(subject="story-author mockup gate decisions", equals=1)
 - does: routes directly to story writing when no mockup is required
 - verify: count(subject="story-author direct-write starts", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.start`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.start` @6c2b77a93e13
 
 ### design_mockup
 - sig: `design_mockup(target: StoryTarget) -> Continue`
@@ -96,7 +96,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: count(subject="story-author mockup turns", equals=1)
 - returns: carries the returned mockup reference into story writing
 - verify: json_path(path="$.mockup", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @6c2b77a93e13
 
 ### write_story
 - sig: `write_story(target: StoryTarget, mockup: str = "", reworks: int = 0, resolves: int = 0, audit_reworks: int = 0, audit_findings: str = "") -> Continue | Await | Done`
@@ -106,7 +106,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: count(subject="story-author blocked-write gates", equals=1)
 - does: sends a non-blocked writing result to story checks
 - verify: count(subject="story-author write-to-check continuations", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @6c2b77a93e13
 
 ### check_story
 - sig: `check_story(target: StoryTarget, mockup: str = "", reworks: int = 0, resolves: int = 0, audit_reworks: int = 0, audit_findings: str = "") -> Continue | Await | Done`
@@ -120,7 +120,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: count(subject="story-author grounding-failure routes", equals=1)
 - does: sends a valid, grounded story to independent audit
 - verify: count(subject="story-author audit handoffs", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.check_story`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.check_story` @6c2b77a93e13
 
 ### audit_story
 - sig: `audit_story(target: StoryTarget, mockup: str = "", reworks: int = 0, resolves: int = 0, audit_reworks: int = 0, audit_findings: str = "") -> Continue | Await | Done`
@@ -134,7 +134,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: count(subject="story-author audit reworks", equals=1)
 - does: sends findings to the operator gate after the audit-rework budget is exhausted
 - verify: count(subject="story-author exhausted-audit gates", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.audit_story`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.audit_story` @6c2b77a93e13
 
 ### rework_story
 - sig: `rework_story(target: StoryTarget, notes: str, mockup: str = "", reworks: int = 0, resolves: int = 0, audit_reworks: int = 0, audit_findings: str = "") -> Continue`
@@ -144,7 +144,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: count(subject="story-author rework turns", equals=1)
 - does: resumes story checks with an incremented rework counter
 - verify: count(subject="story-author rework continuations", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @6c2b77a93e13
 
 ### _rework
 - sig: `_rework(result: object, notes: str, target: StoryTarget, mockup: str, reworks: int, resolves: int, audit_reworks: int, audit_findings: str) -> Continue | Await | Done`
@@ -152,7 +152,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: count(subject="story-author bounded validation reworks", equals=1)
 - does: sends validation failure to the story operator gate when three reworks are complete
 - verify: count(subject="story-author exhausted-validation gates", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._rework`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._rework` @6c2b77a93e13
 
 ### _gate_story
 - sig: `_gate_story(result: object, notes: str, target: StoryTarget, mockup: str, resolves: int) -> Continue | Await | Done`
@@ -162,7 +162,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: count(subject="story-author automatic resolution gates", equals=1)
 - does: returns `StoryAuthorDone` with `status: blocked` after two automatic resolutions
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._gate_story`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._gate_story` @6c2b77a93e13
 
 ### resolve_story
 - sig: `resolve_story(target: StoryTarget, notes: str, mockup: str = "", resolves: int = 0) -> Await`
@@ -170,7 +170,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: count(subject="story-author operator resolutions", equals=1)
 - does: returns an operator-awaiting context that resumes story writing with an incremented resolution count
 - verify: visible(locator="operator-awaiting context", text="blocked")
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.resolve_story`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.resolve_story` @6c2b77a93e13
 
 ### story_feedback
 - sig: `story_feedback(target: StoryTarget, mockup: str = "", reworks: int = 0, resolves: int = 0) -> Continue | Done`
@@ -182,7 +182,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: created(subject="audit-receipt.json")
 - does: returns the authored story result after recording the passing audit
 - verify: json_path(path="$.status", equals="authored")
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.story_feedback`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.story_feedback` @6c2b77a93e13
 - emits: [story-author-done](../story-author-done.md)
 
 ### apply_feedback
@@ -191,7 +191,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: count(subject="story-author feedback application turns", equals=1)
 - does: resumes structural and grounding checks without changing the resolution count
 - verify: count(subject="story-author feedback check continuations", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.apply_feedback`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.apply_feedback` @6c2b77a93e13
 
 ### _format_audit_finding
 - sig: `_format_audit_finding(finding: AuditFinding) -> str`
@@ -199,7 +199,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: json_path(path="$.formatted_finding", matches=".+")
 - returns: returns one human-readable finding line ending the issue with a period before `Repair:`
 - verify: json_path(path="$.formatted_finding", matches="Repair:")
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::_format_audit_finding`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::_format_audit_finding` @6c2b77a93e13
 
 ### _audit_finding_problems
 - sig: `_audit_finding_problems(result: AuditResult) -> list[str]`
@@ -207,7 +207,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: count(subject="malformed audit finding field reports", equals=1)
 - returns: returns one problem description per malformed finding and an empty list for complete findings
 - verify: json_path(path="$.problems", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::_audit_finding_problems`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::_audit_finding_problems` @6c2b77a93e13
 
 ### _audit_notes
 - sig: `_audit_notes(result: AuditResult) -> str`
@@ -217,7 +217,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: count(subject="audit summaries appended", equals=1)
 - returns: returns newline-separated finding and optional summary text
 - verify: json_path(path="$.audit_notes", matches="Summary:")
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::_audit_notes`
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::_audit_notes` @6c2b77a93e13
 
 ## Nodes
 
@@ -234,7 +234,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - returns: returns normalized epic, story, epic directory, story directory, and story document paths
 - verify: json_path(path="$.story_path", matches="/story\\.md$")
 - emits: [story-author-target](../story-author-target.md)
-- code: `workflows/src/workhorse_workflows/author/story_author/nodes/story.py::prepare_story`
+- code: `workflows/src/workhorse_workflows/author/story_author/nodes/story.py::prepare_story` @11ff984b297e
 
 ### record_story_audit
 - sig: `record_story_audit(logger: logging.Logger, story_path: str, repo_dir: str = "") -> AuditReceipt`
@@ -245,4 +245,4 @@ The four agent-facing templates are specified in [author story-author prompt con
 - consistency: audit-receipt — returns an `AuditReceipt` containing the SHA-256 digest and repository-relative receipt path
 - verify: json_path(path="$.path", matches="audit-receipt\\.json$")
 - emits: [story-author-audit-receipt](../story-author-audit-receipt.md)
-- code: `workflows/src/workhorse_workflows/author/story_author/nodes/story.py::record_story_audit`
+- code: `workflows/src/workhorse_workflows/author/story_author/nodes/story.py::record_story_audit` @11ff984b297e

@@ -14,5 +14,5 @@ structured result consumed after the review pass. The code-review prompt describ
 field as part of the feeder turn's required reply. Neither context is a replacement for the
 other: the schema declares no deprecation or selection rule between them.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::CodeReviewResult.findings_summary`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::CodeReviewResult.findings_summary` @2f54962a8770
 - rule: use the result field to understand the returned review record and the prompt field to understand the feeder turn's reply; both describe the same current schema field

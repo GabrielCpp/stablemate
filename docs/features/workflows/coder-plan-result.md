@@ -7,7 +7,7 @@ title: Coder plan result
 
 - file: none — agent reply and checkpoint value
 - config: `PlanResult` agent output contract
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult` @b6e19c205b4f
 - detail: [coder development schema contracts](concepts/coder-dev-schema-contracts.md)
 
 ## Fields
@@ -17,7 +17,7 @@ title: Coder plan result
 - required: true
 - semantics: whether the plan was produced and is ready for review, or could not be produced
 - verify: json_path(path="$.status", matches="done|blocked")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.status`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.status` @b6e19c205b4f
 
 ### summary
 - type: `str`
@@ -25,7 +25,7 @@ title: Coder plan result
 - required: false
 - semantics: one-line plan description or blocker
 - verify: json_path(path="$.summary", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.summary`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.summary` @b6e19c205b4f
 
 ### services
 - type: `list[PlanService]`
@@ -35,7 +35,7 @@ title: Coder plan result
 - verify: json_path(path="$.services", matches=".*")
 - semantics: an empty list permits repository-root dispatch
 - verify: json_path(path="$.services", matches="^\\[\\]$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.services`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.services` @b6e19c205b4f
 
 ### implementation_order
 - type: `list[str]`
@@ -43,7 +43,7 @@ title: Coder plan result
 - required: false
 - semantics: `repo::path` keys ordered from contract producers to consumers
 - verify: json_path(path="$.implementation_order", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.implementation_order`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.implementation_order` @b6e19c205b4f
 
 ### shared_packages
 - type: `list[PlanService]`
@@ -51,7 +51,7 @@ title: Coder plan result
 - required: false
 - semantics: non-service directories changed by the story
 - verify: json_path(path="$.shared_packages", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.shared_packages`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.shared_packages` @b6e19c205b4f
 
 ### verification_setup
 - type: `dict[str, Any]`
@@ -59,7 +59,7 @@ title: Coder plan result
 - required: false
 - semantics: QA profile and rendering capability declared by the story
 - verify: json_path(path="$.verification_setup", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.verification_setup`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.verification_setup` @b6e19c205b4f
 
 ### fixtures
 - type: `list[PlanFixture]`
@@ -67,4 +67,4 @@ title: Coder plan result
 - required: false
 - semantics: typed fixture declarations extracted from verification setup or supplied directly
 - verify: json_path(path="$.fixtures", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.fixtures`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanResult.fixtures` @b6e19c205b4f

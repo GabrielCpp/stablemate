@@ -184,14 +184,14 @@ share `MAX_TOTAL_PLAN_LAPS` so that an alternation past one cannot exceed the su
 rework counter grants one verification-only bonus pass past its own ceiling only for a first
 `evidence` failure with the bonus still unspent.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._exhausted`
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._gate`
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_plan`
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_plan_validation`
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_setup`
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_qa`
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._plan_lap`
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_dry_run`
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._exhausted` @1ae0da2229dc
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._gate` @1ae0da2229dc
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_plan` @1ae0da2229dc
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_plan_validation` @1ae0da2229dc
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_setup` @1ae0da2229dc
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_qa` @1ae0da2229dc
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._plan_lap` @1ae0da2229dc
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_dry_run` @1ae0da2229dc
 - code: `workflows/tests/coder/test_session_chains.py::test_each_spent_qa_budget_routes_to_the_operator_with_its_own_counter`
 - code: `workflows/tests/coder/test_session_chains.py::test_the_total_plan_lap_ceiling_bounds_individually_legal_budgets`
 - code: `workflows/tests/coder/test_session_chains.py::test_only_an_unspent_evidence_bonus_can_cross_the_code_rework_ceiling`

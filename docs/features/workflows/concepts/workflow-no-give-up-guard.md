@@ -12,9 +12,9 @@ path, proves a planted prohibited line produces a non-zero exit, and confirms th
 is clean. The guard implementation is outside this service, so this node documents only the
 workflow-owned test contract.
 
-- code: `workflows/tests/test_giveup_guard.py::test_the_vocabulary_survives`
-- code: `workflows/tests/test_giveup_guard.py::test_a_reintroduction_fails_the_guard`
-- code: `workflows/tests/test_giveup_guard.py::test_the_tree_is_clean`
+- code: `workflows/tests/test_giveup_guard.py::test_the_vocabulary_survives` @86b7f87dc713
+- code: `workflows/tests/test_giveup_guard.py::test_a_reintroduction_fails_the_guard` @86b7f87dc713
+- code: `workflows/tests/test_giveup_guard.py::test_the_tree_is_clean` @86b7f87dc713
 - tests: `workflows/tests/test_giveup_guard.py::test_the_vocabulary_survives`
 - tests: `workflows/tests/test_giveup_guard.py::test_a_reintroduction_fails_the_guard`
 - tests: `workflows/tests/test_giveup_guard.py::test_the_tree_is_clean`

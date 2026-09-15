@@ -15,9 +15,9 @@ two-state `HelloWorld` machine. The machine first produces a
 The registry includes the `hello-world` blueprint and supplies a deterministic greeting for
 `--dry-run`, allowing the complete machine to run without an agent CLI.
 
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::blueprint`
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::workflow`
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::blueprint` @a0d572bb6d0f
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::workflow` @a0d572bb6d0f
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main` @a0d572bb6d0f
 - tests: `workflows/tests/test_hello_world.py::test_the_documented_command_is_declared`
 - tests: `workflows/tests/test_hello_world.py::test_the_documented_dry_run_walks_the_machine_green`
 - tests: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting`
@@ -39,7 +39,7 @@ Measures the configured subject before the agent turn.
 - returns: a Subject with its name and calculated letter count
 - verify: json_path(path="$.name", equals="globex")
 - verify: json_path(path="$.letters", equals=6)
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::measure`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::measure` @a0d572bb6d0f
 - tests: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting`
 
 ### start
@@ -52,7 +52,7 @@ Starts the workflow's deterministic state before its agent turn.
 - does: stores the measured letter count in the transition under `letters`
 - returns: a Continue transition targeting greet
 - verify: json_path(path="$.letters", equals=6)
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld.start`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld.start` @a0d572bb6d0f
 - tests: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting`
 
 ### greet
@@ -65,5 +65,5 @@ Runs the only agent turn and completes the workflow with its typed reply.
 - does: logs the validated greeting text
 - returns: a Done result carrying the validated Greeting
 - verify: json_path(path="$.greeting", equals="Hello, globex.")
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld.greet`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld.greet` @a0d572bb6d0f
 - tests: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting`

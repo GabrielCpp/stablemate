@@ -16,7 +16,7 @@ the dispatcher itself. A caller that must invoke an already-bound workflow direc
 locate the dispatcher. Neither path is deprecated, and the CLI path remains the legitimate
 location for the console-script closure.
 
-- code: `workhorse/workhorse/cli/__init__.py::main`
+- code: `workhorse/workhorse/cli/__init__.py::main` @19166d483bcf
 - rule: import `workhorse.main` for the public direct-call API; use `workhorse.cli.main` only to locate the CLI implementation
 - prefers: [package root main export](package-exports.md#main)
 - detail: [Main dispatcher concept scope](main-dispatcher-concept-scope.md)

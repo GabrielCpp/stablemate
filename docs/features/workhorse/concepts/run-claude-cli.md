@@ -15,7 +15,7 @@ This behaviour was consolidated from the former module-level `_run_cli` into
 `ClaudeBackend.run_turn`; the method now owns the Claude-only protocol beside the other adapter
 symbols.
 
-- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.run_turn`
+- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.run_turn` @38bf24aeff32
 
 Regression coverage includes `workhorse/tests/test_backends.py::test_claude_effort_maps_to_native_flag`,
 `workhorse/tests/test_backends.py::test_claude_no_effort_omits_flag`,

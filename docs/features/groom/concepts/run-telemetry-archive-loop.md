@@ -9,7 +9,7 @@ The archive loop is the background task that periodically examines expired runs 
 
 The loop is seeded on startup to run immediately rather than waiting `ARCHIVE_EVERY_S` seconds, so a fresh groom instance begins draining any pre-existing archival backlog as soon as it comes up.
 
-- code: `groom/groom/app.py::_archive_loop`
+- code: `groom/groom/app.py::_archive_loop` @f85d0b3dbec3
 - extends: [groom archive module](groom-archive-module.md)
 - tests: `groom/tests/test_archive.py`, `groom/tests/test_sidecar_turns.py`
 
@@ -21,7 +21,7 @@ The loop is seeded on startup to run immediately rather than waiting `ARCHIVE_EV
 - default: `21600.0` (six hours)
 - required: true
 - semantics: The elapsed time in seconds between archive sweep passes. Loaded from the environment variable `GROOM_ARCHIVE_EVERY_S` and re-exported as `ARCHIVE_EVERY_S` in the app module.
-- code: `groom/groom/app.py::ARCHIVE_EVERY_S`
+- code: `groom/groom/app.py::ARCHIVE_EVERY_S` @f85d0b3dbec3
 
 ### rules-tick-s
 
@@ -29,7 +29,7 @@ The loop is seeded on startup to run immediately rather than waiting `ARCHIVE_EV
 - default: `1.0`
 - required: true
 - semantics: The interval in seconds between loop ticks. The loop wakes this often to check whether it is time to run a sweep, but only runs the sweep when the elapsed time since the last sweep exceeds `ARCHIVE_EVERY_S`.
-- code: `groom/groom/app.py::RULES_TICK_S`
+- code: `groom/groom/app.py::RULES_TICK_S` @f85d0b3dbec3
 
 ## Methods
 
@@ -44,7 +44,7 @@ The loop is seeded on startup to run immediately rather than waiting `ARCHIVE_EV
 - raises: none into the caller — all exceptions are logged and the loop continues
 - verify: emitted(event="groom: archived")
 - verify: persists(subject="run telemetry file on disk")
-- code: `groom/groom/app.py::_archive_loop`
+- code: `groom/groom/app.py::_archive_loop` @f85d0b3dbec3
 
 ### method-spawn-archive
 
@@ -54,7 +54,7 @@ The loop is seeded on startup to run immediately rather than waiting `ARCHIVE_EV
 - verify: created(subject="archive loop task in running tasks")
 - raises: none intentionally raised
 - verify: json_path(path="exception.type", absent=true)
-- code: `groom/groom/app.py::_spawn_archive`
+- code: `groom/groom/app.py::_spawn_archive` @f85d0b3dbec3
 
 ### method-stop-archive
 
@@ -64,7 +64,7 @@ The loop is seeded on startup to run immediately rather than waiting `ARCHIVE_EV
 - verify: absent(subject="archive loop task in running tasks")
 - raises: none intentionally raised
 - verify: json_path(path="exception.type", absent=true)
-- code: `groom/groom/app.py::_stop_archive`
+- code: `groom/groom/app.py::_stop_archive` @f85d0b3dbec3
 
 ## Lifecycle
 

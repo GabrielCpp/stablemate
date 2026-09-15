@@ -16,7 +16,7 @@ configuration, dry-run, nodes, and manifest. There is no ranking among the field
 field only when its named input is needed, and preserve the remaining fields as the same
 invocation boundary.
 
-- code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
+- code: `workhorse/workhorse/pyflow/run.py::RunInvocation` @c2e0103710e1
 - rule: use each `RunInvocation` field for its named run input; no field substitutes for another
 - detail: [run invocation reading guide](run-invocation-reading-guide.md)
 - detail: [run invocation views](run-invocation-views.md)

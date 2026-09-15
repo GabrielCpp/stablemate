@@ -49,8 +49,8 @@ Two further joins sit beside them:
 
 - code: `workflows/src/workhorse_workflows/kit/worklist.py::build_worklist`
 - code: `workflows/src/workhorse_workflows/kit/worklist.py::BuildWorklist`
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.rescan_coverage`
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs._obligations`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.rescan_coverage` @55c476c509d4
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs._obligations` @c5989657afb3
 - code: `workflows/tests/okf_builder/test_worklist_builder.py::fresh_repo`
 - code: `workflows/tests/okf_builder/test_worklist_builder.py::booked_repo`
 - tests: `workflows/tests/okf_builder/test_worklist_builder.py::test_an_unbooked_repo_owes_every_unit_in_missing`

@@ -15,6 +15,6 @@ No ranking exists among these fields. The scaffolder always writes the envelope 
 settings, while it writes the path and branch entries only for explicit overrides; leaving a resource
 axis at `0` or `none` declares that no bound is available for that axis.
 
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main` @9b6cebdf8be0
 - rule: choose the manifest field that matches the program attribute being declared; use an override field only to replace its derived default, and use each envelope field together with `min_containment` to declare executable measurement constraints
 - detail: [research program scaffolder documentation scope](research-program-scaffolder-documentation-scope.md)

@@ -12,7 +12,7 @@ also writes this generic path as an alias of the first enabled assistant; the ge
 machine-independent because `repo.root` is pinned to `.`.
 
 - file: `.agents/agents-context.json`
-- code: `farrier/farrier/renderer.py::Renderer.context_manifest`
+- code: `farrier/farrier/renderer.py::Renderer.context_manifest` @c90fc5d746a8
 - detail: [renderer](concepts/renderer.md#context_manifest-the-per-repo-run-time-manifest)
 
 The per-assistant variants use `.agents/agents-context.<assistant>.json` and differ only in the
@@ -29,7 +29,7 @@ contains the fields below; maps and lists are empty when no matching selections 
 - verify: unchanged(subject="the manifest template mapping", except_fields=[])
 - semantics: exposed to run-time prompts as `template.<key>`
 - verify: unchanged(subject="the manifest template mapping exposed to prompts", except_fields=[])
-- code: `farrier/farrier/renderer.py::Renderer.context_manifest`
+- code: `farrier/farrier/renderer.py::Renderer.context_manifest` @c90fc5d746a8
 - detail: [context manifest fields](concepts/context-manifest-fields.md)
 
 ### repo
@@ -44,7 +44,7 @@ contains the fields below; maps and lists are empty when no matching selections 
 - verify: unchanged(subject="user-defined repo context keys", except_fields=["name", "prefix", "root"])
 - semantics: repository context sets `root` to the literal `.` rather than the install machine's absolute path
 - verify: json_path(path="$.repo.root", equals=".")
-- code: `farrier/farrier/renderer.py::Renderer.context_manifest`
+- code: `farrier/farrier/renderer.py::Renderer.context_manifest` @c90fc5d746a8
 - detail: [context manifest fields](concepts/context-manifest-fields.md)
 
 ### vars
@@ -53,7 +53,7 @@ contains the fields below; maps and lists are empty when no matching selections 
 - required: false
 - semantics: the same merged mapping as `template`, exposed under the legacy `vars.<key>` prompt namespace
 - verify: json_path(path="$.vars", matches="\\{.+\\}")
-- code: `farrier/farrier/renderer.py::Renderer.context_manifest`
+- code: `farrier/farrier/renderer.py::Renderer.context_manifest` @c90fc5d746a8
 - detail: [context manifest fields](concepts/context-manifest-fields.md)
 
 ### instructions
@@ -62,7 +62,7 @@ contains the fields below; maps and lists are empty when no matching selections 
 - required: false
 - semantics: every selected skill lookup alias mapped to its rendered, repo-root-relative skill file for the manifest's assistant backend
 - verify: json_path(path="$.instructions", matches="skills/.+/SKILL\\.md")
-- code: `farrier/farrier/renderer.py::Renderer.context_manifest`
+- code: `farrier/farrier/renderer.py::Renderer.context_manifest` @c90fc5d746a8
 - tests: `farrier/tests/test_copilot_open_skills.py::test_context_manifest_copilot_uses_open_skills_paths`
 - detail: [context manifest fields](concepts/context-manifest-fields.md)
 
@@ -76,7 +76,7 @@ contains the fields below; maps and lists are empty when no matching selections 
 - verify: omits(subject="instruction_tags", matches="untagged skill aliases")
 - semantics: aliases in `instruction_tags` match the keys in `instructions`
 - verify: json_path(path="$.instruction_tags", matches="the aliases in instructions")
-- code: `farrier/farrier/renderer.py::Renderer.context_manifest`
+- code: `farrier/farrier/renderer.py::Renderer.context_manifest` @c90fc5d746a8
 - tests: `farrier/tests/test_skill_tags.py::test_context_manifest_publishes_tags_for_every_alias`
 - detail: [context manifest fields](concepts/context-manifest-fields.md)
 
@@ -86,7 +86,7 @@ contains the fields below; maps and lists are empty when no matching selections 
 - required: false
 - semantics: every selected prompt lookup alias mapped to its rendered, repo-root-relative prompt file for the manifest's assistant backend
 - verify: json_path(path="$.prompts", matches="(\\.github/prompts|\\.agents/prompts)/.+\\.prompt\\.md|\\.claude/commands/.+\\.md")
-- code: `farrier/farrier/renderer.py::Renderer.context_manifest`
+- code: `farrier/farrier/renderer.py::Renderer.context_manifest` @c90fc5d746a8
 - detail: [context manifest fields](concepts/context-manifest-fields.md)
 
 ### used_skills
@@ -97,7 +97,7 @@ contains the fields below; maps and lists are empty when no matching selections 
 - verify: json_path(path="$.used_skills", matches="^\\[(?:'[^']+'(?:, )?)+\\]$")
 - semantics: the list includes every alias exposed by the skill lookup, not only canonical source ids
 - verify: json_path(path="$.used_skills", matches="^\\[(?:'[^']+'(?:, )?)+\\]$")
-- code: `farrier/farrier/renderer.py::Renderer.context_manifest`
+- code: `farrier/farrier/renderer.py::Renderer.context_manifest` @c90fc5d746a8
 - detail: [context manifest fields](concepts/context-manifest-fields.md)
 
 ### skill_dir
@@ -106,6 +106,6 @@ contains the fields below; maps and lists are empty when no matching selections 
 - required: false
 - semantics: repo-root-relative directory containing the manifest backend's installed skills, such as `.claude/skills`, `.agents/skills`, or `.github/skills`
 - verify: json_path(path="$.skill_dir", matches="^\\.(claude|agents|github)/skills$")
-- code: `farrier/farrier/renderer.py::Renderer.context_manifest`
+- code: `farrier/farrier/renderer.py::Renderer.context_manifest` @c90fc5d746a8
 - tests: `farrier/tests/test_copilot_open_skills.py::test_context_manifest_copilot_uses_open_skills_paths`
 - detail: [context manifest fields](concepts/context-manifest-fields.md)

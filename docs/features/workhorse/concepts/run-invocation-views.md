@@ -17,6 +17,6 @@ the boundary's role between the CLI and the runner. Read [run invocation fields]
 when selecting or understanding one named input. These are complementary views of the same
 value, not competing implementations, so no view supersedes another.
 
-- code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
+- code: `workhorse/workhorse/pyflow/run.py::RunInvocation` @c2e0103710e1
 - rule: choose the lifecycle, boundary, or field view according to the question being answered; no view replaces another
 - detail: [run invocation reading guide](run-invocation-reading-guide.md)

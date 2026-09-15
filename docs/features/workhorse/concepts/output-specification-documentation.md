@@ -17,7 +17,7 @@ specification fields](output-specification-fields.md) to choose the `key` and `r
 for that declaration. Neither concept supersedes the other: they document the enclosing node and
 the same model's field contract at different levels.
 
-- code: `workhorse/workhorse/runner/spec.py::OutputSpec`
+- code: `workhorse/workhorse/runner/spec.py::OutputSpec` @a87403257e16
 - rule: read the agent-node concept for `outputs` placement and extraction context; read the output-fields concept to declare `key` and use `required: false` only for genuinely inapplicable values
 - detail: [Output specification reading guide](output-specification-reading-guide.md)
 - detail: [Output specification documentation scope](output-specification-documentation-scope.md)

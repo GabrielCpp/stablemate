@@ -16,5 +16,5 @@ Read `status` to decide whether the workflow may continue or must wait for an op
 `notes` to learn the per-package record explaining that outcome. Neither field is preferred or
 deprecated: both are required to communicate the result in their respective roles.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeSettled`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeSettled` @a87cd48ce444
 - rule: read `status` for the settlement decision and `notes` for its per-package record; the fields are complementary and have no ranking

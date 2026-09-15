@@ -20,8 +20,8 @@ report the stale source instead of silently treating it as a package name.
 unrecognizable JSON value, malformed JSON, or a changed metadata shape all mean that no workflows
 are discoverable; they do not produce a traceback from the launcher path.
 
-- code: `farrier/farrier/pipx.py::discover`
-- code: `farrier/farrier/pipx.py::names`
+- code: `farrier/farrier/pipx.py::discover` @d72d259a3963
+- code: `farrier/farrier/pipx.py::names` @d72d259a3963
 - tests: `farrier/tests/test_pipx.py::test_a_workflow_is_a_workhorse_prefixed_console_script`
 - tests: `farrier/tests/test_pipx.py::test_a_name_is_reported_once_even_from_two_distributions`
 - tests: `farrier/tests/test_pipx.py::test_an_unrecognisable_payload_costs_workflows_not_a_traceback`
@@ -35,7 +35,7 @@ are discoverable; they do not produce a traceback from the launcher path.
 - verify: json_path(path="$.workflow_script_prefix", equals="workhorse-")
 - semantics: console-script prefix whose suffix names a runnable workflow
 - verify: count(subject="workflow suffixes derived from workhorse-prefixed console scripts", equals=3)
-- code: `farrier/farrier/pipx.py::WORKFLOW_SCRIPT_PREFIX`
+- code: `farrier/farrier/pipx.py::WORKFLOW_SCRIPT_PREFIX` @d72d259a3963
 
 ### field: distribution
 - type: `str`
@@ -43,7 +43,7 @@ are discoverable; they do not produce a traceback from the launcher path.
 - verify: json_path(path="$.distribution", matches="^\\S+$")
 - semantics: installed distribution name reported by pipx
 - verify: json_path(path="$.distribution", equals="workhorse-workflows")
-- code: `farrier/farrier/pipx.py::Installed`
+- code: `farrier/farrier/pipx.py::Installed` @d72d259a3963
 - detail: [installed record fields](installed-record-fields.md)
 
 ### field: workflows
@@ -51,7 +51,7 @@ are discoverable; they do not produce a traceback from the launcher path.
 - required: true
 - verify: json_path(path="$.workflows", equals="[author, coder, okf-builder]")
 - semantics: sorted workflow suffixes exposed by the distribution
-- code: `farrier/farrier/pipx.py::Installed`
+- code: `farrier/farrier/pipx.py::Installed` @d72d259a3963
 - detail: [installed record fields](installed-record-fields.md)
 
 ### field: origin
@@ -60,7 +60,7 @@ are discoverable; they do not produce a traceback from the launcher path.
 - verify: json_path(path="$.origin", equals="workhorse-workflows")
 - semantics: pipx's verbatim PyPI name, remote URL, or host path
 - verify: json_path(path="$.origin", equals="workhorse-workflows")
-- code: `farrier/farrier/pipx.py::Installed`
+- code: `farrier/farrier/pipx.py::Installed` @d72d259a3963
 - detail: [installed record fields](installed-record-fields.md)
 
 ### field: version
@@ -69,7 +69,7 @@ are discoverable; they do not produce a traceback from the launcher path.
 - verify: json_path(path="$.version", equals="0.1.0")
 - semantics: installed distribution version reported by pipx
 - verify: json_path(path="$.version", equals="0.1.0")
-- code: `farrier/farrier/pipx.py::Installed`
+- code: `farrier/farrier/pipx.py::Installed` @d72d259a3963
 - detail: [installed record fields](installed-record-fields.md)
 
 ### field: editable
@@ -78,7 +78,7 @@ are discoverable; they do not produce a traceback from the launcher path.
 - verify: json_path(path="$.editable", equals=true)
 - semantics: whether pipx's install arguments include `--editable`
 - verify: json_path(path="$.editable", equals=true)
-- code: `farrier/farrier/pipx.py::Installed`
+- code: `farrier/farrier/pipx.py::Installed` @d72d259a3963
 - detail: [installed record fields](installed-record-fields.md)
 
 ## Methods
@@ -92,7 +92,7 @@ are discoverable; they do not produce a traceback from the launcher path.
 - returns: the expanded `Path` for a local origin even when the directory is absent
 - verify: absent(subject="local path for a PyPI or remote origin")
 - verify: json_path(path="$.local_path", matches="/.+/")
-- code: `farrier/farrier/pipx.py::Installed.local_path`
+- code: `farrier/farrier/pipx.py::Installed.local_path` @d72d259a3963
 - tests: `farrier/tests/test_pipx.py::test_a_pypi_install_has_no_local_path_to_mount`
 - tests: `farrier/tests/test_pipx.py::test_a_vcs_install_has_no_local_path_either`
 - tests: `farrier/tests/test_pipx.py::test_a_deleted_path_is_not_silently_reclassified_as_a_pypi_name`
@@ -102,7 +102,7 @@ are discoverable; they do not produce a traceback from the launcher path.
 - does: reports true when the record has a local path and that path is not a directory
 - does: reports false for remote or PyPI origins and existing local directories
 - verify: json_path(path="$.missing", equals=true)
-- code: `farrier/farrier/pipx.py::Installed.missing`
+- code: `farrier/farrier/pipx.py::Installed.missing` @d72d259a3963
 - tests: `farrier/tests/test_pipx.py::test_an_editable_install_whose_source_is_gone_is_flagged`
 
 ### method: workflows_from_apps
@@ -112,7 +112,7 @@ are discoverable; they do not produce a traceback from the launcher path.
 - does: removes the `workhorse-` prefix and sorts the remaining workflow names
 - returns: a tuple of workflow suffixes
 - verify: count(subject="sorted workflow suffixes from console scripts", equals=3)
-- code: `farrier/farrier/pipx.py::workflows_from_apps`
+- code: `farrier/farrier/pipx.py::workflows_from_apps` @d72d259a3963
 - tests: `farrier/tests/test_pipx.py::test_a_workflow_is_a_workhorse_prefixed_console_script`
 - tests: `farrier/tests/test_pipx.py::test_the_bare_prefix_and_the_libraries_themselves_are_not_workflows`
 
@@ -126,7 +126,7 @@ are discoverable; they do not produce a traceback from the launcher path.
 - returns: discovered installed distributions with their workflow names, origin, version, and editability
 - verify: count(subject="workflow-providing distributions parsed from a valid payload", equals=1)
 - verify: count(subject="distributions returned for an unrecognizable payload", equals=0)
-- code: `farrier/farrier/pipx.py::parse`
+- code: `farrier/farrier/pipx.py::parse` @d72d259a3963
 - tests: `farrier/tests/test_pipx.py::test_a_workflow_is_a_workhorse_prefixed_console_script`
 - tests: `farrier/tests/test_pipx.py::test_venvs_that_provide_no_workflow_are_not_reported`
 - tests: `farrier/tests/test_pipx.py::test_an_unrecognisable_payload_costs_workflows_not_a_traceback`
@@ -138,7 +138,7 @@ are discoverable; they do not produce a traceback from the launcher path.
 - does: returns no workflows when stdout is malformed or decodes to an unrecognized payload
 - returns: parsed installed workflow distributions
 - verify: count(subject="workflows returned when pipx is unavailable or invalid", equals=0)
-- code: `farrier/farrier/pipx.py::discover`
+- code: `farrier/farrier/pipx.py::discover` @d72d259a3963
 - tests: `farrier/tests/test_pipx.py::test_pipx_not_installed_means_no_workflows_not_a_broken_build`
 - tests: `farrier/tests/test_pipx.py::test_pipx_failing_or_emitting_junk_means_no_workflows`
 - tests: `farrier/tests/test_pipx.py::test_discover_reads_the_json_pipx_actually_emits`
@@ -150,5 +150,5 @@ are discoverable; they do not produce a traceback from the launcher path.
 - does: sorts the resulting names alphabetically
 - returns: a de-duplicated sorted list of runnable workflow names
 - verify: count(subject="unique workflow names from duplicate providers", equals=2)
-- code: `farrier/farrier/pipx.py::names`
+- code: `farrier/farrier/pipx.py::names` @d72d259a3963
 - tests: `farrier/tests/test_pipx.py::test_a_name_is_reported_once_even_from_two_distributions`

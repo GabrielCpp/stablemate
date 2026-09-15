@@ -14,6 +14,6 @@ No field outranks or replaces another. Consumers select the measurement that ans
 question and treat an absent value as unreported, rather than substituting zero or reading a
 different field as an equivalent.
 
-- code: `workhorse/workhorse/runner/usage.py::TurnUsage`
+- code: `workhorse/workhorse/runner/usage.py::TurnUsage` @26a4b951ead1
 - rule: use each field only for its named measurement; absent values are unreported and no field is a substitute for another
 - detail: [Turn usage model](turn-usage-model.md)

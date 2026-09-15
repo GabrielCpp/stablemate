@@ -23,7 +23,7 @@ journey suites](coder-qa-regression.md), and [hygiene](qa-hygiene-gates.md) perf
 pre-commit checks. The flow composes them;
 the package does not expose a second public surface for these nodes.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/__init__.py::__all__`
+- code: `workflows/src/workhorse_workflows/coder/qa/__init__.py::__all__` @ea9ff1f1dfa0
 - detail: [QA evidence gate](qa-evidence-gate.md)
 - detail: [QA hygiene gates](qa-hygiene-gates.md)
 - detail: [QA node operations](qa-node-operations.md)

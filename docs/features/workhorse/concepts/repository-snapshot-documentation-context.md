@@ -15,7 +15,7 @@ Use `RepositorySnapshot` when the whole ordered, Git-root-deduplicated scope is 
 `directories` as the sole field of `RepositorySnapshot`, so these documents cover different
 contexts of one value rather than competing implementations.
 
-- code: `workhorse/workhorse/gitstate.py::RepositorySnapshot`
+- code: `workhorse/workhorse/gitstate.py::RepositorySnapshot` @4695fd1442a8
 - rule: use repository observation for the module-level diagnostic contract and repository snapshot field selection for choosing the whole scope record or its ordered directory entries; neither document supersedes the other
 - detail: [Repository snapshot contexts](repository-snapshot-contexts.md)
 - detail: [Repository snapshot concept selection](repository-snapshot-concept-selection.md)

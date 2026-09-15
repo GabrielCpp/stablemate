@@ -11,7 +11,7 @@ method name, callable, and retired aliases that may appear in checkpoints.
 For the registration and resolution view, see [pyflow state specification registration
 data](pyflow-state-spec-registration-data.md).
 
-- code: `workhorse/workhorse/pyflow/workflow.py::StateSpec`
+- code: `workhorse/workhorse/pyflow/workflow.py::StateSpec` @1a1a48a855c9
 - tests: [pyflow tests](../../../../workhorse/tests/test_pyflow.py)
 - detail: [pyflow state specification reading guide](pyflow-state-spec-reading-guide.md)
 
@@ -21,14 +21,14 @@ data](pyflow-state-spec-registration-data.md).
 - type: `str`
 - required: true
 - semantics: current live state name used by graph rendering and checkpoints
-- code: `workhorse/workhorse/pyflow/workflow.py::StateSpec`
+- code: `workhorse/workhorse/pyflow/workflow.py::StateSpec` @1a1a48a855c9
 - detail: [pyflow state specification fields](pyflow-state-spec-fields.md)
 
 ### field: fn
 - type: `Callable[..., Any]`
 - required: true
 - semantics: state method invoked by the driver
-- code: `workhorse/workhorse/pyflow/workflow.py::StateSpec`
+- code: `workhorse/workhorse/pyflow/workflow.py::StateSpec` @1a1a48a855c9
 - detail: [pyflow state specification fields](pyflow-state-spec-fields.md)
 
 ### field: aliases
@@ -36,5 +36,5 @@ data](pyflow-state-spec-registration-data.md).
 - default: empty tuple
 - required: true
 - semantics: retired state names accepted when resolving a resume checkpoint
-- code: `workhorse/workhorse/pyflow/workflow.py::StateSpec`
+- code: `workhorse/workhorse/pyflow/workflow.py::StateSpec` @1a1a48a855c9
 - detail: [pyflow state specification fields](pyflow-state-spec-fields.md)

@@ -5,14 +5,14 @@ title: OKF-builder audit module
 ---
 # OKF-builder audit module
 
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py` @f983ebe1daca
 
 Run-owned semantic review receipts, rebuilt against current source and claims. The module manages the full lifecycle of audit evidence: preparing packets from source, managing review contracts to detect prompt/schema changes, persisting typed verdicts, and memoizing results so repeated assessments avoid redundant LLM calls.
 
 ## Configuration and Scope
 
 ### AuditScope
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::AuditScope`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::AuditScope` @f983ebe1daca
 - `docs_path` — root path to the documentation directory
 - `source_path` — file or directory in source to audit
 - `context_paths` — optional supporting files to include in context
@@ -46,7 +46,7 @@ read-time, not post-filter; the empty string disables it.
 
 - detail: [Filter mechanisms and limitations](#filter-mechanisms-and-limitations)
 - code: `ostler/ostler/behavior.py::extract_book` (the `scope` parameter)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/paths.py::book_scope`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/paths.py::book_scope` @cff1272aa2b3
 - consistency: audit-scope — every prepared packet's claims carry paths inside the `book_scope` prefix when `scope.service` is set
 - tests: `workflows/tests/okf_builder/test_audit.py::test_book_to_source_mismatches_queue_only_the_selected_book`
 
@@ -85,7 +85,7 @@ filter that aborts the audit on preparation; the rest ship partial reports.
 
 - detail: [Filter mechanisms and limitations](#filter-mechanisms-and-limitations)
 - code: `ostler/ostler/behavior.py::extract_evidence` (the `context_paths` parameter)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::preparation`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::preparation` @f983ebe1daca
 - consistency: audit-packet — a context_paths file contributes no candidates to any packet
 - consistency: audit-preparation — a context_paths file that fails to parse produces an `invalid` outcome and zero reviewer turns spent
 - tests: `workflows/tests/okf_builder/test_audit.py::test_support_context_reaches_packets_and_invalidates_receipts`
@@ -102,7 +102,7 @@ drive that omits packets is *partial*, not *invalid*; the next drive picks the r
 the prepared inventory on disk.
 
 - detail: [Filter mechanisms and limitations](#filter-mechanisms-and-limitations)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::assess_audit` (`selected = prepared.packets[:scope.max_packets]`)
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::assess_audit` @f983ebe1daca (`selected = prepared.packets[:scope.max_packets]`)
 - consistency: audit-outcome — a drive that drops packets via `max_packets` reports `status = "partial"` (not `"invalid"`) and counts the drops on `omitted_packets`
 - detail: [assess_audit entry points](assess-audit-entry-points.md)
 - detail: [OKF-builder audit module](okf-builder-audit-module.md)
@@ -211,7 +211,7 @@ reviewer, and counts it on `BehaviorAuditOutcome.empty_packets`. An empty packet
 claims a digest and is recorded as assessed; the count is informational, not blocking.
 
 - detail: [Filter mechanisms and limitations](#filter-mechanisms-and-limitations)
-- code: `workflows/src/workhorse_workflows/okf_builder/audit/flow.py::Audit.start`
+- code: `workflows/src/workhorse_workflows/okf_builder/audit/flow.py::Audit.start` @78e184648cdd
 - consistency: audit-outcome — a packet with no candidates and no claims is recorded as `assessed` and contributes one to `empty_packets` without spending a reviewer turn
 - detail: [assess_audit entry points](assess-audit-entry-points.md)
 - tests: `workflows/tests/okf_builder/test_audit.py::test_sampling_and_unsupported_source_are_explicit_partial_reports`
@@ -228,7 +228,7 @@ the `BehaviorAuditOutcome.limitations` string list.
 A review contract is a digest of the dispatch contract: the audit prompt file and the result schema. It binds verdicts to the exact conditions under which they were produced, ensuring that a later re-run with different instructions or schema does not reuse stale receipts.
 
 ### ReviewContract
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::ReviewContract`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::ReviewContract` @f983ebe1daca
 - `version` — schema version (currently 1)
 - `prompt_digest` — SHA256 of the audit prompt file at dispatch time
 - `schema_digest` — SHA256 of the AuditVerdicts JSON schema at dispatch time
@@ -237,7 +237,7 @@ A review contract is a digest of the dispatch contract: the audit prompt file an
 - tests: `workflows/tests/okf_builder/test_audit.py::test_in_flight_contract_change_never_marks_reply_current`
 
 ### ReceiptPolicy
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::ReceiptPolicy`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::ReceiptPolicy` @f983ebe1daca
 
 Binds a verdict file to its contract and verdict digest. Persisted alongside `verdicts.json` to detect stale receipts that cannot be reused.
 
@@ -247,17 +247,17 @@ Binds a verdict file to its contract and verdict digest. Persisted alongside `ve
 - tests: `workflows/tests/okf_builder/test_audit.py::test_in_flight_contract_change_never_marks_reply_current`
 
 ### review_contract(prompt_path, result_schema) → ReviewContract
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::review_contract`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::review_contract` @f983ebe1daca
 
 Creates a ReviewContract from the current prompt and schema digests.
 
 ### verdict_schema() → str
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::verdict_schema`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::verdict_schema` @f983ebe1daca
 
 Returns the JSON schema of AuditVerdicts as a canonical string (sorted keys, compact separators).
 
 ### ReviewContractChanged
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::ReviewContractChanged`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::ReviewContractChanged` @f983ebe1daca
 
 Exception raised when the review contract changes during dispatch or verdict recording. Treated as an operator gate to prevent silently reusing verdicts under changed conditions.
 
@@ -305,7 +305,7 @@ establishing the covered source behavior. Confirms documented source coverage, n
 ## Assessment and Preparation
 
 ### preparation(scope) → AuditPreparation
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::preparation`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::preparation` @f983ebe1daca
 
 Reads the scoped book (no formatting or source import) and extracts evidence from the source files. Returns an audit preparation object with candidate behaviors and book claims, filtered by service and source scope.
 
@@ -313,14 +313,14 @@ Raises ValueError if source_path is missing or support context files cannot be p
 - tests: `workflows/tests/okf_builder/test_audit.py::test_audit_preparation_runs_once_per_drive`
 
 ### prepare_audit(logger, scope, run_dir, prompt_path) → AuditPreparation
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::prepare_audit`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::prepare_audit` @f983ebe1daca
 
 The read-once half of the assessment: computes an `AuditPreparation` from source and book, then persists `preparation.json` and one `packet.json` per selected packet under `<run_dir>/behavior-audit/<digest>/`. The audit flow's `setup()` calls it once; the iteration body reads the cached result. Splitting it from `assess_audit` keeps the per-iteration hot loop off the book- and source-reading path — for an N-packet audit the per-packet work is O(1) (receipt scan) instead of O(book + source).
 - tests: `workflows/tests/okf_builder/test_audit.py::test_audit_preparation_runs_once_per_drive`
 - tests: `workflows/tests/okf_builder/test_audit.py::test_resume_rebuilds_source_and_claims_before_reusing_receipts`
 
 ### assess_audit(logger, scope, run_dir, prompt_path, prepared=None) → AuditWork
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::assess_audit`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::assess_audit` @f983ebe1daca
 - detail: [assess_audit entry points](assess-audit-entry-points.md)
 
 Main assessment entry point. Scans receipts against the prepared packets, reuses memoised verdicts when the review contract has not changed, and returns a partial or complete outcome with pending packets for review.
@@ -339,7 +339,7 @@ Returns AuditWork with:
 ## Outcome and Reporting
 
 ### BehaviorAuditOutcome
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::BehaviorAuditOutcome`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::BehaviorAuditOutcome` @f983ebe1daca
 
 Summary of an audit run: what was assessed, what failed, what is unresolved, and limitations.
 
@@ -364,7 +364,7 @@ Summary of an audit run: what was assessed, what failed, what is unresolved, and
 - `error` — the fatal error message when `status` is "invalid"
 
 ### AuditRepair
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::AuditRepair`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::AuditRepair` @f983ebe1daca
 
 Documents a gap discovered during assessment that needs author attention.
 
@@ -372,7 +372,7 @@ Documents a gap discovered during assessment that needs author attention.
 - `context` — the gap narrative and evidence (chunk of max_chars)
 
 ### clear_except_unaudited (property)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::BehaviorAuditOutcome.clear_except_unaudited`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::BehaviorAuditOutcome.clear_except_unaudited` @f983ebe1daca
 
 True when the outcome shows no repairs, unresolved verdicts, or omitted packets — only packets awaiting receipt from a future pass. Indicates a partial audit that may ship pending turn budget completion.
 - tests: `workflows/tests/okf_builder/test_audit.py::test_clear_except_unaudited_names_only_the_budget_shape`
@@ -417,24 +417,24 @@ in which case the file is cited and the audit reports coverage.
 ## Verdict Management
 
 ### AuditWork
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::AuditWork`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::AuditWork` @f983ebe1daca
 
 Result of assess_audit: the outcome, pending packets, and the schema for verdicts.
 
 ### packet_label(packet) → str
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::packet_label`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::packet_label` @f983ebe1daca
 
 Returns a digest and the source paths a packet covers, used to label receipt directories.
 
 ### verdict_memo(scope, contract) → VerdictMemo
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::verdict_memo`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::verdict_memo` @f983ebe1daca
 
 Creates or opens the per-run verdict memo (ostler's IndexStore) for this book and contract. Used to cache and recall verdicts across assessment passes.
 - tests: `workflows/tests/okf_builder/test_audit.py::test_memoized_verdicts_cost_no_turn_in_another_run`
 - tests: `workflows/tests/okf_builder/test_audit.py::test_a_new_claim_reduces_the_packet_to_what_the_memo_lacks`
 
 ### write_receipt(packet_dir, report, contract) → None
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::write_receipt`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::write_receipt` @f983ebe1daca
 
 Atomically writes a verdict receipt to a packet directory:
 - `verdicts.json` — the raw verdict model
@@ -447,14 +447,14 @@ Unlinks the policy file first to ensure an interrupted write never blesses a par
 - tests: `workflows/tests/okf_builder/test_audit.py::test_in_flight_contract_change_never_marks_reply_current`
 
 ### read_receipt(packet_dir, packet, contract) → AuditReport | None
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::read_receipt`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::read_receipt` @f983ebe1daca
 
 Reads and validates a receipt in packet_dir. Returns the AuditReport if the policy contract matches and the verdict digest is valid; None otherwise. Allows detection of stale receipts whose contract has changed.
 - tests: `workflows/tests/okf_builder/test_audit.py::test_resume_binds_receipts_to_review_contract`
 - tests: `workflows/tests/okf_builder/test_audit.py::test_in_flight_contract_change_never_marks_reply_current`
 
 ### recall_report(artifacts, packet, memo, contract) → AuditReport | AuditPacket
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::recall_report`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::recall_report` @f983ebe1daca
 
 Queries the memo for a complete or partial verdict against the packet. If a complete hit, writes a receipt and returns the report. If a partial hit, returns a reduced packet and leaves the full one in `parent.json`. If no hit or validation fails, returns the original packet.
 - tests: `workflows/tests/okf_builder/test_audit.py::test_memoized_verdicts_cost_no_turn_in_another_run`
@@ -464,7 +464,7 @@ Queries the memo for a complete or partial verdict against the packet. If a comp
 ## Recording and Pass Tracking
 
 ### record_audit_verdicts(logger, packet, verdicts, run_dir, contract, prompt_path, scope=None) → AuditReport
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::record_audit_verdicts`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::record_audit_verdicts` @f983ebe1daca
 
 Persists a typed verdict before structural validation. Writes the raw receipt, validates against packet (or parent if reduced), and saves the result. Checks that the review contract has not changed during dispatch; raises ReviewContractChanged if it has.
 - tests: `workflows/tests/okf_builder/test_audit.py::test_resume_binds_receipts_to_review_contract`
@@ -475,19 +475,19 @@ Persists a typed verdict before structural validation. Writes the raw receipt, v
 - tests: `workflows/tests/okf_builder/test_audit.py::test_validation_error_resolution_path_is_retry_then_ship`
 
 ### audit_pass(logger, run_dir, advance) → int
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::audit_pass`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::audit_pass` @f983ebe1daca
 
 Tracks how many audit passes this run has opened (persisted in `behavior-audit/passes`). Used to coordinate multiple assessment rounds in a single workflow run.
 - tests: `workflows/tests/okf_builder/test_audit.py::test_outcome_records_pass_and_rework_counts`
 
 ### record_audit_budget_stop(logger, outcome, turns, budget) → BehaviorAuditOutcome
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::record_audit_budget_stop`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::record_audit_budget_stop` @f983ebe1daca
 
 Records a turn budget exhaustion: updates the outcome status to "partial", clears `scope_clear`, and adds a limitation explaining which packets remain unaudited.
 - tests: `workflows/tests/okf_builder/test_audit.py::test_turn_budget_ends_the_pass_with_the_unaudited_packets_listed`
 
 ### record_audit_error(logger, outcome, packet_digest, error) → BehaviorAuditOutcome
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::record_audit_error`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::record_audit_error` @f983ebe1daca
 
 Records a fatal error during verdict validation: marks outcome as "invalid", clears `scope_clear`, records the error on the outcome's `error` field, writes the error message to the packet directory, and returns the failed outcome.
 - tests: `workflows/tests/okf_builder/test_audit.py::test_a_spent_reviewer_turn_is_gated_not_fatal`

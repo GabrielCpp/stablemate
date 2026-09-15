@@ -19,7 +19,7 @@ counted only when intentionally cited as documentation subjects). The operationa
 the run recipes that force the runbook profile — an undocumented operational surface counts as a
 coverage unit, making the book incomplete until a `runbook` node claims it.
 
-- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py` @d1528ad52fd3
 - detail: [OKF-builder main build machine](okf-builder-main-build-machine.md) — `inventory_source` node
 
 ## Methods
@@ -31,7 +31,7 @@ coverage unit, making the book incomplete until a `runbook` node claims it.
 - verify: json_path(path="return value", equals=true)
 - returns: `False` when the path is readable source that should be inventoried
 - verify: json_path(path="return value", equals=false)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py::skipped`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py::skipped` @d1528ad52fd3
 - tests: `workflows/tests/okf_builder/test_inventory_skips.py::test_a_test_or_vendored_file_is_not_a_unit`
 - tests: `workflows/tests/okf_builder/test_inventory_skips.py::test_a_source_file_is_a_unit`
 
@@ -52,7 +52,7 @@ first-class source. Test functions — prefixed `test_` — are likewise filtere
 - verify: json_path(path="$.kind", matches="make-target|just-recipe|compose-service|package-script|console-script|entry-point")
 - returns: the `evidence` field holds the repo-root-relative path and the extracted name, divided by a colon — this grounds the operation in the code that declares it
 - verify: json_path(path="$.evidence", matches="[^:]+:[^:]+")
-- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py::operational_units`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py::operational_units` @d1528ad52fd3
 
 The function discovers operations by scanning candidate files: all files at the repo root, plus
 every non-filtered file in the source tree. It detects each kind of operation via parsing:

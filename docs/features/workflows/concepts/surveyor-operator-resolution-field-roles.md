@@ -12,6 +12,6 @@ to preserve the old auto-resolve reply shape and is not read. `notes` carries th
 diagnostic findings, while `tried` records the attempted and ruled-out actions so the operator
 does not repeat them. No ranking exists because each field has a distinct role.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution` @f79c1c007a97
 - rule: read `notes` for current diagnostic findings and `tried` for ruled-out actions; retain `decision` only for the legacy reply shape and do not use it to decide the gate
 - detail: [operator resolution documentation context](operator-resolution-documentation-context.md)

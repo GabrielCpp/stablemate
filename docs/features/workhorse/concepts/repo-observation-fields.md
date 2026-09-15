@@ -15,5 +15,5 @@ The `RepoObservation` source defines every value as empty or `None` by default: 
 means the fact was not observed. In particular, `dirty: None` means Git was not queried or could
 not answer, rather than that the tree was clean.
 
-- code: `workhorse/workhorse/records.py::RepoObservation`
+- code: `workhorse/workhorse/records.py::RepoObservation` @9277b8111856
 - rule: select the field that answers the required point-in-time Git fact; the fields are complementary and none supersedes another

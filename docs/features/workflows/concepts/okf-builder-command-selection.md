@@ -15,6 +15,6 @@ registered builder and walkthrough state graphs, and `version` to report the ins
 engine version. All three commands are current; none is preferred or deprecated because each
 answers a distinct operational need.
 
-- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main` @8ecc37aa8802
 - rule: select `run` for flow execution, `dot` for state-graph rendering, and `version` for installed-engine identification; no command supersedes another
 - detail: [OKF-builder workflow entry point](okf-builder-workflow-entry-point.md)

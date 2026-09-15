@@ -23,7 +23,7 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 - required: true
 - semantics: workflow parameters injected into nodes when a node declares the same parameter and no call-site value was supplied
 - verify: json_path(path="$.ambient", matches=".*repo_dir.*")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::AMBIENT`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::AMBIENT` @290dd37f8edd
 
 ### OPERATOR_DIR
 - type: `str`
@@ -31,7 +31,7 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 - required: true
 - semantics: repository-relative directory for operator gate context files when no epic folder is available
 - verify: json_path(path="$.operator_dir", equals=".agents/operator")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::OPERATOR_DIR`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::OPERATOR_DIR` @290dd37f8edd
 
 ## Methods
 
@@ -42,7 +42,7 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 - does: returns the resolved current directory when no marker is found
 - returns: an absolute repository or documentation-checkout root
 - verify: json_path(path="$.result", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::epics_repo_root`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::epics_repo_root` @290dd37f8edd
 
 ### launch_repo_root
 - sig: `launch_repo_root(repo_dir: str | Path = "") -> Path`
@@ -52,7 +52,7 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 - does: returns the current directory when no project marker is found
 - returns: an absolute launch root selected with current-directory precedence
 - verify: json_path(path="$.result", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::launch_repo_root`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::launch_repo_root` @290dd37f8edd
 
 ### operator_context_path
 - sig: `operator_context_path(root: Path, gate: str, epic: str = "") -> Path`
@@ -62,7 +62,7 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 - does: returns `<root>/.agents/operator/<gate>-context.md` when no epic is supplied
 - returns: an absolute operator question file path
 - verify: json_path(path="$.result", matches=".*-context.*\\.md")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::operator_context_path`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::operator_context_path` @290dd37f8edd
 - tests: `workflows/tests/coder/shared/test_paths.py::test_a_gate_with_no_epic_folder_writes_under_the_operator_dir`
 - tests: `workflows/tests/coder/shared/test_paths.py::test_an_epic_that_has_a_folder_still_gets_its_questions_next_to_it`
 
@@ -72,7 +72,7 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 - does: returns the target as an absolute POSIX path when it is outside the root
 - returns: a repository-relative or absolute POSIX path string
 - verify: json_path(path="$.result", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::_rel`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::_rel` @290dd37f8edd
 
 ### epics_dir
 - sig: `epics_dir(root: Path, configured: str = "") -> str`
@@ -80,7 +80,7 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 - does: otherwise resolves the epics root through Ostler and returns its repository-relative POSIX path
 - returns: the repository-relative epics directory
 - verify: json_path(path="$.result", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::epics_dir`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::epics_dir` @290dd37f8edd
 
 ### backlog_file
 - sig: `backlog_file(root: Path, configured: str = "") -> str`
@@ -88,7 +88,7 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 - does: otherwise resolves the backlog path through Ostler and returns its repository-relative POSIX path
 - returns: the repository-relative backlog filename
 - verify: json_path(path="$.result", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::backlog_file`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::backlog_file` @290dd37f8edd
 - tests: `workflows/tests/coder/shared/test_paths.py::test_decisions_land_with_the_documents_not_beside_the_service_directories`
 
 ### epic_dir_rel
@@ -97,7 +97,7 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 - does: resolves the epic beneath that root using Ostler's numbered-or-slug directory rule
 - returns: the resolved epic directory as a repository-relative POSIX path
 - verify: json_path(path="$.result", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::epic_dir_rel`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::epic_dir_rel` @290dd37f8edd
 
 ### features_dir
 - sig: `features_dir(root: Path, configured: str = "") -> str`
@@ -105,28 +105,28 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 - does: otherwise resolves the feature-book root through Ostler and returns its repository-relative POSIX path
 - returns: the repository-relative feature-book directory
 - verify: json_path(path="$.result", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::features_dir`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::features_dir` @290dd37f8edd
 
 ### epics_index
 - sig: `epics_index(root: Path) -> str`
 - does: resolves the Ostler epics index file beneath the configured epics root
 - returns: the epics index as a repository-relative POSIX path for git operations
 - verify: json_path(path="$.result", matches=".*index.*")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::epics_index`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::epics_index` @290dd37f8edd
 
 ### epic_dir
 - sig: `epic_dir(root: Path, epic: str) -> Path`
 - does: resolves an epic by number or bare slug through Ostler
 - returns: the absolute epic directory
 - verify: json_path(path="$.result", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::epic_dir`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::epic_dir` @290dd37f8edd
 
 ### story_md
 - sig: `story_md(root: Path, epic: str, slug: str) -> Path`
 - does: resolves the story directory for `slug` inside `epic` through Ostler
 - returns: the absolute `story.md` path inside the resolved story directory
 - verify: json_path(path="$.result", matches=".*story\\.md")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::story_md`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::story_md` @290dd37f8edd
 
 ### story_context_path
 - sig: `story_context_path(story_path: str, repo_dir: str | Path = "") -> Path`
@@ -134,14 +134,14 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 - does: otherwise returns `context.md` beneath the launch root selected from `repo_dir` and the current directory
 - returns: the absolute per-story or standalone operator context path
 - verify: json_path(path="$.result", matches=".*context\\.md")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::story_context_path`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::story_context_path` @290dd37f8edd
 
 ### decisions_dir
 - sig: `decisions_dir(docs_root: Path) -> Path`
 - does: resolves the backlog path beneath `docs_root` through Ostler
 - returns: the absolute `decisions` directory beside the resolved backlog
 - verify: json_path(path="$.result", matches=".*decisions")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::decisions_dir`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::decisions_dir` @290dd37f8edd
 - tests: `workflows/tests/coder/shared/test_paths.py::test_decisions_land_with_the_documents_not_beside_the_service_directories`
 
 ### is_gate_context
@@ -151,5 +151,5 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 - does: returns true for markdown names whose stem ends in `-context`, including an optional epic suffix
 - returns: whether the path name matches the operator-gate context naming convention
 - verify: json_path(path="$.result", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::is_gate_context`
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::is_gate_context` @290dd37f8edd
 - tests: `workflows/tests/coder/shared/test_paths.py::test_the_operator_dir_files_are_still_excused_from_the_dirty_check`

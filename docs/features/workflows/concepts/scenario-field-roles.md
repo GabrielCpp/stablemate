@@ -14,5 +14,5 @@ No attribute ranks above or replaces another: callers use all three values for t
 roles. AC and Level may be empty when their source bullets are absent, while a missing title
 causes the parser to omit the scenario because it cannot be named.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/scenarios.py::Scenario`
+- code: `workflows/src/workhorse_workflows/coder/shared/scenarios.py::Scenario` @8a8825dc1462
 - rule: use `title` to identify a scenario, `ac` to retain its acceptance criterion, and `level` to classify its test ownership; these complementary fields have no preferred substitute

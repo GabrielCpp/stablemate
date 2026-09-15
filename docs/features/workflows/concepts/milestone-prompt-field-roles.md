@@ -11,7 +11,7 @@ the turn to `Await` and supplies `notes` as that operator-facing message. A non-
 validated before completion. `MilestoneResult` declares `status` and `notes`; the roadmap remains
 the supplied input rather than a result attribute.
 
-- code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.start`
-- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneResult`
+- code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.start` @931c134725ac
+- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneResult` @3a9fb1b3e42d
 - rule: use `roadmap` to identify the approved source item, `status` to select blocked versus validation routing, and `notes` as the blocked-turn message; no field replaces or ranks another
 - detail: [milestone result field roles](milestone-result-field-roles.md)

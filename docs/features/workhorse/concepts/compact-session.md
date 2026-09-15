@@ -23,7 +23,7 @@ resume: the event state starts with that ID and persists it unless a later event
 harness test observes this by compacting from events without `session_id` and reading the retained
 session ID afterward.
 
-- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.compact`
+- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.compact` @38bf24aeff32
 - code: `workhorse/tests/test_config_harness_env.py::test_compaction_runs_under_the_same_env`
 - tests: `workhorse/tests/test_config_harness_env.py::test_compaction_runs_under_the_same_env`,
   `workhorse/tests/test_agent_recovery.py::test_overflow_compacts_then_continues_same_prompt`,

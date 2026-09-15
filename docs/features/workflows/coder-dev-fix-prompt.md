@@ -6,7 +6,7 @@ title: Coder dev-fix prompt
 # Coder dev-fix prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-fix.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.fix`
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.fix` @d76e154f78ef
 - code: `workflows/tests/coder/dev/test_flow.py::lint_gate`
 - detail: [coder development flow](flows/coder-dev.md)
 - detail: [failure report](failure-report.md)

@@ -16,6 +16,6 @@ agent reply. Use [Hello-world command selection](workhorse-hello-world-command-s
 when choosing `run`, `dot`, or `version` at the console. Both views are current because they
 answer different questions about `main`; neither replaces the other.
 
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main` @a0d572bb6d0f
 - rule: use the composition-root concept for the registry and dry-run binding, and the command-selection concept for choosing a console operation; neither concept supersedes the other
 - detail: [Hello-world main concept selection](hello-world-main-concept-selection.md)

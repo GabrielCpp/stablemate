@@ -14,5 +14,5 @@ the declaration, `stage` to learn when Farrier wires its script, and `run` to lo
 relative to the skill directory. A valid hook record needs every field; callers constructing or
 consuming a record use the complete tuple rather than selecting one field as an alternative.
 
-- code: `farrier/farrier/skill_hooks.py::SkillHook`
+- code: `farrier/farrier/skill_hooks.py::SkillHook` @a5640b1ebde8
 - rule: treat `skill`, `stage`, and `run` as complementary required attributes of one hook record; none replaces or ranks above another

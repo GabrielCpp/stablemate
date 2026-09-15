@@ -32,7 +32,7 @@ CI gate.
 - driver: cli
 - environment: [Python and uv environment](farrier-python-environment.md)
 - surfaces: [farrier CLI](../farrier.md)
-- code: `farrier/Makefile::test`
+- code: `farrier/Makefile::test` @aa2eb2332b8b
 - working-directory: farrier
 
 ## Steps

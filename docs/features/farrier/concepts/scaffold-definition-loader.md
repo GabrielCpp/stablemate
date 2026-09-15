@@ -10,7 +10,7 @@ are keyed by their public scaffold id; the higher-precedence layer wins when an 
 library provide the same id. A definition is usable only when its YAML value is a mapping with a
 mapping-valued `tree:` entry.
 
-- code: `farrier/farrier/scaffolds.py::load_scaffold_defs`
+- code: `farrier/farrier/scaffolds.py::load_scaffold_defs` @3ae23dbe7fb3
 
 ## Methods
 
@@ -25,6 +25,6 @@ mapping-valued `tree:` entry.
 - does: retain the first definition for an id encountered in layer-precedence order, so a higher layer shadows lower layers
 - returns: a mapping from each retained scaffold id, converted to `str`, to its validated definition mapping
 - verify: count(subject="retained scaffold definitions returned", equals=1)
-- code: `farrier/farrier/scaffolds.py::load_scaffold_defs`
+- code: `farrier/farrier/scaffolds.py::load_scaffold_defs` @3ae23dbe7fb3
 - tests: `farrier/tests/test_scaffold_command.py::test_scaffold_writes_tree_with_defaults`
 - tests: `farrier/tests/test_scaffold_command.py::test_duplicate_scaffold_id_across_files_errors`

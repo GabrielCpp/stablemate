@@ -16,5 +16,5 @@ override backend sequence order; and `payload` for generic nested workflow metad
 `WorkItem` when documenting the record as a whole. A workflow may omit any declared field, so no
 ranking applies among these members.
 
-- code: `workhorse/workhorse/worklist.py::WorkItem`
+- code: `workhorse/workhorse/worklist.py::WorkItem` @d81b7964cfee
 - rule: choose the field matching the queue concern being represented; these fields are complementary members of one optional record, with no preferred or deprecated alternative

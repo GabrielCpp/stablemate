@@ -23,7 +23,7 @@ Every function here is a **parameterised primitive**: it takes the path or dict 
 argument rather than hard-coding one workflow's vocabulary, and none of them reads the environment
 (see [workflows/README.md](../../../../workflows/README.md)).
 
-- code: `workflows/src/workhorse_workflows/kit/__init__.py`
+- code: `workflows/src/workhorse_workflows/kit/__init__.py` @5a85c432d642
 
 ## The flat surface, and how to patch it
 
@@ -54,7 +54,7 @@ environment read (see [workflows/README.md](../../../../workflows/README.md)). I
 rather than guessing because `resolve_workspace` (read an existing checkout) and
 `checkout_workspace` (create one) fall back differently.
 
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_read_workspace_file`
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_read_workspace_file` @e2832eb8451a
 
 ### `resolve_workspace`
 
@@ -81,7 +81,7 @@ in each repo's own `agents.yml` `workspace:` section. This is the primary lookup
 - verify: json_path(path="$.acme.path", matches=".*/acme")
 - **Raises:** nothing on a missing/invalid `agents.yml` (caught and degraded per folder); an invalid
   `.code-workspace` file itself propagates `load_jsonc`'s `JSONDecodeError`.
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::resolve_workspace`
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::resolve_workspace` @e2832eb8451a
 - tests: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_uses_the_repo_dir_argument_over_cwd`
 - tests: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_falls_back_to_cwd_without_a_repo_dir`
 
@@ -135,7 +135,7 @@ exists by the time the first state runs. Neither coder nor author has a "setup" 
   code knows no token names or provider conventions.
 - **Raises:** every `subprocess.run(..., check=True)` propagates `subprocess.CalledProcessError` on
   a non-zero exit; each carries a timeout (10s local, 300s fetch, 600s clone).
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::checkout_workspace`
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::checkout_workspace` @e2832eb8451a
 - verify: `workflows/tests/test_kit_workspace.py::test_git_network_command_uses_configured_token_env`
 - verify: `workflows/tests/test_kit_workspace.py::test_git_network_command_needs_no_token_for_public_or_local_clone`
 
@@ -147,7 +147,7 @@ exists by the time the first state runs. Neither coder nor author has a "setup" 
   omitted it is built by calling [`resolve_workspace()`](#resolve_workspace) with its default env
   var (`"WORKSPACE_FILE"`) — pass `repos` explicitly when the caller already resolved the workspace
   under a different one.
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::get_repo_config`
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::get_repo_config` @e2832eb8451a
 
 ### `build_dispatch_list`
 
@@ -173,7 +173,7 @@ map, producing one ordered record per service ready to drive a fan-out.
   from the first repo (`type: "unknown"`, `service_path: "."`, `plan_file: "plan.md"`, no skills,
   `label` = the repo name). Pass `fallback=True` only from callers that already know the plan
   context was absent or listed no services.
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::build_dispatch_list`
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::build_dispatch_list` @e2832eb8451a
 
 ### `get_affected_repos`
 
@@ -181,7 +181,7 @@ map, producing one ordered record per service ready to drive a fan-out.
   [`build_dispatch_list`](#build_dispatch_list)); `repos: dict[str, dict]`.
 - **Output:** `list[str]` — the sorted, deduplicated set of `svc["repo"]` values that are also keys
   of `repos`. A service naming a repo outside the resolved workspace is excluded.
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::get_affected_repos`
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::get_affected_repos` @e2832eb8451a
 
 ## git
 
@@ -213,9 +213,9 @@ you want git.
 Token-authenticated pushes are [`kit.github.push_branch`](#github)'s job instead — they are
 github.com operations, not generic git.
 
-- code: `workflows/src/workhorse_workflows/kit/git.py::open_repo`
-- code: `workflows/src/workhorse_workflows/kit/git.py::checkout`
-- code: `workflows/src/workhorse_workflows/kit/git.py::commit_all`
+- code: `workflows/src/workhorse_workflows/kit/git.py::open_repo` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::checkout` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::commit_all` @7590b93bc951
 
 ## github
 
@@ -233,8 +233,8 @@ shim, no CLI, no network. Every helper below inherits that seam.
 | `push_branch(...)` | push `branch` over HTTPS with a transient token |
 | `sync_to_origin(path, token, base)` | fetch `base` over HTTPS and hard-set the local `base` to it (`git checkout -B <base> FETCH_HEAD`) |
 
-- code: `workflows/src/workhorse_workflows/kit/github.py::github_client`
-- code: `workflows/src/workhorse_workflows/kit/github.py::resolve_github_token`
+- code: `workflows/src/workhorse_workflows/kit/github.py::github_client` @f045de206214
+- code: `workflows/src/workhorse_workflows/kit/github.py::resolve_github_token` @f045de206214
 
 ## paths
 
@@ -246,7 +246,7 @@ Where the repo is, and where its docs are.
   defaults to the launch directory), handed to the node as an argument.
 - **Output:** `Path` — `repo_dir` resolved when given; else the first of `Path.cwd()` and its
   parents containing an `agents.yml` or a `.git`; else `Path.cwd()` itself if none match.
-- code: `workflows/src/workhorse_workflows/kit/paths.py::find_repo_root`
+- code: `workflows/src/workhorse_workflows/kit/paths.py::find_repo_root` @6225bbc5d77c
 
 The argument takes priority over walking `cwd` because a run's cwd is not necessarily the consuming
 repo (see [workhorse-<name> run](../workhorse.md#run)) — a bare `cwd`-walk would find the wrong
@@ -263,7 +263,7 @@ reason.
 - **Output:** `Path`, resolved in priority order: 1) `docs_path` if given (absolute as-is, else
   joined under [`find_repo_root(repo_dir)`](#find_repo_root)); 2) `find_repo_root(repo_dir)` itself
   when it is empty — i.e. the docs sit beside the code.
-- code: `workflows/src/workhorse_workflows/kit/paths.py::find_docs_root`
+- code: `workflows/src/workhorse_workflows/kit/paths.py::find_docs_root` @6225bbc5d77c
 
 ## jsonio
 
@@ -284,7 +284,7 @@ trailing commas before a closing `}`/`]`, neither valid in strict JSON.
   URL — `{"url": "https://example.com"}` — was truncated mid-string and then reported as invalid
   JSON. `.code-workspace` files routinely hold URLs and `//` paths.
 - consistency: json5-input — invalid JSON5 input propagates the parser's `ValueError`.
-- code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_jsonc`
+- code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_jsonc` @a43926496140
 - verify: `workflows/tests/test_kit_jsonio.py::test_a_url_in_a_string_is_not_a_comment`
 
 ### `load_json`
@@ -303,7 +303,7 @@ outright.
 - verify: emitted(event="<label> unreadable at <path>: <exception>", count=1)
 - emits: on `OSError`, a single warning that includes the exception text.
 - verify: emitted(event="<label> unreadable at <path>: <exception>", count=1)
-- code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_json`
+- code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_json` @a43926496140
 
 ## tools
 
@@ -318,7 +318,7 @@ have a richer in-process facade of their own; this is for the CLI that has none.
 - consistency: subprocess-result — with `check=True` and a non-zero exit, logs an error through `logger` (if given) and
   raises `RuntimeError(f"{argv[0]} failed: {stderr}")`. With `check=False` (the default) a failed
   result is returned to the caller as-is.
-- code: `workflows/src/workhorse_workflows/kit/tools.py::run_tool`
+- code: `workflows/src/workhorse_workflows/kit/tools.py::run_tool` @4a5bac57a00b
 
 This is the single seam nodes route external-CLI calls through, so an in-process test can
 monkeypatch `run_tool` on `kit.tools` and get a canned result with no `PATH` shim. In production it

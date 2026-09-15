@@ -6,7 +6,7 @@ title: Coder OKF context result
 # Coder OKF context result
 
 - file: none — in-memory result returned by the OKF context build and validation nodes
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult` @f78a0fc9c74d
 - detail: [coder shared OKF context](concepts/coder-shared-okf-context.md)
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_repeat_visit_reuses_the_packet_byte_for_byte`
 
@@ -22,7 +22,7 @@ payload. Its status is closed: `passed` means the relevant context operation suc
 - required: false
 - semantics: context build or validation verdict
 - verify: json_path(path="$.status", matches="passed|invalid")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult.status`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult.status` @f78a0fc9c74d
 
 ### notes
 - type: `str`
@@ -30,7 +30,7 @@ payload. Its status is closed: `passed` means the relevant context operation suc
 - required: false
 - semantics: diagnostic summary associated with the context operation
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult.notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult.notes` @f78a0fc9c74d
 
 ### ostler
 - type: `dict[str, Any]`
@@ -38,4 +38,4 @@ payload. Its status is closed: `passed` means the relevant context operation suc
 - required: false
 - semantics: raw Ostler context output consumed by downstream gates
 - verify: json_path(path="$.ostler", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult.ostler`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult.ostler` @f78a0fc9c74d

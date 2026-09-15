@@ -17,6 +17,6 @@ member. Use the whole-record concept to understand state registration and resolu
 fields concept when selecting the member needed by an identifier, invocation, or retired
 checkpoint name.
 
-- code: `workhorse/workhorse/pyflow/workflow.py::StateSpec`
+- code: `workhorse/workhorse/pyflow/workflow.py::StateSpec` @1a1a48a855c9
 - rule: use the state specification for the registration record and its fields for their individual identifier, callable, and retired-checkpoint concerns; neither concept supersedes the other
 - detail: [pyflow state specification reading guide](pyflow-state-spec-reading-guide.md)

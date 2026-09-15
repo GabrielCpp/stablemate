@@ -12,7 +12,7 @@ format. They are not competing descriptions of one value with a winner to pick; 
 different stage of the same one-pass call, and a reader needs all of them together rather than a
 choice between them.
 
-- code: `groom/groom/docker_io.py::docker_ps_all`
+- code: `groom/groom/docker_io.py::docker_ps_all` @4778bf1b6bc6
 - rule: no selection exists between these four fields — each documents a different stage of
   `docker_ps_all`'s single pass, and the source does not rank one over another
 - detail: [Docker ps-all documentation scope](docker-ps-all-documentation-scope.md)

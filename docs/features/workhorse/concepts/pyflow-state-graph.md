@@ -27,9 +27,9 @@ Cost is `sum over states of (transitions in that state)` — linear in states, b
 is data the driver reads rather than a call it makes, so cross-state combinations are never
 explored.
 
-- code: `workhorse/workhorse/pyflow/graph.py::state_graph`
-- code: `workhorse/workhorse/pyflow/graph.py::preflight`
-- code: `workhorse/workhorse/pyflow/dot.py::to_dot`
+- code: `workhorse/workhorse/pyflow/graph.py::state_graph` @85ed8cfdfe51
+- code: `workhorse/workhorse/pyflow/graph.py::preflight` @85ed8cfdfe51
+- code: `workhorse/workhorse/pyflow/dot.py::to_dot` @869a7a37a1ef
 - tests: [state graph tests](../../../../workhorse/tests/test_pyflow_graph.py)
 
 ## Methods
@@ -38,19 +38,19 @@ explored.
 - sig: `label -> str`
 - returns: slash-joined registered flow names, or the workflow class name when no names exist
 - verify: json_path(path="$.label", equals="default")
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.label`
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.label` @85ed8cfdfe51
 
 ### FlowGraph.state
 - sig: `state(name: str) -> StateNode | None`
 - returns: the live state node with the requested name, or `None` when the graph has no such node
 - verify: count(subject="state lookup results in a graph", equals=1)
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.state`
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.state` @85ed8cfdfe51
 
 ### FlowGraph.reachable
 - sig: `reachable() -> set[str]`
 - returns: states reachable from the start over non-dynamic, non-dangling edges
 - verify: count(subject="reachable states in a two-state flow", equals=2)
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.reachable`
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.reachable` @85ed8cfdfe51
 - code: `workhorse/tests/test_pyflow_graph.py::test_a_target_the_source_cannot_name_is_reported_as_dynamic`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_a_target_the_source_cannot_name_is_reported_as_dynamic`
 
@@ -58,7 +58,7 @@ explored.
 - sig: `unreachable() -> tuple[str, ...]`
 - returns: live states not reached by the static walk
 - verify: count(subject="unreachable states in a connected flow", equals=0)
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.unreachable`
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.unreachable` @85ed8cfdfe51
 - code: `workhorse/tests/test_pyflow_graph.py::test_reachability_finds_the_state_nothing_transitions_to`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_reachability_finds_the_state_nothing_transitions_to`
 
@@ -66,7 +66,7 @@ explored.
 - sig: `prompts() -> tuple[tuple[str, str], ...]`
 - returns: each live state and every literal agent prompt path found in that state
 - verify: count(subject="literal prompts reported for a graph", equals=1)
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.prompts`
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph.prompts` @85ed8cfdfe51
 - code: `workhorse/tests/test_pyflow_graph.py::test_node_calls_and_prompt_paths_are_collected`
 - detail: [Seam collector selection](seam-collector-selection.md)
 - tests: `workhorse/tests/test_pyflow_graph.py::test_node_calls_and_prompt_paths_are_collected`, `workhorse/tests/test_pyflow_graph.py::test_a_seam_inside_a_private_helper_is_attributed_to_the_state`
@@ -76,7 +76,7 @@ explored.
 - does: parses every live state source and records transitions and engine seams in source order
 - returns: one graph with live state names only
 - verify: count(subject="state graphs produced for one workflow class", equals=1)
-- code: `workhorse/workhorse/pyflow/graph.py::state_graph`
+- code: `workhorse/workhorse/pyflow/graph.py::state_graph` @85ed8cfdfe51
 - code: `workhorse/tests/test_pyflow_graph.py::test_both_arms_of_a_branch_become_edges`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_both_arms_of_a_branch_become_edges`, `workhorse/tests/test_pyflow_graph.py::test_an_alias_is_never_a_second_state`, `workhorse/tests/test_pyflow_graph.py::test_a_step_carries_the_docstring_line_or_the_prompt_title`
 
@@ -85,7 +85,7 @@ explored.
 - does: groups registry flow names by distinct workflow class with the entry class first
 - returns: one graph per distinct registered workflow class
 - verify: count(subject="graphs produced for one registry with one flow class", equals=1)
-- code: `workhorse/workhorse/pyflow/graph.py::registry_graphs`
+- code: `workhorse/workhorse/pyflow/graph.py::registry_graphs` @85ed8cfdfe51
 - code: `workhorse/tests/test_pyflow_graph.py::test_registry_graphs_render_each_class_once_with_all_its_flow_names`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_registry_graphs_render_each_class_once_with_all_its_flow_names`
 
@@ -94,7 +94,7 @@ explored.
 - does: reports missing start states, terminal paths, opaque sources, dangling transitions, unreachable states, and missing prompts
 - returns: problem strings, empty when static checks pass
 - verify: count(subject="preflight problems for a valid workflow", equals=0)
-- code: `workhorse/workhorse/pyflow/graph.py::preflight`
+- code: `workhorse/workhorse/pyflow/graph.py::preflight` @85ed8cfdfe51
 - code: `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_an_unreachable_state`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_preflight_is_quiet_when_every_prompt_resolves`, `workhorse/tests/test_pyflow_graph.py::test_preflight_names_the_prompt_that_does_not_exist`, `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_an_unreachable_state`, `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_a_machine_that_cannot_terminate`, `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_a_transition_to_something_that_is_not_a_state`
 
@@ -102,7 +102,7 @@ explored.
 - sig: `terminal -> bool`
 - returns: `true` when at least one recorded edge is a `done` edge
 - verify: json_path(path="$.terminal", equals=true)
-- code: `workhorse/workhorse/pyflow/graph.py::StateNode.terminal`
+- code: `workhorse/workhorse/pyflow/graph.py::StateNode.terminal` @85ed8cfdfe51
 - code: `workhorse/tests/test_pyflow_graph.py::test_a_done_is_an_edge_out_of_the_state_beside_its_other_edge`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_a_done_is_an_edge_out_of_the_state_beside_its_other_edge`
 
@@ -110,13 +110,13 @@ explored.
 - sig: `handoffs -> tuple[str, ...]`
 - returns: sub-workflow class names reached by handoff steps in source order
 - verify: count(subject="handoffs reported by a state with one handoff", equals=1)
-- code: `workhorse/workhorse/pyflow/graph.py::StateNode.handoffs`
+- code: `workhorse/workhorse/pyflow/graph.py::StateNode.handoffs` @85ed8cfdfe51
 
 ### StateNode.calls
 - sig: `calls -> tuple[str, ...]`
 - returns: blueprint node names reached by call steps in source order
 - verify: count(subject="node calls reported by a state with one call", equals=1)
-- code: `workhorse/workhorse/pyflow/graph.py::StateNode.calls`
+- code: `workhorse/workhorse/pyflow/graph.py::StateNode.calls` @85ed8cfdfe51
 - code: `workhorse/tests/test_pyflow_graph.py::test_node_calls_and_prompt_paths_are_collected`
 - detail: [Seam collector selection](seam-collector-selection.md)
 - tests: `workhorse/tests/test_pyflow_graph.py::test_node_calls_and_prompt_paths_are_collected`, `workhorse/tests/test_pyflow_graph.py::test_a_seam_inside_a_private_helper_is_attributed_to_the_state`, `workhorse/tests/test_pyflow_graph.py::test_helpers_that_call_each_other_do_not_loop_the_reader`
@@ -125,7 +125,7 @@ explored.
 - sig: `prompts -> tuple[str, ...]`
 - returns: literal prompt paths passed to agent steps in source order
 - verify: count(subject="prompt paths reported by a state with one agent step", equals=1)
-- code: `workhorse/workhorse/pyflow/graph.py::StateNode.prompts`
+- code: `workhorse/workhorse/pyflow/graph.py::StateNode.prompts` @85ed8cfdfe51
 
 ## Fields
 
@@ -136,28 +136,28 @@ explored.
 - verify: count(subject="transitions discovered from a state with one transition", equals=1)
 - semantics: `target` is empty for a `done` edge
 - verify: json_path(path="$.target", equals="")
-- code: `workhorse/workhorse/pyflow/graph.py::Edge`
+- code: `workhorse/workhorse/pyflow/graph.py::Edge` @85ed8cfdfe51
 - detail: [Edge transition record](edge-transition-record.md)
 
 ### field: Step
 - type: frozen dataclass
 - required: true
 - semantics: one source-ordered node call, agent turn, or sub-workflow handoff in a state
-- code: `workhorse/workhorse/pyflow/graph.py::Step`
+- code: `workhorse/workhorse/pyflow/graph.py::Step` @85ed8cfdfe51
 - detail: [Step field selection](step-field-selection.md)
 
 ### field: StateNode
 - type: frozen dataclass
 - required: true
 - semantics: one live workflow state together with its discovered edges and source steps
-- code: `workhorse/workhorse/pyflow/graph.py::StateNode`
+- code: `workhorse/workhorse/pyflow/graph.py::StateNode` @85ed8cfdfe51
 - detail: [StateNode field selection](state-node-field-selection.md)
 
 ### field: FlowGraph
 - type: frozen dataclass
 - required: true
 - semantics: one workflow class represented as a static machine graph
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph`
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @85ed8cfdfe51
 - detail: [FlowGraph fields](flow-graph-fields.md)
 
 ## Edge Fields
@@ -167,7 +167,7 @@ explored.
 - default: empty string for a `done` edge
 - required: true
 - semantics: the statically named destination state
-- code: `workhorse/workhorse/pyflow/graph.py::Edge`
+- code: `workhorse/workhorse/pyflow/graph.py::Edge` @85ed8cfdfe51
 - detail: [Edge transition record](edge-transition-record.md)
 
 ## StateNode Fields
@@ -176,7 +176,7 @@ explored.
 - type: `str`
 - required: true
 - semantics: live workflow state name represented by the node
-- code: `workhorse/workhorse/pyflow/graph.py::StateNode`
+- code: `workhorse/workhorse/pyflow/graph.py::StateNode` @85ed8cfdfe51
 - detail: [StateNode field selection](state-node-field-selection.md)
 
 ### field: StateNode.edges
@@ -184,7 +184,7 @@ explored.
 - default: empty tuple
 - required: true
 - semantics: unique transitions discovered in the state's source
-- code: `workhorse/workhorse/pyflow/graph.py::StateNode`
+- code: `workhorse/workhorse/pyflow/graph.py::StateNode` @85ed8cfdfe51
 - detail: [StateNode field selection](state-node-field-selection.md)
 
 ### field: StateNode.steps
@@ -192,7 +192,7 @@ explored.
 - default: empty tuple
 - required: true
 - semantics: unique engine seams discovered in source order
-- code: `workhorse/workhorse/pyflow/graph.py::StateNode`
+- code: `workhorse/workhorse/pyflow/graph.py::StateNode` @85ed8cfdfe51
 - detail: [StateNode field selection](state-node-field-selection.md)
 - tests: `workhorse/tests/test_pyflow_graph.py::test_node_calls_and_prompt_paths_are_collected`, `workhorse/tests/test_pyflow_graph.py::test_a_seam_inside_a_private_helper_is_attributed_to_the_state`
 
@@ -201,7 +201,7 @@ explored.
 - default: false
 - required: true
 - semantics: source inspection failed, so the state's transitions and steps are unknown
-- code: `workhorse/workhorse/pyflow/graph.py::StateNode`
+- code: `workhorse/workhorse/pyflow/graph.py::StateNode` @85ed8cfdfe51
 - detail: [StateNode field selection](state-node-field-selection.md)
 
 ## FlowGraph Fields
@@ -210,7 +210,7 @@ explored.
 - type: `str`
 - required: true
 - semantics: workflow class name represented by the graph
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph`
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @85ed8cfdfe51
 - detail: [FlowGraph fields](flow-graph-fields.md)
 
 ### field: FlowGraph.names
@@ -218,7 +218,7 @@ explored.
 - default: empty tuple
 - required: true
 - semantics: registry flow names mapped to this workflow class
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph`
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @85ed8cfdfe51
 - detail: [FlowGraph fields](flow-graph-fields.md)
 
 ### field: FlowGraph.start
@@ -226,7 +226,7 @@ explored.
 - default: empty string
 - required: true
 - semantics: state name from which reachability is explored
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph`
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @85ed8cfdfe51
 - detail: [FlowGraph fields](flow-graph-fields.md)
 
 ### field: FlowGraph.states
@@ -234,7 +234,7 @@ explored.
 - default: empty tuple
 - required: true
 - semantics: statically read live states in stable name order
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph`
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @85ed8cfdfe51
 - detail: [FlowGraph fields](flow-graph-fields.md)
 
 ### field: Edge.kind
@@ -242,7 +242,7 @@ explored.
 - default: `continue`
 - required: true
 - semantics: `continue`, `await`, or `done`
-- code: `workhorse/workhorse/pyflow/graph.py::Edge`
+- code: `workhorse/workhorse/pyflow/graph.py::Edge` @85ed8cfdfe51
 - detail: [Edge transition record](edge-transition-record.md)
 - code: `workhorse/tests/test_pyflow_graph.py::test_an_await_edge_is_read_from_the_third_argument`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_a_done_is_an_edge_out_of_the_state_beside_its_other_edge`, `workhorse/tests/test_pyflow_graph.py::test_an_await_edge_is_read_from_the_third_argument`
@@ -252,7 +252,7 @@ explored.
 - default: empty tuple
 - required: true
 - semantics: names of parameters bound on the destination state
-- code: `workhorse/workhorse/pyflow/graph.py::Edge`
+- code: `workhorse/workhorse/pyflow/graph.py::Edge` @85ed8cfdfe51
 - detail: [Edge transition record](edge-transition-record.md)
 - code: `workhorse/tests/test_pyflow_graph.py::test_edge_labels_name_the_parameters_the_transition_binds`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_edge_labels_name_the_parameters_the_transition_binds`
@@ -262,7 +262,7 @@ explored.
 - default: empty string
 - required: true
 - semantics: literal reason supplied to `.because()`, or empty when it is not statically knowable
-- code: `workhorse/workhorse/pyflow/graph.py::Edge`
+- code: `workhorse/workhorse/pyflow/graph.py::Edge` @85ed8cfdfe51
 - detail: [Edge transition record](edge-transition-record.md)
 - code: `workhorse/tests/test_pyflow_graph.py::test_a_chained_because_is_read_as_the_edge_reason`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_a_chained_because_is_read_as_the_edge_reason`
@@ -272,7 +272,7 @@ explored.
 - default: false
 - required: true
 - semantics: the target expression was not a plain `self.<state>` reference
-- code: `workhorse/workhorse/pyflow/graph.py::Edge`
+- code: `workhorse/workhorse/pyflow/graph.py::Edge` @85ed8cfdfe51
 - detail: [Edge transition record](edge-transition-record.md)
 - code: `workhorse/tests/test_pyflow_graph.py::test_a_target_the_source_cannot_name_is_reported_as_dynamic`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_a_target_the_source_cannot_name_is_reported_as_dynamic`
@@ -282,7 +282,7 @@ explored.
 - default: false
 - required: true
 - semantics: a plain target names no live state
-- code: `workhorse/workhorse/pyflow/graph.py::Edge`
+- code: `workhorse/workhorse/pyflow/graph.py::Edge` @85ed8cfdfe51
 - detail: [Edge transition record](edge-transition-record.md)
 - code: `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_a_transition_to_something_that_is_not_a_state`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_a_transition_to_something_that_is_not_a_state`
@@ -293,14 +293,14 @@ explored.
 - type: `str`
 - required: true
 - semantics: `call`, `agent`, or `handoff`
-- code: `workhorse/workhorse/pyflow/graph.py::Step`
+- code: `workhorse/workhorse/pyflow/graph.py::Step` @85ed8cfdfe51
 - detail: [Step field selection](step-field-selection.md)
 
 ### field: Step.name
 - type: `str`
 - required: true
 - semantics: node name, literal prompt path, or child workflow class name according to `kind`
-- code: `workhorse/workhorse/pyflow/graph.py::Step`
+- code: `workhorse/workhorse/pyflow/graph.py::Step` @85ed8cfdfe51
 - detail: [Step field selection](step-field-selection.md)
 
 ### field: Step.summary
@@ -308,13 +308,13 @@ explored.
 - default: empty string
 - required: true
 - semantics: first line of a node docstring or prompt title when available
-- code: `workhorse/workhorse/pyflow/graph.py::Step`
+- code: `workhorse/workhorse/pyflow/graph.py::Step` @85ed8cfdfe51
 - detail: [Step field selection](step-field-selection.md)
 - code: `workhorse/tests/test_pyflow_graph.py::test_a_step_carries_the_docstring_line_or_the_prompt_title`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_a_step_carries_the_docstring_line_or_the_prompt_title`
 
 ### method: Step.file
-- code: `workhorse/workhorse/pyflow/graph.py::Step.file`
+- code: `workhorse/workhorse/pyflow/graph.py::Step.file` @85ed8cfdfe51
 - sig: `file -> str`
 - returns: the final path component of the step name
 - verify: json_path(path="$.file", equals="review.md")

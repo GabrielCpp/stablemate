@@ -13,6 +13,6 @@ Use `run` to execute the registered Research flow, `dot` to render its registere
 and `version` to report the installed Workhorse engine version. Selecting one is determined by
 the caller's task, not by a preference or deprecation relationship.
 
-- code: `workflows/src/workhorse_workflows/research/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @e196dc60a365
 - rule: select `run` to execute the Research flow, `dot` to inspect its state graph, or `version` to report the installed engine version; none supersedes the others
 - detail: [Research main entry point views](research-main-entry-point-views.md)

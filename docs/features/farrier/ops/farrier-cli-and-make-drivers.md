@@ -9,7 +9,7 @@ title: Farrier CLI and Make drivers
 - environment: [Python and uv environment](farrier-python-environment.md)
 - cli: [farrier CLI](../farrier.md)
 - surfaces: [farrier CLI](../farrier.md)
-- code: `farrier/Makefile::install`
+- code: `farrier/Makefile::install` @aa2eb2332b8b
 - reuse: never
 - boot-timeout: 120
 - health-timeout: 30

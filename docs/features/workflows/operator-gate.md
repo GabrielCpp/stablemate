@@ -11,7 +11,7 @@ and continuation.
 
 - file: none — in-memory workflow result
 - config: block context and story paths supplied to the escalation composer
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorGate`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorGate` @b6e19c205b4f
 - detail: [Coder escalation composition](concepts/coder-shared-escalation.md)
 
 ## Fields
@@ -22,7 +22,7 @@ and continuation.
 - required: false
 - semantics: newline-terminated operator context containing `STATUS: AWAITING_OPERATOR` and the complete escalation question
 - verify: json_path(path="$.body", matches="^STATUS: AWAITING_OPERATOR")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorGate.body`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorGate.body` @b6e19c205b4f
 
 ### number
 - type: `int`
@@ -30,4 +30,4 @@ and continuation.
 - required: false
 - semantics: escalation ordinal carried for caller logging and gate context
 - verify: json_path(path="$.number", matches="[0-9]+")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorGate.number`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorGate.number` @b6e19c205b4f

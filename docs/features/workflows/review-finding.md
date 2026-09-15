@@ -6,7 +6,7 @@ title: Coder review finding
 # Coder review finding
 
 - file: none — in-memory review result member
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding` @2f54962a8770
 - detail: [coder finding](finding.md)
 - detail: [coder review schema contracts](concepts/coder-review-schema-contracts.md)
 
@@ -21,7 +21,7 @@ The review flow keeps every finding; confidence controls whether it is mandatory
 - required: false
 - semantics: repository-relative location or other target of the review issue
 - verify: json_path(path="$.target", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding` @2f54962a8770
 - detail: [review finding core fields](concepts/review-finding-core-fields.md)
 
 ### issue
@@ -30,7 +30,7 @@ The review flow keeps every finding; confidence controls whether it is mandatory
 - required: false
 - semantics: problem identified by the review
 - verify: json_path(path="$.issue", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding` @2f54962a8770
 - detail: [review finding core fields](concepts/review-finding-core-fields.md)
 
 ### repair
@@ -39,7 +39,7 @@ The review flow keeps every finding; confidence controls whether it is mandatory
 - required: false
 - semantics: smallest change that addresses the review issue
 - verify: json_path(path="$.repair", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding` @2f54962a8770
 - detail: [review finding core fields](concepts/review-finding-core-fields.md)
 
 ### category
@@ -49,7 +49,7 @@ The review flow keeps every finding; confidence controls whether it is mandatory
 - verify: json_path(path="$.category", matches="Bug|Standard|Reuse")
 - semantics: the `Reuse` lens covers duplication and a missed utility
 - verify: json_path(path="$.category", equals="Reuse")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding.category`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding.category` @2f54962a8770
 - tests: `workflows/tests/coder/review/test_flow.py::test_the_split_is_inclusive_at_the_confidence_line`
 
 ### score
@@ -58,4 +58,4 @@ The review flow keeps every finding; confidence controls whether it is mandatory
 - required: false
 - semantics: reviewer confidence used to split mandatory findings at 80 or higher from advisory findings
 - verify: json_path(path="$.score", matches="[0-9]+")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding.score`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding.score` @2f54962a8770

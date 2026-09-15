@@ -10,7 +10,7 @@ workflow inputs. An explicit `repo_dir` is authoritative; when it is empty, repo
 starts at the resolved current working directory and walks toward the filesystem root. No
 environment variable is consulted, so the result is visible to and checkpointable by callers.
 
-- code: `workflows/src/workhorse_workflows/kit/paths.py`
+- code: `workflows/src/workhorse_workflows/kit/paths.py` @6225bbc5d77c
 
 ## Methods
 
@@ -29,7 +29,7 @@ contains `agents.yml` or `.git`.
 - verify: count(subject="repository discovery fallback result", equals=1)
 - returns: the selected repository root as an absolute `Path`
 - verify: count(subject="absolute repository root result", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/paths.py::find_repo_root`
+- code: `workflows/src/workhorse_workflows/kit/paths.py::find_repo_root` @6225bbc5d77c
 
 ### find_docs_root
 
@@ -46,4 +46,4 @@ The documentation-root resolver gives an absolute `docs_path` precedence. A rela
 - verify: count(subject="default documentation root resolution result", equals=1)
 - returns: the selected documentation root as an absolute `Path`
 - verify: count(subject="absolute documentation root result", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/paths.py::find_docs_root`
+- code: `workflows/src/workhorse_workflows/kit/paths.py::find_docs_root` @6225bbc5d77c

@@ -6,7 +6,7 @@ title: Coder repair-plan-paths prompt
 # Coder repair-plan-paths prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/repair-plan-paths.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::refine`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::refine` @13266f79223d
 - detail: [coder development flow](flows/coder-dev.md)
 - detail: [coder plan result](coder-plan-result.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_an_unresolvable_service_path_reworks_the_plan`

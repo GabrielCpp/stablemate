@@ -36,7 +36,7 @@ remain in their respective flow packages and consume these results.
 - semantics: allowed enumeration rule kinds for inventory materialization
 - verify: count(subject="survey rule-kind semantics", equals=1)
 - verify: count(subject="survey rule-kind vocabularies", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/inventory.py::RULE_KINDS`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/inventory.py::RULE_KINDS` @5a3f7a3f7211
 
 ### UNIT_STATUSES
 - type: `set[str]`
@@ -48,7 +48,7 @@ remain in their respective flow packages and consume these results.
 - verify: count(subject="survey inventory status semantics", equals=1)
 - semantics: only `pending` is selectable and `assessed` or `clean` are completed
 - verify: count(subject="survey inventory status vocabularies", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/inventory.py::UNIT_STATUSES`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/inventory.py::UNIT_STATUSES` @5a3f7a3f7211
 
 ### RECORD_STATUSES
 - type: `set[str]`
@@ -59,7 +59,7 @@ remain in their respective flow packages and consume these results.
 - semantics: statuses permitted in a per-unit finding record
 - verify: count(subject="survey record status semantics", equals=1)
 - verify: count(subject="survey record status vocabularies", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::RECORD_STATUSES`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::RECORD_STATUSES` @cdb6cbd9f5ee
 
 ### PATTERN_SLUG_RE
 - type: compiled regular expression
@@ -67,7 +67,7 @@ remain in their respective flow packages and consume these results.
 - required: true
 - semantics: finding remediation patterns must be non-empty lowercase kebab-case slugs so partitioning can cluster them
 - verify: count(subject="kebab-case remediation pattern validation", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::PATTERN_SLUG_RE`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::PATTERN_SLUG_RE` @cdb6cbd9f5ee
 
 ### EFFORTS
 - type: `set[str]`
@@ -78,7 +78,7 @@ remain in their respective flow packages and consume these results.
 - semantics: effort vocabulary permitted on a finding
 - verify: count(subject="survey finding effort semantics", equals=1)
 - verify: count(subject="survey finding effort vocabularies", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::EFFORTS`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::EFFORTS` @cdb6cbd9f5ee
 
 ### SURVEY_SCHEME
 - type: `workhorse.worklist.Scheme`
@@ -89,7 +89,7 @@ remain in their respective flow packages and consume these results.
 - semantics: worklist classification used to calculate progress and choose the next unit
 - verify: count(subject="survey worklist scheme semantics", equals=1)
 - verify: count(subject="survey worklist schemes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/units.py::SURVEY_SCHEME`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/units.py::SURVEY_SCHEME` @4b2879d30d68
 
 ## Methods
 
@@ -103,7 +103,7 @@ remain in their respective flow packages and consume these results.
 - returns: the normalized stem used beneath the findings directory
 - verify: count(subject="finding-record slug returns", equals=1)
 - verify: count(subject="normalized finding-record slugs", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/inventory.py::record_slug`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/inventory.py::record_slug` @5a3f7a3f7211
 - tests: `workflows/tests/author/shared/survey/test_inventory.py::test_a_record_slug_is_filename_safe_and_lowercased`
 
 ### expand_inventory
@@ -164,7 +164,7 @@ remain in their respective flow packages and consume these results.
 - returns: an `Expansion` whose `inventory_note` describes reuse or materialization
 - verify: count(subject="inventory expansion results", equals=1)
 - verify: count(subject="frozen survey inventories", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/inventory.py::expand_inventory`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/inventory.py::expand_inventory` @5a3f7a3f7211
 - tests: `workflows/tests/author/shared/survey/test_inventory.py::test_folder_rules_materialize_the_unit_list`
 - tests: `workflows/tests/author/shared/survey/test_inventory.py::test_an_existing_inventory_is_consumed_verbatim`
 - tests: `workflows/tests/author/shared/survey/test_inventory.py::test_structural_rule_errors_are_reported_together`
@@ -205,7 +205,7 @@ remain in their respective flow packages and consume these results.
 - returns: a `SplitResult` whose `split_errors` contains the diagnostic reason on rejection
 - verify: count(subject="survey unit split results", equals=1)
 - verify: count(subject="survey unit splits", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/inventory.py::split_unit`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/inventory.py::split_unit` @5a3f7a3f7211
 - tests: `workflows/tests/author/shared/survey/test_inventory.py::test_a_split_replaces_the_unit_in_place`
 - tests: `workflows/tests/author/shared/survey/test_inventory.py::test_split_children_honor_the_rules_excludes`
 - tests: `workflows/tests/author/shared/survey/test_inventory.py::test_only_folder_units_can_split`
@@ -237,7 +237,7 @@ remain in their respective flow packages and consume these results.
 - returns: a `UnitPick` with `has_unit` false and a coverage handoff reason when no pending unit remains
 - verify: count(subject="empty survey unit picks", equals=1)
 - verify: count(subject="pending survey-unit selections", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/units.py::select_next_unit`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/units.py::select_next_unit` @4b2879d30d68
 - tests: `workflows/tests/author/shared/survey/test_units.py::test_the_first_pending_unit_is_the_one_selected`
 
 ### mark_unit
@@ -261,7 +261,7 @@ remain in their respective flow packages and consume these results.
 - returns: a `MarkResult` identifying whether the inventory entry was marked and the resulting status or diagnostic note
 - verify: count(subject="survey unit mark results", equals=1)
 - verify: count(subject="survey-unit status marks", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/units.py::mark_unit`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/units.py::mark_unit` @4b2879d30d68
 - tests: `workflows/tests/author/shared/survey/test_units.py::test_a_missing_record_becomes_a_blocked_stub_rather_than_a_wedge`
 
 ### load_record
@@ -277,7 +277,7 @@ remain in their respective flow packages and consume these results.
 - returns: the parsed record mapping
 - verify: count(subject="survey record mappings", equals=1)
 - verify: count(subject="parsed survey finding records", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::load_record`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::load_record` @cdb6cbd9f5ee
 - tests: `workflows/tests/author/shared/survey/test_records.py::test_a_record_with_no_front_matter_cannot_be_parsed`
 
 ### check_record
@@ -302,7 +302,7 @@ remain in their respective flow packages and consume these results.
 - returns: every structural error for the selected unit, or an empty list when the record is valid
 - verify: count(subject="strict survey record error lists", equals=1)
 - verify: count(subject="strict survey-record validation results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::check_record`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::check_record` @cdb6cbd9f5ee
 - tests: `workflows/tests/author/shared/survey/test_records.py::test_every_structural_error_in_a_finding_is_reported_together`
 
 ### record_errors
@@ -316,7 +316,7 @@ remain in their respective flow packages and consume these results.
 - returns: every coverage-facing structural error, or an empty list when the record is valid
 - verify: count(subject="compact survey record error lists", equals=1)
 - verify: count(subject="compact survey-record validation results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::record_errors`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::record_errors` @cdb6cbd9f5ee
 - tests: `workflows/tests/author/shared/survey/test_records.py::test_an_invalid_record_is_reported_with_the_compact_wording`
 
 ### validate_record
@@ -336,7 +336,7 @@ remain in their respective flow packages and consume these results.
 - returns: `RecordCheck(record_ok=True)` only when the record is complete and internally consistent
 - verify: count(subject="valid per-unit finding records", equals=1)
 - verify: count(subject="validated per-unit finding records", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::validate_record`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::validate_record` @cdb6cbd9f5ee
 - tests: `workflows/tests/author/shared/survey/test_records.py::test_a_complete_assessed_record_validates`
 
 ### verify_records
@@ -366,7 +366,7 @@ remain in their respective flow packages and consume these results.
 - verify: count(subject="failed survey coverage result", equals=1)
 - verify: count(subject="survey coverage results", equals=1)
 - verify: count(subject="survey coverage gate results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::verify_records`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::verify_records` @cdb6cbd9f5ee
 - tests: `workflows/tests/author/shared/survey/test_records.py::test_a_fully_covered_survey_holds`
 
 The package also provides dry-run callback implementations for the registered gate nodes. They
@@ -377,34 +377,34 @@ survey artifacts.
 - sig: `expanded(*_args: object, **_kwargs: object) -> Expansion`
 - returns: an `Expansion` marked successful for dry-run inventory expansion
 - verify: count(subject="dry-run inventory expansion results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::expanded`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::expanded` @4c2c9babb080
 
 ### split
 - sig: `split(*_args: object, **_kwargs: object) -> SplitResult`
 - returns: a `SplitResult` marked successful for dry-run unit splitting
 - verify: count(subject="dry-run unit split results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::split`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::split` @4c2c9babb080
 
 ### recorded
 - sig: `recorded(*_args: object, **_kwargs: object) -> RecordCheck`
 - returns: a `RecordCheck` marked successful for dry-run record validation
 - verify: count(subject="dry-run record validation results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::recorded`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::recorded` @4c2c9babb080
 
 ### verified
 - sig: `verified(*_args: object, **_kwargs: object) -> VerifyResult`
 - returns: a `VerifyResult` marked successful for dry-run coverage verification
 - verify: count(subject="dry-run coverage results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::verified`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::verified` @4c2c9babb080
 
 ### partitioned
 - sig: `partitioned(*_args: object, **_kwargs: object) -> PartitionCheck`
 - returns: a `PartitionCheck` marked successful for dry-run partition validation
 - verify: count(subject="dry-run partition results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::partitioned`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::partitioned` @4c2c9babb080
 
 ### emitted
 - sig: `emitted(*_args: object, **_kwargs: object) -> EmitResult`
 - returns: an `EmitResult` marked successful for dry-run artifact emission
 - verify: count(subject="dry-run artifact emission results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::emitted`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::emitted` @4c2c9babb080

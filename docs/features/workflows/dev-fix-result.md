@@ -7,7 +7,7 @@ title: Coder dev-fix result
 
 - file: none — agent reply and checkpoint value
 - config: `FixResult` dev-fix turn output contract
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::FixResult`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::FixResult` @b6e19c205b4f
 - detail: [coder development schema contracts](concepts/coder-dev-schema-contracts.md)
 - detail: [coder result routing contract](concepts/coder-result-routing.md)
 
@@ -22,7 +22,7 @@ title: Coder dev-fix result
 - semantics: `failed` reports that findings remain but another lap over the same output could plausibly close them, prompting a re-run of the gates and another dev-fix turn if the budget remains
 - semantics: `blocked` terminates repair laps — the command does not run in this directory at all, the fix demands a behaviour change this stage may not make, or it lives in a repo you were not given — and routes the failure to the implementation operator gate
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::FixResult.status`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::FixResult.status` @b6e19c205b4f
 
 ### notes
 - type: `str`
@@ -30,5 +30,5 @@ title: Coder dev-fix result
 - required: false
 - semantics: what was changed, which finding remains and why, or why repair is blocked
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::FixResult.notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::FixResult.notes` @b6e19c205b4f
 

@@ -18,7 +18,7 @@ those are shared contracts used by other Coder lanes and are reached through
 returns the subflow's `Done` value to the caller; prompt paths remain rooted at the `coder`
 package, while this package contributes the `docs/prompts/` segment.
 
-- code: `workflows/src/workhorse_workflows/coder/docs/__init__.py::__all__`
+- code: `workflows/src/workhorse_workflows/coder/docs/__init__.py::__all__` @748f8983f64a
 - detail: [coder documentation flow](../flows/coder-docs.md)
 
 ## Export

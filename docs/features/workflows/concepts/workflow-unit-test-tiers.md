@@ -17,5 +17,5 @@ tests](../ops/workflow-shared-unit-tests.md) for cross-workflow and kit contract
 are peers: the source records no preferred or deprecated tier, and the aggregate target runs
 all of them.
 
-- code: `workflows/Makefile::test`
+- code: `workflows/Makefile::test` @4f2f1208042e
 - rule: select the focused tier by the workflow or shared contract under change; use the aggregate target for the complete workflow suite

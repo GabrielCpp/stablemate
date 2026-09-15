@@ -11,7 +11,7 @@ status meanings come from a caller-supplied `Scheme`, and storage comes from a t
 `Backend`. A `kind` filter lets one store serve several queues without teaching the engine their
 names.
 
-- code: `workhorse/workhorse/worklist.py::WorkList`
+- code: `workhorse/workhorse/worklist.py::WorkList` @d81b7964cfee
 - tests: `workhorse/tests/test_worklist.py`
 
 ## Methods
@@ -23,7 +23,7 @@ names.
 - does: skip done, blocked, explicitly skipped, and out-of-scope-kind items
 - returns: the next `WorkItem`, or `None` when the scoped queue is drained
 - verify: json_path(path="$.id", equals="active-item")
-- code: `workhorse/workhorse/worklist.py::select_next`
+- code: `workhorse/workhorse/worklist.py::select_next` @d81b7964cfee
 
 ### method: counts
 - sig: `counts(items: Iterable[WorkItem], *, scheme: Scheme = DEFAULT_SCHEME, category_key: str | None = None, kind: str | None = None) -> WorkCounts`
@@ -32,14 +32,14 @@ names.
 - does: count not-done items by their first-class `kind`
 - returns: a `WorkCounts` record
 - verify: count(subject="not-done work items in the scoped queue", equals=3)
-- code: `workhorse/workhorse/worklist.py::counts`
+- code: `workhorse/workhorse/worklist.py::counts` @d81b7964cfee
 
 ### method: snapshot
 - sig: `snapshot(items: Iterable[WorkItem], *, current: str | None = None, scheme: Scheme = DEFAULT_SCHEME, category_key: str | None = None, kind: str | None = None) -> WorkSnapshot`
 - does: package the current item, done/total progress, remaining count, category composition, kind composition, and full counts
 - returns: a deterministic in-memory `WorkSnapshot`
 - verify: json_path(path="$.progress", equals="1/4")
-- code: `workhorse/workhorse/worklist.py::snapshot`
+- code: `workhorse/workhorse/worklist.py::snapshot` @d81b7964cfee
 
 ## Methods: WorkList
 
@@ -47,7 +47,7 @@ names.
 - sig: `WorkList.items(kind: str | None = None) -> list[WorkItem]`
 - does: load all backend items or only items of the requested kind
 - returns: parsed `WorkItem` values
-- code: `workhorse/workhorse/worklist.py::WorkList.items`
+- code: `workhorse/workhorse/worklist.py::WorkList.items` @d81b7964cfee
 - verify: count(subject="items returned for a selected kind", equals=2)
 
 ### method: select_next
@@ -56,21 +56,21 @@ names.
 - verify: json_path(path="$.id", equals="c")
 - returns: the next item or `None`
 - verify: json_path(path="$.id", equals="c")
-- code: `workhorse/workhorse/worklist.py::WorkList.select_next`
+- code: `workhorse/workhorse/worklist.py::WorkList.select_next` @d81b7964cfee
 
 ### method: mark
 - sig: `WorkList.mark(item_id: str, status: str, kind: str | None = None) -> bool`
 - does: update every matching item in the optional kind scope
 - does: save only when at least one item matched
 - returns: `true` when an item matched, otherwise `false`
-- code: `workhorse/workhorse/worklist.py::WorkList.mark`
+- code: `workhorse/workhorse/worklist.py::WorkList.mark` @d81b7964cfee
 - verify: persists(subject="marked item status")
 
 ### method: prune
 - sig: `WorkList.prune(item_id: str, kind: str | None = None) -> bool`
 - does: remove matching items in the optional kind scope
 - returns: `true` when an item was removed, otherwise `false`
-- code: `workhorse/workhorse/worklist.py::WorkList.prune`
+- code: `workhorse/workhorse/worklist.py::WorkList.prune` @d81b7964cfee
 - verify: absent(subject="pruned work item")
 
 ### method: counts
@@ -79,7 +79,7 @@ names.
 - verify: json_path(path="$.by_kind.story", equals=2)
 - returns: a `WorkCounts` record
 - verify: json_path(path="$.by_status.done", equals=1)
-- code: `workhorse/workhorse/worklist.py::WorkList.counts`
+- code: `workhorse/workhorse/worklist.py::WorkList.counts` @d81b7964cfee
 
 ### method: snapshot
 - sig: `WorkList.snapshot(current: str | None = None, kind: str | None = None) -> WorkSnapshot`
@@ -87,7 +87,7 @@ names.
 - verify: json_path(path="$.progress", equals="1/4")
 - returns: a `WorkSnapshot` record
 - verify: json_path(path="$.current", equals="c")
-- code: `workhorse/workhorse/worklist.py::WorkList.snapshot`
+- code: `workhorse/workhorse/worklist.py::WorkList.snapshot` @d81b7964cfee
 
 ## Types
 
@@ -107,7 +107,7 @@ names.
 - verify: json_path(path="$.status", absent=true)
 - semantics: generic queue item whose workflow-specific extra fields remain top-level on round trip
 - verify: keys_unchanged(subject="workflow-specific extra fields on a WorkItem round trip")
-- code: `workhorse/workhorse/worklist.py::WorkItem`
+- code: `workhorse/workhorse/worklist.py::WorkItem` @d81b7964cfee
 - detail: [work item fields](work-item-fields.md)
 
 #### field: id
@@ -118,7 +118,7 @@ names.
 - verify: json_path(path="$.id", absent=true)
 - semantics: caller-defined item identifier used by selection, marking, and pruning
 - verify: json_path(path="$.id", equals="selected-item")
-- code: `workhorse/workhorse/worklist.py::WorkItem`
+- code: `workhorse/workhorse/worklist.py::WorkItem` @d81b7964cfee
 - detail: [work item fields](work-item-fields.md)
 
 #### field: status
@@ -129,7 +129,7 @@ names.
 - verify: json_path(path="$.status", absent=true)
 - semantics: caller-defined status interpreted through `Scheme`
 - verify: count(subject="items with statuses in Scheme.active", equals=1)
-- code: `workhorse/workhorse/worklist.py::WorkItem`
+- code: `workhorse/workhorse/worklist.py::WorkItem` @d81b7964cfee
 - detail: [work item fields](work-item-fields.md)
 
 #### field: kind
@@ -140,7 +140,7 @@ names.
 - verify: json_path(path="$.kind", absent=true)
 - semantics: caller-defined list/category discriminator
 - verify: json_path(path="$.kind", equals="story")
-- code: `workhorse/workhorse/worklist.py::WorkItem`
+- code: `workhorse/workhorse/worklist.py::WorkItem` @d81b7964cfee
 - detail: [work item fields](work-item-fields.md)
 
 #### field: order
@@ -153,7 +153,7 @@ names.
 - verify: json_path(path="$.id", equals="early")
 - semantics: when absent, backend sequence order is retained
 - verify: unchanged(subject="backend item sequence")
-- code: `workhorse/workhorse/worklist.py::WorkItem`
+- code: `workhorse/workhorse/worklist.py::WorkItem` @d81b7964cfee
 - detail: [work item fields](work-item-fields.md)
 
 #### field: payload
@@ -164,7 +164,7 @@ names.
 - verify: json_path(path="$.payload", absent=true)
 - semantics: generic nested values used for category counting and other workflow metadata
 - verify: json_path(path="$.payload.cat", equals="ui")
-- code: `workhorse/workhorse/worklist.py::WorkItem`
+- code: `workhorse/workhorse/worklist.py::WorkItem` @d81b7964cfee
 - detail: [work item fields](work-item-fields.md)
 
 ### field: WorkCounts
@@ -173,7 +173,7 @@ names.
 - verify: json_path(path="$.by_status.done", equals=1)
 - verify: json_path(path="$.by_status.blocked", equals=1)
 - verify: json_path(path="$.by_status.pending", equals=2)
-- code: `workhorse/workhorse/worklist.py::WorkCounts`
+- code: `workhorse/workhorse/worklist.py::WorkCounts` @d81b7964cfee
 - detail: [work counts fields](work-counts-fields.md)
 
 #### field: total
@@ -182,7 +182,7 @@ names.
 - verify: json_path(path="$.total", equals=4)
 - semantics: number of items in scope
 - verify: count(subject="items in the scoped queue", equals=4)
-- code: `workhorse/workhorse/worklist.py::WorkCounts`
+- code: `workhorse/workhorse/worklist.py::WorkCounts` @d81b7964cfee
 - detail: [work counts fields](work-counts-fields.md)
 
 #### field: done
@@ -191,7 +191,7 @@ names.
 - verify: json_path(path="$.done", equals=1)
 - semantics: number of items whose status is in `Scheme.done`
 - verify: count(subject="items whose status is in Scheme.done", equals=1)
-- code: `workhorse/workhorse/worklist.py::WorkCounts`
+- code: `workhorse/workhorse/worklist.py::WorkCounts` @d81b7964cfee
 - detail: [work counts fields](work-counts-fields.md)
 
 #### field: active
@@ -200,7 +200,7 @@ names.
 - verify: json_path(path="$.active", equals=1)
 - semantics: number of items whose status is in `Scheme.active`
 - verify: count(subject="items with statuses in Scheme.active", equals=1)
-- code: `workhorse/workhorse/worklist.py::WorkCounts`
+- code: `workhorse/workhorse/worklist.py::WorkCounts` @d81b7964cfee
 - detail: [work counts fields](work-counts-fields.md)
 
 #### field: blocked
@@ -209,7 +209,7 @@ names.
 - verify: json_path(path="$.blocked", equals=1)
 - semantics: number of items whose status is in `Scheme.blocked`
 - verify: count(subject="items with statuses in Scheme.blocked", equals=1)
-- code: `workhorse/workhorse/worklist.py::WorkCounts`
+- code: `workhorse/workhorse/worklist.py::WorkCounts` @d81b7964cfee
 - detail: [work counts fields](work-counts-fields.md)
 
 #### field: pending
@@ -218,7 +218,7 @@ names.
 - verify: json_path(path="$.pending", equals=2)
 - semantics: total minus done, active, and blocked counts
 - verify: count(subject="pending items in the scoped queue", equals=2)
-- code: `workhorse/workhorse/worklist.py::WorkCounts`
+- code: `workhorse/workhorse/worklist.py::WorkCounts` @d81b7964cfee
 - detail: [work counts fields](work-counts-fields.md)
 
 #### field: remaining
@@ -227,7 +227,7 @@ names.
 - verify: json_path(path="$.remaining", equals=3)
 - semantics: total minus done count
 - verify: json_path(path="$.remaining", equals=3)
-- code: `workhorse/workhorse/worklist.py::WorkCounts`
+- code: `workhorse/workhorse/worklist.py::WorkCounts` @d81b7964cfee
 - detail: [work counts fields](work-counts-fields.md)
 
 #### field: by_status
@@ -238,7 +238,7 @@ names.
 - verify: json_path(path="$.by_status.done", equals=1)
 - verify: json_path(path="$.by_status.blocked", equals=1)
 - verify: json_path(path="$.by_status.pending", equals=2)
-- code: `workhorse/workhorse/worklist.py::WorkCounts`
+- code: `workhorse/workhorse/worklist.py::WorkCounts` @d81b7964cfee
 - detail: [work counts fields](work-counts-fields.md)
 
 #### field: by_category
@@ -249,7 +249,7 @@ names.
 - verify: count(subject="by_category", equals=2)
 - verify: json_path(path="$.by_category.ui", equals=1)
 - verify: json_path(path="$.by_category.api", equals=2)
-- code: `workhorse/workhorse/worklist.py::WorkCounts`
+- code: `workhorse/workhorse/worklist.py::WorkCounts` @d81b7964cfee
 - detail: [work counts fields](work-counts-fields.md)
 
 #### field: by_kind
@@ -260,14 +260,14 @@ names.
 - verify: json_path(path="$.by_kind.epic", equals=1)
 - verify: json_path(path="$.by_kind.story", equals=2)
 - verify: json_path(path="$.by_kind.fix", equals=1)
-- code: `workhorse/workhorse/worklist.py::WorkCounts`
+- code: `workhorse/workhorse/worklist.py::WorkCounts` @d81b7964cfee
 - detail: [work counts fields](work-counts-fields.md)
 
 ### field: WorkSnapshot
 - type: frozen record containing current, progress, remaining, composition, kinds, and counts
 - semantics: dashboard/activity-ready summary held in memory
 - verify: json_path(path="$.progress", equals="1/2")
-- code: `workhorse/workhorse/worklist.py::WorkSnapshot`
+- code: `workhorse/workhorse/worklist.py::WorkSnapshot` @d81b7964cfee
 
 ### field: Scheme
 - type: frozen record of `done`, `active`, and `blocked` status sets
@@ -276,19 +276,19 @@ names.
 - verify: json_path(path="$.pending", equals=1)
 - semantics: all other statuses are pending
 - verify: json_path(path="$.id", equals="todo")
-- code: `workhorse/workhorse/worklist.py::Scheme`
+- code: `workhorse/workhorse/worklist.py::Scheme` @d81b7964cfee
 
 ### field: Backend
 - type: protocol with `load() -> list[WorkItem]` and `save(items: Sequence[WorkItem]) -> None`
 - semantics: storage port owned by the workflow or by the built-in JSON adapter
 - verify: persists(subject="items saved through the backend")
-- code: `workhorse/workhorse/worklist.py::Backend`
+- code: `workhorse/workhorse/worklist.py::Backend` @d81b7964cfee
 
 ### field: JsonBackend
 - type: dataclass with `path: Path` and `items_key: str = ""`
 - semantics: atomically reads and writes a bare JSON array or an item list nested under `items_key`, preserving sibling metadata
 - verify: unchanged(subject="sibling object metadata", except_fields=["items"])
-- code: `workhorse/workhorse/worklist.py::JsonBackend`
+- code: `workhorse/workhorse/worklist.py::JsonBackend` @d81b7964cfee
 
 ## Methods: Backend
 
@@ -298,7 +298,7 @@ names.
 - verify: count(subject="items returned by Backend.load", equals=2)
 - returns: a list of work items
 - verify: json_path(path="$[0].id", equals="first-item")
-- code: `workhorse/workhorse/worklist.py::Backend.load`
+- code: `workhorse/workhorse/worklist.py::Backend.load` @d81b7964cfee
 
 ### method: save
 - sig: `Backend.save(items: Sequence[WorkItem]) -> None`
@@ -306,7 +306,7 @@ names.
 - verify: persists(subject="supplied item sequence in backend storage")
 - returns: `None`
 - verify: json_path(path="return", absent=true)
-- code: `workhorse/workhorse/worklist.py::Backend.save`
+- code: `workhorse/workhorse/worklist.py::Backend.save` @d81b7964cfee
 
 ## Methods: JsonBackend
 
@@ -315,7 +315,7 @@ names.
 - does: return an empty list for a missing file
 - does: read a bare array or the configured object member and validate each row
 - returns: parsed `WorkItem` values
-- code: `workhorse/workhorse/worklist.py::JsonBackend.load`
+- code: `workhorse/workhorse/worklist.py::JsonBackend.load` @d81b7964cfee
 - verify: count(subject="items loaded from the JSON backend", equals=4)
 
 ### method: save
@@ -329,4 +329,4 @@ names.
 - verify: json_path(path="return", absent=true)
 - returns: the scenario records `return` only when the result is not `None`
 - verify: json_path(path="return", absent=true)
-- code: `workhorse/workhorse/worklist.py::JsonBackend.save`
+- code: `workhorse/workhorse/worklist.py::JsonBackend.save` @d81b7964cfee

@@ -20,7 +20,7 @@ turn the same way every other backend does.
 It is its own module, `runner/backends/jsonl.py`, so the shared loop is importable without dragging
 in any CLI adapter.
 
-- code: `workhorse/workhorse/runner/backends/jsonl.py::stream_jsonl`
+- code: `workhorse/workhorse/runner/backends/jsonl.py::stream_jsonl` @86d186032cdf
 - tests: `workhorse/tests/test_backends.py::test_opencode_cap_log_line_aborts_stream_early`,
   `workhorse/tests/test_backends.py::test_opencode_cap_structured_error_event_aborts_stream_early`,
   `workhorse/tests/test_backends.py::test_opencode_provider_header_timeout_aborts_into_short_retry`

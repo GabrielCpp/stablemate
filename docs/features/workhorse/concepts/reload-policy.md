@@ -15,7 +15,7 @@ The same policy sites acknowledge `stop` before unwinding through the run's
 interruption cleanup. Stop is immediate when consumed, including during cap and
 operator waits, and preserves the checkpoint for resume.
 
-- code: `workhorse/workhorse/reload.py::cut_by`
+- code: `workhorse/workhorse/reload.py::cut_by` @5d71faf89d83
 - tests: `workhorse/tests/test_reload_request.py::test_an_at_boundary_request_is_held_for_the_boundary_not_dropped`
 - detail: [control channel](control-channel.md)
 
@@ -28,7 +28,7 @@ operator waits, and preserves the checkpoint for resume.
 - verify: count(subject="stop acknowledgments before interruption", equals=1)
 - returns: None for no request, deferred reloads, answers outside a gate wait, profile switches, and unknown actions
 - verify: count(subject="default reload requests accepted by the streaming cut site", equals=1)
-- code: `workhorse/workhorse/reload.py::cut_requested`
+- code: `workhorse/workhorse/reload.py::cut_requested` @5d71faf89d83
 - tests: `workhorse/tests/test_stop_control.py::test_stop_acknowledges_before_interrupting_at_either_site`
 - tests: `workhorse/tests/test_reload_request.py::test_the_default_request_cuts_the_turn`
 
@@ -41,7 +41,7 @@ operator waits, and preserves the checkpoint for resume.
 - verify: count(subject="stop acknowledgments before interruption", equals=1)
 - returns: a cutting reload request, or None when the request is deferred or declined
 - verify: count(subject="at-boundary reload requests held for later", equals=1)
-- code: `workhorse/workhorse/reload.py::cut_by`
+- code: `workhorse/workhorse/reload.py::cut_by` @5d71faf89d83
 - tests: `workhorse/tests/test_stop_control.py::test_stop_acknowledges_before_interrupting_at_either_site`
 - tests: `workhorse/tests/test_reload_request.py::test_an_at_boundary_request_is_held_for_the_boundary_not_dropped`,
   `workhorse/tests/test_reload_reentry.py::test_an_unarmed_run_never_stops_at_a_boundary`
@@ -55,7 +55,7 @@ operator waits, and preserves the checkpoint for resume.
 - verify: count(subject="stop acknowledgments before interruption", equals=1)
 - returns: None after a request has been consumed or declined
 - verify: count(subject="one reload request consumed at one state boundary", equals=1)
-- code: `workhorse/workhorse/reload.py::boundary_requested`
+- code: `workhorse/workhorse/reload.py::boundary_requested` @5d71faf89d83
 - tests: `workhorse/tests/test_stop_control.py::test_stop_acknowledges_before_interrupting_at_either_site`
 - tests: `workhorse/tests/test_reload_request.py::test_one_request_is_one_reload`,
   `workhorse/tests/test_reload_reentry.py::test_a_boundary_request_is_honoured_after_the_checkpoint_and_before_the_body`
@@ -69,7 +69,7 @@ operator waits, and preserves the checkpoint for resume.
 - verify: absent(subject="terminal result for the reload")
 - returns: the driver re-enters from the durable checkpoint
 - verify: persists(subject="the durable checkpoint for the re-entered run")
-- code: `workhorse/workhorse/reload.py::ReloadRequested`
+- code: `workhorse/workhorse/reload.py::ReloadRequested` @5d71faf89d83
 - tests: `workhorse/tests/test_reload_reentry.py::test_a_reload_raised_from_a_state_body_closes_that_states_span`,
   `workhorse/tests/test_reload_reentry.py::test_a_reload_deep_in_a_sub_flow_closes_one_scope_per_drive_frame`,
   `workhorse/tests/test_agent_recovery.py::test_a_reload_is_neither_retried_nor_reframed`,
@@ -81,4 +81,4 @@ operator waits, and preserves the checkpoint for resume.
 - type: integer
 - semantics: process exit code requesting supervisor re-entry after a core reload cannot exec in place
 - verify: json_path(path="$.reload_exit_code", equals=3)
-- code: `workhorse/workhorse/reload.py::RELOAD_EXIT_CODE`
+- code: `workhorse/workhorse/reload.py::RELOAD_EXIT_CODE` @5d71faf89d83

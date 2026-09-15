@@ -18,7 +18,7 @@ The supervisor exit-code behavior is covered by
 - environment: [workhorse container environment](workhorse-container.md)
 - cli: [workhorse](../workhorse.md)
 - surfaces: [workhorse](../workhorse.md)
-- code: `workhorse/supervisor.py::main`
+- code: `workhorse/supervisor.py::main` @65e402ff1f63
 - reuse: never
 - fresh: `docker compose -f workhorse/compose.yaml build agent`
 - boot-timeout: 120

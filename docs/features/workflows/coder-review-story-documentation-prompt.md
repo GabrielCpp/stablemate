@@ -6,7 +6,7 @@ title: Coder review-story-documentation prompt
 # Coder review-story-documentation prompt
 
 - file: `workflows/src/workhorse_workflows/coder/docs/prompts/review-story-documentation.md`
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.review`
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.review` @c5989657afb3
 - detail: [coder documentation flow](flows/coder-docs.md)
 - detail: [coder documentation schemas](concepts/coder-docs-schemas.md)
 - tests: `workflows/tests/coder/docs/test_flow.py::test_the_reviewer_is_handed_the_unnarrowed_story_delta`

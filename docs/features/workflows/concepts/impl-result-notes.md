@@ -5,7 +5,7 @@ title: Implementation result notes
 ---
 # Implementation result notes
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.notes` @b6e19c205b4f
 - rule: use the shared implementation-result field for the return contract; use the review apply prompt field when interpreting that same value for a review-application turn
 
 `ImplResult.notes` is one shared field, not two implementations. Implement turns use it to

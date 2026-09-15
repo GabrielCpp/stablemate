@@ -19,6 +19,6 @@ not be used as a validation API either: it records the normalized preference,
 and the boundary reports an unknown name in the same way as an invalid `--cli`
 value.
 
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_default_cli`
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_default_cli`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_default_cli` @451a081294d0
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_default_cli` @451a081294d0
 - rule: use `resolve_default_cli` to obtain the effective configured fallback for a run, and use `write_default_cli` only to persist an operator-selected fallback; neither API is a backend validator

@@ -211,6 +211,6 @@ result contract before the flow can enter repair. The module exports only `Docs`
 - verify: json_path(path="$.status", equals="documented")
 - errors: workflow failure if malformed agent result or excessive overrun
 - verify: exit_status(code=1)
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.repair`
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.repair` @c5989657afb3
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_failed_gate_reworks_before_the_reviewer_ever_runs`
 

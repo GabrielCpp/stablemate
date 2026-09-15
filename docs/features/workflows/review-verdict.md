@@ -6,7 +6,7 @@ title: Coder review verdict
 # Coder review verdict
 
 - file: none — in-memory agent reply
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict` @2f54962a8770
 - detail: [coder review schema contracts](concepts/coder-review-schema-contracts.md)
 - detail: [coder review flow](flows/coder-review.md)
 
@@ -26,7 +26,7 @@ requires an operator because the missing evidence or decision is outside the rep
 - verify: json_path(path="$.status", equals="needs_changes")
 - semantics: `blocked` bypasses repair and goes to operator resolution
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.status`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.status` @2f54962a8770
 - detail: [review verdict status roles](concepts/review-verdict-status-roles.md)
 
 ### notes
@@ -35,6 +35,6 @@ requires an operator because the missing evidence or decision is outside the rep
 - required: false
 - semantics: concise findings brief for repair, or the external dependency and attempted resolution for a block
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.notes` @2f54962a8770
 - tests: `workflows/tests/coder/review/test_flow.py::test_an_approved_review_stamps_the_specs_and_stops`
 - detail: [review verdict notes context](concepts/review-verdict-notes-context.md)

@@ -16,7 +16,7 @@ and [`_OpenCodeEvents.on_event`](opencode-on-event.md).
 The name is unqualified: each adapter module owns exactly one `_on_event`, because module scope
 already supplies the disambiguation a `_copilot_` prefix used to.
 
-- code: `workhorse/workhorse/runner/backends/copilot.py::_on_event`
+- code: `workhorse/workhorse/runner/backends/copilot.py::_on_event` @455b84a8df78
 - extends: [stream_jsonl](stream-jsonl.md#contract)
 - tests: `workhorse/tests/test_backends.py::test_copilot_on_event_extracts_text_and_session`
 

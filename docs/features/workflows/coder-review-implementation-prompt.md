@@ -6,7 +6,7 @@ title: Coder review-implementation prompt
 # Coder review-implementation prompt
 
 - file: `workflows/src/workhorse_workflows/coder/review/prompts/review-implementation.md`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review` @ee5ae700635f
 - detail: [coder review flow](flows/coder-review.md)
 - detail: [coder review schema contracts](concepts/coder-review-schema-contracts.md)
 - tests: `workflows/tests/coder/review/test_flow.py::test_the_implementation_reviewer_is_handed_both_feeder_verdicts`
@@ -25,7 +25,7 @@ available repository and story context.
 - required: true
 - semantics: story document defining the implementation scope and acceptance criteria
 - verify: json_path(path="$.story_path", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review` @ee5ae700635f
 - detail: [coder review implementation inputs](concepts/coder-review-implementation-inputs.md)
 
 ### spec_dir
@@ -33,7 +33,7 @@ available repository and story context.
 - required: true
 - semantics: directory containing the implementation plan and receiving review artifacts
 - verify: json_path(path="$.spec_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review` @ee5ae700635f
 - detail: [coder review implementation inputs](concepts/coder-review-implementation-inputs.md)
 
 ### affected_repo_paths
@@ -41,7 +41,7 @@ available repository and story context.
 - required: true
 - semantics: repositories whose implementation and tests are compared with the story
 - verify: json_path(path="$.affected_repo_paths", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review` @ee5ae700635f
 - detail: [coder review implementation inputs](concepts/coder-review-implementation-inputs.md)
 
 ### must_fix_findings
@@ -49,7 +49,7 @@ available repository and story context.
 - required: true
 - semantics: rendered findings scored at least 80, including their category, target, issue, and required repair
 - verify: json_path(path="$.must_fix_findings", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::findings_block`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::findings_block` @ee5ae700635f
 - detail: [review finding priority](concepts/review-finding-priority.md)
 
 ### advisory_findings
@@ -59,7 +59,7 @@ available repository and story context.
 - verify: json_path(path="$.advisory_findings", matches=".+")
 - semantics: advisory findings inform judgement but cannot by themselves require changes
 - verify: json_path(path="$.advisory_findings", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::findings_block`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::findings_block` @ee5ae700635f
 - detail: [review finding priority](concepts/review-finding-priority.md)
 
 ### status
@@ -67,7 +67,7 @@ available repository and story context.
 - required: true
 - semantics: approval when no Critical or Major finding remains, required changes when one exists, or an external block
 - verify: json_path(path="$.status", matches="^(approved|needs_changes|blocked)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.status`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.status` @2f54962a8770
 - detail: [review verdict status roles](concepts/review-verdict-status-roles.md)
 
 ### notes
@@ -76,5 +76,5 @@ available repository and story context.
 - required: false
 - semantics: brief covering automated, reuse, and self-review findings, including required repairs or the block reason
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.notes` @2f54962a8770
 - detail: [review verdict notes context](concepts/review-verdict-notes-context.md)

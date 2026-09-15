@@ -10,7 +10,7 @@ explicit `STABLEMATE_BASE_DIR` wins, then configured `base_dir`, then the config
 checkout's `base-library/`, and finally the frozen cache. Invalid configured paths are skipped;
 the base remains additive to an overlay-only installation.
 
-- code: `workhorse/workhorse/_vendor/stablemate_core/discovery.py`
+- code: `workhorse/workhorse/_vendor/stablemate_core/discovery.py` @9298cfe7d7ec
 
 ## Methods
 
@@ -26,7 +26,7 @@ the base remains additive to an overlay-only installation.
 - verify: json_path(path="$.base_library_dir", equals="/base-library")
 - returns: `None` when no candidate is usable
 - verify: json_path(path="$.base_library_dir", absent=true)
-- code: `workhorse/workhorse/_vendor/stablemate_core/discovery.py::base_library_dir`
+- code: `workhorse/workhorse/_vendor/stablemate_core/discovery.py::base_library_dir` @9298cfe7d7ec
 
 ### ensure_base_library_dir
 - sig: `ensure_base_library_dir(*, refresh: bool = False, quiet: bool = False) -> Path | None`
@@ -38,4 +38,4 @@ the base remains additive to an overlay-only installation.
 - verify: json_path(path="$.base_library_dir", matches="^/.+")
 - returns: `None` when no base is available
 - verify: json_path(path="$.base_library_dir", absent=true)
-- code: `workhorse/workhorse/_vendor/stablemate_core/discovery.py::ensure_base_library_dir`
+- code: `workhorse/workhorse/_vendor/stablemate_core/discovery.py::ensure_base_library_dir` @9298cfe7d7ec

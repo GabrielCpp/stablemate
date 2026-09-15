@@ -7,7 +7,7 @@ title: Research program manifest
 
 Path-resolution and ledger-management helpers for research programs. A "research program" is one folder in the target repo, defined by a flat `<program_dir>/program.yml` manifest beside its README ladder. Program selection uses a five-rung ladder: explicit parameter, launch-directory manifest, committed default in `agents.yml`, legacy pointer file, or failure. Ledger holds program-scoped counters (extensions, lead reviews, program reviews, re-charters) and status, persisted to disk so multi-run programs track cumulative spend and respect per-program budget caps.
 
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py` @79453562fba2
 - extends: [research workflow schemas](research-schemas.md)
 - detail: [research workflow composition root](research-workflow-composition-root.md)
 - detail: [research program dossier](research-program-dossier.md)
@@ -19,31 +19,31 @@ Path-resolution and ledger-management helpers for research programs. A "research
 - type: `list[str]`
 - default: `["code_root"]`
 - semantics: flat manifest keys required before a research program can run
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::REQUIRED`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::REQUIRED` @79453562fba2
 
 ### ENVELOPE_DEFAULTS
 - type: `dict[str, str | int]`
 - default: `min_containment=premium, envelope_ram_gb=0, envelope_cpus=0, envelope_gpu=none, envelope_disk_gb=0`
 - semantics: resource and containment defaults when a program manifest omits envelope key
 - semantics: zero numeric limits are unbounded
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::ENVELOPE_DEFAULTS`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::ENVELOPE_DEFAULTS` @79453562fba2
 
 ### LEDGER_NAME
 - type: `str`
 - default: `ledger.yml`
 - semantics: program-relative filename holding cumulative spend and status
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::LEDGER_NAME`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::LEDGER_NAME` @79453562fba2
 
 ### CONCLUDED
 - type: `tuple[str, ...]`
 - default: `banked`, `reached`, `impossible`
 - semantics: ledger statuses that require explicit reauthorization before another run
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::CONCLUDED`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::CONCLUDED` @79453562fba2
 
 ### LEDGER_HEADER
 - type: `str`
 - semantics: explanatory comment prefix written before every ledger update
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::LEDGER_HEADER`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::LEDGER_HEADER` @79453562fba2
 
 ## Methods
 
@@ -55,7 +55,7 @@ Path-resolution and ledger-management helpers for research programs. A "research
 - verify: json_path(path="result[\"key\"]", equals="value")
 - raises: `WorkflowFailed` when a line has no `:` separator
 - verify: json_path(path="exception.type", equals="WorkflowFailed")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::parse_flat_yaml`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::parse_flat_yaml` @79453562fba2
 
 ### method: slug
 - sig: `slug(program_dir: str) -> str`
@@ -63,7 +63,7 @@ Path-resolution and ledger-management helpers for research programs. A "research
 - verify: json_path(path="result", matches="^[a-z0-9]+(-[a-z0-9]+)*$")
 - does: strips `specs` and `.` path components from the input path
 - verify: omits(subject="result", matches="specs|\\.")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::slug`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::slug` @79453562fba2
 
 ### method: launch_dir
 - sig: `launch_dir(launch: str = "") -> Path`
@@ -71,13 +71,13 @@ Path-resolution and ledger-management helpers for research programs. A "research
 - verify: created(subject="result")
 - does: resolves to absolute path, or cwd when empty
 - verify: json_path(path="result", matches="^/.*")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::launch_dir`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::launch_dir` @79453562fba2
 
 ### method: resolve_repo_root
 - sig: `resolve_repo_root(arg_repo: str, launch: str = "") -> Path`
 - does: returns repo root from explicit argument, launch dir's enclosing `.git`, or cwd
 - verify: json_path(path="result", matches="^/.*")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::resolve_repo_root`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::resolve_repo_root` @79453562fba2
 
 ### method: detect_program_from_launch
 - sig: `detect_program_from_launch(repo_root: Path, launch: str = "") -> str`
@@ -87,7 +87,7 @@ Path-resolution and ledger-management helpers for research programs. A "research
 - verify: json_path(path="result", matches="^([^/].*)?$")
 - does: stops walk at repo_root boundary
 - verify: json_path(path="result", equals="")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::detect_program_from_launch`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::detect_program_from_launch` @79453562fba2
 
 ### method: read_agents_yaml_program
 - sig: `read_agents_yaml_program(repo_root: Path) -> str`
@@ -97,7 +97,7 @@ Path-resolution and ledger-management helpers for research programs. A "research
 - verify: json_path(path="result", matches=".+")
 - does: returns empty string when no program key found or file missing
 - verify: json_path(path="result", equals="")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::read_agents_yaml_program`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::read_agents_yaml_program` @79453562fba2
 
 ### method: read_pointer
 - sig: `read_pointer(repo_root: Path) -> str`
@@ -105,13 +105,13 @@ Path-resolution and ledger-management helpers for research programs. A "research
 - verify: json_path(path="result", matches=".+")
 - does: returns empty string when file missing or empty
 - verify: json_path(path="result", equals="")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::read_pointer`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::read_pointer` @79453562fba2
 
 ### method: ledger_path
 - sig: `ledger_path(repo_root: Path, program_dir: str) -> Path`
 - does: returns the program-relative path to the ledger file
 - verify: json_path(path="result", matches="ledger\\.yml$")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::ledger_path`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::ledger_path` @79453562fba2
 
 ### method: read_ledger
 - sig: `read_ledger(path: Path) -> Ledger`
@@ -121,7 +121,7 @@ Path-resolution and ledger-management helpers for research programs. A "research
 - verify: json_path(path="result.extensions", equals="0")
 - does: malformed counter must not be the thing that stops a program from being worked on
 - verify: absent(subject="exception")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::read_ledger`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::read_ledger` @79453562fba2
 
 ### method: load_program
 - sig: `load_program(logger: logging.Logger, program: str, repo_dir: str, launch_dir_path: str = "", reauthorize: bool = False) -> Program`
@@ -145,7 +145,7 @@ Path-resolution and ledger-management helpers for research programs. A "research
 - raises: `WorkflowFailed` when program is concluded and `reauthorize` is false
 - verify: json_path(path="exception.type", equals="WorkflowFailed")
 - returns: `Program` with paths, identity, ledger counters, status, and declared machine envelope
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::load_program`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::load_program` @79453562fba2
 - detail: [research program load authority](research-program-load-authority.md)
 
 ### method: record_spend
@@ -156,6 +156,6 @@ Path-resolution and ledger-management helpers for research programs. A "research
 - verify: json_path(path="result.status", equals="active")
 - does: counter travels with the work it accounts for, not living only in this run's checkpoint
 - verify: persists(subject="ledger")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::record_spend`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::record_spend` @79453562fba2
 - detail: [research record spend authority](research-record-spend-authority.md)
 

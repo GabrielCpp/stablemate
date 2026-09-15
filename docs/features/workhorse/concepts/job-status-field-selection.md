@@ -18,6 +18,6 @@ the manifest-selected result file exists, while `tier` says which containment ti
 the handle. These fields are complementary observations of the same poll, so no field supersedes
 or ranks above another.
 
-- code: `workhorse/workhorse/job.py::JobStatus`
-- code: `workhorse/workhorse/job.py::poll`
+- code: `workhorse/workhorse/job.py::JobStatus` @1c2183730b2f
+- code: `workhorse/workhorse/job.py::poll` @1c2183730b2f
 - rule: select the field that answers the lifecycle, liveness, timing, result-readiness, or containment question; no JobStatus field is a replacement for another

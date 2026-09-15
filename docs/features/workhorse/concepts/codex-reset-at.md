@@ -19,7 +19,7 @@ It lives in `runner/backends/opencode.py`, beside its only caller. Despite the n
 of the [codex backend](codex-backend.md): `CodexBackend` talks to the `codex` CLI, which reports
 its own limits, while this probe exists because *OpenCode* drops the Codex provider's headers.
 
-- code: `workhorse/workhorse/runner/backends/opencode.py::_codex_reset_at`
+- code: `workhorse/workhorse/runner/backends/opencode.py::_codex_reset_at` @189ab90da7f9
 
 The behavior is covered by `workhorse/tests/test_backends.py::test_codex_reset_at_skips_non_openai_models_without_network`,
 `workhorse/tests/test_backends.py::test_codex_reset_at_disabled_by_env`,
@@ -90,7 +90,7 @@ except Exception:
 
 ### `_OPENCODE_AUTH_PATH`
 
-- code: `workhorse/workhorse/runner/backends/opencode.py::_OPENCODE_AUTH_PATH`
+- code: `workhorse/workhorse/runner/backends/opencode.py::_OPENCODE_AUTH_PATH` @189ab90da7f9
 
 Module-level `Path` constant: `$OPENCODE_AUTH_PATH` if set, else
 `~/.local/share/opencode/auth.json` — OpenCode's own OAuth credential store, read directly so this
@@ -98,7 +98,7 @@ probe can authenticate as the same Codex session OpenCode itself uses.
 
 ### `_CODEX_RESPONSES_URL`
 
-- code: `workhorse/workhorse/runner/backends/opencode.py::_CODEX_RESPONSES_URL`
+- code: `workhorse/workhorse/runner/backends/opencode.py::_CODEX_RESPONSES_URL` @189ab90da7f9
 
 Module-level `str` constant: `"https://chatgpt.com/backend-api/codex/responses"` — the Codex OAuth
 backend's Responses-API endpoint this probe posts its minimal ping request to.

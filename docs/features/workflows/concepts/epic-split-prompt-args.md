@@ -21,7 +21,7 @@ and [rework-epic-split](../author-rework-epic-split-prompt.md) that cites `_spli
 same immutable context fields; only `review_notes` differs, and each of those three docs states
 its own turn-specific semantics for it — empty on `start`/`review`, populated on `rework`.
 
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit._split_args`
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit._split_args` @0f21033e17f5
 - rule: `roadmap`, `milestone`, and `epics_dir` are one shared value produced by `_split_args` for
   every turn; `review_notes` is the one field that varies by call site, and each prompt doc states
   its own value for it

@@ -22,7 +22,7 @@ still opens as a plain workspace in the editor. Every field beyond `folders` is 
 (`settings`, `extensions`, …) and is not read.
 
 - file: `*.code-workspace`
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_read_workspace_file`
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_read_workspace_file` @e2832eb8451a
 
 ## Fields
 

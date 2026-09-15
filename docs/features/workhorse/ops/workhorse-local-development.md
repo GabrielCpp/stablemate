@@ -9,7 +9,7 @@ title: workhorse local development
 - environment: [workhorse Python uv workspace](workhorse-python-uv-workspace.md)
 - cli: [workhorse](../workhorse.md)
 - surfaces: [workhorse](../workhorse.md)
-- code: `workhorse/Makefile::help`
+- code: `workhorse/Makefile::help` @704799b57fac
 - working-directory: workhorse
 
 This runbook is the package-local development interface for the workhorse library, linked from

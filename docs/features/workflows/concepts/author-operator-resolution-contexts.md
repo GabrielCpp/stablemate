@@ -15,7 +15,7 @@ the report fields returned with that call. Use [Surveyor operator resolution fie
 when the reader only needs to interpret the diagnostic report. Neither concept supersedes the
 other: they describe the same schema at different scopes.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution`
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution` @f79c1c007a97
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @60dae86955d2
 - rule: use the Author concept for resolver invocation and report-field roles together; use the Surveyor concept for report-field interpretation alone; neither is preferred over the other
 - detail: [operator resolution documentation context](operator-resolution-documentation-context.md)

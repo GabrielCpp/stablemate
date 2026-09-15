@@ -6,7 +6,7 @@ title: Coder plan-story prompt
 # Coder plan-story prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/plan-story.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.start`
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.start` @d76e154f78ef
 - detail: [coder development flow](flows/coder-dev.md)
 - detail: [coder plan result](coder-plan-result.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`

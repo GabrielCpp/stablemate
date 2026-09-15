@@ -64,7 +64,7 @@ runs when `groom.state` is first imported.
 - concurrency: the single-process, single-event-loop assumption guarantees the assignment is
   observed by every subsequent caller without coordination
 - verify: count(subject="LOG entries after a fresh groom.state import", equals=0)
-- code: `groom/groom/state.py::LOG`
+- code: `groom/groom/state.py::LOG` @3701472fc480
 
 ## Fields
 

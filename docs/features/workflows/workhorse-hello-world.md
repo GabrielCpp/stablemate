@@ -6,7 +6,7 @@ title: workhorse-hello-world
 # workhorse-hello-world
 
 - binary: `workhorse-hello-world`
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main` @a0d572bb6d0f
 
 Runs the single-machine greeting example registered by the [hello-world workflow composition root](concepts/hello-world-workflow-composition-root.md). Its command parser is supplied by Workhorse; this package supplies the registry and its default flow.
 
@@ -32,7 +32,7 @@ The [workhorse-hello-world driver runbook](ops/workhorse-hello-world.md) exercis
 - verify: exit_status(code=0)
 - verify: exit_status(code=0)
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main` @a0d572bb6d0f
 - detail: [Hello-world command selection](concepts/workhorse-hello-world-command-selection.md)
 - tests: `workflows/tests/test_hello_world.py::test_the_documented_command_is_declared`
 - tests: `workflows/tests/test_hello_world.py::test_the_documented_dry_run_walks_the_machine_green`
@@ -46,7 +46,7 @@ The [workhorse-hello-world driver runbook](ops/workhorse-hello-world.md) exercis
 - does:
   - renders the registered HelloWorld state graph
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main` @a0d572bb6d0f
 - detail: [Hello-world command selection](concepts/workhorse-hello-world-command-selection.md)
 
 ### version
@@ -54,5 +54,5 @@ The [workhorse-hello-world driver runbook](ops/workhorse-hello-world.md) exercis
 - does:
   - prints the installed Workhorse engine version
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main` @a0d572bb6d0f
 - detail: [Hello-world command selection](concepts/workhorse-hello-world-command-selection.md)

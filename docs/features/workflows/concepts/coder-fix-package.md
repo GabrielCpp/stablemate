@@ -17,8 +17,8 @@ story from advancing until drained. The fix machine chains implementation, docum
 gatekeeping prompts for each drained item. Items that pass all gates are committed; failed repairs
 escalate to an operator gate.
 
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py` @54fa9864a85f
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix` @54fa9864a85f
 - tests: `workflows/tests/coder/test_fix.py`
 - detail: [coder backlog contract](coder-backlog-contract.md)
 
@@ -29,6 +29,6 @@ escalate to an operator gate.
 - sig: `render_gate(report: FailureReport) -> str`
 - does: format a FailureReport as markdown with lap number, source gate name, command, working directory, and output
 - verify: json_path(path="$.rendered", matches="(?s)^Repair lap \\d+: the `[^`]+` gate failed in `[^`]+`\\.\\n\\nCommand: `[^`]+`\\n\\n```\\n.*\\n```$")
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::render_gate`
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::render_gate` @54fa9864a85f
 - tests: `workflows/tests/coder/fix/test_flow.py`
 

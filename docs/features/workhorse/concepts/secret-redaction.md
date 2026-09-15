@@ -9,8 +9,8 @@ The stream boundary redacts caller-supplied secrets before output reaches transc
 checkpoints, or telemetry. It also catches recognizable provider-token shapes, handles secrets
 split across chunks, and fails closed by emitting the redaction marker if rewriting fails.
 
-- code: `workhorse/workhorse/runner/redact.py::SecretRedactor`
-- code: `workhorse/workhorse/runner/redact.py::REDACTED`
+- code: `workhorse/workhorse/runner/redact.py::SecretRedactor` @5b03308aa9ce
+- code: `workhorse/workhorse/runner/redact.py::REDACTED` @5b03308aa9ce
 - tests: `workhorse/tests/test_redact.py::test_holds_back_tail_across_a_split_value`, `workhorse/tests/test_redact.py::test_prefix_heuristic_catches_truncated_echo_with_no_known_secrets`, `workhorse/tests/test_redact.py::test_fails_closed_on_internal_error`, `workhorse/tests/test_redact.py::test_stream_subprocess_redacts_known_secret_from_streamed_lines`
 - detail: [supervised subprocess streaming](stream-subprocess.md)
 
@@ -22,7 +22,7 @@ split across chunks, and fails closed by emitting the redaction marker if rewrit
 - verify: json_path(path="$", equals="••••")
 - semantics: `••••`, substituted for a matched or unsafe-to-rewrite secret
 - verify: json_path(path="$", equals="••••")
-- code: `workhorse/workhorse/runner/redact.py::REDACTED`
+- code: `workhorse/workhorse/runner/redact.py::REDACTED` @5b03308aa9ce
 
 ## Methods
 
@@ -34,7 +34,7 @@ split across chunks, and fails closed by emitting the redaction marker if rewrit
 - verify: omits(subject="feed and flush output for a split secret", matches="sUp3rSecretValue1234567890|sk-[A-Za-z0-9_-]{10,}")
 - returns: a streaming redactor
 - verify: created(subject="streaming SecretRedactor")
-- code: `workhorse/workhorse/runner/redact.py::SecretRedactor`
+- code: `workhorse/workhorse/runner/redact.py::SecretRedactor` @5b03308aa9ce
 
 ### feed
 - sig: `SecretRedactor.feed(chunk: str) -> str`
@@ -43,7 +43,7 @@ split across chunks, and fails closed by emitting the redaction marker if rewrit
 - verify: omits(subject="feed output", matches="hunter2|sk-[A-Za-z0-9_-]{10,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|hvs\\.[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{12,}")
 - returns: the safely emitted redacted prefix, or `REDACTED` when rewriting fails
 - verify: json_path(path="$", equals="••••")
-- code: `workhorse/workhorse/runner/redact.py::SecretRedactor.feed`
+- code: `workhorse/workhorse/runner/redact.py::SecretRedactor.feed` @5b03308aa9ce
 
 ### flush
 - sig: `SecretRedactor.flush() -> str`
@@ -51,7 +51,7 @@ split across chunks, and fails closed by emitting the redaction marker if rewrit
 - verify: omits(subject="flush output", matches="hunter2|sk-[A-Za-z0-9_-]{10,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|hvs\\.[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{12,}")
 - returns: the final redacted text, or `REDACTED` when rewriting fails
 - verify: json_path(path="$", equals="••••")
-- code: `workhorse/workhorse/runner/redact.py::SecretRedactor.flush`
+- code: `workhorse/workhorse/runner/redact.py::SecretRedactor.flush` @5b03308aa9ce
 
 ### redact
 - sig: `SecretRedactor.redact(text: str) -> str`
@@ -59,4 +59,4 @@ split across chunks, and fails closed by emitting the redaction marker if rewrit
 - verify: omits(subject="redact output", matches="hunter2|sk-[A-Za-z0-9_-]{10,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|hvs\\.[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{12,}")
 - returns: the complete redacted unit
 - verify: omits(subject="redact output", matches="hunter2|sk-[A-Za-z0-9_-]{10,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|hvs\\.[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{12,}")
-- code: `workhorse/workhorse/runner/redact.py::SecretRedactor.redact`
+- code: `workhorse/workhorse/runner/redact.py::SecretRedactor.redact` @5b03308aa9ce

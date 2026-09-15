@@ -11,7 +11,7 @@ stubs converge the book and coverage gates; webapp, app-up, and browser-up drive
 walkthrough. The real empty-worklist result remains the model default for item selection, so a
 dry run does not invent work.
 
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/stubs.py`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/stubs.py` @26853859878d
 
 ## Methods
 
@@ -19,34 +19,34 @@ dry run does not invent work.
 - sig: `prepared(*_args: object, **_kwargs: object) -> Prepared`
 - does: returns preparation with `ostler_ok` true
 - verify: json_path(path="$.ostler_ok", equals=true)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/stubs.py::prepared`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/stubs.py::prepared` @26853859878d
 
 ### clean
 - sig: `clean(*_args: object, **_kwargs: object) -> Checkpoint`
 - does: returns a clean checkpoint result
 - verify: json_path(path="$.checkpoint_clean", equals=true)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/stubs.py::clean`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/stubs.py::clean` @26853859878d
 
 ### covered
 - sig: `covered(*_args: object, **_kwargs: object) -> Coverage`
 - does: returns complete source coverage
 - verify: json_path(path="$.coverage_complete", equals=true)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/stubs.py::covered`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/stubs.py::covered` @26853859878d
 
 ### webapp
 - sig: `webapp(*_args: object, **_kwargs: object) -> WebApp`
 - does: declares a web application for walkthrough routing
 - verify: json_path(path="$.is_webapp", equals=true)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/stubs.py::webapp`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/stubs.py::webapp` @26853859878d
 
 ### app_up
 - sig: `app_up(*_args: object, **_kwargs: object) -> AppBoot`
 - does: declares that the application answered its health path
 - verify: json_path(path="$.boot_ok", equals=true)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/stubs.py::app_up`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/stubs.py::app_up` @26853859878d
 
 ### browser_up
 - sig: `browser_up(*_args: object, **_kwargs: object) -> BrowserBoot`
 - does: declares that the shared CDP browser answered
 - verify: json_path(path="$.browser_ok", equals=true)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/stubs.py::browser_up`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/stubs.py::browser_up` @26853859878d

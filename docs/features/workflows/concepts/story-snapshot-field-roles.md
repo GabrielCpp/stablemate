@@ -17,5 +17,5 @@ does not replace. There is no legacy marker, delegation, wrapper, or preference 
 no field supersedes another. Select each field by the story attribute needed; combine fields when
 the operation needs multiple snapshot attributes.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StorySnapshot`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StorySnapshot` @ddad101f4da9
 - rule: select fields by the story attribute needed; the fields are complementary and no ranking exists

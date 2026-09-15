@@ -19,7 +19,7 @@ Both entry points are **public names in `workhorse.runner.extract`**. They carri
 underscore while they lived inside the monolithic agent runner; the module split gave them a module
 of their own, and a function another module imports is not private.
 
-- code: `workhorse/workhorse/runner/extract.py::extract_outputs`
+- code: `workhorse/workhorse/runner/extract.py::extract_outputs` @b3e893c68fb8
 
 The behaviour described here is covered by
 `workhorse/tests/test_json_parse.py::test_extract_outputs_happy_path`,
@@ -76,7 +76,7 @@ def extract_outputs(text, node):
 
 ## `parse_json_from_text`
 
-- code: `workhorse/workhorse/runner/extract.py::parse_json_from_text`
+- code: `workhorse/workhorse/runner/extract.py::parse_json_from_text` @b3e893c68fb8
 - verify: `workhorse/tests/test_json_parse.py::test_strict_fenced_block`,
   `workhorse/tests/test_json_parse.py::test_prose_with_stray_brace_picks_real_object`,
   `workhorse/tests/test_json_parse.py::test_multiple_objects_prefers_one_with_wanted_keys`,
@@ -124,7 +124,7 @@ fragments do not prevent a later complete object from being considered.
 
 ## `_unwrap`
 
-- code: `workhorse/workhorse/runner/extract.py::_unwrap`
+- code: `workhorse/workhorse/runner/extract.py::_unwrap` @b3e893c68fb8
 - verify: `workhorse/tests/test_json_parse.py::test_wrapped_answer_is_read_through_the_envelope`,
   `workhorse/tests/test_json_parse.py::test_a_top_level_answer_still_wins_over_a_nested_one`,
   `workhorse/tests/test_json_parse.py::test_an_envelope_missing_a_key_still_fails`,
@@ -166,7 +166,7 @@ Three properties keep that from widening into guessing:
 
 ## `_parse_json_tolerant`
 
-- code: `workhorse/workhorse/runner/extract.py::_parse_json_tolerant`
+- code: `workhorse/workhorse/runner/extract.py::_parse_json_tolerant` @b3e893c68fb8
 
 The `json-repair` fallback. Repairs the break modes strict parsing can't survive: prose surrounding
 the object, multiple embedded objects (an example plus the real answer), lenient syntax (trailing
@@ -184,7 +184,7 @@ commas, single quotes, comments), and truncated/unclosed braces.
 
 ## `_select_object`
 
-- code: `workhorse/workhorse/runner/extract.py::_select_object`
+- code: `workhorse/workhorse/runner/extract.py::_select_object` @b3e893c68fb8
 - verify: `workhorse/tests/test_json_parse.py::test_select_object_from_list_prefers_wanted`,
   `workhorse/tests/test_json_parse.py::test_select_object_empty_string_is_none`
 

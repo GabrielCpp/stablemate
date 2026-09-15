@@ -14,7 +14,7 @@ flows (`skipped`) from an unstartable declaration (`error`), an unreachable or h
 is retained in the QA directory when one is supplied, and parsed failures are attributed to the
 book's verification index for diagnosis only.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::__all__`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::__all__` @f76a4d49cff0
 - detail: [Coder QA subflow](coder-qa-subflow.md)
 
 ## Fields
@@ -25,7 +25,7 @@ book's verification index for diagnosis only.
 - required: true
 - semantics: the service configuration key whose declared command is resolved for a journey suite
 - verify: json_path(path="$.REGRESSION_GATE", equals="regression")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::REGRESSION_GATE`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::REGRESSION_GATE` @f76a4d49cff0
 
 ### SUITE_TIMEOUT
 - type: `int`
@@ -33,7 +33,7 @@ book's verification index for diagnosis only.
 - required: true
 - semantics: the maximum seconds allowed for one declared suite command before it is classified as blocked
 - verify: json_path(path="$.SUITE_TIMEOUT", equals=1500)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::SUITE_TIMEOUT`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::SUITE_TIMEOUT` @f76a4d49cff0
 
 ### STATUS_ORDER
 - type: `dict[str, int]`
@@ -41,7 +41,7 @@ book's verification index for diagnosis only.
 - required: true
 - semantics: worst-first precedence used when combining results from multiple services
 - verify: count(subject="regression result statuses", equals=5)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::STATUS_ORDER`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::STATUS_ORDER` @f76a4d49cff0
 
 ## Methods
 
@@ -55,7 +55,7 @@ book's verification index for diagnosis only.
 - verify: count(subject="declared regression command selections", equals=1)
 - returns: a `RegressionSuites` containing one `RegressionSuite` per touched service with a declared command, its `<repo path>::<service path>` label, absolute working directory, and command
 - verify: count(subject="resolved regression suites", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::detect_regression_suites`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::detect_regression_suites` @f76a4d49cff0
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_failing_journey_suite_is_fixed_and_the_story_is_re_qad`
 
 ### run_regression_suite
@@ -82,7 +82,7 @@ book's verification index for diagnosis only.
 - verify: json_path(path="$.failure_attribution[0].classification", matches="^(impacted|outside-impact|unattributed)$")
 - returns: a `RegressionRun` carrying one of `passed`, `failed`, `blocked`, `skipped`, or `error`, failure details, persisted log paths, notes, and optional verification-index attribution
 - verify: json_path(path="$.notes", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::run_regression_suite`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::run_regression_suite` @f76a4d49cff0
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_journey_suite_that_stays_red_falls_into_the_qa_fix_loop`
 
 ### RegressionRun.as_qa_result
@@ -93,7 +93,7 @@ book's verification index for diagnosis only.
 - verify: json_path(path="$.status", equals="blocked")
 - does: preserves `passed`, `failed`, and `blocked` statuses for downstream QA routing
 - verify: count(subject="directly mirrored regression statuses", equals=3)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::RegressionRun.as_qa_result`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::RegressionRun.as_qa_result` @2e918886779f
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_failing_journey_suite_is_fixed_and_the_story_is_re_qad`
 
 Private helpers keep the execution policy in one bounded module: `_run` invokes a shell-split

@@ -9,7 +9,7 @@ The result of applying an approved epic edit plan. It records whether the graph 
 identity and directory, whether the epic was deleted, and the ordered story sets subsequent
 rewriting and coverage stages consume.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit` @ddad101f4da9
 - detail: [author epic edit subflow](concepts/author-epic-edit-subflow.md)
 
 ## Fields
@@ -20,7 +20,7 @@ rewriting and coverage stages consume.
 - required: false
 - semantics: whether application changed the graph
 - verify: json_path(path="$.changed", equals=False)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit` @ddad101f4da9
 - detail: [applied epic edit field roles](concepts/applied-epic-edit-field-roles.md)
 
 ### epic
@@ -29,7 +29,7 @@ rewriting and coverage stages consume.
 - required: false
 - semantics: applied epic identifier
 - verify: json_path(path="$.epic", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit` @ddad101f4da9
 - detail: [applied epic edit field roles](concepts/applied-epic-edit-field-roles.md)
 
 ### epic_dir
@@ -38,7 +38,7 @@ rewriting and coverage stages consume.
 - required: false
 - semantics: directory of the surviving epic
 - verify: json_path(path="$.epic_dir", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit` @ddad101f4da9
 - detail: [applied epic edit field roles](concepts/applied-epic-edit-field-roles.md)
 
 ### deleted
@@ -47,7 +47,7 @@ rewriting and coverage stages consume.
 - required: false
 - semantics: whether application deleted the epic
 - verify: json_path(path="$.deleted", equals=False)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit` @ddad101f4da9
 - detail: [applied epic edit field roles](concepts/applied-epic-edit-field-roles.md)
 
 ### affected_stories
@@ -56,7 +56,7 @@ rewriting and coverage stages consume.
 - required: false
 - semantics: surviving stories requiring downstream processing
 - verify: json_path(path="$.affected_stories", matches="^\\[\\]$")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit` @ddad101f4da9
 - detail: [applied epic edit field roles](concepts/applied-epic-edit-field-roles.md)
 
 ### removed_stories
@@ -65,5 +65,5 @@ rewriting and coverage stages consume.
 - required: false
 - semantics: stories removed by the approved edit
 - verify: json_path(path="$.removed_stories", matches="^\\[\\]$")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit` @ddad101f4da9
 - detail: [applied epic edit field roles](concepts/applied-epic-edit-field-roles.md)

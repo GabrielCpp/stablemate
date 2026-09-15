@@ -13,5 +13,5 @@ the subject used to request the greeting.
 Neither field replaces the other: use `name` when the requested subject is needed and
 use `letters` when its character count is needed.
 
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::Subject`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::Subject` @a0d572bb6d0f
 - rule: use `name` for the requested subject and `letters` for its character count; neither field is a replacement for the other

@@ -5,7 +5,7 @@ title: Review verdict status roles
 ---
 # Review verdict status roles
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.status`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.status` @2f54962a8770
 - rule: use the review verdict format to learn the status value's routing contract; use the review-implementation prompt format to learn the binding review decision that produces it
 
 `ReviewVerdict.status` is one required `ReviewStatus` value, produced by the holistic reviewer.

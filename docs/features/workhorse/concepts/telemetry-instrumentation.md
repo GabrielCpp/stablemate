@@ -18,35 +18,35 @@ classification. Periodic metrics expose gas, refuels, node/wait/turn activity an
 plus run, turn and cap-wait heartbeats. Logging is attached only after a provider is built and is
 detached before provider shutdown.
 
-- code: `workhorse/workhorse/otel.py::Telemetry`
-- code: `workhorse/workhorse/otel.py::TelemetryHost`
-- code: `workhorse/workhorse/otel.py::CollectorProbe`
-- code: `workhorse/workhorse/otel.py::TelemetryFactory`
-- code: `workhorse/workhorse/otel.py::OtelSettings`
-- code: `workhorse/workhorse/otel.py::set_repository_probe`
-- code: `workhorse/workhorse/otel.py::set_head_probe`
-- code: `workhorse/workhorse/otel.py::enabled`
-- code: `workhorse/workhorse/otel.py::install`
-- code: `workhorse/workhorse/otel.py::start_run`
-- code: `workhorse/workhorse/otel.py::end_run`
-- code: `workhorse/workhorse/otel.py::record_event`
-- code: `workhorse/workhorse/otel.py::state_start`
-- code: `workhorse/workhorse/otel.py::state_end`
-- code: `workhorse/workhorse/otel.py::scope`
-- code: `workhorse/workhorse/otel.py::wait`
-- code: `workhorse/workhorse/otel.py::turn_start`
-- code: `workhorse/workhorse/otel.py::turn_end`
-- code: `workhorse/workhorse/otel.py::turn_result`
-- code: `workhorse/workhorse/otel.py::turn_event`
-- code: `workhorse/workhorse/otel.py::heartbeat`
-- code: `workhorse/workhorse/otel.py::turn_heartbeat`
-- code: `workhorse/workhorse/otel.py::current_node`
-- code: `workhorse/workhorse/otel.py::current_repository`
-- code: `workhorse/workhorse/otel.py::set_labels`
-- code: `workhorse/workhorse/otel.py::turn_session`
-- code: `workhorse/workhorse/otel.py::run_attribute`
-- code: `workhorse/workhorse/otel.py::gas_level`
-- code: `workhorse/workhorse/otel.py::gas_refuel`
+- code: `workhorse/workhorse/otel.py::Telemetry` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::TelemetryHost` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::CollectorProbe` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::TelemetryFactory` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::OtelSettings` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::set_repository_probe` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::set_head_probe` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::enabled` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::install` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::start_run` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::end_run` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::record_event` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::state_start` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::state_end` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::scope` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::wait` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::turn_start` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::turn_end` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::turn_result` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::turn_event` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::heartbeat` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::turn_heartbeat` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::current_node` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::current_repository` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::set_labels` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::turn_session` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::run_attribute` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::gas_level` @7d01010f0a00
+- code: `workhorse/workhorse/otel.py::gas_refuel` @7d01010f0a00
 - tests: `workhorse/tests/test_otel.py`,
   `workhorse/tests/test_agent_recovery.py::test_the_cut_turn_closes_its_span_and_closes_it_cleanly`
 - detail: [telemetry documentation scope](telemetry-documentation-scope.md)
@@ -61,7 +61,7 @@ detached before provider shutdown.
 - verify: json_path(path="OtelSettings.forced.required", equals=false)
 - semantics: `true` forces telemetry on and `false` forces it off
 - verify: json_path(path="OtelSettings.forced.semantics", equals="true forces telemetry on and false forces it off")
-- code: `workhorse/workhorse/otel.py::OtelSettings`
+- code: `workhorse/workhorse/otel.py::OtelSettings` @7d01010f0a00
 - detail: [telemetry settings selection](telemetry-settings-selection.md)
 
 ### endpoint
@@ -72,7 +72,7 @@ detached before provider shutdown.
 - verify: json_path(path="OtelSettings.endpoint.required", equals=false)
 - semantics: OTLP HTTP collector endpoint with trailing slash removed
 - verify: json_path(path="OtelSettings.endpoint.semantics", equals="OTLP HTTP collector endpoint with trailing slash removed")
-- code: `workhorse/workhorse/otel.py::OtelSettings`
+- code: `workhorse/workhorse/otel.py::OtelSettings` @7d01010f0a00
 - detail: [telemetry settings selection](telemetry-settings-selection.md)
 
 ### probe_timeout_s
@@ -83,7 +83,7 @@ detached before provider shutdown.
 - verify: json_path(path="OtelSettings.probe_timeout_s.required", equals=false)
 - semantics: maximum seconds for the auto-mode TCP reachability probe
 - verify: json_path(path="OtelSettings.probe_timeout_s.semantics", equals="maximum seconds for the auto-mode TCP reachability probe")
-- code: `workhorse/workhorse/otel.py::OtelSettings`
+- code: `workhorse/workhorse/otel.py::OtelSettings` @7d01010f0a00
 - detail: [telemetry settings selection](telemetry-settings-selection.md)
 
 ### heartbeat_every_s
@@ -94,7 +94,7 @@ detached before provider shutdown.
 - verify: json_path(path="OtelSettings.heartbeat_every_s.required", equals=false)
 - semantics: interval for process and turn liveness ticks
 - verify: json_path(path="OtelSettings.heartbeat_every_s.semantics", equals="interval for process and turn liveness ticks")
-- code: `workhorse/workhorse/otel.py::OtelSettings`
+- code: `workhorse/workhorse/otel.py::OtelSettings` @7d01010f0a00
 - detail: [telemetry settings selection](telemetry-settings-selection.md)
 
 ### metric_export_every_s
@@ -107,7 +107,7 @@ detached before provider shutdown.
 - verify: json_path(path="OtelSettings.metric_export_every_s", equals=15.0)
 - semantics: the heartbeat interval supplies the metric export interval when neither override is valid
 - verify: json_path(path="OtelSettings.metric_export_every_s", equals=10.0)
-- code: `workhorse/workhorse/otel.py::OtelSettings`
+- code: `workhorse/workhorse/otel.py::OtelSettings` @7d01010f0a00
 - detail: [telemetry settings selection](telemetry-settings-selection.md)
 
 ## Methods
@@ -119,7 +119,7 @@ detached before provider shutdown.
 - raises: `ValueError` when a seconds-valued setting is malformed
 - returns: settings with defaults, normalized endpoint, tri-state enablement, heartbeat interval, and metric export interval
 - verify: json_path(path="OtelSettings.forced", equals=true)
-- code: `workhorse/workhorse/otel.py::OtelSettings.from_env`
+- code: `workhorse/workhorse/otel.py::OtelSettings.from_env` @7d01010f0a00
 - tests: `workhorse/tests/test_otel.py::test_settings_are_read_from_the_mapping_it_is_handed`
 
 ### start_run
@@ -132,7 +132,7 @@ detached before provider shutdown.
 - verify: unchanged(subject="the already-enabled telemetry host")
 - raises: no exception to the workflow when probing or telemetry construction fails
 - returns: `None`
-- code: `workhorse/workhorse/otel.py::TelemetryHost.start_run`
+- code: `workhorse/workhorse/otel.py::TelemetryHost.start_run` @7d01010f0a00
 - tests: `workhorse/tests/test_otel.py::test_auto_activates_when_the_collector_answers`, `workhorse/tests/test_otel.py::test_force_on_skips_the_probe`
 
 ### end_run
@@ -156,7 +156,7 @@ detached before provider shutdown.
 - does: ignores repeated calls after the first finalization
 - verify: unchanged(subject="the finalized telemetry host")
 - returns: `None`
-- code: `workhorse/workhorse/otel.py::TelemetryHost.end_run`
+- code: `workhorse/workhorse/otel.py::TelemetryHost.end_run` @7d01010f0a00
 - tests: `workhorse/tests/test_otel.py::test_end_run_is_idempotent_and_the_first_status_wins`
 
 ### scope
@@ -167,7 +167,7 @@ detached before provider shutdown.
 - does: records the failure exactly once on the innermost frame — one defect is one ERROR span however deep the frame that raised was
 - verify: count(subject="ERROR spans per single defect", equals=1)
 - does: marks spans closed by a control unwind (a `ReloadRequested` exception) with `workhorse.outcome="control"` and no ERROR status, so a deliberate reload does not consume the once-per-run error slot a real failure needs
-- code: `workhorse/workhorse/otel.py::scope`
+- code: `workhorse/workhorse/otel.py::scope` @7d01010f0a00
 - tests: `workhorse/tests/test_otel.py::test_scope_closes_the_frames_it_opened_and_blames_only_the_innermost`, `workhorse/tests/test_otel.py::test_a_reload_unwind_closes_its_frames_without_counting_as_a_failure`
 
 ### record_event
@@ -176,7 +176,7 @@ detached before provider shutdown.
 - verify: emitted(event="node span opened from a writer enter and closed by its done", count=1)
 - does: ignores `enter` events carrying `waiting_on` — state checkpoints are durable position, not execution boundaries
 - verify: absent(subject="node span opened from a checkpoint")
-- code: `workhorse/workhorse/otel.py::record_event`
+- code: `workhorse/workhorse/otel.py::record_event` @7d01010f0a00
 - tests: `workhorse/tests/test_otel.py::test_record_event_via_writer_reaches_active_telemetry`
 
 ### heartbeat
@@ -187,7 +187,7 @@ detached before provider shutdown.
 - verify: json_path(path="workhorse.cap_wait.remaining_s", equals=540.0)
 - does: swallows any instrument exception — a telemetry bug must degrade to "no heartbeat", never take down the thread and with it every later liveness signal
 - verify: unchanged(subject="the beat thread after an instrument raises")
-- code: `workhorse/workhorse/otel.py::heartbeat`
+- code: `workhorse/workhorse/otel.py::heartbeat` @7d01010f0a00
 - tests: `workhorse/tests/test_otel.py::test_beat_survives_an_instrument_that_raises`
 
 ### set_repository_probe
@@ -197,7 +197,7 @@ detached before provider shutdown.
 - does: restores the no-op observer when the argument is `None`
 - verify: absent(subject="repository snapshot without an installed probe")
 - returns: `None`
-- code: `workhorse/workhorse/otel.py::set_repository_probe`
+- code: `workhorse/workhorse/otel.py::set_repository_probe` @7d01010f0a00
 - code: `workhorse/tests/test_gitstate.py::test_agent_node_and_turn_spans_use_their_own_multi_repo_scope`
 - tests: `workhorse/tests/test_gitstate.py::test_agent_node_and_turn_spans_use_their_own_multi_repo_scope`
 
@@ -210,7 +210,7 @@ detached before provider shutdown.
 - does: keeps a probe that raises from aborting the run — the failure costs the `git.head` attribute but leaves the span intact
 - verify: absent(subject="git.head.start when the head probe raises during start_run")
 - returns: `None`
-- code: `workhorse/workhorse/otel.py::set_head_probe`
+- code: `workhorse/workhorse/otel.py::set_head_probe` @7d01010f0a00
 - code: `workhorse/tests/test_gitstate.py::test_a_head_that_moves_inside_a_node_leaves_unequal_endpoints`
 - tests: `workhorse/tests/test_gitstate.py::test_a_probe_that_raises_costs_an_attribute_not_the_span`
 
@@ -222,7 +222,7 @@ detached before provider shutdown.
 - verify: json_path(path="telemetry.enabled", equals=false)
 - returns: `true` after an enabled run is built
 - verify: json_path(path="telemetry.enabled", equals=true)
-- code: `workhorse/workhorse/otel.py::enabled`
+- code: `workhorse/workhorse/otel.py::enabled` @7d01010f0a00
 - tests: `workhorse/tests/test_otel.py::test_auto_activates_when_the_collector_answers`, `workhorse/tests/test_otel.py::test_noop_by_default_all_calls_inert`
 
 ### run_attribute
@@ -234,7 +234,7 @@ detached before provider shutdown.
 - does: drops a late write after the root span has ended without raising
 - verify: unchanged(subject="the finalized run root span")
 - returns: `None`
-- code: `workhorse/workhorse/otel.py::run_attribute`
+- code: `workhorse/workhorse/otel.py::run_attribute` @7d01010f0a00
 - tests: `workhorse/tests/test_otel.py::test_a_run_level_fact_lands_on_the_root_span_and_the_last_write_wins`
 
 ### gas_level
@@ -244,7 +244,7 @@ detached before provider shutdown.
 - does: sets the configured gas capacity gauge to `capacity`
 - verify: json_path(path="workhorse.gas.capacity", equals=5000)
 - returns: `None`
-- code: `workhorse/workhorse/otel.py::gas_level`
+- code: `workhorse/workhorse/otel.py::gas_level` @7d01010f0a00
 - tests: `workhorse/tests/test_otel.py::test_gas_and_heartbeat_metrics_record`
 
 ### gas_refuel
@@ -252,5 +252,5 @@ detached before provider shutdown.
 - does: increments the gas refuel counter once with the progress node as its `node` attribute
 - verify: emitted(event="workhorse.gas.refuels", count=1)
 - returns: `None`
-- code: `workhorse/workhorse/otel.py::gas_refuel`
+- code: `workhorse/workhorse/otel.py::gas_refuel` @7d01010f0a00
 - tests: `workhorse/tests/test_otel.py::test_gas_and_heartbeat_metrics_record`

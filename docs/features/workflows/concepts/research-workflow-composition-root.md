@@ -45,9 +45,9 @@ persists its program-scoped spend and returns to gate selection. No state uses `
 for a budget exhaustion or unresolved decision; only `record_goal()` produces a clean terminal
 result, and a previously concluded program requires explicit `reauthorize` during setup.
 
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research`
-- code: `workflows/src/workhorse_workflows/research/workflow.py::workflow`
-- code: `workflows/src/workhorse_workflows/research/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research` @e196dc60a365
+- code: `workflows/src/workhorse_workflows/research/workflow.py::workflow` @e196dc60a365
+- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_a_gate_designed_built_measured_and_approved_drives_the_program_to_its_goal`
 - tests: `workflows/tests/research/test_workflow.py::test_the_checkpoint_carries_the_counters_an_operator_would_edit`
 - tests: `workflows/tests/research/test_workflow.py::test_a_resume_rebuilds_the_budget_from_the_checkpoint`
@@ -70,7 +70,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: count(subject="research program loads", equals=1)
 - returns: the loaded `Program` as the workflow context used by later states
 - verify: count(subject="research program contexts", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.setup`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.setup` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_a_concluded_program_needs_a_human_before_it_runs_again`
 
 ### labels
@@ -80,7 +80,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: count(subject="research program telemetry labels", equals=1)
 - returns: a dictionary containing the `program` label
 - verify: count(subject="research program label dictionaries", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.labels`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.labels` @e196dc60a365
 
 ### start
 
@@ -99,7 +99,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: count(subject="research fresh gate designs", equals=1)
 - returns: a continuation to the selected next state
 - verify: count(subject="research start continuations", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.start`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.start` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_a_gate_designed_built_measured_and_approved_drives_the_program_to_its_goal`
 - tests: `workflows/tests/research/test_workflow.py::test_a_periodic_review_fires_after_enough_gates_and_the_clock_restarts`
 
@@ -116,7 +116,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: count(subject="research build handoffs", equals=1)
 - returns: a continuation to design or build according to the envelope result
 - verify: count(subject="research design continuations", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.design`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.design` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_a_design_the_machine_cannot_hold_is_rescoped_without_a_person`
 
 ### build
@@ -134,7 +134,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: count(subject="research submission handoffs", equals=1)
 - returns: a continuation to build, submit, or an operator wait
 - verify: count(subject="research build outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.build`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.build` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_a_rehearsal_that_dies_under_the_runner_never_reaches_submission`
 
 ### submit
@@ -152,7 +152,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: count(subject="research missing-probe escalations", equals=1)
 - returns: a continuation to waiting, design, repair handling, or program review
 - verify: count(subject="research submission outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.submit`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.submit` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_an_estimate_with_no_probe_behind_it_goes_back_to_the_scientist`
 
 ### await_result
@@ -166,7 +166,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: visible(locator="research job wake wait")
 - returns: a continuation to collection, triage, or an on-machine wait
 - verify: count(subject="research job wait outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.await_result`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.await_result` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_the_wait_parks_on_the_job_s_own_wake_file_and_asks_nobody_anything`
 
 ### triage
@@ -180,7 +180,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: count(subject="research killed overrun repairs", equals=1)
 - returns: a continuation to waiting or repair handling
 - verify: count(subject="research triage outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.triage`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.triage` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_the_engineer_can_kill_a_runaway_job_and_the_gate_is_rebuilt`
 
 ### collect
@@ -198,7 +198,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: count(subject="research gate checks", equals=1)
 - returns: a continuation to design, repair handling, check, or program review
 - verify: count(subject="research collection outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.collect`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.collect` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_a_crash_in_repo_code_goes_to_the_engineer_with_nobody_in_the_loop`
 
 ### check
@@ -216,7 +216,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: count(subject="research rework escalations", equals=1)
 - returns: a continuation to pass recording, kill recording, rework, or program review
 - verify: count(subject="research check outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.check`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.check` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_the_measurement_never_runs_inside_the_reviewing_turn`
 
 ### record_pass
@@ -228,7 +228,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: persists(subject="published research result branch")
 - returns: a continuation to start with the current budget
 - verify: count(subject="research next-gate continuations", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.record_pass`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.record_pass` @e196dc60a365
 
 ### record_kill
 
@@ -239,7 +239,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: count(subject="research kill program reviews", equals=1)
 - returns: a continuation to program review
 - verify: count(subject="research kill review continuations", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.record_kill`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.record_kill` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_a_kill_reaches_the_program_lead_before_the_gate_lead`
 
 ### lead_review
@@ -257,7 +257,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: visible(locator="research non-actionable lead verdict gate")
 - returns: a continuation to revive, new direction, or an operator wait
 - verify: count(subject="research lead-review outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.lead_review`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.lead_review` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_a_lead_verdict_the_loop_cannot_act_on_parks_instead_of_guessing`
 - tests: `workflows/tests/research/test_workflow.py::test_a_kill_reaches_the_program_lead_before_the_gate_lead`
 
@@ -270,7 +270,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: persists(subject="research lead-review spend")
 - returns: a continuation to start with the updated budget
 - verify: count(subject="research revival continuations", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.revive`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.revive` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_a_pre_existing_kill_reaches_the_lead_rather_than_dying`
 
 ### new_direction
@@ -288,7 +288,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: count(subject="research new-direction recharter routes", equals=1)
 - returns: a continuation to start or recharter
 - verify: count(subject="research new-direction continuations", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.new_direction`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.new_direction` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_a_new_direction_is_checked_in_code_and_parks_only_when_its_target_cannot_resolve`
 - tests: `workflows/tests/research/test_workflow.py::test_a_new_direction_with_a_resolvable_target_starts_with_nobody_in_the_loop`
 
@@ -315,7 +315,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: visible(locator="research program-review operator gate")
 - returns: a continuation to revive, design, lead_review, recharter, record_goal, or an operator wait
 - verify: count(subject="research program-review outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.program_review`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.program_review` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_a_kill_reaches_the_program_lead_before_the_gate_lead`
 - tests: `workflows/tests/research/test_workflow.py::test_the_program_lead_can_bank_a_killed_program_from_the_kill`
 - tests: `workflows/tests/research/test_workflow.py::test_a_stop_negative_verdict_records_the_program_impossible`
@@ -337,7 +337,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: persists(subject="research recharter spend")
 - returns: a continuation to start or an operator wait
 - verify: count(subject="research recharter outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.recharter`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.recharter` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_a_recharter_is_checked_in_code_and_spends_its_own_budget`
 - tests: `workflows/tests/research/test_workflow.py::test_a_recharter_whose_numbers_do_not_clear_seed_noise_is_retried_once_then_parked`
 - tests: `workflows/tests/research/test_workflow.py::test_the_recharter_cap_parks_with_the_proposed_target`
@@ -355,7 +355,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: visible(locator="research goal authorization gate")
 - returns: a continuation to goal recording, extension, or an operator wait
 - verify: count(subject="research goal-review outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.goal_review`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.goal_review` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_the_extension_cap_parks_instead_of_halting_the_program`
 
 ### extend
@@ -367,7 +367,7 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: persists(subject="research extension spend")
 - returns: a continuation to start on the new lowest non-PASS gate
 - verify: count(subject="research extension continuations", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.extend`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.extend` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_extending_writes_the_spend_where_the_next_run_reads_it`
 
 ### record_goal
@@ -381,5 +381,5 @@ result, and a previously concluded program requires explicit `reauthorize` durin
 - verify: persists(subject="published research goal result")
 - returns: a clean terminal `Done` result
 - verify: count(subject="research clean terminals", equals=1)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.record_goal`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.record_goal` @e196dc60a365
 - tests: `workflows/tests/research/test_workflow.py::test_an_impossible_verdict_ends_clean_and_concludes_the_program`

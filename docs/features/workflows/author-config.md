@@ -11,8 +11,8 @@ explicit `repo_dir` input, follows the repository's configured Ostler document r
 the intake required by the selected mode. The feature book is read-only grounding; configuration
 loading does not create a surface inventory.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config` @45d9dd41985d
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - detail: [author shared paths](concepts/author-shared-paths.md)
 - detail: [approved roadmap](concepts/approved-roadmap.md)
 - detail: [author story-split subflow](concepts/story-split-subflow.md)
@@ -26,7 +26,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: absolute repository root selected from the explicit input or repository markers and used for graph and artifact operations
 - verify: json_path(path="$.repo_root", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### backlog_path
@@ -35,7 +35,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: configured backlog path used for story, story-edit, and epic-edit intake checks
 - verify: json_path(path="$.backlog_path", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### roadmap_path
@@ -44,7 +44,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: the sole approved roadmap path in epic mode, or an empty path in other modes
 - verify: json_path(path="$.roadmap_path", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### epics_dir
@@ -53,7 +53,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: configured epic directory used to resolve the selected epic
 - verify: json_path(path="$.epics_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### features_dir
@@ -62,7 +62,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: configured feature-book directory exposed as read-only grounding to author prompts
 - verify: json_path(path="$.features_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### layers
@@ -71,7 +71,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: best-effort local-instruction skill paths used as prompt layer hints
 - verify: json_path(path="$.layers", matches="^\\[\\]$")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ## Methods
@@ -94,7 +94,7 @@ loading does not create a surface inventory.
 - verify: count(subject="invalid approved roadmap configuration failures", equals=1)
 - returns: a `Config` containing the absolute repository root and repository-relative configured paths
 - verify: json_path(path="$.repo_root", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config` @45d9dd41985d
 - code: `workflows/tests/author/test_config.py::test_epic_authoring_requires_an_approved_roadmap`
 - tests: `workflows/tests/author/test_config.py::test_author_config_never_invents_a_surface_inventory`
 - tests: `workflows/tests/author/test_config.py::test_epic_authoring_requires_an_approved_roadmap`
@@ -108,4 +108,4 @@ loading does not create a surface inventory.
 - verify: json_path(path="$.template", matches="^\\{\\}$")
 - returns: the parsed YAML mapping or an empty mapping
 - verify: json_path(path="$.template", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::_template`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::_template` @45d9dd41985d

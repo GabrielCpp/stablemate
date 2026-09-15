@@ -11,8 +11,8 @@ documents, gives one agent turn permission to create or reuse only the roadmap-o
 and validates that no epic or unrelated milestone changed. A blocked agent response or a failed
 validation returns to the same agent state through an operator-awaiting context file.
 
-- code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone`
-- code: `workflows/src/workhorse_workflows/author/milestone/nodes/_blueprint.py::blueprint`
+- code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone` @931c134725ac
+- code: `workflows/src/workhorse_workflows/author/milestone/nodes/_blueprint.py::blueprint` @f4aa3774f4ed
 - tests: `workflows/tests/author/milestone/test_flow.py::test_builds_then_reuses_one_milestone_without_epics`
 - detail: [build milestone prompt](../build-milestone-prompt.md)
 - detail: [milestone context](../milestone-context.md)
@@ -26,7 +26,7 @@ validation returns to the same agent state through an operator-awaiting context 
 - does: provides the registration target for the milestone nodes
 - emits: a blueprint named `author-milestone`
 - verify: json_path(path="$.name", equals="author-milestone")
-- code: `workflows/src/workhorse_workflows/author/milestone/nodes/_blueprint.py::blueprint`
+- code: `workflows/src/workhorse_workflows/author/milestone/nodes/_blueprint.py::blueprint` @f4aa3774f4ed
 
 ### method: prepare_milestone
 - sig: `prepare_milestone(logger: logging.Logger, repo_dir: str = "") -> MilestoneContext`
@@ -47,7 +47,7 @@ validation returns to the same agent state through an operator-awaiting context 
 - returns: returns the milestone and epic fingerprint maps
 - verify: json_path(path="$.milestone_fingerprints", matches="^\\{.*\\}$")
 - verify: json_path(path="$.epic_fingerprints", matches="^\\{.*\\}$")
-- code: `workflows/src/workhorse_workflows/author/milestone/nodes/milestone.py::prepare_milestone`
+- code: `workflows/src/workhorse_workflows/author/milestone/nodes/milestone.py::prepare_milestone` @1b61bed8eb3d
 
 ### method: validate_milestone
 - sig: `validate_milestone(logger: logging.Logger, context: MilestoneContext) -> MilestoneValidation`
@@ -63,7 +63,7 @@ validation returns to the same agent state through an operator-awaiting context 
 - verify: unchanged(subject="epic documents", except_fields=[])
 - returns: returns `ok`, the authored milestone path, whether it was reused, and newline-separated errors
 - verify: json_path(path="$.ok", equals=True)
-- code: `workflows/src/workhorse_workflows/author/milestone/nodes/milestone.py::validate_milestone`
+- code: `workflows/src/workhorse_workflows/author/milestone/nodes/milestone.py::validate_milestone` @1b61bed8eb3d
 
 ## Methods
 
@@ -75,14 +75,14 @@ validation returns to the same agent state through an operator-awaiting context 
 - verify: json_path(path="$.roadmap", matches=".+")
 - returns: returns the prepared context before any agent turn runs
 - verify: json_path(path="$.epics_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.setup`
+- code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.setup` @931c134725ac
 
 ### labels
 - sig: `labels() -> dict[str, str]`
 - does: labels the run with the roadmap filename stem as `work_id`
 - returns: returns `{"work_id": Path(roadmap).stem}`
 - verify: json_path(path="$.work_id", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.labels`
+- code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.labels` @931c134725ac
 
 ### start
 - sig: `start() -> Done | Await`
@@ -102,4 +102,4 @@ validation returns to the same agent state through an operator-awaiting context 
 - verify: json_path(path="$.ok", equals=True)
 - returns: returns `Done` with the [milestone validation](../milestone-validation.md) when validation succeeds, otherwise `Await` resuming `start`
 - verify: json_path(path="$.ok", equals=True)
-- code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.start`
+- code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.start` @931c134725ac

@@ -17,7 +17,7 @@ and terminal handling. Read [run invocation fields](run-invocation-fields.md) wh
 understanding a particular CLI-boundary input. The two documents describe complementary views of
 the same value; neither is an alternative implementation or a replacement for the other.
 
-- code: `workhorse/workhorse/pyflow/run.py::RunInvocation`
+- code: `workhorse/workhorse/pyflow/run.py::RunInvocation` @c2e0103710e1
 - rule: use pyflow run invocation for the run lifecycle and run invocation fields for a named CLI-boundary input; neither view replaces the other
 - detail: [run invocation reading guide](run-invocation-reading-guide.md)
 - detail: [run invocation views](run-invocation-views.md)

@@ -14,5 +14,5 @@ review-implementation-prompt field when preparing or interpreting the implementa
 prompt's coverage of automated, reuse, and self-review findings. The source establishes neither
 document as a replacement for the other, so no preference or deprecation applies.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewVerdict.notes` @2f54962a8770
 - rule: use the verdict field for the shared response contract and the prompt field for implementation-review prompt context; neither is ranked above the other

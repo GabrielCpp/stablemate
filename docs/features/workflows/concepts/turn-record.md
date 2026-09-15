@@ -11,5 +11,5 @@ to rendering, then pass `returns` to the agent so the reply is parsed as the sam
 schema was rendered in `args`. `turn` constructs all three together; when no body override is
 available, only the optional body entries are omitted from `args`.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/roles.py::Turn`
+- code: `workflows/src/workhorse_workflows/coder/shared/roles.py::Turn` @6939df28531c
 - rule: use the complete `Turn` record for a resolved coder call; read `prompt` for the flow-owned envelope, `args` for rendering context, and `returns` for the reply model

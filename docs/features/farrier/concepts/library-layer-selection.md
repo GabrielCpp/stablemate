@@ -15,6 +15,6 @@ The fields are complementary rather than competing implementations: select `root
 filesystem resolution and `name` for diagnostics. Neither field ranks above or replaces the
 other.
 
-- code: `farrier/farrier/layers.py::Layer`
+- code: `farrier/farrier/layers.py::Layer` @26243f6a8ed5
 - rule: use `root` for filesystem resolution and `name` for provenance diagnostics; neither field is preferred or deprecated
 - detail: [library layer usage rule](library-layer-usage-rule.md)

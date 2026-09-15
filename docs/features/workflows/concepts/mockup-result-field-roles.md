@@ -14,5 +14,5 @@ The schema declares the four fields on the same result and establishes no rankin
 or replacement relationship among them. Consumers use each field for its named role; none is a
 substitute for another.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult` @e0c7b3335724
 - rule: use each field for its distinct outcome, surface, sketch, or accompanying-context role; do not choose one as an alternative to another

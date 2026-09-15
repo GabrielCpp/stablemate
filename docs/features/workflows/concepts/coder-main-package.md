@@ -28,8 +28,8 @@ sits at `coder/main/`, housing the machine (`flow.py`) and the nodes only this g
 and the console script — lives at `../workflow.py`, which remains at the package root so that
 every flow's prompt paths and `.agents/flavors/coder/` resolve correctly.
 
-- code: `workflows/src/workhorse_workflows/coder/main/__init__.py`
-- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder`
+- code: `workflows/src/workhorse_workflows/coder/main/__init__.py` @054ea0333672
+- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder` @e12ee3a76767
 - tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
 - detail: [coder workflow composition root](coder-workflow-composition-root.md)
 

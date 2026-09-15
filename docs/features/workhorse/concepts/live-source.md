@@ -11,7 +11,7 @@ continues importing its completed generation while a later refresh copies and in
 one. The [workhorse command](../workhorse.md) exposes this as an engine concept used by the
 container harness.
 
-- code: `workhorse/livesource.py::LiveSource`
+- code: `workhorse/livesource.py::LiveSource` @8121d901cb22
 - tests: `workhorse/tests/test_livesource.py::test_an_edit_to_the_bind_does_not_reach_an_existing_generation`,
   `workhorse/tests/test_livesource.py::test_a_failed_install_leaves_the_previous_generation_in_place`
 - detail: [LiveSource documentation guide](live-source-documentation-guide.md)
@@ -28,7 +28,7 @@ copy failure, missing `uv`, or failed install leaves the prior installed generat
 - required: true
 - semantics: package name used in diagnostics and generation-install log messages
 - verify: count(subject="required LiveSource constructor fields", equals=4)
-- code: `workhorse/livesource.py::LiveSource`
+- code: `workhorse/livesource.py::LiveSource` @8121d901cb22
 - detail: [LiveSource configuration fields](live-source-configuration.md)
 
 ### mount
@@ -39,7 +39,7 @@ copy failure, missing `uv`, or failed install leaves the prior installed generat
 - verify: unchanged(subject="source mount after staging")
 - semantics: a missing directory means this source is disabled, not erroneous
 - verify: absent(subject="missing live-source mount treated as a staging error")
-- code: `workhorse/livesource.py::LiveSource`
+- code: `workhorse/livesource.py::LiveSource` @8121d901cb22
 - detail: [LiveSource configuration fields](live-source-configuration.md)
 
 ### root
@@ -48,7 +48,7 @@ copy failure, missing `uv`, or failed install leaves the prior installed generat
 - required: true
 - semantics: container-local directory containing numeric generation directories for this source
 - verify: created(subject="container-local live-source generation root")
-- code: `workhorse/livesource.py::LiveSource`
+- code: `workhorse/livesource.py::LiveSource` @8121d901cb22
 - detail: [LiveSource configuration fields](live-source-configuration.md)
 
 ### with_editable
@@ -57,7 +57,7 @@ copy failure, missing `uv`, or failed install leaves the prior installed generat
 - required: false
 - semantics: additional local packages passed to `uv tool install --with-editable` alongside the staged package
 - verify: count(subject="extra editable packages passed to the install command", equals=1)
-- code: `workhorse/livesource.py::LiveSource`
+- code: `workhorse/livesource.py::LiveSource` @8121d901cb22
 - detail: [LiveSource configuration fields](live-source-configuration.md)
 
 ## Methods
@@ -70,7 +70,7 @@ copy failure, missing `uv`, or failed install leaves the prior installed generat
 - verify: count(subject="chronologically ordered generation names", equals=2)
 - returns: an empty list when `root` is not a directory
 - verify: count(subject="generations returned for a missing root", equals=0)
-- code: `workhorse/livesource.py::generations`
+- code: `workhorse/livesource.py::generations` @8121d901cb22
 - tests: `workhorse/tests/test_livesource.py::test_each_stage_is_a_new_directory_so_nothing_is_mutated_in_place`,
   `workhorse/tests/test_livesource.py::test_no_mount_stages_nothing_and_is_not_an_error`
 
@@ -88,7 +88,7 @@ copy failure, missing `uv`, or failed install leaves the prior installed generat
 - verify: absent(subject="partially copied generation after staging failure")
 - returns: the new generation path after a successful copy
 - verify: created(subject="returned staged generation path")
-- code: `workhorse/livesource.py::stage`
+- code: `workhorse/livesource.py::stage` @8121d901cb22
 - tests: `workhorse/tests/test_livesource.py::test_a_generation_is_a_copy_of_the_bind_not_the_bind`,
   `workhorse/tests/test_livesource.py::test_each_stage_is_a_new_directory_so_nothing_is_mutated_in_place`,
   `workhorse/tests/test_livesource.py::test_the_expensive_and_useless_directories_are_not_copied`
@@ -105,7 +105,7 @@ copy failure, missing `uv`, or failed install leaves the prior installed generat
 - verify: exit_status(code=1)
 - returns: `True` only when the install subprocess exits with status zero
 - verify: exit_status(code=0)
-- code: `workhorse/livesource.py::install`
+- code: `workhorse/livesource.py::install` @8121d901cb22
 - code: `workhorse/tests/test_livesource.py::test_uv_missing_entirely_is_reported_not_raised.boom`
 - tests: `workhorse/tests/test_livesource.py::test_install_points_uv_at_the_copy_never_at_the_bind`,
   `workhorse/tests/test_livesource.py::test_extra_local_packages_are_installed_alongside`,
@@ -122,7 +122,7 @@ copy failure, missing `uv`, or failed install leaves the prior installed generat
 - verify: exit_status(code=0)
 - returns: `None` after best-effort pruning
 - verify: exit_status(code=0)
-- code: `workhorse/livesource.py::prune`
+- code: `workhorse/livesource.py::prune` @8121d901cb22
 - tests: `workhorse/tests/test_livesource.py::test_the_previous_generation_survives_a_refresh`
 
 ### refresh
@@ -137,7 +137,7 @@ copy failure, missing `uv`, or failed install leaves the prior installed generat
 - verify: count(subject="surviving generations after four successful refreshes", equals=2)
 - returns: the newly installed generation on success and `None` when no change was installed
 - verify: count(subject="successful refresh result generations", equals=1)
-- code: `workhorse/livesource.py::refresh`
+- code: `workhorse/livesource.py::refresh` @8121d901cb22
 - tests: `workhorse/tests/test_livesource.py::test_no_mount_stages_nothing_and_is_not_an_error`,
   `workhorse/tests/test_livesource.py::test_a_failed_install_leaves_the_previous_generation_in_place`,
   `workhorse/tests/test_livesource.py::test_the_previous_generation_survives_a_refresh`

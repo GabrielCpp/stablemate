@@ -9,7 +9,7 @@ Agent turns normally use one clean backend context per node. A named chain is th
 exception: its key is sanitized into a file under `<run-dir>/.sessions/`, and later laps resume
 the session id stored there. The chain key is not itself a backend session id.
 
-- code: `workhorse/workhorse/sessions.py`
+- code: `workhorse/workhorse/sessions.py` @a533ad19dfdf
 - tests: `workhorse/tests/test_agent_recovery.py::test_new_node_starts_clean_dropping_prior_session`,
   `workhorse/tests/test_agent_recovery.py::test_interrupted_node_keeps_session_for_resume`
 
@@ -18,23 +18,23 @@ the session id stored there. The chain key is not itself a backend session id.
 - does: replaces every character outside letters, digits, dot, underscore, and hyphen with a hyphen
 - does: strips leading and trailing hyphens and uses `chain` when the result is empty
 - returns: one safe filename component
-- code: `workhorse/workhorse/sessions.py::slug`
+- code: `workhorse/workhorse/sessions.py::slug` @a533ad19dfdf
 
 ### chain_path
 - sig: `chain_path(run_dir: Path, key: str) -> Path`
 - returns: `<run_dir>/.sessions/<slug(key)>`
-- code: `workhorse/workhorse/sessions.py::chain_path`
+- code: `workhorse/workhorse/sessions.py::chain_path` @a533ad19dfdf
 
 ### read_chain
 - sig: `read_chain(run_dir: Path, key: str) -> str`
 - consistency: chain-storage — returns an empty string without reading it when the key is empty
 - does: reads and strips the chain file when it exists
 - returns: the opaque backend session id, or an empty string when unavailable
-- code: `workhorse/workhorse/sessions.py::read_chain`
+- code: `workhorse/workhorse/sessions.py::read_chain` @a533ad19dfdf
 - verify: json_path(path="$.session_id", equals="")
 - tests: `workhorse/tests/test_session_chain.py::test_the_id_a_chain_is_on_is_readable_so_a_state_can_checkpoint_it`
 
 ### run_dir_of
 - sig: `run_dir_of(session_id_path: Path) -> Path`
 - returns: the parent of `.sessions/<key>` for a chain file, otherwise the supplied file's parent
-- code: `workhorse/workhorse/sessions.py::run_dir_of`
+- code: `workhorse/workhorse/sessions.py::run_dir_of` @a533ad19dfdf

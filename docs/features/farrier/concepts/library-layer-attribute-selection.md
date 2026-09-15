@@ -14,7 +14,7 @@ operator, so replacing either attribute with the other would lose required infor
 Neither attribute is an implementation alternative or has a ranking. Consumers resolving files
 use `root`; consumers reporting the selected or searched layer use `name`.
 
-- code: `farrier/farrier/layers.py::Layer`
+- code: `farrier/farrier/layers.py::Layer` @26243f6a8ed5
 - rule: use `root` for filesystem resolution and `name` for provenance diagnostics; neither attribute is preferred or deprecated
 - detail: [library layer usage rule](library-layer-usage-rule.md)
 - detail: [library layer selection](library-layer-selection.md)

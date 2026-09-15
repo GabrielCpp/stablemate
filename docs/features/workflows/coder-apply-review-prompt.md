@@ -6,7 +6,7 @@ title: Coder apply-review prompt
 # Coder apply-review prompt
 
 - file: `workflows/src/workhorse_workflows/coder/review/prompts/apply-review.md`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply` @ee5ae700635f
 - code: `workflows/tests/coder/test_status_line_ownership.py::test_the_prompt_forbids_writing_the_story_status_line`
 - code: `workflows/tests/coder/test_status_line_ownership.py::test_the_guard_names_what_enforces_it`
 - detail: [coder review flow](flows/coder-review.md)
@@ -35,7 +35,7 @@ verifies is the same shape — the prohibition must name the machinery, never st
 - required: true
 - semantics: the only story document the turn may modify
 - verify: json_path(path="$.story_path", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply` @ee5ae700635f
 - detail: [review apply turn inputs](concepts/review-apply-turn-inputs.md)
 
 ### spec_dir
@@ -43,7 +43,7 @@ verifies is the same shape — the prohibition must name the machinery, never st
 - required: true
 - semantics: directory containing review.md and the required review-resolution.json sidecar
 - verify: json_path(path="$.spec_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply` @ee5ae700635f
 - detail: [review apply turn inputs](concepts/review-apply-turn-inputs.md)
 
 ### review_notes
@@ -53,7 +53,7 @@ verifies is the same shape — the prohibition must name the machinery, never st
 - verify: json_path(path="$.review_notes", matches=".*")
 - semantics: empty when operator feedback is the work
 - verify: json_path(path="$.review_notes", equals="")
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply` @ee5ae700635f
 - detail: [review apply turn inputs](concepts/review-apply-turn-inputs.md)
 
 ### operator_feedback
@@ -62,7 +62,7 @@ verifies is the same shape — the prohibition must name the machinery, never st
 - required: false
 - semantics: human feedback applied within the existing story scope, when supplied
 - verify: json_path(path="$.operator_feedback", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply_resolved`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply_resolved` @ee5ae700635f
 
 ### status
 - type: `Literal[done, applied, no_changes_needed, needs_changes, blocked]`
@@ -71,7 +71,7 @@ verifies is the same shape — the prohibition must name the machinery, never st
 - verify: json_path(path="$.status", matches="^(done|applied|no_changes_needed|needs_changes|blocked)$")
 - semantics: review flow accepts the application result only after settlement verifies the sidecar
 - verify: json_path(path="$.status", matches="^(done|applied|no_changes_needed|needs_changes|blocked)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.status`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.status` @b6e19c205b4f
 - detail: [implementation result status](concepts/implementation-result-status.md)
 
 ### notes
@@ -80,7 +80,7 @@ verifies is the same shape — the prohibition must name the machinery, never st
 - required: false
 - semantics: brief describing what the apply turn changed or why it could not act
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.notes` @b6e19c205b4f
 - detail: [implementation result notes](concepts/impl-result-notes.md)
 
 ## Fields: review-resolution.json finding

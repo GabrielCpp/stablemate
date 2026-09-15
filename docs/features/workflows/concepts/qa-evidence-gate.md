@@ -12,7 +12,7 @@ product failure as actionable code work. All independent findings are accumulate
 The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached by the
 [evidence-and-audit stage](../flows/coder-qa.md#evidence-and-audit).
 
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py` @4f1b75300464
 - detail: [coder QA subflow](coder-qa-subflow.md)
 
 ## Fields
@@ -23,7 +23,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - required: true
 - semantics: specification-relative JSON artifact containing the runner's criteria, obligations, run identity, and evidence references
 - verify: json_path(path="$.EVIDENCE_FILE", equals="qa-evidence.json")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::EVIDENCE_FILE`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::EVIDENCE_FILE` @4f1b75300464
 
 ### REPORT
 - type: `str`
@@ -31,7 +31,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - required: true
 - semantics: specification-relative reviewer report that must carry the same run marker as the evidence artifact
 - verify: json_path(path="$.REPORT", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::REPORT`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::REPORT` @4f1b75300464
 
 ### PASSTHROUGH_STATUSES
 - type: `dict[str, QaStatus]`
@@ -41,7 +41,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - verify: count(subject="preserved non-pass QA statuses", equals=3)
 - semantics: an empty or unknown claim is not mapped and becomes invalid
 - verify: json_path(path="$.status", equals="invalid")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::PASSTHROUGH_STATUSES`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::PASSTHROUGH_STATUSES` @4f1b75300464
 
 ### CRITERION_KINDS
 - type: `tuple[str, ...]`
@@ -49,7 +49,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - required: true
 - semantics: criterion proof modes, each of which adds its own evidence obligation to a claimed pass
 - verify: count(subject="accepted QA criterion kinds", equals=4)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::CRITERION_KINDS`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::CRITERION_KINDS` @4f1b75300464
 
 ## Methods
 
@@ -59,7 +59,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - verify: json_path(path="$.tally", matches=".+")
 - does: returns `(0, 0)` when the log is absent, empty, malformed, or contains no assertion records
 - verify: json_path(path="$.tally", equals="(0, 0)")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_run_log_tally`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_run_log_tally` @4f1b75300464
 
 ### _exists
 - sig: `_exists(ref: Any, root: Path, spec_dir: Path) -> bool`
@@ -69,7 +69,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - verify: count(subject="evidence reference roots", equals=4)
 - returns: true only when one candidate is an existing file
 - verify: json_path(path="$.exists", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_exists`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_exists` @4f1b75300464
 
 ### _artifact_problems
 - sig: `_artifact_problems(spec_dir: Path, data: dict) -> tuple[list[str], dict, dict]`
@@ -85,7 +85,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - verify: json_path(path="$.qa_run_log", equals="qa/qa-run.ndjson")
 - returns: accumulated artifact problems plus parsed context and manifest dictionaries, using empty dictionaries after parse or shape failures
 - verify: json_path(path="$.parsed_artifacts", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_artifact_problems`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_artifact_problems` @4f1b75300464
 
 ### _obligation_problems
 - sig: `_obligation_problems(context: dict, data: dict) -> list[str]`
@@ -97,7 +97,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - verify: count(subject="required obligation execution references", equals=1)
 - returns: an empty list only when all required obligations have passing verdicts and executed log references
 - verify: json_path(path="$.problems", equals="[]")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_obligation_problems`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_obligation_problems` @4f1b75300464
 - tests: `workflows/tests/coder/qa/test_evidence_scope.py::test_a_required_obligation_needs_executed_logs_behind_its_pass`
 
 ### _parity_problems
@@ -108,7 +108,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - verify: count(subject="parity divergent rows", equals=0)
 - does: requires each checklist row to cite an existing evidence file
 - verify: count(subject="parity row evidence files", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_parity_problems`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_parity_problems` @4f1b75300464
 
 ### _data_entry_problems
 - sig: `_data_entry_problems(cid: str, criterion: dict, root: Path, spec_dir: Path) -> list[str]`
@@ -120,7 +120,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - verify: json_path(path="$.persistence.bled_to_others", equals=false)
 - does: requires the persistence proof to cite an existing evidence file
 - verify: count(subject="data-entry persistence evidence files", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_data_entry_problems`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_data_entry_problems` @4f1b75300464
 
 ### _transient_problems
 - sig: `_transient_problems(cid: str, criterion: dict, root: Path, spec_dir: Path) -> list[str]`
@@ -130,7 +130,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - verify: json_path(path="$.transient.disappeared", equals=true)
 - does: requires a capture file taken while the feedback was visible
 - verify: count(subject="transient mid-window captures", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_transient_problems`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_transient_problems` @4f1b75300464
 
 ### _criteria_problems
 - sig: `_criteria_problems(criteria: list, root: Path, spec_dir: Path) -> list[str]`
@@ -144,13 +144,13 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - verify: count(subject="passing criteria with evidence files", equals=1)
 - does: applies parity, data-entry, and transient proof requirements to their matching kinds
 - verify: count(subject="specialized QA criterion proof modes", equals=3)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_criteria_problems`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_criteria_problems` @4f1b75300464
 
 ### _unsupported_pass_problems
 - sig: `_unsupported_pass_problems(criteria: list, spec_dir: Path) -> list[str]`
 - does: rejects a passing criterion whose referenced scenario has any FAIL assertion in the scored run log
 - verify: count(subject="passing criteria backed by failed scenarios", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_unsupported_pass_problems`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_unsupported_pass_problems` @4f1b75300464
 - tests: `workflows/tests/coder/qa/test_evidence_unsupported_pass.py::test_a_pass_may_not_omit_its_scenarios_failures`
 
 ### _visual_fidelity_problems
@@ -163,7 +163,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - verify: count(subject="visual fidelity informational notes", equals=1)
 - returns: separate problem and note lists for the gate to combine without treating informational buckets as failures
 - verify: json_path(path="$.notes", matches=".*unexpected=[0-9]+ unlabeled=[0-9]+ .*informational only.*")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_visual_fidelity_problems`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_visual_fidelity_problems` @4f1b75300464
 
 ### _report_problems
 - sig: `_report_problems(spec_dir: Path, data: dict) -> list[str]`
@@ -171,7 +171,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - verify: count(subject="reviewer QA reports", equals=1)
 - does: rejects a report whose run marker differs from the evidence `runId`
 - verify: count(subject="same-run QA report markers", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_report_problems`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_report_problems` @4f1b75300464
 - tests: `workflows/tests/coder/qa/test_evidence_report.py::test_a_report_from_an_earlier_run_fails_the_pass`
 
 ### _run_id_problems
@@ -182,7 +182,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - verify: count(subject="matching evidence and manifest run ids", equals=1)
 - does: requires each passing criterion to cite an artifact basename listed by the current run manifest
 - verify: count(subject="current-run criterion artifacts", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_run_id_problems`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_run_id_problems` @4f1b75300464
 
 ### verify_qa_evidence
 - sig: `verify_qa_evidence(logger: logging.Logger, spec_dir: str = "", claimed_status: str = "", claimed_notes: str = "", repo_dir: str = "") -> QaResult`
@@ -214,5 +214,5 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - verify: json_path(path="$.status", equals="invalid")
 - returns: `QaResult(status="passed", notes=...)` only when every applicable proof check passes, retaining visual-fidelity notes and claimed notes
 - verify: json_path(path="$.status", equals="passed")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::verify_qa_evidence`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::verify_qa_evidence` @4f1b75300464
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_through_every_gate`

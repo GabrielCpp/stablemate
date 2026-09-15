@@ -9,7 +9,7 @@ title: groom local server
 - environment: [local Python uv workspace](local-python-uv-workspace.md)
 - cli: [groom](../groom-cli.md)
 - surfaces: [groom HTTP API](../http/groom.md)
-- code: `groom/groom/cli.py::serve`
+- code: `groom/groom/cli.py::serve` @3101753e038b
 - entry-url: `http://127.0.0.1:8787`
 - health-path: `/api/state`
 - identity: `"workflows"` — the JSON response body contains a `"workflows"` key (an object literal, structure subject to change)

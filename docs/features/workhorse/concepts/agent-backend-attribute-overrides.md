@@ -12,6 +12,6 @@ than leaving selection to its CLI; and it sets `supports_compaction` only when i
 session in place. The resilience ladder uses the last value to choose compaction or prompt
 reframing after context overflow.
 
-- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend`
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @1ed20e69807c
 - rule: retain each base attribute unless the CLI changes that capability; override `name` for the registry key, `default_model` for a backend-provided model, and `supports_compaction` only for in-place session compaction
 - detail: [AgentBackend documentation scope](agent-backend-documentation-scope.md)

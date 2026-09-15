@@ -5,7 +5,7 @@ title: Survey inventory expansion result
 ---
 # Survey inventory expansion result
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion` @f79c1c007a97
 - detail: [shared survey library](concepts/survey-shared-library.md)
 
 The result of consuming or materializing the survey unit inventory.
@@ -18,7 +18,7 @@ The result of consuming or materializing the survey unit inventory.
 - required: false
 - semantics: whether the inventory is usable
 - verify: json_path(path="$.expand_ok", equals=false)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion` @f79c1c007a97
 - detail: [expansion result field roles](concepts/expansion-result-field-roles.md)
 
 ### expand_errors
@@ -27,7 +27,7 @@ The result of consuming or materializing the survey unit inventory.
 - required: false
 - semantics: diagnostic expansion failure text
 - verify: json_path(path="$.expand_errors", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion` @f79c1c007a97
 - detail: [expansion result field roles](concepts/expansion-result-field-roles.md)
 
 ### unit_count
@@ -36,7 +36,7 @@ The result of consuming or materializing the survey unit inventory.
 - required: false
 - semantics: number of units in the resulting inventory
 - verify: json_path(path="$.unit_count", equals=0)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion` @f79c1c007a97
 - detail: [expansion result field roles](concepts/expansion-result-field-roles.md)
 
 ### inventory_note
@@ -45,5 +45,5 @@ The result of consuming or materializing the survey unit inventory.
 - required: false
 - semantics: explanation of whether the inventory was reused or expanded
 - verify: json_path(path="$.inventory_note", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion` @f79c1c007a97
 - detail: [expansion result field roles](concepts/expansion-result-field-roles.md)

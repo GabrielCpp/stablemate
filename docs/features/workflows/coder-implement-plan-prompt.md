@@ -6,7 +6,7 @@ title: Coder implement-plan prompt
 # Coder implement-plan prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/implement-plan.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::implement_layer`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::implement_layer` @13266f79223d
 - code: `workflows/tests/coder/test_status_line_ownership.py::test_the_prompt_forbids_writing_the_story_status_line`
 - code: `workflows/tests/coder/test_status_line_ownership.py::test_the_guard_names_what_enforces_it`
 - detail: [coder development flow](flows/coder-dev.md)

@@ -11,7 +11,7 @@ registered backend instead. `NullBackend` is not itself a selectable CLI: its `n
 diagnostic errors, it has no model or session compaction capability, and an agent turn reports
 that the operator must select a CLI.
 
-- code: `workhorse/workhorse/runner/backends/null.py::NullBackend`
+- code: `workhorse/workhorse/runner/backends/null.py::NullBackend` @c87c233cf345
 - rule: use `NullBackend` only when no agent CLI was selected; otherwise use the selected CLI's registered backend
 - prefers: [null-backend](null-backend.md)
 - detail: [Agent backend selection](agent-backend-selection.md)

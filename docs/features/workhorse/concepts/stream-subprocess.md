@@ -19,9 +19,9 @@ output: the process group, the watchdog, and the one stream loop every backend g
 loop; the module-level functions delegate to its installed singleton. Nothing in it knows any
 CLI's event vocabulary; that is each adapter's job.
 
-- code: `workhorse/workhorse/runner/process.py::stream_subprocess`
-- code: `workhorse/workhorse/runner/process.py::ProcessSupervisor`
-- code: `workhorse/workhorse/runner/process.py::ActiveProcess`
+- code: `workhorse/workhorse/runner/process.py::stream_subprocess` @e578ccf7bac0
+- code: `workhorse/workhorse/runner/process.py::ProcessSupervisor` @e578ccf7bac0
+- code: `workhorse/workhorse/runner/process.py::ActiveProcess` @e578ccf7bac0
 - code: `workhorse/tests/test_config_harness_env.py::test_harness_env_wins_over_the_inherited_shell`
 - The implementation is covered by `workhorse/tests/test_stream_subprocess.py::test_clean_stream_completes_without_timeout`,
   `workhorse/tests/test_stream_subprocess.py::test_wedged_midline_is_killed_by_watchdog`, and
@@ -93,7 +93,7 @@ and `workhorse/tests/test_stream_subprocess.py::test_an_at_boundary_request_does
 - verify: count(subject="active subprocess handles in a new registry", equals=0)
 - verify: created(subject="active-process registry")
 - returns: an active-process registry whose handle is protected for access from the streaming and interrupt execution contexts
-- code: `workhorse/workhorse/runner/process.py::ActiveProcess`
+- code: `workhorse/workhorse/runner/process.py::ActiveProcess` @e578ccf7bac0
 
 ### set
 - sig: `ActiveProcess.set(proc: subprocess.Popen) -> None`
@@ -101,7 +101,7 @@ and `workhorse/tests/test_stream_subprocess.py::test_an_at_boundary_request_does
 - verify: created(subject="registered active subprocess handle")
 - returns: `None`
 - verify: json_path(path="return", matches="^None$")
-- code: `workhorse/workhorse/runner/process.py::ActiveProcess.set`
+- code: `workhorse/workhorse/runner/process.py::ActiveProcess.set` @e578ccf7bac0
 
 ### clear
 - sig: `ActiveProcess.clear() -> None`
@@ -109,7 +109,7 @@ and `workhorse/tests/test_stream_subprocess.py::test_an_at_boundary_request_does
 - verify: removed(subject="registered active subprocess handle")
 - returns: `None`
 - verify: json_path(path="return", matches="^None$")
-- code: `workhorse/workhorse/runner/process.py::ActiveProcess.clear`
+- code: `workhorse/workhorse/runner/process.py::ActiveProcess.clear` @e578ccf7bac0
 
 ### terminate
 - sig: `ActiveProcess.terminate() -> None`
@@ -123,7 +123,7 @@ and `workhorse/tests/test_stream_subprocess.py::test_an_at_boundary_request_does
 - verify: emitted(event="forced active process group termination", count=1)
 - returns: `None` after the live subprocess is reaped
 - verify: removed(subject="live active subprocess and its process group")
-- code: `workhorse/workhorse/runner/process.py::ActiveProcess.terminate`
+- code: `workhorse/workhorse/runner/process.py::ActiveProcess.terminate` @e578ccf7bac0
 
 ### ProcessSupervisor.stream
 - sig: `ProcessSupervisor.stream(cmd, node_id, timeout, on_line, *, resilience, stdin_data=None, cwd=None, env_extra=None, secrets=None) -> tuple[bool, int]`
@@ -135,7 +135,7 @@ and `workhorse/tests/test_stream_subprocess.py::test_an_at_boundary_request_does
 - verify: removed(subject="active process group and descendants")
 - raises: `BackendInvocationError` when the command cannot be launched
 - returns: `(timed_out, returncode)` after the child has been reaped
-- code: `workhorse/workhorse/runner/process.py::ProcessSupervisor.stream`
+- code: `workhorse/workhorse/runner/process.py::ProcessSupervisor.stream` @e578ccf7bac0
 - tests: `workhorse/tests/test_stream_subprocess.py::test_a_reload_request_cuts_the_streaming_turn_within_a_slice`, `workhorse/tests/test_stream_subprocess.py::test_wedged_midline_is_killed_by_watchdog`, `workhorse/tests/test_stream_subprocess.py::test_the_child_pwd_matches_the_cwd_it_was_spawned_in`
 
 ### ProcessSupervisor.spawn
@@ -150,7 +150,7 @@ and `workhorse/tests/test_stream_subprocess.py::test_an_at_boundary_request_does
 - verify: json_path(path="$.error.transient", equals=false)
 - returns: the launched subprocess handle and records its executable as successfully launched
 - verify: created(subject="launched subprocess handle and successful executable registry entry")
-- code: `workhorse/workhorse/runner/process.py::ProcessSupervisor.spawn`
+- code: `workhorse/workhorse/runner/process.py::ProcessSupervisor.spawn` @e578ccf7bac0
 - tests: `workhorse/tests/test_agent_exec_retry.py::test_self_update_etxtbsy_is_retried_then_succeeds`, `workhorse/tests/test_agent_exec_retry.py::test_absent_cli_fails_nontransient_after_bounded_retries`, `workhorse/tests/test_agent_exec_retry.py::test_exhausted_retries_escalate_as_transient`
 
 ### install
@@ -159,7 +159,7 @@ and `workhorse/tests/test_stream_subprocess.py::test_an_at_boundary_request_does
 - verify: count(subject="installed supervisors after one install", equals=1)
 - returns: the previous supervisor so callers can restore it
 - verify: count(subject="supervisors returned by one install", equals=1)
-- code: `workhorse/workhorse/runner/process.py::install`
+- code: `workhorse/workhorse/runner/process.py::install` @e578ccf7bac0
 - tests: `workhorse/tests/test_agent_exec_retry.py::test_install_swaps_the_supervisor_and_hands_back_the_old_one`
 
 ### stream_subprocess
@@ -170,7 +170,7 @@ and `workhorse/tests/test_stream_subprocess.py::test_an_at_boundary_request_does
 - verify: json_path(path="exception.type", equals="ReloadRequested")
 - returns: the supervisor's `(timed_out, returncode)` result
 - verify: json_path(path="return.returncode", equals=17)
-- code: `workhorse/workhorse/runner/process.py::stream_subprocess`
+- code: `workhorse/workhorse/runner/process.py::stream_subprocess` @e578ccf7bac0
 
 ### terminate_active
 - sig: `terminate_active() -> None`
@@ -178,7 +178,7 @@ and `workhorse/tests/test_stream_subprocess.py::test_an_at_boundary_request_does
 - verify: removed(subject="currently streaming child process group and descendants")
 - returns: `None` without action when no active child exists or it has already exited
 - verify: count(subject="termination signals for an absent or exited active child", equals=0)
-- code: `workhorse/workhorse/runner/process.py::terminate_active`
+- code: `workhorse/workhorse/runner/process.py::terminate_active` @e578ccf7bac0
 
 ## Algorithm
 

@@ -5,7 +5,7 @@ title: Coder service contract
 ---
 # Coder service contract
 
-- code: `workflows/src/workhorse_workflows/coder/shared/contract.py::service_problems`
+- code: `workflows/src/workhorse_workflows/coder/shared/contract.py::service_problems` @44ede1a1c58f
 
 The coder uses this contract at both sides of service setup: genesis validates the service it
 leaves behind, while plan recording validates the service a plan intends to target. Both callers
@@ -35,4 +35,4 @@ messages. It does not mutate the path or infer a service type.
 - verify: count(subject="service contract problems", equals=0)
 - returns: an empty list when every applicable service condition passes
 - verify: count(subject="service contract problems", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/shared/contract.py::service_problems`
+- code: `workflows/src/workhorse_workflows/coder/shared/contract.py::service_problems` @44ede1a1c58f

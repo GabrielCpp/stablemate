@@ -5,7 +5,7 @@ title: Workflow kit external tools
 ---
 # Workflow kit external tools
 
-- code: `workflows/src/workhorse_workflows/kit/tools.py::run_tool`
+- code: `workflows/src/workhorse_workflows/kit/tools.py::run_tool` @4a5bac57a00b
 - extends:
 - rule:
 - prefers:
@@ -43,7 +43,7 @@ The genesis workflow patches this callable at its module boundary with a canned
 - verify: exit_status(code=1)
 - raises: propagates operating-system or process-launch errors from the subprocess invocation
 - returns: the `subprocess.CompletedProcess` for the child, including its arguments, return code, captured text standard output, and captured text standard error
-- code: `workflows/src/workhorse_workflows/kit/tools.py::run_tool`
+- code: `workflows/src/workhorse_workflows/kit/tools.py::run_tool` @4a5bac57a00b
 - detail:
 - fixture:
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept`

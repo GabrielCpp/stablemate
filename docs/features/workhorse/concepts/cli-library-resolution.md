@@ -10,8 +10,8 @@ from `FARRIER_LIBRARY_DIR`, then configured `library_dir`; the usable base root 
 `base_library_dir()`. Missing candidates are omitted, duplicate paths are emitted once, and this
 lookup never downloads or populates a library.
 
-- code: `workhorse/workhorse/cli/run.py::library_dirs`
-- code: `workhorse/workhorse/cli/run.py::invocation`
+- code: `workhorse/workhorse/cli/run.py::library_dirs` @b5237ac7dfc9
+- code: `workhorse/workhorse/cli/run.py::invocation` @b5237ac7dfc9
 - tests: `workhorse/tests/test_console_script.py::test_the_overlay_precedes_the_base_and_absent_layers_are_dropped`
 
 ## Methods
@@ -24,7 +24,7 @@ lookup never downloads or populates a library.
 - does: preserve precedence while removing duplicate directory strings
 - returns: existing library roots in overlay-then-base order
 - verify: count(subject="resolved library roots when overlay and base directories exist", equals=2)
-- code: `workhorse/workhorse/cli/run.py::library_dirs`
+- code: `workhorse/workhorse/cli/run.py::library_dirs` @b5237ac7dfc9
 
 ### invocation
 - sig: `invocation(args: argparse.Namespace) -> RunInvocation`
@@ -35,4 +35,4 @@ lookup never downloads or populates a library.
 - returns: a driver-ready `RunInvocation` carrying the bound registry and resolved run settings
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/run.py::invocation`
+- code: `workhorse/workhorse/cli/run.py::invocation` @b5237ac7dfc9

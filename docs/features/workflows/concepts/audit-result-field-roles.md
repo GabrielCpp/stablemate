@@ -14,7 +14,7 @@ class documentation establishes a preference, deprecation, or replacement relati
 them. A reader chooses the field for the needed role and must not substitute `status` or `notes`
 for `findings` when determining whether an audit passed.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditResult` @e0c7b3335724
 - rule: use `findings` to determine the audit verdict, `status` for agent-reported status, and `notes` for explanatory summary; none substitutes for another
 
 ## undocumented_files
@@ -46,4 +46,4 @@ reported by the behavior audit when its only citation is `tests:`. The two predi
 answer different questions and the asymmetry is intentional — see
 [OKF-builder audit module](okf-builder-audit-module.md) for the rationale.
 
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::BehaviorAuditOutcome.undocumented_files`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::BehaviorAuditOutcome.undocumented_files` @f983ebe1daca

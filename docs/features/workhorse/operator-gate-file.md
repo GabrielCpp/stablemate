@@ -11,7 +11,7 @@ wrapped in a discoverable heading, structured files are re-armed without double-
 answers are appended after the existing content.
 
 - file: `<run_dir>/<await path>`
-- code: `workhorse/workhorse/gates.py::format_operator_gate`
+- code: `workhorse/workhorse/gates.py::format_operator_gate` @3aa082d71dce
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_gates.py::test_structured_operator_gate_is_rearmed_without_double_wrapping`
 
@@ -26,21 +26,21 @@ answers are appended after the existing content.
 - verify: json_path(path="$.status", equals="ANSWERED")
 - semantics: a pending gate is represented by `AWAITING_OPERATOR`
 - verify: json_path(path="$.status", equals="AWAITING_OPERATOR")
-- code: `workhorse/workhorse/gates.py::status_of`
+- code: `workhorse/workhorse/gates.py::status_of` @3aa082d71dce
 
 ### SCOPE
 - type: lowercase token on its own line
 - required: false
 - semantics: caller-owned scope vocabulary, returned without engine interpretation
 - verify: json_path(path="$.scope", equals="epic")
-- code: `workhorse/workhorse/gates.py::scope_of`
+- code: `workhorse/workhorse/gates.py::scope_of` @3aa082d71dce
 
 ### Questions from the agent
 - type: markdown section
 - required: false
 - semantics: human-readable question body shown while the gate is pending
 - verify: visible(locator="operator gate question", text="which branch?")
-- code: `workhorse/workhorse/gates.py::format_operator_gate`
+- code: `workhorse/workhorse/gates.py::format_operator_gate` @3aa082d71dce
 
 ## Methods
 
@@ -48,14 +48,14 @@ answers are appended after the existing content.
 - sig: `status_of(text: str) -> str`
 - returns: upper-cased STATUS token, or empty string when absent
 - verify: json_path(path="$.status", equals="ANSWERED")
-- code: `workhorse/workhorse/gates.py::status_of`
+- code: `workhorse/workhorse/gates.py::status_of` @3aa082d71dce
 - tests: `workhorse/tests/test_gates.py::test_case_is_normalised_in_both_directions`
 
 ### scope_of
 - sig: `scope_of(text: str) -> str`
 - returns: lower-cased SCOPE token, or empty string when absent
 - verify: json_path(path="$.scope", equals="epic")
-- code: `workhorse/workhorse/gates.py::scope_of`
+- code: `workhorse/workhorse/gates.py::scope_of` @3aa082d71dce
 - tests: `workhorse/tests/test_gates.py::test_status_and_scope_are_read_off_their_own_lines`
 
 ### set_status
@@ -63,7 +63,7 @@ answers are appended after the existing content.
 - does: replaces only the first STATUS line, or prepends one when absent
 - returns: original content preserved except for the live status line
 - verify: unchanged(subject="operator gate content except its first STATUS line")
-- code: `workhorse/workhorse/gates.py::set_status`
+- code: `workhorse/workhorse/gates.py::set_status` @3aa082d71dce
 - tests: `workhorse/tests/test_gates.py::test_set_status_rewrites_only_the_first_line`
 
 ### format_operator_gate
@@ -72,7 +72,7 @@ answers are appended after the existing content.
 - does: re-arms structured content without duplicating its heading
 - returns: newline-terminated gate content
 - verify: visible(locator="operator gate question", text="which branch?")
-- code: `workhorse/workhorse/gates.py::format_operator_gate`
+- code: `workhorse/workhorse/gates.py::format_operator_gate` @3aa082d71dce
 - tests: `workhorse/tests/test_gates.py::test_plain_questions_format_as_a_discoverable_operator_gate`
 
 ### apply_answer
@@ -81,7 +81,7 @@ answers are appended after the existing content.
 - does: appends non-empty answer prose after existing content
 - returns: durable answered gate content
 - verify: persists(subject="answered operator gate")
-- code: `workhorse/workhorse/gates.py::apply_answer`
+- code: `workhorse/workhorse/gates.py::apply_answer` @3aa082d71dce
 - tests: `workhorse/tests/test_gates.py::test_apply_answer_flips_the_status_and_appends_the_prose`
 
 ### append_operator_gate
@@ -90,5 +90,5 @@ answers are appended after the existing content.
 - does: preserves prior questions and operator answers
 - returns: one-status-line gate content with accumulated history
 - verify: count(subject="STATUS lines after re-arming a gate with history", equals=1)
-- code: `workhorse/workhorse/gates.py::append_operator_gate`
+- code: `workhorse/workhorse/gates.py::append_operator_gate` @3aa082d71dce
 - tests: `workhorse/tests/test_gates.py::test_a_second_ask_keeps_the_first_ones_questions_and_its_answers`

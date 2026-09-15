@@ -11,7 +11,7 @@ repository outputs; it names evidence artifacts rather than ignoring every direc
 so a source package with that name remains visible. This module no longer installs or wires the
 hook itself; [hook manager wiring](hook-manager-wiring.md) owns that contract.
 
-- code: `farrier/farrier/hooks.py`
+- code: `farrier/farrier/hooks.py` @fd05f872f421
 - tests: `farrier/tests/test_qa_evidence_ignore.py`
 
 ## Fields
@@ -24,7 +24,7 @@ hook itself; [hook manager wiring](hook-manager-wiring.md) owns that contract.
 - verify: json_path(path="$.gate_path", equals="scripts/check_staged_files.py")
 - semantics: the gate's presence among install outputs enables the QA ignore block
 - verify: count(subject="QA gate output path", equals=1)
-- code: `farrier/farrier/hooks.py::GATE_SCRIPT`
+- code: `farrier/farrier/hooks.py::GATE_SCRIPT` @fd05f872f421
 
 ### QA_GITIGNORE_BLOCK
 - type: `tuple[str, ...]`
@@ -36,7 +36,7 @@ hook itself; [hook manager wiring](hook-manager-wiring.md) owns that contract.
 - verify: count(subject="QA evidence ignore patterns", equals=8)
 - semantics: the managed block ends with `# <<< farrier: QA evidence <<<`
 - verify: count(subject="QA evidence ignore block end marker", equals=1)
-- code: `farrier/farrier/hooks.py::QA_GITIGNORE_BLOCK`
+- code: `farrier/farrier/hooks.py::QA_GITIGNORE_BLOCK` @fd05f872f421
 
 ## Methods
 
@@ -51,7 +51,7 @@ hook itself; [hook manager wiring](hook-manager-wiring.md) owns that contract.
 - returns: `false` when the existing text already equals the desired text and no write is needed
 - verify: persists(subject="QA evidence ignore block in .gitignore")
 - verify: unchanged(subject="repository ignore rules outside the QA block")
-- code: `farrier/farrier/hooks.py::ensure_qa_gitignore`
+- code: `farrier/farrier/hooks.py::ensure_qa_gitignore` @fd05f872f421
 - tests: `farrier/tests/test_qa_evidence_ignore.py::test_the_ignore_block_names_artifacts_not_the_qa_directory`
 - tests: `farrier/tests/test_qa_evidence_ignore.py::test_the_ignore_block_is_idempotent_and_keeps_the_repo_rules`
 - tests: `farrier/tests/test_qa_evidence_ignore.py::test_the_block_is_refreshed_in_place_when_it_changes`

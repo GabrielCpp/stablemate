@@ -15,5 +15,5 @@ them. Choose each field by the information needed for the selected operation: re
 choose the phase, then read the applicable artifact identifier and `reason` to understand that
 choice. An operation can require more than one of these fields; no field substitutes for another.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @e0c7b3335724
 - rule: use `kind` for the phase, `roadmap`, `epic`, and `story` for the phase's applicable artifact identifiers, and `reason` for the planner's rationale; none replaces another

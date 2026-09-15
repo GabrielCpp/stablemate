@@ -46,9 +46,9 @@ hands a complete book to a two-way semantic audit of source against book. An aud
 to the drain; a clear or budget-partial audit optionally hands off to the web walkthrough — a
 no-op when the book has no web surface — and then commits only the service feature directory.
 
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder`
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::investigation_power`
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::repair_power`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder` @55c476c509d4
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::investigation_power` @55c476c509d4
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::repair_power` @55c476c509d4
 - code: `workflows/tests/okf_builder/test_workflow.py::test_repair_power_routes_difficult_first_attempts_to_medium`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_repair_power_keeps_a_single_mechanical_first_attempt_low`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_repair_power_routes_difficult_first_attempts_to_medium`
@@ -66,7 +66,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: count(subject="OKF-builder prepared settings", equals=1)
 - does: returns a `Prepared` result carrying path resolution, book existence, worklist baseline, and preparation errors
 - verify: count(subject="OKF-builder preparation results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.setup`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.setup` @55c476c509d4
 - tests: `workflows/tests/okf_builder/test_prepare_guard.py::test_accepts_the_bare_install_name`
 
 ### labels
@@ -74,7 +74,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - sig: `labels() -> dict[str, str]`
 - does: labels the run with its service and, after selection, the current work item and progress
 - verify: count(subject="OKF-builder dashboard label sets", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.labels`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.labels` @55c476c509d4
 - code: `workflows/tests/okf_builder/test_workflow.py::test_the_labels_name_the_service_and_the_item.capture`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_the_labels_name_the_service_and_the_item`
 
@@ -87,7 +87,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: count(subject="existing-book reconciliation starts", equals=1)
 - does: routes an empty book to checkpoint reconciliation, where coverage classifies its missing source units
 - verify: count(subject="empty-book coverage reconciliations", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.start`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.start` @55c476c509d4
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_an_empty_book_is_filled_top_down_from_the_code_s_surfaces`
 
 ### enumerate_surfaces
@@ -97,7 +97,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: count(subject="OKF-builder missing-unit adjudication turns", equals=1)
 - returns: a continuation carrying discovered surface, runbook, environment, and harness work items that the adjudication classified as genuine gaps
 - verify: count(subject="OKF-builder surface discovery batches", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.recheck`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.recheck` @55c476c509d4
 - detail: [OKF-builder recheck coverage selection](okf-builder-recheck-coverage.md)
 
 ### seed_surfaces
@@ -105,7 +105,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - sig: `seed_recheck(discovered: list[dict], rnd: int = 0, rescan: int = 0, refuels: int = 0) -> Continue`
 - does: records the adjudicated surface, runbook, environment, and harness gaps as pending work without closing an existing item
 - verify: count(subject="OKF-builder surface worklist seeds", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.seed_recheck`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.seed_recheck` @55c476c509d4
 - detail: [OKF-builder seed_recheck selection](okf-builder-seed-recheck.md)
 
 ### select
@@ -119,7 +119,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: count(subject="OKF-builder dry-drain checkpoints", equals=1)
 - does: passes a selected item and its context to investigation with convergence counters preserved
 - verify: count(subject="OKF-builder investigation dispatches", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.select`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.select` @55c476c509d4
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_the_item_ceiling_blocks_on_an_operator_gate_not_a_finished_book`
 
 ### refuel
@@ -127,7 +127,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - sig: `refuel(rnd: int = 0, rescan: int = 0, stall: int = 0, signature: str = "", refuels: int = 0) -> Continue`
 - does: increments the operator-granted allowance before re-entering selection
 - verify: count(subject="OKF-builder refuel allowances", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.refuel`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.refuel` @55c476c509d4
 
 ### investigate
 
@@ -138,7 +138,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: count(subject="OKF-builder investigation prompt inputs", equals=1)
 - does: forwards the agent's discovered items and documentation status to item recording
 - verify: count(subject="OKF-builder investigation results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.investigate`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.investigate` @55c476c509d4
 - code: `workflows/tests/okf_builder/test_repair_prompt.py::test_a_known_code_renders_its_own_fragment`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_an_investigation_opens_the_items_it_reveals`
 
@@ -147,7 +147,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - sig: `record_item(current_item: dict, discovered: list[dict], item_kind: str = "", item_context: str = "", doc_status: str = "", note: str = "", rnd: int = 0, rescan: int = 0, stall: int = 0, signature: str = "", refuels: int = 0) -> Continue`
 - does: closes the current row and opens discovered rows
 - verify: count(subject="OKF-builder recorded worklist items", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.record_item`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.record_item` @55c476c509d4
 
 ### checkpoint
 
@@ -162,7 +162,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: visible(locator="OKF-builder coverage-rescan gate")
 - does: routes a clean checkpoint to computed coverage
 - verify: count(subject="OKF-builder coverage joins", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.checkpoint`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.checkpoint` @55c476c509d4
 - tests: `workflows/tests/okf_builder/test_checkpoint.py::test_a_warning_is_a_standing_finding`
 
 ### adjudicate
@@ -178,7 +178,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: count(subject="OKF-builder applied adjudication verdicts", equals=1)
 - does: parks rows still blocked after adjudication on an operator gate
 - verify: visible(locator="OKF-builder blocked-finding gate")
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.adjudicate`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.adjudicate` @55c476c509d4
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_a_code_verdict_files_a_seed_and_records_the_defect_on_the_nodes`
 
 ### retry_blocked
@@ -186,7 +186,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - sig: `retry_blocked(rnd: int = 0, rescan: int = 0, signature: str = "", refuels: int = 0) -> Continue`
 - does: unblocks operator-resolved rows and resets the stall counter before returning to selection
 - verify: count(subject="OKF-builder blocked-row retries", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.retry_blocked`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.retry_blocked` @55c476c509d4
 
 ### rescan_coverage
 
@@ -199,7 +199,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: count(subject="OKF-builder missing-unit rechecks", equals=1)
 - does: hands a complete coverage result to the semantic audit
 - verify: count(subject="OKF-builder semantic audit dispatches", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.rescan_coverage`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.rescan_coverage` @55c476c509d4
 - detail: [Workflow kit worklist builder](workflow-kit-worklist.md)
 - tests: `workflows/tests/okf_builder/test_regrounding.py::test_a_symbol_that_changed_under_its_citation_is_queued_not_converged`
 
@@ -210,7 +210,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: count(subject="OKF-builder coverage recheck turns", equals=1)
 - does: returns the prompt's real gaps for worklist seeding and its waivers for the next computed join
 - verify: count(subject="OKF-builder coverage gap batches", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.recheck`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.recheck` @55c476c509d4
 - detail: [OKF-builder recheck coverage selection](okf-builder-recheck-coverage.md)
 
 ### seed_recheck
@@ -218,7 +218,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - sig: `seed_recheck(discovered: list[dict], rnd: int = 0, rescan: int = 0, refuels: int = 0) -> Continue`
 - does: records real coverage gaps and returns to the drain with fresh stall and finding state
 - verify: count(subject="OKF-builder coverage gap seeds", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.seed_recheck`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.seed_recheck` @55c476c509d4
 - detail: [OKF-builder seed_recheck selection](okf-builder-seed-recheck.md)
 
 ### semantic_audit
@@ -236,7 +236,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: visible(locator="OKF-builder unresolved-audit gate")
 - does: routes a clear or budget-partial audit to the web walkthrough when requested, otherwise straight to commit
 - verify: count(subject="OKF-builder post-audit routes", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.semantic_audit`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.semantic_audit` @55c476c509d4
 - detail: [OKF-builder audit workflow](../flows/okf-builder-audit.md)
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_behavior_repair_changes_book_and_reaudits_before_commit`
 
@@ -247,7 +247,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: count(subject="OKF-builder walkthrough skips", equals=1)
 - does: hands a complete OKF book to the web walkthrough sub-flow when requested, which no-ops when the book has no web surface
 - verify: count(subject="OKF-builder walkthrough handoffs", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.walkthrough`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.walkthrough` @55c476c509d4
 
 ### commit
 
@@ -260,7 +260,7 @@ no-op when the book has no web surface — and then commits only the service fea
 - verify: persists(subject="completed OKF service book")
 - returns: a done result carrying the walkthrough outcome
 - verify: count(subject="completed OKF-builder runs", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.commit`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.commit` @55c476c509d4
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_a_completed_book_is_committed_with_optional_story_provenance`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_fully_cited_book_cannot_commit_with_behavior_gaps`
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_legacy_completion_checkpoints_require_a_current_audit`
@@ -281,7 +281,7 @@ of blocked correspondence and routes verdicts; `finalize` performs the scoped co
 - verify: created(subject="OKF-builder diff scope")
 - returns: a `Prepared` result that carries `ostler_ok=false` and an explanatory error for unusable settings
 - verify: json_path(path="$.ostler_ok", equals=false)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/prepare.py::prepare`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/prepare.py::prepare` @da80054b220c
 - tests: `workflows/tests/okf_builder/test_since_scope.py::test_prepare_writes_the_scope_file_and_carries_it`
 
 ### inventory_source
@@ -293,7 +293,7 @@ of blocked correspondence and routes verdicts; `finalize` performs the scoped co
 - verify: json_path(path="$.operational", matches=".+")
 - does: reports an error instead of treating an unreadable or unsupported source tree as an empty covered inventory
 - verify: json_path(path="$.inventory_errors", matches=".+")
-- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py::inventory_source`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py::inventory_source` @d1528ad52fd3
 
 ### compute_coverage
 
@@ -306,7 +306,7 @@ of blocked correspondence and routes verdicts; `finalize` performs the scoped co
 - verify: created(subject="OKF-builder full coverage artifact")
 - does: marks coverage incomplete when the graph, inventory, or citation regrounding cannot support a complete verdict
 - verify: json_path(path="$.coverage_complete", equals=false)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py::compute_coverage`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py::compute_coverage` @d1528ad52fd3
 - tests: `workflows/tests/okf_builder/test_since_scope.py::test_a_scoped_coverage_does_not_overwrite_the_committed_book_artifact`
 
 ### method: blocked_rows
@@ -314,7 +314,7 @@ of blocked correspondence and routes verdicts; `finalize` performs the scoped co
 - sig: `blocked_rows(logger, worklist_path: str = "") -> BlockedRows`
 - does: returns blocked rows that have not already received an adjudication verdict
 - verify: count(subject="unadjudicated blocked OKF-builder rows", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/adjudicate.py::blocked_rows`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/adjudicate.py::blocked_rows` @caa4ee2ecacb
 
 ### gather_evidence
 
@@ -323,7 +323,7 @@ of blocked correspondence and routes verdicts; `finalize` performs the scoped co
 - verify: count(subject="OKF-builder evidence bundles", equals=1)
 - does: reads story text only when the story resolves in the planning graph
 - verify: count(subject="resolved OKF-builder story evidence", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/adjudicate.py::gather_evidence`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/adjudicate.py::gather_evidence` @caa4ee2ecacb
 
 ### apply_verdict
 
@@ -336,7 +336,7 @@ of blocked correspondence and routes verdicts; `finalize` performs the scoped co
 - verify: created(subject="OKF-builder code-defect seed")
 - does: records a story conflict for a `story` verdict with a covering story and leaves the row blocked otherwise
 - verify: visible(locator="OKF-builder story-conflict record")
-- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/adjudicate.py::apply_verdict`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/adjudicate.py::apply_verdict` @caa4ee2ecacb
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_a_story_verdict_with_no_story_parks_with_the_chain_on_the_gate`
 
 ### commit_book
@@ -346,4 +346,4 @@ of blocked correspondence and routes verdicts; `finalize` performs the scoped co
 - verify: exit_status(code=1)
 - does: commits only the feature-book path with the fixed docs subject and optional story trailer
 - verify: persists(subject="scoped completed OKF-builder book commit")
-- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/finalize.py::commit_book`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/finalize.py::commit_book` @e5923721b9f1

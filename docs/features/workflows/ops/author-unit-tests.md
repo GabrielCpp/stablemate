@@ -20,7 +20,7 @@ browser controls, so it does not use book-derived UI locators. The repository `t
 
 - driver: cli
 - surfaces: [Author workflow composition root](../concepts/author-workflow-composition-root.md)
-- code: `workflows/Makefile::test`
+- code: `workflows/Makefile::test` @4f2f1208042e
 - working-directory: workflows
 - detail: [Workflow unit-test tiers](../concepts/workflow-unit-test-tiers.md)
 

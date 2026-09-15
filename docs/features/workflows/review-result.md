@@ -6,7 +6,7 @@ title: Coder review result
 # Coder review result
 
 - file: none — in-memory flow return value
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewResult`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewResult` @2f54962a8770
 - detail: [coder review schema contracts](concepts/coder-review-schema-contracts.md)
 - detail: [coder review flow](flows/coder-review.md)
 
@@ -21,5 +21,5 @@ poll. The caller does not branch on a status; the notes field records the flow's
 - required: false
 - semantics: review-flow notes handed to the caller after completion
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewResult.notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewResult.notes` @2f54962a8770
 - tests: `workflows/tests/coder/review/test_flow.py::test_an_approved_review_stamps_the_specs_and_stops`

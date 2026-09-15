@@ -11,7 +11,7 @@ instead of accepting a session identifier, so a handoff can resume only the conv
 own run directory; a standalone lane starts cold when that chain is absent. Turn counts belong to
 the owning flow, while this module applies the shared recycling rule.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::__all__`
+- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::__all__` @5d09ec718f7c
 - code: `workflows/tests/coder/test_session_chains.py::spy`
 - code: `workflows/tests/coder/test_session_chains.py::spy.fake_agent`
 - code: `workflows/tests/coder/test_session_chains.py::spy.fake_require_engine`
@@ -27,7 +27,7 @@ the owning flow, while this module applies the shared recycling rule.
 - verify: count(subject="lanes sharing one story conversation key", equals=1)
 - returns: `story:<slug>`
 - verify: json_path(path="$.chain", matches="^story:[^:]+$")
-- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::story_chain`
+- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::story_chain` @5d09ec718f7c
 - tests: `workflows/tests/coder/test_session_chains.py::test_every_lane_names_the_same_conversation_without_being_handed_anything`
 
 ### backbone
@@ -38,7 +38,7 @@ the owning flow, while this module applies the shared recycling rule.
 - verify: count(subject="flow backbone conversation keys", equals=1)
 - returns: the `story:<ctx.story_slug>` key
 - verify: json_path(path="$.chain", matches="^story:[^:]+$")
-- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::backbone`
+- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::backbone` @5d09ec718f7c
 - tests: `workflows/tests/coder/test_session_chains.py::test_every_lane_names_the_same_conversation_without_being_handed_anything`
 
 ### spend_turn
@@ -51,5 +51,5 @@ the owning flow, while this module applies the shared recycling rule.
 - verify: count(subject="unrecycled conversations below or without a cap", equals=1)
 - returns: the existing turn count increased by one, or one after recycling
 - verify: json_path(path="$.turns", matches="^[1-9][0-9]*$")
-- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::spend_turn`
+- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::spend_turn` @5d09ec718f7c
 - tests: `workflows/tests/coder/test_session_chains.py::test_a_conversation_that_fills_up_inside_the_review_lane_is_recycled`

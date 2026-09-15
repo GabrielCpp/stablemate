@@ -13,7 +13,7 @@ mutation was found.
 
 - file: none — in-memory workflow result
 - config: pre-plan status and the resolved code repositories
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::PlanScrub`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::PlanScrub` @b69f3dbb6134
 - detail: [Coder story pipeline](concepts/story-pipeline.md)
 - tests: `workflows/tests/coder/shared/test_clean_tree.py::test_the_scrub_reverts_what_the_turn_wrote_and_only_that`
 - tests: `workflows/tests/coder/shared/test_clean_tree.py::test_a_turn_that_kept_to_reading_scrubs_nothing`
@@ -26,4 +26,4 @@ mutation was found.
 - required: false
 - semantics: affected absolute repository paths mapped to new porcelain entries and, for tracked paths, up to 4000 characters of discarded `HEAD` diff
 - verify: json_path(path="$.reverted", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::PlanScrub.reverted`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::PlanScrub.reverted` @b69f3dbb6134

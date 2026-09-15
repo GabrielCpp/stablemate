@@ -15,8 +15,8 @@ concerns and suggestions are rendered and delegated to an operator gate. Repair 
 bounded per defect kind; exhausted repairs escalate to an operator gate. The flow's routing
 controls and label management are defined by the `Review` class.
 
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py`
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py` @ee5ae700635f
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review` @ee5ae700635f
 - code: `workflows/tests/coder/review/test_flow.py::docs`
 - code: `workflows/tests/coder/review/test_flow.py::workspace`
 - code: `workflows/tests/coder/review/test_flow.py::test_human_operator_modes_wait_on_the_story_context_file`

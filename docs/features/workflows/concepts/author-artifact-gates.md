@@ -11,7 +11,7 @@ artifact validation confirms that the queue contains runnable authored work, and
 ships only the paths Author owns. Missing infrastructure is skipped only where the individual gate
 explicitly defines that fail-open behavior; actual findings remain blocking results.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_reconcile`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_reconcile` @dcae8c53f8af
 - detail: [author finalize subflow](author-finalize-subflow.md)
 - detail: [author shared schemas](author-shared-schemas.md)
 
@@ -41,7 +41,7 @@ silently remove previously committed planning scope.
 - verify: count(subject="reconciliation drop reports", equals=1)
 - returns: returns `VerifyReport` with `skipped`, `holds`, `errors`, and a reconciliation summary
 - verify: count(subject="reconciliation reports", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_reconcile`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_reconcile` @dcae8c53f8af
 - code: `workflows/tests/author/test_workflow.py::backlogged`
 - detail: [Author backlogged fixture contexts](author-backlogged-fixture-context.md)
 - tests: `workflows/tests/author/finalize/test_flow.py::test_finalizes_with_one_commit_on_the_current_branch`
@@ -64,7 +64,7 @@ allowing an unloadable graph to be explicitly skipped.
 - verify: count(subject="integrity error reports", equals=1)
 - returns: returns `VerifyReport` with the doctor summary and either a hold, skip, or formatted errors
 - verify: count(subject="integrity reports", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_integrity`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_integrity` @dcae8c53f8af
 - tests: `workflows/tests/author/finalize/test_flow.py::test_finalizes_with_one_commit_on_the_current_branch`
 - tests: `workflows/tests/author/finalize/test_flow.py::test_terminal_validation_commits_incomplete_then_fails`
 
@@ -93,7 +93,7 @@ one selectable story.
 - verify: count(subject="empty selectable artifact queues", equals=1)
 - returns: returns `Defects` with `ok` true only when the queue has no errors and at least one selectable story
 - verify: count(subject="validated artifact defect reports", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::validate_artifacts`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::validate_artifacts` @dcae8c53f8af
 - tests: `workflows/tests/author/test_workflow.py::test_author_nodes_use_milestones_when_todo_is_absent`
 
 ### commit_author
@@ -127,6 +127,6 @@ node in a fixture repository and captures the created commit subject.
 - verify: persists(subject="author-owned planning documents")
 - returns: returns `Committed` with `committed` indicating whether the scoped commit was created
 - verify: count(subject="author commit results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::commit_author`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::commit_author` @dcae8c53f8af
 - tests: `workflows/tests/author/finalize/test_flow.py::test_finalizes_with_one_commit_on_the_current_branch`
 - tests: `workflows/tests/author/finalize/test_flow.py::test_terminal_validation_commits_incomplete_then_fails`

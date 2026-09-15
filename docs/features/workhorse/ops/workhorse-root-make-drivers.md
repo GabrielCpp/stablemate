@@ -9,7 +9,7 @@ title: workhorse root Make drivers
 - environment: [workhorse Python uv workspace](workhorse-python-uv-workspace.md)
 - cli: [workhorse](../workhorse.md)
 - surfaces: [workhorse](../workhorse.md)
-- code: `Makefile::help`
+- code: `Makefile::help` @c74907b180b7
 - working-directory: .
 
 This runbook is the repository-root operational interface for the workhorse workspace. It is

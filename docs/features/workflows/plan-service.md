@@ -7,7 +7,7 @@ title: Coder plan service
 
 - file: none — in-memory nested plan record
 - config: `PlanService` fields returned inside a plan projection
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanService`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanService` @b6e19c205b4f
 - detail: [coder development schema contracts](concepts/coder-dev-schema-contracts.md)
 
 One service or shared package changed by a plan. Shared packages omit `plan_file`.
@@ -20,7 +20,7 @@ One service or shared package changed by a plan. Shared packages omit `plan_file
 - required: false
 - semantics: workspace repository containing the service
 - verify: json_path(path="$.repo", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanService.repo`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanService.repo` @b6e19c205b4f
 
 ### path
 - type: `str`
@@ -28,7 +28,7 @@ One service or shared package changed by a plan. Shared packages omit `plan_file
 - required: false
 - semantics: service path relative to its repository, or `.` for the root
 - verify: json_path(path="$.path", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanService.path`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanService.path` @b6e19c205b4f
 
 ### type
 - type: `str`
@@ -36,7 +36,7 @@ One service or shared package changed by a plan. Shared packages omit `plan_file
 - required: false
 - semantics: technology key used for service skill and prompt selection
 - verify: json_path(path="$.type", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanService.type`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanService.type` @b6e19c205b4f
 
 ### plan_file
 - type: `str`
@@ -46,7 +46,7 @@ One service or shared package changed by a plan. Shared packages omit `plan_file
 - verify: json_path(path="$.plan_file", matches="^[^/].*")
 - semantics: empty for shared packages
 - verify: json_path(path="$.plan_file", equals="")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanService.plan_file`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanService.plan_file` @b6e19c205b4f
 
 ### new_service
 - type: `bool`
@@ -54,4 +54,4 @@ One service or shared package changed by a plan. Shared packages omit `plan_file
 - required: false
 - semantics: whether implementation will scaffold a directory that does not yet exist
 - verify: json_path(path="$.new_service", matches="true|false")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanService.new_service`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanService.new_service` @b6e19c205b4f

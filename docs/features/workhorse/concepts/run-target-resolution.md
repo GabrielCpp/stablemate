@@ -13,8 +13,8 @@ exists on the current machine; failures become an actionable stderr message rath
 directory. The fallback returns a [live lookup result](../live-lookup.md) so the caller can
 distinguish a local miss, an unavailable groom service, and a directory that cannot be opened here.
 
-- code: `workhorse/workhorse/cli/target.py::resolve_target`
-- code: `workhorse/workhorse/cli/target.py::groom_live_run`
+- code: `workhorse/workhorse/cli/target.py::resolve_target` @9590de02546a
+- code: `workhorse/workhorse/cli/target.py::groom_live_run` @9590de02546a
 - tests: `workhorse/tests/test_control_command.py::test_a_run_is_found_by_its_id_its_dir_name_or_its_path`
 - tests: `workhorse/tests/test_control_command.py::test_an_id_groom_knows_resolves_to_the_run_dir_groom_names`
 - tests: `workhorse/tests/test_control_command.py::test_a_groom_row_for_another_workflow_is_not_this_run`
@@ -31,7 +31,7 @@ distinguish a local miss, an unavailable groom service, and a directory that can
 - does: rejects rows for another workflow, malformed top-level responses, unavailable groom, and ambiguous or non-local directories as misses with explanatory notes
 - returns: a [live lookup result](../live-lookup.md) containing the usable directory or no directory and the reason
 - verify: json_path(path="$.run_dir", matches=".+")
-- code: `workhorse/workhorse/cli/target.py::groom_live_run`
+- code: `workhorse/workhorse/cli/target.py::groom_live_run` @9590de02546a
 
 ### resolve_target
 - sig: `resolve_target(spec: str | None, runs_dir: Path, workflow_name: str, *, live: LiveLookupFn = groom_live_run) -> Path`
@@ -44,4 +44,4 @@ distinguish a local miss, an unavailable groom service, and a directory that can
 - raises: `SystemExit(1)` when a named target is unavailable or no unfinished run exists
 - verify: exit_status(code=1)
 - returns: the resolved run directory for a named local target, a usable groom target, or the newest unfinished local run
-- code: `workhorse/workhorse/cli/target.py::resolve_target`
+- code: `workhorse/workhorse/cli/target.py::resolve_target` @9590de02546a

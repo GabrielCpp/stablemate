@@ -7,7 +7,7 @@ title: Coder implementation context
 
 - file: none — in-memory implementation context
 - config: `ImplContext` value handed to implementation and QA planning
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext` @b6e19c205b4f
 - detail: [coder development schema contracts](concepts/coder-dev-schema-contracts.md)
 
 ## Fields
@@ -18,7 +18,7 @@ title: Coder implementation context
 - required: false
 - semantics: service QA briefs
 - verify: json_path(path="$.qa_run_plan", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.qa_run_plan`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.qa_run_plan` @b6e19c205b4f
 
 ### verification_setup
 - type: `dict[str, Any]`
@@ -26,7 +26,7 @@ title: Coder implementation context
 - required: false
 - semantics: story verification setup copied from the plan
 - verify: json_path(path="$.verification_setup", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.verification_setup`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.verification_setup` @b6e19c205b4f
 
 ### fixtures
 - type: `list[PlanFixture]`
@@ -34,7 +34,7 @@ title: Coder implementation context
 - required: false
 - semantics: named QA fixtures available to the planner
 - verify: json_path(path="$.fixtures", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.fixtures`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.fixtures` @b6e19c205b4f
 
 ### shared_packages
 - type: `list[str]`
@@ -42,7 +42,7 @@ title: Coder implementation context
 - required: false
 - semantics: shared directories changed by the plan
 - verify: json_path(path="$.shared_packages", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.shared_packages`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.shared_packages` @b6e19c205b4f
 
 ### dispatch_list
 - type: `list[DispatchEntry]`
@@ -50,7 +50,7 @@ title: Coder implementation context
 - required: false
 - semantics: ordered service implementation entries
 - verify: json_path(path="$.dispatch_list", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.dispatch_list`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.dispatch_list` @b6e19c205b4f
 
 ### affected_repos
 - type: `list[str]`
@@ -58,7 +58,7 @@ title: Coder implementation context
 - required: false
 - semantics: repositories affected by the story
 - verify: json_path(path="$.affected_repos", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.affected_repos`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.affected_repos` @b6e19c205b4f
 
 ### affected_repo_paths
 - type: `list[str]`
@@ -66,7 +66,7 @@ title: Coder implementation context
 - required: false
 - semantics: affected repository paths including the documentation root when needed
 - verify: json_path(path="$.affected_repo_paths", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.affected_repo_paths`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.affected_repo_paths` @b6e19c205b4f
 
 ### qa_source_roots
 - type: `list[str]`
@@ -74,7 +74,7 @@ title: Coder implementation context
 - required: false
 - semantics: unique source-root paths supplied to QA
 - verify: json_path(path="$.qa_source_roots", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.qa_source_roots`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.qa_source_roots` @b6e19c205b4f
 
 ## Methods
 
@@ -82,4 +82,4 @@ title: Coder implementation context
 - sig: `dispatch_count -> int`
 - returns: the length of `dispatch_list`
 - verify: count(subject="implementation dispatch count", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.dispatch_count`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplContext.dispatch_count` @b6e19c205b4f

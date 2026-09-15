@@ -22,7 +22,7 @@ fields also shared with [epic split prompt args](epic-split-prompt-args.md); `re
 fixed empty on this turn only; `context_path` and `block_notes` exist solely to drive the
 operator-resolution turn.
 
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.resolve`
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.resolve` @0f21033e17f5
 - rule: read `roadmap`, `milestone`, and `epics_dir` for the immutable split context, `review_notes`
   as always empty on this turn, `context_path` for where the operator record lives, and
   `block_notes` for why the prior cycle blocked; do not substitute or rank fields

@@ -9,7 +9,7 @@ A result of asking groom where a workflow's live run directory is located. The r
 only when `run_dir` is a directory on the current machine; all misses preserve a human-readable
 `note` rather than raising a network or response-shape exception.
 
-- code: `workhorse/workhorse/cli/target.py::LiveLookup`
+- code: `workhorse/workhorse/cli/target.py::LiveLookup` @9590de02546a
 - detail: [run target resolution](concepts/run-target-resolution.md)
 
 ## Fields
@@ -22,7 +22,7 @@ only when `run_dir` is a directory on the current machine; all misses preserve a
 - verify: json_path(path="$.run_dir", matches=".+")
 - semantics: the one locally existing run directory accepted from groom, or `None` for every miss
 - verify: json_path(path="$.run_dir", matches=".+")
-- code: `workhorse/workhorse/cli/target.py::LiveLookup`
+- code: `workhorse/workhorse/cli/target.py::LiveLookup` @9590de02546a
 - detail: [live lookup result fields](concepts/live-lookup-result.md)
 
 ### field: note
@@ -33,6 +33,6 @@ only when `run_dir` is a directory on the current machine; all misses preserve a
 - verify: json_path(path="$.note", equals="groom at http://127.0.0.1:1 not reachable")
 - semantics: explains the successful resolution or why groom's answer cannot be used
 - verify: json_path(path="$.note", matches="^groom at .* knows no live run 'ghost' for workflow 'demo'$" )
-- code: `workhorse/workhorse/cli/target.py::LiveLookup`
+- code: `workhorse/workhorse/cli/target.py::LiveLookup` @9590de02546a
 - tests: `workhorse/tests/test_control_command.py::test_an_id_groom_knows_resolves_to_the_run_dir_groom_names`
 - detail: [live lookup result fields](concepts/live-lookup-result.md)

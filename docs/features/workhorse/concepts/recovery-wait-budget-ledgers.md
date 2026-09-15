@@ -11,6 +11,6 @@ current agent-node visit. They are not alternative implementations and neither r
 use `limits` to determine the allowance and `spent` to determine how much of that allowance is
 already consumed before making the next reservation.
 
-- code: `workhorse/workhorse/runner/waits.py::RecoveryWaitBudget`
+- code: `workhorse/workhorse/runner/waits.py::RecoveryWaitBudget` @d0c5459fe618
 - rule: use `limits` for configured category ceilings and `spent` for reservations consumed during the current agent-node visit; neither field supersedes the other
 - detail: [Recovery wait budget documentation](recovery-wait-budget-documentation.md)

@@ -6,7 +6,7 @@ title: Coder merge-fix prompt
 # Coder merge-fix prompt
 
 - file: `workflows/src/workhorse_workflows/coder/main/prompts/fix-merge.md`
-- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.fix_merge`
+- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.fix_merge` @e12ee3a76767
 - detail: [coder main flow](flows/coder-main.md)
 - detail: [coder main PR boundary](concepts/coder-main-pr-boundary.md)
 - detail: [coder prompt role resolution](concepts/coder-prompt-role-resolution.md)

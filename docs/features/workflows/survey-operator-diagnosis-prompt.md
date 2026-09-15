@@ -6,7 +6,7 @@ title: Survey operator-diagnosis prompt contract
 # Survey operator-diagnosis prompt contract
 
 - file: `workflows/src/workhorse_workflows/author/surveyor/prompts/resolve-operator.md`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution` @f79c1c007a97
 - detail: [author surveyor subflow](concepts/author-surveyor-subflow.md)
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_human_operator_mode_sends_the_block_straight_to_the_context_file`
 

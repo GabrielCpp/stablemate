@@ -15,5 +15,5 @@ post-application check. Use the method node when implementing, testing, or diagn
 validator's `Defects` result. These are two views of the same validator, not alternative
 implementations or a ranked choice.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_applied_edit`
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_applied_edit` @4950dd5f8584
 - rule: follow the flow phase for journey context and the method node for the callable validation contract

@@ -16,6 +16,6 @@ Read `marked` to determine whether the matching inventory entry was written. Rea
 for diagnostic or outcome text. A caller may need more than one of these fields: no source-level
 ranking exists among them.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::MarkResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::MarkResult` @f79c1c007a97
 - rule: select each field for its distinct result role; combine fields when both write outcome,
   resulting status, and diagnostic context are needed

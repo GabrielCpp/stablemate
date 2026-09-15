@@ -13,7 +13,7 @@ session chains. Handoffs create a resume-aware child scope, while output reads t
 first available recorded artifact under a node's live or alias directory and fails if
 none exists.
 
-- code: `workhorse/workhorse/pyflow/engine.py::Engine`
+- code: `workhorse/workhorse/pyflow/engine.py::Engine` @c353a712887c
 - tests: [pyflow tests](../../../../workhorse/tests/test_pyflow.py)
 
 ## Fields
@@ -23,7 +23,7 @@ none exists.
 All infrastructure dependencies and substitutions are shared by one drive invocation.
 
 - type: dataclass containing writer, workflow_dir, session_id_path, config, driver, log, dry_run, clock, deadline, labels, manifest, nodes, agent_stubs, agent_runner, and resume_pending
-- code: `workhorse/workhorse/pyflow/engine.py::RunEnv`
+- code: `workhorse/workhorse/pyflow/engine.py::RunEnv` @c353a712887c
 
 ## Methods
 
@@ -31,13 +31,13 @@ All infrastructure dependencies and substitutions are shared by one drive invoca
 - sig: `jsonable(value: Any) -> Any`
 - returns: a best-effort JSON-compatible projection, using model dumps, dataclass conversion, path strings, and repr fallback
 - verify: json_path(path="$.value", equals="projected")
-- code: `workhorse/workhorse/pyflow/engine.py::jsonable`
+- code: `workhorse/workhorse/pyflow/engine.py::jsonable` @c353a712887c
 
 ### stub_nodes
 - sig: `stub_nodes(index: NameIndex[NodeSpec]) -> NameIndex[NodeSpec]`
 - returns: a non-mutating index whose node bodies are dry-run stand-ins with retries disabled
 - verify: count(subject="live names in a stubbed node index", equals=1)
-- code: `workhorse/workhorse/pyflow/engine.py::stub_nodes`
+- code: `workhorse/workhorse/pyflow/engine.py::stub_nodes` @c353a712887c
 
 ### Engine.call
 - sig: `call(node, args, kwargs, span_kind="") -> Any`
@@ -55,7 +55,7 @@ All infrastructure dependencies and substitutions are shared by one drive invoca
 - verify: persists(subject="node output artifact")
 - raises: `UnknownNodeError` when the node is not in the run index
 - returns: the node's typed plain value
-- code: `workhorse/workhorse/pyflow/engine.py::Engine.call`
+- code: `workhorse/workhorse/pyflow/engine.py::Engine.call` @c353a712887c
 
 ### Engine.agent
 - sig: `agent(prompt, *, returns, args, power=None, timeout=None, retries=None, invoke_retries=None, cwd=None, add_dirs=None, session=None) -> Any`
@@ -84,7 +84,7 @@ All infrastructure dependencies and substitutions are shared by one drive invoca
 - raises: `AgentTurnFailed` when a backend invocation that did not time out exhausts recovery
 - returns: the validated reply value
 - verify: persists(subject="agent visit output artifact")
-- code: `workhorse/workhorse/pyflow/engine.py::Engine.agent`
+- code: `workhorse/workhorse/pyflow/engine.py::Engine.agent` @c353a712887c
 
 ### Engine.handoff
 - sig: `handoff(wf, args, kwargs) -> Any`
@@ -94,29 +94,29 @@ All infrastructure dependencies and substitutions are shared by one drive invoca
 - raises: `WorkflowFailed` when no driver is available
 - returns: the child workflow's driver result
 - verify: persists(subject="child workflow scope artifacts")
-- code: `workhorse/workhorse/pyflow/engine.py::Engine.handoff`
+- code: `workhorse/workhorse/pyflow/engine.py::Engine.handoff` @c353a712887c
 
 ### Engine.output
 - sig: `output(node) -> Any`
 - raises: `NodeNotRunError` when no output exists under the live or alias directory names
 - verify: absent(subject="output artifact before node invocation")
 - returns: the first available node output under its live or alias directory, revived through its declared return type
-- code: `workhorse/workhorse/pyflow/engine.py::Engine.output`
+- code: `workhorse/workhorse/pyflow/engine.py::Engine.output` @c353a712887c
 
 ### Engine.session_id
 - sig: `session_id(key: str) -> str`
 - returns: the persisted session id for a chain, or an empty string before its first turn
 - verify: json_path(path="$.session_id", absent=true)
-- code: `workhorse/workhorse/pyflow/engine.py::Engine.session_id`
+- code: `workhorse/workhorse/pyflow/engine.py::Engine.session_id` @c353a712887c
 
 ### Engine.seed_session
 - sig: `seed_session(key: str, session_id: str) -> None`
 - does: writes a non-empty session id for a chain only when that chain has no existing id
 - verify: persists(subject="seeded session chain")
-- code: `workhorse/workhorse/pyflow/engine.py::Engine.seed_session`
+- code: `workhorse/workhorse/pyflow/engine.py::Engine.seed_session` @c353a712887c
 
 ### Engine.reset_session
 - sig: `reset_session(key: str) -> None`
 - does: removes a chain file so its next turn starts a new conversation
 - verify: removed(subject="the session chain for the supplied key")
-- code: `workhorse/workhorse/pyflow/engine.py::Engine.reset_session`
+- code: `workhorse/workhorse/pyflow/engine.py::Engine.reset_session` @c353a712887c

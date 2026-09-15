@@ -9,7 +9,7 @@ The verdict `repair-qa-context.md` reports on whether the obligation packet grou
 
 - file: none — agent reply and checkpoint value
 - config: `ContextRepair` agent-turn output contract
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::ContextRepair`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::ContextRepair` @2e918886779f
 - detail: [coder QA schema contracts](concepts/coder-qa-schema-contracts.md)
 
 ## Fields
@@ -22,7 +22,7 @@ The verdict `repair-qa-context.md` reports on whether the obligation packet grou
 - verify: json_path(path="$.status", equals="repaired")
 - semantics: `blocked` only when the repair needs an author or product decision, or a source repository not given
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::ContextRepair.status`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::ContextRepair.status` @2e918886779f
 
 ### notes
 
@@ -31,5 +31,5 @@ The verdict `repair-qa-context.md` reports on whether the obligation packet grou
 - required: false
 - semantics: what was repaired — or, when blocked, what it needs
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::ContextRepair.notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::ContextRepair.notes` @2e918886779f
 

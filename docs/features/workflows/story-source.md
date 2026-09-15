@@ -7,7 +7,7 @@ title: Coder story source
 
 - file: none — in-memory source provenance record
 - config: `StorySource` source-root entry
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StorySource`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StorySource` @b6e19c205b4f
 - detail: [coder development schema contracts](concepts/coder-dev-schema-contracts.md)
 
 ## Fields
@@ -18,7 +18,7 @@ title: Coder story source
 - required: false
 - semantics: implementation repository name
 - verify: json_path(path="$.repo", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StorySource.repo`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StorySource.repo` @b6e19c205b4f
 
 ### checkout
 - type: `str`
@@ -26,7 +26,7 @@ title: Coder story source
 - required: false
 - semantics: filesystem checkout path
 - verify: json_path(path="$.checkout", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StorySource.checkout`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StorySource.checkout` @b6e19c205b4f
 
 ### surface
 - type: `str`
@@ -34,7 +34,7 @@ title: Coder story source
 - required: false
 - semantics: dispatched service surface identifier
 - verify: json_path(path="$.surface", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StorySource.surface`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StorySource.surface` @b6e19c205b4f
 
 ### root
 - type: `str`
@@ -42,7 +42,7 @@ title: Coder story source
 - required: false
 - semantics: source root relative to the checkout
 - verify: json_path(path="$.root", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StorySource.root`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StorySource.root` @b6e19c205b4f
 
 ### base
 - type: `str`
@@ -50,7 +50,7 @@ title: Coder story source
 - required: false
 - semantics: earliest commit associated with the story
 - verify: json_path(path="$.base", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StorySource.base`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StorySource.base` @b6e19c205b4f
 
 ### head
 - type: `str`
@@ -58,4 +58,4 @@ title: Coder story source
 - required: false
 - semantics: source head marker used for the current worktree
 - verify: json_path(path="$.head", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StorySource.head`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StorySource.head` @b6e19c205b4f

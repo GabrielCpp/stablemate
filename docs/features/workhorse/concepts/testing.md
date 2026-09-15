@@ -29,7 +29,7 @@ def test_select_story(tmp_path):
     assert_json_file(repo, "docs/state.json", {"status": "done"})
 ```
 
-- code: `workhorse/workhorse/testing.py`
+- code: `workhorse/workhorse/testing.py` @03f874061c35
 
 ## Methods
 
@@ -39,7 +39,7 @@ def test_select_story(tmp_path):
 - does: configure a local identity, create `README.md` only when absent, stage the tree, and create one initial commit
 - returns: the same repository path
 - verify: created(subject="initial Git repository")
-- code: `workhorse/workhorse/testing.py::make_git_repo`
+- code: `workhorse/workhorse/testing.py::make_git_repo` @03f874061c35
 
 ### method: assert_file
 - sig: `assert_file(sandbox: Path, rel: str) -> None`
@@ -47,7 +47,7 @@ def test_select_story(tmp_path):
 - verify: json_path(path="exception.type", equals="AssertionError")
 - raises: `AssertionError` naming the relative path when it does not exist
 - verify: json_path(path="exception.message", matches="Expected file 'missing\.txt' to exist in sandbox, but it does not")
-- code: `workhorse/workhorse/testing.py::assert_file`
+- code: `workhorse/workhorse/testing.py::assert_file` @03f874061c35
 
 A QA scenario calls `assert_file` for an absent `missing.txt` relative to its prepared sandbox
 and captures the expected exception's type and message for these comparisons.
@@ -60,7 +60,7 @@ and captures the expected exception's type and message for these comparisons.
 - verify: json_path(path="exception.message", matches="Expected file 'missing\.txt' to exist in sandbox, but it does not")
 - raises: `AssertionError` with the actual file content when the substring is missing
 - verify: json_path(path="exception.message", matches="Actual content:\\nactual content")
-- code: `workhorse/workhorse/testing.py::assert_file_contains`
+- code: `workhorse/workhorse/testing.py::assert_file_contains` @03f874061c35
 
 A QA scenario calls `assert_file_contains` first for an absent `missing.txt`, then for a present
 file containing `actual content` but not the requested substring. It captures the expected
@@ -76,7 +76,7 @@ file containing `actual content` but not the requested substring. It captures th
 - verify: count(subject="AssertionErrors from reversed-order and longer-list JSON comparisons", equals=2)
 - raises: `AssertionError` for missing files, invalid JSON, absent dict keys, unequal values, or unequal lists
 - verify: count(subject="AssertionErrors from missing-file, invalid-JSON, missing-key, unequal-value, and unequal-list cases", equals=5)
-- code: `workhorse/workhorse/testing.py::assert_json_file`
+- code: `workhorse/workhorse/testing.py::assert_json_file` @03f874061c35
 
 A QA scenario calls `assert_json_file` with `invalid.json` containing malformed JSON and captures
 the expected exception message. It then calls the helper with a dict subset that matches a JSON
@@ -114,7 +114,7 @@ Initialises a minimal real git repo at `path` and returns `path`.
 Every subprocess runs with `check=True, capture_output=True`, so a git failure surfaces as
 `CalledProcessError` at the setup line rather than as a confusing assertion later.
 
-- code: `workhorse/workhorse/testing.py::make_git_repo`
+- code: `workhorse/workhorse/testing.py::make_git_repo` @03f874061c35
 
 ## Assertion helpers
 
@@ -126,14 +126,14 @@ assertions, not custom exceptions. All three take the sandbox directory first an
 ### `assert_file(sandbox, rel)`
 `sandbox / rel` exists.
 
-- code: `workhorse/workhorse/testing.py::assert_file`
+- code: `workhorse/workhorse/testing.py::assert_file` @03f874061c35
 
 ### `assert_file_contains(sandbox, rel, text)`
 `sandbox / rel` exists and its UTF-8 text contains `text` as a substring. The failure message
 includes the file's full actual content, which is what makes it usable on a rendered prompt
 or a generated document.
 
-- code: `workhorse/workhorse/testing.py::assert_file_contains`
+- code: `workhorse/workhorse/testing.py::assert_file_contains` @03f874061c35
 
 ### `assert_json_file(sandbox, rel, subset)`
 `sandbox / rel` exists and parses as JSON (a parse failure is re-raised as an `AssertionError`
@@ -145,7 +145,7 @@ naming the file, not a bare `JSONDecodeError`), then matched against `subset`:
 - **`subset` is a `list`** — the parsed JSON must equal it **exactly**. Order and length are
   part of the claim, because for a list they usually are.
 
-- code: `workhorse/workhorse/testing.py::assert_json_file`
+- code: `workhorse/workhorse/testing.py::assert_json_file` @03f874061c35
 
 ## What is not here, and where it went
 

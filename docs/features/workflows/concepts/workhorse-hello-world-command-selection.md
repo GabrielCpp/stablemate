@@ -15,6 +15,6 @@ Use `dot` only when a Graphviz representation of the registered state graph is n
 `version` only to inspect the installed engine. The commands are all current and none supersedes
 another because they provide different operations on the same bound workflow.
 
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main` @a0d572bb6d0f
 - rule: use `run` for execution, `dot` for graph rendering, and `version` for installed-engine identification; no command supersedes another
 - detail: [Hello-world main concept selection](hello-world-main-concept-selection.md)

@@ -12,7 +12,7 @@ chunk, emits a cap-wait heartbeat metric and prints a "still paused" line — so
 watching the log and a collector watching the telemetry can tell a long, legitimate cap wait
 (hours, sometimes days) from an actual hang.
 
-- code: `workhorse/workhorse/runner/caps.py::sleep_with_notice`
+- code: `workhorse/workhorse/runner/caps.py::sleep_with_notice` @ff4d1852d0a5
 - tests: `workhorse/tests/test_agent_cap.py::test_cap_sleeps_until_reset_then_resumes`
 
 ## Contract

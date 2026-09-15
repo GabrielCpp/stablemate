@@ -16,6 +16,6 @@ stored, and supplied alongside the rest of a run's immutable configuration. Neit
 supersedes the other: the source defines `AgentResilience` as a field of `RunConfig`, and
 both remain current for their respective contexts.
 
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - rule: use agent resilience tuning for recovery-stage settings and per-run configuration for the immutable run snapshot that contains them
 - detail: [agent resilience documentation selection](agent-resilience-documentation-selection.md)

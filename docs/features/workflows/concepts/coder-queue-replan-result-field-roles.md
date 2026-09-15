@@ -11,5 +11,5 @@ one-line account of what was re-grounded or what the answer left undecided. The 
 complementary parts of one reply, not competing interfaces, and the source declares no ranking
 between them.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::ReplanResult`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::ReplanResult` @a87cd48ce444
 - rule: read `status` to determine the replan outcome and `notes` to read its context; no field is preferred or deprecated because both describe the same replan reply

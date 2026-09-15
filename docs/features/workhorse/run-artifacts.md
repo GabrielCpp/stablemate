@@ -17,7 +17,7 @@ are the [run record models](concepts/run-records.md), and agent visits are named
 - file: `<runs-dir>/<workflow-name>-<run-id>/` (a directory tree, not a single file; `<runs-dir>`
   defaults to `<cwd>/.agents/runs`; `<run-id>` is the explicit `--run-id`, else a digest of
   `--params` (`p<sha1[:8]>`), else `default` — see [`run`](workhorse.md#run))
-- code: `workhorse/workhorse/artifacts.py::ArtifactWriter`
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter` @db240823dab7
 
 The checkpoint, resume, await, and sequence behavior is covered by
 `workhorse/tests/test_pyflow.py::test_the_checkpoint_is_the_state_and_its_params`,
@@ -368,7 +368,7 @@ constructors (`__init__`, `resume`, `at`, `subscope`) and methods (`write_state_
 [`ArtifactWriter`](concepts/artifact-writer.md), which also lists the four methods that survived the
 YAML engine's retirement without a production caller.
 
-- code: `workhorse/workhorse/artifacts.py::ArtifactWriter`
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter` @db240823dab7
 
 ## Consumers
 

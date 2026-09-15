@@ -9,7 +9,7 @@ The shared TOML file is guarded by its schema version because separately install
 the same file. Reads of a newer schema warn and continue, but writes refuse rather than dropping
 keys the current tool does not understand.
 
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::ConfigVersionError`
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::ConfigVersionError` @451a081294d0
 - detail: [home config](../home-config.md)
 
 ## Methods
@@ -18,4 +18,4 @@ keys the current tool does not understand.
 - sig: `ConfigVersionError(message: str)`
 - does: represents refusal to write a config newer than the supported schema
 - verify: conflict_on_stale(subject="config file", token="config schema version")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::ConfigVersionError`
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::ConfigVersionError` @451a081294d0

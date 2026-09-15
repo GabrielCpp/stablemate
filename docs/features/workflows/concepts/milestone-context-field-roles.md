@@ -16,6 +16,6 @@ milestones and epics respectively.
 No ranking exists among these fields. Consumers use the representation required by their
 operation; none replaces another.
 
-- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneContext`
+- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneContext` @3a9fb1b3e42d
 - rule: use each field for its distinct repository, roadmap, path, ordered-epic, or fingerprint
   role; none supersedes another

@@ -14,7 +14,7 @@ budget across all gates. The resolver may apply only a decision grounded in an e
 an unresolved question remains an operator gate, and a block can recur after the resolver budget
 is spent.
 
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py` @13266f79223d
 - tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`
 - detail: [coder development flow](../flows/coder-dev.md)
 
@@ -26,7 +26,7 @@ is spent.
 - required: true
 - semantics: the resolver turn has no timeout so it can finish an operator investigation
 - verify: count(subject="unbounded resolver timeout", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::UNBOUNDED`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::UNBOUNDED` @13266f79223d
 
 ### MAX_FIX_LAPS
 - type: `int`
@@ -34,7 +34,7 @@ is spent.
 - required: true
 - semantics: a layer receives at most three repair laps before the implementation gate
 - verify: count(subject="development repair-lap limit", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::MAX_FIX_LAPS`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::MAX_FIX_LAPS` @13266f79223d
 
 ### MAX_SESSION_TURNS
 - type: `int`
@@ -42,7 +42,7 @@ is spent.
 - required: true
 - semantics: the story backbone is recycled after eight implementation or repair turns
 - verify: count(subject="development session-turn limit", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::MAX_SESSION_TURNS`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::MAX_SESSION_TURNS` @13266f79223d
 
 ### MAX_VALIDATE_REWORKS
 - type: `int`
@@ -50,7 +50,7 @@ is spent.
 - required: true
 - semantics: invalid service-path plans receive three path-repair turns before escalation
 - verify: count(subject="development path-rework limit", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::MAX_VALIDATE_REWORKS`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::MAX_VALIDATE_REWORKS` @13266f79223d
 
 ### MAX_PLAN_BLOCKS
 - type: `int`
@@ -58,7 +58,7 @@ is spent.
 - required: true
 - semantics: the automatic resolver gets three block trips before later trips go directly to the operator
 - verify: count(subject="development resolver-trip limit", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::MAX_PLAN_BLOCKS`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::MAX_PLAN_BLOCKS` @13266f79223d
 
 ### HUMAN_MODES
 - type: `frozenset[str]`
@@ -66,7 +66,7 @@ is spent.
 - required: true
 - semantics: these operator modes bypass automatic resolution and await the story context file
 - verify: count(subject="direct human operator modes", equals=2)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::HUMAN_MODES`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::HUMAN_MODES` @13266f79223d
 
 ## Methods
 
@@ -76,14 +76,14 @@ is spent.
 - does: keeps path repair and block repair on separate conversation keys
 - returns: `plan-<worklist>:<story-slug>`
 - verify: count(subject="story-scoped repair chains", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::repair_chain`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::repair_chain` @13266f79223d
 
 ### spend
 - sig: `spend(flow: Dev, lap: Lap) -> Lap`
 - does: increments the story backbone turn count and recycles the conversation when the session limit is reached
 - returns: a copied `Lap` with the updated session-turn count
 - verify: count(subject="development session turns", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::spend`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::spend` @13266f79223d
 - tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`
 
 ### ends
@@ -92,14 +92,14 @@ is spent.
 - does: preserves the backbone session-turn count on the returned result for the next lane
 - returns: a terminal `Done` carrying the supplied `DevResult` and session-turn count
 - verify: count(subject="development flow terminal results", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::ends`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::ends` @13266f79223d
 
 ### current_layer
 - sig: `current_layer(flow: Dev) -> DispatchEntry`
 - does: reads the selected dispatch entry from the recorded layer-selection output
 - returns: the current `DispatchEntry`
 - verify: count(subject="current development layer reads", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::current_layer`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::current_layer` @13266f79223d
 
 ### escalate
 - sig: `escalate(flow: Dev, notes: str, number: int, result: OperatorResolution | None = None, block_kind: str = "plan", where: str = "the plan stage", findings: Sequence[Finding] = ()) -> OperatorGate`
@@ -107,7 +107,7 @@ is spent.
 - does: preserves resolver evidence and the concrete block kind and location in the gate
 - returns: an `OperatorGate` whose body preserves the investigation for the operator
 - verify: count(subject="development escalation bodies", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::escalate`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::escalate` @13266f79223d
 - tests: `workflows/tests/coder/dev/test_flow.py::test_an_escalating_resolver_leaves_its_note_for_the_human`
 
 ### resolver_turn
@@ -116,7 +116,7 @@ is spent.
 - does: supplies the story workspace and documentation root as resolver context
 - returns: the resolver's structured `OperatorResolution`
 - verify: count(subject="development resolver turns", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::resolver_turn`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::resolver_turn` @13266f79223d
 - code: `workflows/tests/coder/dev/test_flow.py::test_a_resolver_that_grounds_its_answer_settles_the_block_without_a_person`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_resolver_that_grounds_its_answer_settles_the_block_without_a_person`
 
@@ -127,7 +127,7 @@ is spent.
 - does: awaits the operator directly after three resolver trips without imposing a cap on later human blocks
 - returns: a continuation to plan resolution or an await on story context
 - verify: count(subject="plan-block routing arms", equals=3)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::gate_plan`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::gate_plan` @13266f79223d
 - code: `workflows/tests/coder/dev/test_flow.py::test_human_operator_modes_wait_on_the_story_context_file`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_human_operator_modes_wait_on_the_story_context_file`
 - tests: `workflows/tests/coder/dev/test_a_service_path_nobody_can_repair_never_gives_up`
@@ -137,7 +137,7 @@ is spent.
 - does: routes a dirty gate to another repair lap while the shared lap budget remains
 - does: routes the exhausted repair budget to the implementation operator gate
 - verify: count(subject="development repair routing arms", equals=2)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::repair_or_escalate`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::repair_or_escalate` @13266f79223d
 - tests: `workflows/tests/coder/dev/test_a_gate_no_repair_lap_can_satisfy_never_gives_up_either`
 
 ### gate_impl
@@ -147,7 +147,7 @@ is spent.
 - does: routes directly to the operator after the resolver budget is spent while retaining actionable findings
 - returns: a resolver continuation or an operator await
 - verify: count(subject="implementation-block routing arms", equals=3)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::gate_impl`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::gate_impl` @13266f79223d
 - tests: `workflows/tests/coder/dev/test_an_implementation_turn_that_says_it_cannot_reaches_the_operator`
 - tests: `workflows/tests/coder/dev/test_an_implementation_block_in_human_mode_skips_the_resolver`
 
@@ -158,7 +158,7 @@ is spent.
 - does: resumes the conversation keyed to the supplied worklist
 - returns: the replacement `PlanResult` from the repair turn
 - verify: count(subject="development plan refinement turns", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::refine`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::refine` @13266f79223d
 - tests: `workflows/tests/coder/dev/test_an_unresolvable_service_path_reworks_the_plan`
 
 ### plan_arg
@@ -166,7 +166,7 @@ is spent.
 - does: projects only the structural plan fields needed by later states
 - returns: services, implementation order, shared packages, verification setup, and fixtures
 - verify: count(subject="development plan projections", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::plan_arg`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::plan_arg` @13266f79223d
 - tests: `workflows/tests/coder/dev/test_the_projection_carries_the_fixtures_under_either_spelling`
 
 ### implement_layer
@@ -176,5 +176,5 @@ is spent.
 - does: runs one high-power implementation prompt with the layer plan, verification setup, QA run plan, gates, and operator context
 - returns: the implementation turn's structured result, including a blocked result that must be gated
 - verify: count(subject="development implementation turns", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::implement_layer`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::implement_layer` @13266f79223d
 - tests: `workflows/tests/coder/dev/test_the_implement_turn_is_handed_the_two_values_its_prompt_reads`

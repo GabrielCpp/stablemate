@@ -5,7 +5,7 @@ title: Coder shared dry-run stubs
 ---
 # Coder shared dry-run stubs
 
-- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py`
+- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py` @ef02913794a7
 
 Coder genesis uses these callbacks as deterministic stand-ins when the workflow runs with
 `--dry-run`. Every callback accepts arbitrary node arguments because the dry-run registry replaces
@@ -29,7 +29,7 @@ Classifies the dry-run genesis target as worth processing and chooses the full b
 - verify: json_path(path="$.target_state", equals="absent")
 - returns: the note `dry run`
 - verify: json_path(path="$.note", equals="dry run")
-- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::classified`
+- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::classified` @ef02913794a7
 
 ### built
 
@@ -42,7 +42,7 @@ Reports that the synthetic genesis skeleton was created successfully.
 - verify: json_path(path="$.ok", equals=true)
 - returns: the note `dry run`
 - verify: json_path(path="$.note", equals="dry run")
-- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::built`
+- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::built` @ef02913794a7
 
 ### installed
 
@@ -55,7 +55,7 @@ Reports that the synthetic Farrier installation completed successfully.
 - verify: json_path(path="$.ok", equals=true)
 - returns: the note `dry run`
 - verify: json_path(path="$.note", equals="dry run")
-- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::installed`
+- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::installed` @ef02913794a7
 
 ### valid
 
@@ -66,7 +66,7 @@ Reports that the synthetic genesis result satisfies the main flow’s preconditi
 - verify: count(subject="genesis validation stub invocations", equals=1)
 - returns: a genesis report with `valid=true`
 - verify: json_path(path="$.valid", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::valid`
+- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::valid` @ef02913794a7
 
 ### story_paths
 
@@ -85,4 +85,4 @@ Provides the synthetic story identity and paths needed to traverse the per-story
 - verify: json_path(path="$.spec_dir", matches="/dry-run/docs/epics/dry-run-epic/stories/dry-run-story/spec")
 - returns: a `qa_dir` beneath the synthetic story directory
 - verify: json_path(path="$.qa_dir", matches="/dry-run/docs/epics/dry-run-epic/stories/dry-run-story/qa")
-- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::story_paths`
+- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::story_paths` @ef02913794a7

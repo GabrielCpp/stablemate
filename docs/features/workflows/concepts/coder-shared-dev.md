@@ -5,7 +5,7 @@ title: Coder shared development helpers
 ---
 # Coder shared development helpers
 
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::__all__`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::__all__` @11eaf0e506a5
 - code: `workflows/tests/coder/shared/test_gates.py::repo`
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder resolver decision handling](coder-shared-resolution.md)
@@ -25,7 +25,7 @@ that the flow routes.
 - required: true
 - semantics: failed gate output is retained from its final 4000 characters, prefixed as truncated when longer
 - verify: count(subject="gate output limit", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::MAX_GATE_OUTPUT`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::MAX_GATE_OUTPUT` @11eaf0e506a5
 
 ### GATE_TIMEOUT
 - type: `int`
@@ -33,7 +33,7 @@ that the flow routes.
 - required: true
 - semantics: a declared gate command is allowed 600 seconds before it is reported dirty for timeout
 - verify: count(subject="gate timeout", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::GATE_TIMEOUT`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::GATE_TIMEOUT` @11eaf0e506a5
 
 ### GATE_ORDER
 - type: `tuple[str, str]`
@@ -41,7 +41,7 @@ that the flow routes.
 - required: true
 - semantics: declared development gates are resolved and run in lint-then-test order
 - verify: count(subject="development gate order", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::GATE_ORDER`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::GATE_ORDER` @11eaf0e506a5
 
 ### AWAITING
 - type: `str`
@@ -49,7 +49,7 @@ that the flow routes.
 - required: true
 - semantics: marks an operator context that is waiting for an answer
 - verify: count(subject="awaiting operator status", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::AWAITING`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::AWAITING` @11eaf0e506a5
 
 ### ANSWERED
 - type: `str`
@@ -57,7 +57,7 @@ that the flow routes.
 - required: true
 - semantics: marks an operator context containing an answer ready for consumption
 - verify: count(subject="answered operator status", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::ANSWERED`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::ANSWERED` @11eaf0e506a5
 
 ### CONSUMED
 - type: `str`
@@ -65,7 +65,7 @@ that the flow routes.
 - required: true
 - semantics: marks an operator answer already consumed so a later block can re-arm the context
 - verify: count(subject="consumed operator status", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::CONSUMED`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::CONSUMED` @11eaf0e506a5
 
 ## Methods
 
@@ -75,7 +75,7 @@ that the flow routes.
 - does: normalizes plan files that resolve inside the story spec directory to spec-relative paths
 - returns: services, implementation order, shared packages, verification setup, and typed fixture projections
 - verify: count(subject="development plan documents", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::plan_document`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::plan_document` @11eaf0e506a5
 - tests: `workflows/tests/coder/dev/test_flow.py::test_the_projection_carries_the_fixtures_under_either_spelling`
 
 ### record_plan
@@ -87,7 +87,7 @@ that the flow routes.
 - does: permits a service-less plan as a repository-root dispatch when its dispatched files are valid
 - returns: `valid` with the projected document, or `invalid` with deterministic errors
 - verify: persists(subject="the plan-context projection")
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::record_plan`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::record_plan` @11eaf0e506a5
 - tests: `workflows/tests/coder/dev/test_flow.py::test_an_unresolvable_service_path_reworks_the_plan`
 
 ### read_plan_text
@@ -96,7 +96,7 @@ that the flow routes.
 - raises: `OSError` when the selected plan file cannot be read
 - returns: the plan file's UTF-8 content without fallback text
 - verify: count(subject="inlined implementation plan", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::read_plan_text`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::read_plan_text` @11eaf0e506a5
 
 ### resolve_impl_context
 - sig: `resolve_impl_context(logger: logging.Logger, spec_dir: str = "", target_env: str = "local", docs_path: str = "", repo_dir: str = "", workspace_file: str = "", plan: dict[str, Any] | None = None) -> ImplContext`
@@ -108,7 +108,7 @@ that the flow routes.
 - does: creates one unique `surface=source-root` QA source-root entry for each dispatched surface
 - returns: dispatch, QA, fixture, shared-package, affected-repository, and source-root context
 - verify: count(subject="resolved implementation contexts", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::resolve_impl_context`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::resolve_impl_context` @11eaf0e506a5
 - tests: `workflows/tests/coder/dev/test_flow.py::test_the_implement_turn_is_handed_the_two_values_its_prompt_reads`
 
 ### plan_summary
@@ -117,7 +117,7 @@ that the flow routes.
 - does: renders implementation order, shared packages, verification setup, named fixtures, and unnamed arrangements when present
 - returns: blank text when the projection is missing or declares no services, otherwise a human-readable plan summary
 - verify: count(subject="rendered plan summaries", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::plan_summary`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::plan_summary` @11eaf0e506a5
 - tests: `workflows/tests/coder/dev/test_flow.py::test_the_summary_says_the_names_apart_from_the_arrangements`
 
 ### branch_code_repos
@@ -128,7 +128,7 @@ that the flow routes.
 - does: leaves repositories already on the requested branch unchanged and skips non-git repositories
 - returns: names of repositories branched and already on the branch
 - verify: count(subject="story branch dispatch", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::branch_code_repos`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::branch_code_repos` @11eaf0e506a5
 - tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`
 
 ### select_next_layer
@@ -137,14 +137,14 @@ that the flow routes.
 - does: applies repository-root fallback for a producing plan with no services or an absent projection
 - returns: the next layer with its index and dispatch count, or the unchanged index with `has_layer=false` when exhausted
 - verify: count(subject="next development layer selections", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::select_next_layer`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::select_next_layer` @11eaf0e506a5
 
 ### service_keys
 - sig: `service_keys(service: str = "", service_type: str = "") -> list[str]`
 - does: derives lookup keys from the complete dispatch id, its path, the path basename, and the service type
 - returns: unique non-empty keys in narrowest-first order
 - verify: count(subject="service declaration lookup keys", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::service_keys`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::service_keys` @11eaf0e506a5
 - tests: `workflows/tests/coder/shared/test_gates.py::test_the_dispatch_id_is_decomposed_into_the_keys_a_repo_actually_writes`
 
 ### service_declaration
@@ -153,7 +153,7 @@ that the flow routes.
 - does: returns the first dictionary found by service, path, basename, then service type
 - returns: the selected gate declaration or an empty mapping
 - verify: count(subject="service declaration selection", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::service_declaration`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::service_declaration` @11eaf0e506a5
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_service_name_beats_its_type`
 
 ### service_dir
@@ -162,7 +162,7 @@ that the flow routes.
 - does: falls back to the supplied checkout for a root service, a missing path, or a non-directory
 - returns: the directory in which that service's gate command runs
 - verify: count(subject="service gate working directories", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::service_dir`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::service_dir` @11eaf0e506a5
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_services_gate_runs_in_the_service_directory_not_the_repo_root`
 
 ### gate_command
@@ -172,7 +172,7 @@ that the flow routes.
 - does: falls back to `make <gate>` only when the service Makefile defines that target
 - returns: the selected command or an empty string when the gate is not adopted
 - verify: count(subject="resolved service gate commands", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::gate_command`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::gate_command` @11eaf0e506a5
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_makefile_target_is_the_last_resort`
 
 ### declared_gates
@@ -181,7 +181,7 @@ that the flow routes.
 - does: reports `(nothing declared)` when no gate is adopted
 - returns: gate names, commands, and their execution-directory annotation
 - verify: count(subject="declared gate summaries", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::declared_gates`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::declared_gates` @11eaf0e506a5
 - tests: `workflows/tests/coder/shared/test_gates.py::test_declared_gates_renders_the_commands_that_will_run`
 
 ### declared_markers
@@ -189,7 +189,7 @@ that the flow routes.
 - does: reads each workspace repository's declared service marker files
 - returns: one repository line per repository with markers, or blank text when none are declared
 - verify: count(subject="declared service markers", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::declared_markers`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::declared_markers` @11eaf0e506a5
 - tests: `workflows/tests/coder/shared/test_gates.py::test_the_planner_is_told_the_markers_this_workspace_declares`
 
 ### run_gate
@@ -200,7 +200,7 @@ that the flow routes.
 - does: returns `dirty` for a non-zero exit, timeout, or truncated combined output
 - returns: the gate name, status, command, output, and reason
 - verify: count(subject="executed development gates", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::run_gate`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::run_gate` @11eaf0e506a5
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_failing_command_is_dirty_and_carries_its_output`
 
 ### check_story_status
@@ -209,7 +209,7 @@ that the flow routes.
 - does: reports `dirty` when the status marks the story finished before QA
 - returns: `clean` with the written status when it is not finished, otherwise `dirty` with that status
 - verify: count(subject="pre-QA story status checks", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::check_story_status`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::check_story_status` @11eaf0e506a5
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_turn_that_stamps_the_story_finished_is_sent_back`
 
 ### changed_files
@@ -219,7 +219,7 @@ that the flow routes.
 - does: includes paths from commits matching the exact story id or slug trailer
 - returns: sorted unique changed paths and an empty result for an unusable checkout or failed git query
 - verify: count(subject="story changed-file reports", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::changed_files`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::changed_files` @11eaf0e506a5
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_new_file_is_in_the_diff_the_gates_read`
 
 ### resolve_story_sources
@@ -228,7 +228,7 @@ that the flow routes.
 - does: deduplicates repeated repository, surface, and service-root entries
 - returns: valid story source provenance, or invalid errors for missing story identity, missing source repositories, conflicting checkouts, or absent story commits
 - verify: count(subject="story source provenance", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::resolve_story_sources`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::resolve_story_sources` @11eaf0e506a5
 
 ### read_operator_context
 - sig: `read_operator_context(logger: logging.Logger, story_path: str = "") -> OperatorAnswer`
@@ -237,5 +237,5 @@ that the flow routes.
 - does: treats only `SCOPE: epic` as epic scope and narrows every other value to story scope
 - returns: unanswered when the context file is absent, otherwise answered with scope and original content
 - verify: persists(subject="consumed operator answer status")
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::read_operator_context`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::read_operator_context` @11eaf0e506a5
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_resolver_that_grounds_its_answer_settles_the_block_without_a_person`

@@ -15,8 +15,8 @@ The package contains seven subject modules — `config`, `intake`, `epics`, `sto
 is isolated in a submodule to break circular import cycles: subject modules import the blueprint to
 register themselves, so the blueprint cannot import them back.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py` @99afb36e5062
+- code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint` @6a9a28e94866
 - tests: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
 - detail: [author main node exports](author-main-node-exports.md)
 - detail: [author main package](author-main-package.md)
@@ -27,7 +27,7 @@ register themselves, so the blueprint cannot import them back.
 ### blueprint
 - type: `Blueprint`
 - semantics: the shared registration point for all author main deterministic nodes
-- code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint` @6a9a28e94866
 
 ## Subject modules
 

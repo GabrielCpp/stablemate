@@ -7,7 +7,7 @@ title: Author commit result
 
 The commit result says whether the author flow actually created its requested commit.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Committed`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Committed` @e0c7b3335724
 - detail: [author shared schemas](concepts/author-shared-schemas.md)
 
 ## Fields
@@ -18,4 +18,4 @@ The commit result says whether the author flow actually created its requested co
 - required: false
 - semantics: whether the author operation created a commit
 - verify: json_path(path="$.committed", equals=False)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Committed`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Committed` @e0c7b3335724

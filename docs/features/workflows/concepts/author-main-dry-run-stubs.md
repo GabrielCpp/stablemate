@@ -10,7 +10,7 @@ and verification nodes when a run is started with `--dry-run`. They accept and i
 arguments, returning affirmative result models so the dry-run follows the successful gate paths.
 The callbacks do not themselves provide a human-mode escape from an `Await`.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/_stubs.py`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/_stubs.py` @893b6cd48428
 
 ## Methods
 
@@ -25,7 +25,7 @@ Returns the successful result shared by `validate_story`, `check_story_grounding
 - verify: json_path(path="$.ok", equals=true)
 - returns: the default empty `errors` string
 - verify: json_path(path="$.errors", equals="")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/_stubs.py::clean`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/_stubs.py::clean` @893b6cd48428
 
 ### holds
 Returns the successful result shared by `verify_reconcile` and `verify_integrity`.
@@ -41,4 +41,4 @@ Returns the successful result shared by `verify_reconcile` and `verify_integrity
 - verify: json_path(path="$.errors", equals="")
 - returns: the default empty `report` string
 - verify: json_path(path="$.report", equals="")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/_stubs.py::holds`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/_stubs.py::holds` @893b6cd48428

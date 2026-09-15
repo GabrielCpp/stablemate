@@ -15,6 +15,6 @@ when the flow may make up to two automatic resolution attempts before awaiting o
 use `human` when it must await that input as soon as work is blocked. The mode never changes
 which epic is in scope.
 
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow`
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @7e464639145e
 - rule: provide both inputs; select `operator_mode` for blocked-decision handling, not as an alternative to the required `epic`
 - detail: [story-split flow concept selection](story-split-flow-concept-selection.md)

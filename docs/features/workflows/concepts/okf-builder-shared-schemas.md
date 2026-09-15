@@ -12,7 +12,7 @@ results, and walkthrough results are represented separately so transitions bind 
 the receiving node's signature. `SourceRequest` is immutable and rejects repository-escaping
 relative roots.
 
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py` @0639f20e2dc3
 
 ## Models
 
@@ -20,7 +20,7 @@ relative roots.
 - sig: `OkfResult(data: Any) -> OkfResult`
 - does: ignores unknown model keys and drops null dictionary values before validation
 - verify: count(subject="OKF-builder result normalization operations", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::OkfResult`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::OkfResult` @0639f20e2dc3
 
 ### method: SourceRequest
 - sig: `SourceRequest(repo: str, surface: str, root: str = ".", base: str, head: str = "WORKTREE") -> SourceRequest`
@@ -30,31 +30,31 @@ relative roots.
 - verify: count(subject="normalized OKF-builder source roots", equals=1)
 - does: rejects root values equal to or beneath `..`
 - verify: count(subject="rejected escaping OKF-builder source roots", equals=0)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::SourceRequest`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::SourceRequest` @0639f20e2dc3
 
 ### method: Prepared
 - sig: `Prepared(...) -> Prepared`
 - does: carries resolved build paths, scope identity, book state, source requests, and preparation status with defaults for omitted values
 - verify: count(subject="OKF-builder prepared schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Prepared`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Prepared` @0639f20e2dc3
 
 ### method: Committed
 - sig: `Committed(committed: bool = false) -> Committed`
 - does: carries whether the completed book produced a commit
 - verify: json_path(path="$.committed", equals=false)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Committed`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Committed` @0639f20e2dc3
 
 ### method: Pick
 - sig: `Pick(...) -> Pick`
 - does: carries selected item identity, budget state, and worklist progress labels
 - verify: count(subject="OKF-builder pick schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Pick`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Pick` @0639f20e2dc3
 
 ### method: Settled
 - sig: `Settled(...) -> Settled`
 - does: reports whether a mid-drain doctor consultation ran, and the repair rows it closed as stale versus left standing
 - verify: count(subject="OKF-builder settle schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Settled`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Settled` @0639f20e2dc3
 
 ### method: Recorded
 - sig: `Recorded(...) -> Recorded`
@@ -62,73 +62,73 @@ relative roots.
 - verify: count(subject="OKF-builder recorded schema results", equals=1)
 - does: reports pending `fix:` rows closed as `stale` because the checkpoint's doctor report no longer names them
 - verify: count(subject="OKF-builder recorded settled-row counts", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Recorded`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Recorded` @0639f20e2dc3
 
 ### method: BlockedRows
 - sig: `BlockedRows(rows: list[dict[str, Any]] = [], count: int = 0) -> BlockedRows`
 - does: carries blocked worklist rows that have not received an adjudication verdict
 - verify: count(subject="OKF-builder blocked-row schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::BlockedRows`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::BlockedRows` @0639f20e2dc3
 
 ### method: Evidence
 - sig: `Evidence(...) -> Evidence`
 - does: carries affected nodes, doctor findings, grounded code references, story evidence, and join warnings for adjudication
 - verify: count(subject="OKF-builder evidence schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Evidence`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Evidence` @0639f20e2dc3
 
 ### method: Adjudication
 - sig: `Adjudication(verdict: str = "", chain: str = "", seed_summary: str = "") -> Adjudication`
 - does: carries a book, code, or story verdict plus its why-chain and optional code-defect summary
 - verify: count(subject="OKF-builder adjudication schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Adjudication`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Adjudication` @0639f20e2dc3
 
 ### method: Applied
 - sig: `Applied(...) -> Applied`
 - does: reports the applied verdict, affected seed or story, marked nodes, and requeue decision
 - verify: count(subject="OKF-builder applied schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Applied`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Applied` @0639f20e2dc3
 
 ### method: Checkpoint
 - sig: `Checkpoint(...) -> Checkpoint`
 - does: carries doctor cleanliness, rendered output, round counters, repair items, and stall signature
 - verify: count(subject="OKF-builder checkpoint schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Checkpoint`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Checkpoint` @0639f20e2dc3
 
 ### method: SourceInventory
 - sig: `SourceInventory(...) -> SourceInventory`
 - does: carries the inventory artifact path, source-unit counts, operational-unit count, and inventory error
 - verify: count(subject="OKF-builder source inventory schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::SourceInventory`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::SourceInventory` @0639f20e2dc3
 
 ### method: Coverage
 - sig: `Coverage(...) -> Coverage`
 - does: carries the computed coverage verdict, missing-unit artifacts, re-grounding items, and rescan counter
 - verify: count(subject="OKF-builder coverage schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Coverage`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Coverage` @0639f20e2dc3
 
 ### method: Discovery
 - sig: `Discovery(discovered: list[dict[str, Any]] = []) -> Discovery`
 - does: carries discovered worklist entries
 - verify: count(subject="OKF-builder discovery schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Discovery`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Discovery` @0639f20e2dc3
 
 ### method: Investigation
 - sig: `Investigation(discovered: list[dict[str, Any]] = [], doc_status: str = "", note: str = "") -> Investigation`
 - does: carries discovered entries and the documenting turn's status and note
 - verify: count(subject="OKF-builder investigation schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Investigation`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Investigation` @0639f20e2dc3
 
 ### method: Recheck
 - sig: `Recheck(discovered: list[dict[str, Any]] = [], needs_journeys: bool = false) -> Recheck`
 - does: carries coverage-recheck discoveries and whether journeys are needed
 - verify: count(subject="OKF-builder recheck schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Recheck`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Recheck` @0639f20e2dc3
 
 ### method: WalkTurn
 - sig: `WalkTurn(discovered: list[dict[str, Any]] = [], walk_status: str = "") -> WalkTurn`
 - does: carries walkthrough discoveries and confirmed, healed, or skipped status
 - verify: count(subject="OKF-builder walkthrough turn schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::WalkTurn`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::WalkTurn` @0639f20e2dc3
 
 ### method: WebApp
 - sig: `WebApp(...) -> WebApp`
@@ -142,28 +142,28 @@ relative roots.
 - verify: count(subject="OKF-builder web application identity schema results", equals=1)
 - does: carries its documented scratch paths
 - verify: count(subject="OKF-builder web application scratch schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::WebApp`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::WebApp` @0639f20e2dc3
 
 ### method: AppBoot
 - sig: `AppBoot(...) -> AppBoot`
 - does: carries application readiness, resolved entry URL, process identity, and process-group identity
 - verify: count(subject="OKF-builder application boot schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::AppBoot`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::AppBoot` @0639f20e2dc3
 
 ### method: BrowserBoot
 - sig: `BrowserBoot(...) -> BrowserBoot`
 - does: carries shared-browser readiness, CDP endpoint, and optional spawned process identity
 - verify: count(subject="OKF-builder browser boot schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::BrowserBoot`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::BrowserBoot` @0639f20e2dc3
 
 ### method: TornDown
 - sig: `TornDown(torn_down: str = "no") -> TornDown`
 - does: carries the string state `yes`, `no`, or `skipped` for teardown
 - verify: count(subject="OKF-builder teardown schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::TornDown`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::TornDown` @0639f20e2dc3
 
 ### method: WalkSeed
 - sig: `WalkSeed(...) -> WalkSeed`
 - does: carries walkthrough worklist counts and the number of screens lacking vet evidence
 - verify: count(subject="OKF-builder walkthrough seed schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::WalkSeed`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::WalkSeed` @0639f20e2dc3

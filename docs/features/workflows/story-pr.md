@@ -7,7 +7,7 @@ title: Story pull request result
 
 - file: none — an in-memory aggregate of story pull-request operations
 - config: none — its values are produced while affected repositories are processed
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::StoryPr`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::StoryPr` @67ade9b7b377
 - detail: [coder main PR boundary](concepts/coder-main-pr-boundary.md)
 
 The result aggregates all affected code repositories: it reports the strongest outcome in the
@@ -24,7 +24,7 @@ order `opened`, `exists`, `skipped`, and retains every PR URL that exists after 
 - semantics: `exists` means no new PR was created but an existing one was found
 - semantics: `skipped` means no affected repository produced or exposed a PR
 - verify: json_path(path="$.story_pr", equals="skipped")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::StoryPr.story_pr`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::StoryPr.story_pr` @67ade9b7b377
 
 ### pr_urls
 
@@ -33,4 +33,4 @@ order `opened`, `exists`, `skipped`, and retains every PR URL that exists after 
 - required: false
 - semantics: every pull-request URL currently associated with the affected repositories, whether opened during this run or already present
 - verify: count(subject="StoryPr.pr_urls entries", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::StoryPr.pr_urls`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::StoryPr.pr_urls` @67ade9b7b377

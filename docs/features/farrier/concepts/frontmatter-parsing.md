@@ -11,7 +11,7 @@ returns deliberately lenient empty values for absent or malformed front matter. 
 library sources or write files. The public `LOCAL_INSTRUCTION_FILES` tuple names the generated
 instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 
-- code: `farrier/farrier/frontmatter.py::frontmatter_mapping`
+- code: `farrier/farrier/frontmatter.py::frontmatter_mapping` @525c0e8d7c4b
 
 ## Fields
 
@@ -21,7 +21,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - required: true
 - semantics: the generated instruction filenames accepted by source lookup
 - verify: count(subject="local instruction filenames", equals=2)
-- code: `farrier/farrier/frontmatter.py::LOCAL_INSTRUCTION_FILES`
+- code: `farrier/farrier/frontmatter.py::LOCAL_INSTRUCTION_FILES` @525c0e8d7c4b
 
 ## Methods
 
@@ -31,7 +31,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: json_path(path="$.name", equals="n")
 - returns: the complete mapping, or an empty mapping when there is no block, malformed YAML, or a non-mapping YAML value
 - verify: json_path(path="$.metadata", absent=true)
-- code: `farrier/farrier/frontmatter.py::frontmatter_mapping`
+- code: `farrier/farrier/frontmatter.py::frontmatter_mapping` @525c0e8d7c4b
 - tests: `farrier/tests/test_frontmatter_parsing.py::test_tags_and_metadata_read_the_same_block_as_split`
 
 ### read_yaml
@@ -44,7 +44,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: exit_status(code=1)
 - returns: the parsed YAML mapping, using an empty mapping for an empty file
 - verify: json_path(path="$.agents", absent=true)
-- code: `farrier/farrier/frontmatter.py::read_yaml`
+- code: `farrier/farrier/frontmatter.py::read_yaml` @525c0e8d7c4b
 
 ### banner_sources
 - sig: `banner_sources(text: str) -> list[str]`
@@ -54,7 +54,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: count(subject="source paths parsed from the generated banner", equals=2)
 - returns: an empty list when the first block is not a farrier banner
 - verify: count(subject="source paths parsed from the generated banner", equals=2)
-- code: `farrier/farrier/frontmatter.py::banner_sources`
+- code: `farrier/farrier/frontmatter.py::banner_sources` @525c0e8d7c4b
 - tests: `farrier/tests/test_frontmatter_parsing.py::test_banner_sources_stop_at_the_end_of_the_banner`
 
 ### mapping_skill_names
@@ -65,7 +65,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: count(subject="skills selected by a localInstructions mapping", equals=1)
 - returns: stringified selected skill names, or an empty list when neither key selects a skill
 - verify: count(subject="skills selected by a localInstructions mapping", equals=1)
-- code: `farrier/farrier/frontmatter.py::mapping_skill_names`
+- code: `farrier/farrier/frontmatter.py::mapping_skill_names` @525c0e8d7c4b
 - tests: `farrier/tests/test_local_instruction_mapping.py::test_claude_only_repo_still_writes_agents_md_plus_a_pointer`
 
 ### mapping_policy_names
@@ -74,7 +74,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: count(subject="policies selected by a localInstructions mapping", equals=2)
 - returns: stringified selected policy names, or an empty list when neither key selects a policy
 - verify: count(subject="policies selected by a localInstructions mapping", equals=2)
-- code: `farrier/farrier/frontmatter.py::mapping_policy_names`
+- code: `farrier/farrier/frontmatter.py::mapping_policy_names` @525c0e8d7c4b
 - tests: `farrier/tests/test_policies.py::test_mapping_policy_names_reads_both_spellings`
 
 ### mapping_prompt_names
@@ -83,7 +83,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: count(subject="prompts selected by a localInstructions mapping", equals=1)
 - returns: stringified selected prompt names, or an empty list when neither key selects a prompt
 - verify: count(subject="prompts selected by a localInstructions mapping", equals=1)
-- code: `farrier/farrier/frontmatter.py::mapping_prompt_names`
+- code: `farrier/farrier/frontmatter.py::mapping_prompt_names` @525c0e8d7c4b
 - tests: `farrier/tests/test_local_instruction_mapping.py::test_prompt_only_mapping_needs_no_skill`
 
 ### mapping_include_readme
@@ -99,7 +99,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: json_path(path="$.includeReadme", equals=true)
 - returns: the compatibility value `none` as false
 - verify: json_path(path="$.includeReadme", equals=false)
-- code: `farrier/farrier/frontmatter.py::mapping_include_readme`
+- code: `farrier/farrier/frontmatter.py::mapping_include_readme` @525c0e8d7c4b
 - tests: `farrier/tests/test_local_instruction_mapping.py::test_legacy_include_readme_spellings_still_map_onto_the_boolean`
 
 ### split_front_matter
@@ -112,7 +112,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: json_path(path="$.name", equals="n")
 - returns: the original content as the body with an empty header when no usable front-matter token exists
 - verify: json_path(path="$.metadata", absent=true)
-- code: `farrier/farrier/frontmatter.py::split_front_matter`
+- code: `farrier/farrier/frontmatter.py::split_front_matter` @525c0e8d7c4b
 - tests: `farrier/tests/test_frontmatter_parsing.py::test_nested_metadata_does_not_leak_top_level_keys`
 
 ### normalize_tags
@@ -127,7 +127,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: count(subject="normalized unique tags", equals=2)
 - returns: an empty list for values other than strings, lists, or tuples
 - verify: count(subject="normalized unique tags", equals=2)
-- code: `farrier/farrier/frontmatter.py::normalize_tags`
+- code: `farrier/farrier/frontmatter.py::normalize_tags` @525c0e8d7c4b
 - tests: `farrier/tests/test_skill_tags.py::test_normalize_tags_lowercases_dedupes_and_keeps_order`
 
 ### frontmatter_tags
@@ -136,7 +136,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: count(subject="tags extracted from front matter", equals=2)
 - returns: an empty list for absent front matter, absent tags, or malformed YAML
 - verify: count(subject="tags extracted from front matter", equals=2)
-- code: `farrier/farrier/frontmatter.py::frontmatter_tags`
+- code: `farrier/farrier/frontmatter.py::frontmatter_tags` @525c0e8d7c4b
 - tests: `farrier/tests/test_skill_tags.py::test_frontmatter_tags_reads_the_block_list`
 
 ### frontmatter_metadata
@@ -145,7 +145,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: json_path(path="$.source", equals="library/skills/stablemate/ostler/SKILL.md")
 - returns: the metadata mapping, or an empty mapping when the block is absent or not a mapping
 - verify: json_path(path="$.source", equals="library/skills/stablemate/ostler/SKILL.md")
-- code: `farrier/farrier/frontmatter.py::frontmatter_metadata`
+- code: `farrier/farrier/frontmatter.py::frontmatter_metadata` @525c0e8d7c4b
 - tests: `farrier/tests/test_source_command.py::test_frontmatter_metadata_reads_nested_block`
 
 ### first_heading
@@ -154,7 +154,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: json_path(path="$.title", equals="The Title")
 - returns: the heading text without surrounding whitespace, or the fallback when no level-one heading exists
 - verify: json_path(path="$.title", equals="The Title")
-- code: `farrier/farrier/frontmatter.py::first_heading`
+- code: `farrier/farrier/frontmatter.py::first_heading` @525c0e8d7c4b
 - tests: `farrier/tests/test_frontmatter_parsing.py::test_first_heading_ignores_a_heading_inside_a_fence`
 
 ### front_matter_end
@@ -163,4 +163,4 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: count(subject="front-matter line-map boundary", equals=1)
 - returns: zero when no usable front-matter token or line map exists
 - verify: count(subject="front-matter line-map boundary", equals=1)
-- code: `farrier/farrier/frontmatter.py::front_matter_end`
+- code: `farrier/farrier/frontmatter.py::front_matter_end` @525c0e8d7c4b

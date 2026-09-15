@@ -16,7 +16,7 @@ module's other two public entry points, `workhorse/workhorse/templates.py::rende
 rendered/instantiated, so every helper is visible to `{{ ... }}` expressions in the prompt body,
 node `args:`, `cwd:`, and `command:` strings alike.
 
-- code: `workhorse/workhorse/templates.py::_farrier_globals`
+- code: `workhorse/workhorse/templates.py::_farrier_globals` @ee0f25531268
 - tests: `workhorse/tests/test_context_manifest.py::test_instruction_ref_resolves_from_manifest`, `test_instruction_ref_unknown_returns_placeholder_not_crash`, `test_is_using_instruction_is_real_bool`
 
 ## Contract

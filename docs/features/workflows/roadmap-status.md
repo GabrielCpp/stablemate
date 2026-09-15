@@ -8,7 +8,7 @@ title: Roadmap status
 The final roadmap transition result identifies the roadmap file and the lifecycle status written to
 it.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RoadmapStatus`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RoadmapStatus` @e0c7b3335724
 - detail: [author shared schemas](concepts/author-shared-schemas.md)
 
 ## Fields
@@ -19,7 +19,7 @@ it.
 - required: false
 - semantics: roadmap document whose lifecycle was transitioned
 - verify: json_path(path="$.path", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RoadmapStatus`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RoadmapStatus` @e0c7b3335724
 - detail: [roadmap status field roles](concepts/roadmap-status-field-roles.md)
 
 ### status
@@ -28,5 +28,5 @@ it.
 - required: false
 - semantics: lifecycle status recorded on the roadmap
 - verify: json_path(path="$.status", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RoadmapStatus`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RoadmapStatus` @e0c7b3335724
 - detail: [roadmap status field roles](concepts/roadmap-status-field-roles.md)

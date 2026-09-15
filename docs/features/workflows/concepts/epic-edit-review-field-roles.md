@@ -10,5 +10,5 @@ parts of one review result. `status` states whether the proposed edit is approve
 or is blocked. `notes` carries the explanation accompanying that disposition. Neither field is a
 replacement for the other, and the source declares no ranking between them.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditReview`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditReview` @ddad101f4da9
 - rule: use `status` to determine the review disposition and `notes` to read its explanation; no selection rule applies because the fields serve distinct roles in the same review.

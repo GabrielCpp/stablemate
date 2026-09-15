@@ -13,7 +13,7 @@ Use `run` to execute the default Author flow or a selected registered flow, `dot
 registered flow graphs, and `version` to report the installed Workhorse engine version. These
 commands are complementary rather than replacements, so no command supersedes another.
 
-- code: `workflows/src/workhorse_workflows/author/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @b5ac6edbcc21
 - rule: select the command for the required operation: execution with `run`, graph rendering with `dot`, or engine identification with `version`; no command is preferred or deprecated
 - detail: [author entry point responsibilities](author-entry-point-responsibilities.md)
 - detail: [author main view selection](author-main-view-selection.md)

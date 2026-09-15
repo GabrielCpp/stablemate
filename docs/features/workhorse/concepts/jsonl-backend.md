@@ -16,7 +16,7 @@ module's public contract consists of the `OnEvent` and `JsonlStream` callback pr
 [`CodexBackend`](codex-backend.md), [`CopilotBackend`](copilot-backend.md),
 [`ClineBackend`](cline-backend.md), and [`OpenCodeBackend`](opencode-backend.md).
 
-- code: `workhorse/workhorse/runner/backends/jsonl.py::JsonlBackend`
+- code: `workhorse/workhorse/runner/backends/jsonl.py::JsonlBackend` @86d186032cdf
 - extends: [AgentBackend](agent-backend.md)
 - tests: `workhorse/tests/test_backends.py::_fake_stream`,
   `workhorse/tests/test_backends.py::test_codex_run_turn_fresh_then_resume`,
@@ -39,7 +39,7 @@ a canned `TurnState`.
 - does: stores the supplied stream callable on the backend instance
 - returns: `None`
 - verify: emitted(event="injected JSONL stream invocation", count=1)
-- code: `workhorse/workhorse/runner/backends/jsonl.py::JsonlBackend.__init__`
+- code: `workhorse/workhorse/runner/backends/jsonl.py::JsonlBackend.__init__` @86d186032cdf
 
 ### stream_jsonl
 - sig: `stream_jsonl(cmd: list[str], node_id: str, timeout: float, stdin_data: str | None, on_event: OnEvent, *, resilience: AgentResilience, cwd: str | None = None, env_extra: dict[str, str] | None = None) -> TurnState`
@@ -55,7 +55,7 @@ a canned `TurnState`.
 - verify: emitted(event="JSONL early abort", count=1)
 - verify: json_path(path="$.timed_out", equals=true)
 - verify: json_path(path="$.returncode", equals=0)
-- code: `workhorse/workhorse/runner/backends/jsonl.py::stream_jsonl`
+- code: `workhorse/workhorse/runner/backends/jsonl.py::stream_jsonl` @86d186032cdf
 
 ### OnEvent.__call__
 - sig: `__call__(event: dict[str, Any], state: TurnState, node_id: str) -> None`
@@ -64,7 +64,7 @@ a canned `TurnState`.
 - does: folds provider-specific result, session, usage, or diagnostic data into the shared turn state
 - returns: `None`
 - verify: emitted(event="provider event folded into turn state", count=1)
-- code: `workhorse/workhorse/runner/backends/jsonl.py::OnEvent.__call__`
+- code: `workhorse/workhorse/runner/backends/jsonl.py::OnEvent.__call__` @86d186032cdf
 - tests: `workhorse/tests/test_backends.py::test_codex_on_event_extracts_text_and_session`,
   `workhorse/tests/test_backends.py::test_opencode_on_event_text_session_and_error`
 
@@ -75,7 +75,7 @@ a canned `TurnState`.
 - does: returns a `TurnState` so the backend can classify result text, session identity, usage, diagnostics, timeout state, and return code
 - returns: the resulting `TurnState`
 - verify: emitted(event="supervised JSONL stream", count=1)
-- code: `workhorse/workhorse/runner/backends/jsonl.py::JsonlStream.__call__`
+- code: `workhorse/workhorse/runner/backends/jsonl.py::JsonlStream.__call__` @86d186032cdf
 - tests: `workhorse/tests/test_backends.py::_fake_stream`,
   `workhorse/tests/test_backends.py::test_codex_run_turn_fresh_then_resume`
 
@@ -87,7 +87,7 @@ a canned `TurnState`.
 - required: true
 - semantics: callable used by each JSONL backend turn to supervise its CLI process and accumulate a `TurnState`
 - verify: emitted(event="injected JSONL stream invocation", count=1)
-- code: `workhorse/workhorse/runner/backends/jsonl.py::JsonlBackend`
+- code: `workhorse/workhorse/runner/backends/jsonl.py::JsonlBackend` @86d186032cdf
 
 ## Processing Rules
 

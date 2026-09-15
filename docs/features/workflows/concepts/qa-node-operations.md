@@ -12,7 +12,7 @@ normalizes the runner and teardown outcomes into the typed results consumed by t
 [coder QA flow](../flows/coder-qa.md). The secret helper is private but is documented because it
 controls the runner's credential boundary.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::__all__`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::__all__` @711b86c625bf
 - detail: [coder QA flow](../flows/coder-qa.md)
 
 ## Fields
@@ -25,7 +25,7 @@ controls the runner's credential boundary.
 - verify: count(subject="accepted QA runner statuses", equals=4)
 - semantics: any other runner status text becomes `invalid`
 - verify: json_path(path="$.status", equals="invalid")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::RUN_STATUSES`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::RUN_STATUSES` @711b86c625bf
 
 ### TEARDOWN_STATES
 - type: `dict[str, Literal["yes", "no", "skipped"]]`
@@ -33,7 +33,7 @@ controls the runner's credential boundary.
 - required: true
 - semantics: closed mapping used to preserve whether stack teardown succeeded, failed, or was not declared
 - verify: count(subject="accepted QA teardown states", equals=3)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::TEARDOWN_STATES`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::TEARDOWN_STATES` @711b86c625bf
 
 ### SECRET_MINT_TIMEOUT_S
 - type: `float`
@@ -41,7 +41,7 @@ controls the runner's credential boundary.
 - required: true
 - semantics: maximum time allowed for one runbook secret-mint recipe before the QA run is blocked
 - verify: json_path(path="$.SECRET_MINT_TIMEOUT_S", equals=60.0)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::SECRET_MINT_TIMEOUT_S`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::SECRET_MINT_TIMEOUT_S` @711b86c625bf
 
 ### QA_SCRATCH_DIRNAME
 - type: `str`
@@ -49,7 +49,7 @@ controls the runner's credential boundary.
 - required: true
 - semantics: spec-relative directory containing per-scenario dry-run output, removed with stale scored evidence and never read by the scored evidence gate
 - verify: json_path(path="$.QA_SCRATCH_DIRNAME", equals="qa")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::QA_SCRATCH_DIRNAME`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::QA_SCRATCH_DIRNAME` @711b86c625bf
 
 ## Methods
 
@@ -65,7 +65,7 @@ controls the runner's credential boundary.
 - verify: removed(subject="stale QA root artifacts")
 - returns: `QaCleared(cleared=True)` after clearing a supplied specification directory and `QaCleared(cleared=False)` when no directory was supplied
 - verify: json_path(path="$.cleared", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::clear_qa_evidence`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::clear_qa_evidence` @711b86c625bf
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_through_every_gate`
 
 ### ensure_stack
@@ -86,7 +86,7 @@ controls the runner's credential boundary.
 - verify: json_path(path="$.ready", equals="no")
 - returns: a `StackStatus` containing readiness, process identifiers, entry URL, failed step, and repair notes
 - verify: json_path(path="$.notes", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::ensure_stack`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::ensure_stack` @711b86c625bf
 - tests: `workflows/tests/coder/qa/test_flow.py::test_an_empty_manifest_splits_on_whether_the_book_serves_anything`
 
 ### lint_qa_plan
@@ -97,7 +97,7 @@ controls the runner's credential boundary.
 - verify: json_path(path="$.status", equals="passed")
 - returns: a `QaPlanValidation` carrying the two-state lint status, explanatory notes, and Ostler payload
 - verify: json_path(path="$.ostler", absent=true)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::lint_qa_plan`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::lint_qa_plan` @711b86c625bf
 
 ### qa_tools_catalog
 - sig: `qa_tools_catalog(logger: logging.Logger, docs_path: str = "", repo_dir: str = "") -> QaToolCatalog`
@@ -105,7 +105,7 @@ controls the runner's credential boundary.
 - verify: count(subject="QA tool catalog resolutions", equals=1)
 - returns: a `QaToolCatalog` containing the resolved tool records and any catalog errors, suitable for checkpointing across resume
 - verify: json_path(path="$.tools", equals="[]")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::qa_tools_catalog`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::qa_tools_catalog` @711b86c625bf
 
 ### validate_qa_plan
 - sig: `validate_qa_plan(logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = "") -> QaPlanValidation`
@@ -115,7 +115,7 @@ controls the runner's credential boundary.
 - verify: json_path(path="$.status", equals="passed")
 - returns: a `QaPlanValidation` carrying validation status, explanatory notes, and Ostler payload
 - verify: json_path(path="$.notes", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::validate_qa_plan`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::validate_qa_plan` @711b86c625bf
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_through_every_gate`
 
 ### verify_qa_dry_run
@@ -132,7 +132,7 @@ controls the runner's credential boundary.
 - verify: count(subject="verified dry-run scenarios", equals=1)
 - returns: a `DryRunGate` with `passed` or `failed` status, notes, requested scenarios, and the verified subset
 - verify: json_path(path="$.status", matches="^(passed|failed)$")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::verify_qa_dry_run`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::verify_qa_dry_run` @711b86c625bf
 - tests: `workflows/tests/coder/qa/test_dry_run_gate.py::test_a_green_dry_run_for_every_named_scenario_passes`
 
 ### teardown_stack
@@ -143,7 +143,7 @@ controls the runner's credential boundary.
 - verify: json_path(path="$.torn_down", matches="^(yes|no|skipped)$")
 - returns: a `StackTornDown` recording teardown state and the lifecycle message
 - verify: json_path(path="$.notes", matches="^(stack torn down|teardown failed|the book declares no runbook.*|no `stop:` recipe.*)$")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::teardown_stack`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::teardown_stack` @711b86c625bf
 
 ### _mint_qa_secrets
 - sig: `_mint_qa_secrets(secrets: dict[str, str], root: Path, logger: logging.Logger) -> tuple[dict[str, str], str]`
@@ -159,7 +159,7 @@ controls the runner's credential boundary.
 - verify: omits(subject="QA secret mint logs", matches="token value")
 - returns: token values are not returned by a node schema
 - verify: omits(subject="QA node return payload", matches="token value")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::_mint_qa_secrets`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::_mint_qa_secrets` @711b86c625bf
 - tests: `workflows/tests/coder/qa/test_refresh_env.py::test_an_earlier_failure_discards_the_tokens_already_minted`
 
 ### run_qa_plan
@@ -188,5 +188,5 @@ controls the runner's credential boundary.
 - verify: json_path(path="$.ostler.runId", matches=".+")
 - returns: a blocked `QaPlanRun` with secret-refresh notes when minting fails before runner execution
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::run_qa_plan`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::run_qa_plan` @711b86c625bf
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_through_every_gate`

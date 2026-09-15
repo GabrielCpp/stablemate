@@ -15,6 +15,6 @@ the selected story and its specification. They remain empty for `done` or `block
 also remains empty for books that predate minted IDs, when consumers use `story_slug` instead.
 The fields are complementary parts of one result, not competing implementations.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryPick`
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::select_story`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryPick` @a87cd48ce444
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::select_story` @723b6e5574da
 - rule: read `story_outcome` before interpreting the result; use `reason`, `epic`, `progress`, and `remaining_count` for every outcome, and use the story identity and path fields only when the outcome is `story`; no field is preferred, deprecated, or a replacement for another

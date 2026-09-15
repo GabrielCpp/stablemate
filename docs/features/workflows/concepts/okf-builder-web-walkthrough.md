@@ -27,7 +27,7 @@ documented journey or screen matched the live app; `healed` means the turn corre
 book evidence; `skipped` means the item could not be walked. Prompt variables and the response
 shape are statically checked by [workflow prompt static contracts](workflow-prompt-static-contracts.md).
 
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb` @535479bd227c
 - tests: `workflows/tests/okf_builder/test_workflow.py::test_an_empty_book_is_filled_top_down_from_the_code_s_surfaces`
 - detail: [OKF-builder workflow composition root](okf-builder-workflow-composition-root.md)
 
@@ -39,7 +39,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - required: true
 - semantics: maximum number of dirty-book fixup drains before the running app is reaped and findings are left for the build
 - verify: count(subject="web walkthrough round cap", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::MAX_WALK_ROUNDS`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::MAX_WALK_ROUNDS` @535479bd227c
 
 ### BOOT_TIMEOUT_S
 - type: `float`
@@ -47,7 +47,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - required: true
 - semantics: maximum seconds allowed for the browser to answer its CDP endpoint
 - verify: count(subject="web walkthrough browser boot timeout", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py::BOOT_TIMEOUT_S`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py::BOOT_TIMEOUT_S` @a03e8f2c3d5b
 
 ### POLL_INTERVAL_S
 - type: `float`
@@ -55,7 +55,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - required: true
 - semantics: interval between browser readiness and process-liveness probes
 - verify: count(subject="web walkthrough browser polling interval", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py::POLL_INTERVAL_S`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py::POLL_INTERVAL_S` @a03e8f2c3d5b
 
 ### TERM_GRACE_S
 - type: `float`
@@ -63,7 +63,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - required: true
 - semantics: grace period between browser termination and forced process-group kill
 - verify: count(subject="web walkthrough browser termination grace", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py::TERM_GRACE_S`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py::TERM_GRACE_S` @a03e8f2c3d5b
 
 ### CDP_URL
 - type: `str`
@@ -71,7 +71,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - required: true
 - semantics: fixed loopback endpoint shared by the Playwright MCP and `ostler vet`
 - verify: count(subject="web walkthrough CDP endpoint", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/walkthrough.py::CDP_URL`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/walkthrough.py::CDP_URL` @edbf2f37a5d0
 
 ### VET_BULLET
 - type: `str`
@@ -79,7 +79,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - required: true
 - semantics: bullet whose presence anywhere under a screen proves that the screen has visual registration evidence
 - verify: count(subject="web walkthrough visual-evidence marker", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/walkthrough.py::VET_BULLET`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/walkthrough.py::VET_BULLET` @edbf2f37a5d0
 
 ### service
 - type: `str`
@@ -89,7 +89,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="web walkthrough service input", equals=1)
 - semantics: an empty value means no single app is selected
 - verify: count(subject="web walkthrough empty service input", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.service`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.service` @535479bd227c
 
 ### docs_path
 - type: `str`
@@ -97,7 +97,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - required: true
 - semantics: optional docs repository root, otherwise resolved from the run repository
 - verify: count(subject="web walkthrough docs input", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.docs_path`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.docs_path` @535479bd227c
 
 ### source_path
 - type: `str`
@@ -105,7 +105,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - required: true
 - semantics: source subtree used for the app working directory, otherwise the service name
 - verify: count(subject="web walkthrough source input", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.source_path`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.source_path` @535479bd227c
 
 ### max_items
 - type: `int`
@@ -115,7 +115,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="web walkthrough item ceiling input", equals=1)
 - semantics: zero means no walkthrough item ceiling
 - verify: count(subject="unlimited web walkthrough item ceiling input", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.max_items`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.max_items` @535479bd227c
 
 ## Methods
 
@@ -125,7 +125,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="web walkthrough settings", equals=1)
 - returns: a `WebApp` setting that marks services without screen surfaces as non-web apps
 - verify: json_path(path="$.is_webapp", equals=false)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.setup`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.setup` @535479bd227c
 
 ### labels
 - sig: `labels() -> dict[str, str]`
@@ -133,7 +133,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="web walkthrough service labels", equals=1)
 - does: adds the selected work item and progress after item selection
 - verify: created(subject="the selected work item and progress labels")
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.labels`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.labels` @535479bd227c
 
 ### start
 - sig: `start() -> Continue | Done`
@@ -151,7 +151,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="web walkthrough app boot fail-soft exits", equals=1)
 - raises: a browser boot failure exits through its documented cleanup path
 - verify: count(subject="web walkthrough browser boot fail-soft exits", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.start`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.start` @535479bd227c
 
 ### pick
 - sig: `pick(app_pgid: str, browser_pgid: str, entry_url: str, cdp_url: str, rnd: int = 0) -> Continue | Done`
@@ -163,7 +163,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="web walkthrough dry checkpoints", equals=1)
 - does: dispatches one selected journey or screen to the walk turn
 - verify: count(subject="web walkthrough item dispatches", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.pick`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.pick` @535479bd227c
 
 ### walk
 - sig: `walk(current_item: dict, item_kind: str, item_target: str, item_context: str, app_pgid: str, browser_pgid: str, entry_url: str, cdp_url: str, progress: str = "", rnd: int = 0) -> Continue`
@@ -171,7 +171,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="web walkthrough agent turns", equals=1)
 - does: forwards the agent's discovered items and documentation status to marking
 - verify: count(subject="web walkthrough agent results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.walk`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.walk` @535479bd227c
 - tests: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply`
 - tests: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`
 
@@ -181,7 +181,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="web walkthrough closed items", equals=1)
 - does: records returned discoveries as pending work before selecting again
 - verify: persists(subject="web walkthrough discoveries")
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.mark`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.mark` @535479bd227c
 
 ### checkpoint
 - sig: `checkpoint(app_pgid: str, browser_pgid: str, entry_url: str, cdp_url: str, rnd: int = 0) -> Continue | Done`
@@ -193,7 +193,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="web walkthrough fixup seeds", equals=1)
 - does: reaps the runtime and leaves findings when the dirty-book round cap is reached
 - verify: count(subject="web walkthrough round-cap teardowns", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.checkpoint`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.checkpoint` @535479bd227c
 
 ### _finish
 - sig: `_finish(app_pgid: str, browser_pgid: str) -> Done`
@@ -203,7 +203,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="web walkthrough browser teardowns", equals=1)
 - does: returns a done result carrying whether the setting identified a web app
 - verify: json_path(path="$.is_webapp", equals=true)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb._finish`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb._finish` @535479bd227c
 
 ### parse_launch_contract
 - sig: `parse_launch_contract(text: str, repo_root: str, source_root: str) -> dict[str, str]`
@@ -215,7 +215,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="web walkthrough launch-contract working directories", equals=1)
 - does: supplies health, identity, stop, timeout, and walkthrough values
 - verify: count(subject="web walkthrough launch-contract fields", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/walkthrough.py::parse_launch_contract`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/walkthrough.py::parse_launch_contract` @edbf2f37a5d0
 
 ### select_server
 - sig: `select_server(server_paths: Iterable[str], read_contract: Callable[[str], dict[str, str]], logger: logging.Logger) -> dict[str, str]`
@@ -225,7 +225,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="marked web walkthrough server selections", equals=1)
 - does: deterministically selects the first sorted contract and warns when multiple servers are unmarked or multiply marked
 - verify: count(subject="ambiguous web walkthrough server selections", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/walkthrough.py::select_server`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/walkthrough.py::select_server` @edbf2f37a5d0
 
 ### detect_webapp
 - sig: `detect_webapp(logger: logging.Logger, docs_path: str = "", service: str = "", source_path: str = "", repo_dir: str = "") -> WebApp`
@@ -241,7 +241,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: persists(subject="web walkthrough screenshot directory")
 - returns: a `WebApp` containing launch, health, identity, teardown, worklist, screenshots, and CDP settings
 - verify: json_path(path="$.cdp_url", equals="http://127.0.0.1:9222")
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/walkthrough.py::detect_webapp`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/walkthrough.py::detect_webapp` @edbf2f37a5d0
 
 ### seed_walkthrough
 - sig: `seed_walkthrough(logger: logging.Logger, wt_worklist_path: str = "", service: str = "", repo_root: str = ".") -> WalkSeed`
@@ -253,19 +253,19 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="web walkthrough evidence reopens", equals=1)
 - does: leaves already confirmed screens and fully confirmed journeys done
 - verify: count(subject="web walkthrough confirmed-item skips", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/walkthrough.py::seed_walkthrough`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/walkthrough.py::seed_walkthrough` @edbf2f37a5d0
 
 ### boot_app
 - sig: `boot_app(logger: logging.Logger, launch_cmd: str = "", entry_url: str = "", health_path: str = "/", app_cwd: str = ".", repo_root: str = "", app_identity: str = "", boot_timeout: str = "") -> AppBoot`
 - does: starts or adopts the documented app through the shared stack adapter and waits for the health identity
 - verify: count(subject="web walkthrough app readiness probes", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py::boot_app`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py::boot_app` @a03e8f2c3d5b
 
 ### teardown_app
 - sig: `teardown_app(logger: logging.Logger, app_pgid: str = "", stop_cmd: str = "", app_cwd: str = "") -> TornDown`
 - does: reaps the started app process group or runs its documented stop recipe
 - verify: count(subject="web walkthrough app cleanup calls", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py::teardown_app`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py::teardown_app` @a03e8f2c3d5b
 
 ### boot_browser
 - sig: `boot_browser(logger: logging.Logger, cdp_url: str = "", repo_root: str = ".") -> BrowserBoot`
@@ -275,7 +275,7 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="started walkthrough browser sessions", equals=1)
 - does: kills its process group and fails soft when the browser exits or times out before readiness
 - verify: count(subject="walkthrough browser boot failures", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py::boot_browser`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py::boot_browser` @a03e8f2c3d5b
 
 ### teardown_browser
 - sig: `teardown_browser(logger: logging.Logger, browser_pgid: str = "") -> TornDown`
@@ -283,4 +283,4 @@ shape are statically checked by [workflow prompt static contracts](workflow-prom
 - verify: count(subject="adopted walkthrough browser cleanup skips", equals=1)
 - does: sends termination, waits through the grace period, and force-kills a remaining owned process group
 - verify: count(subject="owned walkthrough browser cleanups", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py::teardown_browser`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py::teardown_browser` @a03e8f2c3d5b

@@ -14,5 +14,5 @@ and `operator_resolutions` reports automatic resolution turns used before succes
 No ranking exists among these fields. Consumers select the field whose representation or
 completion evidence they need; none replaces another.
 
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone` @8605f9723870
 - rule: use `status` for completion, `epic` for identity, `epic_dir` for the canonical directory, `epic_path` for the validated document, `seed_count` for researched-seed evidence, and `operator_resolutions` for resolution-turn evidence; none supersedes another

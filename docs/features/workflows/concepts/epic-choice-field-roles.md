@@ -17,8 +17,8 @@ progress. The selector sets `has_epic`, `epic`, `epic_dir`, `reason`, and `progr
 after it selects a pending item; it returns a reason-only choice when it cannot read or find work,
 and adds progress when every item is complete. No field is deprecated or replaces another.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::EpicChoice`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/epics.py::_pick_epic`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::EpicChoice` @e0c7b3335724
+- code: `workflows/src/workhorse_workflows/author/main/nodes/epics.py::_pick_epic` @06e21fa506bb
 - rule: read `has_epic` to determine whether a selection exists; when true, use `epic` with `epic_dir`, and use `reason` with `progress` to explain the selection or its absence; no field replaces another
 - detail: [Epic selection and choice roles](epic-selection-and-choice-roles.md)
 - detail: [Epic selection documentation roles](epic-selection-documentation-roles.md)

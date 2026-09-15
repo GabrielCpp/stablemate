@@ -27,6 +27,6 @@ interaction between two orthogonal concerns, not one field substituting for the 
 may set any compatible combination; omitted optional fields retain the defaults declared by the
 model.
 
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
 - rule: select the field for the distinct agent-turn concern being configured; the fields are complementary and have no ranking or replacement relationship
 - detail: [Agent node documentation scope](agent-node-documentation-scope.md)

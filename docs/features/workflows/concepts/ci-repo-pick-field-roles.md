@@ -15,6 +15,6 @@ No field supersedes or ranks above another. They have distinct roles and are rea
 successful selection; when no repository is available, `has_repo` records that outcome while the
 other fields do not represent an alternative pick.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick` @76d805cfd6c3
 - rule: inspect `has_repo` to determine whether a selection exists; use `repo` and `repo_cwd` only for that selection, and retain `processed` as the history that prevents reselection
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_every_workspace_repo_is_checked_once_and_the_loop_ends`

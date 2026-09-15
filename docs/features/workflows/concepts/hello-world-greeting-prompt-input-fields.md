@@ -15,5 +15,5 @@ Neither field ranks above the other: a valid prompt needs the name to address an
 report. The method supplies each in its own argument, and the source records no legacy path,
 deprecation, or preferred substitute.
 
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld.greet`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld.greet` @a0d572bb6d0f
 - rule: use `name` for the greeting recipient and `letters` for its measured character count; neither field is preferred or deprecated

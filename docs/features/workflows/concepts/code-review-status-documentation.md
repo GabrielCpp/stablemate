@@ -15,5 +15,5 @@ reviewer's required reply that produces that result. Neither context replaces th
 schema declares one required field and no deprecation or source-backed ranking between the two
 documents.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::CodeReviewResult.status`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::CodeReviewResult.status` @2f54962a8770
 - rule: use the result field to understand the returned review record and the prompt field to understand the feeder reviewer's reply; both describe the same required schema field

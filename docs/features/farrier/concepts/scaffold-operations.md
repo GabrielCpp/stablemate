@@ -21,7 +21,7 @@ paths.
 - verify: count(subject="required scaffold parameters", equals=1)
 - does: add repository name and title defaults
 - verify: count(subject="repository scaffold name and title defaults", equals=1)
-- code: `farrier/farrier/scaffolds.py::resolve_scaffold_params`
+- code: `farrier/farrier/scaffolds.py::resolve_scaffold_params` @3ae23dbe7fb3
 
 ### method: flatten_scaffold_tree
 - sig: `flatten_scaffold_tree(scaffold_id: str, tree: dict[str, Any], base: str = '') -> tuple[dict[str, Any], list[str]]`
@@ -34,30 +34,30 @@ paths.
 - does: flatten empty directories into the directory collection
 - verify: count(subject="flattened empty scaffold directories", equals=1)
 - raises: `SystemExit` for unsupported tree node values or keys
-- code: `farrier/farrier/scaffolds.py::flatten_scaffold_tree`
+- code: `farrier/farrier/scaffolds.py::flatten_scaffold_tree` @3ae23dbe7fb3
 
 ### method: substitute_scaffold_path
 - sig: `substitute_scaffold_path(scaffold_id: str, rel: str, params: dict[str, str]) -> str`
 - does: strictly substitute path parameters and reject empty, absolute, or parent-traversing results
 - verify: absent(subject="scaffold paths escaping the repository")
-- code: `farrier/farrier/scaffolds.py::substitute_scaffold_path`
+- code: `farrier/farrier/scaffolds.py::substitute_scaffold_path` @3ae23dbe7fb3
 
 ### method: fetch_scaffold_url
 - sig: `fetch_scaffold_url(scaffold_id: str, rel: str, url: str) -> str`
 - does: fetch a scaffold file with a bounded timeout and decode it as UTF-8
 - raises: `SystemExit` with scaffold id and path when download or decoding fails
 - verify: count(subject="downloaded scaffold file contents", equals=1)
-- code: `farrier/farrier/scaffolds.py::fetch_scaffold_url`
+- code: `farrier/farrier/scaffolds.py::fetch_scaffold_url` @3ae23dbe7fb3
 
 ### method: available_scaffold_ids
 - sig: `available_scaffold_ids(repo: Path, defs: dict[str, dict[str, Any]]) -> set[str]`
 - does: return all definitions without agents.yml, otherwise union direct and selected-pack scaffold ids
 - verify: count(subject="scaffold ids available to a repository", equals=1)
-- code: `farrier/farrier/scaffolds.py::available_scaffold_ids`
+- code: `farrier/farrier/scaffolds.py::available_scaffold_ids` @3ae23dbe7fb3
 
 ### method: parse_param_overrides
 - sig: `parse_param_overrides(entries: list[str]) -> dict[str, str]`
 - does: parse repeated `key=value` arguments, retaining the last value for a repeated key
 - raises: `SystemExit` for an entry without a non-empty key and equals separator
 - verify: count(subject="parsed scaffold parameter overrides", equals=1)
-- code: `farrier/farrier/scaffolds.py::parse_param_overrides`
+- code: `farrier/farrier/scaffolds.py::parse_param_overrides` @3ae23dbe7fb3

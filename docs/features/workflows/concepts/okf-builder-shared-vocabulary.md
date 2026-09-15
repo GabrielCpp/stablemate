@@ -10,7 +10,7 @@ hand-maintained list. Each rendered line contains the callable signature and the
 excludes. The same module renders every registered bullet-key type with its flags and the shared
 normative keys, allowing a repair turn to author nested nodes without guessing the current schema.
 
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/vocabulary.py`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/vocabulary.py` @ccb4cdf9ab12
 
 ## Methods
 
@@ -20,7 +20,7 @@ normative keys, allowing a repair turn to author nested nodes without guessing t
 - verify: count(subject="rendered OKF-builder check vocabulary", equals=1)
 - returns: prompt-ready check vocabulary text
 - verify: count(subject="OKF-builder check vocabulary results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/vocabulary.py::check_vocabulary`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/vocabulary.py::check_vocabulary` @ccb4cdf9ab12
 
 ### bullet_grammar
 - sig: `bullet_grammar() -> str`
@@ -30,4 +30,4 @@ normative keys, allowing a repair turn to author nested nodes without guessing t
 - verify: count(subject="rendered OKF-builder bullet grammar types", equals=1)
 - returns: prompt-ready bullet grammar text
 - verify: count(subject="OKF-builder bullet grammar results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/vocabulary.py::bullet_grammar`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/vocabulary.py::bullet_grammar` @ccb4cdf9ab12

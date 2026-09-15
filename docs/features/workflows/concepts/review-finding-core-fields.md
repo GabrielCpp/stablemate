@@ -13,6 +13,6 @@ the target and repair are non-empty; `issue` supplies the explanation for that a
 No field supersedes another or is preferred independently. A complete review finding uses all
 three roles together.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding`
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::Finding`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewFinding` @2f54962a8770
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::Finding` @5964d4cd22a1
 - rule: use `target`, `issue`, and `repair` together to describe an actionable review finding

@@ -21,7 +21,7 @@ overflowing turn and by [`_compact_session`](compact-session.md), so `read_sessi
 reads what a prior turn on the same node already persisted. It lives beside `finalize_turn` in
 `runner/backends/turn.py` because they are the two ends of the same loop.
 
-- code: `workhorse/workhorse/runner/backends/turn.py::read_session_id`
+- code: `workhorse/workhorse/runner/backends/turn.py::read_session_id` @bb0cd1168f58
 
 ## Contract
 

@@ -14,5 +14,5 @@ or no-op.
 The schema declares each field directly with a `false` or empty-string default. It establishes no
 deprecation, replacement, wrapper, or preference among them, so no field supersedes another.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation` @e0c7b3335724
 - rule: select the field for its named part of the mutation result; the six fields are complementary and no ranking exists

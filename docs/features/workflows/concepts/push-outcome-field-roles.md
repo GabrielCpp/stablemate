@@ -12,5 +12,5 @@ reason and branch or checkout context needed to interpret that classification. T
 [`PushOutcome` docstring](../../../../workflows/src/workhorse_workflows/coder/shared/schemas/ci.py)
 defines `unavailable` as tolerated and `failed` as an attempted but unverified push.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::PushOutcome`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::PushOutcome` @76d805cfd6c3
 - rule: read `status` to select the push outcome and `notes` for its explanation and context; neither field replaces the other

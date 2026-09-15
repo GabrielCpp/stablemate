@@ -8,7 +8,7 @@ title: Author feedback
 Feedback is a non-blocking operator note found in the run inbox. Polling consumes the oldest
 outstanding message and gives the author flow one rework pass.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback` @e0c7b3335724
 - detail: [author shared schemas](concepts/author-shared-schemas.md)
 
 ## Fields
@@ -19,7 +19,7 @@ outstanding message and gives the author flow one rework pass.
 - required: false
 - semantics: whether an outstanding feedback message was found
 - verify: json_path(path="$.present", equals=False)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback` @e0c7b3335724
 - detail: [feedback field roles](concepts/feedback-field-roles.md)
 
 ### scope
@@ -28,7 +28,7 @@ outstanding message and gives the author flow one rework pass.
 - required: false
 - semantics: authoring scope named by the feedback message
 - verify: json_path(path="$.scope", equals="story")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback` @e0c7b3335724
 - detail: [feedback field roles](concepts/feedback-field-roles.md)
 
 ### content
@@ -37,5 +37,5 @@ outstanding message and gives the author flow one rework pass.
 - required: false
 - semantics: operator note supplied to the rework prompt
 - verify: json_path(path="$.content", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback` @e0c7b3335724
 - detail: [feedback field roles](concepts/feedback-field-roles.md)

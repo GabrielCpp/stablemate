@@ -23,7 +23,7 @@ workflows test`, so this tier blocks that aggregate CI gate.
 
 - driver: cli
 - surfaces: [Research workflow composition root](../concepts/research-workflow-composition-root.md)
-- code: `workflows/Makefile::test`
+- code: `workflows/Makefile::test` @4f2f1208042e
 - working-directory: workflows
 - detail: [Workflow unit-test tiers](../concepts/workflow-unit-test-tiers.md)
 

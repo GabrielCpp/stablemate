@@ -28,7 +28,7 @@ behaviors are covered by `workhorse/tests/test_backends.py::test_cline_run_turn_
 `workhorse/tests/test_backends.py::test_cline_unknown_effort_omits_the_flag`, and
 `workhorse/tests/test_backends.py::test_non_claude_backends_registered`.
 
-- code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend`
+- code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend` @1197b2e4b51c
 - extends: [AgentBackend](agent-backend.md)
 
 ## Contract
@@ -84,7 +84,7 @@ cline --json --auto-approve true --compaction basic
 
 ### `_EFFORTS`
 
-- code: `workhorse/workhorse/runner/backends/cline.py::_EFFORTS`
+- code: `workhorse/workhorse/runner/backends/cline.py::_EFFORTS` @1197b2e4b51c
 
 The `frozenset` of levels cline's `--thinking` accepts — `none`, `low`, `medium`, `high`, `xhigh`.
 It is a membership test rather than a mapping table because cline's range coincides with the
@@ -98,14 +98,14 @@ dropped.
 - does: runs Cline's autonomous JSON stream with an optional model, recognized thinking level, working directory, and resumed task id
 - raises: `BackendInvocationError` after `finalize_turn` classifies the streamed state
 - verify: emitted(event="Cline turn result", count=1)
-- code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend.run_turn`
+- code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend.run_turn` @1197b2e4b51c
 
 ### compact
 - sig: `compact(session_id_path: Path | None, node_id: str, model: str | None = None, *, timeout: float, resilience: AgentResilience) -> bool`
 - does: declines the runner's in-place compaction operation
 - returns: `false`
 - verify: json_path(path="$.compacted", equals=false)
-- code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend.compact`
+- code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend.compact` @1197b2e4b51c
 
 ## Related pieces
 

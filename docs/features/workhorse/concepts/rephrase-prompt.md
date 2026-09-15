@@ -13,7 +13,7 @@ original prompt, keyed by how many reframes have already been tried for this nod
 kill) — this is the only one of the three that runs on a **fresh session**, so it re-states the
 whole task rather than assuming any prior turn is still in context.
 
-- code: `workhorse/workhorse/runner/reframe.py::rephrase_prompt`
+- code: `workhorse/workhorse/runner/reframe.py::rephrase_prompt` @b98209bdc64e
 - tests: `workhorse/tests/test_agent_recovery.py::test_unparseable_output_reframes_then_stops`,
   `workhorse/tests/test_agent_recovery.py::test_empty_result_then_reframe_succeeds`,
   `workhorse/tests/test_agent_recovery.py::test_reframe_count_then_stop`,

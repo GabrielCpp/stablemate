@@ -14,7 +14,7 @@ The exported `QaDisposition`, `QaFailureClass`, `QaAuditVerdict`, `QaRefutationC
 `QaTriageAction`, `QaTriageClass`, `QaFlowStatus`, and `QaStatus` aliases close the routing
 vocabularies rather than accepting arbitrary strings.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::__all__`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::__all__` @2e918886779f
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_through_every_gate`
 - tests: `workflows/tests/coder/test_qa_plan_prompt_schema.py::test_the_example_scenario_would_survive_the_substantiveness_gate`
 - detail: [coder QA flow](../flows/coder-qa.md)
@@ -34,7 +34,7 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.status", equals="")
 - returns: a four-state QA result whose blank status is distinct from `invalid`
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaResult`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaResult` @2e918886779f
 
 ### method: QaPlanRun
 - sig: `QaPlanRun(status: QaStatus | Literal[""] = "", notes: str = "", ostler: dict[str, Any] = {}) -> QaPlanRun`
@@ -42,7 +42,7 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.ostler.overall", matches="^(Pass|Fail|Blocked|Invalid)$")
 - returns: a result whose runner-only payload is not required of agent-turn `QaResult` values
 - verify: json_path(path="$.status", matches="^(|passed|failed|blocked|invalid)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaPlanRun`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaPlanRun` @2e918886779f
 
 ### method: QaRunResult
 - sig: `QaRunResult(status: Literal["passed", "failed", "blocked"], notes: str = "") -> QaRunResult`
@@ -50,7 +50,7 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.status", matches="^(passed|failed|blocked)$")
 - returns: the turn's notes describing exercised commands, changed files, and remaining defect or dependency
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaRunResult`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaRunResult` @2e918886779f
 
 ### method: QaPlanValidation
 - sig: `QaPlanValidation(status: Literal["passed", "invalid"] = "invalid", notes: str = "", ostler: dict[str, Any] = {}) -> QaPlanValidation`
@@ -58,7 +58,7 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.status", equals="invalid")
 - returns: a validation result with notes and the validator payload, defaulting conservatively to invalid
 - verify: json_path(path="$.ostler", equals="{}")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaPlanValidation`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaPlanValidation` @2e918886779f
 
 ### method: DryRunGate
 - sig: `DryRunGate(status: Literal["passed", "failed"] = "failed", notes: str = "", scenarios: list[str] = [], verified: list[str] = []) -> DryRunGate`
@@ -66,7 +66,7 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.scenarios", matches="^\\['[^']+'")
 - returns: a failed-by-default gate unless every demanded dry-run condition is later established
 - verify: json_path(path="$.status", equals="failed")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::DryRunGate`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::DryRunGate` @2e918886779f
 
 ### method: QaToolCatalog
 - sig: `QaToolCatalog(tools: list[dict[str, Any]] = [], errors: list[str] = []) -> QaToolCatalog`
@@ -74,13 +74,13 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.tools", equals="[]")
 - returns: a catalog that is not re-derived from the host on resume
 - verify: json_path(path="$.errors", equals="[]")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaToolCatalog`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaToolCatalog` @2e918886779f
 
 ### method: QaCleared
 - sig: `QaCleared(cleared: bool = False) -> QaCleared`
 - does: reports whether stale QA artifacts and the root verdict were cleared
 - verify: json_path(path="$.cleared", matches="^(true|false)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaCleared`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaCleared` @2e918886779f
 
 ### method: StackStatus
 - sig: `StackStatus(ready: Literal["yes", "no", "none", "unneeded"] = "no", app_pid: str = "", app_pgid: str = "", entry_url: str = "", failed_step: str = "", notes: str = "") -> StackStatus`
@@ -88,55 +88,55 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.ready", matches="^(yes|no|none|unneeded)$")
 - returns: string process identifiers and diagnostics for the stack setup loop
 - verify: json_path(path="$.app_pid", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::StackStatus`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::StackStatus` @2e918886779f
 
 ### method: StackTornDown
 - sig: `StackTornDown(torn_down: Literal["yes", "no", "skipped"] = "no", notes: str = "") -> StackTornDown`
 - does: records whether the run-owned stack was torn down or teardown was skipped because no stop recipe exists
 - verify: json_path(path="$.torn_down", matches="^(yes|no|skipped)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::StackTornDown`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::StackTornDown` @2e918886779f
 
 ### method: BacklogDrain
 - sig: `BacklogDrain(appended: int = 0, skipped: int = 0, notes: str = "") -> BacklogDrain`
 - does: reports appended and skipped coder-to-author backlog items without routing the story on either count
 - verify: json_path(path="$.appended", matches="^[0-9]+$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::BacklogDrain`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::BacklogDrain` @2e918886779f
 
 ### method: ScreenshotFlush
 - sig: `ScreenshotFlush(flushed: int = 0, kept_tracked: int = 0, notes: str = "") -> ScreenshotFlush`
 - does: reports root screenshots moved into QA storage and tracked images deliberately retained
 - verify: json_path(path="$.flushed", matches="^[0-9]+$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::ScreenshotFlush`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::ScreenshotFlush` @2e918886779f
 
 ### method: RegressionSuite
 - sig: `RegressionSuite(label: str = "", cwd: str = "", command: str = "") -> RegressionSuite`
 - does: identifies one configured regression command by service label, absolute working directory, and command text
 - verify: json_path(path="$.command", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::RegressionSuite`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::RegressionSuite` @2e918886779f
 
 ### method: RegressionSuites
 - sig: `RegressionSuites(suites: list[RegressionSuite] = []) -> RegressionSuites`
 - does: carries every resolved regression suite selected by the current QA plan
 - verify: json_path(path="$.suites[0].command", equals="run-journeys")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::RegressionSuites`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::RegressionSuites` @2e918886779f
 
 ### method: FailureAttribution
 - sig: `FailureAttribution(test: str = "", path: str = "", classification: Literal["impacted", "outside-impact", "unattributed"] = "unattributed", nodes: list[str] = []) -> FailureAttribution`
 - does: records the verification-index ownership classification for one failed regression test without changing its verdict
 - verify: json_path(path="$.classification", matches="^(impacted|outside-impact|unattributed)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::FailureAttribution`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::FailureAttribution` @2e918886779f
 
 ### method: RegressionRun
 - sig: `RegressionRun(status: Literal["passed", "failed", "blocked", "skipped", "error"] = "skipped", failing_tests: list[str] = [], log_path: str = "", notes: str = "", failure_attribution: list[FailureAttribution] = []) -> RegressionRun`
 - does: carries the regression suite verdict, failing tests, retained log path, notes, and optional attribution
 - verify: json_path(path="$.status", matches="^(passed|failed|blocked|skipped|error)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::RegressionRun`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::RegressionRun` @2e918886779f
 
 ### method: ContextRepair
 - sig: `ContextRepair(status: Literal["repaired", "blocked"], notes: str = "") -> ContextRepair`
 - does: reports that QA context was repaired or that an external decision/dependency blocks repair
 - verify: json_path(path="$.status", matches="^(repaired|blocked)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::ContextRepair`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::ContextRepair` @2e918886779f
 
 ### method: QaPlanResult
 - sig: `QaPlanResult(status: Literal["done", "blocked"], notes: str = "", repaired_scenarios: list[str] = [], proved_scenarios: list[str] = []) -> QaPlanResult`
@@ -144,7 +144,7 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.status", matches="^(done|blocked)$")
 - returns: a plan result whose scenario lists are claims consumed by the dry-run gate
 - verify: json_path(path="$.repaired_scenarios", matches="^\\[(?:'[^']+'(?:, )?)*\\]$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaPlanResult`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaPlanResult` @2e918886779f
 
 ### method: QaFinding
 - sig: `QaFinding(id: str = "", scope: Literal["plan", "stack", "product-test"] = "plan", kind: Literal["coverage", "overclaim", "cosmetic"] = "coverage", target: str = "", issue: str = "", repair: str = "") -> QaFinding`
@@ -152,7 +152,7 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.scope", matches="^(plan|stack|product-test)$")
 - returns: an actionable finding only when both target and repair are present
 - verify: json_path(path="$.target", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaFinding`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaFinding` @2e918886779f
 
 ### method: QaAssessment
 - sig: `QaAssessment(status: Literal["assessed", "blocked"], disposition: QaDisposition | None = None, failure_class: QaFailureClass | None = None, objective_reached: bool | None = None, findings: list[QaFinding] = [], notes: str = "QA run assessment produced no valid result.") -> QaAssessment`
@@ -160,7 +160,7 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.status", matches="^(assessed|blocked)$")
 - returns: an assessed result with disposition, failure class, objective outcome, findings, and notes, or null classification on block
 - verify: json_path(path="$.findings", equals="[]")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAssessment`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAssessment` @2e918886779f
 
 ### method: QaAudit
 - sig: `QaAudit(status: Literal["audited", "blocked"], verdict: QaAuditVerdict | None = None, refutation_class: QaRefutationClass | None = None, findings: list[QaFinding] = [], notes: str = "Independent QA audit produced no valid result.") -> QaAudit`
@@ -168,7 +168,7 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.status", matches="^(audited|blocked)$")
 - returns: an audited result with `stands` or `refuted`, with no verdict classification on block
 - verify: json_path(path="$.findings", equals="[]")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit` @2e918886779f
 
 ### method: QaTriage
 - sig: `QaTriage(status: Literal["triaged", "blocked"], triage_action: QaTriageAction | None = None, qa_failure_class: QaTriageClass | None = None, notes: str = "") -> QaTriage`
@@ -176,49 +176,49 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.status", matches="^(triaged|blocked)$")
 - returns: a triage decision with no classification when the findings could not be sorted
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaTriage`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaTriage` @2e918886779f
 
 ### method: QaReport
 - sig: `QaReport(status: Literal["reported", "blocked"], notes: str = "") -> QaReport`
 - does: reports that the development-target QA comment was written or explains why it could not be written
 - verify: json_path(path="$.status", matches="^(reported|blocked)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaReport`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaReport` @2e918886779f
 
 ### method: RegressionFix
 - sig: `RegressionFix(status: Literal["attempted", "blocked"], notes: str = "") -> RegressionFix`
 - does: records that regression repair work was attempted without treating the agent's claim as a passing verdict
 - verify: json_path(path="$.status", matches="^(attempted|blocked)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::RegressionFix`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::RegressionFix` @2e918886779f
 
 ### method: SetupResult
 - sig: `SetupResult(status: Literal["ready", "unfixable"], notes: str = "") -> SetupResult`
 - does: reports that QA setup is runnable or that a human-only environment dependency remains
 - verify: json_path(path="$.status", matches="^(ready|unfixable)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::SetupResult`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::SetupResult` @2e918886779f
 
 ### method: AssessmentRecord
 - sig: `AssessmentRecord(notes: str = "", disposition: QaDisposition | Literal[""] = "", failure_class: QaFailureClass | Literal[""] = "") -> AssessmentRecord`
 - does: checkpoints the latest execution-assessment notes and classifications, blank until that gate runs
 - verify: json_path(path="$.disposition", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::AssessmentRecord`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::AssessmentRecord` @2e918886779f
 
 ### method: AuditRecord
 - sig: `AuditRecord(notes: str = "", verdict: QaAuditVerdict | Literal[""] = "", refutation_class: QaRefutationClass | Literal[""] = "") -> AuditRecord`
 - does: checkpoints the latest independent-audit notes and classifications, blank until that gate runs
 - verify: json_path(path="$.verdict", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::AuditRecord`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::AuditRecord` @2e918886779f
 
 ### method: FixWorklist
 - sig: `FixWorklist(items: tuple[str, ...] = (), rework: int = 0, problems: tuple[str, ...] = ()) -> FixWorklist`
 - does: checkpoints the remaining scenario ids, head rework count, and ordered dry-run refusals
 - verify: json_path(path="$.items", equals="[]")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::FixWorklist`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::FixWorklist` @2e918886779f
 
 ### method: LaneClock
 - sig: `LaneClock(seconds: float = 0.0, plan_seconds: float = 0.0, chain_laps: int = 0, overruns: int = 0) -> LaneClock`
 - does: accumulates charged turn deltas for the QA and plan lanes and counts plan-chain overruns
 - verify: json_path(path="$.seconds", equals=0.0)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::LaneClock`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::LaneClock` @2e918886779f
 
 ### method: QaLoop
 - sig: `QaLoop(qa: QaResult = QaResult(), context_status: Literal["", "passed", "invalid"] = "", context_notes: str = "", plan_validation_notes: str = "", assessment: AssessmentRecord = AssessmentRecord(), audit: AuditRecord = AuditRecord(), failure_class: QaTriageClass | Literal[""] = "", context_rework: int = 0, plan_rework: int = 0, plan_validation_rework: int = 0, qa_rework: int = 0, setup_rework: int = 0, regression_fix: int = 0, audit_rework: int = 0, blocked_problems: tuple[str, ...] = (), setup_problems: tuple[str, ...] = (), fix: FixWorklist = FixWorklist(), plan_rejections: tuple[str, ...] = (), repaired_failures: tuple[str, ...] = (), repaired_lap: str = "", tried_laps: tuple[str, ...] = (), class_switched: bool = False, escalations: int = 0, triage_scope: int = 0, regression_fix_applied: bool = False, regression_reqa_pending: bool = False, bonus_used: bool = False, docs_recheck_required: bool = True, clock: LaneClock = LaneClock()) -> QaLoop`
@@ -226,7 +226,7 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.docs_recheck_required", equals=true)
 - returns: a fail-closed loop with blank gate records, zero counters, empty worklists, and a blank running verdict
 - verify: json_path(path="$.qa.status", equals="")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop` @2e918886779f
 - tests: `workflows/tests/coder/test_telemetry.py::test_missing_documentation_taint_fails_closed`
 
 ### method: QaFlowResult
@@ -237,7 +237,7 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.status", equals="inconclusive")
 - does: defaults `docs_recheck_required` to `True` so a terminal result cannot imply the documentation story has stayed clean without an explicit False
 - verify: json_path(path="$.docs_recheck_required", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaFlowResult`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaFlowResult` @2e918886779f
 - tests: `workflows/tests/coder/test_telemetry.py::test_missing_documentation_taint_fails_closed`
 
 ## Methods
@@ -246,76 +246,76 @@ so an omitted decision is retried rather than silently routed.
 - sig: `ContextRepair.as_qa_result(self) -> QaResult`
 - does: maps a repaired context to `invalid` while it is rebuilt and a blocked repair to `blocked`
 - verify: json_path(path="$.status", matches="^(invalid|blocked)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::ContextRepair.as_qa_result`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::ContextRepair.as_qa_result` @2e918886779f
 
 ### AssessmentRecord.dimensions
 - sig: `AssessmentRecord.dimensions(self) -> dict[str, str]`
 - does: exposes disposition and failure class under telemetry names ending in `_disposition` and `_failure_class`
 - verify: json_path(path="$.assessment_disposition", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::AssessmentRecord.dimensions`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::AssessmentRecord.dimensions` @2e918886779f
 
 ### AuditRecord.dimensions
 - sig: `AuditRecord.dimensions(self) -> dict[str, str]`
 - does: exposes audit verdict and refutation class under telemetry classification names
 - verify: json_path(path="$.audit_verdict", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::AuditRecord.dimensions`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::AuditRecord.dimensions` @2e918886779f
 
 ### FixWorklist.popped
 - sig: `FixWorklist.popped(self) -> FixWorklist`
 - does: removes the proved head scenario and resets the remaining worklist's per-head rework and problem state
 - verify: removed(subject="the proved head scenario in the FixWorklist")
 - verify: count(subject="remaining FixWorklist items", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::FixWorklist.popped`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::FixWorklist.popped` @2e918886779f
 
 ### LaneClock.charged
 - sig: `LaneClock.charged(self, seconds: float, *, plan: bool, overran: bool = False) -> LaneClock`
 - does: returns a new `LaneClock` with one turn's elapsed delta added to total seconds, optionally to plan seconds, and optionally to overrun count
 - verify: created(subject="a new charged LaneClock")
 - verify: json_path(path="$.seconds", matches="^[0-9.]+$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::LaneClock.charged`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::LaneClock.charged` @2e918886779f
 
 ### QaLoop.plan_rework_total
 - sig: `QaLoop.plan_rework_total -> int`
 - returns: the sum of plan semantic and plan-validation rework counters used by the outer plan ceiling
 - verify: json_path(path="$.plan_rework_total", matches="^[0-9]+$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.plan_rework_total`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.plan_rework_total` @2e918886779f
 
 ### QaLoop.plan_judgement_rework
 - sig: `QaLoop.plan_judgement_rework -> int`
 - returns: the semantic plan-rework counter excluding mechanical validation repairs
 - verify: json_path(path="$.plan_judgement_rework", matches="^[0-9]+$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.plan_judgement_rework`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.plan_judgement_rework` @2e918886779f
 
 ### QaLoop.update
 - sig: `QaLoop.update(self, **changes: object) -> QaLoop`
 - does: returns a copy of the loop with the named fields replaced
 - verify: json_path(path="$.context_rework", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.update`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.update` @2e918886779f
 
 ### QaLoop.with_qa
 - sig: `QaLoop.with_qa(self, qa: QaResult) -> QaLoop`
 - does: returns a copy carrying a new rolling QA verdict
 - verify: json_path(path="$.qa.status", equals="failed")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.with_qa`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.with_qa` @2e918886779f
 
 ### QaLoop.with_lap
 - sig: `QaLoop.with_lap(self, lap: str, **changes: object) -> QaLoop`
 - does: records the latest repair class and adds it once to the tried-lap fingerprint
 - verify: created(subject="the QaLoop tried_laps entry for a fresh repair class")
 - verify: json_path(path="$.tried_laps[0]", equals="code fix")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.with_lap`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.with_lap` @2e918886779f
 
 ### QaLoop.charged
 - sig: `QaLoop.charged(self, seconds: float, *, plan: bool = False, overran: bool = False) -> QaLoop`
 - does: returns a copy whose lane clock includes one turn's charged delta and optional overrun
 - verify: json_path(path="$.clock.seconds", equals=1.5)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.charged`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.charged` @2e918886779f
 
 ### QaLoop.require_docs_recheck
 - sig: `QaLoop.require_docs_recheck(self) -> QaLoop`
 - does: sets the documentation-recheck taint without clearing it during later loop transitions
 - verify: json_path(path="$.docs_recheck_required", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.require_docs_recheck`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.require_docs_recheck` @2e918886779f
 
 ### QaLoop.cleared
 - sig: `QaLoop.cleared(self) -> QaLoop`
@@ -323,11 +323,11 @@ so an omitted decision is retried rather than silently routed.
 - verify: json_path(path="$.qa.status", equals="")
 - does: blanks assessment and audit records together with the notes they summarise, so a later span cannot claim a verdict whose findings have already been forgotten
 - does: retains every repair counter and the docs-recheck taint, since those are budgets and obligations rather than findings
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.cleared`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.cleared` @2e918886779f
 - tests: `workflows/tests/coder/test_telemetry.py::test_verdicts_are_forgotten_with_the_notes_they_summarise`
 
 ### QaLoop.block_notes
 - sig: `QaLoop.block_notes -> str`
 - returns: the current QA and assessment notes joined into the brief sent to setup repair and operator resolution
 - verify: json_path(path="$.block_notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.block_notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaLoop.block_notes` @2e918886779f

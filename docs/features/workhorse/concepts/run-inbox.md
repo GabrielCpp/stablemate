@@ -11,7 +11,7 @@ removes an entry; a reply rewrites the matching entry with `reply` and `replied_
 messages are those whose `reply` is empty. Extra fields are preserved so workflows can attach
 their own classification and diagnostic data without changing the shared store.
 
-- code: `workhorse/workhorse/inbox.py::Message`
+- code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - tests: `workhorse/tests/test_inbox.py::test_outstanding_excludes_replied_messages`
 - detail: [run inbox JSONL](../inbox-jsonl.md)
 - detail: [message documentation](message-documentation.md)
@@ -26,7 +26,7 @@ interpret message kinds; a workflow or operator filters them.
 - required: true
 - semantics: caller-supplied identity used to locate the message for a reply
 - verify: json_path(path="$.id", matches=".+")
-- code: `workhorse/workhorse/inbox.py::Message`
+- code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - detail: [Message representations](message-representations.md)
 
 ### body
@@ -34,7 +34,7 @@ interpret message kinds; a workflow or operator filters them.
 - required: true
 - semantics: operator or failure-handoff message text
 - verify: json_path(path="$.body", matches=".*")
-- code: `workhorse/workhorse/inbox.py::Message`
+- code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - detail: [Message representations](message-representations.md)
 
 ### at
@@ -42,7 +42,7 @@ interpret message kinds; a workflow or operator filters them.
 - required: true
 - semantics: creation timestamp supplied by the writer
 - verify: json_path(path="$.at", matches=".+")
-- code: `workhorse/workhorse/inbox.py::Message`
+- code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - detail: [Message representations](message-representations.md)
 
 ### reply
@@ -53,7 +53,7 @@ interpret message kinds; a workflow or operator filters them.
 - verify: json_path(path="$.reply", equals="acknowledged")
 - semantics: an empty reply means the message remains outstanding
 - verify: json_path(path="$.reply", equals="")
-- code: `workhorse/workhorse/inbox.py::Message`
+- code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - detail: [Message representations](message-representations.md)
 
 ### replied_at
@@ -62,7 +62,7 @@ interpret message kinds; a workflow or operator filters them.
 - required: true
 - semantics: timestamp written with a non-empty reply
 - verify: json_path(path="$.replied_at", equals="")
-- code: `workhorse/workhorse/inbox.py::Message`
+- code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - detail: [Message representations](message-representations.md)
 
 ## Methods
@@ -72,21 +72,21 @@ interpret message kinds; a workflow or operator filters them.
 - does: appends one JSON line without rewriting existing messages
 - returns: the validated Message that was appended
 - verify: count(subject="messages after one append", equals=1)
-- code: `workhorse/workhorse/inbox.py::append`
+- code: `workhorse/workhorse/inbox.py::append` @ff8e86205c5b
 - tests: `workhorse/tests/test_inbox.py::test_append_returns_and_persists_the_message`
 
 ### all_messages
 - sig: `all_messages(path) -> list[Message]`
 - returns: every message oldest first, including replied messages
 - verify: count(subject="messages returned after two appends and one reply", equals=2)
-- code: `workhorse/workhorse/inbox.py::all_messages`
+- code: `workhorse/workhorse/inbox.py::all_messages` @ff8e86205c5b
 - tests: `workhorse/tests/test_inbox.py::test_outstanding_excludes_replied_messages`
 
 ### outstanding
 - sig: `outstanding(path) -> list[Message]`
 - returns: messages whose reply is empty, oldest first
 - verify: count(subject="unreplied messages after one of two messages is replied", equals=1)
-- code: `workhorse/workhorse/inbox.py::outstanding`
+- code: `workhorse/workhorse/inbox.py::outstanding` @ff8e86205c5b
 - tests: `workhorse/tests/test_inbox.py::test_outstanding_excludes_replied_messages`
 
 ### reply
@@ -99,5 +99,5 @@ interpret message kinds; a workflow or operator filters them.
 - verify: unchanged(subject="other inbox messages")
 - raises: KeyError when message_id is absent
 - returns: the updated Message
-- code: `workhorse/workhorse/inbox.py::reply`
+- code: `workhorse/workhorse/inbox.py::reply` @ff8e86205c5b
 - tests: `workhorse/tests/test_inbox.py::test_reply_sets_reply_and_replied_at`, `workhorse/tests/test_inbox.py::test_reply_to_missing_id_raises`

@@ -15,7 +15,7 @@ matching, rendering, and availability rules.
 `farrier.sources.collect_selection`; `farrier.install.collect_selection` remains a public
 compatibility import.
 
-- code: `farrier/farrier/sources.py::collect_selection`
+- code: `farrier/farrier/sources.py::collect_selection` @e4e058c012de
 - tests: `farrier/tests/test_scaffold_command.py::test_pack_scaffolds_contribute_available_ids`
 
 ## Methods
@@ -46,5 +46,5 @@ compatibility import.
 - verify: count(subject="returned root instruction names", equals=1)
 - returns: the unioned scaffold definition ids
 - verify: count(subject="returned scaffold definition ids", equals=1)
-- code: `farrier/farrier/sources.py::collect_selection`
+- code: `farrier/farrier/sources.py::collect_selection` @e4e058c012de
 - tests: `farrier/tests/test_scaffold_command.py::test_pack_scaffolds_contribute_available_ids`

@@ -15,5 +15,5 @@ Read all three fields when the branch operation's context, result, and affected 
 needed. No field ranks above or replaces another; use the field whose distinct result fact is
 needed.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryBranch`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryBranch` @a87cd48ce444
 - rule: select the field for the distinct branch-operation fact needed; no ranking or replacement exists among `base_branch`, `story_branch`, and `repos`

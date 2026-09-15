@@ -14,6 +14,6 @@ resolves a state. Use the fields concept when the question concerns one member's
 callable, or retired-checkpoint role. Neither is an alternative implementation, so no ranking,
 deprecation, or migration rule exists.
 
-- code: `workhorse/workhorse/pyflow/workflow.py::StateSpec`
+- code: `workhorse/workhorse/pyflow/workflow.py::StateSpec` @1a1a48a855c9
 - rule: use the whole-record and registration-data concepts for registration and resolution, and the fields concept for an individual member; they document complementary scopes of one `StateSpec`, not alternatives
 - detail: [pyflow state specification reading guide](pyflow-state-spec-reading-guide.md)

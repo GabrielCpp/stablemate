@@ -20,10 +20,10 @@ epic-author, story-author, and story-split node blueprints. It exposes ten named
 reply for each prompt role, including approval/complete outcomes for planning and review turns,
 an answered decision for resolver turns, and the explicit `design-mockup` skipped outcome.
 
-- code: `workflows/src/workhorse_workflows/author/workflow.py`
-- code: `workflows/src/workhorse_workflows/author/workflow.py::workflow`
-- code: `workflows/src/workhorse_workflows/author/workflow.py::main`
-- code: `workflows/src/workhorse_workflows/author/workflow.py::__all__`
+- code: `workflows/src/workhorse_workflows/author/workflow.py` @b5ac6edbcc21
+- code: `workflows/src/workhorse_workflows/author/workflow.py::workflow` @b5ac6edbcc21
+- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @b5ac6edbcc21
+- code: `workflows/src/workhorse_workflows/author/workflow.py::__all__` @b5ac6edbcc21
 - tests: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
 - detail: [Author roadmap intake flow](../flows/author-roadmap-intake.md)
 - detail: [Author epic-edit flow](../flows/author-epic-edit.md)

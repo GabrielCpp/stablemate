@@ -17,12 +17,12 @@ fallback use the same `ostler.markdown` bullet locations, so fenced examples and
 not mistaken for work items. Story creation is idempotent by the selected bullet id; an existing
 story that covers that id is re-authored only in empty sections and reused.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::backlog_bullets`
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items`
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item`
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story`
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::prune_fix_item`
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::mark_fix_blocked`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::backlog_bullets` @4a2162dbe953
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items` @4a2162dbe953
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @4a2162dbe953
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @4a2162dbe953
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::prune_fix_item` @4a2162dbe953
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::mark_fix_blocked` @4a2162dbe953
 - tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_pruned_and_committed`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_a_second_failing_check_flags_rather_than_retrying_again`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_a_blocked_item_is_flagged_and_the_next_draw_skips_it`
@@ -65,7 +65,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - does: returns true when the bullet text contains the case-insensitive `(blocked` marker
 - returns: boolean indicating whether future fix selection must skip this bullet
 - verify: count(subject="blocked backlog detection", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::BacklogBullet.blocked`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::BacklogBullet.blocked` @4a2162dbe953
 
 ### backlog_bullets
 
@@ -78,7 +78,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: count(subject="filtered backlog bullets", equals=1)
 - returns: `BacklogBullet` records with file-absolute zero-based line locations
 - verify: count(subject="backlog bullet records", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::backlog_bullets`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::backlog_bullets` @4a2162dbe953
 
 ### Seen.add
 
@@ -86,7 +86,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - does: records a non-empty id, its order-insensitive token set, and a non-empty normalized description for later duplicate checks
 - returns: no value
 - verify: count(subject="recorded backlog duplicate keys", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::Seen.add`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::Seen.add` @4a2162dbe953
 
 ### Seen.duplicate
 
@@ -95,7 +95,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: count(subject="backlog duplicate decisions", equals=1)
 - returns: false for an item with no matching identity signal
 - verify: count(subject="backlog duplicate misses", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::Seen.duplicate`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::Seen.duplicate` @4a2162dbe953
 
 ### kebab
 
@@ -103,7 +103,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - does: lowercases the supplied value, replaces runs of non-alphanumeric/dot/underscore/hyphen characters with hyphens, and trims edge hyphens
 - returns: stable sanitized backlog id
 - verify: count(subject="sanitized backlog ids", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::kebab`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::kebab` @4a2162dbe953
 
 ### norm_desc
 
@@ -111,7 +111,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - does: removes a trailing blocked annotation, lowercases the description, replaces non-alphanumeric runs with spaces, and trims whitespace
 - returns: normalized description key, or an empty string when no identity text remains
 - verify: count(subject="normalized backlog descriptions", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::norm_desc`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::norm_desc` @4a2162dbe953
 
 ### id_token_set
 
@@ -120,7 +120,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: count(subject="split backlog id token sets", equals=1)
 - returns: order-insensitive token set used by duplicate detection
 - verify: count(subject="returned backlog id token sets", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::id_token_set`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::id_token_set` @4a2162dbe953
 
 ### file_backlog_items
 
@@ -151,7 +151,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: json_path(path="$.skipped", equals=1)
 - returns: `BacklogDrain.notes` reporting the appended count, skipped count, and items-file removal outcome
 - verify: json_path(path="$.notes", matches="^filed [0-9]+, skipped [0-9]+ \\(duplicate/invalid\\); (removed backlog-items\\.json|backlog-items\\.json left in place)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items` @4a2162dbe953
 
 ### select_fix_item
 
@@ -164,7 +164,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: count(subject="dry backlog selections", equals=1)
 - returns: `FixPick` containing the selected id and text, or a reason with no fix
 - verify: count(subject="fix selection results", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @4a2162dbe953
 - tests: `workflows/tests/coder/fix/test_flow.py::test_an_empty_backlog_does_not_enter_the_fix_loop`
 
 ### seed_fix_story
@@ -181,7 +181,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: count(subject="invalid fix story seed failures", equals=1)
 - returns: `FixStorySeed` with the epic, story paths, bullet identity, and reuse/creation reason
 - verify: count(subject="seeded fix stories", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @4a2162dbe953
 - tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_pruned_and_committed`
 
 ### prune_fix_item
@@ -193,7 +193,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: count(subject="scoped backlog prune commits", equals=1)
 - returns: `FixPruned` marked true for a removed bullet and false when no id or matching bullet exists
 - verify: count(subject="backlog prune results", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::prune_fix_item`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::prune_fix_item` @4a2162dbe953
 - tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_pruned_and_committed`
 
 ### mark_fix_blocked
@@ -205,5 +205,5 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: unchanged(subject="an already blocked backlog bullet")
 - returns: `FixBlocked` marked true for a found bullet, including an already blocked no-op, and false when the id or bullet is absent
 - verify: count(subject="blocked coder backlog bullets", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::mark_fix_blocked`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::mark_fix_blocked` @4a2162dbe953
 - tests: `workflows/tests/coder/fix/test_flow.py::test_a_second_failing_check_flags_rather_than_retrying_again`

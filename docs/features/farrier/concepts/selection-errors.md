@@ -11,7 +11,7 @@ nearby names, lists the available catalog and searched library layers, and ends 
 configuration fix plus the overlay escape hatch. Glob selections remain filters and are handled by
 the caller as warnings when they match nothing.
 
-- code: `farrier/farrier/selection_errors.py`
+- code: `farrier/farrier/selection_errors.py` @305ff68847f8
 - tests: `farrier/tests/test_selection_misses.py::test_unknown_skill_fails_loudly`
 - detail: [library layer](library-layer.md)
 
@@ -31,7 +31,7 @@ the caller as warnings when they match nothing.
 - verify: count(subject="empty suggestions for unrelated selection", equals=1)
 - returns: a list containing no more than three suggested names
 - verify: count(subject="bounded selection suggestion list", equals=1)
-- code: `farrier/farrier/selection_errors.py::suggestions`
+- code: `farrier/farrier/selection_errors.py::suggestions` @305ff68847f8
 - tests: `farrier/tests/test_selection_misses.py::test_suggestions_catch_transpositions_difflib_misses`
 - tests: `farrier/tests/test_selection_misses.py::test_suggestions_drop_non_competitive_runners_up`
 
@@ -55,7 +55,7 @@ the caller as warnings when they match nothing.
 - verify: count(subject="selection error remediation instructions", equals=1)
 - returns: the complete newline-separated diagnostic message
 - verify: count(subject="complete selection error message", equals=1)
-- code: `farrier/farrier/selection_errors.py::unknown_selection_error`
+- code: `farrier/farrier/selection_errors.py::unknown_selection_error` @305ff68847f8
 - tests: `farrier/tests/test_selection_misses.py::test_unknown_skill_fails_loudly`
 - tests: `farrier/tests/test_selection_misses.py::test_unknown_pack_is_verbose`
 - tests: `farrier/tests/test_selection_misses.py::test_every_miss_is_reported_in_one_run`

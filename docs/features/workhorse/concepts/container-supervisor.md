@@ -11,7 +11,7 @@ groom's observer, and makes the workflow's final exit status the container's sta
 It is not PID 1: Docker's `init: true` supplies tini for signal delivery and zombie
 reaping. The observer is optional and never changes the run's outcome.
 
-- code: `workhorse/supervisor.py::main`
+- code: `workhorse/supervisor.py::main` @65e402ff1f63
 - tests: `workhorse/tests/test_supervisor.py`
 
 ## Fields
@@ -24,7 +24,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: json_path(path="Layout.claude_home.required", equals=false)
 - semantics: persistent HOME containing Claude state, credentials, and onboarding data
 - verify: json_path(path="Layout.claude_home.semantics", equals="persistent HOME containing Claude state, credentials, and onboarding data")
-- code: `workhorse/supervisor.py::Layout`
+- code: `workhorse/supervisor.py::Layout` @65e402ff1f63
 - detail: [Layout storage locations](layout-storage-locations.md)
 
 ### workspace
@@ -35,7 +35,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: json_path(path="Layout.workspace.required", equals=false)
 - semantics: writable root where checked-out repositories are materialized
 - verify: json_path(path="Layout.workspace.semantics", equals="writable root where checked-out repositories are materialized")
-- code: `workhorse/supervisor.py::Layout`
+- code: `workhorse/supervisor.py::Layout` @65e402ff1f63
 - detail: [Layout storage locations](layout-storage-locations.md)
 
 ### runs
@@ -46,7 +46,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: json_path(path="Layout.runs.required", equals=false)
 - semantics: writable root for run artifacts
 - verify: json_path(path="Layout.runs.semantics", equals="writable root for run artifacts")
-- code: `workhorse/supervisor.py::Layout`
+- code: `workhorse/supervisor.py::Layout` @65e402ff1f63
 - detail: [Layout storage locations](layout-storage-locations.md)
 
 ### settings_src
@@ -57,7 +57,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: json_path(path="Layout.settings_src.required", equals=false)
 - semantics: optional read-only host settings seed copied on every start
 - verify: json_path(path="Layout.settings_src.semantics", equals="optional read-only host settings seed copied on every start")
-- code: `workhorse/supervisor.py::Layout`
+- code: `workhorse/supervisor.py::Layout` @65e402ff1f63
 - detail: [Layout storage locations](layout-storage-locations.md)
 
 ### credentials_src
@@ -68,7 +68,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: json_path(path="Layout.credentials_src.required", equals=false)
 - semantics: optional read-only host credentials seed used only when the persistent volume has no credentials
 - verify: json_path(path="Layout.credentials_src.semantics", equals="optional read-only host credentials seed used only when the persistent volume has no credentials")
-- code: `workhorse/supervisor.py::Layout`
+- code: `workhorse/supervisor.py::Layout` @65e402ff1f63
 - detail: [Layout storage locations](layout-storage-locations.md)
 
 ### observer_src
@@ -79,7 +79,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: json_path(path="Layout.observer_src.required", equals=false)
 - semantics: optional host bind containing the observer source
 - verify: json_path(path="Layout.observer_src.semantics", equals="optional host bind containing the observer source")
-- code: `workhorse/supervisor.py::Layout`
+- code: `workhorse/supervisor.py::Layout` @65e402ff1f63
 - detail: [Layout storage locations](layout-storage-locations.md)
 
 ### live_root
@@ -90,7 +90,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: json_path(path="Layout.live_root.required", equals=false)
 - semantics: container-local root for complete per-generation source copies
 - verify: json_path(path="Layout.live_root.semantics", equals="container-local root for complete per-generation source copies")
-- code: `workhorse/supervisor.py::Layout`
+- code: `workhorse/supervisor.py::Layout` @65e402ff1f63
 - detail: [Layout storage locations](layout-storage-locations.md)
 
 ### image_workhorse
@@ -101,7 +101,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: json_path(path="Layout.image_workhorse.required", equals=false)
 - semantics: in-image workhorse checkout supplied to the observer's editable environment
 - verify: json_path(path="Layout.image_workhorse.semantics", equals="in-image workhorse checkout supplied to the observer's editable environment")
-- code: `workhorse/supervisor.py::Layout`
+- code: `workhorse/supervisor.py::Layout` @65e402ff1f63
 - detail: [Layout storage locations](layout-storage-locations.md)
 
 ## Methods
@@ -110,37 +110,37 @@ reaping. The observer is optional and never changes the run's outcome.
 - sig: `Layout.claude_dir -> Path`
 - returns: the `.claude` directory below `claude_home`
 - verify: json_path(path="return value", equals="/claude-state/.claude")
-- code: `workhorse/supervisor.py::Layout.claude_dir`
+- code: `workhorse/supervisor.py::Layout.claude_dir` @65e402ff1f63
 
 ### credentials
 - sig: `Layout.credentials -> Path`
 - returns: the credentials file below `claude_dir`
 - verify: json_path(path="return value", equals="/claude-state/.claude/.credentials.json")
-- code: `workhorse/supervisor.py::Layout.credentials`
+- code: `workhorse/supervisor.py::Layout.credentials` @65e402ff1f63
 
 ### onboarding_stub
 - sig: `Layout.onboarding_stub -> Path`
 - returns: the Claude onboarding marker below `claude_home`
 - verify: json_path(path="return value", equals="/claude-state/.claude.json")
-- code: `workhorse/supervisor.py::Layout.onboarding_stub`
+- code: `workhorse/supervisor.py::Layout.onboarding_stub` @65e402ff1f63
 
 ### boundary_params
 - sig: `Layout.boundary_params -> Path`
 - returns: the JSON file below `claude_home` used to pass environment-derived parameters
 - verify: json_path(path="return value", equals="/claude-state/boundary-params.json")
-- code: `workhorse/supervisor.py::Layout.boundary_params`
+- code: `workhorse/supervisor.py::Layout.boundary_params` @65e402ff1f63
 
 ### tool_bin
 - sig: `Layout.tool_bin -> Path`
 - returns: the local tool binary directory below `claude_home`
 - verify: json_path(path="return value", equals="/claude-state/.local/bin")
-- code: `workhorse/supervisor.py::Layout.tool_bin`
+- code: `workhorse/supervisor.py::Layout.tool_bin` @65e402ff1f63
 
 ### observer
 - sig: `Layout.observer -> Path`
 - returns: the `groom-sidecar` executable path below `tool_bin`
 - verify: json_path(path="return value", equals="/claude-state/.local/bin/groom-sidecar")
-- code: `workhorse/supervisor.py::Layout.observer`
+- code: `workhorse/supervisor.py::Layout.observer` @65e402ff1f63
 
 ### require_writable
 - sig: `require_writable(paths: Sequence[Path]) -> None`
@@ -148,7 +148,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - raises: exits with code `13` on the first missing, non-directory, or non-writable path
 - returns: `None` after all paths pass the preflight check
 - verify: exit_status(code=13)
-- code: `workhorse/supervisor.py::require_writable`
+- code: `workhorse/supervisor.py::require_writable` @65e402ff1f63
 - tests: `workhorse/tests/test_supervisor.py::test_unwritable_mount_fails_here_with_its_own_exit_code`
 
 ### seed_claude_home
@@ -160,7 +160,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - does: writes the completed-onboarding JSON stub when it does not already exist
 - returns: `None` after best-effort authentication and onboarding preparation
 - verify: json_path(path="$.hasCompletedOnboarding", equals=true)
-- code: `workhorse/supervisor.py::seed_claude_home`
+- code: `workhorse/supervisor.py::seed_claude_home` @65e402ff1f63
 - tests: `workhorse/tests/test_supervisor.py::test_credentials_already_in_the_volume_win_over_the_host_copy`, `workhorse/tests/test_supervisor.py::test_host_credentials_are_seeded_once_into_an_empty_volume`, `workhorse/tests/test_supervisor.py::test_an_explicit_token_beats_both_files`, `workhorse/tests/test_supervisor.py::test_settings_refresh_every_start_because_they_are_config_not_a_secret`
 
 ### configure_git
@@ -173,7 +173,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: persists(subject="global Git author name")
 - returns: `None` after all Git configuration commands succeed
 - verify: exit_status(code=0)
-- code: `workhorse/supervisor.py::configure_git`
+- code: `workhorse/supervisor.py::configure_git` @65e402ff1f63
 
 ### _git
 - sig: `_git(*args: str) -> None`
@@ -181,7 +181,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: exit_status(code=0)
 - returns: `None` after the Git subprocess exits successfully
 - verify: exit_status(code=0)
-- code: `workhorse/supervisor.py::_git`
+- code: `workhorse/supervisor.py::_git` @65e402ff1f63
 
 ### observer_source
 - sig: `observer_source(layout: Layout) -> livesource.LiveSource`
@@ -191,7 +191,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: json_path(path="return value.root", equals="/opt/live/groom")
 - returns: a descriptor whose editable dependency is the image's `image_workhorse` checkout
 - verify: json_path(path="return value.with_editable[0]", equals="/app/workhorse")
-- code: `workhorse/supervisor.py::observer_source`
+- code: `workhorse/supervisor.py::observer_source` @65e402ff1f63
 
 ### install_observer
 - sig: `install_observer(layout: Layout) -> list[str] | None`
@@ -199,7 +199,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - returns: the observer executable command when the staged binary is executable
 - returns: `None` when no bind, refresh, install, or executable is available
 - verify: absent(subject="observer command when the observer binary is missing")
-- code: `workhorse/supervisor.py::install_observer`
+- code: `workhorse/supervisor.py::install_observer` @65e402ff1f63
 - tests: `workhorse/tests/test_supervisor.py::test_missing_observer_binary_is_not_discovered`
 
 ### run_params
@@ -210,7 +210,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: json_path(path="$.workspace_file", equals="/mnt/ws.code-workspace")
 - returns: an empty mapping for unrelated or empty environment entries
 - verify: count(subject="run parameters from unrelated and empty environment entries", equals=0)
-- code: `workhorse/supervisor.py::run_params`
+- code: `workhorse/supervisor.py::run_params` @65e402ff1f63
 - tests: `workhorse/tests/test_supervisor.py::test_params_come_from_a_generic_prefix_not_a_workflows_vocabulary`
 
 ### write_boundary_params
@@ -218,7 +218,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - does: writes a sorted, indented JSON object followed by a newline at `path`
 - returns: the same `path` passed by the caller
 - verify: json_path(path="$.docs_path", equals="/docs")
-- code: `workhorse/supervisor.py::write_boundary_params`
+- code: `workhorse/supervisor.py::write_boundary_params` @65e402ff1f63
 - tests: `workhorse/tests/test_supervisor.py::test_boundary_params_land_in_a_file_so_explicit_params_still_win`
 
 ### checkout
@@ -231,7 +231,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: created(subject="default clone checkout at /workspace/repo on main")
 - returns: `None` after requesting workspace materialization
 - verify: persists(subject="materialized workspace checkout")
-- code: `workhorse/supervisor.py::checkout`
+- code: `workhorse/supervisor.py::checkout` @65e402ff1f63
 - tests: `workhorse/tests/test_supervisor.py::test_checkout_reads_the_workspace_file_from_the_params_not_a_second_variable`, `workhorse/tests/test_supervisor.py::test_the_worktree_choice_crosses_as_an_argument_not_as_environment`, `workhorse/tests/test_supervisor.py::test_a_container_with_no_launcher_still_clones`
 
 ### run_command
@@ -243,7 +243,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - raises: exits with an explanatory error when the workflow console script is not executable
 - returns: the complete executable argument vector
 - verify: exit_status(code=1)
-- code: `workhorse/supervisor.py::run_command`
+- code: `workhorse/supervisor.py::run_command` @65e402ff1f63
 - tests: `workhorse/tests/test_supervisor.py::test_the_run_command_is_the_workflows_own_console_script`, `workhorse/tests/test_supervisor.py::test_an_unset_workflow_fails_at_spawn_not_mid_run`, `workhorse/tests/test_supervisor.py::test_a_workflow_this_image_does_not_carry_fails_at_spawn`, `workhorse/tests/test_supervisor.py::test_no_run_id_flag_when_the_launcher_minted_none`, `workhorse/tests/test_supervisor.py::test_the_profile_and_its_config_file_cross_the_boundary_as_flags`, `workhorse/tests/test_supervisor.py::test_no_profile_flags_when_the_launcher_selected_none`
 
 ### Child
@@ -254,7 +254,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: json_path(path="$.child.env.WORKFLOW", equals="demo")
 - does: records a stop request so a signal arriving during spawn is honored after a process exists
 - verify: emitted(event="SIGTERM forwarded to subprocess after spawn", count=1)
-- code: `workhorse/supervisor.py::Child`
+- code: `workhorse/supervisor.py::Child` @65e402ff1f63
 
 ### start
 - sig: `Child.start() -> asyncio.subprocess.Process`
@@ -263,7 +263,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - does: forwards `SIGTERM` immediately when a stop request was recorded during spawn
 - verify: emitted(event="SIGTERM forwarded to subprocess after spawn", count=1)
 - returns: the created subprocess handle
-- code: `workhorse/supervisor.py::Child.start`
+- code: `workhorse/supervisor.py::Child.start` @65e402ff1f63
 - tests: `workhorse/tests/test_supervisor.py::test_a_signal_arriving_during_the_spawn_is_not_lost`
 
 ### signal
@@ -274,7 +274,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: emitted(event="signal delivered to live child", count=1)
 - returns: `None`
 - verify: json_path(path="return value", equals="None")
-- code: `workhorse/supervisor.py::Child.signal`
+- code: `workhorse/supervisor.py::Child.signal` @65e402ff1f63
 - tests: `workhorse/tests/test_supervisor.py::test_sigterm_reaches_the_run_so_docker_stop_stays_graceful`
 
 ### supervise_observer
@@ -285,7 +285,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - does: stops permanently on clean exit, crash, or any non-reload exit code
 - returns: `None` without propagating observer or refresh failures
 - verify: count(subject="observer starts before a clean exit after two reload requests", equals=3)
-- code: `workhorse/supervisor.py::supervise_observer`
+- code: `workhorse/supervisor.py::supervise_observer` @65e402ff1f63
 - tests: `workhorse/tests/test_supervisor.py::test_only_the_reload_code_restarts_the_observer`, `workhorse/tests/test_supervisor.py::test_a_reload_restages_the_source_before_restarting`, `workhorse/tests/test_supervisor.py::test_a_refresh_that_raises_still_restarts_on_the_old_generation`, `workhorse/tests/test_supervisor.py::test_a_reload_landing_on_broken_code_fails_safe_instead_of_storming`
 
 ### supervise
@@ -299,7 +299,7 @@ reaping. The observer is optional and never changes the run's outcome.
 - does: terminates and waits for the observer after the run ends, bounded by `timeout_s`
 - returns: the final workflow exit code as the container exit code
 - verify: exit_status(code=7)
-- code: `workhorse/supervisor.py::supervise`
+- code: `workhorse/supervisor.py::supervise` @65e402ff1f63
 - tests: `workhorse/tests/test_supervisor.py::test_run_completes_with_no_observer_at_all`, `workhorse/tests/test_supervisor.py::test_run_exit_code_is_the_containers_with_no_observer`, `workhorse/tests/test_supervisor.py::test_observer_that_crashes_immediately_does_not_touch_the_run`, `workhorse/tests/test_supervisor.py::test_observer_that_outlives_the_run_is_torn_down`, `workhorse/tests/test_supervisor.py::test_the_run_restarts_on_the_reload_code_with_the_source_restaged`, `workhorse/tests/test_supervisor.py::test_a_run_that_fails_after_a_reload_is_not_restarted_again`, `workhorse/tests/test_supervisor.py::test_exit_notice_carries_the_code_and_never_changes_it`, `workhorse/tests/test_supervisor.py::test_a_wedged_exit_notice_is_reaped_before_the_container_exits`
 
 ### main
@@ -315,4 +315,4 @@ reaping. The observer is optional and never changes the run's outcome.
 - verify: json_path(path="$.reload.source.name", equals="groom")
 - returns: the workflow's final exit code
 - verify: exit_status(code=7)
-- code: `workhorse/supervisor.py::main`
+- code: `workhorse/supervisor.py::main` @65e402ff1f63

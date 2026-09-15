@@ -10,7 +10,7 @@ only the two callables used by a workflow distribution to bind and invoke its ow
 script; importing `workhorse` does not discover a workflow or execute one. Submodules remain
 available through their own package paths but are not part of this root export contract.
 
-- code: `workhorse/workhorse/__init__.py::__all__`
+- code: `workhorse/workhorse/__init__.py::__all__` @9f380e13fae8
 - detail: [Package root entry point imports](package-root-entry-point-imports.md)
 - detail: [CLI composition and workflow binding](cli-composition.md)
 
@@ -18,7 +18,7 @@ available through their own package paths but are not part of this root export c
 
 ### console_script
 - sig: `workhorse.console_script(workflow: Registry) -> ConsoleEntry`
-- code: `workhorse/workhorse/cli/__init__.py::console_script`
+- code: `workhorse/workhorse/cli/__init__.py::console_script` @19166d483bcf
 - detail: [CLI composition and workflow binding](cli-composition.md#console_script)
 - detail: [Console script import selection](console-script-import-selection.md)
 
@@ -28,7 +28,7 @@ package root does not add name resolution or run the workflow while it is import
 
 ### main
 - sig: `workhorse.main(argv: list[str] | None, *, workflow: str, registry: Registry) -> None`
-- code: `workhorse/workhorse/cli/__init__.py::main`
+- code: `workhorse/workhorse/cli/__init__.py::main` @19166d483bcf
 - detail: [CLI composition and workflow binding](cli-composition.md#main)
 - detail: [Main import selection](main-import-selection.md)
 

@@ -6,7 +6,7 @@ title: Parity assessment prompt contract
 # Parity assessment prompt contract
 
 - file: `workflows/src/workhorse_workflows/author/parity_surveyor/prompts/assess-parity-unit.md`
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.assess`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.assess` @afa650d81faa
 - detail: [author parity surveyor subflow](concepts/parity-surveyor-subflow.md)
 - tests: `workflows/tests/author/parity_surveyor/test_flow.py::test_the_assessor_is_handed_the_unit_and_both_sides_of_the_compare`
 

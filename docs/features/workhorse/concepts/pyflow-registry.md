@@ -13,7 +13,7 @@ the workflow module and passed to the CLI binding; it does not import or constru
 CLI callable itself. Its explicit `package` is the prompt root when supplied, otherwise
 the entry class's import package supplies the root.
 
-- code: `workhorse/workhorse/pyflow/registry.py::Registry`
+- code: `workhorse/workhorse/pyflow/registry.py::Registry` @3643b263caf2
 - tests: [pyflow tests](../../../../workhorse/tests/test_pyflow.py)
 
 ## Methods
@@ -27,7 +27,7 @@ the entry class's import package supplies the root.
 - verify: json_path(path="$.registry.module", matches="^test_pyflow$")
 - returns: the registry instance
 - verify: json_path(path="$.registry.name", equals="demo")
-- code: `workhorse/workhorse/pyflow/registry.py::Registry.__init__`
+- code: `workhorse/workhorse/pyflow/registry.py::Registry.__init__` @3643b263caf2
 
 ### Registry.add_blueprints
 - sig: `add_blueprints(*blueprints: Blueprint) -> Registry`
@@ -36,7 +36,7 @@ the entry class's import package supplies the root.
 - raises: `WorkflowDefinitionError` when merged names or aliases collide
 - returns: this registry for composition
 - verify: count(subject="nodes in a registry after merging one blueprint", equals=1)
-- code: `workhorse/workhorse/pyflow/registry.py::Registry.add_blueprints`
+- code: `workhorse/workhorse/pyflow/registry.py::Registry.add_blueprints` @3643b263caf2
 
 ### Registry.add_flows
 - sig: `add_flows(**flows: type[Workflow]) -> Registry`
@@ -48,7 +48,7 @@ the entry class's import package supplies the root.
 - raises: `WorkflowDefinitionError` when a class is already claimed by another registry
 - returns: this registry
 - verify: count(subject="named flows after registering one flow", equals=1)
-- code: `workhorse/workhorse/pyflow/registry.py::Registry.add_flows`
+- code: `workhorse/workhorse/pyflow/registry.py::Registry.add_flows` @3643b263caf2
 - tests: `workhorse/tests/test_pyflow.py::test_a_flow_class_may_belong_to_only_one_registry`
 
 ### Registry.stub_agents
@@ -56,7 +56,7 @@ the entry class's import package supplies the root.
 - does: updates dry-run agent replies by prompt stem
 - returns: this registry
 - verify: count(subject="configured dry-run agent stubs after adding one reply", equals=1)
-- code: `workhorse/workhorse/pyflow/registry.py::Registry.stub_agents`
+- code: `workhorse/workhorse/pyflow/registry.py::Registry.stub_agents` @3643b263caf2
 - tests: `workhorse/tests/test_pyflow.py::test_a_dry_run_answers_a_prompt_with_the_reply_the_registry_declared`
 
 ### Registry.override
@@ -66,7 +66,7 @@ the entry class's import package supplies the root.
 - raises: `WorkflowDefinitionError` when a requested node is not registered
 - returns: substituted node index
 - verify: count(subject="live names in an overridden node index", equals=1)
-- code: `workhorse/workhorse/pyflow/registry.py::Registry.override`
+- code: `workhorse/workhorse/pyflow/registry.py::Registry.override` @3643b263caf2
 - tests: `workhorse/tests/test_pyflow.py::test_the_run_index_supplies_the_body_the_callsite_only_names`
 - tests: `workhorse/tests/test_pyflow.py::test_overriding_a_node_the_registry_does_not_have_names_the_registered_ones`
 
@@ -78,7 +78,7 @@ the entry class's import package supplies the root.
 - does: registers the entry class under the `default` flow name
 - returns: this registry for console-script binding
 - verify: count(subject="default flow names after declaring an entry point", equals=1)
-- code: `workhorse/workhorse/pyflow/registry.py::Registry.entry_point`
+- code: `workhorse/workhorse/pyflow/registry.py::Registry.entry_point` @3643b263caf2
 - tests: `workhorse/tests/test_pyflow.py::test_entry_point_declares_the_default_flow_and_chains`
 - tests: `workhorse/tests/test_pyflow.py::test_a_registry_without_a_name_cannot_be_a_command`
 
@@ -90,7 +90,7 @@ the entry class's import package supplies the root.
 - raises: `WorkflowDefinitionError` when a non-empty flow name is unknown
 - verify: exit_status(code=1)
 - returns: the selected workflow class
-- code: `workhorse/workhorse/pyflow/registry.py::Registry.flow`
+- code: `workhorse/workhorse/pyflow/registry.py::Registry.flow` @3643b263caf2
 
 ### Registry.directory
 - sig: `directory() -> Path`
@@ -100,7 +100,7 @@ the entry class's import package supplies the root.
 - raises: `WorkflowDefinitionError` when the entry class has no package directory
 - verify: exit_status(code=1)
 - returns: the real package directory used as the prompt root
-- code: `workhorse/workhorse/pyflow/registry.py::Registry.directory`
+- code: `workhorse/workhorse/pyflow/registry.py::Registry.directory` @3643b263caf2
 - tests: `workhorse/tests/test_console_script.py::test_a_declared_package_is_the_directory`
 - tests: `workhorse/tests/test_console_script.py::test_a_registry_with_a_package_needs_no_entry_point`
 - tests: `workhorse/tests/test_console_script.py::test_zip_imported_package_fails_at_startup`
@@ -109,7 +109,7 @@ the entry class's import package supplies the root.
 - sig: `flow_names() -> list[str]`
 - returns: registered flow names in sorted order
 - verify: count(subject="default flow names after declaring an entry point", equals=1)
-- code: `workhorse/workhorse/pyflow/registry.py::Registry.flow_names`
+- code: `workhorse/workhorse/pyflow/registry.py::Registry.flow_names` @3643b263caf2
 - tests: `workhorse/tests/test_pyflow.py::test_entry_point_declares_the_default_flow_and_chains`
 
 ### Registry.class_named
@@ -117,7 +117,7 @@ the entry class's import package supplies the root.
 - does: searches registered flows by workflow class name when a class name is supplied
 - returns: the matching registered workflow class, or `None` when the input is empty or unmatched
 - verify: json_path(path="$.registry", absent=true)
-- code: `workhorse/workhorse/pyflow/registry.py::Registry.class_named`
+- code: `workhorse/workhorse/pyflow/registry.py::Registry.class_named` @3643b263caf2
 - tests: `workhorse/tests/test_pyflow.py::test_entry_point_declares_the_default_flow_and_chains`
 
 ### Registry.state
@@ -126,10 +126,10 @@ the entry class's import package supplies the root.
 - verify: count(subject="state decorators applying the supplied aliases", equals=1)
 - returns: the decorated state function or a decorator when called without a function
 - verify: count(subject="state functions or decorators returned by Registry.state", equals=2)
-- code: `workhorse/workhorse/pyflow/registry.py::Registry.state`
+- code: `workhorse/workhorse/pyflow/registry.py::Registry.state` @3643b263caf2
 
 ### registry_of
 - sig: `registry_of(cls: type[Workflow]) -> Registry | None`
 - returns: the registry directly claiming the class, or `None` for an unclaimed subclass
 - verify: json_path(path="$.registry", absent=true)
-- code: `workhorse/workhorse/pyflow/registry.py::registry_of`
+- code: `workhorse/workhorse/pyflow/registry.py::registry_of` @3643b263caf2

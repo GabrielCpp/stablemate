@@ -11,7 +11,7 @@ was never readable.
 
 - file: none — this is an in-memory checkpoint value, not a persisted file format
 - config: none — the value has no separate configuration file
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiLoop`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiLoop` @76d805cfd6c3
 - detail: [coder CI remediation flow](flows/fix-ci-remediation.md)
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_the_attempt_budget_is_shared_across_repos_not_reset_per_repo`
 
@@ -24,7 +24,7 @@ was never readable.
 - required: false
 - semantics: workspace key of the repository currently being gated
 - verify: json_path(path="$.repo", equals="api")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiLoop.repo`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiLoop.repo` @76d805cfd6c3
 
 ### repo_dir
 
@@ -33,7 +33,7 @@ was never readable.
 - required: false
 - semantics: checkout path passed to every CI node and to the fixer turn
 - verify: json_path(path="$.repo_dir", matches="/.+")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiLoop.repo_dir`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiLoop.repo_dir` @76d805cfd6c3
 
 ### processed
 
@@ -42,7 +42,7 @@ was never readable.
 - required: false
 - semantics: repositories marked picked so the outer loop visits each at most once
 - verify: count(subject="processed CI repositories", equals=2)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiLoop.processed`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiLoop.processed` @76d805cfd6c3
 
 ### attempts
 
@@ -51,7 +51,7 @@ was never readable.
 - required: false
 - semantics: fix/push cycles spent across all repositories and never reset when the outer loop advances
 - verify: json_path(path="$.attempts", equals=3)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiLoop.attempts`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiLoop.attempts` @76d805cfd6c3
 
 ### unread
 
@@ -60,4 +60,4 @@ was never readable.
 - required: false
 - semantics: `<repo>: <reason>` entries included in the terminal summary when CI was unavailable
 - verify: count(subject="unread CI repositories", equals=2)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiLoop.unread`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiLoop.unread` @76d805cfd6c3

@@ -11,7 +11,7 @@ on the shared [`author` blueprint](author-main-package.md#blueprint); the initia
 re-exports those callables and does not add another registration target. The node implementations
 remain documented at their declaring modules rather than being duplicated here.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py::__all__`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py::__all__` @99afb36e5062
 - tests: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
 - detail: [Author main package](author-main-package.md)
 
@@ -29,4 +29,4 @@ and story processing.
 - required: true
 - semantics: importing the package exposes exactly the shared blueprint and the listed deterministic node callables
 - verify: count(subject="author main node exports", equals=22)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py::__all__`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py::__all__` @99afb36e5062

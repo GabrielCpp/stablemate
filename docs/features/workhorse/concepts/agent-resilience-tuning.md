@@ -21,7 +21,7 @@ single wait through the reported reset. The transient-invocation and executable-
 backoffs each use their own count, base, cap, and cumulative budget. No source-level preference
 or deprecation ranks these settings across stages.
 
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - rule: choose the field for the recovery stage and bound it represents; do not substitute a field from another stage
 - detail: [agent resilience concept selection](agent-resilience-concept-selection.md)
 - detail: [agent resilience documentation selection](agent-resilience-documentation-selection.md)

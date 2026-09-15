@@ -17,6 +17,6 @@ editable package. The source keeps the bind and generation root separate so a ru
 process imports a completed container-local generation rather than files being edited on
 the host.
 
-- code: `workhorse/livesource.py::LiveSource`
+- code: `workhorse/livesource.py::LiveSource` @8121d901cb22
 - rule: configure `name`, `mount`, and `root` together; add `with_editable` only for required accompanying local packages
 - detail: [LiveSource documentation guide](live-source-documentation-guide.md)

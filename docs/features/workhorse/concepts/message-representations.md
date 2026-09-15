@@ -11,6 +11,6 @@ whether it is outstanding, and use the JSONL fields when reading or writing its 
 The model permits workflow-defined extra fields, so the JSONL representation is also the place to
 learn how those fields survive a round trip.
 
-- code: `workhorse/workhorse/inbox.py::Message`
+- code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - rule: use run-inbox fields for message semantics and inbox state; use run inbox JSONL fields for the persisted JSON-lines representation
 - detail: [message documentation](message-documentation.md)

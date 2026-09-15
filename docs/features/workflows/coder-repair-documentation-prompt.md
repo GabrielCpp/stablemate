@@ -6,7 +6,7 @@ title: Coder repair-documentation prompt
 # Coder repair-documentation prompt
 
 - file: `workflows/src/workhorse_workflows/coder/docs/prompts/repair-documentation.md`
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.repair`
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.repair` @c5989657afb3
 - detail: [coder documentation flow](flows/coder-docs.md)
 - detail: [coder documentation schemas](concepts/coder-docs-schemas.md)
 - tests: `workflows/tests/coder/docs/test_flow.py::test_the_gates_failure_does_not_spend_the_reviewers_budget`

@@ -6,7 +6,7 @@ title: Coder replan-with-answer prompt
 # Coder replan-with-answer prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/replan-with-answer.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.rework_plan`
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.rework_plan` @d76e154f78ef
 - detail: [coder development flow](flows/coder-dev.md)
 - detail: [coder plan result](coder-plan-result.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_blocked_plan_goes_to_the_auto_operator_and_is_reworked`

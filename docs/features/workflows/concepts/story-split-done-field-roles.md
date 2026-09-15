@@ -16,5 +16,5 @@ The source declares these six attributes together on `StorySplitDone`, with `sta
 `accepted` and both counters defaulting to zero. It declares no ranking or replacement among them:
 consumers use each field for the distinct fact it carries.
 
-- code: `workflows/src/workhorse_workflows/author/story_split/schemas.py::StorySplitDone`
+- code: `workflows/src/workhorse_workflows/author/story_split/schemas.py::StorySplitDone` @1a09df97aba9
 - rule: use every field for its distinct part of the accepted story-split result; no field is an alternative to another

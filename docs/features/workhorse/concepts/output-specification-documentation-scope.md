@@ -16,6 +16,6 @@ when selecting `key` and whether a valid response permits its absence. Read [Out
 documentation](output-specification-documentation.md) for the model-wide explanation that joins
 those contexts. These concepts have complementary scopes; none is a replacement for another.
 
-- code: `workhorse/workhorse/runner/spec.py::OutputSpec`
+- code: `workhorse/workhorse/runner/spec.py::OutputSpec` @a87403257e16
 - rule: use the agent-node concept for declaration placement and extraction context, the output-fields concept for `key` and `required`, and the output-specification documentation concept for the model-wide contract
 - detail: [Output specification reading guide](output-specification-reading-guide.md)

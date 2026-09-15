@@ -19,7 +19,7 @@ session id and token usage.
 Class, event callback and model parser all live in `runner/backends/codex.py` — one module per
 CLI, so importing [the port](agent-backend.md) drags in no adapter.
 
-- code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend`
+- code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend` @98419dd537db
 - extends: [AgentBackend](agent-backend.md)
 
 Coverage includes `workhorse/tests/test_backends.py::test_codex_run_turn_fresh_then_resume`,
@@ -82,7 +82,7 @@ Coverage includes `workhorse/tests/test_backends.py::test_codex_run_turn_fresh_t
 
 ### `_parse_codex_model`
 
-- code: `workhorse/workhorse/runner/backends/codex.py::_parse_codex_model`
+- code: `workhorse/workhorse/runner/backends/codex.py::_parse_codex_model` @98419dd537db
 
 Parses a node's model string into `(profile, model_slug)`. Codex's per-node provider/model
 selection is overloaded onto the generic `model` field as `<profile>[@<model-slug>]` — `@` is the
@@ -115,14 +115,14 @@ model on the default provider with no profile, lead with `@`.
 - does: runs Codex JSON output with the prompt on stdin, using a configured profile or resumed thread when available
 - raises: `BackendInvocationError` after `finalize_turn` classifies the streamed state
 - verify: emitted(event="Codex turn result", count=1)
-- code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend.run_turn`
+- code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend.run_turn` @98419dd537db
 
 ### compact
 - sig: `compact(session_id_path: Path | None, node_id: str, model: str | None = None, *, timeout: float, resilience: AgentResilience) -> bool`
 - does: declines in-place session compaction
 - returns: `false`
 - verify: json_path(path="$.compacted", equals=false)
-- code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend.compact`
+- code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend.compact` @98419dd537db
 
 ## Related pieces
 

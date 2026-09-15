@@ -9,7 +9,7 @@ The package root defines no workflow API. Each workflow subpackage owns its own 
 entry point and its private state-machine implementation; importing `workhorse_workflows` does
 not expose those names.
 
-- code: `workflows/src/workhorse_workflows/__init__.py::__all__`
+- code: `workflows/src/workhorse_workflows/__init__.py::__all__` @50f7d8dd0947
 
 ## Fields
 
@@ -24,4 +24,4 @@ The explicit export list keeps the package root free of public names.
 - verify: count(subject="package-root exports", equals=0)
 - semantics: importing the package root exposes no public workflow symbols
 - verify: count(subject="package-root exports", equals=0)
-- code: `workflows/src/workhorse_workflows/__init__.py::__all__`
+- code: `workflows/src/workhorse_workflows/__init__.py::__all__` @50f7d8dd0947

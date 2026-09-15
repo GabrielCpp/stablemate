@@ -11,7 +11,7 @@ and joins every failure into `errors` for the awaiting state.
 
 - file: none — in-memory Pydantic model
 - config: none
-- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation`
+- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation` @3a9fb1b3e42d
 - detail: [author milestone subflow](concepts/author-milestone-subflow.md)
 - tests: `workflows/tests/author/milestone/test_flow.py::test_validation_rejects_an_epic_created_by_the_milestone_stage`
 
@@ -23,7 +23,7 @@ and joins every failure into `errors` for the awaiting state.
 - required: false
 - semantics: true only when all milestone ownership and immutability checks pass
 - verify: json_path(path="$.ok", equals=False)
-- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation`
+- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation` @3a9fb1b3e42d
 - detail: [milestone validation field roles](concepts/milestone-validation-field-roles.md)
 
 ### milestone_path
@@ -32,7 +32,7 @@ and joins every failure into `errors` for the awaiting state.
 - required: false
 - semantics: repository-relative path of the validated milestone
 - verify: json_path(path="$.milestone_path", equals="")
-- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation`
+- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation` @3a9fb1b3e42d
 - detail: [milestone validation field roles](concepts/milestone-validation-field-roles.md)
 
 ### reused
@@ -41,7 +41,7 @@ and joins every failure into `errors` for the awaiting state.
 - required: false
 - semantics: records whether preparation found and the flow reused an existing milestone
 - verify: json_path(path="$.reused", equals=False)
-- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation`
+- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation` @3a9fb1b3e42d
 - detail: [milestone validation field roles](concepts/milestone-validation-field-roles.md)
 
 ### errors
@@ -50,5 +50,5 @@ and joins every failure into `errors` for the awaiting state.
 - required: false
 - semantics: newline-separated validation failures passed to an awaiting run
 - verify: json_path(path="$.errors", equals="")
-- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation`
+- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation` @3a9fb1b3e42d
 - detail: [milestone validation field roles](concepts/milestone-validation-field-roles.md)

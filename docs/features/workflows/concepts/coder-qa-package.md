@@ -17,9 +17,9 @@ detections, and operator-gated blocks. The checkpointed `QaLoop` carries assessm
 records, repair counters, failure fingerprints, and escalation state. Repair budgets are enforced
 per defect kind; exhausted budgets or human mode escalate to an operator gate.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py`
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa`
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::RoutedFindings`
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py` @1ae0da2229dc
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @1ae0da2229dc
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::RoutedFindings` @1ae0da2229dc
 - code: `workflows/tests/coder/qa/test_flow.py::docs`
 - code: `workflows/tests/coder/qa/test_flow.py::ostler`
 - code: `workflows/tests/coder/qa/test_flow.py::web`
@@ -63,7 +63,7 @@ instead of being retried at the same turn.
 - does: returns the base run labels alone when no `QaLoop` is present in the state, so `start` and `setup` (which run before any loop exists) report no counters or verdicts
 - returns: returns labels used for state telemetry
 - verify: count(subject="qa state label sets", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa.state_labels`
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa.state_labels` @1ae0da2229dc
 - tests: `workflows/tests/coder/test_telemetry.py::test_qa_reports_every_budget_on_its_loop`
 - tests: `workflows/tests/coder/test_telemetry.py::test_a_state_with_no_loop_yet_reports_only_the_base_labels`
 

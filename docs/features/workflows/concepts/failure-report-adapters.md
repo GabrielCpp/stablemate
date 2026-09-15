@@ -10,7 +10,7 @@ format. It performs no I/O, logging, or finding parsing; callers hand it the res
 the current state. All three constructors preserve the caller's source context and clip captured
 output before the repair turn sees it.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/failure.py`
+- code: `workflows/src/workhorse_workflows/coder/shared/failure.py` @0f91738ebcb0
 - tests: `workflows/tests/coder/shared/test_gates.py::test_the_report_names_the_gate_that_went_red`
 
 ## Fields
@@ -21,7 +21,7 @@ output before the repair turn sees it.
 - required: true
 - semantics: maximum number of trailing output characters retained in a failure report
 - verify: count(subject="failure report output limit", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/failure.py::MAX_OUTPUT`
+- code: `workflows/src/workhorse_workflows/coder/shared/failure.py::MAX_OUTPUT` @0f91738ebcb0
 
 ## Methods
 
@@ -32,7 +32,7 @@ output before the repair turn sees it.
 - does: retains only the final `MAX_OUTPUT` characters when output is longer
 - returns: bounded text, prefixed with an earlier-output-trimmed marker when clipping occurred
 - verify: count(subject="bounded failure output", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/failure.py::_clip`
+- code: `workflows/src/workhorse_workflows/coder/shared/failure.py::_clip` @0f91738ebcb0
 
 ### from_gate
 - sig: `from_gate(outcome: GateOutcome, cwd: str, lap: int) -> FailureReport`
@@ -41,7 +41,7 @@ output before the repair turn sees it.
 - does: leaves structured findings empty rather than deriving findings from gate text
 - returns: a `FailureReport` for a declared gate outcome
 - verify: count(subject="gate failure report conversions", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/failure.py::from_gate`
+- code: `workflows/src/workhorse_workflows/coder/shared/failure.py::from_gate` @0f91738ebcb0
 - tests: `workflows/tests/coder/shared/test_gates.py::test_the_report_names_the_gate_that_went_red`
 
 ### from_command
@@ -50,7 +50,7 @@ output before the repair turn sees it.
 - does: preserves source, command, working directory, and lap while clipping command output
 - returns: a `FailureReport` for a command-only gate verdict with no structured findings
 - verify: count(subject="generic command failure report conversions", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/failure.py::from_command`
+- code: `workflows/src/workhorse_workflows/coder/shared/failure.py::from_command` @0f91738ebcb0
 
 ### from_findings
 - sig: `from_findings(source: str, findings: Sequence[Finding], cwd: str, lap: int, output: str = "") -> FailureReport`
@@ -58,4 +58,4 @@ output before the repair turn sees it.
 - does: preserves source, working directory, and lap while clipping optional accompanying output
 - returns: a `FailureReport` carrying the supplied findings instead of parsing output text
 - verify: count(subject="structured failure report conversions", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/failure.py::from_findings`
+- code: `workflows/src/workhorse_workflows/coder/shared/failure.py::from_findings` @0f91738ebcb0

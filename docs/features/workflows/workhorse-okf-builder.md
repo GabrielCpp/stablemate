@@ -6,7 +6,7 @@ title: workhorse-okf-builder
 # workhorse-okf-builder
 
 - binary: `workhorse-okf-builder`
-- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main` @8ecc37aa8802
 
 Runs the backfill registry described by the [OKF-builder workflow composition root](concepts/okf-builder-workflow-composition-root.md). `run` starts its default builder or the registered web walkthrough; Workhorse owns parser and execution mechanics.
 
@@ -30,7 +30,7 @@ The [workhorse-okf-builder driver runbook](ops/workhorse-okf-builder.md) exercis
 - does:
   - starts the selected registered backfill flow
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main` @8ecc37aa8802
 - detail: [OKF-builder command selection](concepts/okf-builder-command-selection.md)
 
 ### dot
@@ -41,7 +41,7 @@ The [workhorse-okf-builder driver runbook](ops/workhorse-okf-builder.md) exercis
 - does:
   - renders the registered builder and walkthrough state graphs
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main` @8ecc37aa8802
 - detail: [OKF-builder command selection](concepts/okf-builder-command-selection.md)
 
 ### version
@@ -49,5 +49,5 @@ The [workhorse-okf-builder driver runbook](ops/workhorse-okf-builder.md) exercis
 - does:
   - prints the installed Workhorse engine version
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main` @8ecc37aa8802
 - detail: [OKF-builder command selection](concepts/okf-builder-command-selection.md)

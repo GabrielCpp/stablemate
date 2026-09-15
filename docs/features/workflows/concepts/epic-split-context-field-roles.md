@@ -17,5 +17,5 @@ each value from the same surveyed repository and approved milestone before the t
 field replaces or ranks above another: the location fields identify the approved split input, while
 the collection and fingerprint fields preserve the graph snapshot used to reject collateral edits.
 
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext`
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @4032a5e504d5
 - rule: use every field as its distinct part of the one pre-split context; no field is an alternative to another

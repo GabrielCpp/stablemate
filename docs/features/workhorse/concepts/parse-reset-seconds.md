@@ -13,7 +13,7 @@ Finds a cap-reset clock time embedded in a CLI error message's text (e.g. `"rese
  default wait. The parser searches for the bare 24-hour form only when the 12-hour pattern does not
  match.
 
-- code: `workhorse/workhorse/runner/caps.py::parse_reset_seconds`
+- code: `workhorse/workhorse/runner/caps.py::parse_reset_seconds` @ff4d1852d0a5
 - tests: `workhorse/tests/test_agent_cap.py::test_parse_reset_seconds_variants`
 - tests: `workhorse/tests/test_guardrails.py::test_reset_time_parsing`
 

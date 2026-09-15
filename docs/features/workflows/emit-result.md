@@ -5,7 +5,7 @@ title: Survey emission result
 ---
 # Survey emission result
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult` @f79c1c007a97
 - detail: [author surveyor subflow](concepts/author-surveyor-subflow.md)
 
 The result of writing generated backlog bullets and survey traceability.
@@ -18,7 +18,7 @@ The result of writing generated backlog bullets and survey traceability.
 - required: false
 - semantics: whether both survey artifacts were emitted successfully
 - verify: json_path(path="$.emit_ok", equals=false)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult` @f79c1c007a97
 - detail: [emit result field roles](concepts/emit-result-field-roles.md)
 
 ### emit_errors
@@ -27,7 +27,7 @@ The result of writing generated backlog bullets and survey traceability.
 - required: false
 - semantics: diagnostic emission failure text
 - verify: json_path(path="$.emit_errors", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult` @f79c1c007a97
 - detail: [emit result field roles](concepts/emit-result-field-roles.md)
 
 ### bullet_count
@@ -36,7 +36,7 @@ The result of writing generated backlog bullets and survey traceability.
 - required: false
 - semantics: number of backlog bullets emitted from validated clusters
 - verify: json_path(path="$.bullet_count", equals=0)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult` @f79c1c007a97
 - detail: [emit result field roles](concepts/emit-result-field-roles.md)
 
 ### emit_note
@@ -45,5 +45,5 @@ The result of writing generated backlog bullets and survey traceability.
 - required: false
 - semantics: human-readable emission outcome note
 - verify: json_path(path="$.emit_note", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult` @f79c1c007a97
 - detail: [emit result field roles](concepts/emit-result-field-roles.md)

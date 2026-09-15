@@ -18,9 +18,9 @@ them back at render time for the [farrier Jinja helpers](concepts/farrier-global
 `prompt_ref`, `skill_dir`, `isUsingInstruction`, `skill_load_ref`, …) that library prompts call.
 
 - file: `.agents/agents-context.json` (or a per-backend override, `.agents/agents-context.<AGENT_CLI>.json`)
-- code: `workhorse/workhorse/manifest.py::load_context_manifest`
-- code: `workhorse/workhorse/manifest.py::ContextManifest`
-- code: `workhorse/workhorse/manifest.py::ManifestContext`
+- code: `workhorse/workhorse/manifest.py::load_context_manifest` @1cf8292d5112
+- code: `workhorse/workhorse/manifest.py::ContextManifest` @1cf8292d5112
+- code: `workhorse/workhorse/manifest.py::ManifestContext` @1cf8292d5112
 
 The loader's explicit-missing-file error and empty auto-detected-manifest behaviour are covered by
 `workhorse/tests/test_context_manifest.py::test_explicit_missing_context_file_is_hard_error` and
@@ -188,7 +188,7 @@ manifest, generated for one backend, still resolve correctly when a run is launc
 - does: carry template, repo, vars, prompts, tags, selected skills, target skill directory, and absolute repo root into the runtime context
 - returns: a `ManifestContext` marked present
 - verify: json_path(path="$.skill_dir", matches=".+")
-- code: `workhorse/workhorse/manifest.py::ContextManifest.project`
+- code: `workhorse/workhorse/manifest.py::ContextManifest.project` @1cf8292d5112
 
 ### method: ManifestContext.as_context
 - sig: `ManifestContext.as_context() -> dict[str, Any]`
@@ -196,7 +196,7 @@ manifest, generated for one backend, still resolve correctly when a run is launc
 - does: emit ordinary values and reserved underscore-prefixed manifest keys when present
 - returns: the context layer merged underneath every agent turn's arguments
 - verify: json_path(path="$.present", equals=true)
-- code: `workhorse/workhorse/manifest.py::ManifestContext.as_context`
+- code: `workhorse/workhorse/manifest.py::ManifestContext.as_context` @1cf8292d5112
 
 ### method: ManifestContext.from_context
 - sig: `ManifestContext.from_context(context: Mapping[str, Any]) -> ManifestContext`
@@ -204,7 +204,7 @@ manifest, generated for one backend, still resolve correctly when a run is launc
 - does: mark the manifest present when instruction or prompt maps are present
 - returns: a tolerant `ManifestContext` value
 - verify: json_path(path="$.present", equals=true)
-- code: `workhorse/workhorse/manifest.py::ManifestContext.from_context`
+- code: `workhorse/workhorse/manifest.py::ManifestContext.from_context` @1cf8292d5112
 
 ### method: build_manifest_context
 - sig: `build_manifest_context(raw: dict[str, Any], *, backend: str | None = None, repo_root: str | None = None) -> ManifestContext`
@@ -212,7 +212,7 @@ manifest, generated for one backend, still resolve correctly when a run is launc
 - does: resolve omitted backend and repo root from `AGENT_CLI`/config and `AGENT_REPO_DIR`/`.`
 - returns: a backend-projected `ManifestContext`
 - verify: json_path(path="$._repo_root", matches=".+")
-- code: `workhorse/workhorse/manifest.py::build_manifest_context`
+- code: `workhorse/workhorse/manifest.py::build_manifest_context` @1cf8292d5112
 
 ### method: load_context_manifest
 - sig: `load_context_manifest(context_file: str | None) -> ManifestContext`
@@ -221,7 +221,7 @@ manifest, generated for one backend, still resolve correctly when a run is launc
 - raises: `SystemExit(1)` after reporting an explicit missing file, unreadable JSON, or non-object top level
 - returns: the projected context for a valid manifest
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/manifest.py::load_context_manifest`
+- code: `workhorse/workhorse/manifest.py::load_context_manifest` @1cf8292d5112
 
 ## Sample
 

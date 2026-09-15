@@ -24,7 +24,7 @@ still exercised by tests, and are documented under
 [Retired with the YAML engine](#retired-with-the-yaml-engine) so a reader who meets one in a test
 or an old run directory can tell what it was for.
 
-- code: `workhorse/workhorse/artifacts.py::ArtifactWriter`
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter` @db240823dab7
 
 ## Class constants
 
@@ -89,7 +89,7 @@ restarts — which is what `run_pyflow`'s `auto_resolve` always supplies (the ex
    (a fresh run has no prior attempt to detect).
 4. Calls `_write_run_json(terminal=None)`.
 
-- code: `workhorse/workhorse/artifacts.py::_clear_stale_run`
+- code: `workhorse/workhorse/artifacts.py::_clear_stale_run` @db240823dab7
 - code: `workhorse/tests/test_artifacts_fresh.py::test_an_unremovable_run_dir_costs_the_wipe_but_not_the_run`
 - tests: `workhorse/tests/test_artifacts_fresh.py::test_a_fresh_run_does_not_inherit_the_previous_runs_node_output`, `workhorse/tests/test_artifacts_fresh.py::test_a_resume_keeps_everything_the_run_had_already_written`
 
@@ -200,7 +200,7 @@ write-then-rename pattern keeps the resume path from ever meeting a truncated fi
 mid-write leaves the previous checkpoint intact rather than half of this one. Reached from
 `write_state_checkpoint`; the retired YAML engine wrote through its own path and never
 called this.
-- code: `workhorse/workhorse/artifacts.py::ArtifactWriter._write_checkpoint`
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter._write_checkpoint` @db240823dab7
 
 ### `record_node`
 `record_node(node_id, phase, **fields)`
@@ -217,7 +217,7 @@ and each `self.handoff` (with `flow=`); a dry run adds a stand-in marker.
 `record_profile(profile, tables=None)` stores the selected profile name and its starting tables in
 `run.json`. The name is used on a flagless resume; the copied tables are informational and are not
 read back for turn resolution.
-- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.record_profile`
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.record_profile` @db240823dab7
 
 ### `record_launch`
 `record_launch(argv, resume_argv, cwd)` writes a `LaunchRecord` to `launch.json`: the actual
@@ -228,7 +228,7 @@ dir's resume generation (read from `workhorse.turnkey`), and a boolean `containe
 respawn, and the flag is the one fact a host-side reader cannot recover from the record
 itself. Best-effort: a write failure is swallowed, because a directory that cannot be
 written is a run that is worse off unwatched, not a run that should stop.
-- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.record_launch`
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.record_launch` @db240823dab7
 
 ### `record_worktree`
 `record_worktree(path, branch)` records the worktree and branch this run was dispatched
@@ -239,7 +239,7 @@ and never again: a resume carries these fields forward from `run.json` (see
 authoritative even if a later `--worktree` override disagrees. The two read-only
 properties `worktree_path` and `worktree_branch` are what callers read back to find out
 where the run was actually dispatched.
-- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.record_worktree`
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.record_worktree` @db240823dab7
 
 ### `write_step`
 `write_step(node_id, prompt, output, context_after, next_node=None)`
@@ -307,12 +307,12 @@ whatever the entry flow's `Done` returned.
 ### `read_done`
 `read_done(node_id) -> dict | None` reads a node's completion marker and returns `None` when it is
 absent or malformed. It remains for the retired YAML engine; pyflow does not fast-forward from it.
-- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.read_done`
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.read_done` @db240823dab7
 
 ### `read_context_after`
 `read_context_after(node_id) -> dict | None` reads the legacy context snapshot and returns `None`
 when absent or malformed. Pyflow writes `{}` and restores `ctx` through its checkpoint instead.
-- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.read_context_after`
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.read_context_after` @db240823dab7
 
 ### `_append_event`
 `_append_event(node_id, phase, **fields)` — private
@@ -361,7 +361,7 @@ without writing through any link to it. The visit archive hardlinks its files, s
 `write_text` would truncate the previous visit's kept copy through the shared inode — every
 archived prompt would end up holding the latest visit's text, which is the exact loss the
 archive exists to prevent.
-- code: `workhorse/workhorse/artifacts.py::ArtifactWriter._write_unlinked`
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter._write_unlinked` @db240823dab7
 
 ### `visit_dir`
 `visit_dir(node_id) -> Path | None`. Where this visit of `node_id` keeps its own copy, or
@@ -370,7 +370,7 @@ the open visit belongs to another node, returns `None` so `write_step` cannot fi
 node's output under a still-current `agent` visit. Otherwise returns
 `<_turns_root>/turns/<visit-key-slug>/` (see [`subscope`](#subscope) for the parent-vs-child
 distinction).
-- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.visit_dir`
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter.visit_dir` @db240823dab7
 
 ### `_keep_visit_copy`
 `_keep_visit_copy(node_id, written: list[Path])` — private. Copy this visit's artifacts into
@@ -380,7 +380,7 @@ on `OSError`. Each destination is `unlink(missing_ok=True)`d first, so a file re
 a later visit does not truncate the earlier visit's copy through a shared inode. The
 per-node directory the artifacts came from keeps its meaning of *latest visit* and its
 readers — this is additive.
-- code: `workhorse/workhorse/artifacts.py::ArtifactWriter._keep_visit_copy`
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter._keep_visit_copy` @db240823dab7
 - tests: `workhorse/tests/test_turn_records.py::test_a_nested_flows_visits_survive_the_next_entry_to_that_scope`, `workhorse/tests/test_turn_records.py::test_keeping_the_copy_never_fails_the_node`
 
 ## Reads

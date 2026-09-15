@@ -16,5 +16,5 @@ model contract; use the prompt field when instructing or assessing the reviewer 
 must satisfy that contract. The schema declares the typed list and the prompt's response is the
 producer of its entries, so no source-backed ranking or deprecation exists between them.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::CodeReviewResult.findings`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::CodeReviewResult.findings` @2f54962a8770
 - rule: use the result-format field for the retained model contract and the prompt field for the feeder reviewer response contract; neither is a replacement for the other

@@ -10,5 +10,5 @@ current: the schema contains no deprecation, delegation, or preference between t
 review response can therefore carry its lifecycle result in `status` and its review context in
 `notes` at the same time.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @e0c7b3335724
 - rule: use `status` for the review lifecycle result and `notes` for review context; neither field replaces the other

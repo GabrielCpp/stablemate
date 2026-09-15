@@ -8,7 +8,7 @@ title: Epic split validation
 The validation result reports whether the split satisfies the ordered, skeleton-only boundary and
 which milestone and epics were observed.
 
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation`
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation` @4032a5e504d5
 - detail: [author epic split subflow](concepts/author-epic-split-subflow.md)
 
 ## Fields
@@ -19,7 +19,7 @@ which milestone and epics were observed.
 - required: true
 - semantics: true only when every epic-split invariant passes
 - verify: json_path(path="$.ok", equals=False)
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation`
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation` @4032a5e504d5
 - detail: [epic split validation field roles](concepts/epic-split-validation-field-roles.md)
 
 ### milestone_path
@@ -28,7 +28,7 @@ which milestone and epics were observed.
 - required: true
 - semantics: validated roadmap-owned milestone path, or empty when no unique match exists
 - verify: json_path(path="$.milestone_path", equals="")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation`
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation` @4032a5e504d5
 - detail: [epic split validation field roles](concepts/epic-split-validation-field-roles.md)
 
 ### ordered_epics
@@ -37,7 +37,7 @@ which milestone and epics were observed.
 - required: true
 - semantics: non-empty milestone epic names in their authored order when a unique milestone exists
 - verify: json_path(path="$.ordered_epics", matches="^\\[\\]$")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation`
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation` @4032a5e504d5
 - detail: [epic split validation field roles](concepts/epic-split-validation-field-roles.md)
 
 ### errors
@@ -46,5 +46,5 @@ which milestone and epics were observed.
 - required: true
 - semantics: newline-separated validation findings
 - verify: json_path(path="$.errors", equals="")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation`
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation` @4032a5e504d5
 - detail: [epic split validation field roles](concepts/epic-split-validation-field-roles.md)

@@ -21,7 +21,7 @@ the ladder and `backends` to import each other lazily. Claude is now a sibling o
 adapter in its own `runner/backends/claude.py`, and the ladder imports it not at all; the lazy
 imports and the cycle they worked around are both gone.
 
-- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend`
+- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend` @38bf24aeff32
 - extends: [AgentBackend](agent-backend.md)
 - tests: `workhorse/tests/test_backends.py::test_default_backend_is_claude`,
   `workhorse/tests/test_backends.py::test_claude_effort_maps_to_native_flag`,
@@ -84,7 +84,7 @@ other adapter.
 - does: runs Claude with stream-json output, optionally resumes the persisted session, and returns the classified result
 - raises: `BackendInvocationError` when the shared classifier finds a failed turn
 - verify: emitted(event="Claude turn result", count=1)
-- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.run_turn`
+- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.run_turn` @38bf24aeff32
 
 ### compact
 - sig: `compact(session_id_path: Path | None, node_id: str, model: str | None = None, *, timeout: float, resilience: AgentResilience) -> bool`
@@ -93,7 +93,7 @@ other adapter.
 - verify: json_path(path="$.compacted", equals=true)
 - returns: `false` when no session exists or compaction fails
 - verify: json_path(path="$.compacted", equals=false)
-- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.compact`
+- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend.compact` @38bf24aeff32
 
 ## Related pieces
 

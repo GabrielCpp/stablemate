@@ -14,5 +14,5 @@ Read `partition_ok` to make the branch decision, then read `partition_errors` to
 diagnose a failed validation. Neither field replaces or ranks above the other: the
 schema declares both as current outputs of `validate_partition`.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionCheck`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionCheck` @f79c1c007a97
 - rule: use `partition_ok` for the validation decision and `partition_errors` for its diagnostic detail

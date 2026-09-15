@@ -6,7 +6,7 @@ title: Coder review context
 # Coder review context
 
 - file: none — in-memory review setup value
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewContext`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewContext` @2f54962a8770
 - detail: [coder review schema contracts](concepts/coder-review-schema-contracts.md)
 - detail: [coder review shared nodes](concepts/coder-review-shared-review.md)
 
@@ -22,7 +22,7 @@ affected set when no plan context is available.
 - required: false
 - semantics: filesystem path of the documentation repository and judging working directory
 - verify: json_path(path="$.docs_repo_path", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewContext.docs_repo_path`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewContext.docs_repo_path` @2f54962a8770
 
 ### affected_repo_paths
 - type: `list[str]`
@@ -30,4 +30,4 @@ affected set when no plan context is available.
 - required: false
 - semantics: filesystem paths of code repositories available to the review
 - verify: json_path(path="$.affected_repo_paths", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewContext.affected_repo_paths`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewContext.affected_repo_paths` @2f54962a8770

@@ -10,7 +10,7 @@ epic, story, and receipt artifacts. It does not use a fixed stage list or rememb
 The returned [AuthorStep](../flows/author-roadmap-intake.md#plan-and-dispatch) identifies exactly one
 stage and its roadmap/epic/story context.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/planner.py::plan_author_step`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/planner.py::plan_author_step` @e56269eb3bf0
 - code: `workflows/tests/author/test_planner.py::install`
 - rule: validate the sole roadmap-owned milestone first, then complete epic documentation and seeds, then the reviewed story graph, then select the first uncompleted story in milestone epic order and story DAG order; finalize only when every current artifact passes
 - tests: `workflows/tests/author/test_planner.py::test_first_undocumented_epic_uses_milestone_order`

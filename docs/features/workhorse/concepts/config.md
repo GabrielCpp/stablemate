@@ -22,7 +22,7 @@ disagreed about `library_dir`/`stablemate_dir`/`base_dir` — the installer and 
 disagreeing about where the library is, silently. The legacy per-tool files are still **read** when
 the unified one is absent; the first write migrates them.
 
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py` @451a081294d0
 
 ## Location
 
@@ -45,7 +45,7 @@ the unified one is absent; the first write migrates them.
 `legacy_config_paths()` returns the pre-unification per-tool paths (`workhorse` and `farrier`'s own
 `user_config_dir` files) that `load_config` falls back to.
 
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::config_path`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::config_path` @451a081294d0
 
 ## Additional API
 
@@ -55,59 +55,59 @@ tooling.
 ### legacy_config_paths
 - sig: `legacy_config_paths() -> list[Path]`
 - returns: the historical workhorse and farrier config paths in that order
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::legacy_config_paths`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::legacy_config_paths` @451a081294d0
 
 ### config_version_of
 - sig: `config_version_of(cfg: dict[str, Any]) -> int`
 - returns: the declared positive integer schema version, or `1` for an absent, invalid, boolean, or non-positive value
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::config_version_of`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::config_version_of` @451a081294d0
 
 ### write_library_dir
 - sig: `write_library_dir(path: Path) -> None`
 - does: persist the string form of `path` under `library_dir`
 - returns: `None`
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_library_dir`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_library_dir` @451a081294d0
 
 ### write_stablemate_dir
 - sig: `write_stablemate_dir(path: Path) -> None`
 - does: persist the string form of `path` under `stablemate_dir`
 - returns: `None`
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_stablemate_dir`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_stablemate_dir` @451a081294d0
 
 ### write_base_dir
 - sig: `write_base_dir(path: Path) -> None`
 - does: persist the string form of `path` under `base_dir`
 - returns: `None`
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_base_dir`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_base_dir` @451a081294d0
 
 ### write_worktree_dir
 - sig: `write_worktree_dir(path: Path) -> None`
 - does: persist the string form of `path` under `worktree_dir`
 - returns: `None`
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_worktree_dir`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_worktree_dir` @451a081294d0
 
 ### write_default_cli
 - sig: `write_default_cli(name: str) -> None`
 - does: strip and lowercase `name`, then persist it under `default_cli`
 - returns: `None`
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_default_cli`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_default_cli` @451a081294d0
 - detail: [default CLI configuration](default-cli-configuration.md)
 
 ### resolve_stablemate_dir
 - sig: `resolve_stablemate_dir() -> Path | None`
 - returns: `Path(stablemate_dir).expanduser().resolve()` when `stablemate_dir` is a non-empty string, else `None`
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_stablemate_dir`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_stablemate_dir` @451a081294d0
 
 ### resolve_worktree_dir
 - sig: `resolve_worktree_dir() -> Path | None`
 - returns: `Path(worktree_dir).expanduser().resolve()` when `worktree_dir` is a non-empty string, else `None`
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_worktree_dir`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_worktree_dir` @451a081294d0
 
 ### read_config
 - sig: `read_config() -> dict[str, Any]`
 - does: provide the `load_config` behavior under farrier's alias
 - returns: the effective config mapping
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::read_config`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::read_config` @451a081294d0
 
 ## The file carries a schema version
 
@@ -128,7 +128,7 @@ misread a file a newer one wrote.
 - An unversioned file is treated as version 1.
 - Migrating forward backs the file up to `<name>.v<n>.bak` first — a migration is a one-way door.
 
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::check_config_version`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::check_config_version` @451a081294d0
 
 ## load_config
 
@@ -152,7 +152,7 @@ newer than this build understands is read anyway and warned about once per versi
 `read_config` is an alias of this function, farrier's spelling of the same call, aliased rather than
 renamed so neither caller had to change.
 
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_config`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_config` @451a081294d0
 
 ## get_config_value
 
@@ -164,7 +164,7 @@ indexed — an unresolved path is silent, never an error. Used by
 set.
 
 - returns: the value at the dotted path in the config (defaulting to the loaded file when no `cfg` is supplied); `None` when any segment is missing or hits a non-dict
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::get_config_value`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::get_config_value` @451a081294d0
 
 ## write_config_key
 
@@ -191,7 +191,7 @@ file never holds a mix of schemas. Used by
 and by the typed helpers `write_library_dir`, `write_stablemate_dir`, `write_default_cli`,
 `write_base_dir` and `write_worktree_dir` that wrap it.
 
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_config_key`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_config_key` @451a081294d0
 - detail: [config write documentation contexts](../../farrier/concepts/config-write-context.md)
 
 ## profiles
@@ -256,7 +256,7 @@ back to the top-level tables could otherwise run unattended on the wrong models.
 - sig: `auto_select_profile(cfg: dict[str, Any] | None, active_cli: str) -> dict[str, Any] | None`
 - does: resolve the auto-default for a run by matching `active_cli` against each profile's `cli` field
 - returns: the matching profile table, or `None` when `active_cli` is empty or no profile's `cli` field equals it
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::auto_select_profile`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::auto_select_profile` @451a081294d0
 
 ### select_active_profile
 - sig: `select_active_profile(cfg: dict[str, Any] | None, *, name: str = "", active_cli: str = "") -> dict[str, Any]`
@@ -264,17 +264,17 @@ back to the top-level tables could otherwise run unattended on the wrong models.
 - returns: `select_profile(cfg, name)` when `name` is set
 - returns: the `auto_select_profile` match when `active_cli` is set and one is found
 - returns: `{}` (bare-CLI mode) when neither names one
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::select_active_profile`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::select_active_profile` @451a081294d0
 
 There is **no writer**. A profile is a nested table and
 [`write_config_key`](#write_config_key) sets one top-level key, so profiles are authored by
 editing the file; [`farrier config show --profile <name>`](../../farrier/farrier.md#config)
 reads one back.
 
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::select_profile`
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::profile_names`
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::profile_backends`
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::profile_has_backend`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::select_profile` @451a081294d0
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::profile_names` @451a081294d0
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::profile_backends` @451a081294d0
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::profile_has_backend` @451a081294d0
 - tests: `workhorse/tests/test_model_resolution.py::test_a_profile_replaces_the_top_level_tables`
 - tests: `workhorse/tests/test_model_resolution.py::test_without_a_profile_nothing_is_narrowed`
 - tests: `workhorse/tests/test_run_options.py::test_an_unknown_profile_is_refused_before_the_first_state`
@@ -299,7 +299,7 @@ the workflow.
   `load_config()`; under a [profile](#profiles) the caller passes the narrowed table
   instead, which is why this function knows nothing about profiles).
 - returns: `PowerMapping(model, effort, timeout_scale)` built from `cfg.powers.<power>` — each field `None` unless the config supplies a non-empty string (or, for the scale, a positive finite number)
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_power`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_power` @451a081294d0
 
 ## resolve_backend_default
 
@@ -316,7 +316,7 @@ non-dict `default` table does the same rather than raising.
 
 - **Input:** `backend: str`, `cfg: dict | None` (defaults to `load_config()`).
 - returns: `PowerMapping(model, effort, timeout_scale)` built from the `[profiles.<name>].default` table — each field `None` unless the config supplies a non-empty string (or, for the scale, a positive finite number)
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_backend_default`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_backend_default` @451a081294d0
 
 ## resolve_default_cli
 
@@ -342,8 +342,8 @@ to the same built-in it always used.
 - **Input:** `cfg: dict | None` (defaults to `load_config()`).
 - consistency: default-cli — `resolve_default_cli` always returns a non-empty backend name
   normalized with `strip().lower()`.
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_default_cli`
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_default_cli`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_default_cli` @451a081294d0
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_default_cli` @451a081294d0
 - detail: [default CLI configuration](default-cli-configuration.md)
 - tests: `workhorse/tests/test_backends.py::test_config_default_cli_selects_backend`
 - tests: `workhorse/tests/test_backends.py::test_env_var_beats_config_default_cli`
@@ -364,7 +364,7 @@ dropped rather than coerced — an environment is strings, and quietly stringify
 
 - **Input:** `backend: str`, `cfg: dict | None` (defaults to `load_config()`).
 - returns: `dict[str, str]` filtered from the `[cli.<backend>].env` table — entries with a non-string key, an empty key, or a non-string value are dropped
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_harness_env`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_harness_env` @451a081294d0
 
 ## PowerMapping
 
@@ -380,7 +380,7 @@ it, which is a property of the model and therefore belongs beside its name. Only
 positive, finite number is honoured: a string, a bool, `0`, a negative and `inf` all read as unset,
 because a typo must not buy an unattended run an infinite budget.
 
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::PowerMapping`
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::PowerMapping` @451a081294d0
 
 ## Consumers
 

@@ -60,7 +60,7 @@ Configuration, planning, and roadmap validation are implemented by
   - verify: json_path(path="$.kind", equals="story-author")
   - returns `kind: finalize` when every ordered epic has a current valid story graph and no story remains to author
   - verify: json_path(path="$.kind", equals="finalize")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/planner.py::plan_author_step`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/planner.py::plan_author_step` @e56269eb3bf0
 - detail: [artifact-derived author stage selection](../concepts/artifact-derived-author-stage-selection.md)
 - tests: `workflows/tests/author/test_planner.py::test_story_author_uses_story_dag_order_and_author_current`
 - tests: `workflows/tests/author/test_planner.py::test_blocked_story_is_skipped_for_the_remainder_of_one_main_run`

@@ -11,8 +11,8 @@ already in progress. `AgentResilience` is the immutable policy passed to agent t
 no agent uses `NullBackend`, not a nullable collaborator. The shared selection concept separates
 this lifecycle view from the field-focused view of the same value.
 
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
-- code: `workhorse/workhorse/config_run.py::RunConfig`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
+- code: `workhorse/workhorse/config_run.py::RunConfig` @2ce2af5069af
 - detail: [run configuration concept selection](run-configuration-concept-selection.md)
 - detail: [stablemate config file](config.md)
 - detail: [agent resilience concept selection](agent-resilience-concept-selection.md)
@@ -29,7 +29,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: additional same-session attempts after an agent response cannot be parsed into the node outputs
 - verify: json_path(path="$.max_output_retries", equals=2)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: max_invoke_retries
@@ -38,7 +38,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: additional attempts for transient agent-CLI invocation failures
 - verify: json_path(path="$.max_invoke_retries", equals=60)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: max_rephrase_attempts
@@ -47,7 +47,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: fresh-session prompt reframes after invocation and output parsing still fail
 - verify: json_path(path="$.max_rephrase_attempts", equals=3)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: max_compact_attempts
@@ -56,7 +56,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: context-compaction recoveries before the ladder moves to reframing
 - verify: json_path(path="$.max_compact_attempts", equals=2)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: result_timeout_s
@@ -65,7 +65,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: default wall-clock budget in seconds for one agent turn without a node timeout
 - verify: json_path(path="$.result_timeout_s", equals=3600.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: invoke_backoff_base_s
@@ -74,7 +74,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: initial transient-invocation retry delay in seconds
 - verify: json_path(path="$.invoke_backoff_base_s", equals=15.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: invoke_backoff_cap_s
@@ -83,7 +83,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: maximum single transient-invocation retry delay in seconds
 - verify: json_path(path="$.invoke_backoff_cap_s", equals=1800.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: retry_wait_budget_s
@@ -92,7 +92,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: cumulative transient-retry sleep allowance for one agent-node visit in seconds
 - verify: json_path(path="$.retry_wait_budget_s", equals=97305.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: watchdog_grace_s
@@ -101,7 +101,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: seconds beyond a turn timeout before the separate watchdog force-kills the process group
 - verify: json_path(path="$.watchdog_grace_s", equals=120.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: cap_default_wait_s
@@ -110,7 +110,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: fallback wait in seconds when a provider cap has no reported reset time
 - verify: json_path(path="$.cap_default_wait_s", equals=600.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: cap_wait_margin_s
@@ -119,7 +119,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: extra seconds added around a reported provider-cap reset wait
 - verify: json_path(path="$.cap_wait_margin_s", equals=120.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: cap_tick_s
@@ -128,7 +128,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: maximum interval in seconds between notices while waiting for a provider cap
 - verify: json_path(path="$.cap_tick_s", equals=600.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: cap_probe_s
@@ -139,7 +139,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - verify: json_path(path="$.cap_probe_s", equals=7200.0)
 - semantics: zero selects one sleep through the reported reset instead of probing
 - verify: json_path(path="$.cap_probe_s", equals=0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: max_cap_waits
@@ -148,7 +148,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: maximum consecutive cap waits during one node visit
 - verify: json_path(path="$.max_cap_waits", equals=1536)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: cap_max_wait_s
@@ -157,7 +157,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: maximum one cap wait in seconds
 - verify: json_path(path="$.cap_max_wait_s", equals=691200.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: cap_wait_budget_s
@@ -166,7 +166,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: cumulative cap sleep allowance for one node visit in seconds
 - verify: json_path(path="$.cap_wait_budget_s", equals=691320.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: reframe_wait_budget_s
@@ -175,7 +175,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: cumulative pause before fresh-session prompt reframes in seconds
 - verify: json_path(path="$.reframe_wait_budget_s", equals=60.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: exec_retry_max
@@ -184,7 +184,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: additional subprocess-start attempts for executable replacement errors
 - verify: json_path(path="$.exec_retry_max", equals=5)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: exec_retry_base_s
@@ -193,7 +193,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: initial executable-start retry delay in seconds
 - verify: json_path(path="$.exec_retry_base_s", equals=1.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: exec_retry_cap_s
@@ -202,7 +202,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: maximum executable-start retry delay in seconds
 - verify: json_path(path="$.exec_retry_cap_s", equals=8.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: exec_retry_wait_budget_s
@@ -211,7 +211,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: cumulative executable-start retry sleep allowance for one node in seconds
 - verify: json_path(path="$.exec_retry_wait_budget_s", equals=23.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: heartbeat_every_s
@@ -220,7 +220,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: interval in seconds at which the streaming loop reports turn liveness
 - verify: json_path(path="$.heartbeat_every_s", equals=10.0)
-- code: `workhorse/workhorse/config_run.py::AgentResilience`
+- code: `workhorse/workhorse/config_run.py::AgentResilience` @2ce2af5069af
 - detail: [agent resilience tuning](agent-resilience-tuning.md)
 
 ### field: resilience
@@ -229,7 +229,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: recovery policy used by the run's agent runner
 - verify: json_path(path="$.resilience.type", equals="AgentResilience")
-- code: `workhorse/workhorse/config_run.py::RunConfig`
+- code: `workhorse/workhorse/config_run.py::RunConfig` @2ce2af5069af
 - detail: [run configuration field selection](run-configuration-field-selection.md)
 
 ### field: max_runtime_s
@@ -238,7 +238,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: run wall-clock ceiling in seconds, where zero means unbounded
 - verify: json_path(path="$.max_runtime_s", equals=0.0)
-- code: `workhorse/workhorse/config_run.py::RunConfig`
+- code: `workhorse/workhorse/config_run.py::RunConfig` @2ce2af5069af
 - detail: [run configuration field selection](run-configuration-field-selection.md)
 
 ### field: await_poll_s
@@ -247,7 +247,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: interval in seconds between stats of a file awaited by the workflow
 - verify: json_path(path="$.await_poll_s", equals=15.0)
-- code: `workhorse/workhorse/config_run.py::RunConfig`
+- code: `workhorse/workhorse/config_run.py::RunConfig` @2ce2af5069af
 - detail: [run configuration field selection](run-configuration-field-selection.md)
 
 ### field: max_transitions
@@ -256,7 +256,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: maximum state-machine transitions before the run is declared stuck
 - verify: json_path(path="$.max_transitions", equals=1000)
-- code: `workhorse/workhorse/config_run.py::RunConfig`
+- code: `workhorse/workhorse/config_run.py::RunConfig` @2ce2af5069af
 - detail: [run configuration field selection](run-configuration-field-selection.md)
 
 ### field: print_prompt
@@ -265,7 +265,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: whether the console prints each rendered prompt path without rendered variables
 - verify: json_path(path="$.print_prompt", equals=true)
-- code: `workhorse/workhorse/config_run.py::RunConfig`
+- code: `workhorse/workhorse/config_run.py::RunConfig` @2ce2af5069af
 - detail: [run configuration field selection](run-configuration-field-selection.md)
 
 ### field: model_override
@@ -274,7 +274,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: false
 - semantics: run-level model fallback, with `AGENT_MODEL` taking precedence over `AGENT_CLAUDE_MODEL`
 - verify: json_path(path="$.model_override", absent=true)
-- code: `workhorse/workhorse/config_run.py::RunConfig`
+- code: `workhorse/workhorse/config_run.py::RunConfig` @2ce2af5069af
 - detail: [run configuration field selection](run-configuration-field-selection.md)
 
 ### field: backend
@@ -285,7 +285,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - verify: json_path(path="$.backend.type", matches=".+Backend")
 - semantics: absence is represented by the null implementation rather than `None`
 - verify: json_path(path="$.backend.type", equals="NullBackend")
-- code: `workhorse/workhorse/config_run.py::RunConfig`
+- code: `workhorse/workhorse/config_run.py::RunConfig` @2ce2af5069af
 - tests: `workhorse/tests/test_backends.py::test_run_config_without_a_cli_holds_the_null_backend`
 - detail: [run configuration field selection](run-configuration-field-selection.md)
 
@@ -295,7 +295,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: selected named model profile, or empty for the top-level configuration tables
 - verify: json_path(path="$.profile", equals="")
-- code: `workhorse/workhorse/config_run.py::RunConfig`
+- code: `workhorse/workhorse/config_run.py::RunConfig` @2ce2af5069af
 - detail: [run configuration field selection](run-configuration-field-selection.md)
 
 ### field: workspace
@@ -304,7 +304,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: configured working-tree path, or empty to use the process current directory
 - verify: json_path(path="$.workspace", equals="")
-- code: `workhorse/workhorse/config_run.py::RunConfig`
+- code: `workhorse/workhorse/config_run.py::RunConfig` @2ce2af5069af
 - detail: [run configuration field selection](run-configuration-field-selection.md)
 
 ### field: capture_transcripts
@@ -313,7 +313,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - required: true
 - semantics: whether each agent turn is retained under the run transcript directory
 - verify: json_path(path="$.capture_transcripts", equals=true)
-- code: `workhorse/workhorse/config_run.py::RunConfig`
+- code: `workhorse/workhorse/config_run.py::RunConfig` @2ce2af5069af
 - detail: [run configuration field selection](run-configuration-field-selection.md)
 
 ### field: transcript_max_bytes
@@ -324,7 +324,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - verify: json_path(path="$.transcript_max_bytes", matches="^[1-9][0-9]*$")
 - semantics: captures reaching the limit are truncated with a marker
 - verify: json_path(path="$.truncated", equals=true)
-- code: `workhorse/workhorse/config_run.py::RunConfig`
+- code: `workhorse/workhorse/config_run.py::RunConfig` @2ce2af5069af
 - detail: [run configuration field selection](run-configuration-field-selection.md)
 
 ## Methods
@@ -336,7 +336,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - does: rejects non-finite or disallowed duration values through the field-specific duration parser
 - returns: an immutable resilience policy
 - verify: json_path(path="$.max_invoke_retries", equals=7)
-- code: `workhorse/workhorse/config_run.py::AgentResilience.from_env`
+- code: `workhorse/workhorse/config_run.py::AgentResilience.from_env` @2ce2af5069af
 - tests: `workhorse/tests/test_guardrails.py::test_environment_variables`
 
 ### AgentResilience.with_overrides
@@ -345,7 +345,7 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - verify: unchanged(subject="original AgentResilience", except_fields=["max_invoke_retries"])
 - returns: a new immutable resilience policy, leaving the original unchanged
 - verify: unchanged(subject="original AgentResilience")
-- code: `workhorse/workhorse/config_run.py::AgentResilience.with_overrides`
+- code: `workhorse/workhorse/config_run.py::AgentResilience.with_overrides` @2ce2af5069af
 
 ### RunConfig.from_env
 - sig: `RunConfig.from_env(environ: Mapping[str, str] | None = None) -> RunConfig`
@@ -353,5 +353,5 @@ are frozen. Values are captured from environment mappings only by their `from_en
 - does: gives `AGENT_MODEL` precedence over the legacy `AGENT_CLAUDE_MODEL` spelling
 - returns: an immutable run configuration with a non-null backend implementation
 - verify: json_path(path="$.model_override", equals="opus")
-- code: `workhorse/workhorse/config_run.py::RunConfig.from_env`
+- code: `workhorse/workhorse/config_run.py::RunConfig.from_env` @2ce2af5069af
 - tests: `workhorse/tests/test_guardrails.py::test_environment_variables`

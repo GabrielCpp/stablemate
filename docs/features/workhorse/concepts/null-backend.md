@@ -10,7 +10,7 @@ non-nullable, but is deliberately not registered as a selectable CLI. A turn rea
 fails immediately with an actionable non-recoverable error rather than fabricating outputs through
 the recovery ladder.
 
-- code: `workhorse/workhorse/runner/backends/null.py::NullBackend`
+- code: `workhorse/workhorse/runner/backends/null.py::NullBackend` @c87c233cf345
 - extends: [AgentBackend](agent-backend.md)
 - tests: `workhorse/tests/test_backends.py::test_null_backend_is_not_selectable`,
   `workhorse/tests/test_backends.py::test_run_config_without_a_cli_holds_the_null_backend`,
@@ -27,7 +27,7 @@ the recovery ladder.
 - verify: json_path(path="$.name", equals="none")
 - semantics: is not a backend registry key
 - verify: absent(subject="NullBackend in the backend registry")
-- code: `workhorse/workhorse/runner/backends/null.py::NullBackend`
+- code: `workhorse/workhorse/runner/backends/null.py::NullBackend` @c87c233cf345
 - detail: [NullBackend selection](null-backend-selection.md)
 
 ### default_model
@@ -36,7 +36,7 @@ the recovery ladder.
 - required: false
 - semantics: no model exists when no CLI is configured
 - verify: json_path(path="$.default_model", absent=true)
-- code: `workhorse/workhorse/runner/backends/null.py::NullBackend`
+- code: `workhorse/workhorse/runner/backends/null.py::NullBackend` @c87c233cf345
 - detail: [NullBackend selection](null-backend-selection.md)
 
 ### supports_compaction
@@ -45,7 +45,7 @@ the recovery ladder.
 - required: false
 - semantics: the absent adapter cannot compact a session
 - verify: json_path(path="$.supports_compaction", equals=false)
-- code: `workhorse/workhorse/runner/backends/null.py::NullBackend`
+- code: `workhorse/workhorse/runner/backends/null.py::NullBackend` @c87c233cf345
 - detail: [NullBackend selection](null-backend-selection.md)
 
 ## Methods
@@ -55,11 +55,11 @@ the recovery ladder.
 - does: refuses an agent turn because no CLI was selected
 - raises: `BackendInvocationError` naming the node and instructing the operator to pass `--cli` or set `AGENT_CLI`
 - verify: absent(subject="agent turn result from a run with no CLI")
-- code: `workhorse/workhorse/runner/backends/null.py::NullBackend.run_turn`
+- code: `workhorse/workhorse/runner/backends/null.py::NullBackend.run_turn` @c87c233cf345
 
 ### compact
 - sig: `compact(session_id_path: Path | None, node_id: str, model: str | None = None, *, timeout: float, resilience: AgentResilience) -> bool`
 - does: declines compaction because there is no session
 - returns: `false`
 - verify: json_path(path="$.compacted", equals=false)
-- code: `workhorse/workhorse/runner/backends/null.py::NullBackend.compact`
+- code: `workhorse/workhorse/runner/backends/null.py::NullBackend.compact` @c87c233cf345

@@ -13,7 +13,7 @@ human-readable "resuming around" label for the log line
 time out of the message text, and falls back to a fixed default when neither is available — the
 cap always eventually clears, so a delay is always produced, never an error.
 
-- code: `workhorse/workhorse/runner/caps.py::cap_delay_seconds`
+- code: `workhorse/workhorse/runner/caps.py::cap_delay_seconds` @ff4d1852d0a5
 - tests: `workhorse/tests/test_agent_cap.py::test_cap_delay_prefers_structured_reset_at`,
   `workhorse/tests/test_agent_cap.py::test_cap_delay_falls_back_to_text_then_default`
 

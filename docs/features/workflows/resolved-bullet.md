@@ -10,7 +10,7 @@ payload before constructing an [edit intent](edit-intent.md). It records whether
 from the configured backlog so later reconciliation can distinguish backlog ownership from a
 literal request.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @ddad101f4da9
 - detail: [author story edit subflow](concepts/author-story-edit-subflow.md)
 
 ## Fields
@@ -21,7 +21,7 @@ literal request.
 - required: false
 - semantics: identifies the resolved backlog item or normalized literal bullet
 - verify: json_path(path="$.id", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @ddad101f4da9
 - detail: [resolved bullet field roles](concepts/resolved-bullet-field-roles.md)
 
 ### source_bullet
@@ -30,7 +30,7 @@ literal request.
 - required: false
 - semantics: preserves the source text used as the added story's scope description
 - verify: json_path(path="$.source_bullet", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @ddad101f4da9
 - detail: [resolved bullet field roles](concepts/resolved-bullet-field-roles.md)
 
 ### from_backlog
@@ -39,5 +39,5 @@ literal request.
 - required: false
 - semantics: distinguishes a bullet matched in the configured backlog from a literal or normalized request
 - verify: json_path(path="$.from_backlog", equals=True)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @ddad101f4da9
 - detail: [resolved bullet field roles](concepts/resolved-bullet-field-roles.md)

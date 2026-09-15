@@ -10,15 +10,15 @@ nodes validate and apply graph changes between turns. Story authoring turns writ
 story's artifacts, while all turns return typed JSON consumed by the next state. The feature book is
 always read-only to these prompts.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/plan-epic-edit.md`
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/refine-epic-edit-plan.md`
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/review-epic-edit-plan.md`
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rewrite-epic-edit.md`
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/design-mockup.md`
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/write-story.md`
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rework-story.md`
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/audit-story.md`
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/review-coverage.md`
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/plan-epic-edit.md` @4456648033f3
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/refine-epic-edit-plan.md` @9c92addea733
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/review-epic-edit-plan.md` @ecc93cad9b1a
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rewrite-epic-edit.md` @031fe29f72ac
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/design-mockup.md` @cb597bcb1e13
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/write-story.md` @d5e99bf5916e
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rework-story.md` @e2ab5af8ae5f
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/audit-story.md` @c0263ca2d5ac
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/review-coverage.md` @2f49fb13d5a1
 - detail: [author epic edit subflow](author-epic-edit-subflow.md)
 
 ## Prompt Contracts

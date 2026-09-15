@@ -8,7 +8,7 @@ title: Story split coverage defects
 The mechanical coverage validator's result for the selected epic. It is successful only when no
 coverage-specific doctor errors remain.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects` @e0c7b3335724
 - detail: [author story-split subflow](concepts/story-split-subflow.md)
 
 ## Fields
@@ -19,7 +19,7 @@ coverage-specific doctor errors remain.
 - required: false
 - semantics: true when the selected epic has no relevant coverage defect
 - verify: json_path(path="$.ok", equals=True)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects` @e0c7b3335724
 - detail: [coverage defect result fields](concepts/coverage-defect-result-fields.md)
 
 ### errors
@@ -28,5 +28,5 @@ coverage-specific doctor errors remain.
 - required: false
 - semantics: newline-separated coverage findings, empty on success
 - verify: json_path(path="$.errors", equals="")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects` @e0c7b3335724
 - detail: [coverage defect result fields](concepts/coverage-defect-result-fields.md)

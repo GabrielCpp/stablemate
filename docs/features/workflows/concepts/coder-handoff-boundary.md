@@ -35,12 +35,12 @@ The transition-budget independence of `fix_ci` is a canonical use case. A per-re
 
 The prompt-path resolution is why each sub-flow packages its own prompts directory. The same `implement-plan.md` name exists under `main/prompts/`, `dev/prompts/`, and `fix/prompts/`, each free to diverge — the caller and callee are not coupled through shared prompt files, even though they may do similar work.
 
-- code: `workflows/src/workhorse_workflows/coder/__init__.py`
-- code: `workflows/src/workhorse_workflows/coder/dev/__init__.py`
-- code: `workflows/src/workhorse_workflows/coder/docs/__init__.py`
-- code: `workflows/src/workhorse_workflows/coder/fix_ci/__init__.py`
-- code: `workflows/src/workhorse_workflows/coder/qa/__init__.py`
-- code: `workflows/src/workhorse_workflows/coder/review/__init__.py`
-- code: `workflows/src/workhorse_workflows/coder/genesis/__init__.py`
-- code: `workflows/src/workhorse_workflows/coder/fix/__init__.py`
+- code: `workflows/src/workhorse_workflows/coder/__init__.py` @769219e1d757
+- code: `workflows/src/workhorse_workflows/coder/dev/__init__.py` @0dcc713cab88
+- code: `workflows/src/workhorse_workflows/coder/docs/__init__.py` @748f8983f64a
+- code: `workflows/src/workhorse_workflows/coder/fix_ci/__init__.py` @ff0966b9bbd2
+- code: `workflows/src/workhorse_workflows/coder/qa/__init__.py` @ea9ff1f1dfa0
+- code: `workflows/src/workhorse_workflows/coder/review/__init__.py` @3ba7d8d07959
+- code: `workflows/src/workhorse_workflows/coder/genesis/__init__.py` @1e5d7177c25e
+- code: `workflows/src/workhorse_workflows/coder/fix/__init__.py` @dbf830aac3bc
 

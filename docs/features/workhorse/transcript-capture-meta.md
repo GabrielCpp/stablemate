@@ -19,7 +19,7 @@ group (`source`, `bytes`, `truncated`) is replaced with the export's, while the 
 (`backend`, `session_id`, `node`, `generation`, `seq`, `ts`, `head`) are preserved.
 
 - file: `<run_dir>/transcripts/<gen>-<seq>-<node>__<session-id>.meta.json`
-- code: `workhorse/workhorse/runner/transcript.py::_write_meta`
+- code: `workhorse/workhorse/runner/transcript.py::_write_meta` @d9061fde5052
 - detail: [agent transcript capture](concepts/transcript-capture.md)
 - tests: `workhorse/tests/test_transcript.py::test_the_store_is_preferred_and_the_tee_it_beats_is_dropped`, `workhorse/tests/test_transcript.py::test_a_backend_with_no_store_is_captured_from_the_tee`, `workhorse/tests/test_transcript.py::test_a_backend_export_is_preferred_over_the_stream_tee`, `workhorse/tests/test_transcript.py::test_a_failed_backend_export_preserves_the_stream_tee`, `workhorse/tests/test_transcript.py::test_the_next_turn_promotes_a_provisional_tee_after_the_session_settles`, `workhorse/tests/test_transcript.py::test_the_tee_stops_at_the_cap_and_says_so`, `workhorse/tests/test_transcript.py::test_the_store_capture_is_also_capped`
 
@@ -34,7 +34,7 @@ group (`source`, `bytes`, `truncated`) is replaced with the export's, while the 
 - semantics: the same key the `_STORES` and `_EXPORTERS` registries in
   [agent transcript capture](concepts/transcript-capture.md#backends) are addressed by
 - verify: json_path(path="$.backend", matches=".+")
-- code: `workhorse/workhorse/runner/transcript.py::capture`
+- code: `workhorse/workhorse/runner/transcript.py::capture` @d9061fde5052
 - detail: [agent transcript capture](concepts/transcript-capture.md)
 
 ### session_id
@@ -47,7 +47,7 @@ group (`source`, `bytes`, `truncated`) is replaced with the export's, while the 
 - semantics: identical to the `session_id` line in [`sessions.jsonl`](run-artifacts.md#sessionsjsonl) for the
   same visit, so the meta and the manifest agree on which session the capture is from
 - verify: unchanged(subject="session_id across meta and sessions.jsonl for the same visit")
-- code: `workhorse/workhorse/runner/transcript.py::capture`
+- code: `workhorse/workhorse/runner/transcript.py::capture` @d9061fde5052
 - detail: [agent transcript capture](concepts/transcript-capture.md)
 
 ### node
@@ -61,7 +61,7 @@ group (`source`, `bytes`, `truncated`) is replaced with the export's, while the 
   [visit key](concepts/visit-key.md) naming the capture's stem, so a reader can recover the visit
   from the meta alone
 - verify: unchanged(subject="node across meta and visit key for the same capture")
-- code: `workhorse/workhorse/runner/transcript.py::capture`
+- code: `workhorse/workhorse/runner/transcript.py::capture` @d9061fde5052
 - detail: [agent transcript capture](concepts/transcript-capture.md)
 
 ### generation
@@ -76,7 +76,7 @@ group (`source`, `bytes`, `truncated`) is replaced with the export's, while the 
   re-derived from `run.json`, so the meta's `generation` is the count at the time of capture and
   survives an in-place rewrite of the same meta unchanged
 - verify: unchanged(subject="the meta on a deferred-export rewrite", except_fields=["source", "bytes", "truncated"])
-- code: `workhorse/workhorse/runner/transcript.py::capture`
+- code: `workhorse/workhorse/runner/transcript.py::capture` @d9061fde5052
 - detail: [agent transcript capture](concepts/transcript-capture.md)
 
 ### seq
@@ -88,7 +88,7 @@ group (`source`, `bytes`, `truncated`) is replaced with the export's, while the 
 - verify: json_path(path="$.seq", matches="^[0-9]+$")
 - semantics: together with `generation` and `node`, this is the visit key naming the capture's stem
 - verify: unchanged(subject="seq across meta and visit key for the same capture")
-- code: `workhorse/workhorse/runner/transcript.py::capture`
+- code: `workhorse/workhorse/runner/transcript.py::capture` @d9061fde5052
 - detail: [agent transcript capture](concepts/transcript-capture.md)
 
 ### ts
@@ -99,7 +99,7 @@ group (`source`, `bytes`, `truncated`) is replaced with the export's, while the 
 - semantics: positive epoch seconds when the capture was written, taken at the moment the meta
   dict is assembled so a meta's `ts` is the capture's clock, not the underlying turn's
 - verify: json_path(path="$.ts", matches="^[1-9][0-9]*$")
-- code: `workhorse/workhorse/runner/transcript.py::capture`
+- code: `workhorse/workhorse/runner/transcript.py::capture` @d9061fde5052
 - detail: [agent transcript capture](concepts/transcript-capture.md)
 
 ### head
@@ -120,7 +120,7 @@ group (`source`, `bytes`, `truncated`) is replaced with the export's, while the 
 - semantics: a consumer that needs the run's HEAD must look at [`sessions.jsonl`](run-artifacts.md#sessionsjsonl),
   not infer absence from the meta
 - verify: unchanged(subject="head across meta and sessions.jsonl for the same visit")
-- code: `workhorse/workhorse/runner/transcript.py::capture`
+- code: `workhorse/workhorse/runner/transcript.py::capture` @d9061fde5052
 - detail: [agent transcript capture](concepts/transcript-capture.md)
 
 ### source
@@ -139,7 +139,7 @@ group (`source`, `bytes`, `truncated`) is replaced with the export's, while the 
 - semantics: the per-visit fields (`backend`, `session_id`, `node`, `generation`, `seq`, `ts`,
   `head`) are preserved on a deferred-export rewrite
 - verify: unchanged(subject="the meta on a deferred-export rewrite", except_fields=["source", "bytes", "truncated"])
-- code: `workhorse/workhorse/runner/transcript.py::capture`
+- code: `workhorse/workhorse/runner/transcript.py::capture` @d9061fde5052
 - detail: [agent transcript capture](concepts/transcript-capture.md)
 
 ### bytes
@@ -152,7 +152,7 @@ group (`source`, `bytes`, `truncated`) is replaced with the export's, while the 
   `source=tee`. Independent of the `max_bytes` cap on the surrounding turn: a capture that hit
   the cap records the bytes it managed to write before the truncation marker
 - verify: json_path(path="$.bytes", matches="^[0-9]+$")
-- code: `workhorse/workhorse/runner/transcript.py::capture`
+- code: `workhorse/workhorse/runner/transcript.py::capture` @d9061fde5052
 - detail: [agent transcript capture](concepts/transcript-capture.md)
 
 ### truncated
@@ -176,5 +176,5 @@ group (`source`, `bytes`, `truncated`) is replaced with the export's, while the 
   otherwise
 - verify: json_path(path="$.truncated", equals=true)
 - verify: json_path(path="$.truncated", equals=false)
-- code: `workhorse/workhorse/runner/transcript.py::capture`
+- code: `workhorse/workhorse/runner/transcript.py::capture` @d9061fde5052
 - detail: [agent transcript capture](concepts/transcript-capture.md)

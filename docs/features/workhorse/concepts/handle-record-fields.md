@@ -13,5 +13,5 @@ their operation rather than selecting one field as an alternative to another.
 No field supersedes another. The source declares all six attributes together when `submit`
 creates a handle, and `_handle_of` restores every attribute from a recorded handle.
 
-- code: `workhorse/workhorse/job.py::Handle`
+- code: `workhorse/workhorse/job.py::Handle` @1c2183730b2f
 - rule: use `Handle` for the supervisor identity record and its named fields for their distinct values; no field is a preferred or deprecated alternative

@@ -10,7 +10,7 @@ renders this template for its only agent turn. It receives the measured subject 
 JSON matching the [greeting](hello-world-greeting.md) shape without reading or writing files.
 
 - file: `workflows/src/workhorse_workflows/hello_world/prompts/greet.md`
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld.greet`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld.greet` @a0d572bb6d0f
 - tests: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting`
 
 ## Fields
@@ -26,7 +26,7 @@ JSON matching the [greeting](hello-world-greeting.md) shape without reading or w
 - verify: json_path(path="$.name", equals="globex")
 - semantics: the name the agent must greet
 - verify: json_path(path="$.name", equals="globex")
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld.greet`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld.greet` @a0d572bb6d0f
 - detail: [hello-world greeting prompt input fields](concepts/hello-world-greeting-prompt-input-fields.md)
 
 ### letters
@@ -40,7 +40,7 @@ JSON matching the [greeting](hello-world-greeting.md) shape without reading or w
 - verify: json_path(path="$.letters", equals=6)
 - semantics: the name character count the agent must mention
 - verify: json_path(path="$.letters", equals=6)
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld.greet`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld.greet` @a0d572bb6d0f
 - detail: [hello-world greeting prompt input fields](concepts/hello-world-greeting-prompt-input-fields.md)
 
 ### greeting
@@ -54,5 +54,5 @@ JSON matching the [greeting](hello-world-greeting.md) shape without reading or w
 - verify: json_path(path="$.greeting", equals="Hello, globex.")
 - semantics: the one-sentence friendly greeting output after JSON validation
 - verify: json_path(path="$.greeting", equals="Hello, globex.")
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::Greeting`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::Greeting` @a0d572bb6d0f
 - detail: [hello-world greeting context](concepts/hello-world-greeting-context.md)

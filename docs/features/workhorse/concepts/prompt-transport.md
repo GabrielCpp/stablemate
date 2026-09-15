@@ -18,8 +18,8 @@ The transport fails before spawning when oversized content has no artifact desti
 argv-based adapter also checks the finished command so an oversized original prompt cannot
 accidentally remain in any argument after command construction.
 
-- code: `workhorse/workhorse/runner/backends/__init__.py::prepare_argv_prompt`
-- code: `workhorse/workhorse/runner/backends/__init__.py::ensure_prompt_is_not_in_argv`
+- code: `workhorse/workhorse/runner/backends/__init__.py::prepare_argv_prompt` @1ed20e69807c
+- code: `workhorse/workhorse/runner/backends/__init__.py::ensure_prompt_is_not_in_argv` @1ed20e69807c
 - tests: `workhorse/tests/test_backends.py::test_copilot_attaches_a_large_prompt_instead_of_putting_it_in_argv`,
   `workhorse/tests/test_backends.py::test_cline_points_a_large_prompt_at_its_artifact_instead_of_putting_it_in_argv`,
   `workhorse/tests/test_backends.py::test_opencode_attaches_a_large_prompt_instead_of_putting_it_in_argv`
@@ -40,7 +40,7 @@ accidentally remain in any argument after command construction.
 - verify: json_path(path="exception.type", equals="BackendInvocationError")
 - returns: the bounded argv message and the artifact path when file-backed delivery is used
 - verify: json_path(path="$.attachment", matches="prompt.md")
-- code: `workhorse/workhorse/runner/backends/__init__.py::prepare_argv_prompt`
+- code: `workhorse/workhorse/runner/backends/__init__.py::prepare_argv_prompt` @1ed20e69807c
 - tests: `workhorse/tests/test_backends.py::test_copilot_attaches_a_large_prompt_instead_of_putting_it_in_argv`,
   `workhorse/tests/test_backends.py::test_cline_points_a_large_prompt_at_its_artifact_instead_of_putting_it_in_argv`,
   `workhorse/tests/test_backends.py::test_opencode_attaches_a_large_prompt_instead_of_putting_it_in_argv`
@@ -55,4 +55,4 @@ accidentally remain in any argument after command construction.
 - verify: json_path(path="exception.type", equals="RuntimeError")
 - returns: `None` after the argv transport invariant is satisfied
 - verify: json_path(path="$.result", equals="null")
-- code: `workhorse/workhorse/runner/backends/__init__.py::ensure_prompt_is_not_in_argv`
+- code: `workhorse/workhorse/runner/backends/__init__.py::ensure_prompt_is_not_in_argv` @1ed20e69807c

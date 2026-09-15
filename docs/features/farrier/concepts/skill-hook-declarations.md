@@ -10,7 +10,7 @@ is data in the skill front matter; merely shipping a script under `scripts/` doe
 a hook. The hook-manager wiring consumes the valid declarations and renders one adapter path for
 each selected hook.
 
-- code: `farrier/farrier/skill_hooks.py`
+- code: `farrier/farrier/skill_hooks.py` @a5640b1ebde8
 - detail: [hook manager wiring](hook-manager-wiring.md)
 
 ## Fields
@@ -21,7 +21,7 @@ each selected hook.
 - required: true
 - semantics: the complete set of hook stages Farrier can wire
 - verify: count(subject="wireable hook stages", equals=1)
-- code: `farrier/farrier/skill_hooks.py::STAGES`
+- code: `farrier/farrier/skill_hooks.py::STAGES` @a5640b1ebde8
 
 ### SkillHook.skill
 - type: `str`
@@ -32,7 +32,7 @@ each selected hook.
 - required: true
 - semantics: the installed skill name whose declaration owns the hook
 - verify: count(subject="skill hook owner field", equals=1)
-- code: `farrier/farrier/skill_hooks.py::SkillHook`
+- code: `farrier/farrier/skill_hooks.py::SkillHook` @a5640b1ebde8
 - detail: [skill hook record fields](skill-hook-record-fields.md)
 
 ### SkillHook.stage
@@ -44,7 +44,7 @@ each selected hook.
 - required: true
 - semantics: the supported git-hook stage at which the script runs
 - verify: count(subject="skill hook stage field", equals=1)
-- code: `farrier/farrier/skill_hooks.py::SkillHook`
+- code: `farrier/farrier/skill_hooks.py::SkillHook` @a5640b1ebde8
 - detail: [skill hook record fields](skill-hook-record-fields.md)
 
 ### SkillHook.run
@@ -56,7 +56,7 @@ each selected hook.
 - required: true
 - semantics: a path relative to the declaring skill directory for the script to execute
 - verify: count(subject="skill hook script path field", equals=1)
-- code: `farrier/farrier/skill_hooks.py::SkillHook`
+- code: `farrier/farrier/skill_hooks.py::SkillHook` @a5640b1ebde8
 - detail: [skill hook record fields](skill-hook-record-fields.md)
 
 ## Methods
@@ -67,7 +67,7 @@ each selected hook.
 - does: keeps only mapping entries from a list-valued `hooks` block
 - returns: raw mapping declarations without validating their stage or script path
 - verify: count(subject="mapping-only hook declaration filtering", equals=1)
-- code: `farrier/farrier/skill_hooks.py::declared`
+- code: `farrier/farrier/skill_hooks.py::declared` @a5640b1ebde8
 
 ### hooks_for
 - sig: `hooks_for(skill: str, data: dict[str, Any]) -> list[SkillHook]`
@@ -79,7 +79,7 @@ each selected hook.
 - returns: each record contains the normalized stage
 - returns: each record contains the normalized run path
 - verify: count(subject="valid skill hooks selected for wiring", equals=1)
-- code: `farrier/farrier/skill_hooks.py::hooks_for`
+- code: `farrier/farrier/skill_hooks.py::hooks_for` @a5640b1ebde8
 
 ### findings
 - sig: `findings(data: dict[str, Any], source_dir: Path) -> list[tuple[str, str, str]]`
@@ -95,4 +95,4 @@ each selected hook.
 - returns: `(level, code, message)` findings
 - returns: one finding for each invalid declaration condition
 - verify: count(subject="skill hook declaration validation findings", equals=1)
-- code: `farrier/farrier/skill_hooks.py::findings`
+- code: `farrier/farrier/skill_hooks.py::findings` @a5640b1ebde8

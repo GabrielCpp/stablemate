@@ -23,7 +23,7 @@ and blocks the aggregate CI gate.
 
 - driver: cli
 - surfaces: [hello-world workflow composition root](../concepts/hello-world-workflow-composition-root.md)
-- code: `workflows/Makefile::test`
+- code: `workflows/Makefile::test` @4f2f1208042e
 - working-directory: workflows
 - detail: [Workflow unit-test tiers](../concepts/workflow-unit-test-tiers.md)
 

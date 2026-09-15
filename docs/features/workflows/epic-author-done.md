@@ -9,7 +9,7 @@ The terminal result marks completion of authoring one explicit epic after docume
 returns the validated epic identity, its canonical paths, the researched-seed count, and the number
 of automatic operator resolutions used before success.
 
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone` @8605f9723870
 - detail: [author epic-author subflow](concepts/author-epic-author-subflow.md)
 
 ## Fields
@@ -20,7 +20,7 @@ of automatic operator resolutions used before success.
 - required: false
 - semantics: terminal status stating that the explicit epic crossed the authoring boundary
 - verify: json_path(path="$.status", equals="authored")
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone` @8605f9723870
 - detail: [epic author completion field roles](concepts/epic-author-done-field-roles.md)
 
 ### epic
@@ -29,7 +29,7 @@ of automatic operator resolutions used before success.
 - required: false
 - semantics: validated canonical name of the authored epic
 - verify: json_path(path="$.epic", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone` @8605f9723870
 - detail: [epic author completion field roles](concepts/epic-author-done-field-roles.md)
 
 ### epic_dir
@@ -38,7 +38,7 @@ of automatic operator resolutions used before success.
 - required: false
 - semantics: canonical directory containing the authored epic
 - verify: json_path(path="$.epic_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone` @8605f9723870
 - detail: [epic author completion field roles](concepts/epic-author-done-field-roles.md)
 
 ### epic_path
@@ -47,7 +47,7 @@ of automatic operator resolutions used before success.
 - required: false
 - semantics: canonical `epic.md` path validated before completion
 - verify: json_path(path="$.epic_path", matches="/epic\\.md$")
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone` @8605f9723870
 - detail: [epic author completion field roles](concepts/epic-author-done-field-roles.md)
 
 ### seed_count
@@ -56,7 +56,7 @@ of automatic operator resolutions used before success.
 - required: false
 - semantics: number of researched seeds present in the completed epic
 - verify: json_path(path="$.seed_count", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone` @8605f9723870
 - detail: [epic author completion field roles](concepts/epic-author-done-field-roles.md)
 
 ### operator_resolutions
@@ -65,6 +65,6 @@ of automatic operator resolutions used before success.
 - required: false
 - semantics: number of automatic resolution turns used before the successful completion
 - verify: json_path(path="$.operator_resolutions", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone` @8605f9723870
 - tests: `workflows/tests/author/epic_author/test_flow.py::test_block_is_diagnosed_then_retries_the_same_epic`
 - detail: [epic author completion field roles](concepts/epic-author-done-field-roles.md)

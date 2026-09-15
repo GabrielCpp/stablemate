@@ -8,7 +8,7 @@ title: Story mutation result
 The result of a standalone story graph mutation. It distinguishes an idempotent no-op from a
 change and identifies the affected epic, story directory, document, and reason.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation` @e0c7b3335724
 - detail: [author main story processing](concepts/author-main-story-processing.md)
 
 ## Fields
@@ -19,7 +19,7 @@ change and identifies the affected epic, story directory, document, and reason.
 - required: false
 - semantics: whether the requested mutation changed the story graph
 - verify: json_path(path="$.changed", equals=False)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation` @e0c7b3335724
 - detail: [story mutation field roles](concepts/story-mutation-field-roles.md)
 
 ### epic
@@ -28,7 +28,7 @@ change and identifies the affected epic, story directory, document, and reason.
 - required: false
 - semantics: parent epic identifier
 - verify: json_path(path="$.epic", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation` @e0c7b3335724
 - detail: [story mutation field roles](concepts/story-mutation-field-roles.md)
 
 ### story_slug
@@ -37,7 +37,7 @@ change and identifies the affected epic, story directory, document, and reason.
 - required: false
 - semantics: target story identifier
 - verify: json_path(path="$.story_slug", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation` @e0c7b3335724
 - detail: [story mutation field roles](concepts/story-mutation-field-roles.md)
 
 ### story_dir
@@ -46,7 +46,7 @@ change and identifies the affected epic, story directory, document, and reason.
 - required: false
 - semantics: target story directory
 - verify: json_path(path="$.story_dir", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation` @e0c7b3335724
 - detail: [story mutation field roles](concepts/story-mutation-field-roles.md)
 
 ### story_path
@@ -55,7 +55,7 @@ change and identifies the affected epic, story directory, document, and reason.
 - required: false
 - semantics: target story document path
 - verify: json_path(path="$.story_path", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation` @e0c7b3335724
 - detail: [story mutation field roles](concepts/story-mutation-field-roles.md)
 
 ### reason
@@ -64,5 +64,5 @@ change and identifies the affected epic, story directory, document, and reason.
 - required: false
 - semantics: explanation of the mutation or no-op
 - verify: json_path(path="$.reason", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation` @e0c7b3335724
 - detail: [story mutation field roles](concepts/story-mutation-field-roles.md)

@@ -12,7 +12,7 @@ observation, not alternative implementations. `observe_scope` constructs one
 `directories` when reading its ordered `DirectoryObservation` entries. Neither view supersedes
 the other.
 
-- code: `workhorse/workhorse/gitstate.py::RepositorySnapshot`
+- code: `workhorse/workhorse/gitstate.py::RepositorySnapshot` @4695fd1442a8
 - rule: select `RepositorySnapshot` for the complete immutable scope record and `directories` for its ordered entries; the views are complementary and have no ranking or replacement relationship
 - detail: [Repository snapshot contexts](repository-snapshot-contexts.md)
 - detail: [Repository snapshot concept selection](repository-snapshot-concept-selection.md)

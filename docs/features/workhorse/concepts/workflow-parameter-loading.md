@@ -10,7 +10,7 @@ file first and merges the inline object second, so inline keys win. Each source 
 object; unreadable files, invalid JSON, and arrays or scalar values terminate the CLI with an
 error on stderr and status `1`.
 
-- code: `workhorse/workhorse/cli/params.py::load_params`
+- code: `workhorse/workhorse/cli/params.py::load_params` @7a0694aeb309
 - tests: `workhorse/tests/test_console_script.py::test_every_flag_reaches_the_engine`
 
 ## Methods
@@ -27,4 +27,4 @@ error on stderr and status `1`.
 - returns: the merged key-to-value map
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/params.py::load_params`
+- code: `workhorse/workhorse/cli/params.py::load_params` @7a0694aeb309

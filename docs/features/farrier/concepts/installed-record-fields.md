@@ -17,5 +17,5 @@ with `editable`, and diagnostics identify the installed package with `distributi
 This distinction matters because a local origin can remain a path after its directory disappears,
 allowing the stale source to be reported rather than treated as a package name.
 
-- code: `farrier/farrier/pipx.py::Installed`
+- code: `farrier/farrier/pipx.py::Installed` @d72d259a3963
 - rule: use each field for its distinct record attribute; no field is a preferred replacement for another

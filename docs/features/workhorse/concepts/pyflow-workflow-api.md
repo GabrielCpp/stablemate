@@ -11,7 +11,7 @@ sealed after `setup()` so durable state cannot be hidden in mutable fields. The 
 delegate to the bound engine: node calls, agent turns, sub-flow handoffs, and recorded node
 outputs.
 
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @1a1a48a855c9
 - tests: [pyflow tests](../../../../workhorse/tests/test_pyflow.py)
 - detail: [pyflow workflow reading guide](pyflow-workflow-reading-guide.md)
 
@@ -25,7 +25,7 @@ outputs.
 - verify: json_path(path="$.repo_dir", equals="/src")
 - semantics: an empty value leaves repository-root discovery to the node
 - verify: count(subject="repository-root discoveries delegated to nodes", equals=1)
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @1a1a48a855c9
 - detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ### field: library_dirs
@@ -33,7 +33,7 @@ outputs.
 - default: empty tuple
 - required: true
 - semantics: ordered content-library roots available to nodes and prompt resolution
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @1a1a48a855c9
 - detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ### field: injects
@@ -41,7 +41,7 @@ outputs.
 - default: `("repo_dir", "library_dirs")`
 - required: true
 - semantics: allowlist of workflow fields eligible for ambient injection into seams
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @1a1a48a855c9
 - detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ### field: INFRA_NODES
@@ -49,14 +49,14 @@ outputs.
 - default: empty frozenset
 - required: true
 - semantics: node functions whose spans are classified as infrastructure work
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @1a1a48a855c9
 - detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ### field: states
 - type: `ClassVar[NameIndex[StateSpec]]`
 - required: true
 - semantics: per-subclass index of live state names and aliases
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @1a1a48a855c9
 - detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ### field: start_state
@@ -64,7 +64,7 @@ outputs.
 - default: `start`
 - required: true
 - semantics: state entered when no resume checkpoint selects another state
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @1a1a48a855c9
 - detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ### field: max_transitions
@@ -75,7 +75,7 @@ outputs.
 - verify: count(subject="transitions before a workflow-specific budget failure", equals=4)
 - semantics: zero delegates the transition budget to the run's configured budget
 - verify: count(subject="transitions before a run-configured budget failure", equals=3)
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @1a1a48a855c9
 - detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ### field: REFUEL_ON
@@ -83,7 +83,7 @@ outputs.
 - default: empty frozenset
 - required: true
 - semantics: state-parameter names whose changed value refills the transition budget
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @1a1a48a855c9
 - detail: [pyflow workflow field selection](pyflow-workflow-field-selection.md)
 
 ## Methods
@@ -93,13 +93,13 @@ outputs.
 - does: attaches retired state aliases to a callable without requiring a registry to exist
 - returns: the decorated callable, or a decorator when called without `fn`
 - verify: count(subject="state decorators applied", equals=1)
-- code: `workhorse/workhorse/pyflow/workflow.py::state`
+- code: `workhorse/workhorse/pyflow/workflow.py::state` @1a1a48a855c9
 
 ### state_names
 - sig: `state_names() -> list[str]`
 - returns: live public state names, excluding aliases and private helpers
 - verify: count(subject="live states in a workflow with one alias", equals=2)
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.state_names`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.state_names` @1a1a48a855c9
 
 ### resolve_state
 - sig: `resolve_state(name: str) -> StateSpec`
@@ -107,54 +107,54 @@ outputs.
 - raises: `UnknownStateError` when neither a live state nor an alias has that name
 - returns: the resolved `StateSpec`
 - verify: json_path(path="$.name", equals="qa")
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.resolve_state`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.resolve_state` @1a1a48a855c9
 
 ### setup
 - sig: `setup() -> Any`
 - does: runs once before the first state and supplies the run context
 - returns: the value installed as `self.ctx`
 - verify: count(subject="setup calls during a fresh run and resume", equals=1)
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.setup`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.setup` @1a1a48a855c9
 
 ### labels
 - sig: `labels() -> dict[str, str]`
 - returns: workflow-defined telemetry dimensions, empty by default
 - verify: count(subject="default workflow labels", equals=0)
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.labels`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.labels` @1a1a48a855c9
 
 ### state_labels
 - sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
 - does: supplies telemetry dimensions for the state parameters about to be bound
 - returns: the result of `labels()` by default
 - verify: count(subject="default state labels", equals=0)
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.state_labels`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.state_labels` @1a1a48a855c9
 
 ### ctx
 - sig: `ctx -> Any`
 - returns: the run context produced by `setup()` or restored from a checkpoint
 - verify: json_path(path="$.ctx", equals="restored")
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.ctx`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.ctx` @1a1a48a855c9
 
 ### logger
 - sig: `logger -> Logger`
 - raises: `WorkflowDefinitionError` when the workflow is not bound to a run
 - verify: json_path(path="exception.type", equals="WorkflowDefinitionError")
 - returns: the bound run logger
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.logger`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.logger` @1a1a48a855c9
 
 ### run_dir
 - sig: `run_dir -> Path`
 - raises: `WorkflowDefinitionError` when the workflow is not bound to a run
 - verify: json_path(path="exception.type", equals="WorkflowDefinitionError")
 - returns: the bound run artifact directory
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.run_dir`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.run_dir` @1a1a48a855c9
 
 ### run_id
 - sig: `run_id -> str`
 - raises: `WorkflowDefinitionError` when the workflow is not bound to a run
 - verify: count(subject="run identifiers returned by a bound workflow", equals=1)
 - returns: the bound stable run identifier
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.run_id`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.run_id` @1a1a48a855c9
 
 ### call
 - sig: `call(node, *args, **kwargs) -> T`
@@ -162,7 +162,7 @@ outputs.
 - raises: `WorkflowDefinitionError` when called outside a bound run
 - verify: count(subject="recorded node calls", equals=1)
 - returns: the node's typed plain value
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.call`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.call` @1a1a48a855c9
 
 ### agent
 - sig: `agent(prompt: str, *, returns: type[T], args=None, power=None, timeout=None, retries=None, invoke_retries=None, cwd=None, add_dirs=None, session=None) -> T`
@@ -171,25 +171,25 @@ outputs.
 - raises: `AgentTurnFailed` when the turn's recovery ladder ends without an answer
 - returns: the validated reply model or value
 - verify: count(subject="validated agent replies", equals=1)
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.agent`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.agent` @1a1a48a855c9
 
 ### seed_session
 - sig: `seed_session(key: str, session_id: str) -> None`
 - does: seeds an empty named conversation chain with an existing opaque session id
 - verify: count(subject="session chain seed files", equals=1)
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.seed_session`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.seed_session` @1a1a48a855c9
 
 ### chain_session
 - sig: `chain_session(key: str) -> str`
 - returns: the session id recorded for a named chain, or empty before its first turn
 - verify: count(subject="session ids read before a chain starts", equals=0)
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.chain_session`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.chain_session` @1a1a48a855c9
 
 ### reset_session
 - sig: `reset_session(key: str) -> None`
 - does: removes a named session chain so its next turn starts a fresh conversation
 - verify: removed(subject="the session chain file for key")
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.reset_session`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.reset_session` @1a1a48a855c9
 
 ### handoff
 - sig: `handoff(wf, *args, **kwargs) -> Any`
@@ -197,14 +197,14 @@ outputs.
 - raises: `WorkflowFailed` when the child cannot complete
 - verify: count(subject="completed child workflow results", equals=1)
 - returns: the child workflow's `Done` result
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.handoff`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.handoff` @1a1a48a855c9
 
 ### output
 - sig: `output(node: Callable[..., T]) -> T`
 - raises: `NodeNotRunError` when no output exists in the current scope
 - verify: json_path(path="$.value", equals="recorded")
 - returns: the latest recorded output for a node in the current flow scope, revived into its declared type
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.output`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.output` @1a1a48a855c9
 
 ## State Lifecycle
 

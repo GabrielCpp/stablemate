@@ -15,6 +15,6 @@ outcome, `peak_rss_mb` and `wall_s` for cost, `kill_reason` for termination clas
 `tier` for measurement context, and `started_at` and `finished_at` for timing. The fields are
 not alternative result representations; together they are the record returned by the job API.
 
-- code: `workhorse/workhorse/job.py::RunnerResult`
+- code: `workhorse/workhorse/job.py::RunnerResult` @1c2183730b2f
 - rule: use `RunnerResult` for a job's complete final outcome; read an individual field only for the measurement that consumer needs
 - prefers: [RunnerResult](job-supervisor.md#field-runnerresult)

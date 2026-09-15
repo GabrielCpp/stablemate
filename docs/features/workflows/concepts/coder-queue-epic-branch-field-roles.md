@@ -10,5 +10,5 @@ belongs to; `epic_branch` carries that epic's `feat/<epic>` branch name, includi
 the epic is blank. The fields are complementary parts of one result, not alternative interfaces,
 and neither replaces or ranks above the other.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::EpicBranch`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::EpicBranch` @a87cd48ce444
 - rule: read `working_epic` to identify the epic and `epic_branch` to identify its branch; no field is preferred or deprecated because both describe the same branch state

@@ -15,5 +15,5 @@ and `emit_note` for the human-readable outcome summary. The schema declares no p
 deprecation, or replacement relationship among these fields; select the field for the question at
 hand rather than substituting one for another.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult` @f79c1c007a97
 - rule: use `emit_ok` for the emission outcome, `emit_errors` for failure diagnostics, `bullet_count` for the emitted backlog-bullet quantity, and `emit_note` for the human-readable outcome summary; none substitutes for another

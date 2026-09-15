@@ -10,7 +10,7 @@ scripted agent reply. It preserves the production runner type and forwards each 
 argument set to the supplied callable, so prompt rendering, reply validation, turn recording,
 and flow transitions remain on the production path while no agent CLI or backend is resolved.
 
-- code: `workflows/tests/_fakes.py::StubRunner`
+- code: `workflows/tests/_fakes.py::StubRunner` @f44a73c736f5
 - tests: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting`
 
 ## Methods
@@ -24,7 +24,7 @@ Creates the runner with a null backend and retains the scripted agent callable.
 - verify: absent(subject="agent CLI resolution")
 - does: retains the supplied callable as the scripted agent
 - verify: json_path(path="$.greeting", equals="Hello, globex.")
-- code: `workflows/tests/_fakes.py::StubRunner.__init__`
+- code: `workflows/tests/_fakes.py::StubRunner.__init__` @f44a73c736f5
 - tests: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting`
 
 ### run
@@ -39,6 +39,6 @@ expects.
 - verify: json_path(path="$.greeting", equals="Hello, globex.")
 - returns: the scripted agent's rendered prompt and raw reply
 - verify: json_path(path="$.greeting", equals="Hello, globex.")
-- code: `workflows/tests/_fakes.py::StubRunner.run`
+- code: `workflows/tests/_fakes.py::StubRunner.run` @f44a73c736f5
 - code: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting.agent`
 - tests: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting`

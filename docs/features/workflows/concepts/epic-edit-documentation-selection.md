@@ -16,6 +16,6 @@ or otherwise requires direct `epic` and `change` values before constructing an `
 document is preferred or deprecated because each answers a different reader question about that
 single machine.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit`
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @5f9186456d47
 - rule: select the document by whether the reader needs the workflow lifecycle, input binding, or invocation context; they describe one `EpicEdit` machine
 - detail: [epic edit concept selection](epic-edit-concept-selection.md)

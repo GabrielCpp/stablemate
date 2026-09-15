@@ -11,5 +11,5 @@ Template values are the renderer context collected from the two accepted configu
 - sig: `collect_template_values(config: dict[str, Any]) -> dict[str, Any]`
 - does: merge `vars` first and legacy `template` second, with later keys winning
 - raises: `SystemExit` when either configured value is not a mapping
-- code: `farrier/farrier/template_values.py::collect_template_values`
+- code: `farrier/farrier/template_values.py::collect_template_values` @fb9a0dd8934d
 - verify: count(subject="merged renderer template values", equals=1)

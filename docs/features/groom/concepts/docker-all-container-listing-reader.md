@@ -7,7 +7,7 @@ title: Docker all-container listing reader
 
 Docker all-container listing reader is the raw Docker fleet enumerator exposed by the [Groom Docker I/O module](groom-docker-io-module.md). The [workflow discovery scan](workflow-discovery-scan.md) uses it to obtain every Docker container row before inspecting and classifying candidates. It returns parsed rows only; workhorse eligibility and workflow-state interpretation belong to discovery, while process execution belongs to the [Docker subprocess runner](docker-subprocess-runner.md).
 
-- code: `groom/groom/docker_io.py::docker_ps_all`
+- code: `groom/groom/docker_io.py::docker_ps_all` @4778bf1b6bc6
 - detail: [Docker ps-all documentation scope](docker-ps-all-documentation-scope.md)
 
 The reader invokes `docker ps -a --format "{{json .}}"` as a tokenized command with the shared twenty-second timeout. A successful command is read as newline-delimited JSON: surrounding whitespace is removed, blank lines are ignored, valid JSON values are retained in Docker's original order, and a malformed line is skipped without affecting other lines. A non-zero command result produces an empty list. Launch and timeout exceptions from the subprocess runner remain exceptions at this boundary.
@@ -23,7 +23,7 @@ The function accepts no caller arguments and uses the local Docker CLI and daemo
 - type: `list[str]`
 - default: `['docker', 'ps', '-a', '--format', '{{json .}}']`
 - required: true
-- code: `groom/groom/docker_io.py::docker_ps_all`
+- code: `groom/groom/docker_io.py::docker_ps_all` @4778bf1b6bc6
 - detail: [Docker ps all field guide](docker-ps-all-field-guide.md)
 - detail: [Docker ps-all value pipeline](docker-ps-all-value-pipeline.md)
 
@@ -34,7 +34,7 @@ The complete argv vector requests all containers, including stopped containers, 
 - type: `list[str]`
 - default: derived from completed-process stdout
 - required: true
-- code: `groom/groom/docker_io.py::docker_ps_all`
+- code: `groom/groom/docker_io.py::docker_ps_all` @4778bf1b6bc6
 - detail: [Docker ps all field guide](docker-ps-all-field-guide.md)
 - detail: [Docker ps-all value pipeline](docker-ps-all-value-pipeline.md)
 
@@ -45,7 +45,7 @@ These are the stdout lines produced by a zero-exit Docker command, split at line
 - type: `list[Any]`
 - default: `[]`
 - required: true
-- code: `groom/groom/docker_io.py::docker_ps_all`
+- code: `groom/groom/docker_io.py::docker_ps_all` @4778bf1b6bc6
 - detail: [Docker ps all field guide](docker-ps-all-field-guide.md)
 - detail: [Docker ps-all value pipeline](docker-ps-all-value-pipeline.md)
 
@@ -61,7 +61,7 @@ This is the result sequence accumulated from successfully decoded lines. It pres
 - returns: empty list when Docker exits non-zero
 - verify: count(subject="result", equals=0)
 - returns: parsed JSON values from Docker's all-container listing in stdout order
-- code: `groom/groom/docker_io.py::docker_ps_all`
+- code: `groom/groom/docker_io.py::docker_ps_all` @4778bf1b6bc6
 - detail: [Docker ps-all documentation scope](docker-ps-all-documentation-scope.md)
 
 The method performs one best-effort read and does not decide whether any returned row represents a workflow container. It does not inspect container metadata, normalize ids, sort rows, expose stderr, retry failures, or persist the listing.

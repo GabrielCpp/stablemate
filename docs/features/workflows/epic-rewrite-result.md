@@ -8,7 +8,7 @@ title: Epic rewrite result
 The rewrite agent reply reports whether the epic prose was rewritten after an applied edit and
 preserves the agent's notes.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult` @ddad101f4da9
 - detail: [author shared schemas](concepts/author-shared-schemas.md)
 
 ## Fields
@@ -19,7 +19,7 @@ preserves the agent's notes.
 - required: false
 - semantics: whether the epic rewrite completed
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult` @ddad101f4da9
 - detail: [epic rewrite result field roles](concepts/epic-rewrite-result-field-roles.md)
 
 ### notes
@@ -28,5 +28,5 @@ preserves the agent's notes.
 - required: false
 - semantics: agent notes accompanying the rewrite outcome
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult` @ddad101f4da9
 - detail: [epic rewrite result field roles](concepts/epic-rewrite-result-field-roles.md)

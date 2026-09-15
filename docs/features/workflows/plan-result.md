@@ -5,7 +5,7 @@ title: Survey plan reply
 ---
 # Survey plan reply
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PlanResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PlanResult` @f79c1c007a97
 - detail: [author surveyor subflow](concepts/author-surveyor-subflow.md)
 
 The planner's structured response. `status` is either `complete` or `blocked`.
@@ -18,7 +18,7 @@ The planner's structured response. `status` is either `complete` or `blocked`.
 - required: false
 - semantics: planner outcome, `complete` or `blocked`
 - verify: json_path(path="$.status", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PlanResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PlanResult` @f79c1c007a97
 - detail: [plan result fields](concepts/plan-result-fields.md)
 
 ### notes
@@ -27,5 +27,5 @@ The planner's structured response. `status` is either `complete` or `blocked`.
 - required: false
 - semantics: planner explanation, rules, or blocking information
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PlanResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PlanResult` @f79c1c007a97
 - detail: [plan result fields](concepts/plan-result-fields.md)

@@ -13,6 +13,6 @@ for the corresponding observed identity facts; for an unversioned directory, tho
 fields remain empty. Consumers that need the complete scope entry use the record as a whole or its
 string-valued serialization.
 
-- code: `workhorse/workhorse/gitstate.py::DirectoryObservation`
+- code: `workhorse/workhorse/gitstate.py::DirectoryObservation` @4695fd1442a8
 - rule: select the field for the distinct directory identity fact being read; the fields are complementary and have no ranking or replacement relationship
 - detail: [Directory observation context](directory-observation-context.md)

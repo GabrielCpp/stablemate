@@ -8,7 +8,7 @@ title: Mockup result
 The design agent reply records the outcome, chosen surface, mockup text, and notes for a story
 that requires a surface sketch.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult` @e0c7b3335724
 - detail: [author shared schemas](concepts/author-shared-schemas.md)
 
 ## Fields
@@ -19,7 +19,7 @@ that requires a surface sketch.
 - required: false
 - semantics: agent-reported outcome of designing the mockup
 - verify: json_path(path="$.status", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult` @e0c7b3335724
 - detail: [mockup result field roles](concepts/mockup-result-field-roles.md)
 
 ### surface
@@ -28,7 +28,7 @@ that requires a surface sketch.
 - required: false
 - semantics: product surface represented by the mockup
 - verify: json_path(path="$.surface", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult` @e0c7b3335724
 - detail: [mockup result field roles](concepts/mockup-result-field-roles.md)
 
 ### mockup
@@ -37,7 +37,7 @@ that requires a surface sketch.
 - required: false
 - semantics: surface sketch returned for story authoring
 - verify: json_path(path="$.mockup", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult` @e0c7b3335724
 - detail: [mockup result field roles](concepts/mockup-result-field-roles.md)
 
 ### notes
@@ -46,5 +46,5 @@ that requires a surface sketch.
 - required: false
 - semantics: design notes accompanying the mockup
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult` @e0c7b3335724
 - detail: [mockup result field roles](concepts/mockup-result-field-roles.md)

@@ -16,6 +16,6 @@ each stdout line in order and appends only values that JSON decoding accepts. Co
 the stdout-lines and parsed-entries fields apply only after a zero-exit command; the latter is a
 filtered result of the former, not a competing listing source.
 
-- code: `groom/groom/docker_io.py::docker_ps_all`
+- code: `groom/groom/docker_io.py::docker_ps_all` @4778bf1b6bc6
 - rule: use the command field for Docker invocation, stdout lines for successful raw output, and parsed entries for the retained decoded result; no field supersedes another.
 - detail: [Docker ps-all documentation scope](docker-ps-all-documentation-scope.md)

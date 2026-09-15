@@ -16,7 +16,7 @@ import every adapter to map a name to a class, so putting it beside the port wou
 means importing the type costs one small module, and only code that actually *selects* a backend
 pays for the adapters.
 
-- code: `workhorse/workhorse/runner/backends/registry.py::get_backend`
+- code: `workhorse/workhorse/runner/backends/registry.py::get_backend` @8e4028db0594
 
 The selector's default, precedence, validation, environment-variable handling, caching, and
 backend registration behavior are covered by tests in
@@ -51,7 +51,7 @@ and `test_non_claude_backends_registered`.
 - does: returns the selectable registry names in sorted order
 - returns: `['claude', 'cline', 'codex', 'copilot', 'opencode']`
 - verify: count(subject="selectable backend names", equals=5)
-- code: `workhorse/workhorse/runner/backends/registry.py::backend_names`
+- code: `workhorse/workhorse/runner/backends/registry.py::backend_names` @8e4028db0594
 
 ### get_backend
 - sig: `get_backend(name: str | None = None) -> AgentBackend`
@@ -59,7 +59,7 @@ and `test_non_claude_backends_registered`.
 - raises: `ValueError` for an unknown resolved name
 - returns: the cached `AgentBackend` instance registered for the resolved name
 - verify: count(subject="backend instances returned for the same name", equals=1)
-- code: `workhorse/workhorse/runner/backends/registry.py::get_backend`
+- code: `workhorse/workhorse/runner/backends/registry.py::get_backend` @8e4028db0594
 
 ## The registry
 

@@ -5,7 +5,7 @@ title: Coder queue base branch
 ---
 # Coder queue base branch
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::BaseBranch`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::BaseBranch` @a87cd48ce444
 - detail: [coder shared library](concepts/coder-shared-library.md)
 
 The base-branch result carries the branch against which an epic pull request is opened. The
@@ -19,4 +19,4 @@ producer prefers the attached non-work branch and resolves a repository trunk wh
 - required: false
 - semantics: selected non-empty branch name used as the epic integration base
 - verify: json_path(path="$.base_branch", equals="")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::BaseBranch`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::BaseBranch` @a87cd48ce444

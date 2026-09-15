@@ -12,7 +12,7 @@ exposed surface is the [workhorse-okf-builder CLI](../workhorse-okf-builder.md).
 - driver: cli
 - cli: [workhorse-okf-builder](../workhorse-okf-builder.md)
 - surfaces: [workhorse-okf-builder](../workhorse-okf-builder.md)
-- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main` @8ecc37aa8802
 - working-directory: .
 
 ## Steps

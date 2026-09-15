@@ -10,8 +10,8 @@ comment-looking text. URLs and network paths containing `//` remain string value
 comments, block comments, and trailing commas remain accepted. Invalid input still raises rather
 than being repaired into an invented workspace configuration.
 
-- code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_jsonc`
-- code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_json`
+- code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_jsonc` @a43926496140
+- code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_json` @a43926496140
 - tests: `workflows/tests/test_kit_jsonio.py::test_a_url_in_a_string_is_not_a_comment`
 - tests: `workflows/tests/test_kit_jsonio.py::test_a_double_slash_path_in_a_string_survives`
 - tests: `workflows/tests/test_kit_jsonio.py::test_line_and_block_comments_are_still_honored`
@@ -29,7 +29,7 @@ than being repaired into an invented workspace configuration.
 - verify: count(subject="parse errors raised for malformed JSONC input", equals=1)
 - returns: returns the parsed mapping without repairing invalid input
 - verify: json_path(path="$.trailing", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_jsonc`
+- code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_jsonc` @a43926496140
 - tests: `workflows/tests/test_kit_jsonio.py::test_a_url_in_a_string_is_not_a_comment`
 - tests: `workflows/tests/test_kit_jsonio.py::test_a_double_slash_path_in_a_string_survives`
 - tests: `workflows/tests/test_kit_jsonio.py::test_line_and_block_comments_are_still_honored`
@@ -45,4 +45,4 @@ than being repaired into an invented workspace configuration.
 - verify: count(subject="unreadable-file warning records", equals=1)
 - returns: returns an empty mapping after any missing, unreadable, or invalid-file case
 - verify: count(subject="returned mapping entries after a load failure", equals=0)
-- code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_json`
+- code: `workflows/src/workhorse_workflows/kit/jsonio.py::load_json` @a43926496140

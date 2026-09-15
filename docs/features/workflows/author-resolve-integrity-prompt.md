@@ -8,7 +8,7 @@ title: Author resolve-integrity prompt
 The finalize flow invokes this diagnostic template when the graph-integrity gate (`ostler doctor`) detects referential-integrity breaks. It asks the high-power agent to reconcile each break — dangling references, orphaned entities, or cross-epic dependencies — by using `ostler edit` to relink or rename within the source of truth, or escalate when the correct target does not exist. The agent has an unbounded timeout so diagnostic responses are not cut off. The expected response is an `OperatorResolution` carrying the decision (`answered` or `escalated`), a one-line plain-language statement of what was reconciled, and a list of investigations the agent ruled out or completed.
 
 - file: `workflows/src/workhorse_workflows/author/finalize/prompts/resolve-integrity.md`
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity`
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity` @b80ea2cb1cae
 - detail: [author finalize subflow](concepts/author-finalize-subflow.md)
 
 ## Fields
@@ -18,7 +18,7 @@ The finalize flow invokes this diagnostic template when the graph-integrity gate
 - required: true
 - semantics: the operator context file the agent must preserve and append its answers to
 - verify: json_path(path="$.context_path", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity`
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity` @b80ea2cb1cae
 - detail: [author resolve-integrity field roles](concepts/author-resolve-integrity-field-roles.md)
 
 ### epics_dir
@@ -26,7 +26,7 @@ The finalize flow invokes this diagnostic template when the graph-integrity gate
 - required: true
 - semantics: the canonical epics directory whose documents the agent inspects and edits
 - verify: json_path(path="$.epics_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity`
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity` @b80ea2cb1cae
 - detail: [author resolve-integrity field roles](concepts/author-resolve-integrity-field-roles.md)
 
 ### integrity_errors
@@ -34,7 +34,7 @@ The finalize flow invokes this diagnostic template when the graph-integrity gate
 - required: true
 - semantics: the ostler doctor error-level findings the agent reconciles by fixing references or raising unsolvable breaks
 - verify: json_path(path="$.integrity_errors", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity`
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity` @b80ea2cb1cae
 - detail: [author resolve-integrity field roles](concepts/author-resolve-integrity-field-roles.md)
 
 ### decision

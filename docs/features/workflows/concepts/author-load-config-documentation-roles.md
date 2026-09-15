@@ -16,6 +16,6 @@ loading to this shared node rather than owning any part of its behavior itself. 
 is a competing implementation of the other two, and none is deprecated: they are the same symbol
 read for its contract, for one flow's use of it, and for a different flow's boundary with it.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config` @45d9dd41985d
 - rule: read the author configuration format for the complete `load_config` contract; read the finalize subflow node for how Finalize's `setup()` consumes it; read the story-split downstream boundary only to see that story-split delegates to it rather than reimplementing it — none of the three supersedes another
 

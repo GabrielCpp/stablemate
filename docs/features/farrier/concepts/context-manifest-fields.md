@@ -12,5 +12,5 @@ no field is preferred or deprecated. The method constructs `template`, `repo`, `
 `instructions`, `instruction_tags`, `prompts`, `used_skills`, and `skill_dir` in the same returned
 mapping.
 
-- code: `farrier/farrier/renderer.py::Renderer.context_manifest`
+- code: `farrier/farrier/renderer.py::Renderer.context_manifest` @c90fc5d746a8
 - rule: select the field that supplies the required manifest value; all eight fields are current and complementary

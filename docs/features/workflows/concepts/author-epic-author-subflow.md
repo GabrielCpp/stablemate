@@ -15,8 +15,8 @@ composition root](author-workflow-composition-root.md) registers the flow and it
 node registry. The roadmap planner dispatches this subflow with the selected epic and the parent's
 operator mode; on return, the parent resumes planning from the artifacts currently on disk.
 
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor`
-- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/_blueprint.py::blueprint`
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor` @60dae86955d2
+- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/_blueprint.py::blueprint` @52b7dc7c36b1
 - tests: `workflows/tests/author/epic_author/test_flow.py::test_authors_only_the_explicit_epic_and_returns_document_evidence`
 - detail: [author write-epic prompt](../author-write-epic-prompt.md)
 - detail: [author resolve-operator prompt](../author-resolve-operator-prompt.md)
@@ -28,7 +28,7 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - does: provides the registration target for the deterministic epic-author nodes
 - returns: returns a blueprint named `author-epic-author`
 - verify: json_path(path="$.name", equals="author-epic-author")
-- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/_blueprint.py::blueprint`
+- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/_blueprint.py::blueprint` @52b7dc7c36b1
 
 ### setup
 - sig: `setup() -> EpicAuthorContext`
@@ -51,7 +51,7 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - returns: returns context containing the resolved epic document path
 - verify: json_path(path="$.epic_path", matches=".+")
 - verify: count(subject="prepared explicit epic-author contexts", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.setup`
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.setup` @60dae86955d2
 - emits: [epic-author-context](../epic-author-context.md)
 
 ### labels
@@ -59,21 +59,21 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - does: labels the run with the selected epic as `work_id` and `epic`
 - returns: returns progress text identifying authoring of one epic
 - verify: json_path(path="$.epic", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.labels`
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.labels` @60dae86955d2
 
 ### state_labels
 - sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
 - does: adds integer state counters under the `epic_author` telemetry prefix
 - returns: returns the base epic-author labels plus `epic_author.resolves` when the state supplies an integer resolution count
 - verify: count(subject="epic_author resolution labels", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.state_labels`
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.state_labels` @60dae86955d2
 
 ### start
 - sig: `start() -> Continue`
 - does: begins authoring by forwarding to the `author_epic` state
 - returns: returns a continuation targeting `author_epic`
 - verify: count(subject="epic-author starts", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.start`
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.start` @60dae86955d2
 
 ### author_epic
 - sig: `author_epic(resolves: int = 0) -> Continue | Await | Done`
@@ -99,14 +99,14 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - verify: json_path(path="$.status", equals="authored")
 - returns: returns the validated epic identity, document path, seed count, and resolution count with status `authored`
 - verify: count(subject="completed epic-author results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic`
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @60dae86955d2
 - emits: [epic-author-done](../epic-author-done.md)
 
 ### _context_path
 - sig: `_context_path() -> Path`
 - does: resolves the operator context file beneath the repository root and the epic-author context filename
 - verify: json_path(path="$.context_path", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor._context_path`
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor._context_path` @60dae86955d2
 
 ### _gate
 - sig: `_gate(result: object, notes: str, resolves: int) -> Continue | Await`
@@ -127,7 +127,7 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - verify: visible(locator="operator-awaiting context", text="blocked")
 - does: increments the resolution count before the resumed authoring state
 - verify: count(subject="incremented epic-author resolutions", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic`
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @60dae86955d2
 
 ## Nodes
 
@@ -146,7 +146,7 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - returns: returns the normalized explicit epic identity and its canonical paths
 - verify: json_path(path="$.epic", matches=".+")
 - emits: [epic-target](../epic-target.md)
-- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::prepare_epic_target`
+- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::prepare_epic_target` @7248edb8cd3e
 
 ### method: validate_authored_epic
 - sig: `validate_authored_epic(logger: logging.Logger, epic: str, repo_dir: str = "") -> EpicEvidence`
@@ -163,4 +163,4 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - returns: returns the epic identity, canonical document path, seed count, and newline-separated validation errors
 - verify: json_path(path="$.seed_count", matches=".+")
 - emits: [epic-evidence](../epic-evidence.md)
-- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::validate_authored_epic`
+- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::validate_authored_epic` @7248edb8cd3e

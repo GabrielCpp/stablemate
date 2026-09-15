@@ -15,8 +15,8 @@ dispatching and gate validation. Each layer is selected from the plan, implement
 turn, and tested against the layer's declared repository gates. Failed gates offer an automatic
 resolver a bounded repair budget; exhausted repairs or human mode escalate to an operator gate.
 
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev`
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @d76e154f78ef
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @d76e154f78ef
 - code: `workflows/tests/coder/dev/test_flow.py::docs`
 - code: `workflows/tests/coder/dev/test_flow.py::workspace`
 - tests: `workflows/tests/coder/dev/test_flow.py`

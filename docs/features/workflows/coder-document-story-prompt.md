@@ -6,7 +6,7 @@ title: Coder document-story prompt
 # Coder document-story prompt
 
 - file: `workflows/src/workhorse_workflows/coder/docs/prompts/document-story.md`
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.document`
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.document` @c5989657afb3
 - detail: [coder documentation flow](flows/coder-docs.md)
 - detail: [coder documentation schemas](concepts/coder-docs-schemas.md)
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_outside_the_docs_worktree_take_the_semantic_route`

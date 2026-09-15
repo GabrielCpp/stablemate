@@ -21,7 +21,7 @@ title: OKF-builder audit workflow
 
 Rebuild the audit packet scope from current source and book, reusing only receipts bound to the current review contract.
 
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::assess_audit`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::assess_audit` @f983ebe1daca
 - detail: [assess_audit entry points](../concepts/assess-audit-entry-points.md)
 - tests: `workflows/tests/okf_builder/test_audit.py::test_book_to_source_mismatches_queue_only_the_selected_book`
 - tests: `workflows/tests/okf_builder/test_audit.py::test_resume_rebuilds_source_and_claims_before_reusing_receipts`
@@ -46,7 +46,7 @@ On each pass:
 6. Continue to the next pass; the iteration scans receipts against the prepared packets cached
    from step 1, so the per-packet work is receipt lookup rather than source and book reads
 
-- code: `workflows/src/workhorse_workflows/okf_builder/audit/flow.py::Audit.start`
+- code: `workflows/src/workhorse_workflows/okf_builder/audit/flow.py::Audit.start` @78e184648cdd
 - tests: `workflows/tests/okf_builder/test_audit.py::test_invalid_verdicts_retry_twice_then_checkpoint_await`
 - tests: `workflows/tests/okf_builder/test_audit.py::test_a_spent_reviewer_turn_is_gated_not_fatal`
 - tests: `workflows/tests/okf_builder/test_audit.py::test_a_single_transient_blip_does_not_count_against_verdict_budget`

@@ -12,7 +12,7 @@ same session** — distinct from `run`'s own reframe layer, which drops the sess
 This is the boundary where an `OutputParseError` is either absorbed (retried in-session) or allowed
 to escape to the ladder.
 
-- code: `workhorse/workhorse/runner/ladder.py::AgentRunner._invoke_and_parse`
+- code: `workhorse/workhorse/runner/ladder.py::AgentRunner._invoke_and_parse` @3d905316475c
 - tests: `workhorse/tests/test_agent_recovery.py::test_a_wrong_shaped_reply_is_corrected_in_session_not_fatal`,
   `workhorse/tests/test_agent_recovery.py::test_a_persistently_wrong_shape_stops_the_run_instead_of_passing_it_on`,
   `workhorse/tests/test_agent_recovery.py::test_unparseable_output_reframes_then_stops`,

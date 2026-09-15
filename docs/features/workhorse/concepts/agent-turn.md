@@ -17,7 +17,7 @@ backoff** and then fails fast up to the ladder.
 > this method drives `self.backend.run_turn` and knows nothing else about what is behind it. The
 > old filename said otherwise, so it was renamed rather than kept for link stability.
 
-- code: `workhorse/workhorse/runner/ladder.py::AgentRunner.turn`
+- code: `workhorse/workhorse/runner/ladder.py::AgentRunner.turn` @3d905316475c
 
 The resilience contract is covered by `workhorse/tests/test_agent_cap.py::test_cap_sleeps_until_reset_then_resumes`,
 `workhorse/tests/test_agent_cap.py::test_cap_waits_do_not_consume_short_retry_budget`,

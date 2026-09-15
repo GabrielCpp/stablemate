@@ -17,7 +17,7 @@ The name is unqualified: each adapter module owns exactly one `_on_event`, becau
 already supplies the disambiguation a `_codex_`/`_copilot_` prefix used to. It is referred to here
 by its module — `backends/codex.py` — not by a prefix in its own name.
 
-- code: `workhorse/workhorse/runner/backends/codex.py::_on_event`
+- code: `workhorse/workhorse/runner/backends/codex.py::_on_event` @98419dd537db
 - extends: [stream_jsonl](stream-jsonl.md#contract)
 - tests: `workhorse/tests/test_backends.py::test_codex_on_event_extracts_text_and_session`
 

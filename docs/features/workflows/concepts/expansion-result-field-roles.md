@@ -14,5 +14,5 @@ implementations or aliases: read `expand_ok` to decide whether the result is usa
 The schema declares no preference or deprecation among these fields. Callers needing more than
 one aspect of the result use the corresponding fields together rather than selecting a winner.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion` @f79c1c007a97
 - rule: use each field for its named result aspect; no field ranks above or replaces another

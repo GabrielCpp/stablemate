@@ -18,6 +18,6 @@ the algorithm returns. Neither replaces the other: the implementation in
 `workflows/src/workhorse_workflows/author/main/nodes/epics.py::_pick_epic` requires both the
 selection behaviour and its result contract to understand the outcome.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/epics.py::_pick_epic`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/epics.py::_pick_epic` @06e21fa506bb
 - rule: use Author main epic selection to determine how an epic is chosen, and Epic choice field roles to interpret the resulting `EpicChoice`; neither concept is a replacement for the other
 - detail: [Epic selection documentation roles](epic-selection-documentation-roles.md)

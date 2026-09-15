@@ -15,7 +15,7 @@ cleanup contract. The [generated-agent-launcher method](generated-agent-launcher
 is the same operation in the launcher context, where generated repository artifacts are relevant;
 it is not an alternative implementation or a legacy cleanup path.
 
-- code: `farrier/farrier/outputs.py::remove_targets`
+- code: `farrier/farrier/outputs.py::remove_targets` @3967ecfa24a2
 - rule: use output installation for the general cleanup contract; use the generated-agent launcher
   context only when relating cleanup to its generated artifacts
 - prefers: [output installation cleanup](output-installation.md#method-remove_targets)

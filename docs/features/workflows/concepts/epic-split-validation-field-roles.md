@@ -17,5 +17,5 @@ ranking exists. Read `ok` first to determine the verdict. When it is false, read
 findings; use `milestone_path` and `ordered_epics` to inspect the milestone evidence the verdict
 was evaluated against. A complete validation report may require all four fields.
 
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation`
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitValidation` @4032a5e504d5
 - rule: use `ok` for the verdict, `errors` for failed-invariant findings, and `milestone_path` with `ordered_epics` for the milestone evidence; no field replaces another

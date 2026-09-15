@@ -17,6 +17,6 @@ run-configured budget; select `REFUEL_ON` only for state parameters whose change
 forward progress and refill that budget. No field is a replacement or default choice for another:
 each describes a distinct input, registration, telemetry, or transition-policy concern.
 
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @1a1a48a855c9
 - rule: select the field for its distinct workflow concern; the fields are complementary and have no ranking or replacement relationship
 - detail: [pyflow workflow reading guide](pyflow-workflow-reading-guide.md)

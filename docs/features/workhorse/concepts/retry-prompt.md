@@ -14,7 +14,7 @@ and [`timeout_retry_prompt`](timeout-retry-prompt.md) (a budget warning prepende
 kill) — this is the only one of the three that assumes the prior turn is still live in context,
 since the caller never drops `session_id_path` around it.
 
-- code: `workhorse/workhorse/runner/reframe.py::retry_prompt`
+- code: `workhorse/workhorse/runner/reframe.py::retry_prompt` @b98209bdc64e
 - tests: `workhorse/tests/test_agent_recovery.py::test_unparseable_output_reframes_then_stops`,
   `workhorse/tests/test_agent_recovery.py::test_a_wrong_shaped_reply_is_corrected_in_session_not_fatal`,
   `workhorse/tests/test_agent_recovery.py::test_a_persistently_wrong_shape_stops_the_run_instead_of_passing_it_on`

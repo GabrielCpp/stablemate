@@ -6,7 +6,7 @@ title: Coder QA run log
 # Coder QA run log
 
 - file: `<spec_dir>/qa/qa-run.ndjson` or `<spec_dir>/qa/<scenario>/qa-run.ndjson`
-- code: `workflows/src/workhorse_workflows/coder/shared/qa_support.py::assert_records`
+- code: `workflows/src/workhorse_workflows/coder/shared/qa_support.py::assert_records` @dd46fb252212
 - detail: [coder shared library](concepts/coder-shared-library.md)
 
 Each line is one JSON object written by the QA runner. The parser ignores malformed lines and

@@ -14,5 +14,5 @@ repository-relative epic directory is required, and `epic_path` when the reposit
 `epic.md` file is required. They are not alternative target implementations and are normally
 carried together after resolution.
 
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicTarget`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicTarget` @8605f9723870
 - rule: select the field by the representation the caller requires; no field supersedes another

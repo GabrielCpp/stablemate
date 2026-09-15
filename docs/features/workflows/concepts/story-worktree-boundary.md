@@ -10,7 +10,7 @@ turn, then charges the story only for paths whose bytes changed after that bound
 abandoned work from a previous story out of the current story's documentation and QA obligations.
 The boundary is conservative: unreadable, deleted, malformed, or changed paths are not excused.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::__all__`
+- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::__all__` @b54c182c7423
 - detail: [Coder story pipeline](story-pipeline.md)
 
 ## Methods
@@ -21,7 +21,7 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - verify: json_path(path="$.digest", matches="^[0-9a-f]{64}$")
 - returns: the empty string when the path cannot be read as a file
 - verify: json_path(path="$.digest", equals="")
-- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::digest`
+- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::digest` @b54c182c7423
 
 ### untouched_since
 - sig: `untouched_since(root: Path, snapshot: tuple[str, ...]) -> set[str]`
@@ -35,7 +35,7 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - verify: count(subject="changed or unreadable paths excused", equals=0)
 - returns: the set of relative paths that remain byte-identical
 - verify: json_path(path="$.untouched", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::untouched_since`
+- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::untouched_since` @b54c182c7423
 
 ### snapshot_worktree_state
 - sig: `snapshot_worktree_state(logger: logging.Logger, docs_path: str = "", repo_dir: str = "") -> WorktreeSnapshot`
@@ -51,7 +51,7 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - verify: count(subject="snapshot entries after repository state read failure", equals=0)
 - returns: a `WorktreeSnapshot` containing entries and a human-readable note
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::snapshot_worktree_state`
+- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::snapshot_worktree_state` @b54c182c7423
 - tests: `workflows/tests/coder/docs/test_flow.py::test_the_snapshot_records_what_was_already_dirty_with_its_bytes`
 
 ## Fields
@@ -62,7 +62,7 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - required: false
 - semantics: each item is `<repo-relative path>\0<sha256 of file bytes>` for a path dirty before the story started
 - verify: json_path(path="$.entries", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::WorktreeSnapshot.entries`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::WorktreeSnapshot.entries` @89d705a1dfe2
 
 ### notes
 - type: `str`
@@ -70,4 +70,4 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - required: false
 - semantics: explains the number of recorded paths or why repository state was unavailable
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::WorktreeSnapshot.notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::WorktreeSnapshot.notes` @89d705a1dfe2

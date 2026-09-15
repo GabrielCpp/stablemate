@@ -18,9 +18,9 @@ the shared node blueprint and exposes seven named flows: `genesis`, `dev`, `revi
 off to the other five. The dry-run registry supplies parseable success or resolved replies for
 every prompt role so a dry run advances through its gates without an agent backend.
 
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::workflow`
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main`
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::__all__`
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::workflow` @169c19e85119
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @169c19e85119
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::__all__` @169c19e85119
 - detail: [Coder main flow](../flows/coder-main.md)
 - detail: [Coder genesis flow](../flows/coder-genesis.md)
 - detail: [Coder dev flow](../flows/coder-dev.md)

@@ -5,7 +5,7 @@ title: Coder CI gating helpers
 ---
 # Coder CI gating helpers
 
-- code: `workflows/src/workhorse_workflows/coder/shared/ci.py`
+- code: `workflows/src/workhorse_workflows/coder/shared/ci.py` @9df48b30e438
 - tests: `workflows/tests/coder/fix_ci/test_flow.py`
 
 This module supplies the repository selection, GitHub Actions polling, branch-name conversion,
@@ -23,7 +23,7 @@ repository directory rather than the process working directory.
 - does: returns an empty string when the epic identifier is empty
 - returns: the full branch ref used for an epic pull request
 - verify: json_path(path="$", equals="feat/EPIC-1")
-- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::epic_branch`
+- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::epic_branch` @9df48b30e438
 
 ### branch_epic
 
@@ -32,7 +32,7 @@ repository directory rather than the process working directory.
 - does: leaves branches without the `feat/` prefix unchanged
 - returns: the bare epic identifier represented by the branch ref
 - verify: json_path(path="$", equals="EPIC-1")
-- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::branch_epic`
+- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::branch_epic` @9df48b30e438
 
 ### select_ci_repo
 
@@ -44,7 +44,7 @@ repository directory rather than the process working directory.
 - does: returns an empty pick when every workspace repository is already processed
 - does: appends a selected repository to `processed` immediately
 - returns: a `CiRepoPick` containing the selected repository name, checkout path, and updated processed list
-- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::select_ci_repo`
+- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::select_ci_repo` @9df48b30e438
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_every_workspace_repo_is_checked_once_and_the_loop_ends`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_named_repo_pins_the_loop_to_that_one`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_repo_absent_from_the_workspace_is_a_warning_not_a_failure`
@@ -72,7 +72,7 @@ repository directory rather than the process working directory.
 - does: retries other GitHub run-query errors until the watch timeout
 - does: returns `failed` when the watch timeout expires before runs settle
 - returns: a `CiChecks` status and summary describing the observed CI state
-- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::poll_pr_checks`
+- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::poll_pr_checks` @9df48b30e438
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_no_branch_is_nothing_to_gate_on`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_red_branch_is_fixed_pushed_and_re_polled_until_it_is_green`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_the_fix_budget_is_spent_and_the_loop_reports_the_branch_still_red`
@@ -90,7 +90,7 @@ repository directory rather than the process working directory.
 - does: returns `pushed` only after the remote head is verified equal to the local branch head
 - returns: one of `pushed`, `unavailable`, or `failed` distinguishing whether the remote branch was verified
 - verify: json_path(path="$", equals="pushed")
-- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::push_epic_branch`
+- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::push_epic_branch` @9df48b30e438
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_push_that_does_not_land_ends_the_loop_instead_of_spending_an_attempt`
 
 ### push_ci_fix
@@ -100,7 +100,7 @@ repository directory rather than the process working directory.
 - does: falls back to the discovered repository root only when `repo_dir` is empty
 - does: returns the push status and branch/root note in a `PushOutcome`
 - returns: a `PushOutcome` with status `pushed`, `unavailable`, or `failed`
-- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::push_ci_fix`
+- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::push_ci_fix` @9df48b30e438
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_push_that_does_not_land_ends_the_loop_instead_of_spending_an_attempt`
 - emits: [push-outcome](../push-outcome.md)
 - verify: json_path(path="$.status", equals="failed")

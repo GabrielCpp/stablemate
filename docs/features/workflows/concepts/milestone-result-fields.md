@@ -9,6 +9,6 @@ title: Milestone result fields
 `Literal["complete", "blocked"]`; `notes` is a string. The schema records no ranking or
 substitution between them: consumers use `status` for the outcome and `notes` for its detail.
 
-- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneResult`
+- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneResult` @3a9fb1b3e42d
 - rule: no selection rule exists; `status` and `notes` are separate required result attributes
 - detail: [milestone result field roles](milestone-result-field-roles.md)

@@ -6,7 +6,7 @@ title: Coder review loop state
 # Coder review loop state
 
 - file: none — checkpointed review state parameter
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewLoop`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewLoop` @2f54962a8770
 - detail: [coder review schema contracts](concepts/coder-review-schema-contracts.md)
 - detail: [coder review flow](flows/coder-review.md)
 
@@ -22,7 +22,7 @@ resets when operator resolution starts a fresh review round; `blocks` is cumulat
 - required: false
 - semantics: apply passes spent on the current review round
 - verify: json_path(path="$.rework", matches="[0-9]+")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewLoop.rework`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewLoop.rework` @2f54962a8770
 
 ### blocks
 - type: integer
@@ -30,7 +30,7 @@ resets when operator resolution starts a fresh review round; `blocks` is cumulat
 - required: false
 - semantics: cumulative trips through the operator gate, including resolver answers
 - verify: json_path(path="$.blocks", matches="[0-9]+")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewLoop.blocks`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewLoop.blocks` @2f54962a8770
 
 ### session_turns
 - type: integer
@@ -38,7 +38,7 @@ resets when operator resolution starts a fresh review round; `blocks` is cumulat
 - required: false
 - semantics: implementation conversation turns spent by review and development lanes
 - verify: json_path(path="$.session_turns", matches="[0-9]+")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewLoop.session_turns`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewLoop.session_turns` @2f54962a8770
 - tests: `workflows/tests/coder/test_session_chains.py::test_a_conversation_that_fills_up_inside_the_review_lane_is_recycled`
 
 ### COUNT_LABELS
@@ -47,4 +47,4 @@ resets when operator resolution starts a fresh review round; `blocks` is cumulat
 - required: true
 - semantics: span dimension names emitted for the three review counters before the `review.` prefix is added
 - verify: count(subject="review loop counter labels", equals=3)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewLoop.COUNT_LABELS`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::ReviewLoop.COUNT_LABELS` @2f54962a8770

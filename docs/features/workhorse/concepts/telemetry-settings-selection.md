@@ -17,6 +17,6 @@ metric export interval is selected in order from `WORKHORSE_OTEL_METRIC_EXPORT_S
 `OTEL_METRIC_EXPORT_INTERVAL` (converted from milliseconds), then the heartbeat interval;
 invalid or non-positive explicit intervals fall through to the next source.
 
-- code: `workhorse/workhorse/otel.py::OtelSettings`
+- code: `workhorse/workhorse/otel.py::OtelSettings` @7d01010f0a00
 - rule: leave `forced` unset for collector-probed auto mode; configure endpoint, probe timeout, heartbeat, and metric-export cadence according to the part of telemetry they control
 - detail: [telemetry documentation scope](telemetry-documentation-scope.md)

@@ -23,7 +23,7 @@ the shared module must not have. A fresh instance per turn is also what makes le
 structurally impossible rather than a discipline
 (`test_opencode_text_parts_do_not_leak_between_turns`).
 
-- code: `workhorse/workhorse/runner/backends/opencode.py::_OpenCodeEvents.on_event`
+- code: `workhorse/workhorse/runner/backends/opencode.py::_OpenCodeEvents.on_event` @189ab90da7f9
 - extends: [stream_jsonl](stream-jsonl.md#contract)
 
 The adapter's text, session, and error behaviour is covered by
@@ -33,7 +33,7 @@ The adapter's text, session, and error behaviour is covered by
 
 ## The `_OpenCodeEvents` instance
 
-- code: `workhorse/workhorse/runner/backends/opencode.py::_OpenCodeEvents`
+- code: `workhorse/workhorse/runner/backends/opencode.py::_OpenCodeEvents` @189ab90da7f9
 
 A `@dataclass(slots=True)` with a single field:
 

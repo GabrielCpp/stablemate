@@ -6,7 +6,7 @@ title: Research program manifest
 # Research program manifest
 
 - file: `<program-dir>/program.yml`
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main` @9b6cebdf8be0
 - detail: [research program scaffolder](concepts/research-program-scaffolder.md)
 
 The manifest is a flat YAML file read by the research workflow's `load_program`. The scaffolder
@@ -22,7 +22,7 @@ from the program directory and slug.
 - required: true
 - semantics: directory where the program's experiments are written
 - verify: persists(subject="program.yml code_root")
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main` @9b6cebdf8be0
 - detail: [research program manifest field selection](concepts/research-program-manifest-field-selection.md)
 
 ### progress_path
@@ -32,7 +32,7 @@ from the program directory and slug.
 - required: false
 - semantics: path of the progress log consumed by the research run
 - verify: persists(subject="program.yml progress_path")
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main` @9b6cebdf8be0
 - detail: [research program manifest field selection](concepts/research-program-manifest-field-selection.md)
 
 ### result_branch
@@ -42,7 +42,7 @@ from the program directory and slug.
 - required: false
 - semantics: branch where gate work is committed and pushed
 - verify: persists(subject="program.yml result_branch")
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main` @9b6cebdf8be0
 - detail: [research program manifest field selection](concepts/research-program-manifest-field-selection.md)
 
 ### envelope_ram_gb
@@ -54,7 +54,7 @@ from the program directory and slug.
 - verify: json_path(path="$.envelope_ram_gb", equals=0)
 - semantics: zero declares no RAM bound
 - verify: json_path(path="$.envelope_ram_gb", equals=0)
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main` @9b6cebdf8be0
 - detail: [research program manifest field selection](concepts/research-program-manifest-field-selection.md)
 
 ### envelope_cpus
@@ -66,7 +66,7 @@ from the program directory and slug.
 - verify: json_path(path="$.envelope_cpus", equals=0)
 - semantics: zero declares no CPU bound
 - verify: json_path(path="$.envelope_cpus", equals=0)
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main` @9b6cebdf8be0
 - detail: [research program manifest field selection](concepts/research-program-manifest-field-selection.md)
 
 ### envelope_gpu
@@ -78,7 +78,7 @@ from the program directory and slug.
 - verify: json_path(path="$.envelope_gpu", equals="none")
 - semantics: `none` declares no GPU
 - verify: json_path(path="$.envelope_gpu", equals="none")
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main` @9b6cebdf8be0
 - detail: [research program manifest field selection](concepts/research-program-manifest-field-selection.md)
 
 ### envelope_disk_gb
@@ -90,7 +90,7 @@ from the program directory and slug.
 - verify: json_path(path="$.envelope_disk_gb", equals=0)
 - semantics: zero declares no disk bound
 - verify: json_path(path="$.envelope_disk_gb", equals=0)
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main` @9b6cebdf8be0
 - detail: [research program manifest field selection](concepts/research-program-manifest-field-selection.md)
 
 ### min_containment
@@ -100,5 +100,5 @@ from the program directory and slug.
 - required: true
 - semantics: weakest resource-containment tier under which a measurement may be trusted
 - verify: json_path(path="$.min_containment", equals="premium")
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main` @9b6cebdf8be0
 - detail: [research program manifest field selection](concepts/research-program-manifest-field-selection.md)

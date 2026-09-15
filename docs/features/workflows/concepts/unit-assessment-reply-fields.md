@@ -14,5 +14,5 @@ surveyor flow routes only `split`, which requests that an oversized unit be subd
 context that explains it. Do not substitute one field for the other: a status does not carry
 the rationale, and notes do not select the flow route.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitAssessment`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitAssessment` @f79c1c007a97
 - rule: use `status` for the outcome and `notes` for its explanation or blocked/split context

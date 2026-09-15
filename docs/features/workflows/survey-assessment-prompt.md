@@ -6,7 +6,7 @@ title: Survey assessment prompt contract
 # Survey assessment prompt contract
 
 - file: `workflows/src/workhorse_workflows/author/surveyor/prompts/assess-unit.md`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitAssessment`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitAssessment` @f79c1c007a97
 - detail: [author surveyor subflow](concepts/author-surveyor-subflow.md)
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_the_assessor_is_handed_the_unit_the_rubric_and_the_context_file`
 

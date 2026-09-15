@@ -22,8 +22,8 @@ the standalone `Audit` workflow that exists to drive it. A reader who wants "wha
 `assess_audit` do" wants the first; a reader who wants "how do I run an audit pass on demand"
 wants the second. Neither is a stand-in for the other, and no rule chooses between them.
 
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::assess_audit`
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.commit`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/audit.py::assess_audit` @f983ebe1daca
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.commit` @55c476c509d4
 - rule: choose `Audit.start` to run a turn-budgeted standalone audit pass, and `OkfBuilder.commit` to gate the whole-book builder flow on a fresh audit receipt — neither is preferred or deprecated; the choice is by context, not by rank
 - detail: [OKF-builder audit module](okf-builder-audit-module.md)
 

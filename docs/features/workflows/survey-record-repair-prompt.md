@@ -6,7 +6,7 @@ title: Survey record-repair prompt contract
 # Survey record-repair prompt contract
 
 - file: `workflows/src/workhorse_workflows/author/surveyor/prompts/fix-record.md`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix` @f79c1c007a97
 - detail: [author surveyor subflow](concepts/author-surveyor-subflow.md)
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_an_invalid_record_is_repaired_once_and_the_unit_lands_assessed`
 

@@ -11,6 +11,6 @@ state registration, and run seams. Use [pyflow workflow field selection](pyflow-
 when choosing a subclass configuration or registration field. The fields are distinct controls:
 they do not replace one another, and neither document is a preferred implementation.
 
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow`
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @1a1a48a855c9
 - rule: use the API reference for `Workflow` lifecycle and seam behavior; use the field-selection reference when choosing its complementary fields, with no ranking or replacement relationship
 - detail: [pyflow workflow reading guide](pyflow-workflow-reading-guide.md)

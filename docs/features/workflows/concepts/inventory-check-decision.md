@@ -14,5 +14,5 @@ Use `needs_plan` to decide whether the granularity planner must define unit rule
 `check_note` to present the human-readable explanation of the selected inventory-precedence
 branch. Neither field replaces the other, and no ranking exists.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::InventoryCheck`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::InventoryCheck` @f79c1c007a97
 - rule: use `needs_plan` for the planning decision and `check_note` for its precedence explanation; neither field is preferred

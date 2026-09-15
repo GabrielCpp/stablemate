@@ -14,5 +14,5 @@ The schema declares these attributes together and contains no deprecation or pre
 them. Consumers read the field whose documented meaning answers the question at hand; no field
 substitutes for another.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @f79c1c007a97
 - rule: select the UnitPick field by the information required; the schema records no ranking or replacement among its fields

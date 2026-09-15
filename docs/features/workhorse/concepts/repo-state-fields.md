@@ -15,6 +15,6 @@ repository-less values.
 No field ranks above or replaces another. Read the field that answers the diagnostic question,
 and retain the complete record when its sampled repository and revision context matter.
 
-- code: `workhorse/workhorse/gitstate.py::RepoState`
+- code: `workhorse/workhorse/gitstate.py::RepoState` @4695fd1442a8
 - rule: select the field that answers the required repository fact; the fields are complementary and none supersedes another
 - detail: [RepoState concept selection](repo-state-concept-selection.md)

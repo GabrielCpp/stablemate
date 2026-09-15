@@ -11,7 +11,7 @@ the complete set through a temporary file followed by replacement. Unknown messa
 retained for workflow-specific classifications and failure diagnostics.
 
 - file: `<run_dir>/inbox.jsonl`
-- code: `workhorse/workhorse/inbox.py::Message`
+- code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - detail: [run inbox](concepts/run-inbox.md)
 - tests: `workhorse/tests/test_inbox.py::test_extra_fields_survive_a_round_trip`
 
@@ -22,7 +22,7 @@ retained for workflow-specific classifications and failure diagnostics.
 - required: true
 - semantics: stable caller-supplied message identity
 - verify: json_path(path="$.id", matches=".+")
-- code: `workhorse/workhorse/inbox.py::Message`
+- code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - detail: [Message representations](concepts/message-representations.md)
 
 ### body
@@ -30,7 +30,7 @@ retained for workflow-specific classifications and failure diagnostics.
 - required: true
 - semantics: message or failure-handoff text
 - verify: json_path(path="$.body", matches=".*")
-- code: `workhorse/workhorse/inbox.py::Message`
+- code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - detail: [Message representations](concepts/message-representations.md)
 
 ### at
@@ -38,7 +38,7 @@ retained for workflow-specific classifications and failure diagnostics.
 - required: true
 - semantics: message creation timestamp
 - verify: json_path(path="$.at", matches=".+")
-- code: `workhorse/workhorse/inbox.py::Message`
+- code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - detail: [Message representations](concepts/message-representations.md)
 
 ### reply
@@ -49,7 +49,7 @@ retained for workflow-specific classifications and failure diagnostics.
 - verify: json_path(path="$.reply", matches=".+")
 - semantics: an empty reply identifies an outstanding message
 - verify: json_path(path="$.reply", equals="")
-- code: `workhorse/workhorse/inbox.py::Message`
+- code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - detail: [Message representations](concepts/message-representations.md)
 
 ### replied_at
@@ -58,7 +58,7 @@ retained for workflow-specific classifications and failure diagnostics.
 - required: true
 - semantics: timestamp paired with a stored reply
 - verify: json_path(path="$.replied_at", equals="")
-- code: `workhorse/workhorse/inbox.py::Message`
+- code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - detail: [Message representations](concepts/message-representations.md)
 
 ### extra
@@ -66,5 +66,5 @@ retained for workflow-specific classifications and failure diagnostics.
 - required: false
 - semantics: workflow-defined data carried through validation and round trips
 - verify: json_path(path="$.kind", equals="failure")
-- code: `workhorse/workhorse/inbox.py::Message`
+- code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - detail: [Message representations](concepts/message-representations.md)

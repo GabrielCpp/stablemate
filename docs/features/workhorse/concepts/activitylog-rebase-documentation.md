@@ -12,5 +12,5 @@ documentation views, not alternative implementations: the activity-labels entry
 explains flagged-log label behavior, while the pyflow-activity entry explains the
 state-transition lifecycle.
 
-- code: `workhorse/workhorse/pyflow/activity.py::ActivityLog.rebase`
+- code: `workhorse/workhorse/pyflow/activity.py::ActivityLog.rebase` @84b8759518fa
 - rule: Choose the entry whose surrounding concept matches the question; neither entry ranks above the other or selects a different implementation.

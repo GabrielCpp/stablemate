@@ -23,7 +23,7 @@ substitute, deprecation, or priority among them.
 - sig: `start() -> Continue | Done`
 - does: resolve story paths and dispatch a code review turn
 - verify: created(subject="CodeReviewResult")
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.start`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.start` @ee5ae700635f
 - tests: `workflows/tests/coder/review/test_flow.py`
 
 ### require_story_file
@@ -33,4 +33,4 @@ substitute, deprecation, or priority among them.
 - verify: json_path(path="exception", absent=True)
 - raises: `WorkflowFailed` when story slug does not resolve to an existing story file
 - verify: json_path(path="exception.type", equals="WorkflowFailed")
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::require_story_file`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::require_story_file` @ee5ae700635f

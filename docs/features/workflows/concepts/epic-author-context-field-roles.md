@@ -15,5 +15,5 @@ No ranking exists among these fields. Each is used where its distinct representa
 the resolver derives the directory and document path from the selected name rather than choosing
 one representation in place of another.
 
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorContext`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorContext` @8605f9723870
 - rule: use `epic` to identify the selected epic, `epic_dir` for its canonical directory, and `epic_path` for its `epic.md` document; none supersedes another

@@ -12,7 +12,7 @@ workflow can distinguish its dimensions without changing the source field names.
 classifier compares finding identities rather than only counts, preserving the distinction
 between a pass that changed nothing and one that closed findings while opening replacements.
 
-- code: `workflows/src/workhorse_workflows/kit/telemetry.py`
+- code: `workflows/src/workhorse_workflows/kit/telemetry.py` @871a5c2aa308
 
 ## Fields
 
@@ -20,7 +20,7 @@ between a pass that changed nothing and one that closed findings while opening r
 
 - type: `Literal["cleared", "first_pass", "reduced", "regressed", "stalled", "churned"]`
 - semantics: the closed vocabulary accepted for a progress verdict span label
-- code: `workflows/src/workhorse_workflows/kit/telemetry.py::ProgressVerdict`
+- code: `workflows/src/workhorse_workflows/kit/telemetry.py::ProgressVerdict` @871a5c2aa308
 
 ## Methods
 
@@ -35,7 +35,7 @@ between a pass that changed nothing and one that closed findings while opening r
 - verify: absent(subject="counter label for an omitted non-integer value")
 - returns: returns a dictionary containing only the emitted prefixed counter labels
 - verify: count(subject="returned counter label entries", equals=2)
-- code: `workflows/src/workhorse_workflows/kit/telemetry.py::counter_labels`
+- code: `workflows/src/workhorse_workflows/kit/telemetry.py::counter_labels` @871a5c2aa308
 - tests: `workflows/tests/coder/test_telemetry.py::test_counters_are_prefixed_and_stringified`
 - tests: `workflows/tests/coder/test_telemetry.py::test_a_counter_the_state_does_not_carry_is_absent_not_zero`
 - tests: `workflows/tests/coder/test_telemetry.py::test_a_bool_is_not_an_attempt_count`
@@ -49,7 +49,7 @@ between a pass that changed nothing and one that closed findings while opening r
 - verify: absent(subject="verdict label for an empty value")
 - returns: returns a dictionary containing only the emitted prefixed verdict labels
 - verify: count(subject="returned verdict label entries", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/telemetry.py::verdict_labels`
+- code: `workflows/src/workhorse_workflows/kit/telemetry.py::verdict_labels` @871a5c2aa308
 - tests: `workflows/tests/coder/test_telemetry.py::test_verdicts_skip_the_gate_that_has_not_run`
 - tests: `workflows/tests/coder/test_telemetry.py::test_a_recorded_verdict_reaches_the_labels`
 
@@ -72,7 +72,7 @@ between a pass that changed nothing and one that closed findings while opening r
 - verify: count(subject="identity-set progress classifications", equals=1)
 - returns: returns exactly one member of the `ProgressVerdict` vocabulary
 - verify: count(subject="closed progress verdict vocabulary", equals=6)
-- code: `workflows/src/workhorse_workflows/kit/telemetry.py::progress_verdict`
+- code: `workflows/src/workhorse_workflows/kit/telemetry.py::progress_verdict` @871a5c2aa308
 - tests: `workflows/tests/coder/test_telemetry.py::test_progress_verdict_names_what_a_pass_bought`
 - tests: `workflows/tests/coder/test_telemetry.py::test_a_pass_that_closed_two_and_opened_two_is_not_a_stall`
 - tests: `workflows/tests/coder/test_telemetry.py::test_an_empty_baseline_is_a_first_pass_not_a_reduction`

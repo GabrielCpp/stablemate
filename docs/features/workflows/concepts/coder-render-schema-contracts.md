@@ -12,8 +12,8 @@ individual fields. The companion inspection function walks the root model and ev
 definition and returns each property whose description is empty, allowing the output-contract
 tests to enforce agent-facing field prose.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::schema_block`
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::described_fields`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::schema_block` @e9afd82ed284
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::described_fields` @e9afd82ed284
 - code: `workflows/tests/coder/test_output_contracts.py::test_rendered_models_describe_every_field`
 - code: `workflows/tests/coder/test_output_contracts.py::test_rendered_contracts_ask_for_a_document`
 - code: `workflows/tests/coder/test_output_contracts.py::test_class_docstrings_stay_out_of_the_contract`
@@ -29,7 +29,7 @@ tests to enforce agent-facing field prose.
 - required: true
 - semantics: text placed before every rendered JSON schema so the agent is instructed to produce a document rather than echo the schema
 - verify: json_path(path="$.preamble", equals="Produce a JSON document that complies with this schema:")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::PREAMBLE`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::PREAMBLE` @e9afd82ed284
 
 ## Methods
 
@@ -49,7 +49,7 @@ tests to enforce agent-facing field prose.
 - does: strips the `"title"` field pydantic would otherwise emit on the object and its fields
 - verify: removed(subject="pydantic-derived \"title\" keys from the rendered JSON block")
 - returns: a string suitable for insertion into a Coder prompt
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::schema_block`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::schema_block` @e9afd82ed284
 - code: `workflows/tests/coder/test_output_contracts.py::test_rendered_contracts_ask_for_a_document`
 - tests: `workflows/tests/coder/test_output_contracts.py::test_rendered_contracts_ask_for_a_document`
 - tests: `workflows/tests/coder/shared/test_blocked_signal.py::test_the_review_prompt_asks_for_the_keys_the_model_reads`
@@ -60,7 +60,7 @@ tests to enforce agent-facing field prose.
 - verify: count(subject="schema properties checked for descriptions", equals=1)
 - returns: property identities formatted as `<model>.<field>` for every undescribed property, or an empty list when all properties are described
 - verify: json_path(path="$.undescribed_fields", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::described_fields`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::described_fields` @e9afd82ed284
 - code: `workflows/tests/coder/test_output_contracts.py::test_rendered_models_describe_every_field`
 - tests: `workflows/tests/coder/test_output_contracts.py::test_rendered_models_describe_every_field`
 
@@ -69,7 +69,7 @@ tests to enforce agent-facing field prose.
 - does: includes the input schema under its title or `root` and appends every `$defs` entry under its definition name
 - verify: count(subject="root and nested schema models enumerated", equals=1)
 - returns: model names paired with their schema dictionaries in root-first order
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::_models`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::_models` @e9afd82ed284
 
 ### _pruned
 - sig: `_pruned(value: Any) -> Any`
@@ -82,6 +82,6 @@ tests to enforce agent-facing field prose.
 - does: keeps the first line of every class docstring out of the rendered contract, since pydantic would otherwise lift it onto the object-level `description` and leak the maintainer's rationale to the agent
 - verify: absent(subject="class docstring text inside the rendered output contract")
 - returns: the recursively pruned value, leaving scalar values unchanged
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::_pruned`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/render.py::_pruned` @e9afd82ed284
 - code: `workflows/tests/coder/test_output_contracts.py::test_class_docstrings_stay_out_of_the_contract`
 - tests: `workflows/tests/coder/test_output_contracts.py::test_class_docstrings_stay_out_of_the_contract`

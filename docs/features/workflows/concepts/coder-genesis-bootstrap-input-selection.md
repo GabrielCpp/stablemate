@@ -17,7 +17,7 @@ still receives configuration refresh, while an existing service skips native ini
 neither repository nor service state removes the need to supply the fields relevant to later
 steps.
 
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @3bdcf3e54849
 - rule: supply the cumulative inputs required by the target and stack; use `markers` for an explicit complete marker list, otherwise use `marker` as its fallback
 - detail: [coder genesis bootstrap concept selection](coder-genesis-bootstrap-concept-selection.md)
 - detail: [coder genesis bootstrap guide](coder-genesis-bootstrap-guide.md)

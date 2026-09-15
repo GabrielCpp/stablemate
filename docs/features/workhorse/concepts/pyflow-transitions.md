@@ -11,7 +11,7 @@ positional-only, and their parameters are bound immediately so the checkpoint st
 a named dictionary. `.because()` adds an explanatory edge/log label without affecting
 control flow.
 
-- code: `workhorse/workhorse/pyflow/transitions.py::Transition`
+- code: `workhorse/workhorse/pyflow/transitions.py::Transition` @81cf637b633b
 - tests: [pyflow tests](../../../../workhorse/tests/test_pyflow.py)
 
 ## Methods
@@ -21,7 +21,7 @@ control flow.
 - raises: `TypeError` when the target has no name
 - verify: exit_status(code=1)
 - returns: the target's `__name__`
-- code: `workhorse/workhorse/pyflow/transitions.py::state_name`
+- code: `workhorse/workhorse/pyflow/transitions.py::state_name` @81cf637b633b
 
 ### bind_params
 - sig: `bind_params(target: Callable, args: tuple, kwargs: dict) -> dict[str, Any]`
@@ -29,21 +29,21 @@ control flow.
 - raises: `TypeError` for an uninspectable target, variadic state parameters, or signature mismatch
 - returns: named bound arguments for checkpointing
 - verify: count(subject="named parameters produced by a valid transition binding", equals=1)
-- code: `workhorse/workhorse/pyflow/transitions.py::bind_params`
+- code: `workhorse/workhorse/pyflow/transitions.py::bind_params` @81cf637b633b
 
 ### Continue
 - sig: `Continue(result: object, next: Callable, /, *args, **kwargs)`
 - does: carries a result and advances to the named next state with bound parameters
 - returns: a transition with `kind=continue`
 - verify: json_path(path="$.kind", equals="continue")
-- code: `workhorse/workhorse/pyflow/transitions.py::Continue`
+- code: `workhorse/workhorse/pyflow/transitions.py::Continue` @81cf637b633b
 
 ### Done
 - sig: `Done(result: object = None)`
 - does: marks the flow terminal and carries its result to the caller
 - returns: a transition with no target
 - verify: json_path(path="$.kind", equals="done")
-- code: `workhorse/workhorse/pyflow/transitions.py::Done`
+- code: `workhorse/workhorse/pyflow/transitions.py::Done` @81cf637b633b
 
 ### Await
 - sig: `Await(path: str | Path, questions: str, next: Callable, /, *args, **kwargs)`
@@ -51,11 +51,11 @@ control flow.
 - does: defaults `kind` to `operator`
 - returns: a transition with `kind=await`
 - verify: json_path(path="$.kind", equals="operator")
-- code: `workhorse/workhorse/pyflow/transitions.py::Await`
+- code: `workhorse/workhorse/pyflow/transitions.py::Await` @81cf637b633b
 
 ### Await.on_machine
 - sig: `Await.on_machine(path, questions, next, /, *args, **kwargs) -> Await`
 - does: creates an await transition whose wake file is owed by a running machine
 - returns: an `Await` with `kind=machine`
 - verify: json_path(path="$.kind", equals="machine")
-- code: `workhorse/workhorse/pyflow/transitions.py::Await.on_machine`
+- code: `workhorse/workhorse/pyflow/transitions.py::Await.on_machine` @81cf637b633b

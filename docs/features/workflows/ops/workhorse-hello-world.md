@@ -13,7 +13,7 @@ driver without requiring an agent CLI or repository context. The exposed surface
 - driver: cli
 - cli: [workhorse-hello-world](../workhorse-hello-world.md)
 - surfaces: [workhorse-hello-world](../workhorse-hello-world.md)
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::main` @a0d572bb6d0f
 - working-directory: .
 
 ## Steps

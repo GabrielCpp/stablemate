@@ -15,5 +15,5 @@ empty `review_notes` is valid only when another apply state is carrying operator
 the work instead. The settlement gate subsequently reads the sidecar from `spec_dir` rather
 than trusting the turn's reported status.
 
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.apply` @ee5ae700635f
 - rule: provide `story_path`, `spec_dir`, and `review_notes` together; use empty `review_notes` only when operator feedback is the work

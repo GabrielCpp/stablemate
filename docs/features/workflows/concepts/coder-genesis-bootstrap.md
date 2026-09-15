@@ -12,8 +12,8 @@ precondition set expected by the main coder loop. It has no agent turn and carri
 knowledge: packs, scaffolds, initialization commands, markers, assistants, workflows, and gates
 are input values.
 
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::resolve_genesis_target`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @3bdcf3e54849
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::resolve_genesis_target` @fa194184db8e
 - code: `workflows/tests/coder/genesis/test_flow.py::farrier`
 - code: `workflows/tests/coder/genesis/test_flow.py::target`
 - code: `workflows/tests/coder/genesis/test_flow.py::existing`
@@ -36,7 +36,7 @@ are input values.
 - required: false
 - semantics: absolute or relative target directory supplied to the bootstrap run
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @3bdcf3e54849
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### service
@@ -46,7 +46,7 @@ are input values.
 - required: false
 - semantics: logical service name written as the workspace and service-gate key
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @3bdcf3e54849
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### service_root
@@ -56,7 +56,7 @@ are input values.
 - required: false
 - semantics: repository-relative directory in which the service marker and native initialization are evaluated
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @3bdcf3e54849
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### packs
@@ -68,7 +68,7 @@ are input values.
 - verify: exit_status(code=0)
 - semantics: an empty pack list means no pack installation
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @3bdcf3e54849
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### scaffolds
@@ -78,7 +78,7 @@ are input values.
 - required: false
 - semantics: farrier scaffold entries enabled in `agents.yml` and rendered in order
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @3bdcf3e54849
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### init_cmd
@@ -88,7 +88,7 @@ are input values.
 - required: false
 - semantics: stack-owned native initialization command run in the service directory when its marker is absent
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @3bdcf3e54849
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### marker
@@ -98,7 +98,7 @@ are input values.
 - required: false
 - semantics: file whose presence proves the native service initialization succeeded
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @3bdcf3e54849
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### markers
@@ -110,7 +110,7 @@ are input values.
 - verify: exit_status(code=0)
 - semantics: when empty, the singular marker is used
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @3bdcf3e54849
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### workflows
@@ -120,7 +120,7 @@ are input values.
 - required: false
 - semantics: workflow ids merged into the repository configuration
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @3bdcf3e54849
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### assistants
@@ -130,7 +130,7 @@ are input values.
 - required: false
 - semantics: assistant backends enabled in the farrier configuration
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @3bdcf3e54849
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### gates
@@ -142,7 +142,7 @@ are input values.
 - verify: exit_status(code=0)
 - semantics: malformed entries are reported and omitted
 - verify: json_path(path="note", matches="gate\\(s\\).*dropped")
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @3bdcf3e54849
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ## Methods
@@ -155,7 +155,7 @@ are input values.
 - raises: `WorkflowFailed` when the target is empty or unusable
 - returns: the classification result and the next build state
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.start`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.start` @3bdcf3e54849
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_blank_target_fails_before_anything_mutates`
 
 ### git_init
@@ -165,7 +165,7 @@ are input values.
 - does: leaves a committed repository unchanged
 - returns: the Git result and the configuration state
 - verify: persists(subject="the target repository initial commit")
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.git_init`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.git_init` @3bdcf3e54849
 
 ### config
 
@@ -174,7 +174,7 @@ are input values.
 - does: routes an existing service past native initialization
 - returns: the configuration result and the next build state
 - verify: persists(subject="the target agents.yml configuration")
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.config`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.config` @3bdcf3e54849
 
 ### skeleton
 
@@ -183,7 +183,7 @@ are input values.
 - does: skips native initialization when the marker already exists
 - returns: the skeleton result and the farrier state
 - verify: persists(subject="the declared service marker")
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.skeleton`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.skeleton` @3bdcf3e54849
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_service_skips_the_skeleton_and_never_re_runs_the_init_command`
 
 ### farrier
@@ -193,7 +193,7 @@ are input values.
 - does: renders each declared scaffold in input order
 - returns: the installation result and the verification state
 - verify: persists(subject="the farrier agent context")
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.farrier`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.farrier` @3bdcf3e54849
 
 ### verify
 
@@ -203,7 +203,7 @@ are input values.
 - raises: `WorkflowFailed` when any required genesis precondition is absent
 - returns: the validation report when all required checks pass
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.verify`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.verify` @3bdcf3e54849
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_invalid_repo_fails_the_run_with_no_repair_turn`
 
 ### resolve_genesis_target
@@ -218,7 +218,7 @@ are input values.
 - does: resolves `markers` as the declared marker list, falling back to the singular `marker` when the list is empty
 - returns: one classification carrying the resolved target, service, marker list, repository state, service state, and operator note
 - verify: count(subject="target classification", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::resolve_genesis_target`
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::resolve_genesis_target` @fa194184db8e
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_blank_target_fails_before_anything_mutates`
 
 ### genesis_git_init
@@ -232,7 +232,7 @@ are input values.
 - does: leaves an already committed repository unchanged and configures no remote
 - returns: readiness, the current or created initial commit, and an operator note
 - verify: persists(subject="the target repository initial commit")
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::genesis_git_init`
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::genesis_git_init` @fa194184db8e
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_repo_skips_git_init_but_still_builds_the_new_service`
 
@@ -250,7 +250,7 @@ are input values.
 - does: reports gates as dropped when no service name is supplied
 - returns: whether the file changed, its relative path, and an operator note describing retained or dropped configuration
 - verify: persists(subject="the target agents.yml configuration")
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::write_agents_yml`
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::write_agents_yml` @fa194184db8e
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_agents_yml_carries_the_workspace_block_the_planner_reads`
 
 ### init_skeleton
@@ -266,7 +266,7 @@ are input values.
 - does: marks the skeleton ready only when the declared marker exists after initialization
 - returns: marker readiness, the repository-relative marker path, and an operator note
 - verify: persists(subject="the declared service marker")
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::init_skeleton`
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::init_skeleton` @fa194184db8e
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_service_skips_the_skeleton_and_never_re_runs_the_init_command`
 
 ### install_farrier
@@ -279,7 +279,7 @@ are input values.
 - does: reports the identifiers rendered before a scaffold failure
 - returns: installation status, rendered scaffold identifiers, and an operator note containing tool failures
 - verify: persists(subject="the farrier agent context")
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::install_farrier`
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::install_farrier` @fa194184db8e
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_agents_yml_carries_the_workspace_block_the_planner_reads`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_failed_farrier_install_still_fails_at_verify`
 
@@ -296,6 +296,6 @@ are input values.
 - does: reports a missing `lint` Make target as a warning rather than an error
 - returns: validity plus newline-separated complete error and warning reports
 - verify: count(subject="genesis validation report", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::validate_genesis`
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::validate_genesis` @fa194184db8e
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_invalid_repo_fails_the_run_with_no_repair_turn`

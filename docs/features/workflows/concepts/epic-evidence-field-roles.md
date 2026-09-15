@@ -13,5 +13,5 @@ validation result; `epic`, `epic_dir`, and `epic_path` retain the resolved ident
 No ranking exists among these fields. Consumers select the field needed for the question they are
 answering; no field replaces another.
 
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicEvidence`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicEvidence` @8605f9723870
 - rule: use `ok` for the validation result, `epic` for identity, `epic_dir` for the attempted or resolved directory, `epic_path` for the document location, `seed_count` for researched-seed evidence, and `errors` for validation findings; none supersedes another

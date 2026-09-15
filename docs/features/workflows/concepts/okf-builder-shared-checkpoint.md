@@ -11,7 +11,7 @@ feature book, and creates one repair item for each `(file, node, doctor code)` g
 warnings as standing findings, distinguishes source-grounded repairs, and fingerprints findings
 to count unchanged stalls.
 
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/checkpoint.py`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/checkpoint.py` @6172c8aedc4a
 - code: `workflows/tests/okf_builder/test_checkpoint.py::test_a_warning_is_a_standing_finding`
 - code: `workflows/tests/okf_builder/test_checkpoint.py::test_findings_outside_the_book_are_not_this_run_s_problem`
 - code: `workflows/tests/okf_builder/test_checkpoint.py::test_one_item_per_node_and_code`
@@ -35,7 +35,7 @@ to count unchanged stalls.
 - sig: `scoped_findings(report: dict, repo_root: str, features: str) -> list[dict]`
 - does: retains doctor findings whose paths are the selected feature root or one of its descendants
 - verify: count(subject="scoped OKF-builder doctor findings", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/checkpoint.py::scoped_findings`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/checkpoint.py::scoped_findings` @6172c8aedc4a
 - tests: `workflows/tests/okf_builder/test_checkpoint.py::test_findings_outside_the_book_are_not_this_run_s_problem`
 
 ### checkpoint_book
@@ -57,7 +57,7 @@ to count unchanged stalls.
 - verify: count(subject="unchanged OKF-builder finding signatures", equals=1)
 - returns: checkpoint status, doctor output, round counters, repair items, and stall signature
 - verify: count(subject="OKF-builder checkpoint results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/checkpoint.py::checkpoint_book`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/checkpoint.py::checkpoint_book` @6172c8aedc4a
 - tests: `workflows/tests/okf_builder/test_checkpoint.py::test_a_book_with_warnings_and_no_errors_is_dirty`
 - tests: `workflows/tests/okf_builder/test_checkpoint.py::test_a_warning_is_a_standing_finding`
 - tests: `workflows/tests/okf_builder/test_checkpoint.py::test_one_item_per_node_and_code`
@@ -81,7 +81,7 @@ to count unchanged stalls.
 - verify: created(subject="OKF-builder settlement watermark update")
 - returns: settlement status, pending item count, standing repair count, and settled count
 - verify: created(subject="OKF-builder settlement results")
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/checkpoint.py::settle_stale`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/checkpoint.py::settle_stale` @6172c8aedc4a
 - tests: `workflows/tests/okf_builder/test_checkpoint.py::test_an_open_repair_whose_finding_stopped_firing_is_closed_at_the_checkpoint` (renamed from `test_a_pending_repair_…`)
 - tests: `workflows/tests/okf_builder/test_checkpoint.py::test_the_drain_settles_a_stale_repair_before_it_is_picked`
 - tests: `workflows/tests/okf_builder/test_checkpoint.py::test_the_settle_is_amortized_over_the_drain`

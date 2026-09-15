@@ -13,7 +13,7 @@ fields below; a pack contributes selections to the repository configuration,
 but it does not itself render files.
 
 - file: `packs/<id>.yml`
-- code: `farrier/farrier/sources.py::load_pack`
+- code: `farrier/farrier/sources.py::load_pack` @e4e058c012de
 - detail: [agents.yml pack selection](agents-yml-config.md#packs)
 - detail: [selection aggregation](concepts/selection-aggregation.md)
 
@@ -29,7 +29,7 @@ but it does not itself render files.
 - verify: json_path(path="$.description", absent=true)
 - semantics: the installer reads the YAML mapping but does not use this value when collecting selections
 - verify: unchanged(subject="merged selection when pack description changes")
-- code: `farrier/farrier/sources.py::load_pack`
+- code: `farrier/farrier/sources.py::load_pack` @e4e058c012de
 - detail: [pack field selection](concepts/pack-field-selection.md)
 
 ### includes
@@ -42,7 +42,7 @@ but it does not itself render files.
 - verify: count(subject="merged skill selection from one included pack", equals=1)
 - semantics: an include cycle terminates loading with `Pack include cycle detected at <id>`
 - verify: exit_status(code=1)
-- code: `farrier/farrier/sources.py::load_pack`
+- code: `farrier/farrier/sources.py::load_pack` @e4e058c012de
 - detail: [pack field selection](concepts/pack-field-selection.md)
 
 ### skills
@@ -55,7 +55,7 @@ but it does not itself render files.
 - verify: count(subject="merged skill selection from one pack", equals=1)
 - semantics: duplicate skill entries collapse when packs and the repository config are unioned
 - verify: count(subject="merged skill selection when pack and repository select one skill", equals=1)
-- code: `farrier/farrier/sources.py::load_pack`
+- code: `farrier/farrier/sources.py::load_pack` @e4e058c012de
 - detail: [pack field selection](concepts/pack-field-selection.md)
 
 ### prompts
@@ -68,7 +68,7 @@ but it does not itself render files.
 - verify: count(subject="merged prompt selection from one pack", equals=1)
 - semantics: duplicate prompt entries collapse when packs and the repository config are unioned
 - verify: count(subject="merged prompt selection when pack and repository select one prompt", equals=1)
-- code: `farrier/farrier/sources.py::load_pack`
+- code: `farrier/farrier/sources.py::load_pack` @e4e058c012de
 - detail: [pack field selection](concepts/pack-field-selection.md)
 
 ### roots
@@ -81,7 +81,7 @@ but it does not itself render files.
 - verify: exit_status(code=1)
 - semantics: roots render only for the Copilot adapter
 - verify: absent(subject="non-Copilot root instruction output")
-- code: `farrier/farrier/sources.py::load_pack`
+- code: `farrier/farrier/sources.py::load_pack` @e4e058c012de
 - tests: `farrier/tests/test_selection_misses.py::test_unknown_root_fails_even_with_copilot_disabled`
 - detail: [pack field selection](concepts/pack-field-selection.md)
 
@@ -95,7 +95,7 @@ but it does not itself render files.
 - verify: exit_status(code=1)
 - semantics: ids from nested packs are unioned with this list
 - verify: count(subject="merged scaffold selection from one pack and one nested pack", equals=2)
-- code: `farrier/farrier/sources.py::parse_scaffold_ids`
+- code: `farrier/farrier/sources.py::parse_scaffold_ids` @e4e058c012de
 - tests: `farrier/tests/test_scaffold_command.py::test_pack_scaffolds_contribute_available_ids`
 
 Pack loading reads the file with the same YAML mapping validation as
@@ -117,7 +117,7 @@ an unknown pack too.
 - raises: exits when a recursive include revisits a pack id
 - returns: four selection sets keyed by `skills`, `prompts`, `roots`, and `scaffolds`
 - verify: exit_status(code=1)
-- code: `farrier/farrier/sources.py::load_pack`
+- code: `farrier/farrier/sources.py::load_pack` @e4e058c012de
 
 ### method: parse_scaffold_ids
 - sig: `parse_scaffold_ids(entries: Any, origin: str) -> set[str]`
@@ -125,5 +125,5 @@ an unknown pack too.
 - raises: exits with a migration hint when an entry is a mapping or another non-string value
 - returns: unique scaffold ids as a set, treating an omitted or empty value as empty
 - verify: exit_status(code=1)
-- code: `farrier/farrier/sources.py::parse_scaffold_ids`
+- code: `farrier/farrier/sources.py::parse_scaffold_ids` @e4e058c012de
 - tests: `farrier/tests/test_scaffold_command.py::test_legacy_mapping_scaffold_entry_rejected`

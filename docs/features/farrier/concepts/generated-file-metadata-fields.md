@@ -16,5 +16,5 @@ task rather than select one as a replacement for another: ownership checks rely 
 `generated_by`, `farrier source` uses `source` and `resolve`, the warning guides human edits, and
 tag queries use `tags` when present.
 
-- code: `farrier/farrier/renderer.py::skill_metadata_block`
+- code: `farrier/farrier/renderer.py::skill_metadata_block` @c90fc5d746a8
 - rule: use the fields together as one metadata contract; `tags` is omitted when the source has no tags, and no field supersedes another

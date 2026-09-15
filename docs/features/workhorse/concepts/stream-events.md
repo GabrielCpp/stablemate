@@ -18,12 +18,12 @@ one function and calls [`stream_subprocess`](stream-subprocess.md) directly. Cla
 backend with this protocol shape, so there is no second caller to share the split with, and the
 struct it fills is its own rather than the shared [`TurnState`](finalize-turn.md#turnstate).
 
-- code: `workhorse/workhorse/runner/backends/claude.py::_stream_events`
+- code: `workhorse/workhorse/runner/backends/claude.py::_stream_events` @38bf24aeff32
 - extends: [stream_subprocess](stream-subprocess.md#contract)
 
 ## `ClaudeTurnStream`
 
-- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeTurnStream`
+- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeTurnStream` @38bf24aeff32
 
 A `@dataclass(slots=True)` holding what one Claude turn yielded as its stream went past. Mutable by
 construction: the per-line callback writes into it event by event, and the process outcome lands on

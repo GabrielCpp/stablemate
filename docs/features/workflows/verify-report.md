@@ -8,7 +8,7 @@ title: Author verification report
 The shared report returned by reconciliation and integrity verification keeps the gate decision
 separate from whether the check was skipped. `report` preserves the resolver-facing explanation.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @e0c7b3335724
 - detail: [author shared schemas](concepts/author-shared-schemas.md)
 
 ## Fields
@@ -19,7 +19,7 @@ separate from whether the check was skipped. `report` preserves the resolver-fac
 - required: false
 - semantics: whether the verification condition holds or is allowed through as skipped
 - verify: json_path(path="$.holds", equals=False)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @e0c7b3335724
 - detail: [verify report field roles](concepts/verify-report-field-roles.md)
 
 ### skipped
@@ -28,7 +28,7 @@ separate from whether the check was skipped. `report` preserves the resolver-fac
 - required: false
 - semantics: whether verification could not run because its prerequisite was unavailable
 - verify: json_path(path="$.skipped", equals=False)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @e0c7b3335724
 - detail: [verify report field roles](concepts/verify-report-field-roles.md)
 
 ### errors
@@ -37,7 +37,7 @@ separate from whether the check was skipped. `report` preserves the resolver-fac
 - required: false
 - semantics: verification findings presented to the author flow
 - verify: json_path(path="$.errors", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @e0c7b3335724
 - detail: [verify report field roles](concepts/verify-report-field-roles.md)
 
 ### report
@@ -46,5 +46,5 @@ separate from whether the check was skipped. `report` preserves the resolver-fac
 - required: false
 - semantics: multi-line verification preamble supplied to the resolver prompt
 - verify: json_path(path="$.report", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @e0c7b3335724
 - detail: [verify report field roles](concepts/verify-report-field-roles.md)

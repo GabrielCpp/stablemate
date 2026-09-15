@@ -7,7 +7,7 @@ title: Coder plan fixture
 
 - file: none — in-memory nested QA fixture declaration
 - config: `PlanFixture` entries returned by the plan result
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanFixture`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanFixture` @b6e19c205b4f
 - detail: [coder development schema contracts](concepts/coder-dev-schema-contracts.md)
 
 ## Fields
@@ -18,7 +18,7 @@ title: Coder plan fixture
 - required: false
 - semantics: fixture key resolved from the repository QA declaration
 - verify: json_path(path="$.name", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanFixture.name`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanFixture.name` @b6e19c205b4f
 
 ### provides
 - type: `str`
@@ -26,4 +26,4 @@ title: Coder plan fixture
 - required: false
 - semantics: state guaranteed by the fixture and available to a QA scenario
 - verify: json_path(path="$.provides", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanFixture.provides`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanFixture.provides` @b6e19c205b4f

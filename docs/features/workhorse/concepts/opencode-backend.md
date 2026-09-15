@@ -22,7 +22,7 @@ usage-window reset time.
 Class, event reader and cap probe all live in `runner/backends/opencode.py` — one module per CLI,
 so importing [the port](agent-backend.md) drags in no adapter.
 
-- code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend`
+- code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend` @189ab90da7f9
 - extends: [AgentBackend](agent-backend.md)
 - tests: `workhorse/tests/test_backends.py::test_opencode_run_turn_fresh_then_resume`,
   `workhorse/tests/test_backends.py::test_opencode_attaches_a_large_prompt_instead_of_putting_it_in_argv`,
@@ -118,7 +118,7 @@ so importing [the port](agent-backend.md) drags in no adapter.
 
 ### `_OPENCODE_VARIANT`
 
-- code: `workhorse/workhorse/runner/backends/opencode.py::_OPENCODE_VARIANT`
+- code: `workhorse/workhorse/runner/backends/opencode.py::_OPENCODE_VARIANT` @189ab90da7f9
 
 The effort → OpenCode `--variant` mapping (a plain `dict[str, str]`), since OpenCode's documented
 variant levels don't line up one-to-one with the Claude-superset effort vocabulary:
@@ -138,14 +138,14 @@ variant levels don't line up one-to-one with the Claude-superset effort vocabula
 - does: runs OpenCode's JSON stream, optionally resumes a session, pins its small model when needed, and probes a Codex-provider cap reset
 - raises: `BackendInvocationError` after `finalize_turn` classifies the streamed state
 - verify: emitted(event="OpenCode turn result", count=1)
-- code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend.run_turn`
+- code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend.run_turn` @189ab90da7f9
 
 ### compact
 - sig: `compact(session_id_path: Path | None, node_id: str, model: str | None = None, *, timeout: float, resilience: AgentResilience) -> bool`
 - does: declines in-place session compaction
 - returns: `false`
 - verify: json_path(path="$.compacted", equals=false)
-- code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend.compact`
+- code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend.compact` @189ab90da7f9
 
 ## Related pieces
 

@@ -14,6 +14,6 @@ and `returncode`: each answers a different question about that same turn. Select
 meaning matches the information being read, rather than treating one as a substitute for another.
 `usage` is likewise a separate normalized measurement used for telemetry.
 
-- code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState` @bb0cd1168f58
 - rule: select the TurnState field that represents the needed turn observation; the fields have no
   preference order because each holds distinct information

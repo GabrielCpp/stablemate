@@ -14,6 +14,6 @@ value the agent must supply. Use the [workflow greeting field](../hello-world-gr
 to specify that same validated value as the workflow result. Neither representation supersedes the
 other: each documents its boundary of the same `Greeting` model.
 
-- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::Greeting`
+- code: `workflows/src/workhorse_workflows/hello_world/workflow.py::Greeting` @a0d572bb6d0f
 - rule: choose the prompt field for the agent reply contract and the workflow field for the validated workflow result; neither is preferred
 - tests: `workflows/tests/test_hello_world.py::test_a_real_turn_reaches_done_with_the_agents_own_greeting`

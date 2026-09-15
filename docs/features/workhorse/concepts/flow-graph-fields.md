@@ -11,5 +11,5 @@ alias mapped to it, `start` selects the root for reachability, and `states` hold
 read live state nodes. The graph reader constructs all four together from the workflow class and
 the registry names; no field substitutes for another or has a general preference.
 
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph`
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @85ed8cfdfe51
 - rule: select the field matching the question: `workflow` for the class identity, `names` for registry aliases, `start` for reachability's root, and `states` for the discovered machine nodes; use `FlowGraph` for the complete record

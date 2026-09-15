@@ -13,5 +13,5 @@ and `mockup` and `notes` carry optional authoring context.
 No field supersedes another. Consumers read the field that answers the result dimension they
 need and may combine fields when they need both identity, location, outcome, or context.
 
-- code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryAuthorDone`
+- code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryAuthorDone` @8eca5014bca5
 - rule: select the field by the result dimension required; no `StoryAuthorDone` field is a replacement for another

@@ -62,8 +62,8 @@ anywhere — the retired YAML front-end that read a `workflow.yaml` off disk is 
 with its loader, and so is the entry-point group that replaced it.
 
 - binary: `workhorse-<name>` — one per installed workflow, e.g. `workhorse-coder`
-- code: `workhorse/workhorse/cli/__init__.py::console_script`,
-  `workhorse/workhorse/cli/__init__.py::main`
+- code: `workhorse/workhorse/cli/__init__.py::console_script` @19166d483bcf,
+  `workhorse/workhorse/cli/__init__.py::main` @19166d483bcf
 - detail: [live-source generation staging](concepts/live-source.md)
 - detail: [CLI composition](concepts/cli-composition.md)
 
@@ -260,9 +260,9 @@ still shows the subcommand listing.
       the state in flight, prints the `--resume-run` command, and exits `130`
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/run.py::add_arguments`
-- code: `workhorse/workhorse/cli/run.py::run`
-- code: `workhorse/workhorse/cli/run.py::invocation`
+- code: `workhorse/workhorse/cli/run.py::add_arguments` @b5237ac7dfc9
+- code: `workhorse/workhorse/cli/run.py::run` @b5237ac7dfc9
+- code: `workhorse/workhorse/cli/run.py::invocation` @b5237ac7dfc9
 - detail: [workflow parameter loading](concepts/workflow-parameter-loading.md)
 - detail: [CLI library-directory resolution](concepts/cli-library-resolution.md)
 - tests: `workhorse/tests/test_run_options.py::test_profile_travels_to_the_run_and_carries_its_default_cli`,
@@ -308,8 +308,8 @@ coder pipeline executes before QA and again before commit.
   - run: if `--output` is not given, write the DOT text to stdout
 The state-source rule is described in the [state graph](concepts/pyflow-state-graph.md).
 - verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/dot.py::run`
-- code: `workhorse/workhorse/cli/dot.py::add_arguments`
+- code: `workhorse/workhorse/cli/dot.py::run` @3edba9e129f2
+- code: `workhorse/workhorse/cli/dot.py::add_arguments` @3edba9e129f2
 - code: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`
 - code: `workhorse/tests/test_pyflow_graph.py::test_dot_rejects_pin_and_leaf_at_the_parser`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`
@@ -327,8 +327,8 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - verify: exit_status(code=0)
 - errors: let `importlib.metadata.PackageNotFoundError` propagate when the `workhorse-agent` distribution is not installed
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/version.py::run`
-- code: `workhorse/workhorse/cli/version.py::add_arguments`
+- code: `workhorse/workhorse/cli/version.py::run` @bf3e2cf7e8dc
+- code: `workhorse/workhorse/cli/version.py::add_arguments` @bf3e2cf7e8dc
 
 ### control
 - usage: `workhorse-<name> control {reload,stop,status,questions,answer,switch-cli,switch-profile} [NAME] [options]`
@@ -359,8 +359,8 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - exits: return `0` after a request is delivered, except `stop`, `answer` and a refused `switch-profile`, which return `1` when the run does not confirm the action
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::add_arguments`
-- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/cli/control.py::add_arguments` @87e5e885e754
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_control_command.py::_control`
 
@@ -385,8 +385,8 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
 - verify: exit_status(code=2)
-- code: `workhorse/workhorse/cli/inbox.py::add_arguments`
-- code: `workhorse/workhorse/cli/inbox.py::run`
+- code: `workhorse/workhorse/cli/inbox.py::add_arguments` @3044cf1aa064
+- code: `workhorse/workhorse/cli/inbox.py::run` @3044cf1aa064
 - detail: [run inbox](concepts/run-inbox.md)
 - tests: `workhorse/tests/test_inbox_command.py::_inbox`
 
@@ -407,7 +407,7 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - exits: return `0` after the request is delivered
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_control_command.py::test_reload_says_it_on_the_socket_the_run_is_listening_on`, `workhorse/tests/test_control_command.py::test_a_run_that_does_not_exist_is_an_error_not_a_new_directory`
 
@@ -426,7 +426,7 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - exits: return `0` for an answered or timed-out status query
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_control_command.py::test_status_is_answered_by_the_run_and_not_by_the_run_dir`, `workhorse/tests/test_control_command.py::test_a_run_that_never_answered_reports_from_disk_and_says_which_it_is`
 
@@ -447,7 +447,7 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - exits: return `0` for an answered or timed-out question query
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_control_command.py::test_questions_prints_the_gate_the_run_is_parked_on`, `workhorse/tests/test_control_command.py::test_questions_says_when_the_run_is_not_blocked`
 
@@ -471,7 +471,7 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - exits: return `0` after the run confirms the answer was written
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_control_command.py::test_an_answer_carries_the_gate_and_the_text_and_reports_the_landing`, `workhorse/tests/test_control_command.py::test_a_refused_answer_exits_nonzero`
 
@@ -487,7 +487,7 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - exits: return `0` after the switch request is delivered
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_control_command.py::test_a_cli_switch_travels_as_a_core_reload_naming_the_cli`, `workhorse/tests/test_control_command.py::test_a_switch_with_no_cli_and_a_reload_with_one_are_both_refused`
 
@@ -505,7 +505,7 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - exits: return `0` after the run accepts the profile request
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_control_command.py::test_a_profile_switch_is_its_own_verb_carrying_the_name`, `workhorse/tests/test_control_command.py::test_a_refused_profile_switch_exits_nonzero`
 
@@ -528,7 +528,7 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
 - verify: unchanged(subject="run inbox")
-- code: `workhorse/workhorse/cli/inbox.py::run`
+- code: `workhorse/workhorse/cli/inbox.py::run` @3044cf1aa064
 - detail: [run inbox](concepts/run-inbox.md)
 - tests: `workhorse/tests/test_inbox_command.py::test_read_prints_outstanding_messages_by_default`, `workhorse/tests/test_inbox_command.py::test_read_all_includes_replied_messages`
 
@@ -550,7 +550,7 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - exits: return `0` after the reply is persisted
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/inbox.py::run`
+- code: `workhorse/workhorse/cli/inbox.py::run` @3044cf1aa064
 - detail: [run inbox](concepts/run-inbox.md)
 - tests: `workhorse/tests/test_inbox_command.py::test_reply_persists_and_is_read_back_as_answered`, `workhorse/tests/test_inbox_command.py::test_reply_to_a_missing_id_is_an_error`
 
@@ -577,9 +577,9 @@ The state-source rule is described in the [state graph](concepts/pyflow-state-gr
 - verify: exit_status(code=0)
 - exits: return 1 when delivery or acknowledgment fails
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run`
-- code: `workhorse/workhorse/reload.py::cut_by`
-- code: `workhorse/workhorse/reload.py::boundary_requested`
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
+- code: `workhorse/workhorse/reload.py::cut_by` @5d71faf89d83
+- code: `workhorse/workhorse/reload.py::boundary_requested` @5d71faf89d83
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_stop_control.py::test_stop_cli_requires_explicit_acceptance_over_the_socket`
 - tests: `workhorse/tests/test_stop_control.py::test_socket_stop_reaps_the_streaming_child_and_preserves_resume`
@@ -618,7 +618,7 @@ End-to-end journeys across these commands:
   - report the reply and on-disk liveness/checkpoint evidence for actions that do not have a dedicated report
 - auth: the operator who can access the run directory and its control socket
 - verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_control_command.py::_control`
 
@@ -636,7 +636,7 @@ End-to-end journeys across these commands:
 - auth: the operator who can access the run directory and its inbox file
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/inbox.py::run`
+- code: `workhorse/workhorse/cli/inbox.py::run` @3044cf1aa064
 - detail: [run inbox](concepts/run-inbox.md)
 - tests: `workhorse/tests/test_inbox_command.py::_inbox`
 
@@ -649,7 +649,7 @@ End-to-end journeys across these commands:
   - print the run's reply, liveness, and checkpoint position without waiting for the reload to finish
 - auth: the operator who can connect to the run's 0600 control socket
 - verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_control_command.py::test_the_flags_that_were_typed_are_the_flags_that_are_sent`
 
@@ -662,7 +662,7 @@ End-to-end journeys across these commands:
   - fall back to on-disk liveness and checkpoint evidence when the reply is empty
 - auth: the operator who can connect to the run's control socket
 - verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_control_command.py::test_status_is_answered_by_the_run_and_not_by_the_run_dir`
 
@@ -675,7 +675,7 @@ End-to-end journeys across these commands:
   - print each gate entry or state that no operator gate is pending
 - auth: the operator who can connect to the run's control socket
 - verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_control_command.py::test_questions_prints_the_gate_the_run_is_parked_on`
 
@@ -688,7 +688,7 @@ End-to-end journeys across these commands:
   - report success only after the run confirms that it wrote the answer into the gate file
 - auth: the operator authorized to answer the run's gate
 - verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_control_command.py::test_an_answer_carries_the_gate_and_the_text_and_reports_the_landing`
 
@@ -701,7 +701,7 @@ End-to-end journeys across these commands:
   - print that the run will re-enter on the named CLI
 - auth: the operator who can connect to the run's control socket
 - verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_control_command.py::test_a_cli_switch_travels_as_a_core_reload_naming_the_cli`
 
@@ -715,7 +715,7 @@ End-to-end journeys across these commands:
 - auth: the operator who can connect to the run's control socket
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run`
+- code: `workhorse/workhorse/cli/control.py::run` @87e5e885e754
 - detail: [control channel](concepts/control-channel.md)
 - tests: `workhorse/tests/test_control_command.py::test_a_profile_switch_is_its_own_verb_carrying_the_name`, `workhorse/tests/test_control_command.py::test_a_refused_profile_switch_exits_nonzero`
 
@@ -730,7 +730,7 @@ End-to-end journeys across these commands:
 - auth: the operator who can read the run directory
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/inbox.py::run`
+- code: `workhorse/workhorse/cli/inbox.py::run` @3044cf1aa064
 - detail: [run inbox](concepts/run-inbox.md)
 - tests: `workhorse/tests/test_inbox_command.py::test_read_prints_outstanding_messages_by_default`
 
@@ -746,7 +746,7 @@ End-to-end journeys across these commands:
 - auth: the operator who can write the run directory
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/inbox.py::run`
+- code: `workhorse/workhorse/cli/inbox.py::run` @3044cf1aa064
 - detail: [run inbox](concepts/run-inbox.md)
 - tests: `workhorse/tests/test_inbox_command.py::test_reply_persists_and_is_read_back_as_answered`
 
@@ -760,4 +760,4 @@ End-to-end journeys across these commands:
 - auth: the operator able to invoke the installed workflow console script
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/version.py::run`
+- code: `workhorse/workhorse/cli/version.py::run` @bf3e2cf7e8dc

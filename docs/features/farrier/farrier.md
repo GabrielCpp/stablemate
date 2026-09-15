@@ -20,7 +20,7 @@ staged-files gate.
 - binary: `farrier` (the console script is declared as `farrier.install:main`, which re-exports
   `main` from `farrier.cli` — `install.py` is a compatibility facade that declares nothing of its
   own)
-- code: `farrier/farrier/cli.py::main`
+- code: `farrier/farrier/cli.py::main` @e7cba44feabc
 - detail: [hook manager wiring](concepts/hook-manager-wiring.md)
 - detail: [QA-evidence ignore rules](concepts/qa-evidence-ignore-rules.md)
 - detail: [selection error reporting](concepts/selection-errors.md)
@@ -75,8 +75,8 @@ already current.
 - verify: created(subject="<repo>/agents.yml")
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `farrier/farrier/cli.py::_run_init`
-- code: `farrier/farrier/init.py::default_config`
+- code: `farrier/farrier/cli.py::_run_init` @e7cba44feabc
+- code: `farrier/farrier/init.py::default_config` @7c6a9a476d9e
 - tests: `farrier/tests/test_init_command.py::test_init_writes_a_config_the_installer_can_read`
 - tests: `farrier/tests/test_init_command.py::test_init_refuses_to_overwrite_an_existing_config`
 - tests: `farrier/tests/test_init_command.py::test_init_needs_no_library_configured`
@@ -255,7 +255,7 @@ the pruned starting point, and the two are kept consistent by hand.
   - run (no `--check`): when `managed.repo_scaffolding` is false, skip the QA-evidence ignore
     rules because the user-home install scope supplies no repository launcher output or hook manager
   - verify: unchanged(subject="user-home QA-evidence ignore rules")
-  - code: `farrier/farrier/outputs.py::install_outputs`
+  - code: `farrier/farrier/outputs.py::install_outputs` @3967ecfa24a2
   - tests: `farrier/tests/test_tagged_deletion.py::test_an_untagged_file_at_an_output_path_aborts_the_whole_install`
   - tests: `farrier/tests/test_tagged_deletion.py::test_a_deselected_skill_is_still_removed`
   - tests: `farrier/tests/test_qa_evidence_ignore.py::test_the_install_follows_the_skill_that_ships_the_gate`
@@ -285,7 +285,7 @@ ownership a property of the *file*, not of where it sits (`farrier/farrier/owner
 Anything else at a managed path is somebody's own work. It survives every install, and if farrier
 wants to write over it the install aborts naming the file: the two ways out — rename it, or delete
 it — are the operator's to choose, not farrier's.
-- code: `farrier/farrier/cli.py::_run_install`
+- code: `farrier/farrier/cli.py::_run_install` @e7cba44feabc
 
 ### install---user
 - usage: `farrier install --user [--check] [--home DIR] [--library DIR]`
@@ -334,7 +334,7 @@ it — are the operator's to choose, not farrier's.
   Claude skill shadows the project's copy, while Copilot resolves the project's first — so which
   copy an agent gets depends on the harness. That is a decision for the operator to take once,
   explicitly, rather than a side effect of installing into some repo.
-- code: `farrier/farrier/cli.py::_run_user_install`, `farrier/farrier/outputs.py::render_user_expected`
+- code: `farrier/farrier/cli.py::_run_user_install` @e7cba44feabc, `farrier/farrier/outputs.py::render_user_expected` @3967ecfa24a2
 - verify: created(subject="selected user-scope harness outputs")
 - verify: absent(subject="repo scaffolding in the user home")
 - verify: removed(subject="deselected user-scope generated outputs")
@@ -397,7 +397,7 @@ it — are the operator's to choose, not farrier's.
   - run (`show <key>`): `SystemExit` if the key is unset, naming the profile when one was given
   - run (`show`): without a key, print every entry as `key=value`
 - verify: omits(subject="selected profile output", text="power.high.claude.model=opus")
-- code: `farrier/farrier/cli.py::_run_config`
+- code: `farrier/farrier/cli.py::_run_config` @e7cba44feabc
 - tests: `farrier/tests/test_config_profiles_cli.py::test_the_config_flag_reads_the_file_it_names`,
    `farrier/tests/test_config_profiles_cli.py::test_a_profile_is_shown_flattened_to_dotted_keys`,
    `farrier/tests/test_config_profiles_cli.py::test_the_profile_replaces_the_top_level_rather_than_layering_over_it`,
@@ -464,7 +464,7 @@ through farrier for every shared setting. The nested `[power.<tier>.<backend>]` 
 - verify: count(subject="bytes differing between library show output and the selected source", equals=0)
 - verify: count(subject="library front-matter findings reported", equals=1)
 - verify: exit_status(code=1)
-- code: `farrier/farrier/cli.py::_run_library`, `farrier/farrier/library_view.py`
+- code: `farrier/farrier/cli.py::_run_library` @e7cba44feabc, `farrier/farrier/library_view.py` @b00ecb18d456
 - tests: `farrier/tests/test_library_browse.py::test_a_shadowed_item_is_reported_as_shadowed`
 
 Ownership of a name belongs to whichever layer wins it, and nothing in a rendered repo says
@@ -494,8 +494,8 @@ from a generated file back to the library.
     since the file was generated
   - run: print the resolved absolute path
 - verify: exit_status(code=0)
-- code: `farrier/farrier/cli.py::_run_source`
-- code: `farrier/farrier/frontmatter.py::frontmatter_metadata`
+- code: `farrier/farrier/cli.py::_run_source` @e7cba44feabc
+- code: `farrier/farrier/frontmatter.py::frontmatter_metadata` @525c0e8d7c4b
 - tests: `farrier/tests/test_source_command.py::test_source_resolves_to_library_file`
 - tests: `farrier/tests/test_source_command.py::test_frontmatter_metadata_reads_nested_block`
 - tests: `farrier/tests/test_source_command.py::test_frontmatter_metadata_empty_without_block`
@@ -571,7 +571,7 @@ a compatibility facade.
 - verify: unchanged(subject="existing files after a scaffold re-run")
 - verify: count(subject="files reported as created by a one-file scaffold", equals=1)
 - verify: exit_status(code=0)
-- code: `farrier/farrier/cli.py::_run_scaffold`
+- code: `farrier/farrier/cli.py::_run_scaffold` @e7cba44feabc
 - tests: `farrier/tests/test_scaffold_command.py::test_scaffold_writes_tree_with_defaults`
 
 Lets an agent stand up a new repo or service folder from the library's parameterized scaffold
@@ -583,7 +583,7 @@ boilerplate — placement folders are `--param` values, never baked into the lib
 - does:
   - run: print the installed `farrier` package's version (`importlib.metadata.version("farrier")`)
 - verify: count(subject="stdout lines equal to the installed farrier package version", equals=1)
-- code: `farrier/farrier/cli.py::main`
+- code: `farrier/farrier/cli.py::main` @e7cba44feabc
 
 ### workflows
 - usage: `farrier workflows [--names]`
@@ -617,7 +617,7 @@ boilerplate — placement folders are `--param` values, never baked into the lib
 - verify: exit_status(code=1)
 - verify: count(subject="space-separated workflow names", equals=2)
 - verify: count(subject="deduplicated workflow names", equals=1)
-- code: `farrier/farrier/cli.py::_run_workflows`
+- code: `farrier/farrier/cli.py::_run_workflows` @e7cba44feabc
 - detail: [generated agent launcher](concepts/generated-agent-launcher.md)
 - detail: [installed workflow discovery](concepts/installed-workflow-discovery.md)
 - tests: `farrier/tests/test_pipx.py::test_discover_reads_the_json_pipx_actually_emits`
@@ -651,7 +651,7 @@ boilerplate — placement folders are `--param` values, never baked into the lib
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
 - verify: visible(locator="doctor output", text="warning:")
-- code: `farrier/farrier/doctor.py::report`
+- code: `farrier/farrier/doctor.py::report` @c7494cc6be21
 - detail: [repository diagnosis](concepts/doctor-diagnosis.md)
 - tests: `farrier/tests/test_doctor_command.py::test_a_repo_with_no_services_block_is_warned_that_nothing_is_gated`
 - tests: `farrier/tests/test_doctor_command.py::test_a_missing_agents_yml_is_the_one_error`
@@ -698,7 +698,7 @@ an install/list subcommand group.
 - verify: persists(subject="configured repository hook-manager fence")
 - verify: unchanged(subject="user-owned lines outside hook-manager fence")
 - verify: persists(subject="githooks core.hooksPath")
-- code: `farrier/farrier/cli.py::_run_hooks_install`
+- code: `farrier/farrier/cli.py::_run_hooks_install` @e7cba44feabc
 - detail: [hook manager wiring](concepts/hook-manager-wiring.md)
 - tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_wires_a_repo_whose_packs_do_not_resolve`
 - tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_falls_back_to_detection_with_no_agents_yml`

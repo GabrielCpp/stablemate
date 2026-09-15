@@ -11,7 +11,7 @@ than a failure.
 
 - file: none — this is an in-memory node result
 - config: none — selection is derived from workflow inputs and the workspace manifest
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick` @76d805cfd6c3
 - detail: [coder CI remediation flow](flows/fix-ci-remediation.md)
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_every_workspace_repo_is_checked_once_and_the_loop_ends`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_named_repo_pins_the_loop_to_that_one`
@@ -30,7 +30,7 @@ than a failure.
 - verify: json_path(path="$.has_repo", equals=false)
 - semantics: `false` means every workspace repository was already processed when no pick remained
 - verify: json_path(path="$.has_repo", equals=false)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick` @76d805cfd6c3
 - detail: [CI repository selection field roles](concepts/ci-repo-pick-field-roles.md)
 
 ### repo
@@ -40,7 +40,7 @@ than a failure.
 - required: false
 - semantics: selected workspace repository key
 - verify: json_path(path="$.repo", matches="/.+")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick` @76d805cfd6c3
 - detail: [CI repository selection field roles](concepts/ci-repo-pick-field-roles.md)
 
 ### repo_cwd
@@ -50,7 +50,7 @@ than a failure.
 - required: false
 - semantics: selected repository checkout passed to CI polling and the fixer
 - verify: json_path(path="$.repo_cwd", matches="/.+")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick` @76d805cfd6c3
 - detail: [CI repository selection field roles](concepts/ci-repo-pick-field-roles.md)
 
 ### processed
@@ -62,5 +62,5 @@ than a failure.
 - verify: json_path(path="$.processed", matches="/.*/")
 - semantics: when `has_repo` is true, includes the newly selected repository
 - verify: json_path(path="$.processed", matches="/.*/")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::CiRepoPick` @76d805cfd6c3
 - detail: [CI repository selection field roles](concepts/ci-repo-pick-field-roles.md)

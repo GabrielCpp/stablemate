@@ -12,7 +12,7 @@ The inbox file name and message storage format belong to Workhorse's inbox adapt
 this workflow package. The author loop acknowledges a consumed note as `folded into a story
 rework`; the coder review loop acknowledges it as `folded into a rework pass`.
 
-- code: `workflows/src/workhorse_workflows/kit/inbox.py::poll_run_inbox`
+- code: `workflows/src/workhorse_workflows/kit/inbox.py::poll_run_inbox` @2dec891dbb97
 - tests: `workflows/tests/author/test_workflow.py::test_an_operator_note_dropped_mid_run_reworks_the_story_once`
 - tests: `workflows/tests/coder/review/test_flow.py::test_dropped_feedback_buys_exactly_one_rework_pass`
 
@@ -41,6 +41,6 @@ rework`; the coder review loop acknowledges it as `folded into a rework pass`.
 - verify: count(subject="returned inbox message pairs", equals=1)
 - returns: `None` when no message is available
 - verify: count(subject="no-message return values", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/inbox.py::poll_run_inbox`
+- code: `workflows/src/workhorse_workflows/kit/inbox.py::poll_run_inbox` @2dec891dbb97
 - tests: `workflows/tests/author/test_workflow.py::test_an_operator_note_dropped_mid_run_reworks_the_story_once`
 - tests: `workflows/tests/coder/review/test_flow.py::test_dropped_feedback_buys_exactly_one_rework_pass`

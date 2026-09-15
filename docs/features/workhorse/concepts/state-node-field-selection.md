@@ -12,5 +12,5 @@ engine seams in source order; and `opaque` records that source inspection failed
 transitions and steps unknown. The `StateNode` field names no longer compete once that scope is
 clear: a graph reader may need any compatible combination of them.
 
-- code: `workhorse/workhorse/pyflow/graph.py::StateNode`
+- code: `workhorse/workhorse/pyflow/graph.py::StateNode` @85ed8cfdfe51
 - rule: select the `StateNode` field for the distinct static-state information being read; its fields are complementary and have no ranking or replacement relationship

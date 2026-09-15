@@ -14,5 +14,5 @@ these exclude paths that were dirty before the story and that the story did not 
 Read `repos` to identify the repositories inspected for that story, regardless of whether any
 qualifying dirty paths remain.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeCleanliness`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeCleanliness` @a87cd48ce444
 - rule: read `clean` as the outcome, `dirty` as the qualifying path evidence when the outcome is false, and `repos` as the inspection scope; the fields are complementary and have no ranking

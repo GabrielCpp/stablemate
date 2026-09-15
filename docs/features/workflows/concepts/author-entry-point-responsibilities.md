@@ -16,6 +16,6 @@ console operation: `run` executes a flow, `dot` renders its graph, and `version`
 version. These views answer different questions about the same entry point, so neither is preferred
 or deprecated.
 
-- code: `workflows/src/workhorse_workflows/author/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @b5ac6edbcc21
 - rule: use the composition-root concept for registry behavior and the command-selection concept for console operation; neither concept supersedes the other
 - detail: [author main view selection](author-main-view-selection.md)

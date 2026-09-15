@@ -13,5 +13,5 @@ for links in generated skills and for determining whether an asset is a script.
 Neither field replaces the other. Use `path` when code must read or copy the file, and use `rel`
 when the asset must be named independently of the machine-specific skill location.
 
-- code: `farrier/farrier/sources.py::Asset`
+- code: `farrier/farrier/sources.py::Asset` @e4e058c012de
 - rule: use `path` for filesystem operations and `rel` for portable asset identity; both fields are required for each bundled asset

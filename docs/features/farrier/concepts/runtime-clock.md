@@ -11,9 +11,9 @@ and sleeping is the only operation that waits. The vendored core module defines 
 its system-backed implementation; Farrier carries the module even though no Farrier module calls
 it directly.
 
-- code: `farrier/farrier/_vendor/stablemate_core/clock.py::Clock`
-- code: `farrier/farrier/_vendor/stablemate_core/clock.py::SystemClock`
-- code: `farrier/farrier/_vendor/stablemate_core/clock.py::SYSTEM_CLOCK`
+- code: `farrier/farrier/_vendor/stablemate_core/clock.py::Clock` @ca801af01944
+- code: `farrier/farrier/_vendor/stablemate_core/clock.py::SystemClock` @ca801af01944
+- code: `farrier/farrier/_vendor/stablemate_core/clock.py::SYSTEM_CLOCK` @ca801af01944
 - detail: [farrier CLI](../farrier.md)
 
 ## Methods
@@ -24,7 +24,7 @@ it directly.
 - does: returns the current wall-clock date and time
 - returns: a `datetime` suitable for operator-visible timestamps
 - verify: json_path(path="return value", matches="^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?$")
-- code: `farrier/farrier/_vendor/stablemate_core/clock.py::Clock.now`
+- code: `farrier/farrier/_vendor/stablemate_core/clock.py::Clock.now` @ca801af01944
 
 ### method: monotonic
 - sig: `monotonic() -> float`
@@ -32,7 +32,7 @@ it directly.
 - does: returns elapsed-time clock seconds that do not move backwards
 - returns: the current monotonic reading
 - verify: json_path(path="return value", matches="^[0-9]+(\\.[0-9]+)?$")
-- code: `farrier/farrier/_vendor/stablemate_core/clock.py::Clock.monotonic`
+- code: `farrier/farrier/_vendor/stablemate_core/clock.py::Clock.monotonic` @ca801af01944
 
 ### method: sleep
 - sig: `sleep(seconds: float) -> None`
@@ -40,7 +40,7 @@ it directly.
 - does: waits for the requested duration
 - returns: `None`
 - verify: json_path(path="return value", absent=true)
-- code: `farrier/farrier/_vendor/stablemate_core/clock.py::Clock.sleep`
+- code: `farrier/farrier/_vendor/stablemate_core/clock.py::Clock.sleep` @ca801af01944
 
 ### method: SystemClock.now
 - sig: `now() -> datetime`
@@ -48,14 +48,14 @@ it directly.
 - verify: json_path(path="return value", matches="^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?$")
 - returns: the value produced by the system wall clock
 - verify: json_path(path="return value", matches="^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?$")
-- code: `farrier/farrier/_vendor/stablemate_core/clock.py::SystemClock.now`
+- code: `farrier/farrier/_vendor/stablemate_core/clock.py::SystemClock.now` @ca801af01944
 
 ### method: SystemClock.monotonic
 - sig: `monotonic() -> float`
 - does: returns the system monotonic clock reading
 - returns: a non-decreasing elapsed-time reading
 - verify: json_path(path="return value", matches="^[0-9]+(\\.[0-9]+)?$")
-- code: `farrier/farrier/_vendor/stablemate_core/clock.py::SystemClock.monotonic`
+- code: `farrier/farrier/_vendor/stablemate_core/clock.py::SystemClock.monotonic` @ca801af01944
 
 ### method: SystemClock.sleep
 - sig: `sleep(seconds: float) -> None`
@@ -63,7 +63,7 @@ it directly.
 - verify: count(subject="operating system sleep calls", equals=1)
 - returns: `None`
 - verify: json_path(path="return value", absent=true)
-- code: `farrier/farrier/_vendor/stablemate_core/clock.py::SystemClock.sleep`
+- code: `farrier/farrier/_vendor/stablemate_core/clock.py::SystemClock.sleep` @ca801af01944
 
 ## Fields
 
@@ -73,4 +73,4 @@ it directly.
 - required: true
 - semantics: provides the default clock for callers that inject a clock contract
 - verify: count(subject="default system clock instances", equals=1)
-- code: `farrier/farrier/_vendor/stablemate_core/clock.py::SYSTEM_CLOCK`
+- code: `farrier/farrier/_vendor/stablemate_core/clock.py::SYSTEM_CLOCK` @ca801af01944

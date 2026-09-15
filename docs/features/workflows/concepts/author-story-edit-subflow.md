@@ -11,8 +11,8 @@ remove request, resolves it to an [edit intent](../edit-intent.md), and hands th
 subflow performs the sole reconciliation and commit pass. Its deterministic nodes are registered
 on one package-local blueprint, which the author composition root imports into its registry.
 
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit`
-- code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::blueprint`
+- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit` @db742c1e9d74
+- code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::blueprint` @2855e9ce541e
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_add_authors_one_story_and_commits`
 
 ## Methods
@@ -22,7 +22,7 @@ on one package-local blueprint, which the author composition root imports into i
 - does: provides the node-registration target for the story-edit resolver
 - returns: returns a blueprint named `author-story-edit`
 - verify: json_path(path="$.name", equals="author-story-edit")
-- code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::blueprint`
+- code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::blueprint` @2855e9ce541e
 
 ### setup
 - sig: `setup() -> Config`
@@ -30,14 +30,14 @@ on one package-local blueprint, which the author composition root imports into i
 - does: refuses to start when the configured backlog file is absent
 - returns: returns the resolved author configuration to the flow context
 - verify: count(subject="story-edit configuration loads", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.setup`
+- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.setup` @db742c1e9d74
 
 ### labels
 - sig: `labels() -> dict[str, str]`
 - does: labels an add run with its epic and a remove run with its story
 - returns: returns labels containing the work id, epic, and reconciliation progress text
 - verify: json_path(path="$.progress", equals="reconciling epic scope")
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.labels`
+- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.labels` @db742c1e9d74
 
 ### start
 - sig: `start() -> Done`
@@ -46,7 +46,7 @@ on one package-local blueprint, which the author composition root imports into i
 - does: hands the intent and operator mode to `EpicEdit`
 - returns: returns `Done` containing the epic-edit handoff result
 - verify: count(subject="story-edit epic-edit handoffs", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.start`
+- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.start` @db742c1e9d74
 
 ## Resolution
 
@@ -58,7 +58,7 @@ on one package-local blueprint, which the author composition root imports into i
 - does: for `add`, strips the bullet input before resolving it
 - does: for `add`, rejects a blank bullet
 - does: for `add`, resolves a backlog id, backlog text, or literal bullet through `resolve_bullet`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::resolve_bullet`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::resolve_bullet` @77042f1e2b6b
 - does: for `add`, logs the resolved bullet id with the target epic
 - does: for `add`, strips the reason before storing it
 - does: for `add`, uses `Add a story for <source_bullet>` when the stripped reason is empty
@@ -95,4 +95,4 @@ on one package-local blueprint, which the author composition root imports into i
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_add_authors_one_story_and_commits`
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_remove_refuses_a_started_story_without_force`
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_remove_deletes_an_unstarted_story_and_commits`
-- code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::resolve_story_intent`
+- code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::resolve_story_intent` @2855e9ce541e

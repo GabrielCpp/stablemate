@@ -19,6 +19,6 @@ The receipt write itself is delegated one level further, to
 describes that delegated effect as part of the one transition that triggers it, not as a
 competing entry point.
 
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage`
-- code: `workflows/src/workhorse_workflows/author/story_split/nodes/review.py::record_story_split_review`
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @7e464639145e
+- code: `workflows/src/workhorse_workflows/author/story_split/nodes/review.py::record_story_split_review` @8b8ae4257c91
 - rule: use `check-coverage` to read the review decision and `done` to read the terminal receipt effect it produces on success; neither section is an alternative to the other

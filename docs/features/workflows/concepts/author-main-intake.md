@@ -10,7 +10,7 @@ adopts unnamed backlog bullets before selecting one; epic mode validates the sin
 owned by its roadmap and then advances that roadmap only after finalization. The nodes resolve the
 consuming repository from the explicit `repo_dir` input using the survey resolver.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::adopt_backlog`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::adopt_backlog` @123fcf25e173
 - detail: [author roadmap intake](../flows/author-roadmap-intake.md)
 
 ## Methods
@@ -23,7 +23,7 @@ consuming repository from the explicit `repo_dir` input using the survey resolve
 - verify: absent(subject="backlog adoption result after failure")
 - returns: the Ostler adoption result after logging its message
 - verify: count(subject="backlog adoption results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::adopt_backlog`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::adopt_backlog` @123fcf25e173
 - code: `workflows/tests/author/test_workflow.py::backlogged`
 - code: `workflows/tests/author/test_workflow.py::with_epic`
 - code: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`
@@ -42,7 +42,7 @@ consuming repository from the explicit `repo_dir` input using the survey resolve
 - verify: json_path(path="$.ok", equals=true)
 - returns: `Defects(ok=false, errors=...)` with one line per validation failure otherwise
 - verify: json_path(path="$.errors", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::validate_roadmap_milestone`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::validate_roadmap_milestone` @123fcf25e173
 - tests: `workflows/tests/author/test_config.py::test_roadmap_must_source_exactly_one_nonempty_milestone`
 - tests: `workflows/tests/author/test_config.py::test_roadmap_validation_ignores_unrelated_planning_defects`
 
@@ -58,5 +58,5 @@ consuming repository from the explicit `repo_dir` input using the survey resolve
 - verify: absent(subject="roadmap status mutation after invalid status")
 - returns: `RoadmapStatus` containing the roadmap path and status `authored`
 - verify: json_path(path="$.status", equals="authored")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::mark_roadmap_authored`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::mark_roadmap_authored` @123fcf25e173
 - tests: `workflows/tests/author/test_config.py::test_mark_roadmap_authored_preserves_the_contract_body`

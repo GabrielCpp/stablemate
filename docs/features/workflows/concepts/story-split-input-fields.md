@@ -14,7 +14,7 @@ Use `epic` to name the work under review. Choose `auto` when blocked work may re
 automatic resolution attempts; choose `human` when it must await operator input immediately. Both
 choices retain the selected epic and neither changes the story-split scope.
 
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow`
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @7e464639145e
 - rule: provide a non-empty `epic` for every run, then choose `operator_mode` as `auto` for bounded automatic resolution or `human` for immediate operator escalation
 - detail: [story-split flow inputs](story-split-flow-inputs.md)
 - detail: [story-split flow concept selection](story-split-flow-concept-selection.md)

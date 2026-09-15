@@ -10,7 +10,7 @@ non-blocking operator feedback. It resolves review inputs once, passes the resol
 review turns, and treats the settlement ledger rather than an apply turn's claimed status as the
 authority for whether findings are complete.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::__all__`
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::__all__` @8b413c3466c1
 - detail: [coder review flow](../flows/coder-review.md)
 - detail: [coder review context](../review-context.md)
 - detail: [coder review feedback](../review-feedback.md)
@@ -35,7 +35,7 @@ authority for whether findings are complete.
 - verify: json_path(path="$.docs_repo_path", matches=".+")
 - returns: a `ReviewContext` whose `affected_repo_paths` contains the selected code repository paths
 - verify: json_path(path="$.affected_repo_paths", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::resolve_review_context`
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::resolve_review_context` @8b413c3466c1
 - tests: `workflows/tests/coder/review/test_flow.py::test_an_approved_review_stamps_the_specs_and_stops`
 - tests: `workflows/tests/coder/review/test_flow.py::test_an_explicit_repo_is_the_whole_affected_set`
 
@@ -50,7 +50,7 @@ authority for whether findings are complete.
 - verify: removed(subject="the stale review-settlement.json sidecar")
 - returns: an applied `ImplResult` whose notes list the sidecar filenames that were cleared
 - verify: json_path(path="$.status", equals="applied")
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::clear_review_resolution`
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::clear_review_resolution` @8b413c3466c1
 - tests: `workflows/tests/coder/review/test_flow.py::test_a_previous_cycles_settlement_cannot_settle_this_ones_findings`
 
 ### verify_review_resolution
@@ -70,7 +70,7 @@ authority for whether findings are complete.
 - verify: json_path(path="$.status", equals="applied")
 - does: returns `needs_changes` when any finding remains open or its proof is missing or wrong
 - verify: json_path(path="$.status", equals="needs_changes")
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::verify_review_resolution`
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::verify_review_resolution` @8b413c3466c1
 - tests: `workflows/tests/coder/review/test_flow.py::test_the_settlement_gate_overrules_an_unproven_applied_claim`
 - tests: `workflows/tests/coder/review/test_flow.py::test_a_story_with_no_verdict_sidecar_is_re_applied_not_believed`
 - tests: `workflows/tests/coder/review/test_flow.py::test_a_blocked_settlement_escalates_without_spending_the_budget`
@@ -88,5 +88,5 @@ authority for whether findings are complete.
 - verify: json_path(path="$.present", equals=true)
 - returns: a `Feedback` with only `present` and `content` fields, without the inbox message scope
 - verify: json_path(path="$.scope", absent=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::check_feedback`
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::check_feedback` @8b413c3466c1
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_dropped_operator_note_buys_exactly_one_re_qa`

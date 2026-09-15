@@ -16,6 +16,6 @@ Neither concern is an alternative implementation or a preferred replacement for 
 scaffolder node to operate the command and the field-selection node to choose and interpret manifest
 settings; both are needed to understand the single `main` entry point.
 
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main` @9b6cebdf8be0
 - rule: use the scaffolder concept for the command lifecycle and the manifest field-selection concept for `program.yml` values; neither supersedes the other
 - detail: [research program scaffolder documentation scope](research-program-scaffolder-documentation-scope.md)

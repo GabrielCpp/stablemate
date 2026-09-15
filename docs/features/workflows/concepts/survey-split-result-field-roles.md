@@ -10,5 +10,5 @@ not alternatives. `split_unit` returns `split_errors` on each rejected or unread
 leaves `split_ok` and `children_count` at their defaults. Once it replaces a folder with eligible
 immediate children, it returns `split_ok=True` and the number inserted as `children_count`.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult` @f79c1c007a97
 - rule: read `split_errors` to explain a failed split; when it is empty, use `split_ok` to determine success and `children_count` to report how many immediate children replaced the folder

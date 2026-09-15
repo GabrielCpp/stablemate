@@ -21,9 +21,9 @@ agent turn.
 console script. The module re-exports the default flow and its convergence limits so embedding and
 test callers use the same registry contract as the command.
 
-- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::workflow`
-- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main`
-- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::__all__`
+- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::workflow` @8ecc37aa8802
+- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::main` @8ecc37aa8802
+- code: `workflows/src/workhorse_workflows/okf_builder/workflow.py::__all__` @8ecc37aa8802
 - detail: [OKF-builder audit flow](../flows/okf-builder-audit.md)
 - detail: [OKF-builder web walkthrough flow](../flows/walkthrough-web.md)
 - detail: [OKF-builder shared blueprint](okf-builder-shared-blueprint.md)
@@ -45,7 +45,7 @@ test callers use the same registry contract as the command.
 - required: true
 - semantics: maximum number of coverage re-scans before the run blocks on the operator gate when a clean doctor output is not converging
 - verify: count(subject="OKF-builder coverage rescan round cap", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::MAX_RESCAN_ROUNDS`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::MAX_RESCAN_ROUNDS` @55c476c509d4
 
 ### MAX_STALL_ROUNDS
 - type: `int`
@@ -53,25 +53,25 @@ test callers use the same registry contract as the command.
 - required: true
 - semantics: maximum number of consecutive rounds an unchanged doctor finding set is tolerated before the run blocks on the operator gate
 - verify: count(subject="OKF-builder stall round cap", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::MAX_STALL_ROUNDS`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::MAX_STALL_ROUNDS` @55c476c509d4
 
 ### OkfBuilder
 - type: class
 - required: true
 - semantics: the default state machine that turns service source into a complete OKF book; used as the entry point for a bare `run` command
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder`
+- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder` @55c476c509d4
 - detail: [OKF-builder main build machine](okf-builder-main-build-machine.md)
 
 ### Audit
 - type: class
 - required: true
 - semantics: the standalone read-only semantic review flow registered as the named `audit` machine, assessing explicitly selected source against the current book, prompting the reviewer agent for verdicts, and returning a report without mutating the book
-- code: `workflows/src/workhorse_workflows/okf_builder/audit/flow.py::Audit`
+- code: `workflows/src/workhorse_workflows/okf_builder/audit/flow.py::Audit` @78e184648cdd
 - detail: [OKF-builder audit workflow](../flows/okf-builder-audit.md)
 
 ### WalkthroughWeb
 - type: class
 - required: true
 - semantics: the web walkthrough sub-graph registered as the named `walkthrough-web` machine, proving a built OKF book against a running application
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb`
+- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb` @535479bd227c
 - detail: [OKF-builder web walkthrough](okf-builder-web-walkthrough.md)

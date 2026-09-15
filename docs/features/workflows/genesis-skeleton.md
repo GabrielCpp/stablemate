@@ -6,7 +6,7 @@ title: Genesis skeleton result
 # Genesis skeleton result
 
 - file: none — in-memory genesis result
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::Skeleton`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::Skeleton` @24e0e633fcd0
 - detail: [coder genesis bootstrap](concepts/coder-genesis-bootstrap.md)
 
 The result is successful only when the native initialization leaves the declared marker in
@@ -20,7 +20,7 @@ place, regardless of the command's exit status alone.
 - required: false
 - semantics: whether the service marker proves initialization succeeded
 - verify: json_path(path="$.ok", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::Skeleton.ok`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::Skeleton.ok` @24e0e633fcd0
 
 ### note
 - type: string
@@ -28,7 +28,7 @@ place, regardless of the command's exit status alone.
 - required: false
 - semantics: initialization explanation or failure detail
 - verify: json_path(path="$.note", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::Skeleton.note`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::Skeleton.note` @24e0e633fcd0
 
 ### marker_path
 - type: string
@@ -36,4 +36,4 @@ place, regardless of the command's exit status alone.
 - required: false
 - semantics: path to the marker checked by genesis
 - verify: json_path(path="$.marker_path", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::Skeleton.marker_path`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::Skeleton.marker_path` @24e0e633fcd0

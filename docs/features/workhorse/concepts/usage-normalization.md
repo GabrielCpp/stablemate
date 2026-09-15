@@ -9,8 +9,8 @@ Different CLIs report tokens, cache counts, cost, and duration under incompatibl
 module maps recognized fields to one canonical `TurnUsage` value, preserving `None` for data a
 harness did not report and summing step-level reports without confusing price tables for counts.
 
-- code: `workhorse/workhorse/runner/usage.py::TurnUsage`
-- code: `workhorse/workhorse/runner/usage.py::normalize`
+- code: `workhorse/workhorse/runner/usage.py::TurnUsage` @26a4b951ead1
+- code: `workhorse/workhorse/runner/usage.py::normalize` @26a4b951ead1
 - tests: `workhorse/tests/test_usage.py::test_cline_reports_tokens_cost_and_duration`, `workhorse/tests/test_usage.py::test_copilot_reports_no_tokens_and_no_money`, `workhorse/tests/test_usage.py::test_opencode_steps_sum_into_one_turn`, `workhorse/tests/test_usage.py::test_a_price_table_is_not_a_token_count`
 - detail: [Turn usage model](turn-usage-model.md)
 - detail: [OpenTelemetry instrumentation](telemetry-instrumentation.md)
@@ -27,7 +27,7 @@ harness did not report and summing step-level reports without confusing price ta
 - verify: json_path(path="$.input_tokens", matches="^[0-9]+$")
 - semantics: absent input-token reports remain unreported
 - verify: json_path(path="$.input_tokens", absent=true)
-- code: `workhorse/workhorse/runner/usage.py::TurnUsage`
+- code: `workhorse/workhorse/runner/usage.py::TurnUsage` @26a4b951ead1
 - detail: [turn usage measurements](turn-usage-measurements.md)
 
 ### output_tokens
@@ -38,7 +38,7 @@ harness did not report and summing step-level reports without confusing price ta
 - verify: json_path(path="$.output_tokens", absent=true)
 - semantics: canonical output-token count
 - verify: json_path(path="$.output_tokens", equals=33)
-- code: `workhorse/workhorse/runner/usage.py::TurnUsage`
+- code: `workhorse/workhorse/runner/usage.py::TurnUsage` @26a4b951ead1
 - detail: [turn usage measurements](turn-usage-measurements.md)
 
 ### cache_read_input_tokens
@@ -49,7 +49,7 @@ harness did not report and summing step-level reports without confusing price ta
 - verify: json_path(path="$.cache_read_input_tokens", absent=true)
 - semantics: input tokens served from cache
 - verify: json_path(path="$.cache_read_input_tokens", equals=8000)
-- code: `workhorse/workhorse/runner/usage.py::TurnUsage`
+- code: `workhorse/workhorse/runner/usage.py::TurnUsage` @26a4b951ead1
 - detail: [turn usage measurements](turn-usage-measurements.md)
 
 ### cache_creation_input_tokens
@@ -60,7 +60,7 @@ harness did not report and summing step-level reports without confusing price ta
 - verify: json_path(path="$.cache_creation_input_tokens", absent=true)
 - semantics: input tokens written to cache
 - verify: json_path(path="$.cache_creation_input_tokens", equals=500)
-- code: `workhorse/workhorse/runner/usage.py::TurnUsage`
+- code: `workhorse/workhorse/runner/usage.py::TurnUsage` @26a4b951ead1
 - detail: [turn usage measurements](turn-usage-measurements.md)
 
 ### reasoning_output_tokens
@@ -71,7 +71,7 @@ harness did not report and summing step-level reports without confusing price ta
 - verify: json_path(path="$.reasoning_output_tokens", absent=true)
 - semantics: reasoning tokens when the harness reports them
 - verify: json_path(path="$.reasoning_output_tokens", equals=0)
-- code: `workhorse/workhorse/runner/usage.py::TurnUsage`
+- code: `workhorse/workhorse/runner/usage.py::TurnUsage` @26a4b951ead1
 - detail: [turn usage measurements](turn-usage-measurements.md)
 
 ### total_cost_usd
@@ -84,7 +84,7 @@ harness did not report and summing step-level reports without confusing price ta
 - verify: json_path(path="$.total_cost_usd", equals=0.00089642)
 - semantics: reported zero remains zero rather than becoming absent
 - verify: json_path(path="$.total_cost_usd", equals=0.0)
-- code: `workhorse/workhorse/runner/usage.py::TurnUsage`
+- code: `workhorse/workhorse/runner/usage.py::TurnUsage` @26a4b951ead1
 - detail: [turn usage measurements](turn-usage-measurements.md)
 
 ### duration_ms
@@ -95,7 +95,7 @@ harness did not report and summing step-level reports without confusing price ta
 - verify: json_path(path="$.duration_ms", absent=true)
 - semantics: latest reported duration, not a sum of per-step durations
 - verify: json_path(path="$.duration_ms", equals=900)
-- code: `workhorse/workhorse/runner/usage.py::TurnUsage`
+- code: `workhorse/workhorse/runner/usage.py::TurnUsage` @26a4b951ead1
 - detail: [turn usage measurements](turn-usage-measurements.md)
 
 ## Methods
@@ -112,7 +112,7 @@ harness did not report and summing step-level reports without confusing price ta
 - verify: json_path(path="$.duration_ms", equals=4542)
 - returns: a `TurnUsage` with absent measurements left as `None`
 - verify: json_path(path="$.input_tokens", absent=true)
-- code: `workhorse/workhorse/runner/usage.py::normalize`
+- code: `workhorse/workhorse/runner/usage.py::normalize` @26a4b951ead1
 
 ### token_counts
 - sig: `TurnUsage.token_counts() -> dict[str, int]`
@@ -121,7 +121,7 @@ harness did not report and summing step-level reports without confusing price ta
 - verify: json_path(path="$.token_counts.output_tokens", absent=true)
 - returns: canonical token fields that were reported
 - verify: json_path(path="$.token_counts.input_tokens", equals=12)
-- code: `workhorse/workhorse/runner/usage.py::TurnUsage.token_counts`
+- code: `workhorse/workhorse/runner/usage.py::TurnUsage.token_counts` @26a4b951ead1
 
 ### merge
 - sig: `TurnUsage.merge(part: TurnUsage) -> TurnUsage`
@@ -135,7 +135,7 @@ harness did not report and summing step-level reports without confusing price ta
 - verify: json_path(path="$.duration_ms", equals=900)
 - returns: a new accumulated usage value
 - verify: json_path(path="$.input_tokens", equals=4200)
-- code: `workhorse/workhorse/runner/usage.py::TurnUsage.merge`
+- code: `workhorse/workhorse/runner/usage.py::TurnUsage.merge` @26a4b951ead1
 
 ### is_empty
 - sig: `TurnUsage.is_empty -> bool`
@@ -143,4 +143,4 @@ harness did not report and summing step-level reports without confusing price ta
 - verify: json_path(path="$.is_empty", equals=true)
 - returns: `true` when neither tokens nor cost was reported
 - verify: json_path(path="$.is_empty", equals=true)
-- code: `workhorse/workhorse/runner/usage.py::TurnUsage.is_empty`
+- code: `workhorse/workhorse/runner/usage.py::TurnUsage.is_empty` @26a4b951ead1

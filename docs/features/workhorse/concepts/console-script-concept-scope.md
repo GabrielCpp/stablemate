@@ -15,6 +15,6 @@ contract. Console script import selection describes which import a workflow dist
 in its `[project.scripts]` target. Neither concept supersedes the other: choose the former to
 understand CLI behavior and the latter to choose the public import surface.
 
-- code: `workhorse/workhorse/cli/__init__.py::console_script`
+- code: `workhorse/workhorse/cli/__init__.py::console_script` @19166d483bcf
 - rule: use CLI composition and workflow binding for factory behavior; use console script import selection for the public `[project.scripts]` import, because both describe the same `console_script` factory from different contexts
 - detail: [Console script documentation selection](console-script-documentation-selection.md)

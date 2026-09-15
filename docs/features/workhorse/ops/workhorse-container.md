@@ -13,8 +13,8 @@ title: workhorse container environment
   - claude-state: named volume mounted at `/claude-state` for Claude sessions, onboarding state, and seeded credentials
   - runs: named volume mounted at `/runs` for prompts, outputs, context snapshots, and run records
 - local-only: true
-- code: `workhorse/compose.yaml`
-- code: `workhorse/Dockerfile`
+- code: `workhorse/compose.yaml` @e971d0375f44
+- code: `workhorse/Dockerfile` @4b2d6e515bf7
 - detail: [container supervisor](../concepts/container-supervisor.md)
 - verify: exit_status(code=0)
 

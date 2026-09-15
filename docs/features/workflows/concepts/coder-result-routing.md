@@ -18,7 +18,7 @@ subset routes the block to the operator rather than sending a complaint around t
 again. `blocked` is derived from the status and is not an independent result field, so a failed
 Python node's pessimistic default does not become an operator block.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::__all__`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::__all__` @5964d4cd22a1
 - detail: [Coder finding](../finding.md)
 
 ## Fields
@@ -29,7 +29,7 @@ Python node's pessimistic default does not become an operator block.
 - required: true
 - semantics: the complete set of status values that make a coder result blocked after surrounding whitespace is removed and case is ignored
 - verify: count(subject="blocked status vocabulary", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::BLOCKED_STATUSES`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::BLOCKED_STATUSES` @5964d4cd22a1
 
 The set is the shared closed vocabulary for agent-produced terminal blocks. It unifies the
 spellings that arose in the development, documentation, QA, and planning lanes; deterministic
@@ -43,7 +43,7 @@ validators keep their own verdict vocabularies because they are not agent-produc
 - verify: json_path(path="$.blocked", equals=true)
 - does: returns false when the result has no status or its normalized status is outside BLOCKED_STATUSES
 - verify: json_path(path="$.blocked", equals=false)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::CoderResult.blocked`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::CoderResult.blocked` @5964d4cd22a1
 - tests: `workflows/tests/coder/shared/test_blocked_signal.py::test_every_spelling_of_giving_up_reads_as_blocked`
 - tests: `workflows/tests/coder/shared/test_blocked_signal.py::test_an_unanswered_node_is_not_blocked`
 - tests: `workflows/tests/coder/shared/test_blocked_signal.py::test_blocked_ignores_case_and_surrounding_space`
@@ -61,7 +61,7 @@ normal parse-retry path.
 - verify: json_path(path="$.actionable", matches=".*")
 - returns: an empty list when the result has no actionable finding
 - verify: count(subject="actionable findings", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::CoderResult.actionable`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::CoderResult.actionable` @5964d4cd22a1
 - tests: `workflows/tests/coder/shared/test_blocked_signal.py::test_actionable_keeps_only_the_findings_a_fixer_could_act_on`
 - tests: `workflows/tests/coder/shared/test_blocked_signal.py::test_a_block_with_no_evidence_is_a_block_with_nothing_to_route`
 - tests: `workflows/tests/coder/shared/test_blocked_signal.py::test_the_narrowed_finding_lists_still_answer_actionable`

@@ -9,4 +9,4 @@ The package exists only to group the hello-world composition root and its prompt
 workflow API of its own; the `workhorse-hello-world` console script reaches
 [the composition root](hello-world-workflow-composition-root.md) directly.
 
-- code: `workflows/src/workhorse_workflows/hello_world/__init__.py`
+- code: `workflows/src/workhorse_workflows/hello_world/__init__.py` @0bcef7e6c9ce

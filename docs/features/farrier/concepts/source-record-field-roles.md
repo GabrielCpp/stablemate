@@ -13,6 +13,6 @@ the library layer that supplied a loaded source and is absent only on records co
 the layer stack, such as test records. The source declaration does not rank these fields: callers
 choose the field that matches the operation they are performing.
 
-- code: `farrier/farrier/sources.py::Source`
+- code: `farrier/farrier/sources.py::Source` @e4e058c012de
 - rule: choose the field by its role: category for `kind`, local I/O for `path`, root-relative provenance for `rel`, stable matching and lookup for `id`, and supplying-layer provenance for `layer`
 - detail: [source record documentation roles](source-record-documentation-roles.md)

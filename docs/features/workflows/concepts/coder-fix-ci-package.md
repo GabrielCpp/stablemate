@@ -14,8 +14,8 @@ cycles for each failure. Repositories are processed in manifest order, and gate 
 persisted for operator inspection when repair exhausts its budget. The flow returns all CI
 remediation results collected during the run.
 
-- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py`
-- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi`
+- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py` @7c21c0a5f55c
+- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi` @7c21c0a5f55c
 - tests: `workflows/tests/coder/test_fix_ci.py`
 - detail: [CI gating helpers](ci-gating.md)
 

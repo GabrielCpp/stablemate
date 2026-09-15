@@ -41,11 +41,11 @@ and backend usage is normalized by [TurnUsage](usage-normalization.md). The shar
 also applies [secret redaction](secret-redaction.md), while [failure classification](failure-classification.md)
 is the single source of recovery flags.
 
-- code: `workhorse/workhorse/runner/ladder.py::AgentRunner`
-- code: `workhorse/workhorse/runner/ladder.py::AgentRunner.run`
-- code: `workhorse/workhorse/runner/ladder.py::ProfileSelection`
-- code: `workhorse/workhorse/runner/ladder.py::resolved_profile`
-- code: `workhorse/workhorse/runner/ladder.py::switch_profile`
+- code: `workhorse/workhorse/runner/ladder.py::AgentRunner` @3d905316475c
+- code: `workhorse/workhorse/runner/ladder.py::AgentRunner.run` @3d905316475c
+- code: `workhorse/workhorse/runner/ladder.py::ProfileSelection` @3d905316475c
+- code: `workhorse/workhorse/runner/ladder.py::resolved_profile` @3d905316475c
+- code: `workhorse/workhorse/runner/ladder.py::switch_profile` @3d905316475c
 - tests: `workhorse/tests/test_agent_recovery.py::test_success_on_first_attempt_returns_outputs`,
   `workhorse/tests/test_agent_recovery.py::test_rendered_prompt_is_written_and_only_path_is_printed`,
   `workhorse/tests/test_agent_recovery.py::test_empty_result_then_reframe_succeeds`,
@@ -103,7 +103,7 @@ once rather than moving silently to the machine's top-level models.
 - sig: `AgentRunner.from_config(config: RunConfig, *, clock: Clock = SYSTEM_CLOCK) -> AgentRunner`
 - does: construct the runner from the supplied backend, resilience settings, prompt-print setting, model override, and profile name
 - returns: an `AgentRunner` whose profile box starts with `config.profile`
-- code: `workhorse/workhorse/runner/ladder.py::AgentRunner.from_config`
+- code: `workhorse/workhorse/runner/ladder.py::AgentRunner.from_config` @3d905316475c
 - verify: json_path(path="$.profile.name", equals="")
 - tests: `workhorse/tests/test_backends.py::test_agentless_run_fails_its_first_agent_node_with_a_sentence`
 
@@ -114,7 +114,7 @@ once rather than moving silently to the machine's top-level models.
 - returns: the exact profile tables used for the run's profile provenance record
 - consistency: profile-config — the returned profile tables are recorded verbatim in the run's profile provenance
 - verify: json_path(path="$.profile_config.power.high.claude.model", equals="sonnet")
-- code: `workhorse/workhorse/runner/ladder.py::resolved_profile`
+- code: `workhorse/workhorse/runner/ladder.py::resolved_profile` @3d905316475c
 - verify: persists(subject="run.json profile_config")
 - tests: `workhorse/tests/test_artifacts_fresh.py::test_the_profile_and_what_it_held_are_recorded_on_the_run`
 
@@ -131,7 +131,7 @@ once rather than moving silently to the machine's top-level models.
 - verify: json_path(path="$.ok", equals=false)
 - returns: `{ok: true, profile: name, was: previous_name}` after acceptance
 - returns: `{ok: false, error: message}` after refusal
-- code: `workhorse/workhorse/runner/ladder.py::switch_profile`
+- code: `workhorse/workhorse/runner/ladder.py::switch_profile` @3d905316475c
 - verify: json_path(path="$.ok", equals=true)
 - verify: json_path(path="$.profile", equals="cheap")
 - tests: `workhorse/tests/test_model_resolution.py::test_a_switch_is_one_assignment_that_the_next_turn_reads`, `workhorse/tests/test_model_resolution.py::test_an_unknown_profile_is_refused_rather_than_applied`, `workhorse/tests/test_model_resolution.py::test_a_profile_that_maps_nothing_for_this_runs_backend_is_refused`, `workhorse/tests/test_model_resolution.py::test_a_profile_carrying_no_models_at_all_is_allowed_through`, `workhorse/tests/test_model_resolution.py::test_a_run_that_drives_no_agent_is_told_so_rather_than_crashing`, `workhorse/tests/test_reload_reentry.py::test_a_profile_switch_is_applied_in_place_and_the_run_carries_on`, `workhorse/tests/test_reload_reentry.py::test_a_profile_switch_the_run_refuses_is_reported_as_a_refusal`

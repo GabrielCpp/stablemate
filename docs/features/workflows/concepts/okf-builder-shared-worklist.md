@@ -13,7 +13,7 @@ attempt count and blocks it at three attempts rather than looping forever. An op
 returns blocked rows to pending with a fresh allowance, and a checkpoint pass may settle pending
 repair rows a fresh doctor report no longer names.
 
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/worklist.py`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/worklist.py` @bf6aebf4d9e1
 
 ## Methods
 
@@ -21,7 +21,7 @@ repair rows a fresh doctor report no longer names.
 - sig: `book_has_docs(features: Path) -> bool`
 - does: reports true only when the feature root is a directory containing at least one Markdown file
 - verify: count(subject="OKF-builder populated-book checks", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/worklist.py::book_has_docs`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/worklist.py::book_has_docs` @bf6aebf4d9e1
 
 ### load_worklist
 - sig: `load_worklist(path: Path, service: str, features: Path, *, scope_id: str = "bulk", mode: str = "bulk") -> tuple[dict[str, Any], bool]`
@@ -34,14 +34,14 @@ repair rows a fresh doctor report no longer names.
 - verify: count(subject="compatible OKF-builder worklist resumes", equals=1)
 - returns: the worklist data and whether a reset occurred
 - verify: count(subject="OKF-builder worklist load results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/worklist.py::load_worklist`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/worklist.py::load_worklist` @bf6aebf4d9e1
 
 ### repair_keys
 - sig: `repair_keys(rows: list[dict[str, Any]]) -> set[tuple[str, str]]`
 - does: extracts the (kind, target) identity from each row, normalized to lowercase with collapsed whitespace
 - verify: created(subject="a set of repair item identities")
 - returns: a set of normalized (kind, target) tuples for deduplication and settlement
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/worklist.py::repair_keys`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/worklist.py::repair_keys` @bf6aebf4d9e1
 
 ### select_item
 - sig: `select_item(logger: logging.Logger, worklist_path: str, max_items: int = 0, done_baseline: int = 0) -> Pick`
@@ -53,7 +53,7 @@ repair rows a fresh doctor report no longer names.
 - verify: json_path(path="$.has_item", equals=false)
 - does: returns over-budget without handing out work when pending work remains at the per-run cap
 - verify: json_path(path="$.over_budget", equals=true)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/worklist.py::select_item`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/worklist.py::select_item` @bf6aebf4d9e1
 
 ### record
 - sig: `record(logger: logging.Logger, worklist_path: str, current: dict[str, Any] | None = None, discovered: list[dict[str, Any]] | None = None, doc_status: str = "", note: str = "", max_attempts: int = 3, unblock: bool = False, only: tuple[str, ...] = (), settle_fix_items: bool = False) -> Recorded`
@@ -72,7 +72,7 @@ repair rows a fresh doctor report no longer names.
 - verify: count(subject="settled OKF-builder worklist items", equals=1)
 - does: returns blocked rows as the standing operator-gate set
 - verify: count(subject="OKF-builder blocked-row reports", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/worklist.py::record`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/worklist.py::record` @bf6aebf4d9e1
 
 ### settle_stale_rows
 - sig: `settle_stale_rows(items: list[dict[str, Any]], standing: list[dict[str, Any]], *, where: str) -> int`
@@ -83,4 +83,4 @@ repair rows a fresh doctor report no longer names.
 - does: marks closed rows with status `done`, doc_status `stale`, and a note describing where the settlement occurred
 - verify: persists(subject="stale OKF-builder row marker")
 - returns: the count of rows settled
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/worklist.py::settle_stale_rows`
+- code: `workflows/src/workhorse_workflows/okf_builder/shared/worklist.py::settle_stale_rows` @bf6aebf4d9e1

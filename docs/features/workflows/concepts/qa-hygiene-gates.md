@@ -10,7 +10,7 @@ first tidies screenshots without risking committed assets; the second rejects fa
 unreconciled placeholders in newly added shipped source. Both resolve the code repository from
 the supplied `repo_dir`, rather than from the process working directory.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py` @192f19d68be5
 - tests: `workflows/tests/coder/qa/test_hygiene.py`
 - detail: [coder QA subflow](coder-qa-subflow.md)
 
@@ -33,7 +33,7 @@ the supplied `repo_dir`, rather than from the process working directory.
 - verify: json_path(path="$.notes", matches=".+")
 - returns: all counts remain zero when no matching root image exists
 - verify: json_path(path="$.flushed", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py::flush_root_screenshots`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py::flush_root_screenshots` @192f19d68be5
 
 ### check_sentinel_ids
 - sig: `check_sentinel_ids(logger: logging.Logger, story_slug: str = "", repo_dir: str = "") -> QaResult`
@@ -67,7 +67,7 @@ the supplied `repo_dir`, rather than from the process working directory.
 - verify: json_path(path="$.status", equals="passed")
 - returns: `QaResult` with status `passed` or `failed` and notes describing the scan, skip, or findings
 - verify: json_path(path="$.status", matches="passed|failed")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py::check_sentinel_ids`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py::check_sentinel_ids` @192f19d68be5
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_through_every_gate`
 
 ### _added_lines
@@ -76,7 +76,7 @@ the supplied `repo_dir`, rather than from the process working directory.
 - verify: count(subject="parsed added diff lines with target locations", equals=1)
 - does: returns an empty list for an empty diff, a malformed patch, renames, and binary-only changes
 - verify: count(subject="unsupported diff forms safely ignored", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py::_added_lines`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py::_added_lines` @192f19d68be5
 - tests: `workflows/tests/coder/qa/test_hygiene.py::test_added_lines_carry_their_target_line_numbers`
 - tests: `workflows/tests/coder/qa/test_hygiene.py::test_a_diff_committed_as_a_fixture_does_not_forge_a_filename`
 - tests: `workflows/tests/coder/qa/test_hygiene.py::test_renames_and_binaries_add_no_lines`

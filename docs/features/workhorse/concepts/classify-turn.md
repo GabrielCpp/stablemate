@@ -17,7 +17,7 @@ It lives in `runner/failure.py` alongside the marker tables and the two error ty
 are one subject: how a finished turn is judged. The module holds no process handling and no CLI
 knowledge — the backends import it, never the reverse.
 
-- code: `workhorse/workhorse/runner/failure.py::classify_turn`
+- code: `workhorse/workhorse/runner/failure.py::classify_turn` @8b52f8948b6c
 - tests: `workhorse/tests/test_agent_cap.py::test_classification`,
   `workhorse/tests/test_agent_cap.py::test_cap_hang_classified_as_cap_not_timeout`,
   `workhorse/tests/test_backends.py::test_finalize_turn_classifies_failures`,
@@ -197,7 +197,7 @@ The marker-substring predicate that decides branch 1 of the [ladder](#ladder-fir
 this failure a **scheduled-reset cap** (spending/usage/weekly/session/quota — clears on a schedule,
 not in seconds) rather than a short transient like a rate limit or overload?
 
-- code: `workhorse/workhorse/runner/failure.py::is_cap`
+- code: `workhorse/workhorse/runner/failure.py::is_cap` @8b52f8948b6c
 
 - **Input:** `diagnostics: str` — the same non-result output `classify_turn` scans for every
   marker check.
@@ -225,7 +225,7 @@ The marker-substring predicate behind branches 2 and 5 of the [ladder](#ladder-f
 does a failure look retryable (a rate limit, overload, network blip, 5xx, timeout) or deterministic
 (a crashed CLI, a bad flag)?
 
-- code: `workhorse/workhorse/runner/failure.py::is_transient`
+- code: `workhorse/workhorse/runner/failure.py::is_transient` @8b52f8948b6c
 - verify: `workhorse/tests/test_agent_cap.py::test_classification`,
   `workhorse/tests/test_guardrails.py::test_transient_error_detection`
 
@@ -262,7 +262,7 @@ this turn fail because the model's context window was exhausted mid-node — the
 returned instead of auto-compacting — rather than crashing or exiting non-zero for some other
 reason?
 
-- code: `workhorse/workhorse/runner/failure.py::is_context_overflow`
+- code: `workhorse/workhorse/runner/failure.py::is_context_overflow` @8b52f8948b6c
 - verify: json_path(path="$", equals=true)
 - verify: json_path(path="$", equals=false)
 - tests: `workhorse/tests/test_agent_recovery.py::test_context_overflow_is_detected`
@@ -294,7 +294,7 @@ as its `rate_limited`/`rate_reset_at` inputs — a second, precise cap detector 
 text-marker scan ([`is_cap`](#is_cap)), since Claude also emits this event on every turn (not just
 failing ones) with a machine-readable status and reset time.
 
-- code: `workhorse/workhorse/runner/failure.py::rate_limit_info`
+- code: `workhorse/workhorse/runner/failure.py::rate_limit_info` @8b52f8948b6c
 - verify: `workhorse/tests/test_agent_cap.py::test_rate_limit_info_parsing`
 
 - **Input:** `event: dict` — one parsed `rate_limit_event` stream-json object, of shape
@@ -335,7 +335,7 @@ node's `prompt.md` / `output.json` do not carry. Called by `classify_turn` on ex
 branches that persist a session id: [success](#ladder-first-match-wins) and
 [overflow](#ladder-first-match-wins).
 
-- code: `workhorse/workhorse/runner/failure.py::record_session_map`
+- code: `workhorse/workhorse/runner/failure.py::record_session_map` @8b52f8948b6c
 - verify: `workhorse/tests/test_backends.py::test_classify_turn_records_node_to_session_manifest`,
   `workhorse/tests/test_backends.py::test_classify_turn_without_session_writes_no_manifest`
 

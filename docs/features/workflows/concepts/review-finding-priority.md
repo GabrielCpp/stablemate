@@ -23,7 +23,7 @@ is rendered into exactly one block according to its score.
 - verify: count(subject="mandatory", equals=1)
 - does: partition findings with confidence < 80 into the advisory list
 - verify: count(subject="advisory", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::split_on_confidence`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::split_on_confidence` @ee5ae700635f
 - tests: `workflows/tests/coder/review/test_flow.py::test_the_split_is_inclusive_at_the_confidence_line`
 
 ### findings_block
@@ -33,5 +33,5 @@ is rendered into exactly one block according to its score.
 - verify: json_path(path="result", matches=".*Category.*")
 - does: return "None." when given an empty list
 - verify: json_path(path="result", equals="None.")
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::findings_block`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::findings_block` @ee5ae700635f
 - tests: `workflows/tests/coder/review/test_flow.py::test_a_findings_block_says_none_rather_than_rendering_empty`

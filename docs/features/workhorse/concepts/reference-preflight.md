@@ -18,11 +18,11 @@ Farrier used to own an equivalent check (`extract_workflow_dependencies` +
 copied. Workflows now run from the library and farrier keeps no workflow knowledge, so the check
 belongs where the manifest and the prompts finally meet: the runner.
 
-- code: `workhorse/workhorse/references.py::MissingReference`
-- code: `workhorse/workhorse/references.py::resolve_instruction`
-- code: `workhorse/workhorse/references.py::referenced_names`
-- code: `workhorse/workhorse/references.py::missing_references`
-- code: `workhorse/workhorse/references.py::format_missing`
+- code: `workhorse/workhorse/references.py::MissingReference` @83a859987732
+- code: `workhorse/workhorse/references.py::resolve_instruction` @83a859987732
+- code: `workhorse/workhorse/references.py::referenced_names` @83a859987732
+- code: `workhorse/workhorse/references.py::missing_references` @83a859987732
+- code: `workhorse/workhorse/references.py::format_missing` @83a859987732
 
 The implementation is covered by `workhorse/tests/test_references.py`.
 
@@ -34,7 +34,7 @@ The implementation is covered by `workhorse/tests/test_references.py`.
 - required: true
 - semantics: reference category, either `skill` or `prompt`
 - verify: count(subject="reference kinds on a missing-reference record", equals=1)
-- code: `workhorse/workhorse/references.py::MissingReference.kind`
+- code: `workhorse/workhorse/references.py::MissingReference.kind` @83a859987732
 
 ### name
 - type: `str`
@@ -42,7 +42,7 @@ The implementation is covered by `workhorse/tests/test_references.py`.
 - required: true
 - semantics: constant skill or prompt name that did not resolve
 - verify: count(subject="reference names on a missing-reference record", equals=1)
-- code: `workhorse/workhorse/references.py::MissingReference.name`
+- code: `workhorse/workhorse/references.py::MissingReference.name` @83a859987732
 
 ### template
 - type: `str`
@@ -50,7 +50,7 @@ The implementation is covered by `workhorse/tests/test_references.py`.
 - required: true
 - semantics: POSIX path of the prompt template relative to the workflow directory
 - verify: count(subject="relative template paths on a missing-reference record", equals=1)
-- code: `workhorse/workhorse/references.py::MissingReference.template`
+- code: `workhorse/workhorse/references.py::MissingReference.template` @83a859987732
 
 ## Methods
 
@@ -60,7 +60,7 @@ The implementation is covered by `workhorse/tests/test_references.py`.
 - verify: visible(locator="skill 'story-docs' (referenced in prompts/plan.md)")
 - returns: `"{kind} '{name}' (referenced in {template})"`
 - verify: visible(locator="skill 'story-docs' (referenced in prompts/plan.md)")
-- code: `workhorse/workhorse/references.py::MissingReference.__str__`
+- code: `workhorse/workhorse/references.py::MissingReference.__str__` @83a859987732
 - tests: `workhorse/tests/test_references.py::test_format_missing_names_the_cost_and_the_fix`
 
 ### resolve_instruction
@@ -79,7 +79,7 @@ The implementation is covered by `workhorse/tests/test_references.py`.
 - verify: absent(subject="resolved instruction path for an ambiguous suffix")
 - returns: the installed path for a resolved instruction, otherwise `None`
 - verify: visible(locator=".agents/skills/process-story-docs/SKILL.md")
-- code: `workhorse/workhorse/references.py::resolve_instruction`
+- code: `workhorse/workhorse/references.py::resolve_instruction` @83a859987732
 - tests: `workhorse/tests/test_references.py::test_exact_match_wins`, `workhorse/tests/test_references.py::test_unique_suffix_resolves_through_pack_namespacing`, `workhorse/tests/test_references.py::test_aliases_of_one_skill_are_not_an_ambiguity`, `workhorse/tests/test_references.py::test_two_packs_ending_the_same_way_resolve_to_nothing`, `workhorse/tests/test_references.py::test_unknown_name_resolves_to_nothing`
 
 ### referenced_names
@@ -98,7 +98,7 @@ The implementation is covered by `workhorse/tests/test_references.py`.
 - verify: count(subject="references reported from an unparseable template", equals=0)
 - returns: a set of `(kind, name)` pairs with no duplicate references
 - verify: count(subject="deduplicated reference pairs", equals=1)
-- code: `workhorse/workhorse/references.py::referenced_names`
+- code: `workhorse/workhorse/references.py::referenced_names` @83a859987732
 - tests: `workhorse/tests/test_references.py::test_every_helper_alias_is_scanned`, `workhorse/tests/test_references.py::test_plural_helper_arguments_are_never_required`, `workhorse/tests/test_references.py::test_reference_behind_an_installed_skill_guard_is_not_required`, `workhorse/tests/test_references.py::test_non_constant_argument_is_skipped_not_guessed`, `workhorse/tests/test_references.py::test_unparseable_template_yields_nothing`
 
 ### missing_references
@@ -117,7 +117,7 @@ The implementation is covered by `workhorse/tests/test_references.py`.
 - verify: count(subject="stable missing-reference ordering", equals=3)
 - returns: a sorted list of `MissingReference` records, or an empty list when every checked reference resolves
 - verify: count(subject="sorted missing-reference records", equals=3)
-- code: `workhorse/workhorse/references.py::missing_references`
+- code: `workhorse/workhorse/references.py::missing_references` @83a859987732
 - tests: `workhorse/tests/test_references.py::test_missing_references_names_what_will_not_resolve`, `workhorse/tests/test_references.py::test_nested_prompt_directories_are_scanned`, `workhorse/tests/test_references.py::test_docs_outside_prompts_are_not_scanned`, `workhorse/tests/test_references.py::test_no_manifest_at_all_is_skipped_whole`, `workhorse/tests/test_references.py::test_report_is_stable_across_runs`
 
 ### format_missing
@@ -134,7 +134,7 @@ The implementation is covered by `workhorse/tests/test_references.py`.
 - verify: visible(locator="agents.yml")
 - returns: one operator-facing report string, including a trailing newline for non-empty input
 - verify: visible(locator="make agent-install")
-- code: `workhorse/workhorse/references.py::format_missing`
+- code: `workhorse/workhorse/references.py::format_missing` @83a859987732
 - tests: `workhorse/tests/test_references.py::test_format_missing_names_the_cost_and_the_fix`, `workhorse/tests/test_references.py::test_format_missing_of_nothing_is_empty`
 
 ## Contract

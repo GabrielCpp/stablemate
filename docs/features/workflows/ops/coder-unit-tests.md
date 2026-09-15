@@ -22,7 +22,7 @@ invokes `$(MAKE) -C workflows test`; this tier blocks that aggregate CI gate.
 
 - driver: cli
 - surfaces: [Coder workflow composition root](../concepts/coder-workflow-composition-root.md)
-- code: `workflows/tests/coder/conftest.py::drive_flow`
+- code: `workflows/tests/coder/conftest.py::drive_flow` @11d9a1894780
 - working-directory: workflows
 
 ## Steps

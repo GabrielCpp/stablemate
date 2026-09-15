@@ -6,7 +6,7 @@ title: Coder review feedback
 # Coder review feedback
 
 - file: none — in-memory inbox poll result
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::Feedback`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::Feedback` @2f54962a8770
 - detail: [coder review schema contracts](concepts/coder-review-schema-contracts.md)
 - detail: [coder review shared nodes](concepts/coder-review-shared-review.md)
 - detail: [workflow kit run inbox](../workhorse/concepts/run-inbox.md)
@@ -22,7 +22,7 @@ review flow consumes it and spends exactly one apply pass; if absent, the flow r
 - required: false
 - semantics: whether an outstanding inbox note was found
 - verify: json_path(path="$.present", equals=false)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::Feedback.present`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::Feedback.present` @2f54962a8770
 
 ### content
 - type: `str`
@@ -30,5 +30,5 @@ review flow consumes it and spends exactly one apply pass; if absent, the flow r
 - required: false
 - semantics: operator note supplied to the review apply turn
 - verify: json_path(path="$.content", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::Feedback.content`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::Feedback.content` @2f54962a8770
 - tests: `workflows/tests/coder/review/test_flow.py::test_dropped_feedback_buys_exactly_one_rework_pass`

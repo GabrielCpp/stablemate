@@ -6,7 +6,7 @@ title: workhorse-research
 # workhorse-research
 
 - binary: `workhorse-research`
-- code: `workflows/src/workhorse_workflows/research/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @e196dc60a365
 - detail: [research workflow schemas](concepts/research-schemas.md)
 
 Runs the research gate loop registered by the [research workflow composition root](concepts/research-workflow-composition-root.md). Workhorse provides the shared command parser; this package provides the default Research flow.
@@ -29,7 +29,7 @@ The [workhorse-research driver runbook](ops/workhorse-research.md) exercises thi
 - does:
   - starts the registered Research flow
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @e196dc60a365
 - detail: [Research command selection](concepts/research-command-selection.md)
 
 ### dot
@@ -40,7 +40,7 @@ The [workhorse-research driver runbook](ops/workhorse-research.md) exercises thi
 - does:
   - renders the registered Research state graph
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @e196dc60a365
 - detail: [Research command selection](concepts/research-command-selection.md)
 
 ### version
@@ -48,5 +48,5 @@ The [workhorse-research driver runbook](ops/workhorse-research.md) exercises thi
 - does:
   - prints the installed Workhorse engine version
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @e196dc60a365
 - detail: [Research command selection](concepts/research-command-selection.md)

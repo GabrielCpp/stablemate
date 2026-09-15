@@ -12,7 +12,7 @@ return values are the handoff to the states documented in the [research workflow
 root](research-workflow-composition-root.md), while the returned models themselves are documented
 in [research workflow schemas](research-schemas.md).
 
-- code: `workflows/src/workhorse_workflows/research/nodes/_blueprint.py::blueprint`
+- code: `workflows/src/workhorse_workflows/research/nodes/_blueprint.py::blueprint` @24537fc10c8b
 - tests: `workflows/tests/research/test_measure.py::test_a_clean_exit_with_a_well_formed_result_is_ok`
 - detail: [research workflow composition root](research-workflow-composition-root.md)
 
@@ -24,7 +24,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: per-clone SSH option allowing a previously unknown host while remaining local to the clone subprocess
 - verify: json_path(path="$.SSH_COMMAND", equals="ssh -o StrictHostKeyChecking=accept-new")
-- code: `workflows/src/workhorse_workflows/research/nodes/setup.py::SSH_COMMAND`
+- code: `workflows/src/workhorse_workflows/research/nodes/setup.py::SSH_COMMAND` @a73e7f0f07ec
 
 ### REQUIRED
 - type: `list[str]`
@@ -32,7 +32,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: flat program manifest keys required before a research program can run
 - verify: json_path(path="$.REQUIRED", equals="code_root")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::REQUIRED`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::REQUIRED` @79453562fba2
 
 ### ENVELOPE_DEFAULTS
 - type: `dict[str, str | int]`
@@ -42,7 +42,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.ENVELOPE_DEFAULTS.envelope_gpu", equals="none")
 - semantics: zero numeric envelope limits are unbounded
 - verify: json_path(path="$.ENVELOPE_DEFAULTS.envelope_ram_gb", equals=0)
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::ENVELOPE_DEFAULTS`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::ENVELOPE_DEFAULTS` @79453562fba2
 
 ### LEDGER_NAME
 - type: `str`
@@ -50,7 +50,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: program-relative filename holding cumulative extension and lead-review spend
 - verify: json_path(path="$.LEDGER_NAME", equals="ledger.yml")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::LEDGER_NAME`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::LEDGER_NAME` @79453562fba2
 
 ### CONCLUDED
 - type: `tuple[str, ...]`
@@ -58,7 +58,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: ledger statuses that require explicit reauthorization before another run
 - verify: count(subject="concluded research ledger statuses", equals=3)
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::CONCLUDED`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::CONCLUDED` @79453562fba2
 
 ### LEDGER_HEADER
 - type: `str`
@@ -66,7 +66,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: explanatory prefix written before every program ledger update
 - verify: json_path(path="$.LEDGER_HEADER", matches=".*research loop.*")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::LEDGER_HEADER`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::LEDGER_HEADER` @79453562fba2
 
 ### JOBS_DIR
 - type: `str`
@@ -74,7 +74,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: program-relative directory containing detached measurement job records
 - verify: json_path(path="$.JOBS_DIR", equals="jobs")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::JOBS_DIR`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::JOBS_DIR` @51b8693a034e
 
 ### JOBS_GITIGNORE
 - type: `str`
@@ -82,7 +82,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: ignore rule written beside job directories so large job logs do not enter the result branch
 - verify: omits(subject="research result branch", text="stderr.log")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::JOBS_GITIGNORE`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::JOBS_GITIGNORE` @51b8693a034e
 
 ### DRY_RUN_TIMEOUT_S
 - type: `float`
@@ -90,7 +90,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: maximum seconds a rehearsal may run inside the calling state
 - verify: json_path(path="$.DRY_RUN_TIMEOUT_S", equals=900.0)
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::DRY_RUN_TIMEOUT_S`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::DRY_RUN_TIMEOUT_S` @51b8693a034e
 
 ### DRY_RUN_POLL_S
 - type: `float`
@@ -98,7 +98,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: seconds between rehearsal runner-state reads
 - verify: json_path(path="$.DRY_RUN_POLL_S", equals=1.0)
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::DRY_RUN_POLL_S`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::DRY_RUN_POLL_S` @51b8693a034e
 
 ### STDERR_TAIL_CHARS
 - type: `int`
@@ -106,7 +106,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: maximum stderr suffix retained in rehearsal and collected failure data
 - verify: json_path(path="$.STDERR_TAIL_CHARS", equals=4000)
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::STDERR_TAIL_CHARS`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::STDERR_TAIL_CHARS` @51b8693a034e
 
 ### RESULT_CORE
 - type: `tuple[str, str]`
@@ -114,7 +114,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: result-object keys required for a measurement to classify as valid
 - verify: count(subject="required research result core keys", equals=2)
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::RESULT_CORE`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::RESULT_CORE` @51b8693a034e
 
 ### TOOLING_PACKAGES
 - type: `tuple[str, str]`
@@ -122,7 +122,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: installed package names whose traceback frames classify a failure as tooling-owned
 - verify: count(subject="research tooling traceback package names", equals=2)
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::TOOLING_PACKAGES`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::TOOLING_PACKAGES` @51b8693a034e
 
 ## Methods
 
@@ -138,7 +138,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: count(subject="research clone dependency synchronization attempts", equals=1)
 - returns: a `RepoSetup` containing the adopted or cloned repository directory
 - verify: json_path(path="$.repo_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/research/nodes/setup.py::clone_repo`
+- code: `workflows/src/workhorse_workflows/research/nodes/setup.py::clone_repo` @a73e7f0f07ec
 - tests: `workflows/tests/research/test_workflow.py::test_a_gate_designed_built_measured_and_approved_drives_the_program_to_its_goal`
 
 ### load_program
@@ -169,7 +169,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: count(subject="research concluded-program authorization failures", equals=1)
 - returns: a `Program` containing resolved paths, manifest settings, ledger spend, and active run status
 - verify: json_path(path="$.status", equals="active")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::load_program`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::load_program` @79453562fba2
 - detail: [research program load authority](research-program-load-authority.md)
 - tests: `workflows/tests/research/test_workflow.py::test_a_concluded_program_needs_a_human_before_it_runs_again`
 
@@ -179,7 +179,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: persists(subject="research program spend ledger")
 - does: returns the path and the four counters just written
 - verify: json_path(path="$.path", matches="ledger\\.yml$")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::record_spend`
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::record_spend` @79453562fba2
 - detail: [research record spend authority](research-record-spend-authority.md)
 
 ### check_envelope
@@ -192,7 +192,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.fits", equals=true)
 - returns: an `EnvelopeCheck` with all detected resource mismatches joined into one reason
 - verify: json_path(path="$.reason", matches=".+")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::check_envelope`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::check_envelope` @51b8693a034e
 - tests: `workflows/tests/research/test_measure.py::test_a_protocol_over_the_declared_machine_does_not_fit`
 
 ### classify_fault
@@ -203,14 +203,14 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.fault_locus", equals="tooling")
 - does: returns `unknown` when no traceback frame establishes either locus
 - verify: json_path(path="$.fault_locus", equals="unknown")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::classify_fault`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::classify_fault` @51b8693a034e
 - tests: `workflows/tests/research/test_measure.py::test_the_deepest_frame_decides_the_locus`
 
 ### job_dir_for
 - sig: `job_dir_for(repo_dir: str, program_dir: str, gate_id: str, suffix: str = "") -> str`
 - does: places each gate job under `<repo>/<program>/jobs/<gate-id>` and appends an optional suffix
 - verify: json_path(path="$.job_dir", matches="/jobs/gate")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::job_dir_for`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::job_dir_for` @51b8693a034e
 - tests: `workflows/tests/research/test_measure.py::test_the_job_dir_is_one_directory_per_gate_inside_the_program`
 
 ### submit_job
@@ -231,7 +231,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.fault_locus", matches="repo|tooling")
 - returns: a `Job` carrying submission, process, wake-file, containment-tier, and estimate metadata
 - verify: json_path(path="$.job_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::submit_job`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::submit_job` @51b8693a034e
 - tests: `workflows/tests/research/test_measure.py::test_an_estimate_with_no_probe_behind_it_is_refused_before_the_cpu_is_spent`
 
 ### dry_run
@@ -248,7 +248,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.reason", matches=".+")
 - returns: a `DryRun` reporting success, exit code, fault locus, stderr tail, and failure reason
 - verify: json_path(path="$.reason", matches=".+")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::dry_run`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::dry_run` @51b8693a034e
 - tests: `workflows/tests/research/test_workflow.py::test_a_rehearsal_that_dies_under_the_runner_never_reaches_submission`
 
 ### watch_job
@@ -263,7 +263,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.action", equals="wait")
 - does: carries the highest previously reported overrun multiple into a wait result
 - verify: json_path(path="$.overrun_multiple", equals=10.0)
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::watch_job`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::watch_job` @51b8693a034e
 - tests: `workflows/tests/research/test_measure.py::test_watching_arms_the_wake_file_before_it_reads_the_state`
 
 ### result_path
@@ -274,7 +274,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: count(subject="research working-directory result fallbacks", equals=1)
 - does: falls back to the job-directory path when neither location currently contains the result
 - verify: json_path(path="$.result_path", matches="/jobs/.+/result\\.json$")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::result_path`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::result_path` @51b8693a034e
 - tests: `workflows/tests/research/test_measure.py::test_a_result_written_in_the_experiment_s_cwd_is_still_the_measurement`
 
 ### collect_job
@@ -306,7 +306,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.n_planned", equals=10)
 - returns: a `Collected` carrying outcome, fault locus, runner cost, result path and parsed measurement data
 - verify: json_path(path="$.result_path", matches=".+")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::collect_job`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::collect_job` @51b8693a034e
 - tests: `workflows/tests/research/test_measure.py::test_a_clean_exit_with_a_well_formed_result_is_ok`
 
 ### kill_job
@@ -317,7 +317,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.stderr_tail", matches=".+")
 - returns: a `Collected` with outcome `killed`, kill reason, exit code, resource use, elapsed time, tier, and stderr tail
 - verify: json_path(path="$.outcome", equals="killed")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::kill_job`
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::kill_job` @51b8693a034e
 
 ### publish_results
 - sig: `publish_results(logger: logging.Logger, repo_dir: str, result_branch: str = "research/auto", program_dir: str = "") -> PublishResult`
@@ -331,5 +331,5 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.status", equals="push_failed")
 - returns: a `PublishResult` containing publication status, branch, and optional push-failure status
 - verify: json_path(path="$.result_branch", matches=".+")
-- code: `workflows/src/workhorse_workflows/research/nodes/publish.py::publish_results`
+- code: `workflows/src/workhorse_workflows/research/nodes/publish.py::publish_results` @1675c764e846
 - tests: `workflows/tests/research/test_workflow.py::test_publishing_commits_the_gate_onto_the_result_branch`

@@ -21,7 +21,7 @@ It is an **ABC, not a `Protocol`**: a backend is a plugin point with real shared
 (`harness_env` below has an implementation every subclass inherits), and an unimplemented abstract
 method should fail loudly at construction rather than silently satisfy a structural check.
 
-- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend`
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @1ed20e69807c
 - detail: [AgentBackend documentation scope](agent-backend-documentation-scope.md)
 
 The contract is exercised by `workhorse/tests/test_backends.py::test_non_claude_backends_registered`
@@ -126,7 +126,7 @@ Selected at runtime by [`get_backend`](get-backend.md), which
 - verify: json_path(path="$.name", matches="^[a-z]+$")
 - semantics: harness name used in logs, errors, and harness configuration lookup
 - verify: json_path(path="$.name", matches="^[a-z]+$")
-- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend`
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @1ed20e69807c
 - detail: [AgentBackend attribute overrides](agent-backend-attribute-overrides.md)
 
 ### default_model
@@ -137,7 +137,7 @@ Selected at runtime by [`get_backend`](get-backend.md), which
 - verify: json_path(path="$.default_model", absent=true)
 - semantics: `None` delegates model selection to the CLI
 - verify: json_path(path="$.default_model", absent=true)
-- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend`
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @1ed20e69807c
 - detail: [AgentBackend attribute overrides](agent-backend-attribute-overrides.md)
 
 ### supports_compaction
@@ -146,7 +146,7 @@ Selected at runtime by [`get_backend`](get-backend.md), which
 - required: false
 - semantics: whether the backend can compact the current session in place before a retry
 - verify: json_path(path="$.supports_compaction", equals=false)
-- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend`
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @1ed20e69807c
 - detail: [AgentBackend attribute overrides](agent-backend-attribute-overrides.md)
 
 ## Methods
@@ -158,7 +158,7 @@ Selected at runtime by [`get_backend`](get-backend.md), which
 - raises: `BackendInvocationError` classified for transient, context-overflow, cap, or non-recoverable recovery decisions
 - verify: emitted(event="agent turn result text", count=1)
 - returns: the backend's final result text and persists a returned session identifier when a session path is supplied
-- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend.run_turn`
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend.run_turn` @1ed20e69807c
 
 ### compact
 - sig: `compact(session_id_path: Path | None, node_id: str, model: str | None = None, *, timeout: float, resilience: AgentResilience) -> bool`
@@ -168,11 +168,11 @@ Selected at runtime by [`get_backend`](get-backend.md), which
 - verify: json_path(path="$.compacted", equals=true)
 - returns: unsupported or failed compaction returns `false`
 - verify: json_path(path="$.compacted", equals=false)
-- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend.compact`
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend.compact` @1ed20e69807c
 
 ### harness_env
 - sig: `harness_env() -> dict[str, str]`
 - does: resolves the active backend's configured extra environment for each turn
 - returns: the `[harness.<name>].env` mapping to layer over the inherited process environment
 - verify: emitted(event="backend-specific harness environment", count=1)
-- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend.harness_env`
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend.harness_env` @1ed20e69807c

@@ -16,8 +16,8 @@ fails before documentation when the book is unusable. For a usable book, it chai
 prompts with grounding validation and independent review, each failure offering an automatic
 resolver bounded repair cycles before escalation to an operator gate.
 
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py`
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs`
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py` @c5989657afb3
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @c5989657afb3
 - code: `workflows/tests/coder/docs/test_flow.py::docs`
 - code: `workflows/tests/coder/docs/test_flow.py::elsewhere`
 - code: `workflows/tests/coder/docs/test_flow.py::alongside`
@@ -46,6 +46,6 @@ shapes `Docs` is asked to handle in production.
 - does: omits a verdict label when the underlying value is empty, so a lane that has not yet spoken claims no verdict rather than emitting `""` or `cleared` by default
 - returns: returns labels used for state telemetry
 - verify: count(subject="docs state label sets", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.state_labels`
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.state_labels` @c5989657afb3
 - tests: `workflows/tests/coder/test_telemetry.py::test_a_state_with_no_loop_yet_reports_only_the_base_labels`
 

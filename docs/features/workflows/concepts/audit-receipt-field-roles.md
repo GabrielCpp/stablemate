@@ -12,5 +12,5 @@ that need the proof use the digest; consumers that need to read the artifact use
 schema declares no preferred or deprecated field, so neither field ranks above or replaces the
 other.
 
-- code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::AuditReceipt`
+- code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::AuditReceipt` @8eca5014bca5
 - rule: use `story_digest` to identify audited story bytes and `path` to locate the audit receipt; neither substitutes for the other

@@ -6,7 +6,7 @@ title: Coder pruned fix result
 # Coder pruned fix result
 
 - file: none — in-memory fix-drain result
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixPruned`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixPruned` @12cf59a4c05b
 - detail: [coder backlog contract](concepts/coder-backlog-contract.md)
 
 The result records whether the shipped fix's backlog bullet was removed.
@@ -19,7 +19,7 @@ The result records whether the shipped fix's backlog bullet was removed.
 - required: false
 - semantics: whether the matching backlog bullet was removed
 - verify: json_path(path="$.pruned", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixPruned.pruned`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixPruned.pruned` @12cf59a4c05b
 
 ### bullet_id
 - type: string
@@ -27,7 +27,7 @@ The result records whether the shipped fix's backlog bullet was removed.
 - required: false
 - semantics: identifier of the bullet targeted for removal
 - verify: json_path(path="$.bullet_id", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixPruned.bullet_id`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixPruned.bullet_id` @12cf59a4c05b
 
 ### reason
 - type: string
@@ -35,4 +35,4 @@ The result records whether the shipped fix's backlog bullet was removed.
 - required: false
 - semantics: explanation of the prune outcome
 - verify: json_path(path="$.reason", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixPruned.reason`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixPruned.reason` @12cf59a4c05b

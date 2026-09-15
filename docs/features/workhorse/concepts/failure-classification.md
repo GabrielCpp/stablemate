@@ -9,10 +9,10 @@ Finished backend turns are classified once, centrally, so every CLI receives the
 semantics. Scheduled caps take precedence over timeouts; context overflow takes the compaction
 path; ordinary transient failures may retry; deterministic failures stop immediately.
 
-- code: `workhorse/workhorse/runner/failure.py::classify_turn`
-- code: `workhorse/workhorse/runner/failure.py::error_kind`
-- code: `workhorse/workhorse/runner/failure.py::BackendInvocationError`
-- code: `workhorse/workhorse/runner/failure.py::OutputParseError`
+- code: `workhorse/workhorse/runner/failure.py::classify_turn` @8b52f8948b6c
+- code: `workhorse/workhorse/runner/failure.py::error_kind` @8b52f8948b6c
+- code: `workhorse/workhorse/runner/failure.py::BackendInvocationError` @8b52f8948b6c
+- code: `workhorse/workhorse/runner/failure.py::OutputParseError` @8b52f8948b6c
 - detail: [Failure classification documentation views](failure-classification-views.md)
 - detail: [AgentRunner.run](run-agent.md)
 - detail: [AgentRunner.turn](agent-turn.md)
@@ -35,7 +35,7 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - verify: json_path(path="$.error.type", equals="BackendInvocationError")
 - returns: the original non-empty result text
 - verify: json_path(path="$.result", matches=".+")
-- code: `workhorse/workhorse/runner/failure.py::classify_turn`
+- code: `workhorse/workhorse/runner/failure.py::classify_turn` @8b52f8948b6c
 - tests: `workhorse/tests/test_failure_handoff.py::test_classify_turn_preserves_cap_before_timeout`
 
 ### error_kind
@@ -44,7 +44,7 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - verify: json_path(path="$", matches="^(parse|overflow|cap|timeout|transient|fatal)$")
 - returns: one of `parse`, `overflow`, `cap`, `timeout`, `transient`, or `fatal`
 - verify: json_path(path="$", matches="^(parse|overflow|cap|timeout|transient|fatal)$")
-- code: `workhorse/workhorse/runner/failure.py::error_kind`
+- code: `workhorse/workhorse/runner/failure.py::error_kind` @8b52f8948b6c
 - tests: `workhorse/tests/test_guardrails.py::test_error_kind_classification`
 
 ### is_transient
@@ -53,7 +53,7 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - verify: json_path(path="$", equals=true)
 - returns: whether the diagnostic is retryable
 - verify: json_path(path="$", equals=false)
-- code: `workhorse/workhorse/runner/failure.py::is_transient`
+- code: `workhorse/workhorse/runner/failure.py::is_transient` @8b52f8948b6c
 
 ### is_cap
 - sig: `is_cap(diagnostics: str) -> bool`
@@ -61,7 +61,7 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - verify: json_path(path="$", equals=true)
 - returns: whether the diagnostic names a scheduled cap
 - verify: json_path(path="$", equals=false)
-- code: `workhorse/workhorse/runner/failure.py::is_cap`
+- code: `workhorse/workhorse/runner/failure.py::is_cap` @8b52f8948b6c
 - tests: `workhorse/tests/test_guardrails.py::test_cap_detection`
 
 ### is_context_overflow
@@ -70,7 +70,7 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - verify: json_path(path="$", equals=true)
 - returns: whether compaction is the appropriate recovery
 - verify: json_path(path="$", equals=false)
-- code: `workhorse/workhorse/runner/failure.py::is_context_overflow`
+- code: `workhorse/workhorse/runner/failure.py::is_context_overflow` @8b52f8948b6c
 
 ### is_unresumable_session
 - sig: `is_unresumable_session(diagnostics: str) -> bool`
@@ -78,7 +78,7 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - verify: json_path(path="$", equals=true)
 - returns: whether the caller should discard the id and retry fresh without spending reframe budget
 - verify: json_path(path="$", equals=false)
-- code: `workhorse/workhorse/runner/failure.py::is_unresumable_session`
+- code: `workhorse/workhorse/runner/failure.py::is_unresumable_session` @8b52f8948b6c
 
 ### rate_limit_info
 - sig: `rate_limit_info(event: dict) -> tuple[bool, float | None]`
@@ -90,7 +90,7 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - verify: json_path(path="$.result.blocked", equals=true)
 - returns: a numeric reset epoch when usable
 - verify: json_path(path="$.result.reset_at", equals=1780000000.0)
-- code: `workhorse/workhorse/runner/failure.py::rate_limit_info`
+- code: `workhorse/workhorse/runner/failure.py::rate_limit_info` @8b52f8948b6c
 
 ### record_session_map
 - sig: `record_session_map(session_id_path: Path | None, node_id: str, session_id: str | None, backend: str = "") -> None`
@@ -106,7 +106,7 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - verify: emitted(event="session transcript capture", count=1)
 - returns: `None`, including when persistence or capture fails
 - verify: json_path(path="$.result", absent=true)
-- code: `workhorse/workhorse/runner/failure.py::record_session_map`
+- code: `workhorse/workhorse/runner/failure.py::record_session_map` @8b52f8948b6c
 - tests: `workhorse/tests/test_turnkey.py::test_each_turn_of_a_revisited_node_gets_its_own_addressable_row`
 - tests: `workhorse/tests/test_turnkey.py::test_a_row_records_the_commit_the_tree_was_on`
 - tests: `workhorse/tests/test_turnkey.py::test_no_repo_observed_leaves_the_row_without_a_head`
@@ -117,7 +117,7 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - verify: json_path(path="$.error.overflow", equals=true)
 - returns: a runtime error value with the supplied flags
 - verify: json_path(path="$.error.timed_out", equals=true)
-- code: `workhorse/workhorse/runner/failure.py::BackendInvocationError`
+- code: `workhorse/workhorse/runner/failure.py::BackendInvocationError` @8b52f8948b6c
 - tests: `workhorse/tests/test_guardrails.py::test_error_recovery`,
   `workhorse/tests/test_agent_recovery.py::test_non_recoverable_backend_error_aborts_without_reframe`
 
@@ -127,4 +127,4 @@ path; ordinary transient failures may retry; deterministic failures stop immedia
 - verify: json_path(path="$.error.type", equals="OutputParseError")
 - returns: a distinct runtime error consumed by same-session parse retry and reframing
 - verify: json_path(path="$.error.kind", equals="parse")
-- code: `workhorse/workhorse/runner/failure.py::OutputParseError`
+- code: `workhorse/workhorse/runner/failure.py::OutputParseError` @8b52f8948b6c

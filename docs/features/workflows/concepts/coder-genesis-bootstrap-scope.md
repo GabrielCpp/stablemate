@@ -17,7 +17,7 @@ choosing values for those fields. Repository state and service state remain inde
 existing repository can still gain a new service; an empty `markers` input falls back to
 `marker`, while a supplied `markers` input is the complete marker list.
 
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis`
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @3bdcf3e54849
 - rule: use the bootstrap concept for the deterministic lifecycle and the input-selection concept for cumulative field values; neither is an alternative implementation
 - detail: [coder genesis bootstrap concept selection](coder-genesis-bootstrap-concept-selection.md)
 - detail: [coder genesis bootstrap guide](coder-genesis-bootstrap-guide.md)

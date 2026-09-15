@@ -12,7 +12,7 @@ contains only the review status and camel-case graph digest; the returned `Story
 value additionally carries the repository-relative receipt path.
 
 - file: `<epic directory>/story-split-receipt.json`
-- code: `workflows/src/workhorse_workflows/author/story_split/schemas.py::StorySplitReceipt`
+- code: `workflows/src/workhorse_workflows/author/story_split/schemas.py::StorySplitReceipt` @1a09df97aba9
 - detail: [author story-split subflow](concepts/story-split-subflow.md)
 - tests: `workflows/tests/author/story_split/test_flow.py::test_accepts_one_epic_graph_without_selecting_authoring_or_git`
 
@@ -28,7 +28,7 @@ value additionally carries the repository-relative receipt path.
 - verify: json_path(path="$.graphDigest", matches="^[0-9a-f]{64}$")
 - returns: a deterministic lowercase SHA-256 hexadecimal digest of the split-owned topology
 - verify: json_path(path="$.graphDigest", matches="^[0-9a-f]{64}$")
-- code: `workflows/src/workhorse_workflows/author/shared/story_split_receipt.py::story_split_digest`
+- code: `workflows/src/workhorse_workflows/author/shared/story_split_receipt.py::story_split_digest` @4da55cfd1b63
 
 ### story_split_receipt_path
 - sig: `story_split_receipt_path(epic: Epic) -> Path | None`
@@ -36,7 +36,7 @@ value additionally carries the repository-relative receipt path.
 - verify: json_path(path="$.path", matches="story-split-receipt\\.json$")
 - returns: the receipt path, or null when the epic has no epic document
 - verify: count(subject="story split receipt path results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/story_split_receipt.py::story_split_receipt_path`
+- code: `workflows/src/workhorse_workflows/author/shared/story_split_receipt.py::story_split_receipt_path` @4da55cfd1b63
 
 ### story_split_review_current
 - sig: `story_split_review_current(epic: Epic) -> bool`
@@ -50,13 +50,13 @@ value additionally carries the repository-relative receipt path.
 - verify: count(subject="stale story split reviews", equals=1)
 - returns: true only when the receipt status is `passed` and its graph digest equals the current topology digest
 - verify: count(subject="current story split reviews", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/story_split_receipt.py::story_split_review_current`
+- code: `workflows/src/workhorse_workflows/author/shared/story_split_receipt.py::story_split_review_current` @4da55cfd1b63
 
 ### RECEIPT_NAME
 - sig: `RECEIPT_NAME: str`
 - returns: the filename `story-split-receipt.json` used beside an epic document
 - verify: count(subject="story split receipt filenames", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/story_split_receipt.py::RECEIPT_NAME`
+- code: `workflows/src/workhorse_workflows/author/shared/story_split_receipt.py::RECEIPT_NAME` @4da55cfd1b63
 
 ## Fields
 
@@ -65,7 +65,7 @@ value additionally carries the repository-relative receipt path.
 - required: true
 - semantics: review result that must be `passed` for the receipt to be current
 - verify: json_path(path="$.status", equals="passed")
-- code: `workflows/src/workhorse_workflows/author/story_split/nodes/review.py::record_story_split_review`
+- code: `workflows/src/workhorse_workflows/author/story_split/nodes/review.py::record_story_split_review` @8b8ae4257c91
 
 ### graphDigest
 - type: lowercase hexadecimal SHA-256 string
@@ -74,7 +74,7 @@ value additionally carries the repository-relative receipt path.
 - verify: json_path(path="$.graphDigest", matches="^[0-9a-f]{64}$")
 - semantics: digest of each story's slug, title, covered seed items, and dependencies
 - verify: json_path(path="$.graphDigest", matches="^[0-9a-f]{64}$")
-- code: `workflows/src/workhorse_workflows/author/shared/story_split_receipt.py::story_split_digest`
+- code: `workflows/src/workhorse_workflows/author/shared/story_split_receipt.py::story_split_digest` @4da55cfd1b63
 
 The on-disk JSON uses `status: "passed"` and camel-case `graphDigest`. The typed
 `StorySplitReceipt` return uses `graph_digest` and a repository-relative `path`; neither is an

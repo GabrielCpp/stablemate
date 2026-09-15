@@ -15,6 +15,6 @@ roles](author-resolve-operator-field-roles.md) names the purpose of each input a
 Neither is an alternative implementation or supersedes the other; choose the context summary for
 the whole diagnostic exchange and the field-role reference for an individual value's purpose.
 
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic`
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @60dae86955d2
 - rule: use the context summary for the diagnostic exchange and the field-role reference for an individual input or report value; neither is preferred because both describe the one invocation
 - detail: [operator resolution documentation context](operator-resolution-documentation-context.md)

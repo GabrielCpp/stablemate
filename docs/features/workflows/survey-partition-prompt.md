@@ -6,7 +6,7 @@ title: Survey partition prompt contract
 # Survey partition prompt contract
 
 - file: `workflows/src/workhorse_workflows/author/surveyor/prompts/partition-findings.md`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionProposal`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionProposal` @f79c1c007a97
 - detail: [author surveyor subflow](concepts/author-surveyor-subflow.md)
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_a_partition_covering_every_assessed_unit_is_valid`
 

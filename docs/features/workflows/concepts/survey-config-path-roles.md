@@ -12,5 +12,5 @@ field is a repository-relative path resolved against that root so a checkpoint c
 different machine. The schema declares no deprecated field, replacement field, or preference
 between these artifact roles.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SurveyConfig`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SurveyConfig` @f79c1c007a97
 - rule: use `repo_root` for the resolved repository root and use each other field only for its named survey artifact; no field supersedes another

@@ -15,6 +15,6 @@ the complete value directly with an explicit or null backend. No ranking exists 
 fields because each controls a distinct part of the run contract. The shared selection concept
 also distinguishes this field-focused view from the per-run lifecycle view.
 
-- code: `workhorse/workhorse/config_run.py::RunConfig`
+- code: `workhorse/workhorse/config_run.py::RunConfig` @2ce2af5069af
 - rule: use each field only for its documented run policy; construct or read the complete immutable `RunConfig`, with `backend` and `profile` supplied by the CLI boundary rather than selected from the environment
 - detail: [run configuration concept selection](run-configuration-concept-selection.md)

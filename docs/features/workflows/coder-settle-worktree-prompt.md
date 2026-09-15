@@ -6,7 +6,7 @@ title: Coder settle-worktree prompt
 # Coder settle-worktree prompt
 
 - file: `workflows/src/workhorse_workflows/coder/main/prompts/settle-worktree.md`
-- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.settle`
+- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.settle` @e12ee3a76767
 - detail: [coder main flow](flows/coder-main.md)
 - detail: [story worktree boundary](concepts/story-worktree-boundary.md)
 - detail: [coder prompt role resolution](concepts/coder-prompt-role-resolution.md)

@@ -13,7 +13,7 @@ a story through Ostler's configured document roots, rejects an unauthored or unr
 before an agent turn, records the directories an agent may read, protects code repositories from
 planning mutations, and stamps first-party spec artifacts with their OKF type.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::__all__`
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::__all__` @f47c3ed624b0
 - detail: [Coder shared library](coder-shared-library.md)
 - detail: [Coder documentation schemas](coder-docs-schemas.md)
 - detail: [Story worktree boundary](story-worktree-boundary.md)
@@ -34,7 +34,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="story-path failures for empty spec directories", equals=1)
 - does: rejects a story path that cannot be read
 - verify: count(subject="unreadable story-path failures", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::guard_story_file`
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::guard_story_file` @f47c3ed624b0
 
 ### prepare_story
 - sig: `prepare_story(logger, docs_path: str = "", story: str = "", epic: str = "", repo_dir: str = "") -> StoryPaths`
@@ -54,7 +54,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="resolved story epic results", equals=1)
 - does: returns the minted story id alongside the resolved paths
 - verify: count(subject="resolved story id results", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::prepare_story`
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::prepare_story` @f47c3ed624b0
 - detail: [Story paths](../story-paths.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`
 
@@ -66,7 +66,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="agent read sets containing the docs root", equals=1)
 - returns: the ordered directory list for agent turns
 - verify: json_path(path="$.dirs", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::resolve_workspace_dirs`
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::resolve_workspace_dirs` @f47c3ed624b0
 - detail: [Workflow workspace directories](../workspace-dirs.md)
 
 ### workspace_dirs
@@ -75,7 +75,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="workspace read sets read from setup output", equals=1)
 - returns: a copy of the recorded agent-readable directory list
 - verify: json_path(path="$.dirs", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::workspace_dirs`
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::workspace_dirs` @f47c3ed624b0
 - detail: [Workflow workspace directories](../workspace-dirs.md)
 
 ### snapshot_worktrees
@@ -88,7 +88,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="unreadable repositories omitted from snapshots", equals=1)
 - returns: status text keyed by absolute repository path
 - verify: json_path(path="$.status", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::snapshot_worktrees`
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::snapshot_worktrees` @f47c3ed624b0
 - detail: [Worktree snapshot](../worktree-snapshot.md)
 - tests: `workflows/tests/coder/shared/test_clean_tree.py::test_the_snapshot_covers_the_code_repos_and_not_the_docs_root`
 
@@ -104,7 +104,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: visible(locator="docs plan artifact", text="Plan")
 - returns: porcelain and discarded-diff details keyed by affected repository path
 - verify: json_path(path="$.reverted", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::scrub_plan_mutations`
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::scrub_plan_mutations` @f47c3ed624b0
 - detail: [Plan scrub result](../plan-scrub.md)
 - tests: `workflows/tests/coder/shared/test_clean_tree.py::test_the_scrub_reverts_what_the_turn_wrote_and_only_that`
 - tests: `workflows/tests/coder/shared/test_clean_tree.py::test_a_turn_that_kept_to_reading_scrubs_nothing`
@@ -119,7 +119,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="untyped spec stamping failures", equals=1)
 - returns: the number of documents newly stamped in this pass
 - verify: json_path(path="$.stamped", matches="^[0-9]+$")
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::stamp_specs`
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::stamp_specs` @f47c3ed624b0
 - detail: [Stamped specs result](../specs-stamped.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`
 
@@ -129,5 +129,5 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="backlog fix story preparations", equals=1)
 - does: records the fix preparation under a distinct node identity so it cannot overwrite the parent story preparation output
 - verify: count(subject="distinct fix-story preparation outputs", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::prepare_fix_story`
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::prepare_fix_story` @f47c3ed624b0
 - detail: [Story paths](../story-paths.md)

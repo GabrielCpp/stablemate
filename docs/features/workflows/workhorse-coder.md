@@ -6,7 +6,7 @@ title: workhorse-coder
 # workhorse-coder
 
 - binary: `workhorse-coder`
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @169c19e85119
 - detail: [coder shared library](concepts/coder-shared-library.md)
 - detail: [operational runbooks index](concepts/ops-runbooks.md)
 
@@ -32,7 +32,7 @@ The [workhorse-coder driver runbook](ops/workhorse-coder.md) exercises this CLI 
 - does:
   - starts the selected registered coder flow
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @169c19e85119
 - detail: [Coder command selection](concepts/coder-command-selection.md)
 
 ### dot
@@ -43,7 +43,7 @@ The [workhorse-coder driver runbook](ops/workhorse-coder.md) exercises this CLI 
 - does:
   - renders the registered Coder and selectable-flow state graphs
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @169c19e85119
 - detail: [Coder command selection](concepts/coder-command-selection.md)
 
 ### version
@@ -51,5 +51,5 @@ The [workhorse-coder driver runbook](ops/workhorse-coder.md) exercises this CLI 
 - does:
   - prints the installed Workhorse engine version
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main`
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @169c19e85119
 - detail: [Coder command selection](concepts/coder-command-selection.md)

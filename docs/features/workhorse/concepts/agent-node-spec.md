@@ -10,8 +10,8 @@ the Python driver and the runner: prompt and arguments are rendered from workflo
 declared outputs determine extraction, and per-node settings override run defaults. It is not a
 workflow-format file or a backend request.
 
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
-- code: `workhorse/workhorse/runner/spec.py::OutputSpec`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
+- code: `workhorse/workhorse/runner/spec.py::OutputSpec` @a87403257e16
 - detail: [Output specification reading guide](output-specification-reading-guide.md)
 - detail: [Output specification documentation scope](output-specification-documentation-scope.md)
 - detail: [Output specification documentation](output-specification-documentation.md)
@@ -26,7 +26,7 @@ workflow-format file or a backend request.
 - verify: json_path(path="$.type", equals="agent")
 - semantics: `id` identifies the node
 - semantics: `prompt` names its template
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### type
@@ -35,7 +35,7 @@ workflow-format file or a backend request.
 - verify: json_path(path="$.type", equals="agent")
 - semantics: distinguishes an agent node from other node kinds
 - verify: json_path(path="$.type", matches="^agent$")
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### id
@@ -43,7 +43,7 @@ workflow-format file or a backend request.
 - required: true
 - verify: json_path(path="$.id", matches=".+")
 - semantics: stable node identifier used in logs, artifacts, telemetry, and session records
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### prompt
@@ -52,7 +52,7 @@ workflow-format file or a backend request.
 - verify: json_path(path="$.prompt", matches=".+")
 - semantics: workflow-relative template rendered before invocation
 - verify: persists(subject="the rendered workflow-relative prompt")
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### args
@@ -61,7 +61,7 @@ workflow-format file or a backend request.
 - verify: count(subject="AgentNode arguments when omitted", equals=0)
 - required: false
 - semantics: Jinja string arguments rendered and merged into the prompt context
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### outputs
@@ -72,7 +72,7 @@ workflow-format file or a backend request.
 - semantics: ordered output specifications for declared result keys
 - semantics: an empty list means the turn returns no extracted values
 - verify: count(subject="extracted output values for an empty declaration", equals=0)
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### power
@@ -95,7 +95,7 @@ workflow-format file or a backend request.
 - semantics: any operator-invented tier name is accepted — including ones this repo never imagined — because the engine treats `power` as an opaque key into the operator's `[power.<level>.<backend>]` tables
 - verify: json_path(path="$.power", equals="cheap-bulk")
 - semantics: the validation path used by a dict-shaped spec (a YAML/Python driver entry) accepts the same opaque names as the model constructor
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
 - tests: `workhorse/tests/test_backends.py::test_agentnode_power_is_an_opaque_tier_name`
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
@@ -111,7 +111,7 @@ workflow-format file or a backend request.
 - verify: json_path(path="$.timeout", equals=0)
 - semantics: case-insensitive `infinity`, `inf`, `infinite`, `unbounded`, and `never`, plus YAML `.inf`, disable the deadline
 - verify: json_path(path="$.timeout", equals="infinity")
-- code: `workhorse/workhorse/runner/spec.py::AgentNode._coerce_timeout`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode._coerce_timeout` @a87403257e16
 
 ### retries
 - type: `int | None`
@@ -125,7 +125,7 @@ workflow-format file or a backend request.
 - verify: count(subject="fresh reframe sessions after a failed file-delivery turn with retries 0", equals=0)
 - semantics: `0` prevents reframes from multiplying a tight per-node timeout budget
 - verify: count(subject="fresh reframe sessions that consume an additional per-node timeout budget after a failed turn with retries 0", equals=0)
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
 - tests: `workhorse/tests/test_agent_recovery.py::test_a_node_can_spend_a_smaller_reframe_budget_than_the_run`,
   `workhorse/tests/test_agent_recovery.py::test_a_node_without_its_own_budget_still_uses_the_runs`,
   `workhorse/tests/test_agent_recovery.py::test_a_node_can_spend_a_larger_reframe_budget_than_the_run`
@@ -140,7 +140,7 @@ workflow-format file or a backend request.
 - semantics: `None` uses the run's `resilience.max_invoke_retries` setting, whose days-long budget lets an unattended run ride out a provider outage
 - verify: json_path(path="$.invoke_retries", equals="None")
 - semantics: a spending-cap wait is not limited by this field because recovery waits for the cap to clear rather than stopping the turn
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
 - tests: `workhorse/tests/test_agent_recovery.py::test_node_invoke_retries_bounds_transient_retries_below_the_run_default`,
   `workhorse/tests/test_agent_recovery.py::test_node_invoke_retries_unset_keeps_the_run_default`
 - detail: [Agent node field selection](agent-node-field-selection.md)
@@ -154,7 +154,7 @@ workflow-format file or a backend request.
 - semantics: optional Jinja-rendered subprocess working directory that controls the agent CLI's CLAUDE.md and skills discovery and Git context
 - semantics: an empty rendered directory or `None` inherits the process working directory
 - verify: json_path(path="$.cwd", matches=".+")
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### add_dirs
@@ -166,7 +166,7 @@ workflow-format file or a backend request.
 - verify: count(subject="backend --add-dir arguments for rendered additional directories", equals=2)
 - semantics: a bare variable may resolve to a native list
 - verify: count(subject="--add-dir arguments from a native list-valued template", equals=2)
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### activity
@@ -178,7 +178,7 @@ workflow-format file or a backend request.
 - verify: json_path(path="$.activity", matches=".+")
 - semantics: the pyflow runner never reads this field, so setting it has no effect on a node's turn
 - semantics: a running node's current activity is instead derived from a flagged log record (`extra={"activity": True}`) and published as the `activity` telemetry label — see [pyflow activity labels](pyflow-activity.md)
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### next
@@ -189,7 +189,7 @@ workflow-format file or a backend request.
 - semantics: accepted on the model as a carry-over from the retired YAML engine, which read a node's declared `next:` both to advance to the following node and, when the recovery ladder gave up on a node, to fall back to it with fabricated outputs
 - verify: json_path(path="$.next", equals="next_node")
 - semantics: the pyflow runner reads neither use — normal advancement is derived from the state's own return value (see [pyflow state graph](pyflow-state-graph.md)), and a node the ladder exhausts now raises instead of defaulting to a next node (see [agent resilience tuning](agent-resilience-tuning.md)) — so setting `next` has no effect on a node's turn
-- code: `workhorse/workhorse/runner/spec.py::AgentNode`
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @a87403257e16
 - detail: [Agent node field selection](agent-node-field-selection.md)
 
 ### OutputSpec
@@ -198,7 +198,7 @@ workflow-format file or a backend request.
 - verify: json_path(path="$.key", matches=".+")
 - semantics: records whether its key must be present
 - verify: json_path(path="$.required", matches="^(true|false)$")
-- code: `workhorse/workhorse/runner/spec.py::OutputSpec`
+- code: `workhorse/workhorse/runner/spec.py::OutputSpec` @a87403257e16
 - detail: [Output specification fields](output-specification-fields.md)
 
 ### key
@@ -207,7 +207,7 @@ workflow-format file or a backend request.
 - verify: json_path(path="$.key", matches=".+")
 - semantics: output key requested from the agent response
 - verify: created(subject="the declared output key in extracted results")
-- code: `workhorse/workhorse/runner/spec.py::OutputSpec`
+- code: `workhorse/workhorse/runner/spec.py::OutputSpec` @a87403257e16
 - detail: [Output specification fields](output-specification-fields.md)
 
 ### required
@@ -220,7 +220,7 @@ workflow-format file or a backend request.
 - verify: absent(subject="a missing optional output key")
 - semantics: missing required keys raise `OutputParseError`
 - verify: absent(subject="fallback output after a missing required key")
-- code: `workhorse/workhorse/runner/spec.py::OutputSpec`
+- code: `workhorse/workhorse/runner/spec.py::OutputSpec` @a87403257e16
 - detail: [Output specification fields](output-specification-fields.md)
 
 `workhorse.runner.__init__` intentionally exports no names. Consumers import the specific runner

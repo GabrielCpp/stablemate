@@ -11,5 +11,5 @@ implementation plan and receives review artifacts, and the affected repository p
 the implementations and tests to inspect. They are passed together to the reviewer; none is an
 alternative to another and no ranking exists.
 
-- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review`
+- code: `workflows/src/workhorse_workflows/coder/review/flow.py::Review.review` @ee5ae700635f
 - rule: provide `story_path`, `spec_dir`, and `affected_repo_paths` together for every implementation review

@@ -17,13 +17,13 @@ the exporter path to prevent recursive failure logging, and is removed before pr
 Script nodes receive a logger named `script.<node_id>`; their records use the same root handlers
 and run correlation as engine records.
 
-- code: `workhorse/workhorse/logsetup.py::setup`
-- code: `workhorse/workhorse/logsetup.py::attach_otel`
-- code: `workhorse/workhorse/logsetup.py::detach_otel`
-- code: `workhorse/workhorse/logsetup.py::script_logger`
-- code: `workhorse/workhorse/logsetup.py::_NodeFilter`
-- code: `workhorse/workhorse/logsetup.py::_HeadFilter`
-- code: `workhorse/workhorse/logsetup.py::_DropOtelInternals`
+- code: `workhorse/workhorse/logsetup.py::setup` @9a5bebae20a2
+- code: `workhorse/workhorse/logsetup.py::attach_otel` @9a5bebae20a2
+- code: `workhorse/workhorse/logsetup.py::detach_otel` @9a5bebae20a2
+- code: `workhorse/workhorse/logsetup.py::script_logger` @9a5bebae20a2
+- code: `workhorse/workhorse/logsetup.py::_NodeFilter` @9a5bebae20a2
+- code: `workhorse/workhorse/logsetup.py::_HeadFilter` @9a5bebae20a2
+- code: `workhorse/workhorse/logsetup.py::_DropOtelInternals` @9a5bebae20a2
 - tests: `workhorse/tests/test_otel.py`
 
 ## Methods
@@ -38,7 +38,7 @@ and run correlation as engine records.
 - does: returns without adding another console handler when already configured
 - verify: unchanged(subject="the root logger's handler collection")
 - returns: `None`
-- code: `workhorse/workhorse/logsetup.py::setup`
+- code: `workhorse/workhorse/logsetup.py::setup` @9a5bebae20a2
 - tests: `workhorse/tests/test_logsetup.py::test_console_handler_survives_the_script_stdout_capture`
 
 ### attach_otel
@@ -50,7 +50,7 @@ and run correlation as engine records.
 - does: drops any record whose logger name starts with `opentelemetry` from the OTel handler, so a failing collector cannot feed its own diagnostics back into the export queue
 - verify: count(subject="records dropped because their logger name starts with opentelemetry", equals=2)
 - returns: `None`
-- code: `workhorse/workhorse/logsetup.py::attach_otel`
+- code: `workhorse/workhorse/logsetup.py::attach_otel` @9a5bebae20a2
 - tests: `workhorse/tests/test_logsetup.py::test_sdk_internal_logs_are_kept_out_of_the_otel_handler`, `workhorse/tests/test_logsetup.py::test_attach_and_detach_otel_are_safe_without_a_provider`
 
 ### detach_otel
@@ -62,7 +62,7 @@ and run correlation as engine records.
 - does: runs safely when no provider has ever been attached, so `end_run` can call it unconditionally
 - verify: exit_status(code=0)
 - returns: `None`
-- code: `workhorse/workhorse/logsetup.py::detach_otel`
+- code: `workhorse/workhorse/logsetup.py::detach_otel` @9a5bebae20a2
 - tests: `workhorse/tests/test_logsetup.py::test_detach_removes_the_handler_before_the_provider_dies`, `workhorse/tests/test_logsetup.py::test_attach_and_detach_otel_are_safe_without_a_provider`
 
 ### script_logger
@@ -70,7 +70,7 @@ and run correlation as engine records.
 - does: returns the logger named `script.<node_id>` for an in-process script node
 - returns: a standard-library logger that propagates to the configured root handlers
 - verify: emitted(event="script logger record at configured root handlers", count=1)
-- code: `workhorse/workhorse/logsetup.py::script_logger`
+- code: `workhorse/workhorse/logsetup.py::script_logger` @9a5bebae20a2
 - tests: `workhorse/tests/test_logsetup.py::test_script_logger_is_named_per_node`
 
 ### _NodeFilter
@@ -81,12 +81,12 @@ and run correlation as engine records.
 - verify: unchanged(subject="an explicit record.node attribute")
 - does: stamps `node` as the empty string when telemetry is off, rather than raising and breaking logging
 - verify: json_path(path="record.node", equals="")
-- code: `workhorse/workhorse/logsetup.py::_NodeFilter`
+- code: `workhorse/workhorse/logsetup.py::_NodeFilter` @9a5bebae20a2
 - tests: `workhorse/tests/test_logsetup.py::test_records_are_stamped_with_the_current_node`, `workhorse/tests/test_logsetup.py::test_an_explicit_node_is_not_overwritten`, `workhorse/tests/test_logsetup.py::test_node_stamp_is_empty_rather_than_raising_when_telemetry_is_off`
 
 ### _DropOtelInternals
 - sig: `_DropOtelInternals() -> logging.Filter`
 - does: filters records whose logger name starts with `opentelemetry` so the OTel handler does not feed the exporter's own diagnostics back into the export queue
 - verify: absent(subject="opentelemetry records reaching the OTel handler")
-- code: `workhorse/workhorse/logsetup.py::_DropOtelInternals`
+- code: `workhorse/workhorse/logsetup.py::_DropOtelInternals` @9a5bebae20a2
 - tests: `workhorse/tests/test_logsetup.py::test_sdk_internal_logs_are_kept_out_of_the_otel_handler`

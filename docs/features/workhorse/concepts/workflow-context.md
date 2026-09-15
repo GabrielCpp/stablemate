@@ -21,7 +21,7 @@ graph walk's live state, merged into after every node and snapshotted into
 `checkpoint.json` — which is why it still carries the general-sounding name. Today the live state
 lives on the workflow instance, and only the render base lives here.
 
-- code: `workhorse/workhorse/context.py::WorkflowContext`
+- code: `workhorse/workhorse/context.py::WorkflowContext` @403eb79dd038
 - tests: `workhorse/tests/test_agent_recovery.py::test_rendered_prompt_is_written_and_only_path_is_printed`
 
 It sits at the package top level rather than under a driver subpackage on purpose: the agent

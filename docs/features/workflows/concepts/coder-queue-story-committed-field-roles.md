@@ -16,6 +16,6 @@ stamp, including a rerun whose implementation work had already landed.
 outcome, such as a give-up, documentation block, or interrupted run. It is false for a
 never-attempted story, even when that story has no implementation commit.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryCommitted`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryCommitted` @a87cd48ce444
 - rule: read both fields together: use `committed` to identify implementation work and
   `superseded_outcome` to identify a passing status stamp that replaces an earlier attempt outcome

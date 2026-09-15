@@ -16,7 +16,7 @@ It lives in `runner/backends/turn.py` together with [`TurnState`](#turnstate), b
 halves of one contract: what a streaming turn accumulates, and how that accumulation becomes a
 result or a `BackendInvocationError`. Nothing in that module names a CLI.
 
-- code: `workhorse/workhorse/runner/backends/turn.py::finalize_turn`
+- code: `workhorse/workhorse/runner/backends/turn.py::finalize_turn` @bb0cd1168f58
 - tests: `workhorse/tests/test_backends.py::test_finalize_turn_classifies_failures`,
   `workhorse/tests/test_backends.py::test_finalize_turn_non_recoverable_names_each_backend`,
   `workhorse/tests/test_backends.py::test_finalize_turn_hands_the_classifier_the_counts_it_stamped`
@@ -83,7 +83,7 @@ same module. Mutable by construction: `stream_jsonl`'s per-line callback and the
 adapter write into it event by event, the process outcome lands once the stream closes, and
 `finalize_turn` reads the finished value.
 
-- code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState` @bb0cd1168f58
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -116,7 +116,7 @@ Two design rules hold this struct in place:
 - required: false
 - semantics: final answer text selected by the backend event reader
 - verify: json_path(path="$.result_text", matches=".*")
-- code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState` @bb0cd1168f58
 - detail: [TurnState field selection](turn-state-fields.md)
 
 ### session_id
@@ -125,7 +125,7 @@ Two design rules hold this struct in place:
 - required: false
 - semantics: CLI session handle used for the next turn's resume operation
 - verify: json_path(path="$.session_id", absent=true)
-- code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState` @bb0cd1168f58
 - detail: [TurnState field selection](turn-state-fields.md)
 
 ### usage
@@ -134,7 +134,7 @@ Two design rules hold this struct in place:
 - required: false
 - semantics: normalized token and cost measurements accumulated during the turn
 - verify: absent(subject="usage attributes on a turn with no provider usage")
-- code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState` @bb0cd1168f58
 - detail: [TurnState field selection](turn-state-fields.md)
 
 ### diagnostics
@@ -143,7 +143,7 @@ Two design rules hold this struct in place:
 - required: false
 - semantics: non-JSON output and structured error descriptions retained for classification
 - verify: json_path(path="$.diagnostics", matches=".*")
-- code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState` @bb0cd1168f58
 - detail: [TurnState field selection](turn-state-fields.md)
 
 ### timed_out
@@ -152,7 +152,7 @@ Two design rules hold this struct in place:
 - required: false
 - semantics: whether timeout/watchdog or early-abort handling ended the stream
 - verify: json_path(path="$.timed_out", equals=false)
-- code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState` @bb0cd1168f58
 - detail: [TurnState field selection](turn-state-fields.md)
 
 ### returncode
@@ -161,7 +161,7 @@ Two design rules hold this struct in place:
 - required: false
 - semantics: child process exit code copied from the supervised stream
 - verify: json_path(path="$.returncode", equals=0)
-- code: `workhorse/workhorse/runner/backends/turn.py::TurnState`
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState` @bb0cd1168f58
 - detail: [TurnState field selection](turn-state-fields.md)
 
 ## Methods
@@ -174,21 +174,21 @@ Two design rules hold this struct in place:
 - raises: `BackendInvocationError` when the classifier rejects the turn
 - verify: emitted(event="normalized token counts and cost to the open agent-turn span", count=1)
 - returns: the classified result text on success
-- code: `workhorse/workhorse/runner/backends/turn.py::finalize_turn`
+- code: `workhorse/workhorse/runner/backends/turn.py::finalize_turn` @bb0cd1168f58
 
 ### diagnostics_text
 - sig: `diagnostics_text -> str`
 - does: joins diagnostics with newline separators for the shared classifier
 - returns: one diagnostic string, empty when no diagnostics were recorded
 - verify: json_path(path="$.diagnostics_text", equals="")
-- code: `workhorse/workhorse/runner/backends/turn.py::TurnState.diagnostics_text`
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState.diagnostics_text` @bb0cd1168f58
 
 ### read_session_id
 - sig: `read_session_id(session_id_path: Path | None) -> str | None`
 - does: reads and strips an existing persisted session id
 - returns: the stripped id, or `None` for no path, absent file, or empty file
 - verify: json_path(path="$.session_id", absent=true)
-- code: `workhorse/workhorse/runner/backends/turn.py::read_session_id`
+- code: `workhorse/workhorse/runner/backends/turn.py::read_session_id` @bb0cd1168f58
 
 ## Related pieces
 

@@ -12,7 +12,7 @@ and optionally writes `.agents/program` as the active-program pointer. It refuse
 existing generated files unless `--force` is supplied. The package initializer has no public API;
 the executable surface is `new_program.py`.
 
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main` @9b6cebdf8be0
 - detail: [research program manifest](../research-program-manifest.md)
 - detail: [research program scaffolder concerns](research-program-scaffolder-concerns.md)
 - detail: [research program scaffolder documentation scope](research-program-scaffolder-documentation-scope.md)
@@ -27,7 +27,7 @@ the executable surface is `new_program.py`.
 - verify: json_path(path="$.slug", matches="^[^/]+(-[^/]+)*$")
 - does: joins the remaining segments with hyphens, or replaces `/` with `-` when no segments remain
 - returns: the derived program slug
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::slug`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::slug` @9b6cebdf8be0
 
 ### render
 
@@ -36,7 +36,7 @@ the executable surface is `new_program.py`.
 - does: replaces every exact replacement key with its replacement value in template order
 - returns: the rendered template text
 - verify: json_path(path="$.rendered", matches=".+")
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::render`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::render` @9b6cebdf8be0
 
 ### write
 
@@ -48,7 +48,7 @@ the executable surface is `new_program.py`.
 - does: writes the supplied content to the destination and reports the path
 - verify: persists(subject="the scaffold output file contents")
 - raises: `SystemExit` with a refusal message when overwrite is disallowed
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::write`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::write` @9b6cebdf8be0
 
 ### main
 
@@ -68,4 +68,4 @@ the executable surface is `new_program.py`.
 - verify: persists(subject="the active research program pointer")
 - does: logs the scaffold destination and the next workflow command without invoking the workflow
 - returns: `None` after all requested writes succeed
-- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main`
+- code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main` @9b6cebdf8be0

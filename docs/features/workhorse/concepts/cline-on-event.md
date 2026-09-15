@@ -21,7 +21,7 @@ adapter needed state).
 Every event shape below was captured from a live turn (CLI 3.0.50, 2026-08-05), not inferred from
 documentation.
 
-- code: `workhorse/workhorse/runner/backends/cline.py::_on_event`
+- code: `workhorse/workhorse/runner/backends/cline.py::_on_event` @1197b2e4b51c
 - extends: [stream_jsonl](stream-jsonl.md#contract)
 - tests: `workhorse/tests/test_backends.py::test_cline_on_event_reads_the_terminal_result`,
   `workhorse/tests/test_backends.py::test_cline_reports_an_unclean_finish_reason_as_a_diagnostic`,

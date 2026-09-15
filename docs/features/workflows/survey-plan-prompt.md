@@ -6,7 +6,7 @@ title: Survey plan prompt contract
 # Survey plan prompt contract
 
 - file: `workflows/src/workhorse_workflows/author/surveyor/prompts/plan-units.md`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PlanResult`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PlanResult` @f79c1c007a97
 - detail: [author surveyor subflow](concepts/author-surveyor-subflow.md)
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_two_components_are_planned_assessed_verified_and_emitted`
 

@@ -21,6 +21,6 @@ All paths other than `repo_root` remain repository-relative because they are rec
 as emitted by the parity script. No field ranks over or replaces another; selecting a field for
 a different artifact is a configuration error rather than a supported fallback.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/parity.py::ParityConfig`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/parity.py::ParityConfig` @9c1c30dc1201
 - rule: select the field named for the parity-survey artifact being read or written; the fields are complementary and none substitutes for another
 - detail: [parity configuration documentation roles](parity-config-documentation-roles.md)

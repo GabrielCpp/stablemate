@@ -30,7 +30,7 @@ artifact-emission nodes) and the parity surveyor's own non-shared nodes (its bas
 freeze and backlog-emission nodes) are documented in their respective subflow concepts
 and import this blueprint to register on it.
 
-- code: `workflows/src/workhorse_workflows/author/shared/survey/blueprint.py::blueprint`
+- code: `workflows/src/workhorse_workflows/author/shared/survey/blueprint.py::blueprint` @737f6f4111dd
 - rule: the same `blueprint` instance is the registration object for both the surveyor and parity-surveyor flows; a node reaching either subflow resolves through this single object, and a node name shared across both flows is a collision, not a coincidence
 - detail: [author shared survey library](survey-shared-library.md)
 - detail: [author parity surveyor subflow](author-parity-surveyor-subflow.md)

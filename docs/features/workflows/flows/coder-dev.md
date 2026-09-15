@@ -165,7 +165,7 @@ but the underlying block is never abandoned.
 - verify: json_path(path="$.status", equals="rework")
 - errors: workflow failure if validator continues to reject paths after correction
 - verify: exit_status(code=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::refine`
+- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::refine` @13266f79223d
 - tests: `workflows/tests/coder/dev/test_flow.py::test_an_unresolvable_service_path_reworks_the_plan`
 - tests:
 

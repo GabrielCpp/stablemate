@@ -14,5 +14,5 @@ Read `status` to select the outcome path, then read `notes` when the outcome nee
 Neither field replaces or ranks above the other: the schema declares both as current outputs of
 the partition-findings prompt.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionProposal`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionProposal` @f79c1c007a97
 - rule: use `status` for outcome routing and `notes` for partition explanation or blocking information

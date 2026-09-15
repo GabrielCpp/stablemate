@@ -11,7 +11,7 @@ change. The flow acts only on `blocked`; the next poll judges `fixed` and `faile
 
 - file: none — the report is an agent response, not a persisted file format
 - config: none — its values come from the prompt output contract
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::FixCiResult`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::FixCiResult` @76d805cfd6c3
 - detail: [coder CI remediation flow](flows/fix-ci-remediation.md)
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_fixer_that_says_it_cannot_stops_the_laps_instead_of_re_asking_it`
 
@@ -34,7 +34,7 @@ change. The flow acts only on `blocked`; the next poll judges `fixed` and `faile
 - verify: json_path(path="$.status", equals="blocked")
 - semantics: `blocked` says the required change would alter an observable contract outside this stage's scope
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::FixCiResult.status`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::FixCiResult.status` @76d805cfd6c3
 
 ### notes
 
@@ -51,4 +51,4 @@ change. The flow acts only on `blocked`; the next poll judges `fixed` and `faile
 - verify: json_path(path="$.notes", matches="/.+/")
 - semantics: for `blocked`, notes identify the forbidden contract change when that is the blocker
 - verify: json_path(path="$.notes", matches="/.+")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::FixCiResult.notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::FixCiResult.notes` @76d805cfd6c3

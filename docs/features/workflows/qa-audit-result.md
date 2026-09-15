@@ -9,7 +9,7 @@ The verdict `audit-qa.md` reports on an adversarial second read of a QA pass tha
 
 - file: none — agent reply and checkpoint value
 - config: `QaAudit` agent-turn output contract
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit` @2e918886779f
 - detail: [coder QA schema contracts](concepts/coder-qa-schema-contracts.md)
 
 ## Fields
@@ -22,7 +22,7 @@ The verdict `audit-qa.md` reports on an adversarial second read of a QA pass tha
 - verify: json_path(path="$.status", equals="audited")
 - semantics: `blocked` when there was no evidence to judge
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit.status`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit.status` @2e918886779f
 
 ### verdict
 
@@ -32,7 +32,7 @@ The verdict `audit-qa.md` reports on an adversarial second read of a QA pass tha
 - verify: json_path(path="$.verdict", equals="stands")
 - semantics: `refuted` when independent scrutiny finds the pass is wrong
 - verify: json_path(path="$.verdict", equals="refuted")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit.verdict`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit.verdict` @2e918886779f
 
 ### refutation_class
 
@@ -46,7 +46,7 @@ The verdict `audit-qa.md` reports on an adversarial second read of a QA pass tha
 - verify: json_path(path="$.refutation_class", equals="plan-defect")
 - semantics: `evidence-defect` when the evidence itself is defective
 - verify: json_path(path="$.refutation_class", equals="evidence-defect")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit.refutation_class`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit.refutation_class` @2e918886779f
 
 ### findings
 
@@ -57,7 +57,7 @@ The verdict `audit-qa.md` reports on an adversarial second read of a QA pass tha
 - verify: count(subject="$.findings", equals=0)
 - semantics: at least one finding when the audit refutes the result
 - verify: json_path(path="$.findings[0].target", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit.findings`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit.findings` @2e918886779f
 
 ### notes
 
@@ -66,5 +66,5 @@ The verdict `audit-qa.md` reports on an adversarial second read of a QA pass tha
 - required: false
 - semantics: a summary of the findings, in one or two sentences
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit.notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaAudit.notes` @2e918886779f
 

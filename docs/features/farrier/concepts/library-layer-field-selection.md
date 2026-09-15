@@ -14,7 +14,7 @@ the dataclass, and neither supersedes the other.
 `name`: an overlay is labelled with its resolved path, while the base uses `base-library (base)`.
 The fields therefore have no ranking and must remain distinct.
 
-- code: `farrier/farrier/layers.py::Layer`
+- code: `farrier/farrier/layers.py::Layer` @26243f6a8ed5
 - rule: use `root` for the library filesystem location and `name` for its diagnostic provenance label; neither field is preferred or deprecated
 - detail: [library layer usage rule](library-layer-usage-rule.md)
 - detail: [library layer selection](library-layer-selection.md)

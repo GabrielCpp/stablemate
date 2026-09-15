@@ -16,5 +16,5 @@ position among a state's work. Use [`Step.kind`](pyflow-state-graph.md#field-ste
 fields are current views of the same record, not alternate implementations, so none supersedes
 another.
 
-- code: `workhorse/workhorse/pyflow/graph.py::Step`
+- code: `workhorse/workhorse/pyflow/graph.py::Step` @85ed8cfdfe51
 - rule: use `Step` for a source-ordered work item; use `kind`, `name`, or `summary` only when that individual attribute is the required view

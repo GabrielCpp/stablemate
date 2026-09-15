@@ -13,11 +13,11 @@ both emitted and suppressed units. Existing survey record and worklist mechanics
 the [author surveyor](author-surveyor-subflow.md); this subflow differs by having no planning,
 splitting, or clustering stage.
 
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor`
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::load_parity_config`
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::expand_parity_inventory`
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::emit_parity_backlog`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/parity.py::ParityConfig`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor` @afa650d81faa
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::load_parity_config` @09b3ca61b54d
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::expand_parity_inventory` @09b3ca61b54d
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::emit_parity_backlog` @09b3ca61b54d
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/parity.py::ParityConfig` @9c1c30dc1201
 - tests: `workflows/tests/author/parity_surveyor/test_flow.py::test_a_two_surface_baseline_surveys_both_and_emits_only_the_unowned_one`
 - tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_expand_freezes_one_unit_per_baseline_surface`
 - detail: [parity configuration documentation roles](parity-config-documentation-roles.md)
@@ -41,7 +41,7 @@ directory and keeps derived paths repository-relative.
 - verify: json_path(path="$.baseline_inventory", matches=".*")
 - semantics: an empty or unreadable path fails setup with failure class `parity-baseline-missing`
 - verify: json_path(path="exception.failure_class", equals="parity-baseline-missing")
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor` @afa650d81faa
 - detail: [parity surveyor input roles](parity-surveyor-input-roles.md)
 
 ### survey_dir
@@ -50,7 +50,7 @@ directory and keeps derived paths repository-relative.
 - required: false
 - semantics: repository-relative directory containing the frozen inventory, finding records, and emitted unit manifest
 - verify: json_path(path="$.survey_dir", equals="docs/survey/legacy-vs-new")
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor` @afa650d81faa
 - detail: [parity surveyor input roles](parity-surveyor-input-roles.md)
 
 ## Methods
@@ -61,7 +61,7 @@ directory and keeps derived paths repository-relative.
 - raises: raises `WorkflowFailed` when the baseline inventory is empty or absent
 - returns: returns [parity configuration](../parity-config.md) containing all resolved comparison paths
 - verify: count(subject="parity configuration results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.setup`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.setup` @afa650d81faa
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### labels
@@ -70,7 +70,7 @@ directory and keeps derived paths repository-relative.
 - does: reports the selected unit id and worklist progress after selection
 - returns: returns a mapping containing `work_id` and `progress` when a selection exists
 - verify: count(subject="parity survey label snapshots", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.labels`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.labels` @afa650d81faa
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### start
@@ -79,7 +79,7 @@ directory and keeps derived paths repository-relative.
 - raises: raises `WorkflowFailed` when the baseline cannot produce a valid non-rewrite unit list
 - returns: continues to `pick` with the successful expansion result
 - verify: count(subject="parity inventory freezes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.start`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.start` @afa650d81faa
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### pick
@@ -88,7 +88,7 @@ directory and keeps derived paths repository-relative.
 - does: routes to coverage verification when no pending unit remains
 - returns: continues to `assess` with the unit id, path, kind, record path, and progress
 - verify: count(subject="parity unit selections", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.pick`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.pick` @afa650d81faa
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### assess
@@ -99,7 +99,7 @@ directory and keeps derived paths repository-relative.
 - does: requires the turn to write one `survey-finding` record rather than feature nodes, epics, stories, or source code
 - returns: continues to `mark` with the agent assessment, unit id, and record path
 - verify: count(subject="parity unit assessments", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.assess`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.assess` @afa650d81faa
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### mark
@@ -109,7 +109,7 @@ directory and keeps derived paths repository-relative.
 - raises: raises `WorkflowFailed` naming the unit when record validation fails
 - returns: continues to `pick`
 - verify: count(subject="parity finding records marked", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.mark`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.mark` @afa650d81faa
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### verify
@@ -118,7 +118,7 @@ directory and keeps derived paths repository-relative.
 - raises: raises `WorkflowFailed` when coverage fails or when the survey has no units to prove
 - returns: continues to `emit` only when coverage holds
 - verify: count(subject="parity coverage gates", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.verify`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.verify` @afa650d81faa
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### emit
@@ -128,7 +128,7 @@ directory and keeps derived paths repository-relative.
 - does: writes the generated parity section and a manifest containing every frozen unit
 - returns: returns `Done` with the emission result, including bullet count and suppression note
 - verify: count(subject="parity artifact emissions", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.emit`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.emit` @afa650d81faa
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### parity_slug
@@ -136,7 +136,7 @@ directory and keeps derived paths repository-relative.
 - does: converts a unit id to a lowercase hyphenated finding-record filename stem
 - returns: returns the normalized stem with non-alphanumeric runs collapsed and edge hyphens removed
 - verify: count(subject="parity record slug conversions", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::parity_slug`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::parity_slug` @09b3ca61b54d
 
 ### replace_parity_section
 - sig: `replace_parity_section(text: str, section: str) -> str`
@@ -144,7 +144,7 @@ directory and keeps derived paths repository-relative.
 - does: appends the parity heading and marker section to a non-empty backlog when no marker exists
 - returns: returns the resulting backlog text
 - verify: count(subject="parity backlog section replacements", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::replace_parity_section`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::replace_parity_section` @09b3ca61b54d
 
 ### load_parity_config
 - sig: `load_parity_config(logger: logging.Logger, baseline: str, survey_dir: str = "docs/survey/legacy-vs-new", repo_dir: str = "") -> ParityConfig`
@@ -153,7 +153,7 @@ directory and keeps derived paths repository-relative.
 - raises: raises `WorkflowFailed` with failure class `parity-target-missing` when the target feature book is absent
 - returns: returns a [parity configuration](../parity-config.md) with paths derived from the selected repository root
 - verify: count(subject="loaded parity configurations", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::load_parity_config`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::load_parity_config` @09b3ca61b54d
 
 ### expand_parity_inventory
 - sig: `expand_parity_inventory(logger: logging.Logger, baseline: str, inventory: str, repo_dir: str = "") -> Expansion`
@@ -162,7 +162,7 @@ directory and keeps derived paths repository-relative.
 - does: rejects malformed, duplicate, unreadable, and zero-unit baselines without writing a freeze
 - returns: returns an `Expansion` identifying the frozen unit count and source note
 - verify: count(subject="expanded parity inventories", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::expand_parity_inventory`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::expand_parity_inventory` @09b3ca61b54d
 
 ### emit_parity_backlog
 - sig: `emit_parity_backlog(logger: logging.Logger, inventory: str, findings_dir: str, unit_manifest: str, repo_dir: str = "") -> EmitResult`
@@ -171,4 +171,4 @@ directory and keeps derived paths repository-relative.
 - does: writes a version-one manifest with each unit's path, status, owner, and emitted bullet id
 - returns: returns an `EmitResult` with emitted bullet count and suppression summary
 - verify: count(subject="emitted parity backlogs", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::emit_parity_backlog`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::emit_parity_backlog` @09b3ca61b54d

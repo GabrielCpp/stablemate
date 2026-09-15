@@ -12,7 +12,7 @@ produces an all-blank result for standalone execution, including an empty story 
 
 - file: none — in-memory workflow result
 - config: Ostler document roots and the supplied story/epic inputs
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths` @b69f3dbb6134
 - detail: [Coder story pipeline](concepts/story-pipeline.md)
 
 ## Fields
@@ -23,7 +23,7 @@ produces an all-blank result for standalone execution, including an empty story 
 - required: false
 - semantics: absolute path to the selected epic story document
 - verify: json_path(path="$.story_path", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths.story_path`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths.story_path` @b69f3dbb6134
 
 ### spec_dir
 - type: `str`
@@ -31,7 +31,7 @@ produces an all-blank result for standalone execution, including an empty story 
 - required: false
 - semantics: absolute directory for the story's plan and evidence artifacts
 - verify: json_path(path="$.spec_dir", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths.spec_dir`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths.spec_dir` @b69f3dbb6134
 
 ### qa_dir
 - type: `str`
@@ -39,7 +39,7 @@ produces an all-blank result for standalone execution, including an empty story 
 - required: false
 - semantics: `qa` subdirectory directly beneath the resolved spec directory
 - verify: json_path(path="$.qa_dir", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths.qa_dir`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths.qa_dir` @b69f3dbb6134
 
 ### story_slug
 - type: `str`
@@ -47,7 +47,7 @@ produces an all-blank result for standalone execution, including an empty story 
 - required: false
 - semantics: requested story slug
 - verify: json_path(path="$.story_slug", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths.story_slug`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths.story_slug` @b69f3dbb6134
 
 ### story_epic
 - type: `str`
@@ -55,7 +55,7 @@ produces an all-blank result for standalone execution, including an empty story 
 - required: false
 - semantics: supplied epic name, or the first epic containing the story when epic input is absent
 - verify: json_path(path="$.story_epic", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths.story_epic`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths.story_epic` @b69f3dbb6134
 
 ### story_id
 - type: `str`
@@ -65,4 +65,4 @@ produces an all-blank result for standalone execution, including an empty story 
 - verify: json_path(path="$.story_id", matches=".+")
 - semantics: empty when the story has no minted id
 - verify: json_path(path="$.story_id", equals="")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths.story_id`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::StoryPaths.story_id` @b69f3dbb6134

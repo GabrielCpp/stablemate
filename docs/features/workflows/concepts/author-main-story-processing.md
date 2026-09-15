@@ -11,15 +11,15 @@ grounding, retain failed approaches, consume operator feedback, and prune a cons
 These nodes use Ostler as the source of truth for planning and document structure; they do not
 invent epic paths or duplicate the graph's story semantics.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::seed_story`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::remove_story`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_mockup_needed`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::select_story`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::validate_story`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_grounding`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::record_attempt`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_feedback`
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::prune_bullet`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::seed_story` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::remove_story` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_mockup_needed` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::select_story` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::validate_story` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_grounding` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::record_attempt` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_feedback` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::prune_bullet` @77042f1e2b6b
 - detail: [Author main package](author-main-package.md)
 
 ## Methods
@@ -51,7 +51,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: json_path(path="$.from_backlog", equals=true)
 - does: returns the creation or reuse reason
 - verify: json_path(path="$.reason", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::seed_story`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::seed_story` @77042f1e2b6b
 - tests: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`
 
 ### remove_story
@@ -72,7 +72,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: json_path(path="$.changed", equals=true)
 - does: returns the deletion result message
 - verify: json_path(path="$.reason", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::remove_story`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::remove_story` @77042f1e2b6b
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_remove_refuses_a_started_story_without_force`
 
 ### check_mockup_needed
@@ -85,7 +85,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: json_path(path="$.evidence", matches="required")
 - does: skips visual design when all covered frontend seeds are `design: preserve` or when the story has no frontend layer
 - verify: json_path(path="$.required", equals=false)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_mockup_needed`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_mockup_needed` @77042f1e2b6b
 - tests: `workflows/tests/author/test_mockup_gate.py::test_the_gate_is_the_union_of_the_covered_seeds_layers`
 - tests: `workflows/tests/author/test_mockup_gate.py::test_one_required_visual_change_requires_design`
 
@@ -99,7 +99,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: json_path(path="$.remaining_count", matches="^[0-9]+$")
 - does: returns the selected story slug, path, directory, progress, remaining count, and report reason
 - verify: count(subject="selected authoring stories", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::select_story`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::select_story` @77042f1e2b6b
 - tests: `workflows/tests/author/test_planner.py::test_story_author_uses_story_dag_order_and_author_current`
 
 ### validate_story
@@ -124,7 +124,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: json_path(path="$.ok", equals=false)
 - does: returns one newline-separated error per finding
 - verify: json_path(path="$.errors", matches=".+\\n.+")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::validate_story`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::validate_story` @77042f1e2b6b
 - tests: `workflows/tests/author/test_story_contract.py::test_technical_notes_require_a_grounded_code_pointer`
 
 ### check_story_grounding
@@ -141,7 +141,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: absent(subject="UI citation requirement on an empty UI graph")
 - does: returns `ok` with newline-separated findings only when seed scope and the armed UI citation contract hold
 - verify: json_path(path="$.ok", equals=false)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_grounding`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_grounding` @77042f1e2b6b
 - tests: `workflows/tests/author/test_workflow.py::test_a_story_that_is_not_a_contract_is_reworked_against_the_gate`
 
 ### record_attempt
@@ -156,7 +156,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: count(subject="duplicate attempt headings", equals=1)
 - does: preserves readable prior content when the ledger cannot be written
 - verify: persists(subject="the labeled failed approach in the attempts ledger")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::record_attempt`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::record_attempt` @77042f1e2b6b
 - tests: `workflows/tests/author/test_workflow.py::test_a_story_that_is_not_a_contract_is_reworked_against_the_gate`
 
 ### check_story_feedback
@@ -167,7 +167,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: emitted(event="story feedback folded", count=1)
 - does: returns the message content, scope, and `present` flag for one consumed operator note
 - verify: count(subject="consumed operator feedback messages", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_feedback`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_feedback` @77042f1e2b6b
 - tests: `workflows/tests/author/test_workflow.py::test_an_operator_note_dropped_mid_run_reworks_the_story_once`
 
 ### prune_bullet
@@ -180,5 +180,5 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: count(subject="remaining identified backlog items", equals=2)
 - does: returns removed and remaining counts and treats write failure as a best-effort continuation
 - verify: removed(subject="the consumed backlog scope item")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::prune_bullet`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::prune_bullet` @77042f1e2b6b
 - tests: `workflows/tests/author/test_workflow.py::test_story_prune_preserves_a_parent_with_nested_work`

@@ -222,7 +222,7 @@ order:
 - sig: `write_file(volume: str, /, rel_path: str, content: str) -> bool`
 - consistency: docker-write-command — the Docker write command omits `sh -c`, so operator-provided
   content is never interpolated into a shell command.
-- code: `groom/groom/docker_io.py::write_file`
+- code: `groom/groom/docker_io.py::write_file` @4778bf1b6bc6
 - verify: omits(subject="Docker write command", text="sh -c")
 - detail: [Write-file documentation views](concepts/write-file-documentation-views.md)
 

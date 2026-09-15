@@ -25,9 +25,9 @@ fallback: `coder` is teal `#2f9e8f` and `author` is purple `#8a6ff0`. New non-em
 the generic treatment, while the [workflow type field](workflow-container.md#field-workflow-type)
 documents why an empty kind renders no badge at all.
 
-- code: `groom/groom/assets/dashboard.css::.badge`
-- code: `groom/groom/assets/dashboard.css::.badge[data-type="coder"]`
-- code: `groom/groom/assets/dashboard.css::.badge[data-type="author"]`
+- code: `groom/groom/assets/dashboard.css::.badge` @e0eff6270742
+- code: `groom/groom/assets/dashboard.css::.badge[data-type="coder"]` @e0eff6270742
+- code: `groom/groom/assets/dashboard.css::.badge[data-type="author"]` @e0eff6270742
 
 ## Methods
 
@@ -42,4 +42,4 @@ documents why an empty kind renders no badge at all.
 - verify: visible(locator=".badge[data-type='coder']", text="coder")
 - does: passes the projected hue through as the `--type-hue` inline custom property
 - verify: visible(locator=".badge[data-type='coder'][style*='--type-hue']", text="coder")
-- code: `groom/groom/assets/dashboard.js::TypeBadge`
+- code: `groom/groom/assets/dashboard.js::TypeBadge` @8ab4513909c0

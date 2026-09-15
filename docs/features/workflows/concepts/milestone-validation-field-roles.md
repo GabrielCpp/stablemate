@@ -14,5 +14,5 @@ validated milestone when one exists, `reused` records whether that milestone was
 `errors` carries the validation failures. The schema does not rank these fields or designate a
 successor; each is used for its distinct role.
 
-- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation`
+- code: `workflows/src/workhorse_workflows/author/milestone/schemas.py::MilestoneValidation` @3a9fb1b3e42d
 - rule: consume all four fields as one validation result; do not select one field in place of another

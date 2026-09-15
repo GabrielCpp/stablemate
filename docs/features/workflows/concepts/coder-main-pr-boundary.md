@@ -16,7 +16,7 @@ Its result contracts are [pull request gate](../pr-gate.md), [merge outcome](../
 [story pull request](../story-pr.md), [CI failure flag](../ci-flagged.md), [merge failure flag](../merge-flagged.md),
 and [merge fix](../merge-fix-result.md).
 
-- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py`
+- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py` @e8d4d2f497da
 
 ## Methods
 
@@ -33,7 +33,7 @@ and [merge fix](../merge-fix-result.md).
 - verify: count(subject="epic PR gate records", equals=1)
 - returns: a `PrGate` identifying the epic and base branch when remote gating is required, otherwise a non-gating result
 - verify: count(subject="epic PR result records", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::open_pr`
+- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::open_pr` @e8d4d2f497da
 - tests: `workflows/tests/coder/test_workflow.py::test_the_pr_cluster_passes_through_offline_and_still_advances_the_queue`
 - tests: `workflows/tests/coder/test_workflow.py::test_an_epic_branch_carrying_a_set_aside_epic_declines_to_open_a_pr`
 
@@ -48,7 +48,7 @@ and [merge fix](../merge-fix-result.md).
 - verify: count(subject="merge method selections", equals=1)
 - returns: `merged`, `failed`, or `unavailable` with the base branch recorded
 - verify: count(subject="merge outcome records", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::merge_pr`
+- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::merge_pr` @e8d4d2f497da
 - tests: `workflows/tests/coder/test_workflow.py::test_a_merged_epic_branch_is_reused_rather_than_refused`
 - tests: `workflows/tests/coder/test_workflow.py::test_a_squash_merged_branch_counts_as_merged`
 
@@ -61,7 +61,7 @@ and [merge fix](../merge-fix-result.md).
 - verify: count(subject="CI failure PR comment attempts", equals=1)
 - returns: whether the CI failure note was posted to the PR
 - verify: count(subject="CI failure flag records", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::flag_ci_failure`
+- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::flag_ci_failure` @e8d4d2f497da
 
 ### flag_merge_failure
 
@@ -72,7 +72,7 @@ and [merge fix](../merge-fix-result.md).
 - verify: count(subject="merge failure PR comment attempts", equals=1)
 - returns: whether the merge failure note was posted to the PR
 - verify: count(subject="merge failure flag records", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::flag_merge_failure`
+- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::flag_merge_failure` @e8d4d2f497da
 
 ### open_story_pr
 
@@ -88,5 +88,5 @@ and [merge fix](../merge-fix-result.md).
 - verify: absent(subject="story PR merge operations")
 - returns: `opened`, `exists`, or `skipped` aggregate status with URLs for opened or existing PRs
 - verify: count(subject="story PR result records", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::open_story_pr`
+- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::open_story_pr` @e8d4d2f497da
 - tests: `workflows/tests/coder/test_workflow.py::test_story_mode_cuts_its_own_branch_and_ends_at_its_own_pr`

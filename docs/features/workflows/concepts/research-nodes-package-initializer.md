@@ -15,7 +15,7 @@ grouping nodes by the concern they address. The blueprint itself is isolated in 
 break circular import cycles: subject modules import the blueprint to register themselves, so the
 blueprint cannot import them back.
 
-- code: `workflows/src/workhorse_workflows/research/nodes/__init__.py`
+- code: `workflows/src/workhorse_workflows/research/nodes/__init__.py` @45726ea86ffd
 - detail: [research deterministic nodes](research-deterministic-nodes.md)
 - detail: [research workflow package initializer](research-workflow-package-initializer.md)
 
@@ -24,8 +24,8 @@ blueprint cannot import them back.
 ### blueprint
 - type: `Blueprint`
 - semantics: the shared registration point for all research deterministic nodes
-- code: `workflows/src/workhorse_workflows/research/nodes/_blueprint.py`
-- code: `workflows/src/workhorse_workflows/research/nodes/_blueprint.py::blueprint`
+- code: `workflows/src/workhorse_workflows/research/nodes/_blueprint.py` @24537fc10c8b
+- code: `workflows/src/workhorse_workflows/research/nodes/_blueprint.py::blueprint` @24537fc10c8b
 - detail: [research deterministic nodes](research-deterministic-nodes.md)
 
 ## Subject modules

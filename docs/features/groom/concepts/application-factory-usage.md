@@ -18,5 +18,5 @@ for the other: one specifies the running service lifecycle, while the other
 specifies the test measurement path. The factory itself records no ranking
 between those contexts.
 
-- code: `groom/groom/app.py::create_app`
+- code: `groom/groom/app.py::create_app` @f85d0b3dbec3
 - rule: use the service journey for production startup and delivery; use the audit journey only when measuring the rendered dashboard under its synthetic test setup

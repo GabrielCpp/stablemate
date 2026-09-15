@@ -5,7 +5,7 @@ title: Survey record-fix reply
 ---
 # Survey record-fix reply
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix` @f79c1c007a97
 - detail: [author surveyor subflow](concepts/author-surveyor-subflow.md)
 
 The repair turn's advisory response for an invalid finding record. Validation remains the
@@ -19,7 +19,7 @@ authority after this reply.
 - required: false
 - semantics: repair outcome: `fixed` or `blocked`
 - verify: json_path(path="$.status", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix` @f79c1c007a97
 - detail: [record-fix field roles](concepts/record-fix-field-roles.md)
 
 ### notes
@@ -28,5 +28,5 @@ authority after this reply.
 - required: false
 - semantics: repair explanation
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix` @f79c1c007a97
 - detail: [record-fix field roles](concepts/record-fix-field-roles.md)

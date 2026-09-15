@@ -22,12 +22,12 @@ whose schema is newer than the vendored core understands, preserving settings it
 drop. Named profiles select the model and effort mapping for one CLI, while CLI environment
 settings remain global to that CLI across profiles.
 
-- code: `farrier/farrier/_vendor/__init__.py`
-- code: `farrier/farrier/_vendor/stablemate_core/__init__.py`
-- code: `farrier/farrier/_vendor/stablemate_core/base_cache.py`
-- code: `farrier/farrier/_vendor/stablemate_core/clock.py`
-- code: `farrier/farrier/_vendor/stablemate_core/config.py`
-- code: `farrier/farrier/_vendor/stablemate_core/discovery.py`
-- code: `farrier/farrier/_vendor/stablemate_core/layout.py`
+- code: `farrier/farrier/_vendor/__init__.py` @d63f5d827a00
+- code: `farrier/farrier/_vendor/stablemate_core/__init__.py` @6997ddf4683f
+- code: `farrier/farrier/_vendor/stablemate_core/base_cache.py` @30a2077f66f6
+- code: `farrier/farrier/_vendor/stablemate_core/clock.py` @ca801af01944
+- code: `farrier/farrier/_vendor/stablemate_core/config.py` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/discovery.py` @9298cfe7d7ec
+- code: `farrier/farrier/_vendor/stablemate_core/layout.py` @3e86f914ff77
 - detail: [library directory](library-directory.md)
 - detail: [home config](../home-config.md)

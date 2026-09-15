@@ -19,7 +19,7 @@ reframes on context overflow instead. `run_turn` streams the CLI's event log thr
 Class and event callback live together in `runner/backends/copilot.py` — one module per CLI, so
 importing [the port](agent-backend.md) drags in no adapter.
 
-- code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend`
+- code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend` @455b84a8df78
 - extends: [AgentBackend](agent-backend.md)
 
 The implementation is covered by `workhorse/tests/test_backends.py::test_copilot_run_turn_fresh_then_resume`,
@@ -81,14 +81,14 @@ The implementation is covered by `workhorse/tests/test_backends.py::test_copilot
 - does: runs Copilot's JSON stream, optionally attaches an oversized prompt and resumes a stored session
 - raises: `BackendInvocationError` after `finalize_turn` classifies the streamed state
 - verify: emitted(event="Copilot turn result", count=1)
-- code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend.run_turn`
+- code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend.run_turn` @455b84a8df78
 
 ### compact
 - sig: `compact(session_id_path: Path | None, node_id: str, model: str | None = None, *, timeout: float, resilience: AgentResilience) -> bool`
 - does: declines in-place session compaction
 - returns: `false`
 - verify: json_path(path="$.compacted", equals=false)
-- code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend.compact`
+- code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend.compact` @455b84a8df78
 
 ## Related pieces
 

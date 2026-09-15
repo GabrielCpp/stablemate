@@ -17,7 +17,7 @@ response object and report them during a reframe. There is no ranking between th
 output declaration uses the model and its key together, adding the optionality setting only when
 the response contract permits absence.
 
-- code: `workhorse/workhorse/runner/spec.py::OutputSpec`
+- code: `workhorse/workhorse/runner/spec.py::OutputSpec` @a87403257e16
 - rule: declare every requested output with `key`; leave `required` true unless the value is genuinely inapplicable for a valid response
 - detail: [Output specification reading guide](output-specification-reading-guide.md)
 - detail: [Output specification documentation scope](output-specification-documentation-scope.md)

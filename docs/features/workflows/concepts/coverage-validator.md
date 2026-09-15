@@ -10,7 +10,7 @@ operation. It reports only the doctor error codes that describe broken seed cove
 topology, while leaving unrelated epic findings to other gates. The caller may permit unwritten
 stories during an intermediate split pass; the default authored requirement includes that finding.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/coverage.py::validate_coverage`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/coverage.py::validate_coverage` @9e4ff84a79e8
 - tests: `workflows/tests/author/story_split/test_flow.py::test_coverage_findings_drive_a_bounded_resplit_worklist`
 - tests: `workflows/tests/author/story_split/test_flow.py::test_blocked_coverage_resolves_then_rechecks_the_same_epic`
 - detail: [story split subflow](story-split-subflow.md)
@@ -39,4 +39,4 @@ stories during an intermediate split pass; the default authored requirement incl
 - verify: json_path(path="$.ok", equals=True)
 - returns: returns `Defects(ok=false, errors=...)` with one formatted `[code] message` line per retained finding when coverage findings remain
 - verify: json_path(path="$.errors", matches=".+\\].+")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/coverage.py::validate_coverage`
+- code: `workflows/src/workhorse_workflows/author/main/nodes/coverage.py::validate_coverage` @9e4ff84a79e8

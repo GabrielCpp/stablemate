@@ -9,7 +9,7 @@ The verdict `triage-qa.md` reports on whether QA findings are in-acceptance-crit
 
 - file: none — agent reply and checkpoint value
 - config: `QaTriage` agent-turn output contract
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaTriage`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaTriage` @2e918886779f
 - detail: [coder QA schema contracts](concepts/coder-qa-schema-contracts.md)
 
 ## Fields
@@ -22,7 +22,7 @@ The verdict `triage-qa.md` reports on whether QA findings are in-acceptance-crit
 - verify: json_path(path="$.status", equals="triaged")
 - semantics: `blocked` when findings cannot be sorted at all
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaTriage.status`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaTriage.status` @2e918886779f
 
 ### triage_action
 
@@ -32,7 +32,7 @@ The verdict `triage-qa.md` reports on whether QA findings are in-acceptance-crit
 - verify: json_path(path="$.triage_action", equals="rescope")
 - semantics: `qa_fix` when every finding is purely in-acceptance-criterion
 - verify: json_path(path="$.triage_action", equals="qa_fix")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaTriage.triage_action`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaTriage.triage_action` @2e918886779f
 
 ### qa_failure_class
 
@@ -46,7 +46,7 @@ The verdict `triage-qa.md` reports on whether QA findings are in-acceptance-crit
 - verify: json_path(path="$.qa_failure_class", equals="evidence")
 - semantics: `environment` when the stack, fixtures or emulator must be repaired
 - verify: json_path(path="$.qa_failure_class", equals="environment")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaTriage.qa_failure_class`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaTriage.qa_failure_class` @2e918886779f
 
 ### notes
 
@@ -55,5 +55,5 @@ The verdict `triage-qa.md` reports on whether QA findings are in-acceptance-crit
 - required: false
 - semantics: read on refusal — what stopped the triager from sorting findings
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaTriage.notes`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaTriage.notes` @2e918886779f
 

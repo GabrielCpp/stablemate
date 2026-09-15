@@ -10,7 +10,7 @@ an active run. All classes derive from `PyflowError`; `WorkflowFailed` optionall
 a machine-readable failure class and artifact paths for the failure handoff. A runtime
 failure remains resumable unless the outer run policy explicitly marks it terminal.
 
-- code: `workhorse/workhorse/pyflow/errors.py::PyflowError`
+- code: `workhorse/workhorse/pyflow/errors.py::PyflowError` @a0984ab94198
 - tests: [pyflow tests](../../../../workhorse/tests/test_pyflow.py)
 
 ## Classes
@@ -21,7 +21,7 @@ failure remains resumable unless the outer run policy explicitly marks it termin
 - semantics: the `failure_class` kwarg, when supplied, is what `_record_failure_handoff` writes to the inbox body in place of the exception's class name
 - semantics: the `artifacts` kwarg, when supplied, becomes one `name: path` line per entry appended to the inbox body
 - verify: json_path(path="$.kind", equals="failure")
-- code: `workhorse/workhorse/pyflow/errors.py::WorkflowFailed`
+- code: `workhorse/workhorse/pyflow/errors.py::WorkflowFailed` @a0984ab94198
 - tests: `workhorse/tests/test_failure_handoff.py::test_a_workflow_failure_writes_a_diagnostic_outbox_entry`, `workhorse/tests/test_failure_handoff.py::test_a_raise_sites_own_failure_class_and_artifacts_reach_the_outbox`
 
 ### field: AgentTimeout
@@ -36,7 +36,7 @@ failure remains resumable unless the outer run policy explicitly marks it termin
 - semantics: carries `transient` (default `False`) mirroring `BackendInvocationError.transient`, so a state can distinguish a wall-clock stop from a network blip or an unreachable provider — both want a different gate than a deterministic timeout
 - semantics: deliberately NOT a subtype of `AgentTurnFailed` — a cut turn may have left a partial file worth keeping where the other signals "no answer at all"
 - verify: json_path(path="exception.transient", equals=false)
-- code: `workhorse/workhorse/pyflow/errors.py::AgentTimeout`
+- code: `workhorse/workhorse/pyflow/errors.py::AgentTimeout` @a0984ab94198
 
 ### field: AgentTurnFailed
 - type: `PyflowError`
@@ -47,45 +47,45 @@ failure remains resumable unless the outer run policy explicitly marks it termin
 - verify: json_path(path="exception.type", equals="AgentTurnFailed")
 - verify: json_path(path="exception.transient", equals=false)
 - verify: json_path(path="exception.overflow", equals=false)
-- code: `workhorse/workhorse/pyflow/errors.py::AgentTurnFailed`
+- code: `workhorse/workhorse/pyflow/errors.py::AgentTurnFailed` @a0984ab94198
 
 ### field: RunBudgetExceeded
 - type: `PyflowError`
 - semantics: the run-wide wall-clock budget expired and the checkpoint must remain resumable
 - semantics: caught by the driver but routed past the failure-handoff inbox entry — the run dir is left without `inbox.jsonl`, the same way a run with no `PyflowError` ever raised looks
 - verify: json_path(path="$.terminal", absent=true)
-- code: `workhorse/workhorse/pyflow/errors.py::RunBudgetExceeded`
+- code: `workhorse/workhorse/pyflow/errors.py::RunBudgetExceeded` @a0984ab94198
 - tests: `workhorse/tests/test_failure_handoff.py::test_a_run_budget_stop_writes_no_outbox_entry`
 
 ### field: WorkflowDefinitionError
 - type: `PyflowError`
 - semantics: a registry, state, node, alias, or package declaration is invalid at import or setup time
 - verify: json_path(path="exception.type", equals="WorkflowDefinitionError")
-- code: `workhorse/workhorse/pyflow/errors.py::WorkflowDefinitionError`
+- code: `workhorse/workhorse/pyflow/errors.py::WorkflowDefinitionError` @a0984ab94198
 
 ### field: UnknownStateError
 - type: `PyflowError`
 - semantics: a transition or checkpoint names neither a live state nor an alias
 - verify: json_path(path="exception.type", equals="UnknownStateError")
-- code: `workhorse/workhorse/pyflow/errors.py::UnknownStateError`
+- code: `workhorse/workhorse/pyflow/errors.py::UnknownStateError` @a0984ab94198
 
 ### field: UnknownNodeError
 - type: `PyflowError`
 - semantics: a function is used as a node without blueprint registration or is absent from the run index
 - verify: json_path(path="exception.type", equals="UnknownNodeError")
-- code: `workhorse/workhorse/pyflow/errors.py::UnknownNodeError`
+- code: `workhorse/workhorse/pyflow/errors.py::UnknownNodeError` @a0984ab94198
 
 ### field: NodeNotRunError
 - type: `PyflowError`
 - semantics: `self.output` requested an artifact with no recorded invocation in the current scope
 - verify: json_path(path="exception.type", equals="NodeNotRunError")
-- code: `workhorse/workhorse/pyflow/errors.py::NodeNotRunError`
+- code: `workhorse/workhorse/pyflow/errors.py::NodeNotRunError` @a0984ab94198
 
 ### field: WorkflowFrozenError
 - type: `PyflowError`
 - semantics: a workflow field was assigned after setup sealed the instance
 - verify: json_path(path="$.error.type", equals="WorkflowFrozenError")
-- code: `workhorse/workhorse/pyflow/errors.py::WorkflowFrozenError`
+- code: `workhorse/workhorse/pyflow/errors.py::WorkflowFrozenError` @a0984ab94198
 
 The package re-exports `PyflowError`, `WorkflowFailed`, `AgentTimeout`,
 `AgentTurnFailed`,
@@ -97,4 +97,4 @@ and `WorkflowFrozenError`, along with the transition values, `Blueprint`, `Regis
 initializer, keeping a workflow's lightweight declaration import separate from the run
 engine.
 
-- code: `workhorse/workhorse/pyflow/__init__.py::__all__`
+- code: `workhorse/workhorse/pyflow/__init__.py::__all__` @f57f935784ea

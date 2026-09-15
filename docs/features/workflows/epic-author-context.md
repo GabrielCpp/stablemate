@@ -9,7 +9,7 @@ The checkpoint context combines the resolved author configuration with the one e
 this subflow is permitted to author. Configuration paths retain the shared `Config` contract; the
 epic fields identify the selected epic and its canonical document locations.
 
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorContext`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorContext` @8605f9723870
 - detail: [author configuration](author-config.md)
 - detail: [author epic-author subflow](concepts/author-epic-author-subflow.md)
 
@@ -21,7 +21,7 @@ epic fields identify the selected epic and its canonical document locations.
 - required: false
 - semantics: absolute repository root used for the run's graph and artifact operations
 - verify: json_path(path="$.repo_root", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### backlog_path
@@ -30,7 +30,7 @@ epic fields identify the selected epic and its canonical document locations.
 - required: false
 - semantics: configured backlog path carried from author configuration
 - verify: json_path(path="$.backlog_path", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### roadmap_path
@@ -39,7 +39,7 @@ epic fields identify the selected epic and its canonical document locations.
 - required: false
 - semantics: approved roadmap path supplied to the epic-writing turn
 - verify: json_path(path="$.roadmap_path", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### epics_dir
@@ -48,7 +48,7 @@ epic fields identify the selected epic and its canonical document locations.
 - required: false
 - semantics: configured epic root used to resolve the selected epic
 - verify: json_path(path="$.epics_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### features_dir
@@ -57,7 +57,7 @@ epic fields identify the selected epic and its canonical document locations.
 - required: false
 - semantics: feature-book directory exposed as read-only grounding to the writing turn
 - verify: json_path(path="$.features_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### layers
@@ -66,7 +66,7 @@ epic fields identify the selected epic and its canonical document locations.
 - required: false
 - semantics: local-instruction skill paths used as prompt layer hints
 - verify: json_path(path="$.layers", matches="^\\[\\]$")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - detail: [author configuration field origin](concepts/author-config-field-origin.md)
 
 ### epic
@@ -75,7 +75,7 @@ epic fields identify the selected epic and its canonical document locations.
 - required: false
 - semantics: canonical Ostler name of the one epic selected for authoring
 - verify: json_path(path="$.epic", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorContext`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorContext` @8605f9723870
 - detail: [Epic author context field roles](concepts/epic-author-context-field-roles.md)
 
 ### epic_dir
@@ -84,7 +84,7 @@ epic fields identify the selected epic and its canonical document locations.
 - required: false
 - semantics: canonical directory containing the selected epic document
 - verify: json_path(path="$.epic_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorContext`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorContext` @8605f9723870
 - detail: [Epic author context field roles](concepts/epic-author-context-field-roles.md)
 
 ### epic_path
@@ -93,6 +93,6 @@ epic fields identify the selected epic and its canonical document locations.
 - required: false
 - semantics: canonical `epic.md` path for the selected epic
 - verify: json_path(path="$.epic_path", matches="/epic\\.md$")
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorContext`
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorContext` @8605f9723870
 - tests: `workflows/tests/author/epic_author/test_flow.py::test_authors_only_the_explicit_epic_and_returns_document_evidence`
 - detail: [Epic author context field roles](concepts/epic-author-context-field-roles.md)

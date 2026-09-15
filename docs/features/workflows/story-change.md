@@ -7,7 +7,7 @@ title: Epic story change
 
 One projected story mutation in an epic edit plan.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange` @ddad101f4da9
 - detail: [epic edit plan](epic-edit-plan.md)
 
 ## Fields
@@ -17,7 +17,7 @@ One projected story mutation in an epic edit plan.
 - required: false
 - semantics: structural operation applied to the story
 - verify: json_path(path="$.action", equals="add")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange` @ddad101f4da9
 - detail: [story change field roles](concepts/story-change-field-roles.md)
 ### slug
 - type: string
@@ -25,7 +25,7 @@ One projected story mutation in an epic edit plan.
 - required: false
 - semantics: story identifier
 - verify: json_path(path="$.slug", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange` @ddad101f4da9
 - detail: [story change field roles](concepts/story-change-field-roles.md)
 ### title
 - type: string
@@ -33,7 +33,7 @@ One projected story mutation in an epic edit plan.
 - required: false
 - semantics: resulting story title
 - verify: json_path(path="$.title", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange` @ddad101f4da9
 - detail: [story change field roles](concepts/story-change-field-roles.md)
 ### covers
 - type: list of strings
@@ -41,7 +41,7 @@ One projected story mutation in an epic edit plan.
 - required: false
 - semantics: seed identifiers covered by the resulting story
 - verify: json_path(path="$.covers", matches="^\\[\\]$")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange` @ddad101f4da9
 - detail: [story change field roles](concepts/story-change-field-roles.md)
 ### depends
 - type: list of strings
@@ -49,7 +49,7 @@ One projected story mutation in an epic edit plan.
 - required: false
 - semantics: resulting story dependencies
 - verify: json_path(path="$.depends", matches="^\\[\\]$")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange` @ddad101f4da9
 - detail: [story change field roles](concepts/story-change-field-roles.md)
 ### rewrite
 - type: boolean
@@ -57,5 +57,5 @@ One projected story mutation in an epic edit plan.
 - required: false
 - semantics: whether the story body must be rewritten after graph application
 - verify: json_path(path="$.rewrite", equals=False)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange` @ddad101f4da9
 - detail: [story change field roles](concepts/story-change-field-roles.md)

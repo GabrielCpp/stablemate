@@ -12,7 +12,7 @@ Every `ResearchResult` descendant ignores unknown keys and removes `None` values
 so omitted agent output leaves the declared default in place. `Budget` is the separate immutable
 checkpoint value carrying all eight research counters and three operator grants.
 
-- code: `workflows/src/workhorse_workflows/research/schemas.py`
+- code: `workflows/src/workhorse_workflows/research/schemas.py` @6a9752bbcf56
 - detail: [research workflow composition root](research-workflow-composition-root.md)
 
 ## Models
@@ -24,13 +24,13 @@ checkpoint value carrying all eight research counters and three operator grants.
 - verify: count(subject="research null-input normalization operations", equals=1)
 - does: ignores keys not declared by the concrete research model
 - verify: count(subject="research unknown-key inputs accepted", equals=1)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::ResearchResult`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::ResearchResult` @6a9752bbcf56
 
 ### method: RepoSetup
 - sig: `RepoSetup(repo_dir: str = "") -> RepoSetup`
 - does: carries the resolved research checkout directory
 - verify: json_path(path="$.repo_dir", equals="")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::RepoSetup`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::RepoSetup` @6a9752bbcf56
 
 ### method: Program
 - sig: `Program(repo_dir: str = "", program: str = "", program_dir: str = "", progress_path: str = "", code_root: str = "", result_branch: str = "", goal: str = "", extensions_spent: int = 0, lead_reviews_spent: int = 0, program_reviews_spent: int = 0, recharters_spent: int = 0, status: str = "active", min_containment: str = "premium", envelope_ram_gb: int = 0, envelope_cpus: int = 0, envelope_gpu: str = "none", envelope_disk_gb: int = 0) -> Program`
@@ -38,7 +38,7 @@ checkpoint value carrying all eight research counters and three operator grants.
 - verify: json_path(path="$.status", equals="active")
 - verify: json_path(path="$.program_reviews_spent", equals=0)
 - verify: json_path(path="$.recharters_spent", equals=0)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Program`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Program` @6a9752bbcf56
 
 ### method: Ledger
 - sig: `Ledger(path: str = "", extensions: int = 0, lead_reviews: int = 0, program_reviews: int = 0, recharters: int = 0, status: str = "active") -> Ledger`
@@ -46,85 +46,85 @@ checkpoint value carrying all eight research counters and three operator grants.
 - verify: json_path(path="$.status", equals="active")
 - verify: json_path(path="$.program_reviews", equals=0)
 - verify: json_path(path="$.recharters", equals=0)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Ledger`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Ledger` @6a9752bbcf56
 
 ### method: PublishResult
 - sig: `PublishResult(published: bool = false, result_branch: str = "", status: str = "") -> PublishResult`
 - does: reports whether a research result was published, its branch, and its status
 - verify: json_path(path="$.published", equals=false)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::PublishResult`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::PublishResult` @6a9752bbcf56
 
 ### method: GateSelection
 - sig: `GateSelection(gate_id: str = "", gate_doc_path: str = "", depends_on_satisfied: bool = false, program_killed: bool = false, rationale: str = "") -> GateSelection`
 - does: carries the selected gate, document, dependency readiness, kill flag, and rationale
 - verify: json_path(path="$.program_killed", equals=false)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::GateSelection`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::GateSelection` @6a9752bbcf56
 
 ### method: FailedCriterion
 - sig: `FailedCriterion(criterion: str = "", expected: str = "", observed: str = "", severity: str = "") -> FailedCriterion`
 - does: identifies one failed gate criterion with expected, observed, and severity values
 - verify: json_path(path="$.criterion", equals="")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::FailedCriterion`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::FailedCriterion` @6a9752bbcf56
 
 ### method: AntiShortcutFlags
 - sig: `AntiShortcutFlags(lookup_flag: bool = false, oracle_route_flag: bool = false, repair_flag: bool = false, leak_flag: bool = false) -> AntiShortcutFlags`
 - does: carries the four anti-shortcut findings reported by a gate check
 - verify: json_path(path="$.lookup_flag", equals=false)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::AntiShortcutFlags`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::AntiShortcutFlags` @6a9752bbcf56
 
 ### method: GateCheck
 - sig: `GateCheck(status: str = "", verdict: str = "", failed_criteria: list[FailedCriterion] = [], anti_shortcut_flags: AntiShortcutFlags = AntiShortcutFlags(), zero_weights_changes_output: bool = false, notes: str = "") -> GateCheck`
 - does: carries the gate verdict, failed criteria, anti-shortcut findings, zero-weight result, and notes
 - verify: json_path(path="$.status", equals="")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::GateCheck`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::GateCheck` @6a9752bbcf56
 
 ### method: RecordResult
 - sig: `RecordResult(status: str = "", outcome: str = "", progress_updated: bool = false, result_slot_updated: bool = false, finding_path: str = "") -> RecordResult`
 - does: reports result status, outcome, progress update, result-slot update, and finding path
 - verify: json_path(path="$.progress_updated", equals=false)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::RecordResult`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::RecordResult` @6a9752bbcf56
 
 ### method: LeadReview
 - sig: `LeadReview(verdict: str = "", kill_was_correct: bool = false, reason_class: str = "", evidence: str = "", apparatus_fix: str = "", next_direction_hint: str = "", confidence: str = "") -> LeadReview`
 - does: carries the lead verdict, kill assessment, reason, evidence, apparatus fix, next-direction hint, and confidence
 - verify: json_path(path="$.kill_was_correct", equals=false)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::LeadReview`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::LeadReview` @6a9752bbcf56
 
 ### method: ReviveResult
 - sig: `ReviveResult(status: str = "", gate_id: str = "", finding_path: str = "", progress_updated: bool = false, gate_doc_rescoped: bool = false) -> ReviveResult`
 - does: reports revival status, gate identity, finding path, progress update, and gate rescope
 - verify: json_path(path="$.progress_updated", equals=false)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::ReviveResult`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::ReviveResult` @6a9752bbcf56
 
 ### method: NewDirectionResult
 - sig: `NewDirectionResult(status: str = "", supersedes_gate: str = "", direction_name: str = "", core_question: str = "", ruled_out: list[str] = [], new_gates: list[str] = [], readme_path: str = "", progress_reset: bool = false) -> NewDirectionResult`
 - does: carries a replacement direction, superseded gate, question, ruled-out paths, new gates, README path, and reset flag
 - verify: json_path(path="$.progress_reset", equals=false)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::NewDirectionResult`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::NewDirectionResult` @6a9752bbcf56
 
 ### method: GoalReview
 - sig: `GoalReview(verdict: str = "", north_star_gap: str = "", evidence_or_deadends: str = "", banked_result: str = "", new_evidence_class: str = "", next_gate_title: str = "", next_gate_question: str = "", next_gate_cheapest_kill: str = "", next_gate_controls: list[str] = [], why_closer: str = "", confidence: str = "") -> GoalReview`
 - does: carries the exhausted-ladder verdict, evidence or gap, optional banked result, and extension gate proposal
 - verify: json_path(path="$.verdict", equals="")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::GoalReview`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::GoalReview` @6a9752bbcf56
 
 ### method: ExtendResult
 - sig: `ExtendResult(status: str = "", new_gate_id: str = "", new_gate_title: str = "", depends_on: str = "", gate_doc_path: str = "", readme_updated: bool = false, progress_updated: bool = false, moves_closer: str = "") -> ExtendResult`
 - does: reports the appended gate and whether README and progress artifacts were updated
 - verify: json_path(path="$.readme_updated", equals=false)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::ExtendResult`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::ExtendResult` @6a9752bbcf56
 
 ### method: Probe
 - sig: `Probe(units_total: int = 0, units_timed: int = 0, seconds: float = 0.0, peak_rss_mb: float = 0.0) -> Probe`
 - does: carries calibration workload, timed units, elapsed seconds, and peak resident memory
 - verify: json_path(path="$.units_timed", equals=0)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Probe`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Probe` @6a9752bbcf56
 
 ### method: Design
 - sig: `Design(status: str = "", hypothesis: str = "", protocol: str = "", spec_files: list[str] = [], memory_mb: int = 0, cpus: int = 0, gpu: str = "none", disk_gb: int = 0, estimate_s: float = 0.0, probe: Probe = Probe(), protocol_change: str = "", notes: str = "") -> Design`
 - does: carries the proposed experiment, resource declaration, estimate, calibration probe, and scientific rework explanation
 - verify: json_path(path="$.gpu", equals="none")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Design`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Design` @6a9752bbcf56
 
 ### method: Build
 - sig: `Build(status: str = "", command: list[str] = [], dry_run_command: list[str] = [], cwd: str = "", result_file: str = "result.json", code_files: list[str] = [], fault_locus: str = "", component: str = "", notes: str = "") -> Build`
@@ -142,7 +142,7 @@ checkpoint value carrying all eight research counters and three operator grants.
 - verify: json_path(path="$.fault_locus", equals="")
 - does: carries the component classification
 - verify: json_path(path="$.component", equals="")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Build`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Build` @6a9752bbcf56
 
 ### method: DryRun
 - sig: `DryRun(ok: bool = false, exit_code: int | None = None, fault_locus: str = "", stderr_tail: str = "", reason: str = "") -> DryRun`
@@ -156,40 +156,40 @@ checkpoint value carrying all eight research counters and three operator grants.
 - verify: json_path(path="$.stderr_tail", matches="Traceback")
 - does: preserves the failure reason
 - verify: json_path(path="$.reason", equals="no such file: run.py")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::DryRun`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::DryRun` @6a9752bbcf56
 - tests: `workflows/tests/research/test_workflow.py::test_a_rehearsal_that_dies_under_the_runner_never_reaches_submission`
 
 ### method: EnvelopeCheck
 - sig: `EnvelopeCheck(fits: bool = false, reason: str = "") -> EnvelopeCheck`
 - does: reports whether declared resources fit the program envelope and why
 - verify: json_path(path="$.fits", equals=false)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::EnvelopeCheck`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::EnvelopeCheck` @6a9752bbcf56
 
 ### method: Job
 - sig: `Job(submitted: bool = false, error: str = "", fault_locus: str = "", job_dir: str = "", wake_path: str = "", pid: int = 0, pgid: int = 0, tier: str = "", started_at: float = 0.0, estimate_s: float = 0.0) -> Job`
 - does: carries detached-job submission state, process identity, wake path, tier, start time, and estimate
 - verify: json_path(path="$.submitted", equals=false)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Job`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Job` @6a9752bbcf56
 - tests: `workflows/tests/research/test_workflow.py::test_an_estimate_with_no_probe_behind_it_goes_back_to_the_scientist`
 
 ### method: JobWatch
 - sig: `JobWatch(action: str = "", wake_path: str = "", state: str = "", overrun_multiple: float = 0.0, elapsed_s: float = 0.0, estimate_s: float = 0.0) -> JobWatch`
 - does: carries watcher action, job state, wake path, elapsed time, estimate, and crossed overrun multiple
 - verify: json_path(path="$.action", equals="")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::JobWatch`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::JobWatch` @6a9752bbcf56
 
 ### method: Collected
 - sig: `Collected(outcome: str = "", fault_locus: str = "", exit_code: int | None = None, peak_rss_mb: float = 0.0, wall_s: float = 0.0, kill_reason: str = "", tier: str = "", result_path: str = "", result_status: str = "", metrics: dict[str, Any] = {}, seeds: list[Any] = [], controls: list[Any] = [], n_completed: int = 0, n_planned: int = 0, stderr_tail: str = "", reason: str = "") -> Collected`
 - does: carries deterministic classification, supervisor measurements, parsed result core, and completion counts
 - verify: json_path(path="$.outcome", equals="")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Collected`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Collected` @6a9752bbcf56
 - tests: `workflows/tests/research/test_workflow.py::test_a_crash_in_repo_code_goes_to_the_engineer_with_nobody_in_the_loop`
 
 ### method: TriageResult
 - sig: `TriageResult(decision: str = "", diagnosis: str = "", fault_locus: str = "", component: str = "", fix_hint: str = "") -> TriageResult`
 - does: carries the overrun decision, diagnosis, fault locus, component, and repair hint
 - verify: json_path(path="$.decision", equals="")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::TriageResult`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::TriageResult` @6a9752bbcf56
 
 ## Program-level evidence
 
@@ -203,13 +203,13 @@ checkpoint value carrying all eight research counters and three operator grants.
 - verify: json_path(path="$.baseline_value", equals=0.75)
 - does: holds where baseline came from (`table`, `prose`, or empty)
 - verify: json_path(path="$.baseline_source", equals="table")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::FrozenTarget`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::FrozenTarget` @6a9752bbcf56
 
 ### method: GateRow
 - sig: `GateRow(gate_id: str = "", document: str = "", depends_on: str = "", status: str = "", result: str = "", date: str = "") -> GateRow`
 - does: carries one row of a progress status table
 - verify: json_path(path="$.gate_id", equals="")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::GateRow`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::GateRow` @6a9752bbcf56
 
 ### method: HistoryEvent
 - sig: `HistoryEvent(date: str = "", event: str = "", gate_id: str = "", note: str = "", source: str = "loop", fingerprint: str = "") -> HistoryEvent`
@@ -217,7 +217,7 @@ checkpoint value carrying all eight research counters and three operator grants.
 - verify: json_path(path="$.event", equals="")
 - does: `source` is `loop` for lines the workflow wrote, `bootstrap` for lines parsed from prose
 - verify: json_path(path="$.source", equals="loop")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::HistoryEvent`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::HistoryEvent` @6a9752bbcf56
 
 ### method: JobSummary
 - sig: `JobSummary(gate_id: str = "", finished_at: str = "", exit_code: int = 0, wall_s: float = 0.0, kill_reason: str = "", n_completed: int = 0, n_planned: int = 0, seeds: list[int] = [], families: dict[str, list[float]] = {}, family_mean: dict[str, float] = {}, family_sd: dict[str, float] = {}, scalars: dict[str, float] = {}, flags: list[str] = []) -> JobSummary`
@@ -229,13 +229,13 @@ checkpoint value carrying all eight research counters and three operator grants.
 - verify: count(subject="scalar metrics", equals=0)
 - does: holds metric names whose value was truthy and whose name reads as a flag
 - verify: count(subject="flag metric names", equals=0)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::JobSummary`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::JobSummary` @6a9752bbcf56
 
 ### method: MetricPoint
 - sig: `MetricPoint(date: str = "", value: float = 0.0, count: int = 0, n: int = 0, gate_id: str = "", source: str = "") -> MetricPoint`
 - does: carries one dated observation of the frozen metric
 - verify: json_path(path="$.value", equals=0.0)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::MetricPoint`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::MetricPoint` @6a9752bbcf56
 
 ### method: Resolvability
 - sig: `Resolvability(required_effect: float = 0.0, pooled_se: float = 0.0, per_seed_required: float = 0.0, per_seed_se: float = 0.0, observed_seed_sd: float = 0.0, ratio: float = 0.0, resolvable: bool = False, statement: str = "") -> Resolvability`
@@ -249,7 +249,7 @@ checkpoint value carrying all eight research counters and three operator grants.
 - verify: json_path(path="$.observed_seed_sd", equals=0.0)
 - does: holds ratio of required effect to per-seed SE and resolvability verdict
 - verify: json_path(path="$.ratio", equals=0.0)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Resolvability`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Resolvability` @6a9752bbcf56
 
 ### method: Dossier
 - sig: `Dossier(today: str = "", program_dir: str = "", frozen: FrozenTarget = FrozenTarget(), rows: list[GateRow] = [], superseded_rows: list[GateRow] = [], history: list[HistoryEvent] = [], jobs: list[JobSummary] = [], series: list[MetricPoint] = [], moved_last_on: str = "", days_since_moved: int = 0, days_to_deadline: int = 0, resolvability: Resolvability = Resolvability(), counts: dict[str, int] = {}, churn: dict[str, int] = {}, pending: list[str] = [], triggers: list[str] = [], circling: bool = False, fingerprint: str = "", review_due: bool = False, active_gate: str = "", unparsed: list[str] = []) -> Dossier`
@@ -273,13 +273,13 @@ checkpoint value carrying all eight research counters and three operator grants.
 - verify: json_path(path="$.circling", equals=false)
 - does: holds parse-failure reports in `unparsed`
 - verify: count(subject="parse-failure reports", equals=0)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Dossier`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Dossier` @6a9752bbcf56
 
 ### method: ProbeOrder
 - sig: `ProbeOrder(gate_id: str = "", question: str = "", expected_cost_s: int = 0, kill_if: str = "") -> ProbeOrder`
 - does: carries a cheap, decisive measurement the lead orders before any more gate work
 - verify: json_path(path="$.gate_id", equals="")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::ProbeOrder`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::ProbeOrder` @6a9752bbcf56
 
 ### method: NewTarget
 - sig: `NewTarget(metric: str = "", dataset: str = "", threshold: str = "", threshold_count: int = 0, n: int = 0, seeds: list[int] = [], baseline: str = "", baseline_count: int = 0, deadline: str = "", why_resolvable: str = "") -> NewTarget`
@@ -287,7 +287,7 @@ checkpoint value carrying all eight research counters and three operator grants.
 - verify: json_path(path="$.metric", equals="")
 - does: `why_resolvable` is checked in code, not trusted from agent
 - verify: json_path(path="$.why_resolvable", equals="")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::NewTarget`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::NewTarget` @6a9752bbcf56
 
 ### method: ProgramReview
 - sig: `ProgramReview(verdict: str = "", circling: bool = False, triggers_confirmed: list[str] = [], reason: str = "", evidence: list[str] = [], probe: ProbeOrder = ProbeOrder(), cache_gate_id: str = "", cache_dir: str = "", recharter: NewTarget = NewTarget(), operator_question: str = "", confidence: str = "") -> ProgramReview`
@@ -296,13 +296,13 @@ checkpoint value carrying all eight research counters and three operator grants.
 - does: `verdict` is one of `continue`, `probe_first`, `score_from_cache`, `recharter`, `bank`, `stop_negative`, `operator`
 - does: default `""` matches no arm and parks
 - verify: json_path(path="$.verdict", equals="")
-- code: `workflows/src/workhorse_workflows/research/schemas.py::ProgramReview`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::ProgramReview` @6a9752bbcf56
 
 ### method: RecharterResult
 - sig: `RecharterResult(status: str = "", new_target: NewTarget = NewTarget(), probe_doc_path: str = "", cache_doc_path: str = "", readme_path: str = "", progress_updated: bool = False, reason: str = "") -> RecharterResult`
 - does: carries what `program-recharter` wrote into the program folder
 - verify: json_path(path="$.progress_updated", equals=false)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::RecharterResult`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::RecharterResult` @6a9752bbcf56
 
 ## Budget
 
@@ -321,61 +321,61 @@ checkpoint value carrying all eight research counters and three operator grants.
 - verify: json_path(path="$.program_review_grants", equals=0)
 - does: rejects in-place mutation by remaining frozen after construction
 - verify: unchanged(subject="budget", except_fields=[])
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget` @6a9752bbcf56
 
 ### method: fresh_gate
 - sig: `fresh_gate() -> Budget`
 - does: returns a copy with per-gate counters reset while preserving run-wide counters and grants
 - verify: json_path(path="$.reworks", equals=0)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.fresh_gate`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.fresh_gate` @6a9752bbcf56
 
 ### method: reworked
 - sig: `reworked() -> Budget`
 - does: returns a copy with reworks increased by one
 - verify: count(subject="research rework counter increments", equals=1)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.reworked`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.reworked` @6a9752bbcf56
 
 ### method: built
 - sig: `built() -> Budget`
 - does: returns a copy with build_fixes increased by one
 - verify: count(subject="research build-fix counter increments", equals=1)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.built`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.built` @6a9752bbcf56
 
 ### method: rescoped
 - sig: `rescoped() -> Budget`
 - does: returns a copy with rescopes increased by one
 - verify: count(subject="research rescope counter increments", equals=1)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.rescoped`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.rescoped` @6a9752bbcf56
 
 ### method: granted_review
 - sig: `granted_review() -> Budget`
 - does: returns a copy with lead_review_grants increased by one
 - verify: count(subject="research lead-review grant increments", equals=1)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.granted_review`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.granted_review` @6a9752bbcf56
 
 ### method: granted_extension
 - sig: `granted_extension() -> Budget`
 - does: returns a copy with extension_grants increased by one
 - verify: count(subject="research extension grant increments", equals=1)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.granted_extension`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.granted_extension` @6a9752bbcf56
 
 ### method: reviewed
 - sig: `reviewed() -> Budget`
 - does: returns a copy with lead_reviews increased by one
 - verify: count(subject="research lead-review counter increments", equals=1)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.reviewed`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.reviewed` @6a9752bbcf56
 
 ### method: extended
 - sig: `extended() -> Budget`
 - does: returns a copy with extensions increased by one
 - verify: count(subject="research extension counter increments", equals=1)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.extended`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.extended` @6a9752bbcf56
 
 ### method: cycled
 - sig: `cycled() -> Budget`
 - does: returns a copy with gate_cycles increased by one
 - verify: count(subject="research gate-cycle counter increments", equals=1)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.cycled`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.cycled` @6a9752bbcf56
 
 ### method: program_reviewed
 - sig: `program_reviewed() -> Budget`
@@ -383,16 +383,16 @@ checkpoint value carrying all eight research counters and three operator grants.
 - verify: count(subject="research program-review counter increments", equals=1)
 - does: returns a copy with gate_cycles reset to zero
 - verify: count(subject="research gate-cycle counter resets on program review", equals=1)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.program_reviewed`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.program_reviewed` @6a9752bbcf56
 
 ### method: rechartered
 - sig: `rechartered() -> Budget`
 - does: returns a copy with recharters increased by one
 - verify: count(subject="research recharter counter increments", equals=1)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.rechartered`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.rechartered` @6a9752bbcf56
 
 ### method: granted_program_review
 - sig: `granted_program_review() -> Budget`
 - does: returns a copy with program_review_grants increased by one
 - verify: count(subject="research program-review grant increments", equals=1)
-- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.granted_program_review`
+- code: `workflows/src/workhorse_workflows/research/schemas.py::Budget.granted_program_review` @6a9752bbcf56

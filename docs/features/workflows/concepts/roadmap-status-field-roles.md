@@ -14,5 +14,5 @@ the transitioned roadmap use `path`; consumers that need the resulting lifecycle
 `status`. The schema declares both fields with an empty-string default, so the source records
 no further ranking or selection rule between them.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RoadmapStatus`
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RoadmapStatus` @e0c7b3335724
 - rule: use `path` for the transitioned roadmap's identity and `status` for its recorded lifecycle state; neither field is preferred over the other

@@ -15,7 +15,7 @@ location.
 Neither field ranks over or replaces the other: provide a readable baseline for every parity
 survey, and set the survey directory only when its default artifact location is unsuitable.
 
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor`
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor` @afa650d81faa
 - rule: select `baseline_inventory` for the required comparison source and `survey_dir` for the optional artifact location; neither is a substitute for the other
 - detail: [parity surveyor concern boundaries](parity-surveyor-concern-boundaries.md)
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
