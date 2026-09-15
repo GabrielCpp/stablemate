@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import subprocess
-import shutil
 from pathlib import Path
 
 from ostler import doctor
@@ -9,7 +8,6 @@ from ostler.model import load
 from ostler.qa.context import build_context, cmd_context, validate_context
 from ostler.qa.source_context import SourceRepository, SourceScope
 from ostler.provenance import source_freshness
-from ostler.source_snapshots import catalog_path
 
 
 def _git(root: Path, *args: str) -> str:
@@ -210,55 +208,3 @@ title: Create invoice
     ]
 
 
-def test_source_catalog_grounds_external_ref_without_live_checkout(tmp_path: Path) -> None:
-    docs = tmp_path / "product-docs"
-    source = tmp_path / "api-service"
-    (docs / "docs/features/billing").mkdir(parents=True)
-    (source / "src").mkdir(parents=True)
-    (docs / "docs/features/billing/create.md").write_text(
-        """---
-type: concept
-title: Create invoice
----
-# Create invoice
-
-- code: `repo://api-service/src/service.py::create_invoice`
-""",
-        encoding="utf-8",
-    )
-    implementation = source / "src/service.py"
-    implementation.write_text(
-        "def create_invoice():\n    return 'old'\n", encoding="utf-8"
-    )
-    docs_base = _init(docs)
-    source_base = _init(source)
-    implementation.write_text(
-        "def create_invoice():\n    return 'new'\n", encoding="utf-8"
-    )
-    repository = SourceRepository(
-        id="api-service",
-        checkout=str(source),
-        base=source_base,
-        scopes=(SourceScope(surface="billing", root="src"),),
-    )
-
-    outcome = cmd_context(
-        docs,
-        docs / "docs/specs/story",
-        base=docs_base,
-        repositories=(repository,),
-    )
-
-    assert outcome.ok, outcome.message
-    assert catalog_path(docs).is_file()
-    shutil.rmtree(source)
-    grounding = {
-        finding.code
-        for finding in doctor.run(load(docs)).findings
-        if finding.code in {
-            "dangling-repository-ref",
-            "dangling-code-ref",
-            "missing-code-symbol",
-        }
-    }
-    assert grounding == set()

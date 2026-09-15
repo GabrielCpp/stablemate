@@ -332,11 +332,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--check", action="store_true",
         help="exit non-zero on a non-empty stale set — the CI gate",
     )
-    bfs.add_parser(
-        "snapshot",
-        help="write docs/features/sources.json: the watermark the next plan compares against",
-    ).add_argument("--surface", help="unused today; the catalog covers the whole book")
-
     ne = sub.add_parser("next-epic", help="the next epic with unfinished work")
     ne.add_argument("--json", action="store_true")
     ns = sub.add_parser("next-story", help="the next runnable story in an epic")
@@ -1340,16 +1335,11 @@ def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
 
 
 def _cmd_backfill(graph, args) -> int:
-    """`ostler backfill plan` / `ostler backfill snapshot`.
+    """`ostler backfill plan`.
 
     The impure half — the git diff, the doctor run, reading the inventory — lives here so
     `backfill.plan` itself stays a function of its arguments.
     """
-    if args.op == "snapshot":
-        written = source_snapshots.write_catalog(graph, ())
-        _out(f"wrote {written}")
-        return 0
-
     try:
         data = coverage.load_inventory(args.inventory)
     except (OSError, ValueError, json.JSONDecodeError) as exc:

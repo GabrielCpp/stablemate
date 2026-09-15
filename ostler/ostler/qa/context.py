@@ -21,7 +21,7 @@ from ostler.model import Graph, _parse_ui_nodes, load
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.source_context import SourceRepository
-from ostler.source_snapshots import source_fingerprint, write_catalog
+from ostler.source_snapshots import source_fingerprint
 
 #: The last-resort declaration shape, for a language with no parser and no entry in
 #: `inventory` — and for a Python file `ast` could not read. Declared in
@@ -898,8 +898,6 @@ def cmd_context(
             exclude_paths=exclude_paths,
             repositories=repositories,
         )
-        if repositories:
-            write_catalog(load(root), tuple(repositories))
         json_path, md_path = write_context(packet, spec_dir)
     except (OSError, RuntimeError, ValueError) as exc:
         return QaOutcome(ok=False, message=str(exc), status="invalid",

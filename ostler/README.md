@@ -233,9 +233,9 @@ forty lines either side, and only the extraction limitations of its own file.
 
 Code in the documentation repository keeps the existing `path::symbol` spelling. A book that cites
 a separate source repository qualifies the same reference with its stable workspace name:
-`repo://api-service/internal/items.py::create_item`. Multi-repository context generation writes a
-compact `docs/features/sources.json` catalog of file hashes and declarations, so `doctor` can ground
-those citations without copying source trees or depending on machine-local checkout paths.
+`repo://api-service/internal/items.py::create_item`. `doctor` grounds those citations against the
+repository's live checkout, per the `SourceRepository` scopes multi-repository context generation
+declares.
 
 ### Verification control plane
 

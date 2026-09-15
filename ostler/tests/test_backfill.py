@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ostler import backfill, coverage, doctor, source_snapshots
+from ostler import backfill, coverage, doctor
 from ostler.cli import main
 from ostler.model import Graph, load
 
@@ -178,16 +178,6 @@ def test_the_gate_passes_when_the_book_matches(tmp_path: Path) -> None:
                                 _symbol("api/thing.py", "beta")])
     assert main(["-C", str(tmp_path), "backfill", "plan", "--surface", "api",
                  "--inventory", str(inv), "--check"]) == 0
-
-
-def test_snapshot_writes_the_watermark_the_next_plan_reads(tmp_path: Path) -> None:
-    _repo(tmp_path, "api/thing.py::alpha")
-    assert main(["-C", str(tmp_path), "backfill", "snapshot"]) == 0
-    catalog = source_snapshots.load_catalog(tmp_path)
-    assert catalog is not None
-    snapshot = catalog.repository(source_snapshots.SELF_REPOSITORY)
-    assert snapshot is not None
-    assert snapshot.files[0].digest_of("alpha")
 
 
 def test_another_books_broken_bullet_is_not_this_books_work(tmp_path: Path) -> None:
