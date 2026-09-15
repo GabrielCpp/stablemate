@@ -73,14 +73,9 @@ def test_the_corpus_has_plans_to_lint() -> None:
 
 @pytest.mark.parametrize("plan", PLANS, ids=_plan_id)
 def test_a_frozen_plan_passes_the_lint_that_ships_today(plan: Path) -> None:
-    """Lint through the shipping entry point, so the app's own declarations apply.
-
-    `cmd_lint` reads `fixture_modules:` out of the app's `agents.yml` and lints the
-    declared fixture modules in the same pass — calling the visitor directly would
-    reject every plan that imports a fixture the app did declare.
-    """
+    """Lint through the shipping entry point, so the app's own declarations apply."""
     app = plan.parents[3]
-    outcome = cmd_lint(plan, plan.parent, root=app)
+    outcome = cmd_lint(plan, root=app)
     assert outcome.ok, outcome.message
 
 

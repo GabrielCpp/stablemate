@@ -10,13 +10,60 @@ and the adjuster's role is a custom claim the emulator stamps on the token.
 """
 
 import json
+from typing import Any
 
-from _fixtures.claims import submission
-from _fixtures.identity import ADJUSTER, HOLDER_A, HOLDER_B, bearer, sign_in
 from ostler_qa import Qa, plan, scenario, target
 
 
 plan(run_id="qa-claims-tenancy", story="claims-tenancy")
+
+#: The auth emulator beside the service, at the path its REST surface is mounted on.
+EMULATOR = "http://localhost:18086/identitytoolkit.googleapis.com/v1"
+
+#: A policy holder. Sees their own claims and nobody else's.
+HOLDER_A = ("holder-a@example.com", "claims-bench-a")
+#: A second holder, so tenancy has someone to be kept apart from.
+HOLDER_B = ("holder-b@example.com", "claims-bench-b")
+#: The adjuster. The role is a custom claim the emulator stamps on the token, which is what
+#: `403 Adjusters Only` is decided from.
+ADJUSTER = ("adjuster@example.com", "claims-bench-c")
+
+#: The policy number a submission carries unless the scenario names another.
+_DEFAULT_POLICY_NUMBER = "PL-4471"
+
+#: A well-formed submission. Every field the book documents as required is here, so a plan
+#: overriding one is choosing a value rather than completing the body.
+_SUBMISSION: dict[str, Any] = {
+    "policy_number": _DEFAULT_POLICY_NUMBER,
+    "incident_date": "2099-03-14",
+    "amount_cents": 125000,
+    "description": "Hail damage to the roof of the insured property.",
+}
+
+
+def sign_in(qa: Qa, account: tuple[str, str]) -> dict:
+    """A live identity from the emulator: the id token and the subject it carries."""
+    email, password = account
+    body = qa.http.post(
+        f"{EMULATOR}/accounts:signInWithPassword?key=fake-api-key",
+        json_body={"email": email, "password": password, "returnSecureToken": True},
+        expect_status=200,
+    ).json()
+    return {"token": qa.field(body, "idToken"), "uid": qa.field(body, "localId")}
+
+
+def bearer(qa: Qa, identity: dict) -> dict:
+    """The header an identity is presented in."""
+    return {"Authorization": f"Bearer {qa.field(identity, 'token')}"}
+
+
+def submission(policy_number: str = _DEFAULT_POLICY_NUMBER, **overrides: Any) -> dict:
+    """A claim submission body, with `policy_number` first because that is what varies.
+
+    Duplicated per plan rather than shared through a fixture module: `qa: {fixture_modules:}`
+    is retired, and this plan is frozen corpus, so the cost of the duplicate is a fixed one.
+    """
+    return {**_SUBMISSION, "policy_number": policy_number, **overrides}
 
 api = target("api", driver="python", base_url="http://localhost:18085")
 

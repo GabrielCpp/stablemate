@@ -1,8 +1,29 @@
-from _fixtures.policies import valid_policy
 from ostler_qa import Qa, plan, scenario, target
 
 
 plan(run_id="qa-policy-list", story="policy-list")
+
+
+def valid_policy(number: str, email: str = "alex@example.com", coverage: str = "auto") -> dict:
+    """A policy the desk accepts, in the coverage type named.
+
+    `auto` carries a VIN and `home` an address because the desk refuses each without the
+    other — a scenario asking for one of those coverages is asking for the field that goes
+    with it, and spelling that out at every call site is how the two drift apart.
+
+    Duplicated per plan rather than shared through a fixture module: `qa: {fixture_modules:}`
+    is retired, and this plan is frozen corpus, so the cost of the duplicate is a fixed one.
+    """
+    return {
+        "policy_number": number,
+        "holder_email": email,
+        "coverage_type": coverage,
+        "vehicle_vin": "1HGCM82633A004352" if coverage == "auto" else "",
+        "property_address": "10 Main Street" if coverage == "home" else "",
+        "start_date": "2099-01-01",
+        "end_date": "2099-12-31",
+        "premium": 1000 if coverage == "auto" else 200,
+    }
 
 api = target("api", driver="python", base_url="http://localhost:18084")
 web = target(

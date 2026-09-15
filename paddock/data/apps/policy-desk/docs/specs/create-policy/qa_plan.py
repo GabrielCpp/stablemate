@@ -1,10 +1,55 @@
 import json
+from typing import Any
 
-from _fixtures.policies import amendment_body, valid_policy
 from ostler_qa import HttpError, Qa, plan, scenario, target
 
 
 plan(run_id="qa-create-policy", story="create-policy")
+
+
+def valid_policy(number: str, email: str = "alex@example.com", coverage: str = "auto") -> dict:
+    """A policy the desk accepts, in the coverage type named.
+
+    `auto` carries a VIN and `home` an address because the desk refuses each without the
+    other — a scenario asking for one of those coverages is asking for the field that goes
+    with it, and spelling that out at every call site is how the two drift apart.
+
+    Duplicated per plan rather than shared through a fixture module: `qa: {fixture_modules:}`
+    is retired, and this plan is frozen corpus, so the cost of the duplicate is a fixed one.
+    """
+    return {
+        "policy_number": number,
+        "holder_email": email,
+        "coverage_type": coverage,
+        "vehicle_vin": "1HGCM82633A004352" if coverage == "auto" else "",
+        "property_address": "10 Main Street" if coverage == "home" else "",
+        "start_date": "2099-01-01",
+        "end_date": "2099-12-31",
+        "premium": 1000 if coverage == "auto" else 200,
+    }
+
+
+def amendment_body(qa: Qa, policy: dict, premium: Any) -> dict:
+    """A full amendment of `policy` changing only the premium, quoting the version read.
+
+    The version is carried from the record the caller read rather than re-fetched: an
+    amendment that re-reads the policy first is quoting a version that is current by
+    construction, which proves nothing about the stale-write refusal.
+
+    `policy` is a record the desk returned, so every field comes out through `qa.field`:
+    a key the product spells differently is a failed check naming the field, not a
+    `KeyError` that kills the scenario and leaves its obligations unproven.
+    """
+    return {
+        "holder_email": qa.field(policy, "holder_email"),
+        "coverage_type": qa.field(policy, "coverage_type"),
+        "vehicle_vin": policy.get("vehicle_vin", ""),
+        "property_address": policy.get("property_address", ""),
+        "start_date": qa.field(policy, "start_date"),
+        "end_date": qa.field(policy, "end_date"),
+        "premium": premium,
+        "version": qa.field(policy, "version"),
+    }
 
 api = target("api", driver="python", base_url="http://localhost:18084")
 web = target(

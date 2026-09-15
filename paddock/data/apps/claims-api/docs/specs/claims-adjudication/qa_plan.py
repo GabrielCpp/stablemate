@@ -14,11 +14,35 @@ token, which is what `403 Adjusters Only` is decided from.
 
 import json
 
-from _fixtures.identity import ADJUSTER, HOLDER_A, bearer, sign_in
 from ostler_qa import HttpError, Qa, plan, scenario, target
 
 
 plan(run_id="qa-claims-adjudication", story="claims-adjudication")
+
+#: The auth emulator beside the service, at the path its REST surface is mounted on.
+EMULATOR = "http://localhost:18086/identitytoolkit.googleapis.com/v1"
+
+#: A policy holder. Sees their own claims and nobody else's.
+HOLDER_A = ("holder-a@example.com", "claims-bench-a")
+#: The adjuster. The role is a custom claim the emulator stamps on the token, which is what
+#: `403 Adjusters Only` is decided from.
+ADJUSTER = ("adjuster@example.com", "claims-bench-c")
+
+
+def sign_in(qa: Qa, account: tuple[str, str]) -> dict:
+    """A live identity from the emulator: the id token and the subject it carries."""
+    email, password = account
+    body = qa.http.post(
+        f"{EMULATOR}/accounts:signInWithPassword?key=fake-api-key",
+        json_body={"email": email, "password": password, "returnSecureToken": True},
+        expect_status=200,
+    ).json()
+    return {"token": qa.field(body, "idToken"), "uid": qa.field(body, "localId")}
+
+
+def bearer(qa: Qa, identity: dict) -> dict:
+    """The header an identity is presented in."""
+    return {"Authorization": f"Bearer {qa.field(identity, 'token')}"}
 
 api = target("api", driver="python", base_url="http://localhost:18085")
 
