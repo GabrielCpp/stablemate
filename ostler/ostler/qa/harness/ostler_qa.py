@@ -23,6 +23,18 @@ does not. `data["responses"]` raises `KeyError`; a stream-oriented field lookup 
 missing field as an empty stream and passes vacuously. Every affordance below is shaped to
 keep that property: `qa.http` raises on an unexpected status, `qa.dir` is handed in already
 resolved, and a scenario that records no assertion cannot pass.
+
+`@node.key`/`$name` substitution is opt-in, never automatic. `qa.http`, the locator
+helpers (`qa.by_role`, `qa.by_label`, `qa.by_test_id`, `qa.by_text`, `qa.by_css`) and
+`qa.goto` all take their string arguments as plain literals — none of them resolve
+anything on their own, because the harness cannot tell an actual reference apart from an
+incidental literal that merely contains `@` or `$` (a body `{"handle": "@acme.dev"}`, a
+price `"$5"`, a label "Pay $total"). `qa.resolve(value)` is the one place substitution
+happens, substituting every `@node.key`/`$name` occurrence embedded anywhere in *value*.
+A hand-written scenario that wants a fixture's provided fact or an earlier capture in an
+HTTP path, header, body or locator string calls `qa.resolve(...)` on it itself, before
+handing it to `qa.http`/a locator helper/`qa.goto`; `qa.compile`'s generated plans wrap
+exactly the literals the book's own declarations say carry a reference the same way.
 """
 
 from __future__ import annotations
@@ -560,7 +572,6 @@ class Http:
         *,
         timeout: float = DEFAULT_HTTP_TIMEOUT,
         on_unexpected_status: Callable[[str, str, int, Sequence[int]], None] | None = None,
-        resolve: Callable[[Any], Any] | None = None,
     ) -> None:
         self.base_url = (base_url or "").rstrip("/")
         self.timeout = timeout
@@ -570,12 +581,6 @@ class Http:
         #: answering something the plan said it would not — leaves no assertion behind, and
         #: the evidence map reads the obligation as unasserted rather than contradicted.
         self._on_unexpected_status = on_unexpected_status
-        #: `Qa._resolve_value`, wired in by `Qa.__init__`. Substitutes a whole `@node.key`
-        #: or `$name` value in *path*, *json_body* and *headers* before the request is
-        #: built — a `needs:`-bound fact or an earlier capture reaches the wire the same
-        #: way it reaches a book fixture's own steps. `None` when `Http` is built on its
-        #: own (as the tests do), so substitution stays opt-in rather than a hard dependency.
-        self._resolve = resolve
 
     def url_for(self, path: str) -> str:
         if path.startswith(("http://", "https://")):
@@ -599,12 +604,6 @@ class Http:
         timeout: float | None = None,
         follow_redirects: bool = True,
     ) -> Response:
-        if self._resolve is not None:
-            path = self._resolve(path)
-            if json_body is not None:
-                json_body = self._resolve(json_body)
-            if headers is not None:
-                headers = {key: self._resolve(value) for key, value in headers.items()}
         url = self.url_for(path)
         merged = {**self.headers, **(headers or {})}
         if json_body is not None:
@@ -1367,9 +1366,7 @@ class Qa:
         self._tool_env_allowed = frozenset(tool_env)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
-        self.http = Http(
-            target.base_url, on_unexpected_status=self._status_mismatch, resolve=self._resolve_value
-        )
+        self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch)
         self._index = 0
         self.assertions = 0
         self.failures = 0
@@ -1473,21 +1470,24 @@ class Qa:
         return parsed
 
     def _resolve_ref(self, owner: str, value: str) -> str:
-        """*value*, substituted if it is a whole `@node.key` or `$name` reference.
+        """*value*, with every embedded `@node.key` and `$name` reference substituted.
 
         `owner` is whatever is consuming the reference — a fixture name for a `needs:`
-        binding, or a scenario's own id for a reference resolved on its way into an HTTP
-        call or a browser call — and names nothing but where to point a fault. A literal
-        stays a literal: only a value that is *entirely* one reference resolves, matching
-        the grammar `ostler.qa.references.parse_reference` checks statically. Either
-        reference form failing to resolve is a book/code defect — the binding names
-        something that was never going to exist — so it emits a fault record before
-        raising, the same as every other reference-consuming failure in this harness.
+        binding, or a scenario's own id for a reference resolved through `qa.resolve` —
+        and names nothing but where to point a fault. A reference need not be the whole
+        string: a route path is typically `/orgs/@acme.id/projects`, one segment of a
+        larger literal, so every occurrence is substituted wherever it sits — a `needs:`
+        binding, which names exactly one fact and nothing else, resolves the same way,
+        since substituting its one embedded reference is indistinguishable from replacing
+        the whole string. A reference that fails to resolve is a book/code defect — it
+        names something that was never going to exist — so each failing occurrence emits
+        its own fault record; once every occurrence has been checked, a run with any
+        failures raises, naming all of them, rather than stopping at the first.
         """
-        stripped = value.strip()
-        matched = _NODE_REF.fullmatch(stripped)
-        if matched:
-            node, key = matched.group(1), matched.group(2)
+        failures: list[str] = []
+        spans: list[tuple[int, int, str]] = []
+        for match in _NODE_REF.finditer(value):
+            node, key = match.group(1), match.group(2)
             facts = self._node_facts.get(node)
             if facts is None or key not in facts:
                 detail = (
@@ -1495,33 +1495,56 @@ class Qa:
                     f"{node!r} has not run (or does not provide {key!r})"
                 )
                 self._fault(owner, -1, "reference", "defect", detail)
-                raise RuntimeError(f"qa {owner!r}: {detail}")
-            return facts[key]
-        matched = _CAPTURE_REF.fullmatch(stripped)
-        if matched:
-            captured = matched.group(1)
+                failures.append(detail)
+                continue
+            spans.append((match.start(), match.end(), facts[key]))
+        for match in _CAPTURE_REF.finditer(value):
+            captured = match.group(1)
             if captured not in self._captures:
                 detail = f"reference ${captured} has no resolved value — nothing has captured it"
                 self._fault(owner, -1, "reference", "defect", detail)
-                raise RuntimeError(f"qa {owner!r}: {detail}")
-            return self._captures[captured]
-        return value
+                failures.append(detail)
+                continue
+            spans.append((match.start(), match.end(), self._captures[captured]))
+        if failures:
+            raise RuntimeError(f"qa {owner!r}: " + "; ".join(failures))
+        spans.sort(key=lambda span: span[0])
+        out: list[str] = []
+        cursor = 0
+        for start, end, replacement in spans:
+            out.append(value[cursor:start])
+            out.append(replacement)
+            cursor = end
+        out.append(value[cursor:])
+        return "".join(out)
 
     def resolve(self, value: str) -> str:
-        """A scenario's own value, substituted if it is a whole `@node.key` or `$name`.
+        """A scenario's own value, with every embedded `@node.key`/`$name` substituted.
 
         The same substitution a book fixture's `needs:` binding goes through
-        (`_resolve_ref`), open to a scenario's own steps: an HTTP path, header or body
-        value, or a UI locator or typed string, that names a fixture's provided fact or an
-        earlier capture resolves here — before it reaches the network or the page, per
-        Q38's "resolve before the value reaches the call" rule. `qa.http` already calls
-        this for every request; reach for it directly only for a value that does not pass
-        through `qa.http` (a UI value, or a request built by hand).
+        (`_resolve_ref`), open to a scenario's own steps — an HTTP path, header or body
+        value, or a UI locator or typed string — before it reaches the network or the
+        page, per Q38's "resolve before the value reaches the call" rule. This is the
+        *only* place substitution happens: `qa.http` and the locator helpers (`by_role`,
+        `by_label`, `by_test_id`, `by_text`, `by_css`, `goto`) treat every string argument
+        as a plain literal and never call this on their own — a body carrying a literal
+        `@acme.dev` handle or a `$5` price, or a label reading "Pay $total", has no way to
+        tell itself apart from an actual reference by shape alone, so nothing but an
+        explicit `qa.resolve(...)` call ever substitutes. A hand-written scenario reaches
+        for this directly wherever it wants a fixture's provided fact or an earlier
+        capture; `qa.compile`, which reads the book's own `capture:`/`fixture:`/`needs:`
+        declarations, is the only thing that knows a *compiled* literal needs it, and
+        wraps that literal with this call in the generated source instead.
         """
         return self._resolve_ref(self.scenario_id, value)
 
     def _resolve_value(self, value: Any) -> Any:
-        """`resolve()`, recursively, for the JSON-shaped bodies `qa.http` sends."""
+        """`resolve()`, recursively, for a JSON-shaped dict/list body.
+
+        Explicit-only, like `resolve()` itself: nothing in this harness calls this on a
+        caller's behalf. A scenario or a compiled plan that wants every string inside a
+        nested body substituted passes the body through this directly.
+        """
         if isinstance(value, str):
             return self.resolve(value)
         if isinstance(value, dict):
@@ -2087,13 +2110,13 @@ class Qa:
     # written as `qa.page.get_by_text(...)` is invisible to that check.
 
     def by_role(self, role: str, *, name: str | None = None, **kwargs: Any) -> Any:
-        return self.browser_page.get_by_role(role, name=name if name is None else self.resolve(name), **kwargs)
+        return self.browser_page.get_by_role(role, name=name, **kwargs)
 
     def by_label(self, text: str, **kwargs: Any) -> Any:
-        return self.browser_page.get_by_label(self.resolve(text), **kwargs)
+        return self.browser_page.get_by_label(text, **kwargs)
 
     def by_test_id(self, value: str) -> Any:
-        return self.browser_page.get_by_test_id(self.resolve(value))
+        return self.browser_page.get_by_test_id(value)
 
     def by_text(self, text: str | re.Pattern[str], **kwargs: Any) -> Any:
         # Playwright's own default (`exact=False`, whitespace-normalised substring), not a
@@ -2103,17 +2126,18 @@ class Qa:
         # locator that cannot match. `str | Pattern` for the same reason `by_label` takes
         # `**kwargs`: an author who needs a case-insensitive match should not have to drop
         # to `qa.page.get_by_text`, which `extract_locators` cannot see.
-        #
-        # A pattern is never a reference — `resolve` only ever substitutes a whole string —
-        # so only the `str` arm goes through it.
-        return self.browser_page.get_by_text(text if isinstance(text, re.Pattern) else self.resolve(text), **kwargs)
+        return self.browser_page.get_by_text(text, **kwargs)
 
     def by_css(self, selector: str) -> Any:
-        return self.browser_page.locator(self.resolve(selector))
+        return self.browser_page.locator(selector)
 
     def goto(self, url: str, **kwargs: Any) -> Any:
-        """Navigate, resolving a relative path against the target's `base_url`."""
-        return self.browser_page.goto(self.http.url_for(self.resolve(url)), **kwargs)
+        """Navigate a relative path against the target's `base_url`.
+
+        Takes *url* as a plain literal — pass it through `qa.resolve(...)` first when it
+        names a fixture's provided fact or an earlier capture.
+        """
+        return self.browser_page.goto(self.http.url_for(url), **kwargs)
 
     def capture_text(self, key: str, locator: Any) -> str:
         """Capture a locator's text — a defect if it matches nothing on the page.

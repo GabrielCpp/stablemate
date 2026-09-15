@@ -827,7 +827,9 @@ def an_account_id_captured_from_one_response_addresses_the_next(qa: Qa) -> None:
     qa.http.base_url = "http://127.0.0.1:%d" % server.server_address[1]
     created = qa.http.get("/api/accounts/new")
     qa.capture_field("account_id", created.json(), "account_id")
-    linked = qa.http.post("/api/accounts/link", json_body={"account_id": "$account_id"})
+    linked = qa.http.post(
+        "/api/accounts/link", json_body={"account_id": qa.resolve("$account_id")}
+    )
     qa.check(
         "the captured id reached the server, not the literal reference",
         qa.field(linked.json(), "linked_account_id") == "acme-42",
@@ -840,9 +842,10 @@ def test_a_capture_from_a_response_feeds_a_later_request(tmp_path: Path) -> None
     """`$name` is a runtime binding, resolved before the value reaches the HTTP call.
 
     `qa.capture_field` reads the id out of the first response and `qa.capture`s it; the
-    second request names it as `$account_id` in its path, and `Http.request` — wired to
-    `Qa._resolve_value` — substitutes the captured value before the request is built, so
-    the server sees the real id rather than the literal reference string.
+    second request names it as `$account_id` in its body, and the scenario resolves it
+    explicitly with `qa.resolve(...)` before handing it to `qa.http.post` — `Http` itself
+    treats `json_body` as a plain literal and never substitutes on its own — so the server
+    sees the real id rather than the literal reference string.
     """
     code, records = _run(
         _write(tmp_path, CAPTURE_FEEDS_REQUEST_PLAN),
@@ -938,14 +941,15 @@ def _ui_qa(tmp_path: Path) -> Any:
 
 def test_a_ui_capture_feeds_a_later_locator(tmp_path: Path) -> None:
     """Text captured off one locator substitutes into a later `by_text` call — the UI half
-    of the API capture-into-a-later-request test above."""
+    of the API capture-into-a-later-request test above. `by_text` takes a plain literal
+    now, so the scenario resolves `$greeting` explicitly before passing it on."""
     qa = _ui_qa(tmp_path)
     page = _FakePage()
     qa.page = page
 
     banner = qa.by_text("Welcome, acme")
     qa.capture_text("greeting", banner)
-    qa.by_text("$greeting")
+    qa.by_text(qa.resolve("$greeting"))
 
     assert page.text_calls == ["Welcome, acme", "Welcome, acme"]
 
@@ -965,3 +969,70 @@ def test_a_ui_capture_that_finds_nothing_is_a_defect_fault(tmp_path: Path) -> No
     [fault] = [r for r in emitted if r.get("type") == "fixture_fault"]
     assert fault["fault_class"] == "defect"
     assert "missing_greeting" in fault["detail"]
+
+
+def test_qa_resolve_substitutes_a_reference_embedded_mid_string(tmp_path: Path) -> None:
+    """`qa.resolve` substitutes an occurrence anywhere in the string, not only a value that
+    is entirely one reference — a route path is typically `/orgs/@acme.id/projects`, one
+    segment of a larger literal, not the whole string."""
+    qa = _ui_qa(tmp_path)
+    qa.capture("id", "acme-1")
+    assert qa.resolve("/orgs/$id/projects") == "/orgs/acme-1/projects"
+
+
+LITERAL_AT_AND_DOLLAR_PLAN = '''\
+import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-10-literal", story="10-literal")
+
+api = target("api")
+
+RECEIVED = []
+
+
+class Echo(BaseHTTPRequestHandler):
+    def do_POST(self):  # noqa: N802
+        length = int(self.headers.get("Content-Length", "0"))
+        RECEIVED.append(json.loads(self.rfile.read(length) or b"{}"))
+        body = b"{}"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#pay:does:1"])
+def a_literal_at_and_dollar_are_never_treated_as_references(qa: Qa) -> None:
+    """A body carrying an `@`/`$` literal reaches the server verbatim, unresolved."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Echo)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    qa.http.base_url = "http://127.0.0.1:%d" % server.server_address[1]
+    qa.http.post("/api/pay", json_body={"email": "user@acme.dev", "note": "Pay $total"})
+    qa.check("received the literal, unresolved", RECEIVED == [
+        {"email": "user@acme.dev", "note": "Pay $total"}
+    ], actual=RECEIVED)
+'''
+
+
+def test_http_treats_at_and_dollar_literals_as_plain_text(tmp_path: Path) -> None:
+    """`Http` no longer resolves anything implicitly (Fix 2) — a literal `@acme.dev` handle
+    or a `$5` price/`Pay $total` label is sent verbatim, exactly as the plan wrote it, never
+    misread as a reference and never faulted for failing to resolve one."""
+    code, records = _run(
+        _write(tmp_path, LITERAL_AT_AND_DOLLAR_PLAN),
+        "a-literal-at-and-dollar-are-never-treated-as-references",
+        tmp_path,
+    )
+    assert code == 0, records
+    asserted = _asserts(records)
+    assert len(asserted) == 1
+    assert asserted[0]["passed"] is True
+    assert not [r for r in records if r["type"] == "fixture_fault"]

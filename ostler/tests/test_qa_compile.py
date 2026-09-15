@@ -399,6 +399,29 @@ def test_a_reference_to_a_fixture_key_arranged_in_the_same_obligation_is_resolve
     assert _gap_kinds(gaps, oid) == []
 
 
+def test_only_the_literal_a_reference_was_found_in_is_wrapped_in_resolve() -> None:
+    """`qa.resolve(...)` is the harness's one explicit substitution entry point (Fix 2) — the
+    compiler wraps a literal in it only where `references.find_references` actually found a
+    `@node.key`/`$name`, and leaves every other literal, including one that merely starts with
+    `$` in a way that is not a reference, exactly as it read it.
+    """
+    oid = "okf:docs/features/acme/api.md#get-thing:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["GET /api/things/@seeded-acme.id"]},
+            checksDeclared=[{"call": "ok", "name": "http_status",
+                              "args": {"code": 200, "path": "thing.id"}}],
+            fixturesDeclared=[{"name": "seeded-acme", "args": [], "provides": "an account exists",
+                               "providesKeys": ["seeded-acme.id"]}],
+        )
+    )
+    source = compile_plan(context, story="demo-story")
+    assert 'qa.http.get(qa.resolve("/api/things/@seeded-acme.id"), expect_status=200)' in source
+    assert 'path="thing.id"' in source
+    assert 'qa.resolve("thing.id")' not in source
+
+
 def test_a_capture_resolves_a_reference_on_a_strictly_later_obligation() -> None:
     """`$name` names a fact an earlier `capture:` bullet left behind — an obligation after the
     one that captures it may reference it with no gap."""

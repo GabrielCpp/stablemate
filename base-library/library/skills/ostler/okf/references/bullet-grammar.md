@@ -152,6 +152,15 @@ first is a fact about the book, the second is a fact about the order a scenario 
 [node-types/fixture.md](node-types/fixture.md) and
 [doctor-codes.md](../doctor-codes.md#fixtures).
 
+`compile_plan` is the only writer of these substitutions into a plan: it wraps the one literal a
+reference was actually found in — the route path, a verify argument — in `qa.resolve(...)`, the
+harness's single explicit substitution entry point, and leaves every other literal untouched.
+`Http` (`path`/`json_body`/`headers`), the locator helpers (`by_role`/`by_label`/`by_test_id`/
+`by_text`/`by_css`), and `goto` never resolve a string on their own — a literal such as
+`user@acme.dev` or `Pay $total` would otherwise be misread as a reference it is not. A
+hand-written scenario plan must call `qa.resolve(...)` itself wherever it wants `@fixture.key` or
+`$captured-name` substituted; nothing does it implicitly on the plan's behalf.
+
 ## Repeated controls: `one-per:` / `unique-by:` / `variants:`
 
 A control the app renders once per member of a collection is **one node** carrying the repeat

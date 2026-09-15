@@ -110,7 +110,20 @@ def _lit(value: Any) -> str:
 
 
 def _kwargs(args: dict[str, Any]) -> str:
-    return "".join(f", {name}={_lit(value)}" for name, value in args.items())
+    """Render check arguments, wrapping only the literals a reference was found in.
+
+    `qa.resolve(...)` is the harness's one explicit substitution entry point (Fix 2) — a
+    literal with no `@node.key`/`$name` embedded in it stays a plain literal, since wrapping
+    it would cost nothing today but would ask the harness to scan it every run for a
+    reference it will never contain.
+    """
+    parts = []
+    for name, value in args.items():
+        if isinstance(value, str) and references.find_references(value):
+            parts.append(f", {name}=qa.resolve({_lit(value)})")
+        else:
+            parts.append(f", {name}={_lit(value)}")
+    return "".join(parts)
 
 
 def _slug(path: str) -> str:
@@ -313,17 +326,23 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[s
             method, template = route
             path = _concrete_path(rows) or template
             status = _expect_status(rows)
-            for ref in references.find_references(path):
+            path_refs = references.find_references(path)
+            for ref in path_refs:
                 if not _resolved(ref, produced_facts, produced_captures):
                     gaps.append(Gap(oid, "unresolved-precondition",
                                      f"the path references {ref!r}, not resolvable without running the plan"))
+            # A route path is almost never a whole reference — `/orgs/@seeded-acme.id/projects`
+            # embeds one mid-string. `Http` takes plain literals now (Fix 2), so a path that
+            # found a reference is wrapped in the harness's one explicit substitution call;
+            # every other path is left a bare literal `Http` never touches for resolution.
+            path_expr = f"qa.resolve({_lit(path)})" if path_refs else _lit(path)
             body = "" if method in {"GET", "DELETE", "HEAD", "OPTIONS"} else ", json_body={}"
             todo = ""
             if body != "":
                 todo = "  # TODO(arrange): the book carries no request body"
                 gaps.append(Gap(oid, "unresolved-precondition", "the book carries no request body"))
             expect = f", expect_status={status}" if status is not None else ""
-            lines.append(f"    {name} = qa.http.{method.lower()}({_lit(path)}{body}{expect}){todo}")
+            lines.append(f"    {name} = qa.http.{method.lower()}({path_expr}{body}{expect}){todo}")
             if "{" in path:
                 lines.append("    # TODO(arrange): the path above still carries a template variable")
                 gaps.append(Gap(oid, "unresolved-precondition", "the path still carries a template variable"))
