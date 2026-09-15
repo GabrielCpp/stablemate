@@ -196,17 +196,6 @@ class Settled(OkfResult):
     error: str = ""
 
 
-class Watermarked(OkfResult):
-    """What a closed regrounding item retired: the files whose watermark moved to now,
-    and any path that no longer exists on disk."""
-
-    advanced: list[str] = Field(default_factory=list)
-    #: Paths that were in the catalog but are gone from the tree — every citation into
-    #: them is now dangling and the worklist builder retires them as a `trim` row.
-    trimmed: list[str] = Field(default_factory=list)
-    watermark_error: str = ""
-
-
 class Recorded(OkfResult):
     """A worklist write: what it closed, what it opened, and what it gave up re-opening."""
 

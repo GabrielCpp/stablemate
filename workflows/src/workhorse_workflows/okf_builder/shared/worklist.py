@@ -235,7 +235,7 @@ def _repair_scope(row: dict[str, Any]) -> tuple[str, list[dict[str, Any]]] | Non
 
     A row joins a batch only when its scope is one file: a group finding (`related`) spans
     several, and a `fix:stale-citation` row moves its own watermark when it closes
-    (`advance_watermark` reads one row's context), so both stay turns of their own.
+    (its own context names the one file it stamped), so both stay turns of their own.
     """
     kind = str(row.get("kind", ""))
     if not kind.startswith("fix:") or kind == "fix:stale-citation":

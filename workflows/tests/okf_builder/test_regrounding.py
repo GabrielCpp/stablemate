@@ -8,9 +8,7 @@ the same pass, the drift the join exists to report.
 
 **Regrounding** is the other half: when a cited file's bytes change under a citation that
 carries a digest, doctor reports `stale-citation` and the join queues one row per changed
-file, naming every node that cites it — rather than calling the book complete. The row
-retires only when `advance_watermark` re-reads the file the turn documented against —
-without that, the very next join reports the same drift and the drain laps forever.
+file, naming every node that cites it — rather than calling the book complete.
 """
 from __future__ import annotations
 
@@ -25,7 +23,6 @@ from ostler.source_snapshots import catalog_path
 
 from okf_builder.conftest import CONCEPT
 from workhorse_workflows.okf_builder.main.nodes.coverage import (
-    advance_watermark,
     compute_coverage,
     inventory_source,
 )
@@ -144,75 +141,6 @@ def test_a_symbol_that_changed_under_its_citation_is_queued_not_converged(
     assert context["file"] == SOURCE_FILE
     (node,) = context["nodes"]
     assert context["citations"][node].startswith(CITATION)
-
-
-def test_a_closed_regrounding_row_retires_its_own_watermark(
-    booked: Path, logger: logging.Logger
-) -> None:
-    """Without this the drain laps: the join reports the same drift on the next round.
-
-    The advance is per-path and mid-run, which is also what makes an interrupted run
-    resumable — the next plan's stale set is the remainder, not the original set.
-    """
-    _stamp(booked)
-    _verdict(booked, logger)
-    before = _catalog(booked)["repositories"][0]["files"][0]["declarations"][0]
-    (booked / SOURCE_FILE).write_text(DRIFTED_SOURCE, encoding="utf-8")
-    (item,) = _verdict(booked, logger).regrounding
-
-    result = advance_watermark(
-        logger, str(booked), item["kind"], item["context"], "documented"
-    )
-    assert result.advanced == [SOURCE_FILE]
-    assert result.trimmed == []
-    assert not result.watermark_error
-
-    after = _catalog(booked)["repositories"][0]["files"][0]["declarations"][0]
-    assert after["name"] == before["name"] == "charge"
-    assert after["content_sha256"] != before["content_sha256"]
-
-
-def test_a_partial_turn_advances_nothing(booked: Path, logger: logging.Logger) -> None:
-    """A citation the turn did not finish reconciling still describes bytes nobody read.
-
-    Stamping it current would hide the gap under the next clean verdict, which is the one
-    failure mode a watermark must never introduce.
-    """
-    _stamp(booked)
-    _verdict(booked, logger)
-    (booked / SOURCE_FILE).write_text(DRIFTED_SOURCE, encoding="utf-8")
-    (item,) = _verdict(booked, logger).regrounding
-
-    result = advance_watermark(
-        logger, str(booked), item["kind"], item["context"], "partial"
-    )
-    assert result.advanced == []
-    assert result.trimmed == []
-    assert _verdict(booked, logger).regrounding
-
-
-def test_a_deleted_citation_is_trimmed_not_advanced(
-    booked: Path, logger: logging.Logger
-) -> None:
-    """A cited path the tree no longer carries is reported as trimmed.
-
-    The citation's referent is gone; the catalog drops the row with the file, and the
-    worklist builder reads `trimmed` to retire the bullets and nodes that pointed at it.
-    A run that called the same path "advanced" would have it stamped current on the next
-    round and would not know its own coverage was describing a file that does not exist.
-    """
-    _verdict(booked, logger)
-    (booked / SOURCE_FILE).unlink()
-
-    result = advance_watermark(
-        logger, str(booked), "fix:stale-citation",
-        json.dumps({"file": SOURCE_FILE}), "documented",
-    )
-    assert result.advanced == []
-    assert result.trimmed == [SOURCE_FILE]
-
-    assert SOURCE_FILE not in {file["path"]
-                               for file in _catalog(booked)["repositories"][0]["files"]}
 
 
 def test_a_changed_file_is_batched_five_citing_nodes_per_row(

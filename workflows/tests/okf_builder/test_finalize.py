@@ -183,8 +183,7 @@ def test_a_partial_turn_does_not_restamp_its_regrounding_row(
 ) -> None:
     """A `partial` turn never re-read the citation; marking it fresh would hide that gap.
 
-    The row simply comes back on the next join, the same way an unadvanced watermark
-    does for `advance_watermark`.
+    The row simply comes back on the next join, the same way an unstamped citation does.
     """
     pre_turn_sha = head_sha(booked)
     context = json.dumps({"file": "acme/service.py", "nodes": [CHARGE_PAGE]})

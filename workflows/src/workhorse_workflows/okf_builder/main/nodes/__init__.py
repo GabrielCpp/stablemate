@@ -35,7 +35,6 @@ from workhorse_workflows.okf_builder.main.nodes.adjudicate import (
 )
 from workhorse_workflows.okf_builder.main.nodes.baseline import snapshot_book
 from workhorse_workflows.okf_builder.main.nodes.coverage import (
-    advance_watermark,
     compute_coverage,
     inventory_source,
 )
@@ -47,7 +46,6 @@ from workhorse_workflows.okf_builder.main.nodes.finalize import (
 from workhorse_workflows.okf_builder.main.nodes.prepare import prepare
 
 __all__ = [
-    "advance_watermark",
     "apply_verdict",
     "blocked_rows",
     "compute_coverage",

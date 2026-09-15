@@ -109,8 +109,9 @@ def prepare(
 
     `since` is the diff-scope narrowing: it asks for what a branch has touched, narrows
     the worklist to that, and refuses the run if git cannot answer. With scope gone, a
-    whole-tree reconcile is the run's reading of where it is, and the digest skip in
-    ``sources.json`` makes a rebase free.
+    whole-tree reconcile is the run's reading of where it is, and the per-citation
+    `@digest` stamp makes a rebase free — a rebase leaves an unchanged file's stamp
+    matching.
 
     `recheck_only`, `diff_base`, `workspace_file` and `sources` are **retired and unread**.
     `story` remains only as commit provenance. These inputs selected between two prepare
@@ -126,7 +127,7 @@ def prepare(
         if value:
             logger.warning(
                 "%s is retired and ignored — a run reconciles the book to HEAD, and the "
-                "digest skip in `sources.json` is what carries a rebase (%s=%r)",
+                "per-citation `@digest` stamp is what carries a rebase (%s=%r)",
                 name, name, value,
             )
     source_rel = source_path or service

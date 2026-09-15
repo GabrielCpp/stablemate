@@ -42,7 +42,6 @@ from workhorse_workflows.okf_builder.shared.blueprint import blueprint
 from workhorse_workflows.okf_builder.shared.schemas import (
     Coverage,
     SourceInventory,
-    Watermarked,
 )
 
 #: Directories whose contents are never source: build output, vendored trees, caches, and
@@ -477,53 +476,6 @@ def compute_coverage(
     )
 
 
-@blueprint.node
-def advance_watermark(
-    logger: logging.Logger,
-    repo_root: str = "",
-    item_kind: str = "",
-    item_context: str = "",
-    doc_status: str = "",
-) -> Watermarked:
-    """Retire one regrounding row by re-reading the file the turn just documented against.
-
-    Only for a `fix:stale-citation` item, and only when the turn says it finished — the
-    `documented` verdict of the turn's own schema (the default, an unstated verdict, counts
-    as one too). A row that closed without its watermark moving is reported drifted again by
-    the very next join — the drain would hand the same node to turn after turn until the
-    attempts cap blocked it, which is a loop that costs money to spin; that is exactly what
-    happened while this gate spelled the verdict `complete`, a word no turn ever emits. And a
-    `partial` turn must *not* advance: the citation still describes bytes nobody reconciled,
-    and stamping it current would hide the gap under a clean verdict.
-
-    A path that no longer exists is reported in `trimmed` rather than `advanced`. The
-    citation's referent is gone, the catalog row drops with it, and the worklist builder
-    reads `trimmed` to queue a `trim` row that retires the bullets citing the deleted file.
-    """
-    if item_kind != "fix:stale-citation" or doc_status not in ("", "documented"):
-        return Watermarked()
-    try:
-        context = json.loads(item_context or "{}")
-        path = str(context.get("file") or "")
-    except (ValueError, TypeError) as exc:
-        return Watermarked(watermark_error=f"unreadable regrounding context: {exc}")
-    if not path:
-        return Watermarked()
-    try:
-        result = source_snapshots.advance_catalog(Ostler(repo_root).graph, [path])
-    except (OSError, ValueError, RuntimeError) as exc:
-        # Not fatal: the row comes back on the next join, which is the same behaviour as
-        # before the watermark existed. Losing the run over a cache write would be worse.
-        logger.warning("could not advance the watermark for %s: %s", path, exc)
-        return Watermarked(watermark_error=str(exc))
-    if result.trimmed:
-        logger.info("trimmed %d path(s) whose citations now dangle: %s",
-                    len(result.trimmed), ", ".join(result.trimmed))
-        return Watermarked(advanced=list(result.advanced), trimmed=list(result.trimmed))
-    logger.info("watermark advanced for %s", path)
-    return Watermarked(advanced=list(result.advanced))
-
-
 def _watermark(logger: logging.Logger, okf: Ostler) -> None:
     """Record what every cited symbol currently *is*, so the next run can tell what moved.
 
@@ -544,5 +496,4 @@ def _watermark(logger: logging.Logger, okf: Ostler) -> None:
     logger.info("watermarked the cited source at %s", path)
 
 
-__all__ = ["advance_watermark", "compute_coverage", "inventory_source",
-           "operational_units", "skipped"]
+__all__ = ["compute_coverage", "inventory_source", "operational_units", "skipped"]
