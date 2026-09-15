@@ -18,10 +18,10 @@ from ostler import (checks, dynamic_registry, freeze, inventory, links as links_
 from ostler import graph as graph_mod, locators as loc_mod, reach
 from ostler.vet import placement as placement_mod
 from ostler import refs as refs_mod
-from ostler.model import Graph, Epic, Story, read_doc, required_section_problems
+from ostler.model import Graph, Epic, Story, UINode, read_doc, required_section_problems
 from ostler.path import features_root as features_root_of, specs_root_in
 from ostler.provenance import checkout_for
-from ostler.qa import fixtures as fixtures_mod, runbook as runbook_mod, sensitivity
+from ostler.qa import fixtures as fixtures_mod, references, runbook as runbook_mod, sensitivity
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
 from ostler import stamp as stamp_mod
@@ -185,6 +185,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
 
     _check_milestones(graph, f)
     _check_fixtures(graph, f)
+    _check_fixture_grammar(graph, f)
     _check_story_identity(graph, f)
 
     for epic in graph.epics:
@@ -546,7 +547,11 @@ def _check_fixtures(graph: Graph, f: list[Finding]) -> None:
         f.append(Finding("error", "qa-fixture-declaration", message))
 
     specs, _errors = fixtures_mod.declared(graph.root)
-    known = set(specs) | fixtures_mod.declared_modules(graph.root)
+    known = (
+        set(specs)
+        | fixtures_mod.declared_modules(graph.root)
+        | {Path(n.id).stem for n in graph.ui_nodes_of_type("fixture")}
+    )
 
     _check_book_fixtures(graph, known, f)
 
@@ -627,6 +632,155 @@ def _check_book_fixtures(graph: Graph, known: set[str], f: list[Finding]) -> Non
                     f"in agents.yml. Declared here: "
                     f"{', '.join(sorted(known)) or '(none)'}",
                     path=rel, line=node.line, ref=parsed.name))
+
+
+#: A `fixture` node's own `## Steps` are restricted to this narrower set, not the runbook's
+#: full `STEP_KINDS` — a fixture arranges state for a scenario, it does not bring a stack up
+#: or drive one, so `prepare`/`service`/`health`/`drive` say something a fixture cannot mean.
+_FIXTURE_STEP_KINDS: frozenset[str] = frozenset({"seed", "run", "verify"})
+
+
+def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
+    """The fixture-node grammar (`docs/okf-runbook.md`'s fixture tier), held to its own rules.
+
+    Gated to ops-runbook services, the same way `_check_runbook`'s shape checks are: a repo
+    with no stack to bring up has nothing a fixture arranges state in front of.
+    """
+    if not runbook_mod.stack_runbooks(graph):
+        return
+
+    fixtures = {n.id: n for n in graph.ui_nodes_of_type("fixture")}
+    by_name = {Path(n.id).stem: n for n in fixtures.values()}
+
+    for node in fixtures.values():
+        rel = _rel_path(graph, node)
+        for step in runbook_mod.steps_of(graph, node):
+            kind = _bullet_value(step.meta, "kind")
+            if kind and kind not in _FIXTURE_STEP_KINDS:
+                f.append(Finding(
+                    "error", "fixture-step-kind",
+                    f"{step.id}: `kind: {kind}` is not a fixture step kind",
+                    path=rel, line=step.line, ref=kind,
+                    suggestion="- kind: " + "|".join(sorted(_FIXTURE_STEP_KINDS))))
+
+    _check_fixture_needs_cycles(graph, fixtures, f)
+    _check_fixture_arg_mismatch(graph, by_name, f)
+    _check_fixture_undeclared_provides(graph, by_name, f)
+
+
+def _check_fixture_needs_cycles(graph: Graph, fixtures: dict[str, UINode], f: list[Finding]) -> None:
+    """A `needs:` chain that composes a fixture on top of itself is unbuildable, not deferrable.
+
+    `needs:` is the only `link=True` bullet the `fixture` node type carries, so every link a
+    fixture node's own bullets contribute is a `needs:` target — the same fact
+    `_check_runbook_environment` leans on for `environment:`, applied here instead.
+    """
+    edges: dict[str, list[str]] = {node_id: [] for node_id in fixtures}
+    for node in fixtures.values():
+        for _text, href in node.links:
+            target = graph.find_ui_node(graph.resolve_doc_ref(href, origin=node.path))
+            if target is not None and target.id in fixtures:
+                edges[node.id].append(target.id)
+
+    visited: set[str] = set()
+    stack: list[str] = []
+
+    def visit(node_id: str) -> None:
+        if node_id in stack:
+            cycle = stack[stack.index(node_id):] + [node_id]
+            f.append(Finding(
+                "error", "fixture-needs-cycle",
+                f"fixture needs-cycle: {' -> '.join(cycle)}", ref=node_id))
+            return
+        if node_id in visited:
+            return
+        visited.add(node_id)
+        stack.append(node_id)
+        for dep in edges.get(node_id, []):
+            visit(dep)
+        stack.pop()
+
+    for node_id in edges:
+        visit(node_id)
+
+
+def _fixture_declared_args(node: UINode) -> set[str]:
+    """The parameter names a fixture node's own `args:` bullet declares."""
+    return {name for value in _bullet_values(node.meta.get("args", "")) for name in value.split()}
+
+
+def _fixture_declared_provides(node: UINode) -> set[str]:
+    """The fact names a fixture node's `provides:` bullet declares, one per child.
+
+    Each child may carry trailing prose after the same em dash `fixture:` bullets use to
+    separate a reference from what it leaves behind — only the head names the fact.
+    """
+    keys: set[str] = set()
+    for value in _bullet_values(node.meta.get("provides", "")):
+        head = value.partition("—")[0].split()
+        if head:
+            keys.add(head[0])
+    return keys
+
+
+def _check_fixture_arg_mismatch(graph: Graph, by_name: dict[str, UINode], f: list[Finding]) -> None:
+    """A `fixture:` bullet's `name=value` args must be parameters the target fixture declares.
+
+    Only checkable for a `fixture:` naming a *book* fixture — an app-language or Python-module
+    fixture's parameters are declared in `agents.yml`/its own code, not in this book at all.
+    """
+    for node in graph.ui_nodes:
+        arrange = registry.arrange_keys(node.type)
+        if not arrange:
+            continue
+        rel = _rel_path(graph, node)
+        for key, value, _bullet in node.bullet_order:
+            if key not in arrange:
+                continue
+            parsed = fixtures_mod.parse_bullet(value)
+            if isinstance(parsed, str):
+                continue
+            target = by_name.get(parsed.name)
+            if target is None:
+                continue
+            declared = _fixture_declared_args(target)
+            given = {tok.partition("=")[0] for tok in parsed.args if "=" in tok}
+            unknown = given - declared
+            if unknown:
+                f.append(Finding(
+                    "error", "fixture-arg-mismatch",
+                    f"{node.id}: `{key}: {value}` passes {', '.join(sorted(unknown))}, which "
+                    f"fixture '{target.id}' does not declare under `args:` "
+                    f"({', '.join(sorted(declared)) or '(none)'})",
+                    path=rel, line=node.line, ref=parsed.name))
+
+
+def _check_fixture_undeclared_provides(graph: Graph, by_name: dict[str, UINode], f: list[Finding]) -> None:
+    """An `@node.key` reference must name a fact the target fixture actually declares.
+
+    Static and order-free only: whether some fixture *is arranged early enough* in a given
+    scenario for the fact to be there yet is `compile_plan`'s `unresolved-precondition` gap,
+    not this — this only asks whether the target ever declares the key at all. A `$name`
+    reference is never checked here for the same reason: whether an earlier `capture:` in the
+    same scenario produced it is also a `compile_plan` question, not a fact about the book.
+    """
+    for node in graph.ui_nodes:
+        rel = _rel_path(graph, node)
+        for key, value, _bullet in node.bullet_order:
+            for ref in references.find_references(value):
+                if not isinstance(ref, references.NodeRef):
+                    continue
+                target = by_name.get(ref.node)
+                if target is None:
+                    continue
+                provides = _fixture_declared_provides(target)
+                if ref.key not in provides:
+                    f.append(Finding(
+                        "error", "fixture-undeclared-provides",
+                        f"{node.id}: `{key}: {value}` references `@{ref.node}.{ref.key}`, but "
+                        f"fixture '{target.id}' does not declare `{ref.key}` under `provides:` "
+                        f"({', '.join(sorted(provides)) or '(none)'})",
+                        path=rel, line=node.line, ref=f"{ref.node}.{ref.key}"))
 
 
 def _epic_ref(epic_name: str) -> str:

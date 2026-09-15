@@ -97,7 +97,11 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `undeclared-story-fixture` | error | The story's `qa_plan.py` uses a fixture the story does not list. |
 | `unused-story-fixture` | warn | A story names a fixture its `qa_plan.py` never asks for. |
 | `qa-fixture-bullet` | error | A `fixture:` bullet in the book is not a fixture reference. |
-| `unknown-book-fixture` | error | A `fixture:` bullet names a fixture this repo does not declare. |
+| `unknown-book-fixture` | error | A `fixture:` bullet, or an `@<id>` reference, names a fixture (or fixture key) this repo does not declare — including a `fixture:` bullet on `environment`/`command`/`endpoint`/`interaction`/`invocation`/`method`/`field` naming no [`fixture`](node-types/fixture.md) node. |
+| `fixture-step-kind` | error | A `fixture` node's own `## Steps` uses a `kind:` outside `seed`/`run`/`verify` — narrower than a runbook step's kinds, because a fixture only ever seeds, runs, or verifies. |
+| `fixture-arg-mismatch` | error | A `fixture:` bullet's `name=value` args do not match the target fixture's declared `args:`. |
+| `fixture-needs-cycle` | error | A fixture's `needs:` chain cycles back to itself. |
+| `fixture-undeclared-provides` | error | An `@<fixture>.<key>` reference names a key the target fixture's `provides:` does not declare at all. (A key it declares but has not yet arranged earlier in the scenario is `unresolved-precondition`, not this — order is `compile_plan`'s concern, not doctor's.) |
 
 ## Conformance and structure
 

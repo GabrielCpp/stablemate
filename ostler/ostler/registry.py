@@ -272,6 +272,11 @@ class BulletKey:
                              # ``CODE_GROUNDING_KEYS``: owning a file is not being grounded in
                              # a symbol, so ``doctor`` asks nothing of an owning key it does
                              # not also ground.
+    capture: bool = False    # value names a fact this bullet pulls out of the response/page and
+                             # binds to a ``$name`` a later ``fixture:``/``needs:``/route/body/
+                             # verify argument can reference — the counterpart of ``arrange``:
+                             # one says how to reach the state a claim needs, the other says what
+                             # to remember from having reached it.
 
 
 @dataclass(frozen=True)
@@ -398,6 +403,29 @@ def attributed_fixtures(
     reached once is the state every later claim is read in.
     """
     return _attributed(node_type, bullet_order, arrange_keys(node_type))
+
+
+def capture_keys(node_type: str) -> tuple[str, ...]:
+    """Every bullet key on `node_type` whose value captures a fact for later reference.
+
+    The counterpart of `arrange_keys` on the other side of a claim: an arrangement reaches
+    the state a claim needs before the node is observed, a capture pulls a fact back out of
+    having observed it — a `$name` a later `fixture:`, `needs:`, route, body, or verify
+    argument can reference via the shared reference syntax.
+    """
+    uitype = UI_TYPES_BY_NAME.get(node_type)
+    return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.capture)
+
+
+def attributed_captures(
+    node_type: str, bullet_order: Iterable[Sequence[Any]]
+) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
+    """Split a node's capture bullets between the node and the claims they were captured under.
+
+    Mirrors `attributed_fixtures` exactly, over `capture_keys` instead of `arrange_keys` —
+    document order binds a `capture:` to the nearest normative bullet above it the same way.
+    """
+    return _attributed(node_type, bullet_order, capture_keys(node_type))
 
 
 def attributed_checks(
@@ -632,6 +660,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # pin it kept.
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
         ),
     ),
@@ -699,6 +728,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
         ),
     ),
@@ -732,6 +762,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # not being declared meant nobody read them.
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
         ),
     ),
@@ -760,6 +791,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
         ),
     ),
@@ -787,6 +819,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
         ),
     ),
@@ -804,6 +837,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
         ),
     ),
@@ -820,6 +854,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("code", link=True, owns=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
         ),
     ),
@@ -841,6 +876,25 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("optional"),              # `true` for best-effort steps
             BulletKey("depends-on"),            # ordering hint (default: document order)
             BulletKey("provenance"),            # derived (build pass) | verified (walkthrough)
+        ),
+    ),
+    # A named, static-checkable arrangement of state a scenario reaches for with `fixture:`/
+    # `needs:` — the QA fixture tier's own book entry (docs/okf-runbook.md's fixture grammar).
+    # Reuses the `step` section type for its own `## Steps`; `fixture-step-kind` restricts a
+    # fixture's own steps to `{seed, run, verify}`, a narrower set than a runbook's `STEP_KINDS`.
+    UINodeType(
+        name="fixture", kind="file", context="qa/fixtures",
+        required_sections=(SectionSpec("Steps"),),
+        bullet_keys=(
+            # `args:`, not `params:` — `params` is already a `RELATION_KEYS` entry checked
+            # node-type-independently for `relation-without-subject`, and a fixture's own
+            # declared-parameter list is not a relation.
+            BulletKey("args"),
+            # What the fixture's last step leaves behind, one child per fact — the vocabulary
+            # `fixture-undeclared-provides` holds an `@node.key` reference to.
+            BulletKey("provides", nested=True),
+            # Another fixture this one composes on top of, before its own steps run.
+            BulletKey("needs", nested=True, link=True),
         ),
     ),
     # A heading that names no type — promoted anyway so every section is a node (its links are

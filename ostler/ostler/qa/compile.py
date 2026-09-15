@@ -21,10 +21,30 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ostler.qa import references
 from ostler.qa.outcome import QaOutcome
+
+
+@dataclass(frozen=True)
+class Gap:
+    """One obligation left uncompiled, and why — `compile_plan`'s structured gap report.
+
+    `checkpoints=[]` and `forbid=[]` are not gaps: they are always emitted, for every
+    scenario, whether or not the book gave a reason — there is nothing conditional to
+    report. Everything here is instead a fact compile.py discovered about one obligation
+    while trying to compile it, in the vocabulary `doctor` reads rather than redefines:
+    `unresolved-precondition` for a state the plan cannot yet reach (a missing fixture, an
+    unresolved reference, a template variable, a request body the book never wrote), and
+    `uncompilable-claim` for a node with no action to observe at all — no fixture or
+    capture could supply one, so it is not a precondition gap.
+    """
+    obligation_id: str
+    kind: str
+    detail: str
 
 #: What each check is handed. `http_status` and `conflict_on_stale` read a response — status
 #: line, headers, problem body — so the compiled call takes the response object. `json_path`
@@ -116,6 +136,25 @@ def compile_plan(
     cannot be. It is expected to *validate*: `ostler qa validate` reports zero uncovered
     obligations against it exactly when the book declared a check for everything it owes.
     """
+    source, _gaps = compile_plan_gaps(context, story=story, run_id=run_id, base_url=base_url)
+    return source
+
+
+def compile_plan_gaps(
+    context: dict[str, Any],
+    *,
+    story: str,
+    run_id: str | None = None,
+    base_url: str = "http://localhost:8000",
+) -> tuple[str, list[Gap]]:
+    """`compile_plan`'s source, plus the structured gap report it compiled alongside it.
+
+    Same rendering, same TODO markers in the source — this is the one place that also
+    hands back *why* each conditional TODO fired, as `(obligation id, gap kind, detail)`,
+    for a caller (`doctor`) that wants to map book debt to obligations without re-parsing
+    the compiled Python.
+    """
+    gaps: list[Gap] = []
     owed = _owed(context)
     lines: list[str] = [
         "# Compiled from the book by `ostler qa compile-plan`. Every `covers=` below is the",
@@ -164,6 +203,10 @@ def compile_plan(
             lines.append("    ],")
         else:
             lines.append("    preconditions=[],  # TODO(arrange): what must hold before this scenario runs")
+            gaps.extend(
+                Gap(o["id"], "unresolved-precondition", "no fixture arranged for this obligation")
+                for o in declared
+            )
         lines.append("    checkpoints=[],  # TODO(arrange): what an observer should see it prove")
         lines.append("    forbid=[],  # TODO: the weaker observations this scenario must not settle for")
         lines.append(")")
@@ -177,7 +220,7 @@ def compile_plan(
                 + ")"
                 for row in arranged
             )
-        lines.extend(_scenario_body(declared))
+        lines.extend(_scenario_body(declared, gaps))
 
     if debt:
         lines.append("")
@@ -190,7 +233,7 @@ def compile_plan(
             lines.append(f"#   {obligation['id']}")
             lines.append(f"#     {requirement[:100]}")
 
-    return "\n".join(lines).rstrip() + "\n"
+    return "\n".join(lines).rstrip() + "\n", gaps
 
 
 def _arrangements(obligations: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -206,7 +249,13 @@ def _arrangements(obligations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list({(row["name"], tuple(row.get("args", []))): row for row in rows}.values())
 
 
-def _scenario_body(obligations: list[dict[str, Any]]) -> list[str]:
+def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[str]:
+    """Compile every obligation's assertion half. Called only with `checksDeclared` obligations.
+
+    `compile_plan` filters to `declared = [o for o in obligations if o.get("checksDeclared")]`
+    before ever reaching here, so every obligation this sees already has at least one row —
+    there is no "declares no `verify:`" case left to report from inside the loop.
+    """
     lines: list[str] = []
     index = 0
     for obligation in obligations:
@@ -216,10 +265,6 @@ def _scenario_body(obligations: list[dict[str, Any]]) -> list[str]:
         lines.append("")
         lines.append(f"    # {oid}")
         lines.append(f"    # {requirement}")
-        if not rows:
-            lines.append("    # TODO(undeclared): the book owes this claim live evidence and")
-            lines.append("    # declares no `verify:` for it. Write the check on the bullet, not here.")
-            continue
         route = _route(obligation)
         index += 1
         name = f"observed_{index}"
@@ -227,19 +272,31 @@ def _scenario_body(obligations: list[dict[str, Any]]) -> list[str]:
             method, template = route
             path = _concrete_path(rows) or template
             status = _expect_status(rows)
+            for ref in references.find_references(path):
+                gaps.append(Gap(oid, "unresolved-precondition",
+                                 f"the path references {ref!r}, not resolvable without running the plan"))
             body = "" if method in {"GET", "DELETE", "HEAD", "OPTIONS"} else ", json_body={}"
-            todo = "" if body == "" else "  # TODO(arrange): the book carries no request body"
+            todo = ""
+            if body != "":
+                todo = "  # TODO(arrange): the book carries no request body"
+                gaps.append(Gap(oid, "unresolved-precondition", "the book carries no request body"))
             expect = f", expect_status={status}" if status is not None else ""
             lines.append(f"    {name} = qa.http.{method.lower()}({_lit(path)}{body}{expect}){todo}")
             if "{" in path:
                 lines.append("    # TODO(arrange): the path above still carries a template variable")
+                gaps.append(Gap(oid, "unresolved-precondition", "the path still carries a template variable"))
         else:
             lines.append("    # TODO(arrange): the book gives this node no `route:` to act on")
             lines.append(f"    {name} = None  # TODO(arrange): what this scenario observes")
+            gaps.append(Gap(oid, "uncompilable-claim", "the book gives this node no `route:` to act on"))
         for row in rows:
+            for ref in references.find_references(json.dumps(row.get("args", {}))):
+                gaps.append(Gap(oid, "unresolved-precondition",
+                                 f"a verify argument references {ref!r}, not resolvable without running the plan"))
             operand, note = _operand(row["name"], name)
             if note:
                 lines.append(f"    # TODO(arrange): {note}")
+                gaps.append(Gap(oid, "uncompilable-claim", note))
             lines.append(
                 f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, covers=[{_lit(oid)}])"
             )

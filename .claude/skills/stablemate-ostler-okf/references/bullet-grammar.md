@@ -123,6 +123,40 @@ Canonical bullet order is the type's `bullet_keys` order and is applied by `ostl
 stub written in the wrong place is one the formatter moves the first time the file is touched.
 `ostler scaffold` already emits check stubs under the last claim for this reason.
 
+## Fixture references: `args:` / `provides:` / `needs:` / `capture:`
+
+A [`fixture`](node-types/fixture.md) node is a named, static-checkable arrangement, written once
+and referenced by name from a `fixture:` bullet anywhere. Its own three keys are not the
+`arrange`/`check`/`normative` families above — they describe the fixture itself, not a claim:
+
+- `args:` — the parameters the fixture takes, space-separated names. Spelled `args`, not `params`
+  — `params` is a global relation key (`RELATION_KEYS`) already checked by
+  `relation-without-subject`, and a fixture's parameter list is not a relation.
+- `provides:` (`nested`) — what the fixture's last step leaves behind, one child per key.
+- `needs:` (`nested`, `link`) — another fixture this one composes on top of, linked by file.
+
+`capture:` is the mirror of `fixture:`/`verify:` on the same seven node types
+(`environment`, `command`, `endpoint`, `interaction`, `invocation`, `method`, `field`): where
+`fixture:` says how state was reached and `verify:` says what was observed, `capture:` says what a
+scenario pulled out of the response or the DOM for a *later* step to use — `capture: <name> from
+<json path | UI locator>`. Attribution (`capture_keys` / `attributed_captures`,
+`registry.py:352-420`) delegates to the same `_attributed` engine as `arrange_keys` /
+`attributed_fixtures` and `attributed_checks` — one binding-by-position engine, three key
+families. A fixture node's own `## Steps` never carries `capture:`; what a fixture's own last step
+leaves behind is named by `provides:` instead.
+
+Two reference forms read those values elsewhere in the book: `@<fixture-id>.<key>` names a value a
+fixture `provides:`, and `$<captured-name>` names a value some earlier `capture:` produced. Both
+are recognized wherever a `fixture:` bullet's args, a `needs:` binding, a route path template, a
+request-body value, or a `verify:` call can appear — parsed by one shared parser
+(`ostler.qa.references`) rather than reimplemented per call site, and resolved statically (no
+execution) by `compile_plan`. An `@<fixture>.<key>` naming a key the fixture never declares in
+`provides:` is `fixture-undeclared-provides`; naming a key it declares but has not arranged yet in
+the scenario, or a `$name` with no earlier `capture:`, is `unresolved-precondition` instead — the
+first is a fact about the book, the second is a fact about the order a scenario reads it in. See
+[node-types/fixture.md](node-types/fixture.md) and
+[doctor-codes.md](../doctor-codes.md#fixtures).
+
 ## Repeated controls: `one-per:` / `unique-by:` / `variants:`
 
 A control the app renders once per member of a collection is **one node** carrying the repeat

@@ -12,7 +12,7 @@ import ast
 import json
 from pathlib import Path
 
-from ostler.qa.compile import cmd_compile_plan, compile_plan
+from ostler.qa.compile import Gap, cmd_compile_plan, compile_plan, compile_plan_gaps
 
 
 def _obligation(oid: str, **extra: object) -> dict:
@@ -237,3 +237,134 @@ def test_a_book_that_arranges_nothing_still_says_so_out_loud() -> None:
         _obligation("okf:docs/features/demo/api.md#post-things:does:1", checksDeclared=[_check()])
     )
     assert "preconditions=[],  # TODO(arrange)" in compile_plan(context, story="demo-story")
+
+
+def _gap_kinds(gaps: list[Gap], oid: str) -> list[str]:
+    return [g.kind for g in gaps if g.obligation_id == oid]
+
+
+def test_no_fixture_arranged_is_an_unresolved_precondition() -> None:
+    oid = "okf:docs/features/demo/api.md#get-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["GET /api/things"]},
+            checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+        )
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["unresolved-precondition"]
+
+
+def test_a_missing_request_body_is_an_unresolved_precondition() -> None:
+    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+        )
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert "unresolved-precondition" in _gap_kinds(gaps, oid)
+
+
+def test_an_unresolved_path_template_variable_is_an_unresolved_precondition() -> None:
+    oid = "okf:docs/features/demo/globex.md#get-thing:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["GET /api/things/{id}"]},
+            checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+        )
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert "unresolved-precondition" in _gap_kinds(gaps, oid)
+    assert any("template variable" in g.detail for g in gaps if g.obligation_id == oid)
+
+
+def test_a_reference_in_the_path_is_an_unresolved_precondition() -> None:
+    """`@node.key`/`$name` are static syntax `compile_plan` cannot resolve without running the
+    plan — a gap, not a compile-time crash, and the same grammar `fixture:`/`needs:` share."""
+    oid = "okf:docs/features/demo/globex.md#get-thing:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["GET /api/things/@seeded-thing.id"]},
+            checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+        )
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert "unresolved-precondition" in _gap_kinds(gaps, oid)
+    assert any("seeded-thing" in g.detail for g in gaps if g.obligation_id == oid)
+
+
+def test_a_verify_argument_reference_is_an_unresolved_precondition() -> None:
+    oid = "okf:docs/features/demo/globex.md#post-thing:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            checksDeclared=[{"call": "ok", "name": "json_path", "args": {"path": "$captured"}}],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+        )
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert "unresolved-precondition" in _gap_kinds(gaps, oid)
+
+
+def test_no_route_at_all_is_an_uncompilable_claim() -> None:
+    """No `route:` to act on is a book that gives QA nothing to observe — a different repair
+    from a fixture-shaped gap, so it earns its own kind rather than folding into the other."""
+    oid = "okf:docs/features/demo/globex.md#note:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={},
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+        )
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+
+
+def test_a_subject_check_wanting_a_before_after_pair_is_an_uncompilable_claim() -> None:
+    oid = "okf:docs/features/demo/globex.md#post-things:persistence:1"
+    context = _context(
+        _obligation(
+            oid,
+            checksDeclared=[
+                {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}},
+                {"call": "the ledger", "name": "unchanged", "args": {"of": "thing.version"}},
+            ],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+        )
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert "uncompilable-claim" in _gap_kinds(gaps, oid)
+
+
+def test_checkpoints_and_forbid_scaffolding_never_appear_in_the_gap_report() -> None:
+    """`checkpoints=[]`/`forbid=[]` are unconditional TODO scaffolding, not a fact discovered
+    about any one obligation — so they stay plain source comments, outside the structured
+    report `doctor` reads."""
+    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    context = _context(_obligation(oid, checksDeclared=[_check()]))
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert "checkpoints=[],  # TODO" in source
+    assert "forbid=[],  # TODO" in source
+    assert {g.kind for g in gaps} <= {"unresolved-precondition", "uncompilable-claim"}
+
+
+def test_a_checkless_obligation_never_reaches_the_scenario_body() -> None:
+    """The dead `TODO(undeclared)` branch removed from `_scenario_body`: a checkless obligation
+    is book debt, filtered out before the body is ever asked to render one — so no gap, and no
+    scenario, is emitted for it at all."""
+    oid = "okf:docs/features/demo/globex.md#post-things:does:2"
+    context = _context(_obligation(oid))
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == []
+    assert "# Book debt." in source
+    assert f"#   {oid}" in source

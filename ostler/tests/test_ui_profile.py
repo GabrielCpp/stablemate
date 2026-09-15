@@ -86,6 +86,7 @@ def test_ui_types_registered():
         "invocation", "flow", "concept", "format",
         "method", "field",   # nested typed sections (Methods/Fields containers + inline `type:`)
         "runbook", "environment", "step",   # operational profile (docs/okf-runbook.md)
+        "fixture",            # QA fixture tier: named, static-checkable arrangements (§ fixture)
         "untyped",           # any other heading, promoted so its links/hierarchy are captured
     }
 
