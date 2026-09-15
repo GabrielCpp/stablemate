@@ -781,3 +781,111 @@ def test_artifact_marks_a_directory_so_the_runner_files_it_file_by_file(tmp_path
         ("report", True),
         ("single.txt", None),
     ]
+
+
+CAPTURE_FEEDS_REQUEST_PLAN = '''\
+import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-08-capture", story="08-capture")
+
+api = target("api")
+
+
+class AccountThenEcho(BaseHTTPRequestHandler):
+    def do_GET(self):  # noqa: N802
+        body = json.dumps({"account_id": "acme-42"}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):  # noqa: N802
+        length = int(self.headers.get("Content-Length", "0"))
+        received = json.loads(self.rfile.read(length) or b"{}")
+        body = json.dumps({"linked_account_id": received.get("account_id")}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#accounts:does:1"])
+def an_account_id_captured_from_one_response_addresses_the_next(qa: Qa) -> None:
+    """An id captured from an API response substitutes into a later request's body."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), AccountThenEcho)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    qa.http.base_url = "http://127.0.0.1:%d" % server.server_address[1]
+    created = qa.http.get("/api/accounts/new")
+    qa.capture_field("account_id", created.json(), "account_id")
+    linked = qa.http.post("/api/accounts/link", json_body={"account_id": "$account_id"})
+    qa.check(
+        "the captured id reached the server, not the literal reference",
+        qa.field(linked.json(), "linked_account_id") == "acme-42",
+        actual=qa.field(linked.json(), "linked_account_id"),
+    )
+'''
+
+
+def test_a_capture_from_a_response_feeds_a_later_request(tmp_path: Path) -> None:
+    """`$name` is a runtime binding, resolved before the value reaches the HTTP call.
+
+    `qa.capture_field` reads the id out of the first response and `qa.capture`s it; the
+    second request names it as `$account_id` in its path, and `Http.request` — wired to
+    `Qa._resolve_value` — substitutes the captured value before the request is built, so
+    the server sees the real id rather than the literal reference string.
+    """
+    code, records = _run(
+        _write(tmp_path, CAPTURE_FEEDS_REQUEST_PLAN),
+        "an-account-id-captured-from-one-response-addresses-the-next",
+        tmp_path,
+    )
+    assert code == 0, records
+    asserted = _asserts(records)
+    assert len(asserted) == 1
+    assert asserted[0]["passed"] is True
+    captures = [r for r in records if r["type"] == "capture"]
+    assert captures == [{"type": "capture", "key": "account_id", "value": "acme-42"}]
+
+
+CAPTURE_MISS_PLAN = '''\
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-09-capture-miss", story="09-capture-miss")
+
+api = target("api")
+
+
+@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#accounts:does:1"])
+def a_capture_path_that_finds_nothing_is_a_defect(qa: Qa) -> None:
+    """A declared capture whose path is absent from the response is a book/code defect."""
+    qa.capture_field("missing_id", {"account_id": "acme-42"}, "no_such_field")
+    qa.check("unreached", True)
+'''
+
+
+def test_a_capture_that_finds_nothing_is_a_defect_fault(tmp_path: Path) -> None:
+    """A capture is a promise the plan makes about the response, not an optional read.
+
+    `qa.field` alone would answer `MISSING` in silence — the right behaviour for an
+    assertion, the wrong one for a capture, since every later `$name` reference would then
+    fail at its own, unrelated line instead of naming the actual absent path.
+    """
+    code, records = _run(
+        _write(tmp_path, CAPTURE_MISS_PLAN),
+        "a-capture-path-that-finds-nothing-is-a-defect",
+        tmp_path,
+    )
+    assert code != 0
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "defect"
+    assert "no_such_field" in fault["detail"]
+    assert "missing_id" in fault["detail"]

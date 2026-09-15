@@ -560,6 +560,7 @@ class Http:
         *,
         timeout: float = DEFAULT_HTTP_TIMEOUT,
         on_unexpected_status: Callable[[str, str, int, Sequence[int]], None] | None = None,
+        resolve: Callable[[Any], Any] | None = None,
     ) -> None:
         self.base_url = (base_url or "").rstrip("/")
         self.timeout = timeout
@@ -569,6 +570,12 @@ class Http:
         #: answering something the plan said it would not — leaves no assertion behind, and
         #: the evidence map reads the obligation as unasserted rather than contradicted.
         self._on_unexpected_status = on_unexpected_status
+        #: `Qa._resolve_value`, wired in by `Qa.__init__`. Substitutes a whole `@node.key`
+        #: or `$name` value in *path*, *json_body* and *headers* before the request is
+        #: built — a `needs:`-bound fact or an earlier capture reaches the wire the same
+        #: way it reaches a book fixture's own steps. `None` when `Http` is built on its
+        #: own (as the tests do), so substitution stays opt-in rather than a hard dependency.
+        self._resolve = resolve
 
     def url_for(self, path: str) -> str:
         if path.startswith(("http://", "https://")):
@@ -592,6 +599,12 @@ class Http:
         timeout: float | None = None,
         follow_redirects: bool = True,
     ) -> Response:
+        if self._resolve is not None:
+            path = self._resolve(path)
+            if json_body is not None:
+                json_body = self._resolve(json_body)
+            if headers is not None:
+                headers = {key: self._resolve(value) for key, value in headers.items()}
         url = self.url_for(path)
         merged = {**self.headers, **(headers or {})}
         if json_body is not None:
@@ -1352,9 +1365,11 @@ class Qa:
         #: The environment variable names the plan declared through `tool_env(...)` — the
         #: only ones `qa.tool(name).run(env=...)` may set.
         self._tool_env_allowed = frozenset(tool_env)
-        self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
+        self.http = Http(
+            target.base_url, on_unexpected_status=self._status_mismatch, resolve=self._resolve_value
+        )
         self._index = 0
         self.assertions = 0
         self.failures = 0
@@ -1457,14 +1472,17 @@ class Qa:
             parsed[key] = value
         return parsed
 
-    def _resolve_ref(self, fixture: str, value: str) -> str:
-        """A `needs:` binding's value, substituted if it is a whole `@node.key` or `$name`.
+    def _resolve_ref(self, owner: str, value: str) -> str:
+        """*value*, substituted if it is a whole `@node.key` or `$name` reference.
 
-        A literal stays a literal: only a value that is *entirely* one reference resolves,
-        matching the grammar `ostler.qa.references.parse_reference` checks statically. Either
-        reference form failing to resolve is a book/code defect — the binding names something
-        that was never going to exist — so it emits a fault record before raising, the same
-        as every other fixture-side failure in this harness.
+        `owner` is whatever is consuming the reference — a fixture name for a `needs:`
+        binding, or a scenario's own id for a reference resolved on its way into an HTTP
+        call or a browser call — and names nothing but where to point a fault. A literal
+        stays a literal: only a value that is *entirely* one reference resolves, matching
+        the grammar `ostler.qa.references.parse_reference` checks statically. Either
+        reference form failing to resolve is a book/code defect — the binding names
+        something that was never going to exist — so it emits a fault record before
+        raising, the same as every other reference-consuming failure in this harness.
         """
         stripped = value.strip()
         matched = _NODE_REF.fullmatch(stripped)
@@ -1476,17 +1494,59 @@ class Qa:
                     f"reference @{node}.{key} has no resolved value — "
                     f"{node!r} has not run (or does not provide {key!r})"
                 )
-                self._fault(fixture, -1, "reference", "defect", detail)
-                raise RuntimeError(f"qa fixture {fixture!r} {detail}")
+                self._fault(owner, -1, "reference", "defect", detail)
+                raise RuntimeError(f"qa {owner!r}: {detail}")
             return facts[key]
         matched = _CAPTURE_REF.fullmatch(stripped)
         if matched:
             captured = matched.group(1)
             if captured not in self._captures:
                 detail = f"reference ${captured} has no resolved value — nothing has captured it"
-                self._fault(fixture, -1, "reference", "defect", detail)
-                raise RuntimeError(f"qa fixture {fixture!r} {detail}")
+                self._fault(owner, -1, "reference", "defect", detail)
+                raise RuntimeError(f"qa {owner!r}: {detail}")
             return self._captures[captured]
+        return value
+
+    def resolve(self, value: str) -> str:
+        """A scenario's own value, substituted if it is a whole `@node.key` or `$name`.
+
+        The same substitution a book fixture's `needs:` binding goes through
+        (`_resolve_ref`), open to a scenario's own steps: an HTTP path, header or body
+        value, or a UI locator or typed string, that names a fixture's provided fact or an
+        earlier capture resolves here — before it reaches the network or the page, per
+        Q38's "resolve before the value reaches the call" rule. `qa.http` already calls
+        this for every request; reach for it directly only for a value that does not pass
+        through `qa.http` (a UI value, or a request built by hand).
+        """
+        return self._resolve_ref(self.scenario_id, value)
+
+    def _resolve_value(self, value: Any) -> Any:
+        """`resolve()`, recursively, for the JSON-shaped bodies `qa.http` sends."""
+        if isinstance(value, str):
+            return self.resolve(value)
+        if isinstance(value, dict):
+            return {key: self._resolve_value(v) for key, v in value.items()}
+        if isinstance(value, list):
+            return [self._resolve_value(v) for v in value]
+        return value
+
+    def capture_field(self, key: str, data: Any, path: str) -> Any:
+        """Capture a JSON-path read from observed data — a defect if the path finds nothing.
+
+        Composes `field` with `capture`. `field` alone answers `MISSING` in silence,
+        because a missing field is often the assertion itself — but a *capture* that finds
+        nothing is not something a later step can route around: `$key` would resolve to a
+        fault of its own, at whatever line consumes it, and the earlier, sharper defect —
+        the path never existed in the response the plan captures it from — would go
+        unnamed. So this raises here, at the point the capture was meant to be produced,
+        the same as every other book/code defect this harness stops a scenario for.
+        """
+        value = self.field(data, path)
+        if value is MISSING:
+            detail = f"capture {key!r} from {path!r} found nothing in the observed data"
+            self._fault(self.scenario_id, -1, "capture", "defect", detail)
+            raise RuntimeError(f"qa {self.scenario_id!r}: {detail}")
+        self.capture(key, value)
         return value
 
     def _fault(self, fixture: str, step_index: int, step_kind: str, fault_class: str, detail: str) -> None:
