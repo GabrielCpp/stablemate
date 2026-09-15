@@ -26,19 +26,13 @@ exactly the seam that was closed.
   its symbol name uniquely matches a ``dangling`` row already surfaced, so the one
   edit reads as one finding.
 
-A *trim* joins them: a path the catalog carries that the tree no longer does. Its
-citations are dangling in a different way (the file is gone), so the bullets are
-cut, the node is queued for authored removal if it lost its last bullet, and the
-neighbours are queued for review so a journey whose third step vanished is read
-against the book rather than against the file.
-
-A *1-hop* join widens "what changed" past the digest: when file B changes, every
-file that imports B is treated as changed too, so its cited units are re-grounded
-rather than silently skipped. Unbounded propagation is not an option — any edit to
-a core utility would reach the whole repository and the digest skip would stop
-skipping anything. One hop is defensible because a documented claim about a
-function usually describes that function's own behaviour; deeper drift is residual
-risk carried by the book's link structure.
+A *trim* joins them: an own-repository path the book cites that the tree no longer
+carries. Its citations are dangling in a different way (the file is gone), so the
+bullets are cut, the node is queued for authored removal if it lost its last
+bullet, and the neighbours are queued for review so a journey whose third step
+vanished is read against the book rather than against the file. A foreign
+``repo://`` citation is never trimmed this way — a checkout-less foreign ref is
+``unreachable-citation`` territory, not a deleted path in this tree.
 """
 from __future__ import annotations
 
@@ -51,9 +45,7 @@ from ostler import Ostler, backfill as backfill_mod
 from ostler import coverage as coverage_mod
 from ostler import doctor as doctor_mod
 from ostler import graph as graph_mod
-from ostler import inventory as inventory_mod
 from ostler import refs as refs_mod
-from ostler import source_snapshots
 
 
 #: A builder row, the same shape the worklist mutator merges in. ``kind`` decides which
@@ -123,32 +115,43 @@ def _stale_unit_to_row(unit: backfill_mod.StaleUnit) -> WorklistRow | None:
     }
 
 
-def _deleted_paths(repo_root: Path,
-                   catalog: source_snapshots.SourceCatalog | None) -> list[str]:
-    """Every repo-relative path the catalog carries but the tree no longer does.
+def _deleted_paths(repo_root: Path, service: str | None) -> list[str]:
+    """Every own-repository path the book cites that the tree no longer carries.
 
-    Compared via ``is_file()`` per path; an unreadable working tree produces an empty
-    list, which is the right answer for a corrupted checkout — the build will still
-    proceed against the units it can read, and doctor reports what it cannot.
+    Read off the book's own citations (``coverage.citations``), not a catalog — trim's
+    job is to notice a citation pointing at nothing, and the citations the book carries
+    right now are exactly that answer. A foreign ``repo://`` citation is skipped: it
+    names a path in another repository, and a missing checkout there is
+    ``unreachable-citation`` territory, not a deleted path in this tree.
     """
-    if catalog is None:
+    try:
+        okf = Ostler(repo_root)
+        cited = coverage_mod.citations(okf.graph, surface=service)
+    except (OSError, ValueError, RuntimeError):
         return []
-    own = catalog.repository(source_snapshots.SELF_REPOSITORY)
-    if own is None:
-        return []
-    return [file.path for file in own.files
-            if not (repo_root / file.path).is_file()]
+    deleted: set[str] = set()
+    for ref in cited:
+        try:
+            parsed = refs_mod.parse_code_ref(ref)
+        except ValueError:
+            continue
+        if parsed.repository:
+            continue
+        if not (repo_root / parsed.path).is_file():
+            deleted.add(parsed.path)
+    return sorted(deleted)
 
 
 def _trim_rows(repo_root: Path, service: str | None,
                deleted: Iterable[str]) -> list[WorklistRow]:
     """``trim-bullet`` rows for every node citing a path the tree no longer carries.
 
-    A path the catalog knows but the tree lacks leaves its bullets pointing at nothing
-    in a way doctor misses — doctor reads the *current* tree and finds no symbol to
-    ground against. The builder closes that gap: every node citing a deleted path
-    gets a row that retires the bullets and queues authored removal if the node lost
-    its last bullet.
+    A path the book cites but the tree lacks leaves its bullets pointing at nothing in a
+    way doctor misses — doctor reads the *current* tree and finds no symbol to ground
+    against. The builder closes that gap: every node citing a deleted own-repository
+    path gets a row that retires the bullets and queues authored removal if the node
+    lost its last bullet. A foreign ``repo://`` citation is never matched here, even if
+    its path happens to collide with a deleted local one.
     """
     deleted_set = set(deleted)
     if not deleted_set:
@@ -164,7 +167,7 @@ def _trim_rows(repo_root: Path, service: str | None,
             parsed = refs_mod.parse_code_ref(ref)
         except ValueError:
             continue
-        if parsed.path not in deleted_set:
+        if parsed.repository or parsed.path not in deleted_set:
             continue
         for node in nodes:
             rows.append({
@@ -264,197 +267,6 @@ def _orphan_rows(repo_root: Path, service: str | None) -> list[WorklistRow]:
     ]
 
 
-def _one_hop_changes(root: Path, changed: Iterable[str],
-                     catalog: source_snapshots.SourceCatalog | None) -> set[str]:
-    """The changed set widened by one hop through the import graph.
-
-    For every path in *changed*, every file in the tree that imports it becomes
-    "1-hop changed" — its cited units are queued for re-grounding rather than
-    silently skipped, because the documented contract may now be a lie even though
-    the bytes are unchanged. Carried in the same set the digest skip returns.
-
-    The bound is one hop. Unbounded propagation through the import graph would reach
-    the entire repository for any edit to a core utility, which is the three-day
-    recompute this design exists to avoid.
-    """
-    initial = set(changed)
-    if not initial:
-        return initial
-    candidates = _catalog_files(root, catalog)
-    index = _import_index(root, candidates)
-    widened = set(initial)
-    frontier = set(initial)
-    while frontier:
-        next_frontier: set = set()
-        for path in frontier:
-            for importer in index.get(path, ()):
-                if importer not in widened:
-                    next_frontier.add(importer)
-        widened.update(next_frontier)
-        frontier = next_frontier
-    return widened
-
-
-def _catalog_files(root: Path, catalog: source_snapshots.SourceCatalog | None
-                   ) -> Iterable[str]:
-    """Every file the catalog carries, or every tracked source file as a fallback."""
-    if catalog is not None:
-        own = catalog.repository(source_snapshots.SELF_REPOSITORY)
-        if own is not None:
-            return [file.path for file in own.files]
-    if not root.is_dir():
-        return []
-    return [path.relative_to(root).as_posix()
-            for path in root.rglob("*")
-            if path.is_file() and path.suffix in inventory_mod.SOURCE_SUFFIXES]
-
-
-def _import_index(root: Path, files: Iterable[str]) -> dict[str, set[str]]:
-    """Reverse map: for every repo-relative path, the paths whose imports name it.
-
-    Built by parsing every file in *files* that has a grammar the front end reads,
-    extracting its imports (Python, Go, TypeScript), and resolving each specifier
-    against the tree. The resolution is a small language-shaped heuristic — enough
-    to bound the one-hop walk, no more.
-    """
-    index: dict[str, set[str]] = {}
-    for path in sorted(set(files)):
-        target = root / path
-        if not target.is_file():
-            continue
-        try:
-            text = target.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        specifiers = inventory_mod.imports_of(path, text)
-        for imported in _resolve_specifiers(root, path, specifiers):
-            index.setdefault(imported, set()).add(path)
-    return index
-
-
-def _resolve_specifiers(root: Path, importing_path: str,
-                        specifiers: Iterable[str]) -> list[str]:
-    """A specifier → one or more repo-relative paths the specifier could mean here.
-
-    The resolution is the worklist builder's responsibility: ``inventory.imports_of``
-    returns specifiers as written (dotted Python, relative Go, ``./``-prefixed
-    TypeScript), and a tree may carry both ``foo/bar.py`` and ``foo/bar/__init__.py``
-    for the same Python module. The walk picks every plausible match and lets the
-    digest skip finish the disambiguation at the unit level.
-
-    Third-party specifiers (``@scope/pkg``, ``github.com/...``, Python stdlib names)
-    yield no matches — they live outside the tree, and one-hop propagation through
-    them would reach every file the workspace imports, which is the unbounded
-    case the design is trying to avoid.
-    """
-    matches: set[str] = set()
-    for spec in specifiers:
-        for resolved in _candidates_for(root, importing_path, spec):
-            matches.add(resolved)
-    return sorted(matches)
-
-
-def _candidates_for(root: Path, importing_path: str, spec: str) -> list[str]:
-    """The repo-relative paths a single *spec* could resolve to from *importing_path*."""
-    if not spec:
-        return []
-    suffix = Path(importing_path).suffix
-    if suffix == ".py":
-        return _py_candidates(root, importing_path, spec)
-    if suffix == ".go":
-        return _go_candidates(root, spec)
-    if suffix in {".ts", ".tsx"}:
-        return _ts_candidates(root, importing_path, spec)
-    return []
-
-
-def _py_candidates(root: Path, importing_path: str, spec: str) -> list[str]:
-    """Python's specifier → file candidates.
-
-    A leading ``.`` makes it relative; otherwise it is a top-level module path that may
-    be either the repo's source root (a package the importer happens to live in) or a
-    third-party import. Top-level names that do not resolve to a file in the tree are
-    third-party — skipped here.
-    """
-    parts = spec.split(".")
-    if not parts or not parts[0]:
-        return []
-    if parts[0].startswith("."):
-        rel_dots = len(parts[0])
-        package = Path(importing_path).parent
-        for _ in range(rel_dots - 1):
-            package = package.parent
-        tail = "/".join(p for p in parts[1:] if p)
-        base = (package / tail) if tail else package
-        return list(_py_module_candidates(root, base))
-    matches: list[str] = []
-    seen: set[str] = set()
-    importer_dir = Path(importing_path).parent
-    for ancestor in [importer_dir, *importer_dir.parents]:
-        base = ancestor.joinpath(*parts)
-        for candidate in _py_module_candidates(root, base):
-            if candidate not in seen:
-                seen.add(candidate)
-                matches.append(candidate)
-        try:
-            ancestor.relative_to(root)
-        except ValueError:
-            break
-    base = root.joinpath(*parts)
-    for candidate in _py_module_candidates(root, base):
-        if candidate not in seen:
-            seen.add(candidate)
-            matches.append(candidate)
-    return matches
-
-
-def _py_module_candidates(root: Path, base: Path) -> Iterable[str]:
-    """A Python *base* path's two file shapes: ``base.py`` and ``base/__init__.py``."""
-    py = base.with_suffix(".py")
-    if (root / py).is_file():
-        yield py.as_posix()
-    init = base / "__init__.py"
-    if (root / init).is_file():
-        yield init.as_posix()
-
-
-def _go_candidates(root: Path, spec: str) -> list[str]:
-    """Go's specifier → file candidates, dropping the suffix Go's importer expects."""
-    if not spec:
-        return []
-    candidate = Path(spec).with_suffix(".go").as_posix()
-    if (root / candidate).is_file():
-        return [candidate]
-    return []
-
-
-def _ts_candidates(root: Path, importing_path: str, spec: str) -> list[str]:
-    """TypeScript's specifier → file candidates, with the right relative resolution.
-
-    A leading ``./`` or ``../`` is repo-relative to the importer; everything else is a
-    package name (third-party or workspace alias) and yields no candidates.
-    """
-    if not spec:
-        return []
-    if not (spec.startswith("./") or spec.startswith("../")):
-        return []
-    base = (Path(importing_path).parent / spec).resolve()
-    try:
-        rel = base.relative_to(root.resolve())
-    except ValueError:
-        return []
-    candidates: list[str] = []
-    for suffix in (".ts", ".tsx"):
-        candidate = (rel.with_suffix(suffix)).as_posix()
-        if (root / candidate).is_file():
-            candidates.append(candidate)
-    for suffix in ("/index.ts", "/index.tsx"):
-        candidate = (rel.as_posix() + suffix)
-        if (root / candidate).is_file():
-            candidates.append(candidate)
-    return candidates
-
-
 def build_worklist(
     repo_root: Path,
     features_root: Path,
@@ -512,7 +324,6 @@ def build_worklist(
     except (OSError, ValueError) as exc:
         raise RuntimeError(f"could not load the source inventory at {inventory_path}: {exc}") from exc
 
-    catalog = source_snapshots.load_catalog(root)
     waivers = coverage_mod.load_waivers(str(features / "coverage-waivers.json"))
 
     try:
@@ -525,17 +336,24 @@ def build_worklist(
     except (OSError, ValueError, RuntimeError) as exc:
         raise RuntimeError(f"backfill plan failed: {exc}") from exc
 
+    deleted = _deleted_paths(root, surface)
+    if path_filter:
+        deleted = [path for path in deleted if path in path_filter]
+    deleted_set = set(deleted)
+
     rows: list[WorklistRow] = []
     for unit in plan.units:
         if path_filter and unit.path not in path_filter:
+            continue
+        if unit.reason == "dangling" and unit.path in deleted_set:
+            # Trim already covers this citation more specifically (it also queues
+            # neighbour review), so a `dangling` row for a citation under a path trim
+            # is about to retire would just be the same finding queued twice.
             continue
         row = _stale_unit_to_row(unit)
         if row is not None:
             rows.append(row)
 
-    deleted = _deleted_paths(root, catalog)
-    if path_filter:
-        deleted = [path for path in deleted if path in path_filter]
     rows.extend(_trim_rows(root, surface, deleted))
     rows.extend(_trim_neighbour_rows(root, surface, deleted))
 

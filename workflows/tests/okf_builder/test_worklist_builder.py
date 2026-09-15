@@ -12,8 +12,8 @@ The cases that drove the design:
   this code owes every unit it does not cite; the builder surfaces the join's
   ``missing`` list verbatim and the recheck agent adjudicates.
 
-* ``drifted`` — the watermark's whole reason to exist. A cited symbol whose bytes
-  disagree with the catalog. One ``fix:stale-citation`` row per citing node.
+* ``drifted`` — a cited symbol whose bytes disagree with its own stamp. One
+  ``fix:stale-citation`` row per citing node.
 
 * ``moved`` — a cited symbol that is gone from the path the citation names and
   present unchanged elsewhere. Re-grounding work, distinct from a missing symbol:
@@ -21,20 +21,17 @@ The cases that drove the design:
 
 * ``dangling`` — doctor codes the join cannot see. The checkpoint's channel.
 
-* ``trim`` — a path the catalog carries but the tree does not. The file is gone, the
-  bullets point at nothing in a way doctor misses (doctor reads the current tree),
-  and the builder emits ``trim-bullet`` rows to retire them and ``trim-review``
-  rows for the nodes that linked to something now gone.
+* ``trim`` — an own-repository path the book cites that the tree does not carry. The
+  file is gone, the bullets point at nothing in a way doctor misses (doctor reads
+  the current tree), and the builder emits ``trim-bullet`` rows to retire them and
+  ``trim-review`` rows for the nodes that linked to something now gone.
 
 * ``unreachable`` — orphan nodes ``graph --orphans`` already computes. Authored
   removal, queued the same way the rest of the work is.
-
-* ``1-hop`` — when file B changes, every file that imports B is treated as changed
-  too. The bound that stops the rebuild from being three days long for an edit to
-  a core utility.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Callable
 
@@ -100,14 +97,6 @@ def _feature_text(citations: list[str]) -> str:
         "# Charge\n\n"
         f"{bullets}\n\nThe charge entry point.\n"
     )
-
-
-def _row_targets(rows: list[dict]) -> set[str]:
-    return {row["target"] for row in rows}
-
-
-def _row_kinds(rows: list[dict]) -> set[str]:
-    return {row["kind"] for row in rows}
 
 
 # --- the whole-tree, no-book case ------------------------------------------------
@@ -208,52 +197,49 @@ def test_a_missing_symbol_queues_a_dangling_row(
 def test_a_deleted_path_emits_trim_bullet_and_review_rows(
     booked_repo: Path, write: Callable[[Path, str], Path]
 ) -> None:
-    """A file the catalog carries but the tree lacks: bullets retired, neighbours reviewed.
+    """An own-repository path the book cites but the tree no longer carries: bullets
+    retired, neighbours reviewed.
 
-    Both functions get cited so the watermark is written at the first scan and the
-    catalog carries the file even after the second scan's tree walk says it is gone.
-    The builder's deleted-path detection reads the catalog against the tree and emits
-    trim rows for every node that cited the file.
+    Deleted-path detection reads the book's own citations, not a catalog: two pages
+    cite the same file, the file is deleted, and both citations retire — one
+    ``trim-bullet`` row per citation, not one per file.
     """
-    refund_path = booked_repo / "docs/features/acme/concepts/refund.md"
-    refund_path.write_text(
+    write(
+        booked_repo / "docs/features/acme/concepts/refund.md",
         CHARGE_CONCEPT.replace("charge", "refund").replace("Charge", "Refund"),
-        encoding="utf-8",
     )
 
     features = booked_repo / "docs/features/acme"
     inv = features / ".source-inventory.json"
     inv.parent.mkdir(parents=True, exist_ok=True)
 
-    from workhorse_workflows.okf_builder.main.nodes.coverage import (
-        compute_coverage, inventory_source,
-    )
+    from workhorse_workflows.okf_builder.main.nodes.coverage import inventory_source
     import logging
-    logger = logging.getLogger("test")
-    inventory_source(logger, str(booked_repo / "acme"), str(inv), "", str(booked_repo))
-    coverage = compute_coverage(
-        logger, str(booked_repo), str(features), SERVICE, str(inv),
+    inventory_source(
+        logging.getLogger("test"), str(booked_repo / "acme"), str(inv), "", str(booked_repo),
     )
-    assert coverage.coverage_complete
 
-    # Delete the cited source file. The catalog still records it; the join knows nothing.
+    # Delete the cited source file. The book still cites it; the tree no longer has it.
     (booked_repo / "acme/service.py").unlink()
 
     result = build_worklist(booked_repo, features, SERVICE)
-    kinds = _row_kinds(list(result.rows))
-    assert "trim-bullet" in kinds
+    trim_rows = [r for r in result.rows if r["kind"] == "trim-bullet"]
+    citations = {json.loads(r["context"])["citation"] for r in trim_rows}
+    assert citations == {"acme/service.py::charge", "acme/service.py::refund"}
+    assert len(trim_rows) == len(citations)
 
 
 def test_a_deleted_path_does_not_emit_trim_when_nothing_cited_it(
-    fresh_repo: Path, write: Callable[[Path, str], Path]
+    booked_repo: Path, write: Callable[[Path, str], Path]
 ) -> None:
-    """A file the catalog carried but nothing cited: dropped silently, no rows queued.
+    """A file the tree loses that nothing in the book ever cited: no trim, no busy-work.
 
-    The catalog carries it because *something* once cited it; nothing cites it now, so
-    a trim row would have nothing to do and would sit as busy-work on the worklist.
+    Trim fires only for a path the book's own citations name. A file nothing cites
+    disappearing is invisible to the join, exactly as it should be.
     """
-    features = fresh_repo / "docs/features/acme"
-    features.mkdir(parents=True)
+    write(booked_repo / "acme/legacy.py", "def helper():\n    return 1\n")
+
+    features = booked_repo / "docs/features/acme"
     inv = features / ".source-inventory.json"
     inv.parent.mkdir(parents=True, exist_ok=True)
 
@@ -261,23 +247,12 @@ def test_a_deleted_path_does_not_emit_trim_when_nothing_cited_it(
     import logging
     inventory_source(
         logging.getLogger("test"),
-        str(fresh_repo / "acme"), str(inv), "", str(fresh_repo),
-    )
-    # Write a catalog that knows about a file that has never existed.
-    catalog_path = fresh_repo / "docs/features" / "sources.json"
-    catalog_path.parent.mkdir(parents=True, exist_ok=True)
-    from ostler.source_snapshots import SourceCatalog, RepositorySnapshot, SourceFile, SELF_REPOSITORY
-    catalog_path.write_text(
-        SourceCatalog(repositories=(
-            RepositorySnapshot(
-                id=SELF_REPOSITORY, base="", head="WORKTREE",
-                files=(SourceFile(path="ghost.py", content_sha256="0" * 64),),
-            ),
-        )).model_dump_json(indent=2) + "\n",
-        encoding="utf-8",
+        str(booked_repo / "acme"), str(inv), "", str(booked_repo),
     )
 
-    result = build_worklist(fresh_repo, features, SERVICE)
+    (booked_repo / "acme/legacy.py").unlink()
+
+    result = build_worklist(booked_repo, features, SERVICE)
     assert all(r["kind"] != "trim-bullet" for r in result.rows)
 
 
