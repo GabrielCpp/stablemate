@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -39,6 +40,32 @@ _SUBJECT_MAX = 72
 
 #: Seconds between attempts when another process holds the index lock.
 _LOCK_BACKOFF_S = (1.0, 2.0, 4.0, 8.0)
+
+_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+
+
+def _edited_ranges(repo: Path, pre_turn_sha: str, pathspec: str) -> dict[str, list[tuple[int, int]]]:
+    """Per-file line ranges (1-based, end-exclusive) this turn's diff actually touched.
+
+    Parsed from `git diff --unified=0`'s hunk headers, in the same coordinate system as
+    `stamp.node_line_range` — end-exclusive — so a range can be intersected against a
+    node's own extent directly. A "0-line" hunk (a pure deletion, no `+` side) still marks
+    the one-line boundary it fell on, so text removed from a node still counts as edited.
+    """
+    ranges: dict[str, list[tuple[int, int]]] = {}
+    current: str | None = None
+    for line in diff_text(repo, "--unified=0", pre_turn_sha, "--", pathspec).splitlines():
+        if line.startswith("+++ "):
+            path = line[4:].strip()
+            current = path[2:] if path.startswith("b/") else None
+            continue
+        match = _HUNK_RE.match(line)
+        if match and current:
+            start = int(match.group(1))
+            count = int(match.group(2)) if match.group(2) is not None else 1
+            end = start + count if count else start + 1
+            ranges.setdefault(current, []).append((start, end))
+    return ranges
 
 
 def _message(story: str, subject: str = _SUBJECT) -> str:
@@ -122,13 +149,16 @@ def stamp_turn(
     watermark does. New-citation stamping below stays unconditional even on such a turn:
     it stamps only targets `doctor` already found `unstamped-citation` (never an error),
     on nodes the turn's own diff shows it wrote — doctor gates that claim on its own.
-    Any node this turn touched also gets its still-unstamped targets, read off `doctor`'s
-    `unstamped-citation` findings on the pages the book-pathspec diff (`HEAD` at turn
-    start vs. the working tree now, the same boundary `commit_turn` relies on) shows this
-    turn edited. Either way a node carrying an error finding of its own — from this same
-    `doctor` pass, scoped to just these pages — is withheld entirely: a stamp asserts the
-    citation was re-read and still holds, and a book `doctor` already disagrees with
-    cannot make that claim.
+    Any node the turn's own diff actually touched also gets its still-unstamped targets,
+    read off `doctor`'s `unstamped-citation` findings. "Touched" is node-level, not
+    page-wide: the book-pathspec diff (`HEAD` at turn start vs. the working tree now, the
+    same boundary `commit_turn` relies on) is parsed into per-file edited line ranges,
+    which are intersected against each candidate node's own line extent
+    (`stamp.node_line_range`) — a page with two sections earns a stamp only on the one the
+    turn actually edited, not its untouched sibling. Either way a node carrying an error
+    finding of its own — from this same `doctor` pass, scoped to just these pages — is
+    withheld entirely: a stamp asserts the citation was re-read and still holds, and a
+    book `doctor` already disagrees with cannot make that claim.
 
     Called from `flow.py` right before the post-turn `commit_turn`, so a stamp lands in
     the same book commit as the edits it is about.
@@ -138,10 +168,8 @@ def stamp_turn(
     with index_mod.session(repo):
         graph = Ostler(repo).graph
 
-        touched_pages = {
-            line for line in diff_text(repo, "--name-only", pre_turn_sha, "--", pathspec).splitlines()
-            if line
-        } if pre_turn_sha else set()
+        edited_ranges = _edited_ranges(repo, pre_turn_sha, pathspec) if pre_turn_sha else {}
+        touched_pages = set(edited_ranges)
 
         restamp_pairs: list[tuple[str, str]] = []
         if (
@@ -182,6 +210,16 @@ def stamp_turn(
         def _blocked(node_id: str) -> bool:
             return node_id in blocked_nodes or _page_of(node_id) in blocked_pages
 
+        def _node_edited(node_id: str) -> bool:
+            ranges = edited_ranges.get(_page_of(node_id) or "")
+            if not ranges:
+                return False
+            node = graph.find_ui_node(node_id)
+            if node is None:
+                return False
+            lo, hi = stamp_mod.node_line_range(graph, node)
+            return any(lo < r_hi and r_lo < hi for r_lo, r_hi in ranges)
+
         def _restamp_blocked(node_id: str, file_target: str) -> bool:
             # A `fix:stale-citation` row exists *because* doctor reported exactly this
             # stale-citation on this (node, file) pair — that is the one error the
@@ -208,6 +246,8 @@ def stamp_turn(
 
         for finding in report.findings:
             if finding.code != "unstamped-citation" or not finding.node or finding.path not in touched_pages:
+                continue
+            if not _node_edited(finding.node):
                 continue
             if _blocked(finding.node):
                 skipped.add(finding.node)

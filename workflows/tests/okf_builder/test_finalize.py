@@ -54,6 +54,48 @@ def test_a_node_the_turn_touched_gets_its_unstamped_target_stamped(
     assert DIGEST_RE.search(page.read_text())
 
 
+def test_only_the_edited_node_on_a_shared_page_gets_stamped(
+    booked: Path, logger: logging.Logger, write: Callable[[Path, str], Path]
+) -> None:
+    """Two nodes share a page; only the one the turn actually edited earns a stamp.
+
+    Regression guard for page-wide new-citation stamping: taking every unstamped-citation
+    finding on a touched *page* would also stamp Beta, which this turn never touched.
+    """
+    source = booked / "acme/service.py"
+    source.write_text(
+        source.read_text() + "\n\ndef refund(amount):\n    \"\"\"Refund an amount.\"\"\"\n    return -amount\n"
+    )
+    two_node_page = write(
+        booked / f"docs/features/{SERVICE}/concepts/two.md",
+        "---\ntype: format\nslug: two\ntitle: Two\n---\n"
+        "# Two\n\n"
+        "## Methods\n\n"
+        "### alpha does something\n"
+        "- code: `acme/service.py::charge`\n\n"
+        "Alpha prose.\n\n"
+        "### beta does something else\n"
+        "- code: `acme/service.py::refund`\n\n"
+        "Beta prose.\n",
+    )
+    _commit(booked, "a page with two nodes, both unstamped")
+    pre_turn_sha = head_sha(booked)
+    two_node_page.write_text(
+        two_node_page.read_text().replace("Alpha prose.", "Alpha prose, in cents.")
+    )
+
+    result = stamp_turn(logger, str(booked), _features_root(booked), pre_turn_sha)
+
+    assert result.stamped == 1
+    assert not result.skipped_nodes
+    lines = two_node_page.read_text().splitlines()
+    beta_index = next(i for i, line in enumerate(lines) if line.startswith("### beta"))
+    alpha_bullet = next(line for line in lines[:beta_index] if "code:" in line)
+    beta_bullet = next(line for line in lines[beta_index:] if "code:" in line)
+    assert DIGEST_RE.search(alpha_bullet)
+    assert "@" not in beta_bullet
+
+
 def test_an_untouched_page_earns_no_stamp(booked: Path, logger: logging.Logger) -> None:
     """A page the turn never edited never appears in the book-pathspec diff.
 
