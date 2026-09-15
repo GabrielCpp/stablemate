@@ -875,6 +875,19 @@ def test_competing_implementations_carries_every_competitor_as_data(repo: Path):
     assert hit.ref == "endpoint:internal/notify.go::Notify"
 
 
+def test_competing_implementations_groups_across_different_stamped_digests(repo: Path):
+    """Two citations of the identical symbol, stamped at different points in its history, are
+    still one competition — a reader choosing between v1 and v2 does not care which commit
+    each bullet's `@digest` was captured against, so grouping must key on the symbol alone."""
+    write(repo / "docs/features/groom/http/v1.md",
+          _endpoint_file("v1", "internal/notify.go::Notify@aaaaaaaaaaaa"))
+    write(repo / "docs/features/groom/http/v2.md",
+          _endpoint_file("v2", "internal/notify.go::Notify@bbbbbbbbbbbb"))
+    hits = [f for f in _run(repo).findings if f.code == "competing-implementations"]
+    assert len(hits) == 1 and hits[0].severity == "warn"
+    assert "v1" in hits[0].message and "v2" in hits[0].message
+
+
 def test_competing_implementations_ignores_cross_type_co_citation(repo: Path):
     """An endpoint and a concept citing one symbol is a well-written book — the concept
     explains the unit the endpoint serves. Only same-type groups compete."""
