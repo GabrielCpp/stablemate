@@ -79,7 +79,7 @@ The story is the spec. Each of book and code is judged by whether it matches the
 1. **Read the source** at every code ref. For a locator finding (`ambiguous-locator`,
    `unnamed-interactive`, `duplicate-bullet`) that means the rendered element: its role, its
    accessible name (`aria-label`, label text, visible text), and whether two controls really
-   share both. For a citation finding (`missing-code-symbol`, a drifted `code:`) that means
+   share both. For a citation finding (`missing-code-symbol`, `stale-citation`) that means
    whether the symbol exists under any name, or is gone.
 2. **Read the book node(s)** and the finding against what you saw. The finding is a claim
    that book and code disagree; now you know how.
