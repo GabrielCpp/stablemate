@@ -24,31 +24,89 @@ def test_ledger_path_is_one_file_per_service(tmp_path: Path) -> None:
     assert paths.ledger_path(tmp_path, "") == tmp_path / ".agents" / "okf-build" / "all.ledger.json"
 
 
-def test_fingerprint_is_order_independent() -> None:
-    refs = ["a.py::Foo@abc123", "b.py@def456"]
+def test_fingerprint_is_order_independent(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("def foo(): pass\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def bar(): pass\n", encoding="utf-8")
+    refs = ["a.py::Foo", "b.py"]
     fixtures = {"fx-1": "setup text", "fx-2": "other text"}
-    assert claim_fingerprint(refs, fixtures, "plan-1") == claim_fingerprint(
-        list(reversed(refs)), fixtures, "plan-1"
+    assert claim_fingerprint(refs, fixtures, "plan-1", tmp_path) == claim_fingerprint(
+        list(reversed(refs)), fixtures, "plan-1", tmp_path
     )
 
 
 def test_fingerprint_changes_when_a_cited_digest_changes() -> None:
-    before = claim_fingerprint(["a.py@abc123"], {}, "plan-1")
-    after = claim_fingerprint(["a.py@def456"], {}, "plan-1")
+    """A stamp is a copy, not the original — the fingerprint must not depend on it."""
+    before = claim_fingerprint(["a.py@abc123abc123"], {}, "plan-1", Path("/nonexistent"))
+    after = claim_fingerprint(["a.py@def456def456"], {}, "plan-1", Path("/nonexistent"))
+    assert before == after
+
+
+def test_fingerprint_changes_when_cited_file_bytes_change(tmp_path: Path) -> None:
+    """The fingerprint must move when a cited file's real bytes change, stamp or no stamp.
+
+    This is the core defect this fix closes: fingerprinting the book's `@digest` stamp text
+    (a copy) instead of the cited file's actual bytes meant a code change with no matching
+    restamp — or a re-run performed before doctor's stale-citation check ran — was invisible
+    to the fingerprint, and a targeted re-run would wrongly skip a claim whose dependency had
+    moved.
+    """
+    cited = tmp_path / "a.py"
+    cited.write_text("def foo(): return 1\n", encoding="utf-8")
+
+    before = claim_fingerprint(["a.py"], {}, "plan-1", tmp_path)
+    cited.write_text("def foo(): return 2\n", encoding="utf-8")
+    after = claim_fingerprint(["a.py"], {}, "plan-1", tmp_path)
+
     assert before != after
+
+
+def test_fingerprint_sensitive_to_file_bytes_with_no_stamp_at_all(tmp_path: Path) -> None:
+    """An unstamped citation (no `@digest` suffix) still fingerprints by the file's real bytes."""
+    cited = tmp_path / "a.py"
+    cited.write_text("def foo(): return 1\n", encoding="utf-8")
+
+    before = claim_fingerprint(["a.py::foo"], {}, "plan-1", tmp_path)
+    cited.write_text("def foo(): return 999\n", encoding="utf-8")
+    after = claim_fingerprint(["a.py::foo"], {}, "plan-1", tmp_path)
+
+    assert before != after
+
+
+def test_needs_rerun_true_when_cited_file_changed_even_though_book_did_not(tmp_path: Path) -> None:
+    """A targeted re-run must not skip a claim whose cited file drifted with no book change."""
+    ledger_file = tmp_path / "acme.ledger.json"
+    cited = tmp_path / "a.py"
+    cited.write_text("def foo(): return 1\n", encoding="utf-8")
+
+    fingerprint = claim_fingerprint(["a.py::foo"], {}, "plan-1", tmp_path)
+    ledger = record_result(ledger_file, load_ledger(ledger_file), "okf:node#does:1", fingerprint, "checked")
+    assert needs_rerun(ledger, "okf:node#does:1", fingerprint) is False
+
+    # The file's real bytes change; nothing in the book (no stamp, no plan text) is touched.
+    cited.write_text("def foo(): return 2\n", encoding="utf-8")
+    moved_fingerprint = claim_fingerprint(["a.py::foo"], {}, "plan-1", tmp_path)
+
+    assert needs_rerun(ledger, "okf:node#does:1", moved_fingerprint) is True
 
 
 def test_fingerprint_changes_when_fixture_text_changes() -> None:
-    before = claim_fingerprint([], {"fx-1": "setup text"}, "plan-1")
-    after = claim_fingerprint([], {"fx-1": "different setup"}, "plan-1")
+    before = claim_fingerprint([], {"fx-1": "setup text"}, "plan-1", Path("/nonexistent"))
+    after = claim_fingerprint([], {"fx-1": "different setup"}, "plan-1", Path("/nonexistent"))
     assert before != after
 
 
-def test_fingerprint_changes_when_claim_content_changes() -> None:
+def test_fingerprint_changes_when_claim_content_changes(tmp_path: Path) -> None:
     """A repaired expected value must invalidate the fingerprint even when nothing cited did."""
-    before = claim_fingerprint(["a.py@abc123"], {"fx-1": "setup text"}, "expect: 200")
-    after = claim_fingerprint(["a.py@abc123"], {"fx-1": "setup text"}, "expect: 204")
+    (tmp_path / "a.py").write_text("def foo(): pass\n", encoding="utf-8")
+    before = claim_fingerprint(["a.py"], {"fx-1": "setup text"}, "expect: 200", tmp_path)
+    after = claim_fingerprint(["a.py"], {"fx-1": "setup text"}, "expect: 204", tmp_path)
     assert before != after
+
+
+def test_fingerprint_unreadable_cited_file_is_stable_not_a_crash(tmp_path: Path) -> None:
+    """A citation that cannot be resolved (moved, wrong root) folds in a sentinel, not a raise."""
+    fingerprint = claim_fingerprint(["missing.py"], {}, "plan-1", tmp_path)
+    assert claim_fingerprint(["missing.py"], {}, "plan-1", tmp_path) == fingerprint
 
 
 def test_load_ledger_missing_file_is_empty(tmp_path: Path) -> None:
