@@ -130,6 +130,47 @@ def test_fixture_arg_mismatch_is_clean_when_every_arg_is_declared(repo: Path) ->
     assert _findings(repo, "fixture-arg-mismatch") == []
 
 
+def test_fixture_arg_mismatch_when_a_fixture_bullet_never_passes_a_declared_arg(repo: Path) -> None:
+    """The grammar has no defaults — a declared arg the binding never passes leaves a call
+    without a value it requires, exactly as surely as an unknown one is a typo."""
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+          _fixture_book(args="id name", provides="id — the seeded account's id"))
+    write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme id=globex — an account exists"))
+    found = _findings(repo, "fixture-arg-mismatch")
+    assert [(f.severity, f.ref) for f in found] == [("error", "seeded-acme")]
+    assert "name" in found[0].message
+
+
+def test_fixture_arg_mismatch_applies_to_a_needs_binding(repo: Path) -> None:
+    """`needs:` carries the same `name=value` contract `fixture:` bullets do, so a binding that
+    passes an arg the target never declares is flagged the same way."""
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+          _fixture_book(args="id", provides="id — the seeded account's id"))
+    write(repo / "docs/features/acme/fixtures/seeded-globex.md",
+          _fixture_book(provides="id — the seeded project's id",
+                        needs="[seeded-acme](seeded-acme.md) name=globex"))
+    write(repo / ENDPOINT_PATH, _endpoint_book("seeded-globex — a project exists"))
+    found = _findings(repo, "fixture-arg-mismatch")
+    assert [(f.severity, f.ref) for f in found] == [("error", "seeded-acme")]
+    assert "name" in found[0].message
+    assert "id" in found[0].message
+
+
+def test_fixture_arg_mismatch_is_clean_for_a_needs_binding_matching_declared_args(
+    repo: Path,
+) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+          _fixture_book(args="id", provides="id — the seeded account's id"))
+    write(repo / "docs/features/acme/fixtures/seeded-globex.md",
+          _fixture_book(provides="id — the seeded project's id",
+                        needs="[seeded-acme](seeded-acme.md) id=globex"))
+    write(repo / ENDPOINT_PATH, _endpoint_book("seeded-globex — a project exists"))
+    assert _findings(repo, "fixture-arg-mismatch") == []
+
+
 def test_fixture_needs_cycle_between_two_fixtures(repo: Path) -> None:
     _stack(repo)
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",

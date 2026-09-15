@@ -723,36 +723,77 @@ def _fixture_declared_provides(node: UINode) -> set[str]:
     return keys
 
 
-def _check_fixture_arg_mismatch(graph: Graph, by_name: dict[str, UINode], f: list[Finding]) -> None:
-    """A `fixture:` bullet's `name=value` args must be parameters the target fixture declares.
+def _needs_binding(graph: Graph, node: UINode, by_name: dict[str, UINode],
+                    value: str) -> tuple[UINode, tuple[str, ...]] | None:
+    """A `needs:` child's target fixture and the `arg=value` tokens it binds, if any.
 
-    Only checkable for a `fixture:` naming a *book* fixture — an app-language or Python-module
+    A `needs:` child is a link, not a bare name (`needs.link is True`) — the same grammar
+    `fixture:` uses otherwise, so the link is resolved the way `_check_fixture_needs_cycles`
+    resolves every `needs:` link, and whatever text remains once the link markup is stripped is
+    parsed as `fixture:`-style args by substituting the target's own name back in.
+    """
+    links = markdown.extract_refs(value).links
+    if not links:
+        return None
+    text, href = links[0]
+    target = graph.find_ui_node(graph.resolve_doc_ref(href, origin=node.path))
+    if target is None:
+        return None
+    rest = value.replace(f"[{text}]({href})", "", 1).strip()
+    parsed = fixtures_mod.parse_bullet(f"{Path(target.id).stem} {rest}".strip())
+    if isinstance(parsed, str):
+        return None
+    return by_name.get(Path(target.id).stem, target), parsed.args
+
+
+def _check_fixture_arg_mismatch(graph: Graph, by_name: dict[str, UINode], f: list[Finding]) -> None:
+    """A `fixture:`/`needs:` binding's `name=value` args must match the target's declared `args:`.
+
+    Checked both directions: a passed arg the target does not declare, and a declared arg the
+    binding never passes — the grammar has no default values, so an omitted declared arg leaves
+    a call without a value it requires just as surely as an unknown one is a typo. `needs:`
+    bindings carry the same contract as `fixture:` bullets, so they get the same check.
+    Only checkable for a target naming a *book* fixture — an app-language or Python-module
     fixture's parameters are declared in `agents.yml`/its own code, not in this book at all.
     """
     for node in graph.ui_nodes:
         arrange = registry.arrange_keys(node.type)
-        if not arrange:
-            continue
         rel = _rel_path(graph, node)
         for key, value, _bullet in node.bullet_order:
-            if key not in arrange:
-                continue
-            parsed = fixtures_mod.parse_bullet(value)
-            if isinstance(parsed, str):
-                continue
-            target = by_name.get(parsed.name)
-            if target is None:
+            if key in arrange:
+                parsed = fixtures_mod.parse_bullet(value)
+                if isinstance(parsed, str):
+                    continue
+                target = by_name.get(parsed.name)
+                if target is None:
+                    continue
+                args, ref = parsed.args, parsed.name
+            elif key == "needs" and node.type == "fixture":
+                binding = _needs_binding(graph, node, by_name, value)
+                if binding is None:
+                    continue
+                target, args = binding
+                ref = Path(target.id).stem
+            else:
                 continue
             declared = _fixture_declared_args(target)
-            given = {tok.partition("=")[0] for tok in parsed.args if "=" in tok}
+            given = {tok.partition("=")[0] for tok in args if "=" in tok}
             unknown = given - declared
+            missing = declared - given
+            if not unknown and not missing:
+                continue
+            parts = []
             if unknown:
-                f.append(Finding(
-                    "error", "fixture-arg-mismatch",
-                    f"{node.id}: `{key}: {value}` passes {', '.join(sorted(unknown))}, which "
-                    f"fixture '{target.id}' does not declare under `args:` "
-                    f"({', '.join(sorted(declared)) or '(none)'})",
-                    path=rel, line=node.line, ref=parsed.name))
+                parts.append(f"passes {', '.join(sorted(unknown))}, which fixture '{target.id}' "
+                             f"does not declare under `args:`")
+            if missing:
+                parts.append(f"never passes {', '.join(sorted(missing))}, which fixture "
+                             f"'{target.id}' declares under `args:` and has no default")
+            f.append(Finding(
+                "error", "fixture-arg-mismatch",
+                f"{node.id}: `{key}: {value}` " + "; ".join(parts) +
+                f" ({', '.join(sorted(declared)) or '(none)'})",
+                path=rel, line=node.line, ref=ref))
 
 
 def _check_fixture_undeclared_provides(graph: Graph, by_name: dict[str, UINode], f: list[Finding]) -> None:
