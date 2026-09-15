@@ -155,9 +155,20 @@ def _related_of(finding: dict) -> list[str]:
 #: A node documenting a test double rather than the product (ostler `test-subject`).
 TEST_SUBJECT = "test-subject"
 
+#: Findings only ostler itself ever clears, never an agent turn.
+#:
+#: `unstamped-citation` is closed by `stamp_turn`/the migration re-stamping the node, and
+#: `unreachable-citation` by slice (e)'s provenance checkout mapping — neither is a defect an
+#: agent can act on: there is no prose or code change that earns a digest, and "agents never
+#: stamp" is load-bearing. Queuing a `fix:` row for one is a turn with no repair it can make,
+#: and on a book mid-migration that is thousands of rows. Excluding them here, rather than in
+#: `_repair_items` itself, keeps the exclusion in the one place seeding already decides which
+#: findings are actionable — `_repair_items`'s own body stays about grouping, not eligibility.
+NON_ACTIONABLE_CODES = frozenset({"unstamped-citation", "unreachable-citation"})
 
-def _without_test_subjects(findings: list[dict]) -> list[dict]:
-    """Drop every finding on a node doctor says documents test source, bar that verdict.
+
+def _actionable_findings(findings: list[dict]) -> list[dict]:
+    """Drop findings no agent turn can act on: test-subject nodes and ostler-only codes.
 
     The repair for `test-subject` is deleting the node — the whole page when the verdict sits
     on the page's own node — so any other finding on it asks a turn to make a mock provable
@@ -168,6 +179,11 @@ def _without_test_subjects(findings: list[dict]) -> list[dict]:
     A page-level verdict (`ref` is `<path>#code`, the file node's id being the bare path)
     covers every node on the page, its own node-level `test-subject` findings included: one
     deletion, one row.
+
+    `NON_ACTIONABLE_CODES` findings are dropped outright rather than by node or page: a file
+    can be otherwise sound and still unstamped, so nothing about the node warrants deleting or
+    skipping its *other* findings — only the unstamped/unreachable finding itself is not a
+    turn's to fix.
     """
     pages = {str(f.get("path", "")) for f in findings
              if f.get("code") == TEST_SUBJECT and f.get("ref") == f"{f.get('path', '')}#code"}
@@ -175,6 +191,8 @@ def _without_test_subjects(findings: list[dict]) -> list[dict]:
              for f in findings if f.get("code") == TEST_SUBJECT}
     kept = []
     for finding in findings:
+        if finding.get("code") in NON_ACTIONABLE_CODES:
+            continue
         path = str(finding.get("path", ""))
         page_verdict = finding.get("code") == TEST_SUBJECT and finding.get("ref") == f"{path}#code"
         if path in pages and not page_verdict:
@@ -224,7 +242,7 @@ def _repair_items(findings: list[dict]) -> list[dict[str, Any]]:
     rather than derived from the finding text.
     """
     groups: dict[tuple[str, str, str], list[dict]] = {}
-    for finding in _without_test_subjects(findings):
+    for finding in _actionable_findings(findings):
         path = str(finding.get("path", ""))
         if _related_of(finding):
             # A group finding is about N book locations and `path` names one of them

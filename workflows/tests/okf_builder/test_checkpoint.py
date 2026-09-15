@@ -690,3 +690,19 @@ def test_test_subjects_drain_before_everything_else() -> None:
     ]
 
     assert _repair_items(findings)[0]["kind"] == "fix:code-cites-test"
+
+
+def test_unstamped_and_unreachable_citations_queue_no_repair_row() -> None:
+    """Neither code is an agent's to fix — ostler itself clears both, so nothing is queued.
+
+    `unstamped-citation` closes when `stamp_turn`/the migration stamps the node;
+    `unreachable-citation` closes via (e)'s provenance checkout mapping. A `fix:` row for
+    either is a turn with no repair it could make.
+    """
+    doc = f"{BOOK}/billing.md"
+    findings = [
+        {**_finding("unstamped-citation", path=doc), "ref": f"{doc}#charge#code"},
+        {**_finding("unreachable-citation", path=doc), "ref": f"{doc}#refund#code"},
+    ]
+
+    assert _repair_items(findings) == []
