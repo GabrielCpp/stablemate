@@ -12,8 +12,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-_NODE_REF = re.compile(r"@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
-_CAPTURE_REF = re.compile(r"\$([a-zA-Z0-9][a-zA-Z0-9_-]*)")
+_NODE_REF = re.compile(r"(?<![\w.])@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
+_CAPTURE_REF = re.compile(r"(?<![\w.])\$([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 
 
 @dataclass(frozen=True)
