@@ -198,6 +198,26 @@ def test_a_nonzero_exit_is_a_defect(tmp_path: Path) -> None:
     assert fault["fault_class"] == "defect"
 
 
+def test_a_missing_command_is_a_defect_whose_detail_names_it(tmp_path: Path) -> None:
+    """`bash -c` exits 126/127 for a name it never found — identical, from the exit code
+    alone, to a typo in the recipe. That is exactly why it is a defect, not an environment
+    fault: the fault detail still has to flag the 126/127 case so triage can tell "this tool
+    was never installed" apart from a generic non-zero exit."""
+    module = _write(tmp_path, SECRET_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "command": "this-command-does-not-exist-anywhere", "cwd": str(tmp_path)}],
+            "args": [], "provides": [], "needs": [], "secrets": [],
+        }
+    }
+    code, stdout, records = _run(module, "needs-a-secret", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "defect"
+    assert "command not found" in fault["detail"]
+    assert "126" in fault["detail"] or "127" in fault["detail"]
+
+
 def test_a_timeout_is_a_defect_not_an_environment_fault(tmp_path: Path) -> None:
     script = tmp_path / "seed.sh"
     _seed_step(script, "#!/bin/sh\nsleep 5\n")

@@ -1526,11 +1526,20 @@ class Qa:
             ) from exc
         result = ToolResult(command=argv, stdout=done.stdout, stderr=done.stderr, exit_code=done.returncode)
         if not result.ok:
-            detail = (result.stderr or result.stdout).strip()[:500]
-            self._fault(fixture, index, kind, "defect", f"exit {result.exit_code}: {detail}")
-            raise RuntimeError(
-                f"qa fixture {fixture!r} step {index} ({kind}) failed (exit {result.exit_code}): {detail}"
+            body = (result.stderr or result.stdout).strip()[:500]
+            # `bash -c` exits 126/127 for "found the name, couldn't run it" and "never found
+            # the name" alike — the same code a typo in the recipe produces. That similarity
+            # is exactly why this is a defect, not an environment fault (see the docstring
+            # above): the fault detail still has to say which shape of exit this is, so triage
+            # is not left re-deriving "command not found" from a bare number.
+            prefix = (
+                f"command not found (exit {result.exit_code})"
+                if result.exit_code in (126, 127)
+                else f"exit {result.exit_code}"
             )
+            detail = f"{prefix}: {body}"
+            self._fault(fixture, index, kind, "defect", detail)
+            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) failed ({detail})")
         return result
 
     def _extract_provides(
