@@ -74,7 +74,7 @@ from workhorse_workflows.coder.shared.resolution import (
     answered,
     resolver_args,
 )
-from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
+from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
 from workhorse_workflows.coder.qa.nodes import (
     QA_SCRATCH_DIRNAME,
@@ -2542,7 +2542,7 @@ class Qa(Workflow):
             )
         return self._guard_qa(result, loop)
 
-    def _refused(self, result: CoderResult, loop: QaLoop, what: str) -> Continue | Await:
+    def _refused(self, result: object, loop: QaLoop, what: str) -> Continue | Await:
         """A turn that said it cannot get there, handed straight to the operator.
 
         Every lane node routes its refusal through here rather than through the budget guard

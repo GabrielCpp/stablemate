@@ -16,6 +16,13 @@ untyped dicts and routed through different branch tables; they are different typ
 The `qa_cleared`, `stack_*`, `backlog_items_*` and `screenshots_*` keys were flat scalars
 sprayed into the run context — six of them for `ensure-stack.py` alone. Each script's set
 becomes one model, because the set is what the script actually returns.
+
+**`QaResult`, `QaPlanRun`, `QaStatus` and `StackStatus` are re-exports, not definitions.**
+They moved to `workhorse_workflows.qa.schemas` so `okf_builder`'s live-audit lane — which
+calls the same `qa/runner.py` and `qa/evidence.py` this module's other types feed — can
+import them without depending on `coder`. Every other type below stays here: they are
+either `coder`-specific payloads or (`QaPlanValidation`, `DryRunGate`, ...) not yet needed
+outside it. See `qa/schemas.py`'s module docstring for the full rationale.
 """
 from __future__ import annotations
 
@@ -24,10 +31,7 @@ from typing import Any, Literal
 from pydantic import Field
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
-
-#: What a QA run came to. Ostler's four states, and the only vocabulary the rolling verdict
-#: is ever written from — every gate that hands the loop a verdict writes one of these.
-QaStatus = Literal["passed", "failed", "blocked", "invalid"]
+from workhorse_workflows.qa.schemas import QaPlanRun, QaResult, QaStatus, StackStatus
 
 #: `qa-story.md`'s reading of a run it managed to read: whether the runner's own result can
 #: be trusted for routing, and if not, which stage repairs what. See `QaAssessment`.
@@ -53,45 +57,6 @@ QaTriageClass = Literal["code", "product", "evidence", "environment"]
 #: What the whole flow hands its parent. Not a QA verdict — a routing answer, which is why
 #: it is a vocabulary of its own rather than a widening of `QaStatus`. See `QaFlowResult`.
 QaFlowStatus = Literal["passed", "inconclusive", "replan", "rescope", "refix"]
-
-
-class QaResult(CoderResult):
-    """The story's running QA verdict — ostler's four states, plus the blank before one.
-
-    `status` starts empty rather than at `invalid`: the flow reads it before anything has
-    run (`plan_qa` is handed the previous pass's notes, and `setup_fix` can be reached
-    before the runner ever executes), and an unrun gate is not a failed one. Every branch
-    that routes on it names its arms explicitly and sends the blank to a `default`, which
-    is what the YAML's branch tables did.
-
-    The runner's raw payload is **not** a field here — see `QaPlanRun` below for why.
-    """
-
-    status: QaStatus | Literal[""] = Field(
-        default="",
-        description="The story's rolling QA verdict as the turn leaves it. `invalid` while "
-        "the plan or its context is being regenerated; `blocked` when the repair itself is.",
-    )
-    notes: str = Field(default="", description="One line on why the verdict stands there.")
-
-
-class QaPlanRun(QaResult):
-    """`run_qa_plan`'s verdict, plus the ostler payload only it has.
-
-    `ostler` is a subclass field rather than an optional field on `QaResult` because a
-    model's top-level fields are the output keys an agent turn is *asked* for — a field
-    here is a promise every writer of this model must keep. Three agent turns return a
-    `QaResult`, and none of them has a runner payload to report, so declaring `ostler` on
-    the base made every one of those turns unparseable: the reply carried `status` and
-    `notes`, the driver demanded a third key, and the node spent its whole retry →
-    reframe ladder before defaulting to a blank verdict. The payload belongs to the one
-    script node that produces it.
-
-    Nothing reads `ostler`; it is kept for the run record, and a `QaResult`-typed field
-    holds this subclass without losing it.
-    """
-
-    ostler: dict[str, Any] = {}
 
 
 class QaRunResult(CoderResult):
@@ -185,33 +150,6 @@ class QaCleared(CoderResult):
     """
 
     cleared: bool = False
-
-
-class StackStatus(CoderResult):
-    """`ensure-stack.py` — the durable QA stack is up, adopted, undeclared, or broken.
-
-    `ready` splits the empty manifest in two, because "no stack" means opposite things
-    depending on what the book describes. `none` means the book *serves* something — a
-    `screen` or a `server` — but declares no way to bring it up: no stack `runbook`, no
-    `walkthrough: true` server. That is not a pass: it used to be spelled `skip` and
-    routed exactly where `yes` did, so a repo that had never authored a runbook ran its
-    QA against nothing and found out only once the runner failed for reasons no fixer
-    could read. `unneeded` means the book serves nothing — a CLI's, a library's, an
-    infrastructure program's — so an empty stack is its documented topology, and asking
-    a fixer to author a runbook would be asking it to declare a stack for nothing;
-    depot-style artifact repos looped forever on exactly that ask. `none` and `no`
-    reach the setup-repair loop; `yes` and `unneeded` run QA.
-
-    The pids are strings because `ostler.qa.stack.ensure_stack` returns them that way —
-    they are recorded for a human killing a leaked stack, never arithmetic.
-    """
-
-    ready: Literal["yes", "no", "none", "unneeded"] = "no"
-    app_pid: str = ""
-    app_pgid: str = ""
-    entry_url: str = ""
-    failed_step: str = ""
-    notes: str = ""
 
 
 class StackTornDown(CoderResult):
