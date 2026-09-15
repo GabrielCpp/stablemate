@@ -158,6 +158,30 @@ def test_the_command_writes_the_plan_and_reports_the_debt(tmp_path: Path) -> Non
     ast.parse(out.read_text(encoding="utf-8"))
 
 
+def test_the_command_reports_gaps_in_doctors_own_finding_shape(tmp_path: Path) -> None:
+    """`compile_plan_gaps`'s `Gap` list surfaces in `cmd_compile_plan`'s JSON output as
+    doctor-shaped dicts — a caller reads `severity`/`code`/`message`/`ref` the same way it
+    would read a `doctor.Finding`, without re-parsing the compiled plan's Python."""
+    oid = "okf:docs/features/demo/api.md#post-things:does:1"
+    context = _context(_obligation(
+        oid,
+        checksDeclared=[{"call": "created", "name": "http_status", "args": {"code": 201}}],
+        fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+    ))
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "qa-okf-context.json").write_text(json.dumps(context), encoding="utf-8")
+    result = cmd_compile_plan(spec)
+    assert result.ok
+    [gap] = result.data["gaps"]
+    assert gap == {
+        "severity": "error",
+        "code": "unresolved-precondition",
+        "message": "the book carries no request body",
+        "ref": oid,
+    }
+
+
 def test_the_command_refuses_to_overwrite_an_authored_plan(tmp_path: Path) -> None:
     """It cannot tell an author's arrangement from its own last output, so it declines."""
     spec = tmp_path / "spec"

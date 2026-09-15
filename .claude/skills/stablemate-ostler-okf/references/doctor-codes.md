@@ -8,7 +8,7 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-ostler-
 
 # Doctor codes
 
-Every finding `ostler doctor` can raise: **74 codes, 58 error and 16 warn**. An error is a
+Every finding `ostler doctor` can raise: **94 codes, 76 error and 18 warn**. An error is a
 mechanical defect with a mechanical remedy — the exit code counts errors, so a story can be gated
 on it. A warn is a finding whose remedy is authoring judgment, which is why `doctor` cannot
 converge on it the way it converges on `fmt`. Companion to [`../SKILL.md`](../SKILL.md); the
@@ -105,6 +105,8 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `fixture-needs-cycle` | error | A fixture's `needs:` chain cycles back to itself. |
 | `fixture-undeclared-provides` | error | An `@<fixture>.<key>` reference names a key the target fixture's `provides:` does not declare at all. (A key it declares but has not yet arranged earlier in the scenario is `unresolved-precondition`, not this — order is `compile_plan`'s concern, not doctor's.) |
 | `fixture-secret-name` | error | A fixture's `secrets:` child is not a valid environment-variable name — it declares NAMES only, resolved from the harness's own environment at run time, never a value or a mint recipe. |
+| `unresolved-precondition` | error | `compile_plan` could not reach the state an obligation's check observes: no fixture arranged it, an `@node.key`/`$name` reference in a path or a `verify:` argument names a fact no earlier producer in the scenario left behind, the book carries no request body, or a route's path still carries a template variable. Raised from `Gap`s via `doctor.gap_findings`, against one compiled plan and its context packet — never by walking the book alone. |
+| `uncompilable-claim` | error | An obligation `compile_plan` had no action to compile at all: the book gives the node no `route:`, or a declared check (`unchanged`, `persists`, …) observes a before/after subject the book never named. Raised the same way as `unresolved-precondition`, from the same `Gap` list. |
 
 ## Conformance and structure
 

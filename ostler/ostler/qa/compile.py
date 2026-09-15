@@ -386,7 +386,7 @@ def cmd_compile_plan(
                          data={"status": "invalid", "problems": [str(exc)]})
 
     story_name = story or str(packet.get("story", "") or "story")
-    source = compile_plan(packet, story=story_name, run_id=run_id, base_url=base_url)
+    source, gaps = compile_plan_gaps(packet, story=story_name, run_id=run_id, base_url=base_url)
 
     owed = _owed(packet)
     declared = [o for o in owed if o.get("checksDeclared")]
@@ -394,6 +394,15 @@ def cmd_compile_plan(
         "owed": len(owed),
         "declared": len(declared),
         "debt": [o["id"] for o in owed if not o.get("checksDeclared")],
+        # Doctor-shaped, not doctor-imported: `severity`/`code`/`message`/`ref` are the field
+        # names `doctor.Finding` uses, and `code` is the gap's own `kind` — the vocabulary the
+        # `Gap` docstring already promises doctor reads rather than redefines. A caller that
+        # wants real `Finding` objects reuses `doctor.gap_findings` on the same `Gap` list;
+        # this is the shape for one that only has this command's JSON output to read.
+        "gaps": [
+            {"severity": "error", "code": gap.kind, "message": gap.detail, "ref": gap.obligation_id}
+            for gap in gaps
+        ],
     }
 
     if out is None:

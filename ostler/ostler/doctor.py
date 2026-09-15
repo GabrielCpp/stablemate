@@ -22,6 +22,7 @@ from ostler.model import Graph, Epic, Story, UINode, read_doc, required_section_
 from ostler.path import features_root as features_root_of, specs_root_in
 from ostler.provenance import checkout_for
 from ostler.qa import fixtures as fixtures_mod, references, runbook as runbook_mod, sensitivity
+from ostler.qa.compile import Gap
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
 from ostler import stamp as stamp_mod
@@ -965,6 +966,23 @@ def _transitive_milestone_deps(graph: Graph, milestone_name: str) -> set[str]:
 
     visit(milestone_name)
     return deps
+
+
+def gap_findings(gaps: list[Gap]) -> list[Finding]:
+    """`compile_plan`'s gap report, in doctor's own vocabulary.
+
+    `Gap.kind` is already spelled the way `_check_fixture_undeclared_provides` names it —
+    `unresolved-precondition`, `uncompilable-claim` — so the mapping is the identity on the
+    code and a wrapper on everything else: a `Gap` names a state `compile_plan` could not
+    reach or a claim it had no action for, and either one is an error, not a warning, the
+    same way an undeclared reference is. This is the doctor side of the split the fixture
+    checks above describe: whether a fixture is arranged *early enough*, or a `$name`
+    produced *before* it is read, is a property of one compiled plan against one context
+    packet, not of the book alone — so it is computed here from a `Gap` list a caller
+    already has (`compile_plan_gaps`), never rediscovered by walking the graph.
+    """
+    return [Finding("error", gap.kind, f"{gap.obligation_id}: {gap.detail}", ref=gap.obligation_id)
+            for gap in gaps]
 
 
 def _check_milestone_cycles(graph: Graph, f: list[Finding]) -> None:

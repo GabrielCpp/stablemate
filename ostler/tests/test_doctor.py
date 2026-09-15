@@ -7,6 +7,7 @@ import pytest
 from ostler import crud, doctor
 from ostler.cli import main
 from ostler.model import load
+from ostler.qa import compile as compile_mod
 
 from conftest import epic_md, story_md, write
 
@@ -479,3 +480,15 @@ def test_path_outside_the_book_is_refused_rather_than_reported_clean(repo: Path,
         assert main(["-C", str(repo), "doctor", "--no-index", "--path", path]) == 2
         captured = capsys.readouterr()
         assert "not a file of this book" in captured.err and not captured.out
+
+
+def test_gap_findings_reports_a_compile_plan_gap_as_a_doctor_finding():
+    oid = "okf:docs/features/demo/api.md#post-things:does:1"
+    gap = compile_mod.Gap(oid, "unresolved-precondition", "the book carries no request body")
+
+    [finding] = doctor.gap_findings([gap])
+
+    assert finding == doctor.Finding(
+        "error", "unresolved-precondition",
+        f"{oid}: the book carries no request body", ref=oid,
+    )
