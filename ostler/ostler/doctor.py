@@ -664,7 +664,8 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
                     suggestion="- kind: " + "|".join(sorted(_FIXTURE_STEP_KINDS))))
 
     _check_fixture_needs_cycles(graph, fixtures, f)
-    _check_fixture_arg_mismatch(graph, by_name, f)
+    _check_needs_binding_args(graph, by_name, f)
+    _check_fixture_call_args(graph, by_name, f)
     _check_fixture_undeclared_provides(graph, by_name, f)
     _check_fixture_secret_names(graph, fixtures, f)
 
@@ -774,13 +775,74 @@ def _needs_binding(graph: Graph, node: UINode, by_name: dict[str, UINode],
     return by_name.get(Path(target.id).stem, target), parsed.args
 
 
-def _check_fixture_arg_mismatch(graph: Graph, by_name: dict[str, UINode], f: list[Finding]) -> None:
-    """A `fixture:`/`needs:` binding's `name=value` args must match the target's declared `args:`.
+def _fixture_needs_supplied_args(node: UINode, graph: Graph, by_name: dict[str, UINode]) -> set[str]:
+    """Names the fixture's own `needs:` bindings supply into its env before it runs.
+
+    Runtime (`Qa._exec_book_fixture`) runs a needed fixture with `{}` first, then binds the
+    binding's `name=value` tokens into the *calling* fixture's own env — so these names are
+    already supplied by the time a `fixture:` caller's args are applied, the same as a
+    directly-passed arg.
+    """
+    supplied: set[str] = set()
+    for value in _bullet_values(node.meta.get("needs", "")):
+        binding = _needs_binding(graph, node, by_name, value)
+        if binding is None:
+            continue
+        _target, args = binding
+        supplied.update(tok.partition("=")[0] for tok in args if "=" in tok)
+    return supplied
+
+
+def _check_needs_binding_args(graph: Graph, by_name: dict[str, UINode], f: list[Finding]) -> None:
+    """A `needs:` binding's `name=value` tokens name the CONSUMER's own declared `args:`.
+
+    Runtime runs a needs target with `{}` (it is a shared, once-per-scenario dependency and
+    cannot be parameterized), then binds the tokens into the *consumer's own* env — so a
+    binding's names are the consumer's own argument names, never the target's, and validating
+    them against the target's `args:` (as this used to) produces false positives whenever the
+    consumer legitimately declares the name itself.
+
+    A needs target that itself declares `args:` is a separate, unconditional error
+    (`fixture-needs-target-args`): runtime can never pass it anything, so a declared `args:`
+    on a needs target can never be satisfied.
+    """
+    for node in graph.ui_nodes:
+        if node.type != "fixture":
+            continue
+        rel = _rel_path(graph, node)
+        declared = _fixture_declared_args(node)
+        for value in _bullet_values(node.meta.get("needs", "")):
+            binding = _needs_binding(graph, node, by_name, value)
+            if binding is None:
+                continue
+            target, args = binding
+            if _fixture_declared_args(target):
+                f.append(Finding(
+                    "error", "fixture-needs-target-args",
+                    f"{node.id}: needs `{target.id}`, which declares `args:` — runtime always "
+                    "runs a needs target with no args, so a needs target may not declare any",
+                    path=rel, line=node.line, ref=Path(target.id).stem))
+            given = {tok.partition("=")[0] for tok in args if "=" in tok}
+            unknown = given - declared
+            if not unknown:
+                continue
+            f.append(Finding(
+                "error", "fixture-arg-mismatch",
+                f"{node.id}: `needs: {value}` binds {', '.join(sorted(unknown))} into its own "
+                f"env, which {node.id} does not declare under `args:` "
+                f"({', '.join(sorted(declared)) or '(none)'})",
+                path=rel, line=node.line, ref=Path(target.id).stem))
+
+
+def _check_fixture_call_args(graph: Graph, by_name: dict[str, UINode], f: list[Finding]) -> None:
+    """A `fixture:` bullet's `name=value` args must match the target's declared `args:`.
 
     Checked both directions: a passed arg the target does not declare, and a declared arg the
-    binding never passes — the grammar has no default values, so an omitted declared arg leaves
-    a call without a value it requires just as surely as an unknown one is a typo. `needs:`
-    bindings carry the same contract as `fixture:` bullets, so they get the same check.
+    call never passes and the target's own `needs:` bindings do not already supply — the
+    grammar has no default values, so an omitted, unsupplied declared arg leaves a call without
+    a value it requires just as surely as an unknown one is a typo. An arg the target's `needs:`
+    bindings already supply is already covered before the caller's args apply — a caller that
+    passes it anyway is a second source for the same arg, which is its own finding.
     Only checkable for a target naming a *book* fixture — an app-language or Python-module
     fixture's parameters are declared in `agents.yml`/its own code, not in this book at all.
     """
@@ -788,27 +850,21 @@ def _check_fixture_arg_mismatch(graph: Graph, by_name: dict[str, UINode], f: lis
         arrange = registry.arrange_keys(node.type)
         rel = _rel_path(graph, node)
         for key, value, _bullet in node.bullet_order:
-            if key in arrange:
-                parsed = fixtures_mod.parse_bullet(value)
-                if isinstance(parsed, str):
-                    continue
-                target = by_name.get(parsed.name)
-                if target is None:
-                    continue
-                args, ref = parsed.args, parsed.name
-            elif key == "needs" and node.type == "fixture":
-                binding = _needs_binding(graph, node, by_name, value)
-                if binding is None:
-                    continue
-                target, args = binding
-                ref = Path(target.id).stem
-            else:
+            if key not in arrange:
+                continue
+            parsed = fixtures_mod.parse_bullet(value)
+            if isinstance(parsed, str):
+                continue
+            target = by_name.get(parsed.name)
+            if target is None:
                 continue
             declared = _fixture_declared_args(target)
-            given = {tok.partition("=")[0] for tok in args if "=" in tok}
+            given = {tok.partition("=")[0] for tok in parsed.args if "=" in tok}
+            needs_supplied = _fixture_needs_supplied_args(target, graph, by_name)
             unknown = given - declared
-            missing = declared - given
-            if not unknown and not missing:
+            missing = declared - given - needs_supplied
+            overlap = given & needs_supplied
+            if not unknown and not missing and not overlap:
                 continue
             parts = []
             if unknown:
@@ -817,11 +873,15 @@ def _check_fixture_arg_mismatch(graph: Graph, by_name: dict[str, UINode], f: lis
             if missing:
                 parts.append(f"never passes {', '.join(sorted(missing))}, which fixture "
                              f"'{target.id}' declares under `args:` and has no default")
+            if overlap:
+                parts.append(f"passes {', '.join(sorted(overlap))}, which fixture '{target.id}' "
+                             "already receives from its own `needs:` bindings — two sources "
+                             "for the same arg")
             f.append(Finding(
                 "error", "fixture-arg-mismatch",
                 f"{node.id}: `{key}: {value}` " + "; ".join(parts) +
                 f" ({', '.join(sorted(declared)) or '(none)'})",
-                path=rel, line=node.line, ref=ref))
+                path=rel, line=node.line, ref=parsed.name))
 
 
 def _check_fixture_undeclared_provides(graph: Graph, by_name: dict[str, UINode], f: list[Finding]) -> None:

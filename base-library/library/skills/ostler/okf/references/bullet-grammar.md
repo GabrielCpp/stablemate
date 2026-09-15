@@ -126,6 +126,9 @@ and referenced by name from a `fixture:` bullet anywhere. Its own three keys are
   `relation-without-subject`, and a fixture's parameter list is not a relation.
 - `provides:` (`nested`) — what the fixture's last step leaves behind, one child per key.
 - `needs:` (`nested`, `link`) — another fixture this one composes on top of, linked by file.
+  Runtime runs the needs target once per scenario with no args, then binds the binding's own
+  `name=value` tokens into *this* fixture's own env — so the binding's names are checked against
+  this fixture's own `args:`, never the target's, which may not declare any of its own.
 
 `capture:` is the mirror of `fixture:`/`verify:` on the same seven node types
 (`environment`, `command`, `endpoint`, `interaction`, `invocation`, `method`, `field`): where

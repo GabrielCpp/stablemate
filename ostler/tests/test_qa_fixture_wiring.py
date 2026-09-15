@@ -165,3 +165,41 @@ def test_fixture_wiring_book_has_no_fixture_grammar_findings(tmp_path: Path) -> 
 
     findings = [f for f in doctor.run(load(tmp_path)).findings if f.code.startswith("fixture-")]
     assert findings == []
+
+
+SEEDED_GLOBEX_WITH_NEEDS_ARG = """---
+type: fixture
+title: Seeded globex
+---
+# Seeded globex
+
+- args: acme_id
+- provides:
+  - project_id — the seeded project's id
+- needs:
+  - [seeded-acme](seeded-acme.md) acme_id=@seeded-acme.id
+
+## Steps
+
+### seed-it
+
+- kind: seed
+- run: ./scripts/seed-globex.sh --account $acme_id
+"""
+
+
+def test_fixture_wiring_needs_binding_checks_against_consumers_own_args(tmp_path: Path) -> None:
+    """A `needs:` binding's names are the CONSUMER's own `args:`, never the target's.
+
+    `seeded-acme` (the needs target) declares no `args:` at all — runtime always runs it with
+    `{}` — while `seeded-globex` (the consumer) declares `acme_id` and its own `needs:` binding
+    supplies it. Doctor must validate the binding against `seeded-globex`'s own `args:`, not
+    `seeded-acme`'s, or this legitimate book trips a false `fixture-arg-mismatch`.
+    """
+    write(tmp_path / RUNBOOK_PATH, RUNBOOK)
+    write(tmp_path / SEEDED_ACME_PATH, SEEDED_ACME)
+    write(tmp_path / SEEDED_GLOBEX_PATH, SEEDED_GLOBEX_WITH_NEEDS_ARG)
+    write(tmp_path / ENDPOINT_PATH, _endpoint_book(capture=True))
+
+    findings = [f for f in doctor.run(load(tmp_path)).findings if f.code.startswith("fixture-")]
+    assert findings == []

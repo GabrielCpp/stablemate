@@ -20,9 +20,9 @@ same shape as a boot step.
 
 | key | required | what it does |
 | --- | --- | --- |
-| `args:` | no | The parameters this fixture takes, space-separated names. A `fixture:` bullet elsewhere passes them as `name=value` pairs; passing a name not in this list is `fixture-arg-mismatch`. |
+| `args:` | no | The parameters this fixture takes, space-separated names. A `fixture:` bullet elsewhere passes them as `name=value` pairs; passing a name not in this list is `fixture-arg-mismatch`. An arg this fixture's own `needs:` bindings already supply need not also be passed by a `fixture:` caller — and if a caller passes it anyway, that is `fixture-arg-mismatch` too (two sources for one arg). |
 | `provides:` | no | Nested. What the fixture's last step leaves behind — the keys a `@<this-fixture>.<key>` reference on another node may read. A reference naming a key not listed here is `fixture-undeclared-provides`. |
-| `needs:` | no | Nested, `link`. Another fixture this one composes on top of, referenced as a markdown link to that fixture's file. A `needs:` chain that cycles is `fixture-needs-cycle`. |
+| `needs:` | no | Nested, `link`. Another fixture this one composes on top of, referenced as a markdown link to that fixture's file. Runtime runs the needs target once per scenario with no args, then binds the binding's own `name=value` tokens into *this* fixture's env — so a binding's names must be names *this* fixture declares under its own `args:`, not the target's, and are `fixture-arg-mismatch` otherwise. A `needs:` chain that cycles is `fixture-needs-cycle`. A needs target that itself declares `args:` is `fixture-needs-target-args`, because runtime can never pass it anything. |
 | `secrets:` | no | Nested. Environment-variable NAMES this fixture's steps read — never a value or a mint recipe. The harness resolves each from its own environment at run time; a name that is not a valid environment-variable identifier is `fixture-secret-name`, and a name absent from the harness's environment at run time is an environment fault, not a book/code defect, because the step never got to run. |
 
 `args:` is spelled `args`, not `params` — `params` is a global relation key
@@ -75,8 +75,8 @@ title: Seeded acme
 ## Doctor codes it can trip
 
 See [`../doctor-codes.md`](../doctor-codes.md): `unknown-book-fixture`, `fixture-step-kind`,
-`fixture-arg-mismatch`, `fixture-needs-cycle`, `fixture-undeclared-provides`,
-`fixture-secret-name`.
+`fixture-arg-mismatch`, `fixture-needs-target-args`, `fixture-needs-cycle`,
+`fixture-undeclared-provides`, `fixture-secret-name`.
 
 ## When bullets are not enough
 
