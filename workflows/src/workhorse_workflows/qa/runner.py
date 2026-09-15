@@ -168,6 +168,7 @@ def run_qa_plan(
     spec_dir: str = "",
     docs_path: str = "",
     repo_dir: str = "",
+    only: list[str] | None = None,
 ) -> QaPlanRun:
     """Execute the QA plan through ostler and normalize its four-state outcome.
 
@@ -180,6 +181,12 @@ def run_qa_plan(
     `_mint_qa_secrets`. `qa_run` executes the plan **in this process**, so a `secret(...,
     from_env=...)` in the plan reads whatever this scope just set; nothing shells out for
     the plan itself, so there is no other boundary to cross the value at.
+
+    `only`, when given, narrows the run to those scenario ids — a real, scored subset
+    (`Ostler.qa_run`'s `only` without a `label` still writes `qa-evidence.json`), not the
+    unpublished dry run `only` is paired with elsewhere. A targeted re-run passes the
+    claims whose ledger fingerprint moved; `None` runs the whole plan, unchanged from
+    before this parameter existed.
     """
     docs_root = find_docs_root(docs_path, repo_dir)
     plan = str(Path(spec_dir) / QA_PLAN_FILE)
@@ -189,7 +196,7 @@ def run_qa_plan(
         logger.warning("QA secret refresh failed: %s", error)
         return QaPlanRun(status="blocked", notes=f"QA secret refresh failed: {error}")
     with scoped_envs(minted):
-        outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir)
+        outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir, only=only)
     status = RUN_STATUSES.get(outcome.status.lower(), "invalid")
     notes = notes_for(outcome, f"Ostler QA run returned {status}.")
     logger.info("ostler qa run for %s returned status=%s", spec_dir, status)

@@ -464,6 +464,7 @@ class _Session(Ostler):
         *,
         spec: str | Path | None = None,
         stop_on_fail: bool = False,
+        only: list[str] | None = None,
         label: str | None = None,
     ) -> QaOutcome:
         script = self.script

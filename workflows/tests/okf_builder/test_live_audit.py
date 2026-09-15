@@ -18,15 +18,18 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import Literal
 
 import pytest
 from ostler.model import UINode
 from ostler.qa.plan import load_plan, resolve_spec_dir
 
+from workhorse_workflows.okf_builder.live_audit import flow as live_audit_flow
 from workhorse_workflows.okf_builder.live_audit.flow import (
     _fixture_texts_for, _node_text, audit_one_spec,
 )
 from workhorse_workflows.okf_builder.shared.ledger import claim_fingerprint
+from workhorse_workflows.qa.schemas import QaPlanRun, StackStatus
 
 REPOSITORY = "acme"
 REF = f"repo://{REPOSITORY}/{REPOSITORY}/service.py::charge"
@@ -191,3 +194,146 @@ def test_fixture_texts_for_resolves_declared_fixtures_by_name() -> None:
         ["okf:x:contract"], obligations_by_id, {"seed-org": fixture_node},
     )
     assert changed["seed-org"] != texts["seed-org"]
+
+
+def _fake_stack_ready() -> StackStatus:
+    return StackStatus(ready="unneeded", notes="The book serves nothing.")
+
+
+def _fake_run(
+    status: Literal["passed", "failed", "blocked", "invalid"],
+    *, assertions: int = 1, failures: int = 0,
+) -> QaPlanRun:
+    return QaPlanRun(
+        status=status,
+        notes=f"Ostler QA run returned {status}.",
+        ostler={
+            "scenarios": {
+                "charge-is-covered": {
+                    "status": status, "assertions": assertions, "failures": failures,
+                    "message": "ok" if status == "passed" else "assertion failed",
+                },
+            },
+        },
+    )
+
+
+def test_blocked_when_no_stack_runbook(
+    logger: logging.Logger, two_root_book: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A book with a served surface but no stack runbook blocks before running anything.
+
+    `ensure_stack` itself already returns this — this pins that `audit_one_spec` surfaces
+    it as `status="blocked"` rather than trying to run the plan against nothing.
+    """
+    docs_root, repo_root = two_root_book
+    monkeypatch.setattr(
+        live_audit_flow, "ensure_stack",
+        lambda *a, **k: StackStatus(ready="none", notes="no stack runbook"),
+    )
+
+    def _fail_if_run(*args: object, **kwargs: object) -> QaPlanRun:
+        raise AssertionError("run_qa_plan must not run when the stack is blocked")
+
+    monkeypatch.setattr(live_audit_flow, "run_qa_plan", _fail_if_run)
+
+    report = audit_one_spec(
+        logger, "docs/specs/story-1", docs_path=str(docs_root), repo_dir=str(repo_root),
+    )
+    assert report.status == "blocked"
+    assert report.scenarios == ()
+
+
+def test_skip_on_unchanged_fingerprint_surfaces_carried_result(
+    logger: logging.Logger, two_root_book: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second pass over an untouched plan carries the recorded verdict, not a re-run."""
+    docs_root, repo_root = two_root_book
+    monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
+    monkeypatch.setattr(live_audit_flow, "run_qa_plan", lambda *a, **k: _fake_run("passed"))
+
+    baseline = audit_one_spec(
+        logger, "docs/specs/story-1", docs_path=str(docs_root), repo_dir=str(repo_root),
+    )
+    assert baseline.scenarios[0].source == "fresh"
+    assert baseline.scenarios[0].status == "passed"
+
+    def _fail_if_run(*args: object, **kwargs: object) -> QaPlanRun:
+        raise AssertionError("an unchanged fingerprint must not be re-run")
+
+    monkeypatch.setattr(live_audit_flow, "run_qa_plan", _fail_if_run)
+
+    carried = audit_one_spec(
+        logger, "docs/specs/story-1", docs_path=str(docs_root), repo_dir=str(repo_root),
+    )
+    assert carried.scenarios[0].source == "carried"
+    assert carried.scenarios[0].status == "passed"
+    assert carried.scenarios[0].changed is False
+    assert carried.scenarios[0].fingerprint == baseline.scenarios[0].fingerprint
+
+
+def test_rerun_when_cited_file_changes(
+    logger: logging.Logger, two_root_book: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Editing the cited source file moves the fingerprint and forces a real re-run."""
+    docs_root, repo_root = two_root_book
+    monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
+    monkeypatch.setattr(live_audit_flow, "run_qa_plan", lambda *a, **k: _fake_run("passed"))
+
+    baseline = audit_one_spec(
+        logger, "docs/specs/story-1", docs_path=str(docs_root), repo_dir=str(repo_root),
+    )
+    assert baseline.scenarios[0].source == "fresh"
+
+    (repo_root / REPOSITORY / "service.py").write_text(
+        '"""The billing service, now different."""\n\n\ndef charge(amount):\n    return amount\n',
+        encoding="utf-8",
+    )
+
+    ran_only: list[object] = []
+
+    def _record_only(*args: object, only: list[str] | None = None, **kwargs: object) -> QaPlanRun:
+        ran_only.append(only)
+        return _fake_run("passed")
+
+    monkeypatch.setattr(live_audit_flow, "run_qa_plan", _record_only)
+
+    rerun = audit_one_spec(
+        logger, "docs/specs/story-1", docs_path=str(docs_root), repo_dir=str(repo_root),
+    )
+    assert rerun.scenarios[0].source == "fresh"
+    assert rerun.scenarios[0].changed is True
+    assert rerun.scenarios[0].fingerprint != baseline.scenarios[0].fingerprint
+    assert ran_only == [["charge-is-covered"]]
+
+
+def test_failing_scenario_is_overwritten_by_a_later_passing_run(
+    logger: logging.Logger, two_root_book: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A later pass over the same (changed) plan replaces the ledger record, not appends."""
+    docs_root, repo_root = two_root_book
+    monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
+    monkeypatch.setattr(
+        live_audit_flow, "run_qa_plan",
+        lambda *a, **k: _fake_run("failed", assertions=1, failures=1),
+    )
+
+    failing = audit_one_spec(
+        logger, "docs/specs/story-1", docs_path=str(docs_root), repo_dir=str(repo_root),
+    )
+    assert failing.scenarios[0].status == "failed"
+    ledger_path = docs_root / "docs/specs/story-1" / live_audit_flow.LEDGER_FILE
+    assert json.loads(ledger_path.read_text())["claims"]["charge-is-covered"]["verdict"] == "failed"
+
+    # rerun_all=True forces a fresh execution even though the fingerprint has not moved,
+    # for the case the failure is a flake and the operator wants the ledger corrected.
+    monkeypatch.setattr(live_audit_flow, "run_qa_plan", lambda *a, **k: _fake_run("passed"))
+    passing = audit_one_spec(
+        logger, "docs/specs/story-1", docs_path=str(docs_root), repo_dir=str(repo_root),
+        rerun_all=True,
+    )
+    assert passing.scenarios[0].status == "passed"
+    assert passing.scenarios[0].source == "fresh"
+    record = json.loads(ledger_path.read_text())["claims"]
+    assert len(record) == 1
+    assert record["charge-is-covered"]["verdict"] == "passed"

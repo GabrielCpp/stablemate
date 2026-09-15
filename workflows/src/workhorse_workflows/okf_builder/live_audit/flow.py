@@ -71,7 +71,13 @@ class ScenarioResult(BaseModel):
     message: str = ""
     code_refs: tuple[str, ...] = ()
     fingerprint: str = ""
+    #: Whether this fingerprint differs from the ledger's last recorded one for this claim
+    #: — independent of `source`, since `rerun_all` can force a fresh execution of a claim
+    #: whose fingerprint did not move at all.
     changed: bool = True
+    #: "fresh": executed this pass. "carried": the fingerprint matched the ledger's last
+    #: record, so the recorded verdict was reused verbatim rather than re-run.
+    source: str = "fresh"
 
 
 class LiveAuditReport(BaseModel):
@@ -185,8 +191,18 @@ def audit_one_spec(
     spec_dir: str,
     docs_path: str = "",
     repo_dir: str = "",
+    rerun_all: bool = False,
 ) -> LiveAuditReport:
     """Run one spec directory's already-authored QA plan and fingerprint every scenario.
+
+    Only claims whose fingerprint moved since the ledger's last record are actually
+    executed (`only=` into `run_qa_plan`, a real scored subset — see `runner.run_qa_plan`).
+    A claim whose fingerprint is unchanged is not re-run: its previously recorded verdict
+    is carried into this report verbatim, marked `source="carried"` rather than `"fresh"`,
+    so a caller can tell a genuinely-just-verified claim from one this pass never touched.
+    `rerun_all=True` forces every claim through `run_qa_plan` regardless of its
+    fingerprint — the operator override for "the fixture data or environment moved in a
+    way no citation captures, run everything for real."
 
     `own_repository` is resolved and threaded through every ledger call the same way
     `doctor.py` does it (`book_repository(features_root_of(graph))`): the ledger's
@@ -225,10 +241,6 @@ def audit_one_spec(
             for g in gap_list
         )
 
-    run = run_qa_plan(logger, spec_dir, docs_path, repo_dir)
-    scenario_summaries = run.ostler.get("scenarios") if isinstance(run.ostler, dict) else None
-    scenario_summaries = scenario_summaries if isinstance(scenario_summaries, dict) else {}
-
     nodes_by_id = {node.id: node for node in graph.ui_nodes}
     obligations_by_id = {
         str(o.get("id")): o
@@ -238,10 +250,11 @@ def audit_one_spec(
     ledger_path = resolved_spec_dir / LEDGER_FILE
     ledger = load_ledger(ledger_path)
 
-    results: list[ScenarioResult] = []
-    for scenario in document.data.get("scenarios", []):
-        if not isinstance(scenario, dict):
-            continue
+    scenarios_data = [s for s in document.data.get("scenarios", []) if isinstance(s, dict)]
+    fingerprints: dict[str, str] = {}
+    refs_by_id: dict[str, list[str]] = {}
+    changed_by_id: dict[str, bool] = {}
+    for scenario in scenarios_data:
         scenario_id = str(scenario.get("id") or "")
         covers = scenario.get("covers") or []
         refs: list[str] = []
@@ -254,24 +267,59 @@ def audit_one_spec(
         # its bare id — an edited `preconditions`/`checkpoints`/`forbid` list must move the
         # fingerprint even when no cited file or fixture text changed.
         claim_content = json.dumps(scenario, sort_keys=True, default=str)
-        summary = scenario_summaries.get(scenario_id) or {}
-        status = str(summary.get("status") or run.status)
         fingerprint = claim_fingerprint(
             refs, fixture_texts, claim_content, repo_root, own_repository=own_repository,
         )
-        changed = needs_rerun(ledger, scenario_id, fingerprint)
-        ledger = record_result(ledger_path, ledger, scenario_id, fingerprint, status)
+        fingerprints[scenario_id] = fingerprint
+        refs_by_id[scenario_id] = refs
+        changed_by_id[scenario_id] = needs_rerun(ledger, scenario_id, fingerprint)
+
+    to_run = [
+        sid for sid in fingerprints if rerun_all or changed_by_id[sid]
+    ]
+
+    run: Any = None
+    scenario_summaries: dict[str, Any] = {}
+    run_notes = "no claim's fingerprint changed since its last recorded run; nothing re-run"
+    if to_run:
+        run = run_qa_plan(logger, spec_dir, docs_path, repo_dir, only=None if rerun_all else to_run)
+        summaries = run.ostler.get("scenarios") if isinstance(run.ostler, dict) else None
+        scenario_summaries = summaries if isinstance(summaries, dict) else {}
+        run_notes = run.notes
+
+    results: list[ScenarioResult] = []
+    for scenario in scenarios_data:
+        scenario_id = str(scenario.get("id") or "")
+        fingerprint = fingerprints[scenario_id]
+        refs = refs_by_id[scenario_id]
+        if scenario_id in to_run:
+            summary = scenario_summaries.get(scenario_id) or {}
+            fallback_status = run.status if run is not None else "invalid"
+            status = str(summary.get("status") or fallback_status)
+            assertions = int(summary.get("assertions") or 0)
+            failures = int(summary.get("failures") or 0)
+            message = str(summary.get("message") or "")
+            ledger = record_result(
+                ledger_path, ledger, scenario_id, fingerprint, status,
+                assertions=assertions, failures=failures, message=message,
+            )
+            source = "fresh"
+        else:
+            record = ledger.get("claims", {}).get(scenario_id) or {}
+            status = str(record.get("verdict") or "")
+            assertions = int(record.get("assertions") or 0)
+            failures = int(record.get("failures") or 0)
+            message = str(record.get("message") or "")
+            source = "carried"
         results.append(ScenarioResult(
-            id=scenario_id, status=status,
-            assertions=int(summary.get("assertions") or 0),
-            failures=int(summary.get("failures") or 0),
-            message=str(summary.get("message") or ""),
-            code_refs=tuple(refs), fingerprint=fingerprint, changed=changed,
+            id=scenario_id, status=status, assertions=assertions, failures=failures,
+            message=message, code_refs=tuple(refs), fingerprint=fingerprint,
+            changed=changed_by_id[scenario_id], source=source,
         ))
 
     return LiveAuditReport(
         spec_dir=spec_dir, status="ran", stack=stack, scenarios=tuple(results),
-        gaps=gaps, notes=run.notes,
+        gaps=gaps, notes=run_notes,
     )
 
 
@@ -306,11 +354,15 @@ class LiveAudit(Workflow):
     #: Story spec directories (each holding a `qa_plan.py`), relative to `docs_path`. Empty
     #: means every spec dir `discover_spec_dirs` finds under the book's `specs` root.
     spec_dirs: tuple[str, ...] = ()
+    #: Force every claim in every spec dir through `run_qa_plan`, ignoring the ledger's
+    #: fingerprints — the operator override for a targeted re-run that would otherwise
+    #: carry forward claims whose citations do not capture what actually changed.
+    rerun_all: bool = False
 
     def start(self) -> Done:
         spec_dirs = self.spec_dirs or self.call(discover_spec_dirs, self.docs_path, self.repo_dir)
         reports = [
-            self.call(audit_one_spec, spec_dir, self.docs_path, self.repo_dir)
+            self.call(audit_one_spec, spec_dir, self.docs_path, self.repo_dir, self.rerun_all)
             for spec_dir in spec_dirs
         ]
         return Done({"reports": [r.model_dump() for r in reports]}).because(
