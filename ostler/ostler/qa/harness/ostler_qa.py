@@ -42,7 +42,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from types import FunctionType
 from typing import Any
@@ -80,6 +80,19 @@ RECORD_FD_ENV = "OSTLER_QA_RECORD_FD"
 #: `OSError` — so the failure mode of getting this wrong is a run that records nothing and
 #: says nothing about it.
 RECORD_PATH_ENV = "OSTLER_QA_RECORD_PATH"
+
+#: A book fixture's own `run:` recipe is a shell string (it may chain with `&&`, same as a
+#: stack manifest step), so it runs through a shell the same way `ostler.qa.stack._run_step`
+#: runs one — never `shell=True` on a string this file interpolated itself, since nothing
+#: below ever builds *this* string from an argument or a reference value.
+_SHELL = shutil.which("bash") or "/bin/sh"
+
+#: `@node.key` / `$name` — duplicated from `ostler.qa.references` rather than imported,
+#: because this file is stdlib-only and runs under the project's own interpreter, where
+#: ostler is not installed. The boundary is file-locality, not dependency-purity: even a
+#: stdlib-pure ostler module still lives outside the one file this harness is copied as.
+_NODE_REF = re.compile(r"(?<![\w.])@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
+_CAPTURE_REF = re.compile(r"(?<![\w.])\$([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 
 #: See `ostler.qa.plan.MECHANISMS` for why `synthetic` is not here.
 MECHANISMS = ("live", "fixture")
@@ -1257,6 +1270,29 @@ class _Missing:
 MISSING = _Missing()
 
 
+@dataclass
+class FixtureFault:
+    """One book-fixture step that could not prove its state, classified per Q38.
+
+    ``environment``
+        The step never got to run at all: a spawn failure, a missing `cwd`, or a secret
+        this fixture declares that is absent from the harness's own environment. None of
+        these say anything about the book or the product — the run itself could not start.
+
+    ``defect``
+        The step ran and then failed on its own terms: it timed out, it exited non-zero,
+        or it exited 0 without the `provides` it declared (missing from the JSON, or the
+        output was not JSON at all). A timeout is a defect, not an environment fault — the
+        process started; it just did not finish in time.
+    """
+
+    fixture: str
+    step_index: int
+    step_kind: str
+    fault_class: str
+    detail: str
+
+
 class Qa:
     """Everything a scenario is given. One instance per scenario process.
 
@@ -1279,6 +1315,7 @@ class Qa:
         offset_base_ms: int = 0,
         tools: Mapping[str, str] | None = None,
         fixtures: Mapping[str, Mapping[str, Any]] | None = None,
+        book_fixtures: Mapping[str, Mapping[str, Any]] | None = None,
         tool_env: Sequence[str] = (),
     ) -> None:
         self.scenario_id = scenario_id
@@ -1298,6 +1335,20 @@ class Qa:
         #: entry is one named invocation of a tool already in `_tool_commands`, which is
         #: why `fixture()` below runs through `tool()` rather than around it.
         self._fixtures = {name: dict(spec) for name, spec in (fixtures or {}).items()}
+        #: The book's own `fixture` nodes, planned ostler-side — see `ostler.qa.book_fixtures`.
+        #: `fixture()` below checks this tier first and falls back to `_fixtures` above when
+        #: a name is absent from it.
+        self._book_fixtures = {name: dict(spec) for name, spec in (book_fixtures or {}).items()}
+        #: `needs:` runs once per scenario: a fixture already run with the same resolved args
+        #: is not re-run, it is returned. Keyed on the fixture name and its args, frozen —
+        #: never on identity, since two `qa.fixture(...)` calls with the same binding are the
+        #: same need, however many scenario lines ask for it.
+        self._book_fixture_memo: dict[tuple[str, tuple[tuple[str, str], ...]], ToolResult] = {}
+        #: `@node.key` facts a book fixture's `provides:` declared, keyed by fixture name then
+        #: key. Deliberately a separate dict from `_captures` below (`$name`), never a shared
+        #: namespace: a fixture's own `@node.key` and a scenario's `$name` capture must never
+        #: collide just because an author picked the same string for both.
+        self._node_facts: dict[str, dict[str, str]] = {}
         #: The environment variable names the plan declared through `tool_env(...)` — the
         #: only ones `qa.tool(name).run(env=...)` may set.
         self._tool_env_allowed = frozenset(tool_env)
@@ -1361,7 +1412,13 @@ class Qa:
         goes on to record would be about the product — and an aborted scenario now says
         exactly that (`unproven`), rather than accusing the product of the plan's own
         arrangement failing.
+
+        Checks the book's own `fixture` nodes first (`name=value` extra args bind that
+        fixture's declared `args:`), falling back to this repo's agents.yml tier — the one
+        named invocation of an opted-in tool — when *name* is absent from the book.
         """
+        if name in self._book_fixtures:
+            return self._exec_book_fixture(name, self._parse_fixture_args(args))
         spec = self._fixtures.get(name)
         if spec is None:
             declared = ", ".join(sorted(self._fixtures)) or "(none declared)"
@@ -1388,6 +1445,163 @@ class Qa:
                 f"promises — {spec.get('provides', '')!r} — is not there: "
                 f"{(result.stderr or result.stdout).strip()[:500]}"
             )
+        return result
+
+    # -- book fixtures -------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_fixture_args(args: Sequence[str]) -> dict[str, str]:
+        parsed: dict[str, str] = {}
+        for tok in args:
+            key, _, value = tok.partition("=")
+            parsed[key] = value
+        return parsed
+
+    def _resolve_ref(self, value: str) -> str:
+        """A `needs:` binding's value, substituted if it is a whole `@node.key` or `$name`.
+
+        A literal stays a literal: only a value that is *entirely* one reference resolves,
+        matching the grammar `ostler.qa.references.parse_reference` checks statically.
+        """
+        stripped = value.strip()
+        matched = _NODE_REF.fullmatch(stripped)
+        if matched:
+            node, key = matched.group(1), matched.group(2)
+            facts = self._node_facts.get(node)
+            if facts is None or key not in facts:
+                raise RuntimeError(
+                    f"qa fixture reference @{node}.{key} has no resolved value — "
+                    f"{node!r} has not run (or does not provide {key!r})"
+                )
+            return facts[key]
+        matched = _CAPTURE_REF.fullmatch(stripped)
+        if matched:
+            return self._captures[matched.group(1)]
+        return value
+
+    def _fault(self, fixture: str, step_index: int, step_kind: str, fault_class: str, detail: str) -> None:
+        fault = FixtureFault(
+            fixture=fixture, step_index=step_index, step_kind=step_kind,
+            fault_class=fault_class, detail=detail,
+        )
+        self._recorder.emit({"type": "fixture_fault", **asdict(fault)})
+
+    def _run_book_step(
+        self, fixture: str, index: int, step: Mapping[str, Any], env: Mapping[str, str],
+    ) -> "ToolResult":
+        kind = str(step.get("kind", ""))
+        command = str(step.get("command", ""))
+        cwd = str(step.get("cwd") or self.root)
+        timeout = float(step.get("timeout", 120.0))
+        if not Path(cwd).is_dir():
+            self._fault(fixture, index, kind, "environment", f"cwd {cwd!r} does not exist")
+            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}): cwd {cwd!r} does not exist")
+        argv = [_SHELL, "-c", command]
+        overlay = {**os.environ, **env}
+        try:
+            done = subprocess.run(  # noqa: S603 - fixed shell invocation of a book-declared recipe
+                argv, cwd=cwd, env=overlay, capture_output=True, text=True, timeout=timeout, check=False,
+            )
+        except OSError as exc:
+            self._fault(fixture, index, kind, "environment", str(exc))
+            raise RuntimeError(
+                f"qa fixture {fixture!r} step {index} ({kind}) could not start: {exc}"
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            self._fault(fixture, index, kind, "defect", f"timed out after {timeout}s")
+            raise RuntimeError(
+                f"qa fixture {fixture!r} step {index} ({kind}) timed out after {timeout}s"
+            ) from exc
+        result = ToolResult(command=argv, stdout=done.stdout, stderr=done.stderr, exit_code=done.returncode)
+        if not result.ok:
+            detail = (result.stderr or result.stdout).strip()[:500]
+            self._fault(fixture, index, kind, "defect", f"exit {result.exit_code}: {detail}")
+            raise RuntimeError(
+                f"qa fixture {fixture!r} step {index} ({kind}) failed (exit {result.exit_code}): {detail}"
+            )
+        return result
+
+    def _extract_provides(
+        self, fixture: str, declared: Sequence[str], result: "ToolResult | None", last_index: int,
+    ) -> dict[str, str]:
+        if not declared:
+            return {}
+        stdout = result.stdout if result is not None else ""
+        try:
+            payload = json.loads(stdout)
+        except json.JSONDecodeError as exc:
+            self._fault(fixture, last_index, "provides", "defect",
+                        "the last step's stdout is not JSON, so declared provides could not be read")
+            raise RuntimeError(
+                f"qa fixture {fixture!r} declares provides {list(declared)!r} but its last "
+                "step's stdout is not JSON"
+            ) from exc
+        if not isinstance(payload, dict):
+            self._fault(fixture, last_index, "provides", "defect", "the last step's stdout is not a JSON object")
+            raise RuntimeError(
+                f"qa fixture {fixture!r}: the last step's stdout must be a JSON object to "
+                f"provide {list(declared)!r}"
+            )
+        missing = [key for key in declared if key not in payload]
+        if missing:
+            self._fault(fixture, last_index, "provides", "defect", f"declared provides {missing!r} absent")
+            raise RuntimeError(f"qa fixture {fixture!r} does not provide {missing!r} in its last step's output")
+        return {key: str(payload[key]) for key in declared}
+
+    def _exec_book_fixture(self, name: str, args: Mapping[str, str]) -> "ToolResult":
+        """Run one book `fixture` node's steps, memoized on `(name, frozen args)` per scenario.
+
+        `needs:` runs depth-first before this fixture's own steps, and each secret is
+        resolved from the harness's own environment — never the book — right before the
+        first step that might use it, so a name absent there is an environment fault before
+        anything spawns.
+        """
+        memo_key = (name, tuple(sorted(args.items())))
+        cached = self._book_fixture_memo.get(memo_key)
+        if cached is not None:
+            return cached
+        spec = self._book_fixtures[name]
+        env: dict[str, str] = {}
+        for need in spec.get("needs", []):
+            # A need's own `args:` bind into *this* fixture's env once the need has run —
+            # they are how this fixture receives a dependency's `@node.key` provides, not
+            # arguments passed to the dependency (which takes none here): the reference
+            # cannot resolve until the fixture it names has already produced its facts.
+            self._exec_book_fixture(str(need["fixture"]), {})
+            for key, value in need.get("args", {}).items():
+                env[key] = self._resolve_ref(value)
+        for secret_name in spec.get("secrets", []):
+            value = os.environ.get(secret_name)
+            if value is None:
+                self._fault(name, -1, "secret", "environment",
+                            f"secret {secret_name!r} is not set in the harness's own environment")
+                raise RuntimeError(
+                    f"qa fixture {name!r} needs secret {secret_name!r}, which is not set — the "
+                    "harness resolves secret values from its own environment, never the book"
+                )
+            env[secret_name] = value
+        for arg_name in spec.get("args", []):
+            if arg_name in args:
+                env[arg_name] = args[arg_name]
+        steps = spec.get("steps", [])
+        result: ToolResult | None = None
+        for index, step in enumerate(steps):
+            result = self._run_book_step(name, index, step, env)
+        self._node_facts[name] = self._extract_provides(name, spec.get("provides", []), result, len(steps) - 1)
+        if result is None:
+            result = ToolResult(command=[], stdout="", stderr="", exit_code=0)
+        self._book_fixture_memo[memo_key] = result
+        self._recorder.emit(
+            {
+                "kind": "fixture",
+                "scenario": self.scenario_id,
+                "name": name,
+                "provides": ",".join(spec.get("provides", [])),
+                "command": result.command,
+                "exit_code": result.exit_code,
+                "ok": result.ok,
+            }
+        )
         return result
 
     def instance(self, obligation: str, bindings: dict[str, object]) -> None:
@@ -2667,6 +2881,7 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         offset_base_ms=int(context.get("offset_ms", 0)),
         tools=context.get("tools", {}),
         fixtures=context.get("fixtures", {}),
+        book_fixtures=context.get("book_fixtures", {}),
         tool_env=REGISTRY.tool_env,
     )
     browser = None
