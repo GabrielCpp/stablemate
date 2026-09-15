@@ -1502,7 +1502,9 @@ class Qa:
         kind = str(step.get("kind", ""))
         command = str(step.get("command", ""))
         cwd = str(step.get("cwd") or self.root)
-        timeout = float(step.get("timeout", 120.0))
+        # book_fixtures.py resolves this to an always-valid float ostler-side (stack.boot_timeout),
+        # so the harness reads it as-is rather than re-parsing or re-defaulting a raw value here.
+        timeout = float(step["timeout"])
         if not Path(cwd).is_dir():
             self._fault(fixture, index, kind, "environment", f"cwd {cwd!r} does not exist")
             raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}): cwd {cwd!r} does not exist")

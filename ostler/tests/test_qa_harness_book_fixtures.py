@@ -47,6 +47,21 @@ def _harness(*args: str, env: dict[str, str], records_to: Path) -> tuple[int, st
     return done.returncode, done.stdout + done.stderr, records
 
 
+def _with_resolved_timeouts(book_fixtures: dict) -> dict:
+    """Fill in the `timeout` every step carries once `book_fixtures.resolved()` has run.
+
+    These fixtures are hand-built test doubles, not `book_fixtures.resolved()` output, so
+    they skip the ostler-side normalization step (`stack.boot_timeout`) that guarantees a
+    real step dict always carries a resolved float — the harness itself no longer defaults
+    or parses one. A default here stands in for that normalization, not a harness default.
+    """
+    for spec in book_fixtures.values():
+        for step in spec.get("steps", []):
+            if not step.get("missing_run") and "timeout" not in step:
+                step["timeout"] = 5.0
+    return book_fixtures
+
+
 def _run(
     module: Path, scenario_id: str, tmp_path: Path, *, book_fixtures: dict, env: dict[str, str] | None = None,
 ) -> tuple[int, str, list[dict]]:
@@ -55,7 +70,7 @@ def _run(
             "root": str(tmp_path),
             "spec_dir": str(tmp_path),
             "qa_dir": str(tmp_path / "qa"),
-            "book_fixtures": book_fixtures,
+            "book_fixtures": _with_resolved_timeouts(book_fixtures),
         }
     )
     return _harness(

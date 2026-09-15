@@ -71,8 +71,19 @@ def test_resolved_carries_steps_args_provides_and_secret_names(repo: Path) -> No
     [step] = acme["steps"]
     assert step["kind"] == "seed"
     assert step["command"] == "./scripts/seed-acme.sh"
-    assert step["timeout"] == "45"
+    assert step["timeout"] == 45.0
     assert step["cwd"] == str(repo.resolve())
+
+
+def test_resolved_defaults_a_step_with_no_timeout_bullet_to_step_timeout_s(repo: Path) -> None:
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md", SEEDED_ACME)
+    write(repo / "docs/features/acme/fixtures/seeded-globex.md", SEEDED_GLOBEX)
+    graph = load(repo)
+
+    fixtures = book_fixtures.resolved(graph)
+
+    [step] = fixtures["seeded-globex"]["steps"]
+    assert step["timeout"] == book_fixtures.STEP_TIMEOUT_S
 
 
 def test_resolved_parses_a_needs_binding_with_its_args(repo: Path) -> None:

@@ -30,6 +30,7 @@ from ostler.markdown import extract_refs
 from ostler.model import Graph, UINode
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa import runbook as runbook_mod
+from ostler.qa.stack import STEP_TIMEOUT_S, boot_timeout
 
 
 def _bullet_values(value: object) -> list[str]:
@@ -109,9 +110,8 @@ def _steps_of(graph: Graph, node: UINode) -> list[dict[str, Any]]:
             "kind": kind,
             "command": command["run"],
             "cwd": command["working-directory"],
+            "timeout": boot_timeout(str(command.get("timeout", "")), default=STEP_TIMEOUT_S),
         }
-        if "timeout" in command:
-            entry["timeout"] = command["timeout"]
         steps.append(entry)
     return steps
 
