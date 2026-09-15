@@ -70,7 +70,7 @@ from workhorse.pyflow import (
     AgentTimeout, AgentTurnFailed, Await, Continue, Done, NodeNotRunError, Workflow,
     WorkflowFailed,
 )
-from workhorse_workflows.kit import build_worklist
+from workhorse_workflows.kit import build_worklist, head_sha
 from workhorse_workflows.okf_builder.audit.flow import Audit
 from workhorse_workflows.okf_builder.main.nodes import (
     advance_watermark,
@@ -83,6 +83,7 @@ from workhorse_workflows.okf_builder.main.nodes import (
     inventory_source,
     prepare,
     snapshot_book,
+    stamp_turn,
 )
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared.audit import (
@@ -585,6 +586,9 @@ class OkfBuilder(Workflow):
             commit_turn, self.ctx.repo_root, self.ctx.features_root,
             f"docs({self.service}): record book edits before the next turn", self.story,
         )
+        # Where the turn starts, for `stamp_turn`'s book-pathspec diff below — the same
+        # boundary `commit_turn`'s own docstring reasons from.
+        pre_turn_sha = head_sha(self.ctx.repo_root)
         # The book as this turn finds it: the reference that still holds when a pre-turn
         # commit could not land (`nodes/baseline.py`).
         baseline = (
@@ -622,6 +626,10 @@ class OkfBuilder(Workflow):
                 "source_root": self.ctx.source_root,
                 "source_excludes": self.ctx.source_excludes,
             },
+        )
+        self.call(
+            stamp_turn, self.ctx.repo_root, self.ctx.features_root, pre_turn_sha,
+            item_kind, item_context,
         )
         self.call(
             commit_turn, self.ctx.repo_root, self.ctx.features_root,

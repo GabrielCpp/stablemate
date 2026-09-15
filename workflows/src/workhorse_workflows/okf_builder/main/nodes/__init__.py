@@ -39,7 +39,11 @@ from workhorse_workflows.okf_builder.main.nodes.coverage import (
     compute_coverage,
     inventory_source,
 )
-from workhorse_workflows.okf_builder.main.nodes.finalize import commit_book, commit_turn
+from workhorse_workflows.okf_builder.main.nodes.finalize import (
+    commit_book,
+    commit_turn,
+    stamp_turn,
+)
 from workhorse_workflows.okf_builder.main.nodes.prepare import prepare
 
 __all__ = [
@@ -53,4 +57,5 @@ __all__ = [
     "inventory_source",
     "prepare",
     "snapshot_book",
+    "stamp_turn",
 ]

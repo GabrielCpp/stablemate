@@ -17,16 +17,21 @@ participant that knows what it changed.
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 from pathlib import Path
 
 from git.exc import GitError
 
+from ostler import Ostler
+from ostler import doctor as doctor_mod
+from ostler import refs as refs_mod
+from ostler import stamp as stamp_mod
 from workhorse.pyflow import WorkflowFailed
-from workhorse_workflows.kit import commit_paths
+from workhorse_workflows.kit import commit_paths, diff_text
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
-from workhorse_workflows.okf_builder.shared.schemas import Committed
+from workhorse_workflows.okf_builder.shared.schemas import Committed, Stamped
 
 _SUBJECT = "docs: update the OKF book"
 _SUBJECT_MAX = 72
@@ -96,6 +101,101 @@ def commit_turn(
 
 
 @blueprint.node
+def stamp_turn(
+    logger: logging.Logger,
+    repo_root: str,
+    features_root: str,
+    pre_turn_sha: str,
+    item_kind: str = "",
+    item_context: str = "",
+) -> Stamped:
+    """Stamp exactly the `@digest` targets this turn earned, gated by the turn's own errors.
+
+    Two sources of stampable targets, both scoped to what *this* turn actually resolved.
+    A `fix:stale-citation` row restamps only the `(node, file)` pairs it was assigned —
+    never a node's other `code:` targets, which no row vouched for. Any node this turn
+    touched also gets its still-unstamped targets, read off `doctor`'s
+    `unstamped-citation` findings on the pages the book-pathspec diff (`HEAD` at turn
+    start vs. the working tree now, the same boundary `commit_turn` relies on) shows this
+    turn edited. Either way a node carrying an error finding of its own — from this same
+    `doctor` pass, scoped to just these pages — is withheld entirely: a stamp asserts the
+    citation was re-read and still holds, and a book `doctor` already disagrees with
+    cannot make that claim.
+
+    Called from `flow.py` right before the post-turn `commit_turn`, so a stamp lands in
+    the same book commit as the edits it is about.
+    """
+    repo = Path(repo_root).resolve()
+    pathspec = _book_pathspec(repo, features_root)
+    graph = Ostler(repo).graph
+
+    touched_pages = {
+        line for line in diff_text(repo, "--name-only", pre_turn_sha, "--", pathspec).splitlines()
+        if line
+    } if pre_turn_sha else set()
+
+    restamp_pairs: list[tuple[str, str]] = []
+    if item_kind == "fix:stale-citation" and item_context:
+        try:
+            context = json.loads(item_context)
+        except (json.JSONDecodeError, TypeError):
+            context = {}
+        file_target = str(context.get("file") or "")
+        if file_target:
+            restamp_pairs = [
+                (str(node_id), file_target) for node_id in context.get("nodes") or ()
+            ]
+
+    def _page_of(node_id: str) -> str | None:
+        node = graph.find_ui_node(node_id)
+        return node.path.relative_to(graph.root).as_posix() if node is not None else None
+
+    scope_pages = set(touched_pages)
+    scope_pages.update(page for node_id, _ in restamp_pairs if (page := _page_of(node_id)))
+    if not scope_pages:
+        return Stamped()
+
+    report = doctor_mod.scope_to_paths(doctor_mod.run(graph), sorted(scope_pages))
+    blocked_nodes: set[str] = set()
+    blocked_pages: set[str] = set()
+    for finding in report.findings:
+        if finding.severity != "error":
+            continue
+        if finding.node:
+            blocked_nodes.add(finding.node)
+        elif finding.path:
+            blocked_pages.add(finding.path)
+
+    def _blocked(node_id: str) -> bool:
+        return node_id in blocked_nodes or _page_of(node_id) in blocked_pages
+
+    pairs: list[tuple[str, str]] = []
+    skipped: set[str] = set()
+    for node_id, file_target in restamp_pairs:
+        if _blocked(node_id):
+            skipped.add(node_id)
+        else:
+            pairs.append((node_id, file_target))
+
+    for finding in report.findings:
+        if finding.code != "unstamped-citation" or not finding.node or finding.path not in touched_pages:
+            continue
+        if _blocked(finding.node):
+            skipped.add(finding.node)
+            continue
+        pairs.append((finding.node, refs_mod.ref_path(finding.ref)))
+
+    if not pairs:
+        return Stamped(skipped_nodes=sorted(skipped))
+
+    results = stamp_mod.stamp_targets(graph, Path(features_root).resolve(), pairs)
+    stamped = sum(r.stamped for r in results)
+    if stamped:
+        logger.info("stamped %d citation target(s) this turn", stamped)
+    return Stamped(stamped=stamped, skipped_nodes=sorted(skipped))
+
+
+@blueprint.node
 def commit_book(
     logger: logging.Logger,
     repo_root: str,
@@ -114,4 +214,4 @@ def commit_book(
     return Committed(committed=committed)
 
 
-__all__ = ["commit_book", "commit_turn"]
+__all__ = ["commit_book", "commit_turn", "stamp_turn"]

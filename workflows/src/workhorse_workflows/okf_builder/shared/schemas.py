@@ -137,6 +137,13 @@ class Committed(OkfResult):
     committed: bool = False
 
 
+class Stamped(OkfResult):
+    """The `@digest` targets a turn's stamp step actually wrote, and what it withheld."""
+
+    stamped: int = 0
+    skipped_nodes: list[str] = Field(default_factory=list)
+
+
 # ── the drain loop ──────────────────────────────────────────────────────────
 
 
@@ -472,6 +479,7 @@ __all__ = [
     "Settled",
     "SourceInventory",
     "SourceRequest",
+    "Stamped",
     "TornDown",
     "WalkSeed",
     "WalkTurn",
