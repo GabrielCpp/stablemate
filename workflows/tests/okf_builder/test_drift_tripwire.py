@@ -78,7 +78,6 @@ ORG_GRAPH_CODES = frozenset({
     "cross-epic-dependency",
     "cross-epic-seed",
     "dangling-dependency",
-    "dangling-repository-ref",
     "dangling-milestone-dependency",
     "dangling-milestone-epic",
     "dangling-seed",

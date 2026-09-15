@@ -185,9 +185,9 @@ A unified diff.
 """
 
 
-def _concept_report(repo: Path, ref: str):
+def _concept_report(repo: Path, ref: str, checkouts: dict[str, Path] | None = None):
     write(repo / "docs/features/groom/concepts/diff.md", CONCEPT.format(ref=ref))
-    return doctor.run(load(repo))
+    return doctor.run(load(repo), checkouts=checkouts)
 
 
 def test_code_ref_to_a_missing_file_is_an_error(repo: Path):
@@ -240,22 +240,51 @@ def test_a_stamped_code_ref_matching_the_file_is_green(repo: Path):
     assert not (codes(report, "warn") & {"unstamped-citation"})
 
 
-def test_an_unstamped_foreign_repository_ref_is_unreachable_not_unstamped(repo: Path):
-    # A foreign checkout is never something `ostler stamp` can resolve today (see
-    # `stamp.stamp_page`), so warning as if a turn editing this node would ever clear it —
-    # `unstamped-citation`'s promise — would be a defect no edit could fix.
-    from ostler.source_snapshots import RepositorySnapshot, SourceCatalog, SourceFile, catalog_path
-
-    catalog = SourceCatalog(repositories=(
-        RepositorySnapshot(id="api-service", base="", head="", files=(
-            SourceFile(path="src/service.py", content_sha256="x", symbols=("create_invoice",)),
-        )),
-    ))
-    catalog_path(repo).parent.mkdir(parents=True, exist_ok=True)
-    catalog_path(repo).write_text(catalog.model_dump_json(), encoding="utf-8")
+def test_a_foreign_repository_ref_with_no_checkout_is_unreachable_not_unstamped(repo: Path):
+    # A repository this run was given no checkout for is a fact about the run, not the book:
+    # warning as if a turn editing this node would ever clear it — `unstamped-citation`'s
+    # promise — would be a defect no edit could fix, and nothing else about the ref can be
+    # checked without bytes to check it against.
     report = _concept_report(repo, "repo://api-service/src/service.py::create_invoice")
     assert "unreachable-citation" in codes(report, "warn")
     assert "unstamped-citation" not in codes(report, "warn")
+    assert not (codes(report) & {"dangling-code-ref", "missing-code-symbol", "stale-citation"})
+
+
+def test_a_foreign_repository_ref_with_a_checkout_is_checked_like_a_local_one(repo: Path):
+    checkout = repo.parent / "checkouts" / "api-service"
+    write(checkout / "src/service.py", "def create_invoice():\n    return 1\n")
+    report = _concept_report(
+        repo, "repo://api-service/src/service.py::create_invoice",
+        checkouts={"api-service": checkout},
+    )
+    assert "unstamped-citation" in codes(report, "warn")
+    assert not (codes(report) & {"dangling-code-ref", "missing-code-symbol"})
+    assert "unreachable-citation" not in codes(report, "warn")
+
+
+def test_a_foreign_repository_ref_whose_checked_out_file_changed_is_stale(repo: Path):
+    from ostler.stamp import digest_file
+
+    checkout = repo.parent / "checkouts" / "api-service"
+    write(checkout / "src/service.py", "def create_invoice():\n    return 1\n")
+    stale_digest = digest_file("def create_invoice():\n    return 0\n")
+    report = _concept_report(
+        repo, f"repo://api-service/src/service.py::create_invoice@{stale_digest}",
+        checkouts={"api-service": checkout},
+    )
+    assert "stale-citation" in codes(report)
+    assert not (codes(report, "warn") & {"unstamped-citation", "unreachable-citation"})
+
+
+def test_a_missing_symbol_in_a_foreign_checkout_is_an_error(repo: Path):
+    checkout = repo.parent / "checkouts" / "api-service"
+    write(checkout / "src/service.py", "def other():\n    return 1\n")
+    report = _concept_report(
+        repo, "repo://api-service/src/service.py::create_invoice",
+        checkouts={"api-service": checkout},
+    )
+    assert "missing-code-symbol" in codes(report)
 
 
 def test_a_receiver_qualified_symbol_grounds_against_go(repo: Path):

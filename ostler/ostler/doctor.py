@@ -20,11 +20,12 @@ from ostler.vet import placement as placement_mod
 from ostler import refs as refs_mod
 from ostler.model import Graph, Epic, Story, read_doc, required_section_problems
 from ostler.path import features_root as features_root_of, specs_root_in
+from ostler.provenance import checkout_for
 from ostler.qa import fixtures as fixtures_mod, runbook as runbook_mod, sensitivity
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
 from ostler import stamp as stamp_mod
-from ostler.source_snapshots import book_repository, load_catalog
+from ostler.source_snapshots import book_repository
 
 
 @dataclass
@@ -147,7 +148,8 @@ def _epic_matches(epic: Epic, epic_filter: str) -> bool:
             or registry.epic_slug(epic.name) == registry.epic_slug(epic_filter))
 
 
-def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True) -> Report:
+def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
+        checkouts: dict[str, Path] | None = None) -> Report:
     report = Report(org=graph.org_name, profile=graph.profile)
     f = report.findings
 
@@ -156,7 +158,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
     # link target is read and parsed twice for one run's worth of answers.
     resolver = links_mod.LinkResolver(graph)
 
-    _check_ui(graph, f, resolver)
+    _check_ui(graph, f, resolver, checkouts)
     _check_judgment(graph, f, resolver)
     _check_unspecified(graph, f, resolver)
     _check_sensitivity(graph, f)
@@ -965,7 +967,8 @@ def _check_test_subject(node, rel: str, f: list[Finding]) -> None:
         suggestion="keep only product citations in `code:`; cite a proving test under `tests:`"))
 
 
-def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
+def _check_code_grounding(graph: Graph, f: list[Finding],
+                           checkouts: dict[str, Path] | None = None) -> None:
     """`code:` targets name a file that exists, and a symbol that file declares.
 
     This is what stops two path conventions from silently coexisting, what keeps the book
@@ -973,30 +976,26 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
     been deleted. The grammar is the book's own (OKF UI profile §5):
     `<path-relative-to-repo-root>::<symbol>`, the symbol qualified by its owner when it has one.
 
-    A local (non-repository-qualified) target's `@digest` stamp is checked here too:
-    `stale-citation` when it disagrees with the file's current content, `unstamped-citation`
-    while the citation carries none yet — the migration-in-flight case, a warning rather than
-    an error since no book has been stamped until `ostler stamp --from-catalog` runs. A
-    target qualified with a *foreign* repository (not the book's own, per
-    `source_snapshots.book_repository`) earns `unreachable-citation` instead of
-    `unstamped-citation` when it carries no digest: `ostler stamp` does not resolve a foreign
-    checkout yet (see `stamp.stamp_page`), so it can never earn one here, and that is a
-    different fact than "this book hasn't migrated yet" — `unstamped-citation` on a target
-    this checkout could stamp today, once a turn touches it, would be the wrong hint.
+    A target qualified with a repository other than the book's own (per
+    `source_snapshots.book_repository`) is checked against *checkouts[repository]* — the same
+    existence, `@digest` and symbol checks a local ref gets, just read off that checkout instead
+    of `graph.root`. A repository this run was given no checkout for earns `unreachable-citation`
+    instead: there is nothing under this checkout to check it against, and that is a fact about
+    the run, not the book, so its `suggestion` names what the run needs (a `--checkout` for that
+    repository), never a fix to the book or a command to run.
+
+    Every ref that does resolve to a source root gets the same three: `stale-citation` when its
+    `@digest` disagrees with the file's current content, `unstamped-citation` while it carries no
+    digest yet — a warning, not an error, since a book earns its first stamp only once a turn
+    touches the node or `ostler stamp --from-catalog` migrates it — and `missing-code-symbol`
+    when the file no longer declares the cited symbol.
 
     Note this cannot route through the link scan: `links.is_doc_link` rejects any href
     containing `::`, and a backticked `` `x.go::S` `` is inline code, not a markdown link — so
     `markdown.iter_links` never yields it. The bullets are read directly, as the
     required-bullet loop does.
     """
-    try:
-        catalog = load_catalog(graph.root)
-    except (OSError, ValueError):
-        # Until (e) removes the catalog, this check still leans on it for the existence check
-        # above and for `backfill`'s watermark, so a load failure is tolerated rather than
-        # raised. When (e) lands the catalog goes away and this whole try/except goes with it —
-        # not just the call inside it.
-        catalog = None
+    checkout_map = checkouts or {}
     own_repository = book_repository(features_root_of(graph))
     for node in graph.ui_nodes:
         uitype = registry.ui_type(node.type)
@@ -1010,44 +1009,26 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
             except ValueError:
                 parsed = refs_mod.CodeRef("", ref)
             target_path, symbol = parsed.path, parsed.symbol
-            if parsed.repository:
-                repository = catalog.repository(parsed.repository) if catalog else None
-                if repository is None:
-                    f.append(Finding(
-                        "error", "dangling-repository-ref",
-                        f"{node.id}: `code:` target '{ref}' — no source snapshot for "
-                        f"repository '{parsed.repository}'",
-                        path=rel, line=node.line, ref=ref))
-                    continue
-                source = next((item for item in repository.files if item.path == target_path), None)
-                if source is None:
-                    f.append(Finding(
-                        "error", "dangling-code-ref",
-                        f"{node.id}: `code:` target '{ref}' — no such file '{target_path}' "
-                        f"in source snapshot '{parsed.repository}'",
-                        path=rel, line=node.line, ref=ref))
-                    continue
-                if symbol and not _SPACE.search(symbol) and symbol not in source.symbols:
-                    f.append(Finding(
-                        "error", "missing-code-symbol",
-                        f"{node.id}: `code:` target '{ref}' — '{target_path}' does not declare "
-                        f"'{symbol}'", path=rel, line=node.line, ref=ref))
-                if parsed.digest is None and parsed.repository != own_repository:
+            source_root = graph.root
+            if parsed.repository and parsed.repository != own_repository:
+                checkout = checkout_for(parsed.repository, checkout_map, default=own_repository)
+                if checkout is None:
                     f.append(Finding(
                         "warn", "unreachable-citation",
-                        f"{node.id}: `code:` target '{ref}' carries no `@digest` stamp and "
-                        f"names a repository ('{parsed.repository}') this checkout cannot "
-                        f"restamp",
+                        f"{node.id}: `code:` target '{ref}' names a repository "
+                        f"('{parsed.repository}') this run has no checkout for",
                         path=rel, line=node.line, ref=ref,
-                        suggestion="stamped once `ostler stamp` resolves foreign checkouts; "
-                                   "no action to take on this book alone"))
-                continue
+                        suggestion=f"pass --checkout {parsed.repository}=<path> to check this "
+                                   "citation"))
+                    continue
+                source_root = checkout
             separator = "::" if symbol else ""
-            target = graph.root / target_path
+            target = source_root / target_path
             if not target.is_file():
                 f.append(Finding(
                     "error", "dangling-code-ref",
-                    f"{node.id}: `code:` target '{ref}' — no such file '{target_path}'",
+                    f"{node.id}: `code:` target '{ref}' — no such file '{target_path}'"
+                    + (f" in checkout '{parsed.repository}'" if parsed.repository else ""),
                     path=rel, line=node.line, ref=ref,
                     suggestion="a path relative to the repo root, as `path::symbol`"))
                 continue
@@ -1989,7 +1970,8 @@ def _check_placement(node, rel: str, f: list[Finding]) -> None:
 
 
 def _check_ui(graph: Graph, f: list[Finding],
-              resolver: links_mod.LinkResolver | None = None) -> None:
+              resolver: links_mod.LinkResolver | None = None,
+              checkouts: dict[str, Path] | None = None) -> None:
     """The UI-profile per-file and per-node checks.
 
     A caller that also resolves the same links — ``doctor.run``, which builds the graph right
@@ -2004,7 +1986,7 @@ def _check_ui(graph: Graph, f: list[Finding],
         for path in sorted(froot.rglob("*.md")):
             if path.is_file() and path.name not in registry.RESERVED_FILES:
                 _check_ui_file(graph, path, f)
-    _check_code_grounding(graph, f)
+    _check_code_grounding(graph, f, checkouts)
 
     # required-bullet checks stay per-node — they need the node's declared type + schema.
     for node in graph.ui_nodes:

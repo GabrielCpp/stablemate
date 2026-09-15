@@ -119,6 +119,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="run doctor with the index and without it and diff the two reports; "
              "exit non-zero on any disagreement (one command, for CI)",
     )
+    d.add_argument(
+        "--checkout",
+        action="append",
+        default=[],
+        metavar="REPOSITORY=PATH",
+        help="local checkout a repo://-qualified code: target is checked against; repeat "
+             "per repository. A target naming a repository not given here is reported as "
+             "unreachable-citation rather than checked.",
+    )
 
     ck = sub.add_parser("checks", help="the `verify:` check vocabulary and its signatures")
     ck.add_argument("name", nargs="?", help="one check, instead of all of them")
@@ -1290,7 +1299,12 @@ def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
               f"(its doc roots: {roots})", file=sys.stderr)
         return 2
     wanted = [rel for rel in scope if rel is not None]
-    report = doctor.run(graph, epic_filter=args.epic, check_schema=not args.no_schema)
+    checkouts = _parse_checkouts(args.checkout)
+    if checkouts is None:
+        return 2
+    report = doctor.run(
+        graph, epic_filter=args.epic, check_schema=not args.no_schema, checkouts=checkouts,
+    )
     if wanted:
         report = doctor.scope_to_paths(report, wanted)
     if args.json:
