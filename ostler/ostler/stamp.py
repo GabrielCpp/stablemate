@@ -60,10 +60,13 @@ def restamp_leading_code_spans(value: str, digest_for: Callable[[str], str | Non
     """Rewrite a ``code:`` bullet's leading run of backtick-quoted targets with fresh digests.
 
     ``digest_for(target)`` is called with each target's own text (backticks and any existing
-    ``@digest`` stripped) and returns the digest to stamp, or ``None`` to leave that target
-    unstamped. Separators and anything after the leading run — a trailing gloss, prose — are
-    returned byte-for-byte unchanged; a value that does not open with a code span is returned
-    unchanged entirely.
+    ``@digest`` stripped) and returns the digest to stamp, or ``None`` to leave that span
+    exactly as it was — byte for byte, including any ``@digest`` it already carried. ``None``
+    is not "clear the digest": a target this call was not assigned to, or could not resolve, is
+    a target nothing observed just now, and a stamp already standing on it is a real prior
+    observation that this pass has no grounds to erase. Separators and anything after the
+    leading run — a trailing gloss, prose — are returned byte-for-byte unchanged; a value that
+    does not open with a code span is returned unchanged entirely.
     """
     matches = list(_SPAN.finditer(value))
     if not matches or value[:matches[0].start()].strip(" \t\r\n"):
@@ -77,7 +80,7 @@ def restamp_leading_code_spans(value: str, digest_for: Callable[[str], str | Non
         out.append(gap)
         inner = m.group("inner")
         digest = digest_for(inner)
-        out.append(f"`{inner}`" + (f" @{digest}" if digest else ""))
+        out.append(f"`{inner}` @{digest}" if digest else m.group(0))
         pos = m.end()
     out.append(value[pos:])
     return "".join(out)
@@ -102,9 +105,10 @@ def stamp_page(root: Path, features_root: Path, page: str, *,
     ``page`` is repo-relative, resolved against ``root``. A target this checkout cannot read —
     a missing file, or a ``repo://`` target naming a repository this call has no checkout for
     (:func:`ostler.provenance.checkout_for`, seeded from ``checkouts`` and the book's own
-    declared repository, :func:`ostler.source_snapshots.book_repository`) — is left unstamped
-    rather than guessed at; ``unstamped-citation``/``unreachable-citation`` is how doctor is
-    meant to surface that, not a fabricated digest.
+    declared repository, :func:`ostler.source_snapshots.book_repository`) — is left exactly as
+    it was rather than guessed at or cleared: whatever digest it already carried (or the
+    absence of one) stands, and ``unstamped-citation``/``unreachable-citation`` is how doctor is
+    meant to surface that it was never re-read, not a fabricated digest.
 
     ``line_ranges``, when given, is a list of ``(start, end)`` 1-based file-line pairs (*end*
     exclusive) — a node's own extent, heading to next heading. Only bullets whose leading line
@@ -164,7 +168,7 @@ def stamp_page(root: Path, features_root: Path, page: str, *,
                     return None
                 source_root = checkout
             if targets is not None and ref.path not in targets:
-                return None  # not this row's assignment: left exactly as it was, no digest
+                return None  # not this row's assignment: left exactly as it was, digest and all
             try:
                 source_text = (source_root / ref.path).read_text(encoding="utf-8")
             except OSError:

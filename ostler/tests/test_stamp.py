@@ -34,6 +34,22 @@ def test_restamp_leaves_a_target_unstamped_when_digest_for_returns_none():
     assert out == "`api/a.py`"
 
 
+def test_restamp_leaves_an_existing_digest_standing_when_digest_for_returns_none():
+    # None from digest_for means "this span was not observed just now", not "clear it" — a
+    # target left alone must keep whatever digest it already carried.
+    out = stamp.restamp_leading_code_spans("`api/a.py` @000000000000", lambda _: None)
+    assert out == "`api/a.py` @000000000000"
+
+
+def test_restamp_a_multi_target_bullet_leaves_the_unassigned_spans_digest_standing():
+    digests = {"api/a.py": "3f9a1c07b2e4"}
+    out = stamp.restamp_leading_code_spans(
+        "`api/a.py` @000000000000, `api/b.py` @111111111111",
+        lambda target: digests.get(target),
+    )
+    assert out == "`api/a.py` @3f9a1c07b2e4, `api/b.py` @111111111111"
+
+
 def test_restamp_overwrites_an_existing_digest():
     out = stamp.restamp_leading_code_spans(
         "`api/a.py` @000000000000", lambda _: "3f9a1c07b2e4",
@@ -219,6 +235,47 @@ def test_stamp_page_only_targets_leaves_a_sibling_citation_on_the_same_node_unto
     assert "`src/other.py::other` @" not in text
 
 
+def test_stamp_page_only_targets_leaves_an_already_stamped_sibling_digest_standing(
+    tmp_path: Path,
+):
+    # Both citations were already stamped by a prior turn; regrounding one of them must not
+    # erase the other's standing digest just because this pass never re-read it.
+    feature = _book(tmp_path, "`src/service.py::charge` @000000000000,"
+                              " `src/other.py::other` @111111111111")
+    _service(tmp_path)
+    other = tmp_path / "src/other.py"
+    other.write_text("def other():\n    pass\n", encoding="utf-8")
+
+    lines = feature.read_text(encoding="utf-8").splitlines()
+    heading_line = next(i for i, line in enumerate(lines, start=1) if line == "# Charge")
+    node_range = (heading_line, len(lines) + 1)
+
+    result = stamp.stamp_page(
+        tmp_path, tmp_path, "docs/features/billing/charge.md",
+        line_ranges=[node_range],
+        only_targets={node_range: frozenset({"src/service.py"})},
+    )
+
+    expected = stamp.digest_file(SERVICE)
+    assert result.stamped == 1
+    text = feature.read_text(encoding="utf-8")
+    assert f"`src/service.py::charge` @{expected}" in text
+    assert "`src/other.py::other` @111111111111" in text
+
+
+def test_stamp_page_leaves_a_stamped_target_whose_file_was_deleted_standing(tmp_path: Path):
+    # A file that vanished since the last stamp is what dangling-code-ref/unreachable-citation
+    # surface — restamping the node must not also strip the prior, real observation.
+    feature = _book(tmp_path, "`src/service.py::charge` @000000000000")
+
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+
+    assert result.stamped == 0
+    assert "src/service.py::charge" in result.unresolved
+    assert not result.changed
+    assert "`src/service.py::charge` @000000000000" in feature.read_text(encoding="utf-8")
+
+
 def test_cli_stamp_node_file_pair_scopes_the_restamp_to_one_citation(
     tmp_path: Path, capsys,
 ):
@@ -299,6 +356,30 @@ def test_stamp_targets_scopes_the_restamp_to_the_given_node_and_file(tmp_path: P
     text = (tmp_path / "docs/features/billing/charge.md").read_text(encoding="utf-8")
     assert "`src/service.py::charge` @" in text
     assert "`src/other.py::other` @" not in text
+
+
+def test_stamp_targets_leaves_a_nodes_other_stamped_citations_standing(tmp_path: Path):
+    # The turn-finalize repro: a node with several already-stamped citations gets one pair
+    # restamped. Only the assigned bullet's digest may change — the rest go from stamped to
+    # unstamped-citation if their `@digest` is silently dropped here.
+    _book(
+        tmp_path,
+        "`src/service.py::charge` @000000000000, `src/other.py::other` @111111111111",
+    )
+    _service(tmp_path)
+    (tmp_path / "src/other.py").write_text("def other():\n    pass\n", encoding="utf-8")
+    graph = load(tmp_path)
+
+    results = stamp.stamp_targets(
+        graph, tmp_path, [("docs/features/billing/charge.md", "src/service.py")],
+    )
+
+    assert len(results) == 1
+    assert results[0].stamped == 1
+    expected = stamp.digest_file(SERVICE)
+    text = (tmp_path / "docs/features/billing/charge.md").read_text(encoding="utf-8")
+    assert f"`src/service.py::charge` @{expected}" in text
+    assert "`src/other.py::other` @111111111111" in text
 
 
 def test_stamp_targets_leaves_a_sibling_nodes_citation_of_the_same_file_untouched(
