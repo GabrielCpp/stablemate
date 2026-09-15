@@ -1,9 +1,8 @@
 """What `check_fixtures.py` can see that a run cannot.
 
 Each case builds a whole app tree rather than stubbing the declaration reader, because the
-thing under test is agreement between three places — `agents.yml`, `docs/specs/_fixtures/`
-and the plans — and a stub that hands the guard a parsed declaration has already assumed
-the half most likely to drift.
+thing under test is agreement between two places — `agents.yml` and the plans — and a stub
+that hands the guard a parsed declaration has already assumed the half most likely to drift.
 """
 
 from __future__ import annotations
@@ -36,44 +35,13 @@ def guard() -> Any:
     return module
 
 
-def _app(root: Path, agents: str, *, modules: dict[str, str] = {}, plan: str = PLAN) -> Path:
+def _app(root: Path, agents: str, *, plan: str = PLAN) -> Path:
     """One benchmark-app tree: an `agents.yml`, a story, and whatever fixtures are asked for."""
     specs = root / "docs" / "specs"
     (specs / "story").mkdir(parents=True)
     (root / "agents.yml").write_text(agents, encoding="utf-8")
     (specs / "story" / "qa_plan.py").write_text(plan, encoding="utf-8")
-    for name, body in modules.items():
-        (specs / "_fixtures").mkdir(exist_ok=True)
-        (specs / "_fixtures" / f"{name}.py").write_text(body, encoding="utf-8")
     return root
-
-
-def test_a_declared_module_with_a_file_behind_it_is_clean(guard: Any, tmp_path: Path) -> None:
-    app = _app(
-        tmp_path / "acme",
-        "qa:\n  tools:\n    - python3\n  fixture_modules:\n    - disk\n",
-        modules={"disk": "SNIPPET = ''\n"},
-    )
-    assert guard._check_app(app) == []
-
-
-def test_a_module_on_disk_that_nobody_declared_is_reported(guard: Any, tmp_path: Path) -> None:
-    """The failure no run can see: every plan that imported it was repointed or deleted."""
-    app = _app(
-        tmp_path / "acme",
-        "qa:\n  tools:\n    - python3\n",
-        modules={"disk": "SNIPPET = ''\n"},
-    )
-    problems = guard._check_app(app)
-    assert len(problems) == 1
-    assert "_fixtures/disk.py is not declared" in problems[0]
-
-
-def test_a_declaration_with_no_file_behind_it_is_reported(guard: Any, tmp_path: Path) -> None:
-    app = _app(tmp_path / "acme", "qa:\n  tools:\n    - python3\n  fixture_modules:\n    - disk\n")
-    problems = guard._check_app(app)
-    assert len(problems) == 1
-    assert "'disk' is declared but there is no" in problems[0]
 
 
 def test_a_fixture_naming_a_tool_the_repo_never_opted_into_is_reported(

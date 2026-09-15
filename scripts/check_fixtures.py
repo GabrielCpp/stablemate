@@ -2,16 +2,12 @@
 """Guard the declared-fixture rule across the benchmark corpus. Wired into `make test`.
 
 A QA fixture is held to the bar a test is held to: it is named, it is declared, and the
-declaration is what admits it. `ostler qa lint` already enforces the import half — a plan
-may import `_fixtures.<name>` only for a name in `agents.yml`'s `qa: {fixture_modules:}`
-— and `ostler.qa.fixtures.preflight_errors` already enforces the declaration half at the
-top of a run. Both are per-run, per-plan checks, and that is exactly what leaves a gap.
+declaration is what admits it. `ostler.qa.fixtures.preflight_errors` already enforces the
+declaration half at the top of a run — but that is a per-run, per-app check, and that is
+exactly what leaves a gap.
 
 The three failures below are all invisible to a run:
 
-- **A fixture module on disk that nobody declared.** Every plan importing it was deleted
-  or repointed, so no lint pass ever reads its name, and the file sits there looking like
-  shared code while being unreachable. The next author copies from it.
 - **A declaration with no file behind it**, or one naming a tool the repo never opted
   into. `preflight_errors` catches these — but only for the app a run happens to be
   materializing. Four of the five corpus apps are untouched by any given round.
@@ -43,13 +39,7 @@ import json
 import sys
 from pathlib import Path
 
-from ostler.qa.fixtures import (
-    FIXTURES_DIRNAME,
-    declared,
-    declared_modules,
-    preflight_errors,
-    referenced,
-)
+from ostler.qa.fixtures import declared, preflight_errors, referenced
 from workhorse_workflows.coder.shared.schemas.dev import lift_fixture
 
 #: Where the benchmark apps live. The only trees in this repo that carry QA plans at all:
@@ -63,18 +53,7 @@ def _check_app(root: Path) -> list[str]:
     if not spec_root.is_dir():
         return []
 
-    problems = [f"{root.name}: {message}" for message in preflight_errors(root, spec_root=spec_root)]
-
-    modules = declared_modules(root)
-    directory = spec_root / FIXTURES_DIRNAME
-    if directory.is_dir():
-        problems.extend(
-            f"{root.name}: {FIXTURES_DIRNAME}/{path.name} is not declared — add "
-            f"{path.stem!r} to agents.yml's `qa: {{fixture_modules: [...]}}`, or delete it. "
-            "An undeclared module is unreachable: no plan may import it."
-            for path in sorted(directory.glob("*.py"))
-            if path.stem not in modules and path.name != "__init__.py"
-        )
+    problems = [f"{root.name}: {message}" for message in preflight_errors(root)]
 
     specs, _errors = declared(root)
     problems.extend(_story_declaration_problems(root, spec_root, specs))
@@ -84,7 +63,7 @@ def _check_app(root: Path) -> list[str]:
         problems.extend(
             f"{root.name}/{story}: `qa.fixture({name!r})` names a fixture this repo has "
             f"not declared. Declared here: {known}"
-            for name in sorted(referenced(plan)[0])
+            for name in sorted(referenced(plan))
             if name not in specs
         )
     return problems
