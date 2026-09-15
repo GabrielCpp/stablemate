@@ -85,6 +85,7 @@ BASE_SKILL_FAMILIES = {
     "ui",
     "code-review",
     "grill",
+    "brainstorm",
     "diagnosing-bugs",
     "root-cause",
     "vertical-slicing",
