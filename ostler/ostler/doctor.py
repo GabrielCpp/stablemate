@@ -1055,7 +1055,7 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
                 f.append(Finding(
                     "warn", "unstamped-citation",
                     f"{node.id}: `code:` target '{ref}' carries no `@digest` stamp",
-                    path=rel, line=node.line, ref=ref,
+                    path=rel, line=node.line, ref=ref, node=node.id,
                     suggestion="stamped by `ostler stamp --from-catalog` (migration) or when "
                                "a turn that edits this node commits"))
             else:

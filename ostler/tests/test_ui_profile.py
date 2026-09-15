@@ -216,6 +216,10 @@ def test_an_unstamped_code_ref_is_a_warning(repo: Path):
     report = _concept_report(repo, "groom/groom/diff.py::Diff")
     assert "unstamped-citation" in codes(report, "warn")
     assert not (codes(report) & {"stale-citation"})
+    # `stamp_turn`'s NEW-citation pass depends on this: it identifies stampable targets
+    # by which node a still-unstamped citation belongs to.
+    finding = next(f for f in report.findings if f.code == "unstamped-citation")
+    assert finding.node
 
 
 def test_a_stamped_code_ref_whose_file_changed_is_stale(repo: Path):
