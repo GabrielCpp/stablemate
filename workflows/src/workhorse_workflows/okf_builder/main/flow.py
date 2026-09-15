@@ -629,7 +629,7 @@ class OkfBuilder(Workflow):
         )
         self.call(
             stamp_turn, self.ctx.repo_root, self.ctx.features_root, pre_turn_sha,
-            item_kind, item_context,
+            item_kind, item_context, result.doc_status,
         )
         self.call(
             commit_turn, self.ctx.repo_root, self.ctx.features_root,

@@ -109,13 +109,20 @@ def stamp_turn(
     pre_turn_sha: str,
     item_kind: str = "",
     item_context: str = "",
+    doc_status: str = "",
 ) -> Stamped:
     """Stamp exactly the `@digest` targets this turn earned, gated by the turn's own errors.
 
     Two sources of stampable targets, both scoped to what *this* turn actually resolved.
     A `fix:stale-citation` row restamps only the `(node, file)` pairs it was assigned —
-    never a node's other `code:` targets, which no row vouched for. Any node this turn
-    touched also gets its still-unstamped targets, read off `doctor`'s
+    and only when the turn's own `doc_status` says it finished (the `documented` verdict,
+    or unstated — the same convention `advance_watermark` gates its own regrounding on).
+    A `partial` or `skipped` turn never re-read the citation, so marking it fresh would
+    hide that gap; the row simply comes back on the next join, same as an unadvanced
+    watermark does. New-citation stamping below stays unconditional even on such a turn:
+    it stamps only targets `doctor` already found `unstamped-citation` (never an error),
+    on nodes the turn's own diff shows it wrote — doctor gates that claim on its own.
+    Any node this turn touched also gets its still-unstamped targets, read off `doctor`'s
     `unstamped-citation` findings on the pages the book-pathspec diff (`HEAD` at turn
     start vs. the working tree now, the same boundary `commit_turn` relies on) shows this
     turn edited. Either way a node carrying an error finding of its own — from this same
@@ -137,7 +144,11 @@ def stamp_turn(
         } if pre_turn_sha else set()
 
         restamp_pairs: list[tuple[str, str]] = []
-        if item_kind == "fix:stale-citation" and item_context:
+        if (
+            item_kind == "fix:stale-citation"
+            and item_context
+            and doc_status in ("", "documented")
+        ):
             try:
                 context = json.loads(item_context)
             except (json.JSONDecodeError, TypeError):

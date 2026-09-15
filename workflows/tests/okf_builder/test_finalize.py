@@ -92,6 +92,26 @@ def test_restamp_row_stamps_only_its_own_pair(
     assert "@" not in other_page.read_text()
 
 
+def test_a_partial_turn_does_not_restamp_its_regrounding_row(
+    booked: Path, logger: logging.Logger
+) -> None:
+    """A `partial` turn never re-read the citation; marking it fresh would hide that gap.
+
+    The row simply comes back on the next join, the same way an unadvanced watermark
+    does for `advance_watermark`.
+    """
+    pre_turn_sha = head_sha(booked)
+    context = json.dumps({"file": "acme/service.py", "nodes": [CHARGE_PAGE]})
+
+    result = stamp_turn(
+        logger, str(booked), _features_root(booked), pre_turn_sha,
+        "fix:stale-citation", context, "partial",
+    )
+
+    assert result.stamped == 0
+    assert "@" not in (booked / CHARGE_PAGE).read_text()
+
+
 def test_a_node_with_its_own_error_is_withheld(
     booked: Path, logger: logging.Logger, write: Callable[[Path, str], Path]
 ) -> None:
