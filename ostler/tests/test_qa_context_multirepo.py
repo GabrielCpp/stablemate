@@ -100,16 +100,16 @@ title: Create invoice
         }
     ]
     assert not packet["healthFindings"]
-    assert source_freshness(load(docs), packet, {"api-service": source})[0]["status"] == "fresh"
+    assert source_freshness(packet, {"api-service": source})[0]["status"] == "fresh"
 
     _git(source, "add", ".")
     _git(source, "commit", "-m", "record story work")
-    assert source_freshness(load(docs), packet, {"api-service": source})[0]["status"] == "fresh"
+    assert source_freshness(packet, {"api-service": source})[0]["status"] == "fresh"
 
     implementation.write_text(
         "def create_invoice():\n    return 'newer'\n", encoding="utf-8"
     )
-    freshness = source_freshness(load(docs), packet, {"api-service": source})[0]
+    freshness = source_freshness(packet, {"api-service": source})[0]
     assert freshness["status"] == "stale"
     assert "scoped source content differs" in freshness["reasons"][-1]
     report = doctor.cmd_doctor(load(docs)).data
@@ -123,7 +123,7 @@ title: Create invoice
         repositories=(repository,),
     ).data
     (source / "src/helper.py").write_text("value = 1\n", encoding="utf-8")
-    freshness = source_freshness(load(docs), refreshed, {"api-service": source})[0]
+    freshness = source_freshness(refreshed, {"api-service": source})[0]
     assert freshness["status"] == "stale"
 
 

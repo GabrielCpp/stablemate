@@ -9,7 +9,7 @@ from typing import Any
 from ostler import path as path_mod, refs
 from ostler.model import Graph, Story, UINode
 from ostler.qa.source_context import SourceRepository, SourceScope
-from ostler.source_snapshots import load_catalog, resolved_sha, source_fingerprint
+from ostler.source_snapshots import resolved_sha, source_fingerprint
 
 CONTEXT_FILE = "qa-okf-context.json"
 
@@ -87,16 +87,14 @@ def _context(graph: Graph, story_ref: str) -> tuple[dict[str, Any] | None, str]:
 
 
 def source_freshness(
-    graph: Graph, packet: dict[str, Any], checkouts: dict[str, Path]
+    packet: dict[str, Any], checkouts: dict[str, Path]
 ) -> list[dict[str, Any]]:
-    """Compare stored packet/catalog fingerprints with explicitly supplied checkouts."""
-    catalog = load_catalog(graph.root)
+    """Compare stored packet fingerprints with explicitly supplied checkouts."""
     rows: list[dict[str, Any]] = []
     for stored in packet.get("repositories", []):
         identifier = str(stored.get("id", ""))
         reasons: list[str] = []
         checkout = checkouts.get(identifier)
-        snapshot = catalog.repository(identifier) if catalog else None
         packet_fingerprint = str(stored.get("sourceFingerprint", ""))
         if checkout is None:
             rows.append(
@@ -109,10 +107,6 @@ def source_freshness(
             continue
         if not packet_fingerprint:
             reasons.append("context packet predates source fingerprints")
-        if snapshot is None or not snapshot.source_fingerprint:
-            reasons.append("source catalog predates source fingerprints")
-        elif packet_fingerprint and snapshot.source_fingerprint != packet_fingerprint:
-            reasons.append("source catalog and context packet fingerprints disagree")
         try:
             repository = SourceRepository(
                 id=identifier,
@@ -192,7 +186,7 @@ def story_provenance(
             "directNodes": (packet or {}).get("directNodes", []),
             "contracts": (packet or {}).get("contracts", []),
             "journeys": (packet or {}).get("journeys", []),
-            "freshness": source_freshness(graph, packet or {}, checkouts),
+            "freshness": source_freshness(packet or {}, checkouts),
             "warnings": warnings,
         }
     ]
