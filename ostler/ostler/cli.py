@@ -1342,8 +1342,8 @@ def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
 def _cmd_backfill(graph, args) -> int:
     """`ostler backfill plan` / `ostler backfill snapshot`.
 
-    The impure half — the git diff, the doctor run, reading the inventory and the catalog —
-    lives here so `backfill.plan` itself stays a function of its arguments.
+    The impure half — the git diff, the doctor run, reading the inventory — lives here so
+    `backfill.plan` itself stays a function of its arguments.
     """
     if args.op == "snapshot":
         written = source_snapshots.write_catalog(graph, ())
@@ -1355,15 +1355,10 @@ def _cmd_backfill(graph, args) -> int:
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"ostler backfill: {exc}", file=sys.stderr)
         return 2
-    try:
-        catalog = source_snapshots.load_catalog(graph.root)
-    except (OSError, ValueError) as exc:
-        print(f"ostler backfill: unreadable source catalog: {exc}", file=sys.stderr)
-        return 2
 
     report = doctor.run(graph, check_schema=False)
     result = backfill_mod.plan(
-        graph, data, catalog,
+        graph, data,
         surface=args.surface,
         waivers=coverage.load_waivers(args.waivers),
         findings=report.findings,

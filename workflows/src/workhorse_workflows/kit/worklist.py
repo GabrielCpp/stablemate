@@ -13,17 +13,18 @@ ostler import before node one, and the CLI-presence fallbacks were deliberately
 deleted (``ostler-import-is-a-run-precondition``) — shelling out would reintroduce
 exactly the seam that was closed.
 
-**The set is four joins, in drain order.**
+**The set is two joins, in drain order.**
 
-* ``dangling`` — doctor codes ``dangling-code-ref``, ``dangling-repository-ref``,
-  ``missing-code-symbol``. The checkpoint's channel, here surfaced as ``fix:`` rows.
-* ``moved`` — a cited symbol is gone from the path the citation names and present
-  *unchanged* elsewhere. Re-grounding work, not re-documenting work.
-* ``drifted`` — a cited symbol's bytes disagree with the catalog. Re-grounding work
-  the agent reads against the source, distinct from a missing symbol.
+* ``dangling`` — doctor codes ``dangling-code-ref``, ``missing-code-symbol``. The
+  checkpoint's channel, here surfaced as ``fix:`` rows. A cited symbol's bytes
+  disagreeing with the source is doctor's ``stale-citation`` finding instead,
+  queued by ``coverage._regrounding`` — a different mechanism, not this join.
 * ``uncovered`` — units in the inventory nothing cites. The builder surfaces the
   list; the recheck agent adjudicates which are real work, which are helpers, and
-  which are deliberate non-units.
+  which are deliberate non-units. A symbol that moved to another path is folded in
+  here too: ``backfill.plan`` suppresses the new location's ``uncovered`` row when
+  its symbol name uniquely matches a ``dangling`` row already surfaced, so the one
+  edit reads as one finding.
 
 A *trim* joins them: a path the catalog carries that the tree no longer does. Its
 citations are dangling in a different way (the file is gone), so the bullets are
@@ -93,8 +94,8 @@ def _path_set(paths: Sequence[str] | None) -> set[str] | None:
 def _stale_unit_to_row(unit: backfill_mod.StaleUnit) -> WorklistRow | None:
     """Translate a ``backfill.plan`` row to a worklist row, or ``None`` to skip.
 
-    A ``moved``/``drifted`` row carries a node list — every node that cited the unit —
-    so a single stale citation fans out into one row per citing node. The first citing
+    A ``dangling`` row carries a node list — every node that cited the unit — so a
+    single dangling citation fans out into one row per citing node. The first citing
     node is the worklist ``target``; the rest ride in ``context.nodes`` so the turn can
     see them without rereading the join.
 
@@ -106,10 +107,7 @@ def _stale_unit_to_row(unit: backfill_mod.StaleUnit) -> WorklistRow | None:
         return None
     if not unit.nodes:
         return None
-    if unit.reason in {"moved", "drifted"}:
-        kind = "fix:stale-citation"
-    else:
-        kind = f"fix:{unit.reason}"
+    kind = f"fix:{unit.reason}"
     target = unit.nodes[0]
     return {
         "kind": kind,
@@ -117,7 +115,6 @@ def _stale_unit_to_row(unit: backfill_mod.StaleUnit) -> WorklistRow | None:
         "context": json.dumps({
             "code": kind.removeprefix("fix:"),
             "citation": unit.unit,
-            "target": unit.target,
             "evidence": unit.evidence,
             "nodes": list(unit.nodes),
             "grounded": True,
@@ -520,7 +517,7 @@ def build_worklist(
 
     try:
         plan = backfill_mod.plan(
-            graph, inventory, catalog,
+            graph, inventory,
             surface=surface, waivers=waivers,
             findings=doctor_mod.run(graph, check_schema=False).findings,
             scope=scope,

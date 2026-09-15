@@ -169,47 +169,7 @@ def test_a_booked_repo_with_no_drift_is_complete(
     assert all(r["kind"] != "trim-bullet" for r in result.rows)
 
 
-# --- drifted, moved, dangling ----------------------------------------------------
-
-
-def test_a_drifted_symbol_queues_a_stale_citation_row(
-    booked_repo: Path, write: Callable[[Path, str], Path]
-) -> None:
-    """The inversion the join exists for: covered by the citation, stale against the bytes.
-
-    Both functions get cited so the catalog's watermark is written at the first scan,
-    and the second scan can tell that *only* ``charge`` drifted while ``refund`` did
-    not — the per-symbol granularity is the whole reason the watermark exists.
-    """
-    refund_path = booked_repo / "docs/features/acme/concepts/refund.md"
-    refund_path.write_text(CHARGE_CONCEPT.replace("charge", "refund").replace("Charge", "Refund"),
-                           encoding="utf-8")
-
-    features = booked_repo / "docs/features/acme"
-    inv = features / ".source-inventory.json"
-    inv.parent.mkdir(parents=True, exist_ok=True)
-
-    from workhorse_workflows.okf_builder.main.nodes.coverage import (
-        compute_coverage, inventory_source,
-    )
-    import logging
-    logger = logging.getLogger("test")
-    inventory_source(logger, str(booked_repo / "acme"), str(inv), "", str(booked_repo))
-    coverage = compute_coverage(
-        logger, str(booked_repo), str(features), SERVICE, str(inv),
-    )
-    assert coverage.coverage_complete
-
-    # Now drift the symbol: the function's body changed.
-    (booked_repo / "acme/service.py").write_text(
-        SOURCE.replace("return amount", "return amount * 100"), encoding="utf-8",
-    )
-
-    result = build_worklist(booked_repo, features, SERVICE)
-    rows = [r for r in result.rows if r["kind"] == "fix:stale-citation"]
-    assert rows
-    targets = {r["target"] for r in rows}
-    assert "docs/features/acme/concepts/charge.md" in targets
+# --- dangling ----------------------------------------------------------------------
 
 
 def test_a_missing_symbol_queues_a_dangling_row(

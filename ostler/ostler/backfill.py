@@ -7,21 +7,25 @@ drift, and the drift was invisible — a book could report every unit covered wh
 citations described a commit from months earlier, because nothing compared what the book said
 about a symbol with what that symbol currently *is*.
 
-The stale set is four sets over four on-disk inputs, and every lifecycle event is the same
-computation with a different starting watermark:
+The stale set is two sets over two on-disk inputs, and every lifecycle event is the same
+computation:
 
 ``uncovered``
     in the inventory, cited by no node. New code, and the only set a first fill produces.
-``drifted``
-    cited, and the catalog's digest for it disagrees with the file's. The node describes a
-    symbol that has since been rewritten.
-``moved``
-    cited, gone from the path the citation names, and present *unchanged* somewhere else.
-    Re-grounding work, not re-documenting work — the distinction a git rename detector makes
-    and a coverage join cannot.
 ``dangling``
     doctor already says the citation points at nothing. Carried here so one command answers
     "what does this book owe" rather than two.
+
+A cited symbol whose *bytes* have changed is `doctor`'s `stale-citation` finding, not this
+module's: a per-citation `@digest` stamp comparison against a live checkout, not a snapshot
+this file used to keep and compare against. A cited symbol that *moved* to another path
+degrades to the same `dangling` row a renamed-away symbol always got — its old citation names
+code that is not there — and the coverage join would otherwise also raise the new location as
+`uncovered`, reporting the one edit as two. `_already_documented_elsewhere` is the guard
+against that double-count: it drops an `uncovered` unit whose symbol name is exactly the
+symbol part of a `dangling` citation this book already carries, but only when that name is
+unique across the inventory — a name that recurs elsewhere is not the moved symbol, and hiding
+it would bury real uncovered work behind a coincidence.
 
 Everything here is a function of its arguments. The git diff, the doctor run and the file
 walk all happen in the caller (`cli`), because the property the three implementations this
@@ -31,25 +35,18 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from ostler import coverage as coverage_mod
-from ostler import inventory as inventory_mod
 from ostler import refs as refs_mod
 from ostler.doctor import Finding
 from ostler.model import Graph
-from ostler.source_snapshots import SELF_REPOSITORY, SourceCatalog, SourceFile
 
-#: The doctor codes that say a citation points at nothing. `dangling-repository-ref` is here
-#: too: from the book's side it is the same defect — a `code:` bullet naming code that this
-#: repository cannot show you — and the remedy is the same edit.
-DANGLING_CODES = frozenset({
-    "dangling-code-ref", "dangling-repository-ref", "missing-code-symbol",
-})
+#: The doctor codes that say a citation points at nothing.
+DANGLING_CODES = frozenset({"dangling-code-ref", "missing-code-symbol"})
 
 #: Ordered by how much work the row implies, cheapest first, so a rendered plan reads as a
 #: queue rather than a bag.
-REASON_ORDER = ("dangling", "moved", "drifted", "uncovered")
+REASON_ORDER = ("dangling", "uncovered")
 
 
 @dataclass(frozen=True)
@@ -60,15 +57,11 @@ class StaleUnit:
     unit: str
     #: One of `REASON_ORDER`.
     reason: str
-    #: What the reason is grounded in — the new path for a `moved`, the doctor message for a
-    #: `dangling`, the digests for a `drifted`. Never a remedy: the plan states the finding.
+    #: What the reason is grounded in — the doctor message for a `dangling`. Never a remedy:
+    #: the plan states the finding.
     evidence: str = ""
     #: The book nodes citing this unit. Empty for `uncovered`, which is cited by nobody.
     nodes: tuple[str, ...] = ()
-    #: For a `moved` row, where the symbol lives now — the ref the citation should name. It
-    #: is what lets the plan drop the `uncovered` row the new location would otherwise raise:
-    #: the symbol is documented, and the bullet pointing at it is what is out of date.
-    target: str = ""
 
     @property
     def path(self) -> str:
@@ -106,55 +99,11 @@ class BackfillPlan:
             "counts": {reason: len(rows) for reason, rows in self.by_reason().items()},
             "units": [
                 {"unit": u.unit, "reason": u.reason, "evidence": u.evidence,
-                 "nodes": list(u.nodes), "target": u.target}
+                 "nodes": list(u.nodes)}
                 for u in self.units
             ],
             "errors": list(self.errors),
         }
-
-
-def _snapshot_files(catalog: SourceCatalog | None) -> dict[str, SourceFile]:
-    """The graph's own repository's snapshot, by path. Empty means "no watermark yet"."""
-    if catalog is None:
-        return {}
-    snapshot = catalog.repository(SELF_REPOSITORY)
-    if snapshot is None:
-        return {}
-    return {item.path: item for item in snapshot.files}
-
-
-class _CurrentDigests:
-    """Digests of the tree as it is now, read once per file and only when asked for.
-
-    A book cites a small fraction of a source tree, and the `moved` search below needs a
-    reverse index over the *inventory* rather than the citations — so the whole-tree read is
-    deferred until something is actually missing from where it was cited.
-    """
-
-    def __init__(self, root: Path) -> None:
-        self._root = root
-        self._by_path: dict[str, dict[str, str]] = {}
-        self._by_digest: dict[str, tuple[str, str]] | None = None
-
-    def of(self, path: str) -> dict[str, str]:
-        cached = self._by_path.get(path)
-        if cached is None:
-            try:
-                cached = dict(inventory_mod.symbol_digests_at(self._root / path))
-            except (OSError, UnicodeDecodeError):
-                cached = {}
-            self._by_path[path] = cached
-        return cached
-
-    def locate(self, digest: str, paths: Iterable[str]) -> tuple[str, str] | None:
-        """Where *digest* lives now, searching *paths*. `None` when it lives nowhere."""
-        if self._by_digest is None:
-            index: dict[str, tuple[str, str]] = {}
-            for path in paths:
-                for name, value in self.of(path).items():
-                    index.setdefault(value, (path, name))
-            self._by_digest = index
-        return self._by_digest.get(digest)
 
 
 def _uncovered(join: dict) -> list[StaleUnit]:
@@ -165,8 +114,7 @@ def _uncovered(join: dict) -> list[StaleUnit]:
     ]
 
 
-def _dangling(findings: Iterable[Finding], cited: dict[str, list[str]],
-              claimed: set[str]) -> list[StaleUnit]:
+def _dangling(findings: Iterable[Finding], cited: dict[str, list[str]]) -> list[StaleUnit]:
     """Doctor's verdict on citations that point at nothing.
 
     Takes the findings rather than a graph so the plan stays a pure function; `cli` runs
@@ -175,13 +123,9 @@ def _dangling(findings: Iterable[Finding], cited: dict[str, list[str]],
     Only refs this book actually cites are kept. Doctor reads the whole graph, and a plan
     scoped to one surface that reports another book's broken bullets is a plan whose count
     cannot be acted on by the run that asked for it.
-
-    A ref *claimed* by a `moved` row is dropped. Doctor is right that the citation points at
-    nothing, but "this symbol is now over there" is the more useful sentence and it comes with
-    the destination; two rows for one bullet would have an editor read the weaker one first.
     """
     rows: list[StaleUnit] = []
-    seen: set[str] = set(claimed)
+    seen: set[str] = set()
     for finding in findings:
         if finding.code not in DANGLING_CODES or not finding.ref or finding.ref in seen:
             continue
@@ -195,62 +139,37 @@ def _dangling(findings: Iterable[Finding], cited: dict[str, list[str]],
     return rows
 
 
-def _watermark_rows(cited: dict[str, list[str]], stored: dict[str, SourceFile],
-                    current: _CurrentDigests,
-                    inventory_paths: Sequence[str]) -> list[StaleUnit]:
-    """`drifted` and `moved`, from the citations the catalog has a watermark for.
+def _symbol_of(unit: str) -> str:
+    """The bare symbol name a `code:` target names, or `""` for a whole-file target."""
+    try:
+        return refs_mod.parse_code_ref(unit).symbol or ""
+    except ValueError:
+        return unit.rsplit("::", 1)[-1] if "::" in unit else ""
 
-    A citation with no stored digest yields nothing. That is the first-fill case and the
-    pre-watermark case, and both are already answered: an undocumented symbol is `uncovered`,
-    and a documented one whose watermark was never taken has nothing to disagree with. A
-    watermark says "this changed"; its absence never says "this did not".
 
-    Cross-repository citations are skipped. Their current digest lives in a checkout this
-    process was not given, so the only honest answer is that the catalog is the newest thing
-    here — `provenance.source_freshness` is the check that covers them.
+def _dangling_symbols(dangling: Iterable[StaleUnit]) -> set[str]:
+    return {symbol for row in dangling if (symbol := _symbol_of(row.unit))}
+
+
+def _already_documented_elsewhere(
+    uncovered: Iterable[StaleUnit], dangling_symbols: set[str], symbol_counts: dict[str, int],
+) -> list[StaleUnit]:
+    """Drop an `uncovered` row whose symbol is a `dangling` citation's symbol, moved not lost.
+
+    Without a stored watermark, a symbol that moved from file A to file B is invisible as a
+    move — A's old citation surfaces as `dangling` on its own, and B's copy is indistinguishable
+    from code the book never covered. Reporting both is reporting the same edit twice, so a row
+    is dropped here only when its symbol name is *unique* across the inventory: a name that
+    recurs elsewhere is not provably the moved symbol, and suppressing it would bury real
+    uncovered work behind a coincidence.
     """
-    rows: list[StaleUnit] = []
-    for ref in sorted(cited):
-        try:
-            parsed = refs_mod.parse_code_ref(ref)
-        except ValueError:
+    kept: list[StaleUnit] = []
+    for row in uncovered:
+        symbol = _symbol_of(row.unit)
+        if symbol and symbol in dangling_symbols and symbol_counts.get(symbol, 0) <= 1:
             continue
-        if parsed.repository != SELF_REPOSITORY:
-            continue
-        snapshot = stored.get(parsed.path)
-        if snapshot is None:
-            continue
-        nodes = tuple(cited[ref])
-        if not parsed.symbol:
-            live = current.of(parsed.path)
-            if snapshot.declarations and live and _file_digest(snapshot) != _joined(live):
-                rows.append(StaleUnit(unit=ref, reason="drifted",
-                                      evidence="the file's declarations changed", nodes=nodes))
-            continue
-        was = snapshot.digest_of(parsed.symbol)
-        if not was:
-            continue
-        now = current.of(parsed.path).get(parsed.symbol)
-        if now is None:
-            found = current.locate(was, inventory_paths)
-            if found is not None:
-                target = f"{found[0]}::{found[1]}"
-                rows.append(StaleUnit(unit=ref, reason="moved", target=target,
-                                      evidence=f"unchanged, now at {target}", nodes=nodes))
-            continue
-        if now != was:
-            rows.append(StaleUnit(unit=ref, reason="drifted",
-                                  evidence=f"{was[:12]} → {now[:12]}", nodes=nodes))
-    return rows
-
-
-def _joined(digests: dict[str, str]) -> str:
-    return "\0".join(f"{name}\0{digests[name]}" for name in sorted(digests))
-
-
-def _file_digest(snapshot: SourceFile) -> str:
-    return "\0".join(f"{item.name}\0{item.content_sha256}"
-                     for item in sorted(snapshot.declarations, key=lambda i: i.name))
+        kept.append(row)
+    return kept
 
 
 def _in_scope(unit: StaleUnit, scope: Sequence[str]) -> bool:
@@ -266,29 +185,27 @@ def _in_scope(unit: StaleUnit, scope: Sequence[str]) -> bool:
     return True
 
 
-def plan(graph: Graph, inventory: dict, catalog: SourceCatalog | None, *,
+def plan(graph: Graph, inventory: dict, *,
          surface: str | None = None, waivers: dict[str, str] | None = None,
          findings: Iterable[Finding] = (), scope: Sequence[str] = ()) -> BackfillPlan:
     """The stale set: what the book owes the code at this moment.
 
-    *inventory* is the artifact `ostler coverage` reads, *catalog* the watermark
-    `sources.json` holds, *findings* doctor's own.
+    *inventory* is the artifact `ostler coverage` reads, *findings* doctor's own.
     """
-    root = Path(str(inventory.get("repoRoot") or graph.root))
     cited = coverage_mod.citations(graph, surface)
     join = coverage_mod.compute(inventory, cited, waivers or {})
-    current = _CurrentDigests(root)
-    paths = sorted({str(unit.get("path", "")) for unit in inventory["units"]} - {""})
 
-    watermarked = _watermark_rows(cited, _snapshot_files(catalog), current, paths)
-    relocated = {row.target for row in watermarked if row.reason == "moved"}
-    rows = (
-        _dangling(findings, cited, {row.unit for row in watermarked})
-        + watermarked
-        # A symbol a `moved` row already points at is documented — by a bullet naming its old
-        # path. The remedy is that bullet, not a second node describing the same code.
-        + [row for row in _uncovered(join) if row.unit not in relocated]
-    )
+    dangling_rows = _dangling(findings, cited)
+    dangling_symbols = _dangling_symbols(dangling_rows)
+    symbol_counts: dict[str, int] = {}
+    for unit in inventory["units"]:
+        symbol = str(unit.get("symbol") or "")
+        if symbol:
+            symbol_counts[symbol] = symbol_counts.get(symbol, 0) + 1
+    uncovered_rows = _already_documented_elsewhere(_uncovered(join), dangling_symbols,
+                                                    symbol_counts)
+
+    rows = dangling_rows + uncovered_rows
 
     order = {reason: n for n, reason in enumerate(REASON_ORDER)}
     kept = sorted(
