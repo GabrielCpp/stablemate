@@ -97,6 +97,17 @@ def worklist_path(root: Path, service: str, scope_id: str = "") -> Path:
     return build_dir(root) / f"{name}{suffix}.worklist.json"
 
 
+def ledger_path(root: Path, service: str) -> Path:
+    """The result ledger: run state beside the worklist, not a document.
+
+    One file per service, not per scope — a targeted re-run and a bulk run against the
+    same service are the same claims under the same fingerprints, and splitting the
+    ledger by `scope_id` the way `worklist_path` does would make a scoped run blind to
+    what a bulk run already recorded for the same claim.
+    """
+    return build_dir(root) / f"{service or 'all'}.ledger.json"
+
+
 def operator_context_path(root: Path, service: str, scope_id: str = "") -> Path:
     """Where a budget stop parks its questions, and where an answer resumes the run.
 
@@ -151,6 +162,7 @@ __all__ = [
     "build_dir",
     "docs_root",
     "features_root",
+    "ledger_path",
     "operator_context_path",
     "screenshots_dir",
     "source_inventory_path",
