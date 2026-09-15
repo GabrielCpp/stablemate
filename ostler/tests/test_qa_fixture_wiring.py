@@ -17,7 +17,7 @@ from pathlib import Path
 
 from ostler import doctor
 from ostler.model import load
-from ostler.qa.compile import compile_plan_gaps
+from ostler.qa.compile import compile_plan, compile_plan_gaps
 from ostler.qa.context import build_context
 
 from conftest import write
@@ -148,6 +148,23 @@ def test_fixture_wiring_resolves_every_reference_over_a_real_book(tmp_path: Path
     _source, gaps = compile_plan_gaps(packet, story="demo-story")
     reference_gaps = [g for g in gaps if g.kind == "unresolved-precondition"]
     assert reference_gaps == []
+
+
+def test_fixture_wiring_compiled_source_captures_before_it_is_consumed(tmp_path: Path) -> None:
+    """`compile_plan` must not just credit `name` as produced — it has to emit the call that
+    actually captures it, before the line that reads `$name` back.
+
+    The book's `capture: name from $.project.name` sits on the same node as the
+    `json_path(... matches="$name")` verify that reads it back, so `qa.capture_field(...)`
+    has to land between the request it reads from and that verify call in the compiled
+    source's own line order, or `$name` would resolve against a capture that never ran.
+    """
+    packet, _base = _build(tmp_path, capture=True)
+    source = compile_plan(packet, story="demo-story")
+    assert 'qa.capture_field("name", observed_1.json(), "project.name")' in source
+    capture_line = source.index('qa.capture_field("name"')
+    verify_line = source.index('qa.verify("json_path"')
+    assert capture_line < verify_line
 
 
 def test_fixture_wiring_gaps_a_reference_with_no_producing_capture(tmp_path: Path) -> None:

@@ -126,6 +126,18 @@ def _kwargs(args: dict[str, Any]) -> str:
     return "".join(parts)
 
 
+def _stripped_path(path: str) -> str:
+    """A capture's declared JSON path with the `$` root token dropped, same as `checks._rooted`.
+
+    `$` is not a key — every reader of a document path (`checks._rooted`, the harness's own
+    `path_steps`) strips it before walking, so a compiled `capture_field` call names the
+    field the same way the book's `verify:` grammar does.
+    """
+    if not path.startswith("$"):
+        return path
+    return path[1:].lstrip(".")
+
+
 def _slug(path: str) -> str:
     stem = path.rsplit("/", 1)[-1].removesuffix(".md")
     ident = _IDENT.sub("_", stem).strip("_").lower()
@@ -350,6 +362,30 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[s
             lines.append("    # TODO(arrange): the book gives this node no `route:` to act on")
             lines.append(f"    {name} = None  # TODO(arrange): what this scenario observes")
             gaps.append(Gap(oid, "uncompilable-claim", "the book gives this node no `route:` to act on"))
+
+        for capture in obligation.get("capturesDeclared", []):
+            cname = capture.get("name")
+            source_path = str(capture.get("from", ""))
+            if not cname:
+                continue
+            if source_path.startswith("$"):
+                # A `$.`-rooted capture reads out of the response this obligation just bound —
+                # emitting the call here, not just crediting `produced_captures`, is the fix:
+                # a credit with nothing behind it at runtime means `$name` resolves against a
+                # fact that was never captured. Emitted right after `observed_N` is bound, so
+                # a strictly later obligation's `qa.resolve($name)` finds it already run.
+                lines.append(
+                    f'    qa.capture_field({_lit(cname)}, {name}.json(), {_lit(_stripped_path(source_path))})'
+                )
+                produced_captures.add(cname)
+            else:
+                # A UI-locator capture has no response here to read — the book says what to
+                # capture and not where the page action that would produce it lives. Same
+                # scaffolding as an arrangement gap: a TODO and a gap, no credit.
+                note = f"capture {cname!r} from {source_path!r} names a UI locator, not a response field"
+                lines.append(f"    # TODO(arrange): {note}")
+                gaps.append(Gap(oid, "uncompilable-claim", note))
+
         for row in rows:
             for ref in references.find_references(json.dumps(row.get("args", {}))):
                 if not _resolved(ref, produced_facts, produced_captures):
@@ -362,11 +398,6 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[s
             lines.append(
                 f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, covers=[{_lit(oid)}])"
             )
-
-        for capture in obligation.get("capturesDeclared", []):
-            cname = capture.get("name")
-            if cname:
-                produced_captures.add(cname)
     return lines
 
 

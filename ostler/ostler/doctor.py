@@ -971,7 +971,7 @@ def _transitive_milestone_deps(graph: Graph, milestone_name: str) -> set[str]:
 def gap_findings(gaps: list[Gap]) -> list[Finding]:
     """`compile_plan`'s gap report, in doctor's own vocabulary.
 
-    `Gap.kind` is already spelled the way `_check_fixture_undeclared_provides` names it —
+    `Gap.kind` is already spelled the way `compile_plan_gaps` names it —
     `unresolved-precondition`, `uncompilable-claim` — so the mapping is the identity on the
     code and a wrapper on everything else: a `Gap` names a state `compile_plan` could not
     reach or a claim it had no action for, and either one is an error, not a warning, the
