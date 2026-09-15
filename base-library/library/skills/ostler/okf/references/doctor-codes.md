@@ -83,11 +83,12 @@ Three scoping rules explain findings that otherwise read as false positives or a
 
 | Code | Sev | Trigger and remedy |
 | --- | --- | --- |
-| `qa-fixture-declaration` | error | The repo's `qa: {fixtures:}` / `{fixture_modules:}` declaration in `agents.yml` is itself unreadable. |
+| `qa-fixture-declaration` | error | The repo's `qa: {fixtures:}` declaration in `agents.yml` is itself unreadable. |
 | `story-fixture-stray` | error | A bullet under `## Fixtures` names no fixture. Write `- Fixture: <name>`, or the declared none-value when the story arranges nothing. |
 | `unknown-story-fixture` | error | A story names a fixture this repo does not declare. |
 | `undeclared-story-fixture` | error | The story's `qa_plan.py` uses a fixture the story does not list. |
 | `unused-story-fixture` | warn | A story names a fixture its `qa_plan.py` never asks for. |
+| `unmigrated-fixture-declaration` | warn | A hand-written `qa: {fixtures:}` entry has no book fixture node behind it yet — a candidate for `ostler qa fixtures migrate`. |
 | `qa-fixture-bullet` | error | A `fixture:` bullet in the book is not a fixture reference. |
 | `unknown-book-fixture` | error | A `fixture:` bullet, or an `@<id>` reference, names a fixture (or fixture key) this repo does not declare — including a `fixture:` bullet on `environment`/`command`/`endpoint`/`interaction`/`invocation`/`method`/`field` naming no [`fixture`](node-types/fixture.md) node. |
 | `fixture-step-kind` | error | A `fixture` node's own `## Steps` uses a `kind:` outside `seed`/`run`/`verify` — narrower than a runbook step's kinds, because a fixture only ever seeds, runs, or verifies. |
