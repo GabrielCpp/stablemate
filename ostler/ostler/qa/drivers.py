@@ -148,6 +148,10 @@ class PythonDriver(QaDriver):
         self.launch_env: dict[str, str] = {}
         # The documented screens, read on the first `vet` record and kept for the target.
         self._screens: dict[str, list[placement.VettedComponent]] | None = None
+        # Built once per driver, not once per scenario: `load_graph` walks the whole book,
+        # and a suite of scenarios shares one `self.root` — recomputing it per `_execute`
+        # call re-pays that cost every scenario for a graph that never changed underneath it.
+        self._book_fixtures_cache: dict[str, dict[str, Any]] | None = None
 
     def start(self) -> None:
         self.launcher.preflight(self)
@@ -246,6 +250,11 @@ class PythonDriver(QaDriver):
             if self._window_recorder is not None:
                 self._window_recorder.stop()
 
+    def _resolved_book_fixtures(self) -> dict[str, dict[str, Any]]:
+        if self._book_fixtures_cache is None:
+            self._book_fixtures_cache = qa_book_fixtures.resolved(load_graph(self.root))
+        return self._book_fixtures_cache
+
     def interpreter(self) -> Path:
         declared = self.target.get("interpreter")
         if not declared:
@@ -299,7 +308,7 @@ class PythonDriver(QaDriver):
             # node — see `ostler.qa.book_fixtures`. `Qa.fixture()` checks this tier first
             # and falls back to the `fixtures` entry above. Secrets are NAMES only: the
             # harness resolves each from its own environment at run time.
-            "book_fixtures": qa_book_fixtures.resolved(load_graph(self.root)),
+            "book_fixtures": self._resolved_book_fixtures(),
         }
         return self.launcher.execute(self, scenario_id, timeout, context)
 
