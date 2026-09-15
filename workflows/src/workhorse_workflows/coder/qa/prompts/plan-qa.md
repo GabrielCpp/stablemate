@@ -252,8 +252,8 @@ arrangement in which most write bugs are invisible.
 - Ordinary Python is available, but the process and the filesystem are not: `ostler qa lint`
   is an allowlist, so there is no `subprocess`, no `pathlib`, and no importing a helper
   beside the plan. A command runs through `qa.tool(name)` for a tool this repo opted into,
-  or `qa.fixture(name)` for an arrangement it declared; shared Python helpers live in a
-  declared module under `<spec-root>/_fixtures/`. Prefer `qa.http` for HTTP — it is
+  or `qa.fixture(name)` for an arrangement declared as a book fixture node. Prefer `qa.http`
+  for HTTP — it is
   bound to the target's `base_url` and raises `HttpError` on any status outside
   `expect_status=`, which is the `curl -fsS` behaviour every shell plan had to remember.
 - A value used by two scenarios is generated **inside one scenario** and asserted there.
@@ -427,15 +427,15 @@ a static count of the `qa.check`/`qa.require` calls in its body, and again at ru
   evidence gate reads it.
 - **Arrangement is declared, not improvised.** A state two scenarios both need — a seeded
   account, a populated ledger, a signed-in token — is a *fixture*, held to the same bar as
-  a test: named once, declared in the repo's `agents.yml` under `qa:`, and reached by name.
-  `fixtures:` names a command in the app's own language, so the app's integration tests and
-  this plan arrange the state with the same code and cannot drift apart; `qa.fixture("name")`
-  runs it, records the invocation as evidence, and fails loudly when the state it promises
-  is not there. `fixture_modules:` names a Python module under `<spec-root>/_fixtures/` for
-  arrangements only QA needs — it is linted with the same allowlist as the plan, and it is
-  how two plans share a helper instead of each carrying a copy of it. A static input file is
-  declared with `input_file("name", "qa-inputs/thing.json")`; validation checks it exists
-  and lives outside disposable `qa/`.
+  a test: named once, declared as a **fixture node** in the book
+  (`docs/features/<surface>/fixtures/<name>.md`), and reached by name. The node holds the
+  setup steps in the book's own step vocabulary (seed/run/verify), the `params:` it takes,
+  the `provides:` keys the last step yields, and any `needs:` on another fixture it depends
+  on — so the app's own steps and this plan arrange the state with the same code and cannot
+  drift apart. `qa.fixture("name", arg=value)` runs it, binds `params:` from the keyword
+  arguments, records the invocation as evidence, and fails loudly when the state it promises
+  is not there. A static input file is declared with `input_file("name", "qa-inputs/thing.json")`;
+  validation checks it exists and lives outside disposable `qa/`.
   A *discriminating* arrangement is not an exception to this rule. The rule is about state two
   scenarios share. State one scenario needs is reached the way a person reaches it — by driving
   the target through its own documented operations inside a `qa.step`, which is evidence in its

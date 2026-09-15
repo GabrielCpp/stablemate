@@ -126,7 +126,7 @@ def lint_qa_plan(
     """
     plan = str(Path(spec_dir) / QA_PLAN_FILE)
     docs_root = find_docs_root(docs_path, repo_dir)
-    outcome = Ostler(docs_root).qa_lint(plan, spec=spec_dir)
+    outcome = Ostler(docs_root).qa_lint(plan)
     status = "passed" if outcome.ok else "invalid"
     notes = notes_for(
         outcome, "QA plan lint passed." if status == "passed" else "QA plan lint failed."
