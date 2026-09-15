@@ -1355,11 +1355,11 @@ def _check_code_grounding(graph: Graph, f: list[Finding],
                                "catalog migration"))
             else:
                 try:
-                    source_text = target.read_text(encoding="utf-8")
-                except (OSError, UnicodeDecodeError):
+                    source_bytes = target.read_bytes()
+                except OSError:
                     pass  # unreadable tells us nothing; same call this check makes below
                 else:
-                    if stamp_mod.digest_file(source_text) != parsed.digest:
+                    if stamp_mod.digest_file(source_bytes) != parsed.digest:
                         f.append(Finding(
                             "error", "stale-citation",
                             f"{node.id}: `code:` target '{ref}' — '{target_path}' has changed "

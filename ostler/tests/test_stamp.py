@@ -11,9 +11,14 @@ from ostler.model import load
 SERVICE = "def charge(amount):\n    return amount\n"
 
 
-def test_digest_file_matches_the_snapshot_recipe():
-    """Decode-then-hash, truncated to 12 hex chars — must agree with the catalog's own recipe."""
-    assert stamp.digest_file(SERVICE) == hashlib.sha256(SERVICE.encode()).hexdigest()[:12]
+def test_digest_file_hashes_raw_bytes():
+    """Raw bytes, truncated to 12 hex chars — no decoding, so a non-UTF-8 file still hashes."""
+    assert stamp.digest_file(SERVICE.encode()) == hashlib.sha256(SERVICE.encode()).hexdigest()[:12]
+
+
+def test_digest_file_hashes_non_utf8_bytes_without_crashing():
+    data = b"\xff\xfe\x00binary"
+    assert stamp.digest_file(data) == hashlib.sha256(data).hexdigest()[:12]
 
 
 def test_restamp_stamps_a_single_target():
@@ -129,7 +134,7 @@ def test_stamp_page_writes_a_digest_onto_the_cited_file(tmp_path: Path):
     feature = _book(tmp_path, "`src/service.py::charge`")
     _service(tmp_path)
     result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
-    expected = stamp.digest_file(SERVICE)
+    expected = stamp.digest_file(SERVICE.encode())
     assert result.stamped == 1
     assert result.unresolved == []
     assert result.changed is True
@@ -172,8 +177,8 @@ def test_stamp_page_stamps_both_a_backticked_and_a_bare_code_bullet(tmp_path: Pa
 
     result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
 
-    expected = stamp.digest_file(SERVICE)
-    other_digest = stamp.digest_file("def other():\n    pass\n")
+    expected = stamp.digest_file(SERVICE.encode())
+    other_digest = stamp.digest_file(b"def other():\n    pass\n")
     assert result.stamped == 2
     assert result.unresolved == []
     text = feature.read_text(encoding="utf-8")
@@ -202,7 +207,7 @@ def test_stamp_page_resolves_a_foreign_repository_ref_through_a_supplied_checkou
         tmp_path, tmp_path, "docs/features/billing/charge.md",
         checkouts={"globex": checkout},
     )
-    expected = stamp.digest_file(SERVICE)
+    expected = stamp.digest_file(SERVICE.encode())
     assert result.stamped == 1
     assert result.unresolved == []
     assert f"`repo://globex/src/service.py::charge` @{expected}" in feature.read_text(
@@ -229,7 +234,7 @@ def test_stamp_page_resolves_a_ref_qualified_with_the_books_own_repository(tmp_p
     feature = _book(tmp_path, "`repo://acme/src/service.py::charge`")
     _service(tmp_path)
     result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
-    expected = stamp.digest_file(SERVICE)
+    expected = stamp.digest_file(SERVICE.encode())
     assert result.stamped == 1
     assert f"@{expected}" in feature.read_text(encoding="utf-8")
 
@@ -273,7 +278,7 @@ def test_stamp_page_scoped_to_a_line_range_leaves_the_other_nodes_bullet_stale(t
         line_ranges=[(alpha_line, beta_line)],
     )
 
-    expected = stamp.digest_file(SERVICE)
+    expected = stamp.digest_file(SERVICE.encode())
     assert result.stamped == 1
     assert result.changed is True
     after = feature.read_text(encoding="utf-8").splitlines()
@@ -301,7 +306,7 @@ def test_stamp_page_only_targets_leaves_a_sibling_citation_on_the_same_node_unto
         only_targets={node_range: frozenset({"src/service.py"})},
     )
 
-    expected = stamp.digest_file(SERVICE)
+    expected = stamp.digest_file(SERVICE.encode())
     assert result.stamped == 1
     text = feature.read_text(encoding="utf-8")
     assert f"`src/service.py::charge` @{expected}" in text
@@ -330,7 +335,7 @@ def test_stamp_page_only_targets_leaves_an_already_stamped_sibling_digest_standi
         only_targets={node_range: frozenset({"src/service.py"})},
     )
 
-    expected = stamp.digest_file(SERVICE)
+    expected = stamp.digest_file(SERVICE.encode())
     assert result.stamped == 1
     text = feature.read_text(encoding="utf-8")
     assert f"`src/service.py::charge` @{expected}" in text
@@ -379,7 +384,7 @@ def test_cli_stamp_checkout_flag_resolves_a_foreign_repository_ref(tmp_path: Pat
         "--checkout", f"globex={checkout}",
     ])
     assert rc == 0
-    expected = stamp.digest_file(SERVICE)
+    expected = stamp.digest_file(SERVICE.encode())
     assert f"@{expected}" in feature.read_text(encoding="utf-8")
 
 
@@ -450,7 +455,7 @@ def test_stamp_targets_leaves_a_nodes_other_stamped_citations_standing(tmp_path:
 
     assert len(results) == 1
     assert results[0].stamped == 1
-    expected = stamp.digest_file(SERVICE)
+    expected = stamp.digest_file(SERVICE.encode())
     text = (tmp_path / "docs/features/billing/charge.md").read_text(encoding="utf-8")
     assert f"`src/service.py::charge` @{expected}" in text
     assert "`src/other.py::other` @111111111111" in text
@@ -541,9 +546,7 @@ def test_stamp_page_from_catalog_uses_the_catalogs_digest_not_the_live_files(tmp
     assert result.unresolved == []
     text = (root / "docs/features/billing/charge.md").read_text(encoding="utf-8")
     assert f"`src/service.py::charge` @{stale_digest[:12]}" in text
-    assert stale_digest[:12] != stamp.digest_file(
-        (root / "src/service.py").read_text(encoding="utf-8")
-    )
+    assert stale_digest[:12] != stamp.digest_file((root / "src/service.py").read_bytes())
 
 
 def test_stamp_page_from_catalog_leaves_a_file_with_no_catalog_row_unstamped(tmp_path: Path):
@@ -772,3 +775,22 @@ def test_stamp_touches_exactly_the_targets_doctor_flags_as_unstamped_citation(tm
 
     after = doctor.run(load(tmp_path))
     assert not {f.ref for f in after.findings if f.code == "unstamped-citation"}
+
+
+def test_stamp_page_stamps_a_non_utf8_file_without_crashing(tmp_path: Path):
+    # The original crash: `.read_text(encoding="utf-8")` on a cited file that is not valid
+    # UTF-8 (a `.docx`, a stray binary) raised `UnicodeDecodeError` uncaught. Byte-based
+    # hashing never decodes, so this must stamp cleanly instead.
+    feature = _book(tmp_path, "`src/legacy.php`")
+    data = b"<?php\n// \xff\xfe not valid utf-8\necho 1;\n"
+    target = tmp_path / "src/legacy.php"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+
+    assert result.stamped == 1
+    assert result.unresolved == []
+    expected = stamp.digest_file(data)
+    assert f"`src/legacy.php` @{expected}" in feature.read_text(encoding="utf-8")
+

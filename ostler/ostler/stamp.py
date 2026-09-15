@@ -12,10 +12,12 @@ inventory the catalog already builds (``ostler.inventory``), and this module doe
 A symbol's citation goes stale exactly when its file does — the file is what doctor already
 watches for a missing declaration — so there is nothing a finer-grained hash would catch sooner.
 
-Hashing (:func:`digest_file`) decodes the file as UTF-8 text, then hashes the *text*, not the
-raw bytes — the same recipe the retired catalog builder used, so a digest computed here and
-one migrated from a catalog written before it was retired still agree for a file nobody has
-touched.
+Hashing (:func:`digest_file`) hashes a file's raw bytes directly — no decoding, so a file that
+is not valid UTF-8 (a cited ``.docx``, a stray binary) stamps and reads back exactly like any
+other file instead of crashing. The retired catalog builder decoded-then-hashed instead
+(``read_text(encoding="utf-8").encode()``, which also collapses CRLF to LF on the way through
+``read_text``'s universal-newline translation), so a digest computed here disagrees with one
+recorded in an old catalog even for a file nobody has touched since.
 
 Only this module writes ``@digest`` suffixes. Nothing else should: doctor reads them, a repair
 prompt must never write or edit one, and only okf-builder's turn-finalize path calls ``ostler
@@ -55,13 +57,15 @@ _SPAN = re.compile(r"`(?P<inner>[^`]*)`(?:\s*@(?P<digest>[0-9a-f]{12}))?")
 _BARE_DIGEST = re.compile(r"@[0-9a-f]{12}$")
 
 
-def digest_file(text: str) -> str:
+def digest_file(data: bytes) -> str:
     """The stamp for a file's contents.
 
-    Decode-then-hash, not raw bytes — so a digest stamped here and one migrated from a
-    catalog compare equal for a file nobody has touched since the catalog was built.
+    Raw bytes, not decoded text — a citation must be stampable and checkable for any file
+    doctor can be pointed at, including one that is not valid UTF-8, and byte hashing never
+    raises on that. See the module docstring for how this compares to the retired catalog's
+    decode-then-hash recipe.
     """
-    return hashlib.sha256(text.encode()).hexdigest()[:DIGEST_LENGTH]
+    return hashlib.sha256(data).hexdigest()[:DIGEST_LENGTH]
 
 
 def restamp_leading_code_spans(value: str, digest_for: Callable[[str], str | None]) -> str:
@@ -216,12 +220,12 @@ def stamp_page(root: Path, features_root: Path, page: str, *,
             if targets is not None and ref.path not in targets:
                 return None  # not this row's assignment: left exactly as it was, digest and all
             try:
-                source_text = (source_root / ref.path).read_text(encoding="utf-8")
+                source_bytes = (source_root / ref.path).read_bytes()
             except OSError:
                 unresolved.append(raw_target)
                 return None
             stamped += 1
-            return digest_file(source_text)
+            return digest_file(source_bytes)
         return digest_for
 
     body_lines = doc.body.split("\n")

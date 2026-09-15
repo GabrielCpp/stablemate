@@ -226,7 +226,7 @@ def test_an_unstamped_code_ref_is_a_warning(repo: Path):
 def test_a_stamped_code_ref_whose_file_changed_is_stale(repo: Path):
     from ostler.stamp import digest_file
     write(repo / "groom/groom/diff.py", "class Diff:\n    pass\n")
-    stale_digest = digest_file("class Diff:\n    pass\n    x = 1\n")
+    stale_digest = digest_file(b"class Diff:\n    pass\n    x = 1\n")
     report = _concept_report(repo, f"groom/groom/diff.py::Diff@{stale_digest}")
     assert "stale-citation" in codes(report)
     assert "unstamped-citation" not in codes(report, "warn")
@@ -236,7 +236,7 @@ def test_a_stamped_code_ref_matching_the_file_is_green(repo: Path):
     from ostler.stamp import digest_file
     text = "class Diff:\n    pass\n"
     write(repo / "groom/groom/diff.py", text)
-    report = _concept_report(repo, f"groom/groom/diff.py::Diff@{digest_file(text)}")
+    report = _concept_report(repo, f"groom/groom/diff.py::Diff@{digest_file(text.encode())}")
     assert not (codes(report) & {"stale-citation", "dangling-code-ref", "missing-code-symbol"})
     assert not (codes(report, "warn") & {"unstamped-citation"})
 
@@ -269,7 +269,7 @@ def test_a_foreign_repository_ref_whose_checked_out_file_changed_is_stale(repo: 
 
     checkout = repo.parent / "checkouts" / "api-service"
     write(checkout / "src/service.py", "def create_invoice():\n    return 1\n")
-    stale_digest = digest_file("def create_invoice():\n    return 0\n")
+    stale_digest = digest_file(b"def create_invoice():\n    return 0\n")
     report = _concept_report(
         repo, f"repo://api-service/src/service.py::create_invoice@{stale_digest}",
         checkouts={"api-service": checkout},
