@@ -54,7 +54,6 @@ from unittest.mock import patch
 
 import pytest
 from ostler import stamp as stamp_mod
-from ostler.behavior import AuditPacket, AuditVerdicts, CandidateVerdict, ClaimVerdict
 from git import Repo
 from _fakes import StubRunner
 from workhorse._vendor.stablemate_core.base_cache import cache_root
@@ -71,7 +70,6 @@ from workhorse.records import PyflowCheckpoint, parse_checkpoint
 from workhorse_workflows import okf_builder
 from workhorse_workflows.okf_builder.main.flow import investigation_power, repair_power
 from workhorse_workflows.okf_builder.shared import paths
-from workhorse_workflows.okf_builder.shared.audit import BehaviorAuditOutcome
 from workhorse_workflows.okf_builder.shared.worklist import MAX_TARGET_ATTEMPTS
 from workhorse_workflows.okf_builder.walkthrough_web.flow import WalkthroughWeb
 from workhorse_workflows.okf_builder.workflow import OkfBuilder
@@ -244,19 +242,6 @@ class _Agent:
     def _walkthrough_web(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"walk_status": "confirmed", "discovered": []}
 
-    def _behavior_audit(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        packet = AuditPacket.model_validate_json(data["packet"])
-        return AuditVerdicts(
-            claims=tuple(ClaimVerdict(
-                id=claim.id, status="supported" if packet.candidates else "unresolved", explanation="Scripted source support",
-                candidate_ids=tuple(candidate.id for candidate in packet.candidates),
-            ) for claim in packet.claims),
-            candidates=tuple(CandidateVerdict(
-                id=candidate.id, status="covered" if packet.claims else "implementation_detail",
-                explanation="Scripted scope classification",
-            ) for candidate in packet.candidates),
-        ).model_dump(mode="json")
-
 
 # ------------------------------------------------------------------------- the harness
 
@@ -289,115 +274,6 @@ def _run_worklist_path(env: RunEnv) -> Path:
     checkpoint = parse_checkpoint((env.run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     assert isinstance(checkpoint, PyflowCheckpoint)
     return Path(checkpoint.ctx["worklist_path"])
-
-
-class _SemanticAgent(_Agent):
-    def __init__(self, repo: Path, mode: str) -> None:
-        super().__init__(repo)
-        self.mode = mode
-
-    def _behavior_audit(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        packet = AuditPacket.model_validate_json(data["packet"])
-        if self.mode == "repair" and self.counts()["repair-behavior"]:
-            return super()._behavior_audit(data, nth)
-        return AuditVerdicts(
-            claims=tuple(ClaimVerdict(id=claim.id, status="unresolved", explanation="Needs source context")
-                         for claim in packet.claims),
-            candidates=() if self.mode == "invalid" else tuple(CandidateVerdict(
-                id=candidate.id, status="unresolved" if self.mode == "unresolved" else "missing",
-                explanation="Returning the charge amount is absent from the fully cited book",
-            ) for candidate in packet.candidates),
-        ).model_dump(mode="json")
-
-    def _repair_behavior(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        if self.mode == "repair":
-            doc = self.repo / BOOK / "concepts/charge.md"
-            doc.write_text(doc.read_text() + "\n- idempotency: charge \u2014 Repeating an amount returns the same amount.\n")
-        return {"doc_status": "documented", "discovered": []}
-
-
-@pytest.mark.parametrize("mode", ["missing", "unresolved", "invalid", "unsupported"])
-def test_fully_cited_book_cannot_commit_with_behavior_gaps(
-    booked: Path, tmp_path: Path, mode: str,
-) -> None:
-    if mode == "unsupported":
-        (booked / "acme/notes.txt").write_text("A source artifact without an extractor")
-    before = Repo(booked).head.commit.hexsha
-    agent = _SemanticAgent(booked, mode)
-    env = _env(tmp_path)
-    seen: list[str] = []
-    with patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
-        _drive(env, agent)
-    # Turns commit as they go; only the completed book's commit is withheld.
-    subjects = [c.summary for c in Repo(booked).iter_commits(f"{before}..HEAD")]
-    assert "docs: update the OKF book" not in subjects, subjects
-    assert agent.counts()["behavior-audit"] == (2 if mode == "invalid" else 1)
-    assert not (env.run_dir / "walkthrough_web").exists()
-    assert not (env.run_dir / "commit_book").exists()
-    coverage = json.loads((booked / BOOK / "coverage.json").read_text())
-    assert coverage["covered"] == coverage["total"]
-    report = BehaviorAuditOutcome.model_validate_json((env.run_dir / "behavior-audit.json").read_text())
-    assert not report.scope_clear
-    if mode == "missing":
-        items = [row for row in _worklist(booked) if row["kind"] == "behavior-repair"]
-        assert len(items) == 1
-        assert items[0]["target"] == "acme/service.py"
-        assert items[0]["status"] == "blocked"
-        assert agent.counts()["repair-behavior"] == MAX_TARGET_ATTEMPTS
-
-
-CITED_CONCEPT = """---
-type: concept
-slug: {slug}
-title: {title}
----
-# {title}
-
-- code: `acme/service.py::{symbol}`
-
-{prose}
-"""
-
-
-def test_budget_partial_audit_ships_after_the_pass_cap(booked: Path, tmp_path: Path) -> None:
-    """Three cited files make three packets beside the booked one; one turn per pass and
-    two passes read two of them, and the other two ship in the receipt."""
-    for name in ("a", "b", "c"):
-        (booked / f"acme/{name}.py").write_text(f'def {name}(x):\n    """Return {name}."""\n    return x\n')
-        (booked / BOOK / f"concepts/{name}.md").write_text(CITED_CONCEPT.format(
-            slug=name, title=name.upper(), symbol=name, prose=f"{name} returns its input.",
-        ).replace("acme/service.py", f"acme/{name}.py"))
-    Repo(booked).git.add(all=True)
-    Repo(booked).index.commit("cited helpers")
-    agent = _Agent(booked)
-    env = _env(tmp_path)
-    with patch.object(pyflow_driver, "wait_for_answer", _parked_at([])):
-        _drive(env, agent, audit_turn_budget=1, audit_max_passes=2)
-    assert agent.counts()["behavior-audit"] == 2, agent.counts()
-    assert (env.run_dir / "behavior-audit" / "passes").read_text() == "2"
-    assert (env.run_dir / "commit_book").is_dir()
-    report = BehaviorAuditOutcome.model_validate_json((env.run_dir / "behavior-audit.json").read_text())
-    assert report.status == "partial" and not report.scope_clear
-    assert report.clear_except_unaudited
-    assert len(report.unaudited_packets) == 2, report.unaudited_packets
-    assert any("Turn budget spent" in note for note in report.limitations) or report.assessed_packets == 2
-
-
-def test_behavior_repair_changes_book_and_reaudits_before_commit(booked: Path, tmp_path: Path) -> None:
-    agent = _SemanticAgent(booked, "repair")
-    env = _env(tmp_path)
-    with patch.object(pyflow_driver, "wait_for_answer", _parked_at([])):
-        _drive(env, agent)
-    assert agent.counts()["behavior-audit"] == 2
-    assert agent.counts()["repair-behavior"] == 1
-    assert agent.powers_for("repair-behavior") == ["medium"]
-    packets = [AuditPacket.model_validate_json(data["packet"]) for data in agent.args_for("behavior-audit")]
-    assert packets[0].digest != packets[1].digest
-    assert not packets[0].claims and packets[1].claims
-    assert (env.run_dir / "commit_book").is_dir()
-    assert not (env.run_dir / "walkthrough_web").exists()
-    committed = Repo(booked).head.commit.tree / f"{BOOK}/concepts/charge.md"
-    assert b"Repeating an amount" in committed.data_stream.read()
 
 
 # ---------------------------------------------------------------------- repair power
@@ -463,8 +339,9 @@ def test_an_empty_book_is_filled_top_down_from_the_code_s_surfaces(
     env = _env(tmp_path)
     result = _drive(env, agent)
 
-    assert agent.counts() == {"recheck-coverage": 1, "investigate": 1, "behavior-audit": 1}, agent.counts()
-    assert agent.powers == ["medium", "low", "medium"]
+    # The live audit runs via `self.call(...)`, not an agent turn, so it leaves no mark here.
+    assert agent.counts() == {"recheck-coverage": 1, "investigate": 1}, agent.counts()
+    assert agent.powers == ["medium", "low"]
 
     # The drain closed what it opened.
     items = _worklist(unbooked)
@@ -507,7 +384,8 @@ def test_a_book_that_exists_is_reconciled_to_head_rather_than_re_enumerated(
     agent = _Agent(booked)
     result = _drive(_env(tmp_path), agent)
 
-    assert agent.counts() == {"behavior-audit": 1}, agent.counts()
+    # The live audit runs via `self.call(...)`, not an agent turn: no turn is spent at all.
+    assert agent.counts() == {}, agent.counts()
     assert _worklist(booked) == [], _worklist(booked)
     coverage = read_json(booked / BOOK / "coverage.json")
     assert (coverage["covered"], coverage["total"]) == (2, 2), coverage
@@ -674,7 +552,7 @@ def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
 
     # Discovery was skipped entirely, and the one turn rendered the *repair* prompt —
     # `investigate.md` no longer carries repair instructions, so the stem is the assertion.
-    assert agent.counts() == {"repair": 1, "behavior-audit": 1}, agent.counts()
+    assert agent.counts() == {"repair": 1}, agent.counts()
     assert agent.powers_for("repair") == ["medium"]
     assert agent.targets == [REPAIR], agent.targets
     args = agent.args_for("repair")[0]
@@ -1043,37 +921,12 @@ def test_a_run_killed_mid_investigation_resumes_on_that_item_alone(
         resume,
     )
 
-    # Nothing upstream re-ran: not the enumeration, not the first item.
-    assert second.counts() == {"investigate": 1, "behavior-audit": 1}, second.counts()
+    # Nothing upstream re-ran: not the enumeration, not the first item. The live audit
+    # runs `self.call(...)`, not an agent turn, so it leaves no mark on `second.counts()`.
+    assert second.counts() == {"investigate": 1}, second.counts()
     assert second.targets == ["acme/other.py"], second.targets
     assert all(i["status"] == "done" for i in _worklist(unbooked)), _worklist(unbooked)
     assert result.is_webapp is False, result
-
-
-@pytest.mark.parametrize("state", ["walkthrough", "commit"])
-def test_legacy_completion_checkpoints_require_a_current_audit(
-    booked: Path, tmp_path: Path, state: str, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    env = _env(tmp_path)
-    _drive(env, _Agent(booked))
-    checkpoint = parse_checkpoint((env.run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
-    resume = read_resume(checkpoint)
-    for receipt in (env.run_dir / "behavior-audit").glob("*/verdicts.json"):
-        receipt.unlink()
-    # Neither the receipt nor the verdict memo may answer for the missing audit.
-    monkeypatch.setenv("OSTLER_INDEX_DIR", str(tmp_path / "empty-index"))
-    # The old checkpoint predates the opt-in field and has no semantic receipts.
-    resume.inputs.pop("runtime_walkthrough")
-    resume = replace(resume, state=state, params={} if state == "walkthrough" else resume.params)
-    before = Repo(booked).head.commit.hexsha
-    agent = _SemanticAgent(booked, "unresolved")
-    with patch.object(pyflow_driver, "wait_for_answer", _parked_at([])), pytest.raises(_Parked):
-        drive(OkfBuilder(**resume.inputs),
-              replace(_env(tmp_path, run_dir=env.run_dir), agent_runner=StubRunner(agent)), resume)
-    assert agent.counts()["behavior-audit"] == 1
-    subjects = [c.summary for c in Repo(booked).iter_commits(f"{before}..HEAD")]
-    assert "docs: update the OKF book" not in subjects, subjects
-    assert not (env.run_dir / "walkthrough_web").exists()
 
 
 # -------------------------------------------------------------------------------- labels
@@ -1177,7 +1030,8 @@ def test_a_code_verdict_files_a_seed_and_records_the_defect_on_the_nodes(
     """`code` on a UI node: the source is the side at fault, so the book keeps saying
     what it says and carries the record — a seed in the invariant epic (no story covers
     the nodes) and a `known-defect:` bullet naming it on each node. Doctor takes the
-    finding back while the seed is open, but unresolved behavior still gates the run."""
+    finding back while the seed is open, and this fixture has no QA plan for the live
+    audit to gate on, so the run converges rather than parking."""
     from ostler import Ostler
 
     from workhorse_workflows.okf_builder.main.nodes.adjudicate import INVARIANT_EPIC
@@ -1187,11 +1041,8 @@ def test_a_code_verdict_files_a_seed_and_records_the_defect_on_the_nodes(
     subprocess.run(["git", "commit", "-qm", "a colliding screen"], cwd=booked, check=True)
 
     agent = _Agent(booked, doc_status="partial", note="both buttons are in the source", verdict="code")
-    seen: list[str] = []
-    with patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
-        _drive(_env(tmp_path), agent)
+    _drive(_env(tmp_path), agent)
 
-    assert len(seen) == 1 and "okf-builder could not clear the behavior audit" in seen[0], seen
     # One finding per node, so one adjudication per node — each with its own seed.
     assert agent.counts()["adjudicate"] == 2, agent.counts()
     rows = _blocked_rows(booked)
@@ -1279,124 +1130,6 @@ def test_every_okf_builder_transition_says_why_it_is_taken() -> None:
         ]
         assert not unlabelled, f"transitions with no reason: {unlabelled}"
 
-
-# --------------------------------------------------------------------------- rework cap
-
-
-def test_unresolved_gate_body_lists_kind_counts_not_items(
-    booked: Path, tmp_path: Path,
-) -> None:
-    """The gate body names counts and the worklist path, never target names.
-
-    The operator looks in the worklist for the actual items; the gate body
-    is precise about *how many* of each kind the pass added. It never
-    enumerates targets.
-    """
-    (booked / "acme/notes.txt").write_text("Artifact without an extractor.",
-                                         encoding="utf-8")
-    agent = _SemanticAgent(booked, "unresolved")
-    env = _env(tmp_path)
-    seen: list[str] = []
-    with patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)), \
-         pytest.raises(_Parked):
-        _drive(env, agent)
-    assert seen
-    body = seen[0]
-    assert str(_run_worklist_path(env)) in body
-    assert "behavior-repair" in body
-    assert "footer-save-button" not in body
-
-
-def test_rework_counter_starts_at_zero_per_run(
-    booked: Path, tmp_path: Path,
-) -> None:
-    """The rework counter is per-run; a fresh run starts at zero.
-
-    Two consecutive runs of the same fixture each carry their own counter
-    file at ``<run_dir>/behavior-audit/rework``; the second run never
-    inherits the first run's count.
-    """
-    (booked / "acme/notes.txt").write_text("Artifact without an extractor.",
-                                         encoding="utf-8")
-    agent = _SemanticAgent(booked, "unresolved")
-    with patch.object(pyflow_driver, "wait_for_answer", _parked_at([])), \
-         pytest.raises(_Parked):
-        _drive(_env(tmp_path), agent)
-    first_rework = tmp_path / "runs" / "okf-builder-t" / "behavior-audit" / "rework"
-    if first_rework.exists():
-        first_rework.write_text("42")
-    with patch.object(pyflow_driver, "wait_for_answer", _parked_at([])), \
-         pytest.raises(_Parked):
-        _drive(_env(tmp_path / "second"), agent)
-    second_rework = tmp_path / "second" / "runs" / "okf-builder-t" / "behavior-audit" / "rework"
-    assert not second_rework.exists(), second_rework
-    if first_rework.exists():
-        assert int(first_rework.read_text() or "0") == 42
-
-
-def test_rework_gate_body_changes_at_REWORK_LIMIT(
-    booked: Path, tmp_path: Path,
-) -> None:
-    """At ``REWORK_LIMIT`` operator-answered gates, the body escalates to a review.
-
-    The body names the rework count, the worklist path, and an explicit
-    ``ANSWERED`` instruction. Below the cap, the body is shorter and reads
-    as a regular audit gate.
-    """
-    from workhorse_workflows.okf_builder.main.flow import REWORK_LIMIT
-
-    (booked / "acme/notes.txt").write_text("Artifact without an extractor.",
-                                         encoding="utf-8")
-    agent = _SemanticAgent(booked, "unresolved")
-    env = _env(tmp_path)
-    seen: list[str] = []
-
-    def answer(path: Path, **kwargs: Any) -> None:
-        seen.append(path.read_text(encoding="utf-8"))
-        # After REWORK_LIMIT answers the next gate body escalates to a
-        # review; park on the review body so we can inspect it.
-        if len(seen) > REWORK_LIMIT:
-            raise _Parked
-        path.write_text("STATUS: ANSWERED\n\nCarry on.\n", encoding="utf-8")
-
-    with patch.object(pyflow_driver, "wait_for_answer", answer), \
-         pytest.raises(_Parked):
-        _drive(env, agent)
-    # The review body is the gate body that fires once `rework` reaches
-    # REWORK_LIMIT. We answered REWORK_LIMIT times, so the review body is
-    # the (REWORK_LIMIT + 1)-th in `seen`.
-    assert len(seen) == REWORK_LIMIT + 1, len(seen)
-    review_body = seen[REWORK_LIMIT]
-    # The cap message names the rework count and the cap, and asks for a
-    # deliberate ``ANSWERED`` to reset the counter.
-    assert f"after {REWORK_LIMIT} operator-answered" in review_body
-    assert "ANSWERED to reset the rework counter" in review_body
-    regular = seen[0]
-    assert "after 3 operator-answered" not in regular
-    assert "reset the rework counter" not in regular
-
-
-def test_blocked_unresolved_items_gate_with_actionable_message(
-    booked: Path, tmp_path: Path,
-) -> None:
-    """When the worklist already exhausted attempts on the audit's queued items, the gate fires.
-
-    A ``model_judgment`` item that survived ``MAX_TARGET_ATTEMPTS`` requeues
-    produces a ``blocked`` row on the worklist; the gate names it.
-    """
-    (booked / "acme/service.py").write_text(
-        "def charge(amount):\n    return amount\n",
-        encoding="utf-8",
-    )
-    agent = _SemanticAgent(booked, "unresolved")
-    env = _env(tmp_path)
-    seen: list[str] = []
-    with patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)), \
-         pytest.raises(_Parked):
-        _drive(env, agent)
-    blocked_bodies = [b for b in seen if "MAX_TARGET_ATTEMPTS" in b]
-    if blocked_bodies:
-        assert "behavior-repair" in blocked_bodies[0]
 
 
 class _ScratchCleanupAgent(_Agent):

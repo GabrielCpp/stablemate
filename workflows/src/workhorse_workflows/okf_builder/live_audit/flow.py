@@ -1,19 +1,20 @@
 """Live behavioral audit lane: real pass/fail per claim, fingerprinted against the ledger.
 
-Sibling to `okf_builder/audit/flow.py`'s LLM-based review, this flow runs no agent turn at
-all. For each spec directory's already-authored `qa_plan.py` it brings up the book's
-declared QA stack, executes the plan through `qa/runner.py` (the same functions `coder`'s
-QA gate calls), and threads every scenario through the slice-5 ledger
-(`shared/ledger.py`) so a caller can tell which claims changed since their last recorded
-run.
+This is `main/flow.py`'s `semantic_audit` state, reached only from a doctor-clean
+checkpoint. It runs no agent turn at all: for each spec directory's already-authored
+`qa_plan.py` it brings up the book's declared QA stack, executes the plan through
+`qa/runner.py` (the same functions `coder`'s QA gate calls), and threads every scenario
+through the ledger (`shared/ledger.py`) so a caller can tell which claims changed since
+their last recorded run. It replaces the retired LLM-based behavior audit, which judged
+claims by model review rather than by running them.
 
-Doctor's `runbook-missing` finding is a warn, not a gate — a repo that never authored a
-runbook still gets a doctor report, not a blocked run there. This flow enforces the block
-`ensure_stack` already encodes for exactly that condition (`StackStatus.ready in ("none",
-"no")`), which is the extension the plan's slice-6 line asks for; `doctor.py`'s own
-severity is untouched. A blocked spec dir is recorded in the report rather than raised —
-the run is over the whole book, and one service's undeclared stack must not stop every
-other spec dir from reporting.
+Doctor's `runbook-missing` finding is an error — a served surface with no stack runbook
+fails doctor before this state is ever reached. This flow's own `ensure_stack` block
+(`StackStatus.ready in ("none", "no")`) is therefore a defensive backstop, not the real
+gate: it only fires for a repo that authored a runbook doctor accepted but whose stack
+still fails to come up at run time. A blocked spec dir is recorded in the report rather
+than raised — the run is over the whole book, and one service's stack trouble must not
+stop every other spec dir from reporting.
 """
 from __future__ import annotations
 
@@ -339,11 +340,10 @@ def discover_spec_dirs(logger: logging.Logger, docs_path: str = "", repo_dir: st
 
 
 class LiveAudit(Workflow):
-    """Standalone live-audit lane: run every spec dir's compiled QA plan for real.
+    """Run every spec dir's compiled QA plan for real; this is `main/flow.py`'s audit gate.
 
-    Sibling to `Audit`, not wired into `main/flow.py`'s `semantic_audit` state machine —
-    building this lane as a genuinely standalone flow was a scoped decision for this pass;
-    see the drive-by report that introduced this module. Runnable directly:
+    `OkfBuilder.semantic_audit` hands off to this flow. It also stays runnable directly,
+    standalone, for exercising a book's QA plans without driving the whole builder:
 
         workhorse-okf-builder run live-audit --params \
             '{"docs_path": "...", "repo_dir": "...", "spec_dirs": ["docs/specs/claims-crud"]}'

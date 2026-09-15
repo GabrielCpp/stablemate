@@ -71,7 +71,7 @@ from workhorse.pyflow import (
     WorkflowFailed,
 )
 from workhorse_workflows.kit import build_worklist, head_sha
-from workhorse_workflows.okf_builder.audit.flow import Audit
+from workhorse_workflows.okf_builder.live_audit.flow import LiveAudit, LiveAuditReport
 from workhorse_workflows.okf_builder.main.nodes import (
     apply_verdict,
     blocked_rows,
@@ -85,14 +85,6 @@ from workhorse_workflows.okf_builder.main.nodes import (
     stamp_turn,
 )
 from workhorse_workflows.okf_builder.shared import paths
-from workhorse_workflows.okf_builder.shared.audit import (
-    AuditScope,
-    BehaviorAuditOutcome,
-    UnresolvedItem,
-    assess_audit,
-    audit_pass,
-    audit_rework_count,
-)
 from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book, settle_stale
 from workhorse_workflows.okf_builder.shared.schemas import (
     Adjudication,
@@ -107,7 +99,6 @@ from workhorse_workflows.okf_builder.shared.schemas import (
 from workhorse_workflows.okf_builder.shared.vocabulary import bullet_grammar, check_vocabulary
 from workhorse_workflows.okf_builder.shared.worklist import (
     MAX_TARGET_ATTEMPTS,
-    last_added_counts,
     record,
     select_item,
 )
@@ -130,18 +121,6 @@ MAX_RESCAN_ROUNDS = 6
 #: stubborn repair is the per-target counter; this stays as the coarse backstop it was.
 MAX_STALL_ROUNDS = 3
 
-#: Operator-answered audit gates before the message escalates to a *review* gate.
-#: The cap never auto-commits and never bypasses the operator: it changes the
-#: gate's wording so a long loop is visible, and ``ANSWERED`` resets the counter
-#: to zero for another ``REWORK_LIMIT``-pass allowance. If the audit has looped
-#: ``REWORK_LIMIT`` times on the same packets the operator is asked to engage
-#: deliberately — a workflow bug, an impossible task, or an illformed packet
-#: are the only reasons the same content would keep failing. ``audit_max_passes``
-#: bounds budget-exhausted passes; this bounds operator-driven rework on the
-#: same scope.
-REWORK_LIMIT = 3
-
-
 def _attempts(current_item: dict[str, Any]) -> int:
     try:
         return int(current_item.get("attempts", 0) or 0)
@@ -154,80 +133,29 @@ def investigation_power(current_item: dict[str, Any]) -> str:
     return "medium" if _attempts(current_item) > 0 else "low"
 
 
-def _audit_unresolved_to_requeue(
-    items: tuple[UnresolvedItem, ...],
-) -> list[dict[str, Any]]:
-    """Map audit ``UnresolvedItem``s onto the worklist rows the drain will process.
+def _live_audit_gate_message(reports: list[LiveAuditReport]) -> str:
+    """The live-audit gate body: every blocked spec dir and failing scenario, by name.
 
-    ``no_source`` becomes ``reground:no-source``; ``model_judgment`` becomes
-    ``behavior-repair``; ``out_of_scope`` and ``validation_error`` are
-    skipped — they ship silently because the audit cannot act on them and a
-    re-run would list the same items forever, gating the run.
+    Unlike the retired LLM audit's counts-only body, there is no per-item enumeration to
+    protect against here — a live-audit report is real pass/fail against a real stack, one
+    line per scenario, not a model's open-ended list of concerns. The operator reads the
+    failure the same way `ostler qa` would show it.
     """
-    rows: list[dict[str, Any]] = []
-    for item in items:
-        if item.kind == "no_source":
-            kind = "reground:no-source"
-        elif item.kind == "model_judgment":
-            kind = "behavior-repair"
-        else:
+    lines = ["okf-builder's live audit found work the operator must clear before this book can commit."]
+    for report in reports:
+        if report.status == "blocked":
+            lines.append(f"- {report.spec_dir}: blocked — {report.notes}")
             continue
-        rows.append({
-            "kind": kind,
-            "target": item.id,
-            "context": item.explanation,
-            "packet_digest": item.packet_digest,
-            "requeue": True,
-        })
-    return rows
-
-
-def _audit_gate_message(
-    result: BehaviorAuditOutcome, *, rework: int,
-    queued: int, counts: dict[str, int], blocked: list[dict[str, Any]],
-    worklist_path: str,
-) -> str:
-    """The audit gate body. Counts and worklist path, never per-item enumeration.
-
-    The operator looks in the worklist itself for what was added; the gate
-    body is precise about *how many* of each kind the pass added and where
-    they live. At ``rework >= REWORK_LIMIT`` the body escalates to a review
-    message — same shape, plus the rework count and a clear "ANSWERED to
-    reset the counter and retry" instruction. The cap never auto-commits.
-    """
-    is_review = rework >= REWORK_LIMIT
-    lines: list[str] = []
-    if is_review:
-        lines.append(
-            f"okf-builder's behavior audit did not converge after {rework} operator-answered "
-            f"rework passes (cap {REWORK_LIMIT})."
-        )
-    else:
-        lines.append(f"okf-builder could not clear the behavior audit on pass {rework + 1}.")
-    if blocked:
-        names = ", ".join(
-            f"{b.get('target', '?')} ({b.get('kind', '?')})" for b in blocked
-        )
-        lines.append(
-            f"{len(blocked)} row(s) at MAX_TARGET_ATTEMPTS={MAX_TARGET_ATTEMPTS} and cannot be re-queued: {names}"
-        )
-    elif queued:
-        lines.append(f"{queued} row(s) queued at the bottom of {worklist_path}:")
-        for kind, count in sorted(counts.items()):
-            lines.append(f"  {count} {kind}")
-    if is_review:
-        lines.append(
-            f"\nANSWERED to reset the rework counter and retry the audit with a fresh "
-            f"{REWORK_LIMIT}-pass allowance; the worklist above names the rows. The audit "
-            f"never auto-commits — a long loop is impossible, illformed, or symptomatic "
-            f"of a workflow bug, and the operator decides the next move."
-        )
-    else:
-        lines.append(
-            f"\nOpen {worklist_path} to see which targets are waiting. "
-            f"Resolve the underlying source or book; do not invent or remove claims to pass."
-        )
-    lines.append(f"\nReport: {result.report_path}")
+        for scenario in report.scenarios:
+            if scenario.status != "passed":
+                lines.append(
+                    f"- {report.spec_dir}: {scenario.id} {scenario.status} "
+                    f"({scenario.failures}/{scenario.assertions} failed): {scenario.message}"
+                )
+    lines.append(
+        "\nFix the book, the fixture, or the code under test, then answer to re-run the "
+        "live audit — only claims whose fingerprint changed are re-executed."
+    )
     return "\n".join(lines)
 
 
@@ -298,16 +226,8 @@ class OkfBuilder(Workflow):
     docs_path: str = ""
     #: Optional per-run investigation ceiling. 0 = run to convergence.
     max_items: int = 0
-    #: Live runtime exploration is opt-in; semantic source/book review always runs.
+    #: Live runtime exploration is opt-in; the live audit always runs.
     runtime_walkthrough: bool = False
-    #: Reviewer turns one audit pass may spend; 0 runs the audit to the end of the source
-    #: tree, which on a large book is a run that never finishes. What a pass leaves unread
-    #: is listed in the report and, after `audit_max_passes`, shipped as a partial audit
-    #: rather than a reason not to commit.
-    audit_turn_budget: int = 60
-    #: Audit passes before a budget-partial audit ships. Repairs the audit queues drain in
-    #: between, so a pass after the first mostly reads re-keyed packets.
-    audit_max_passes: int = 3
 
     #: Retired as selectors, kept declared for one release. They selected between two prepare
     #: functions and three ways of computing what was stale; one reconcile against the
@@ -1218,102 +1138,47 @@ class OkfBuilder(Workflow):
             refuels=refuels,
         ).because("real gaps queued")
 
-    def semantic_audit(self, rework: int = 0) -> Continue | Await:
-        """Audit current source and claims, then queue coherent file/node repairs.
+    def semantic_audit(self, walked: WebApp | None = None) -> Continue | Await:
+        """Run the book's QA plans for real against a live stack, then gate on the result.
 
-        Each pass spends at most `audit_turn_budget` reviewer turns. A pass that ends on
-        its budget with nothing else open is followed by another, up to
-        `audit_max_passes`; past that the audit ships partial, with the unaudited packets
-        in the receipt. A contradicted or missing verdict is a repair either way, and a
-        repair blocks the commit until the drain has closed it.
+        This state is reachable only from a doctor-clean checkpoint (`coverage`'s own
+        handoff enforces that already), so a served surface here is guaranteed to carry a
+        stack runbook doctor accepted — `LiveAudit` blocking on a missing runbook would be
+        a defensive backstop, not the real gate.
 
-        ``rework`` counts operator-answered gates for this run, per-run (the file
-        ``<run_dir>/behavior-audit/rework`` is the canonical store, the kwarg is
-        the resume parity handle). When ``rework`` reaches ``REWORK_LIMIT`` the gate
-        body escalates to a *review* message that names the rework count and the
-        worklist path — the operator can still ``ANSWERED`` to reset the counter
-        and try again, but the message makes the loop visible. The cap never
-        auto-commits and never bypasses: a workflow that loops on the same content
-        is either impossible, illformed, or buggy, and the operator is the one
-        who decides what to do next.
+        The ledger's fingerprinting means a second pass here — after `walkthrough` has
+        possibly edited the book — only re-executes the claims whose fixture text, cited
+        source, or claim content actually changed; everything else is carried from the
+        prior pass's recorded result. That is what makes looping post-walkthrough
+        verification back through this same state cheap rather than a full re-run.
         """
-        passes = self.call(audit_pass, str(self.run_dir), True)
-        # Increment the operator-answered-gate counter BEFORE the handoff so a
-        # ``Done`` from the audit that lands on a gate this same body opens has
-        # already moved the counter — the resume target reads the file next.
-        self.call(audit_rework_count, str(self.run_dir), False)
-        result = self.handoff(
-            Audit, docs_path=self.ctx.repo_root, source_path=self.ctx.source_root,
-            service=self.service, artifact_dir=str(self.run_dir), turn_budget=self.audit_turn_budget,
+        result = self.handoff(LiveAudit, docs_path=self.ctx.repo_root, repo_dir=self.ctx.source_root)
+        reports = [LiveAuditReport.model_validate(r) for r in result["reports"]]
+        blocked_or_failing = any(
+            report.status == "blocked" or any(s.status != "passed" for s in report.scenarios)
+            for report in reports
         )
-        if result.repairs:
-            recorded = self.call(record, self.ctx.worklist_path, None, [
-                {"kind": "behavior-repair", "target": item.target,
-                 "context": item.context, "requeue": True}
-                for item in result.repairs
-            ], repo_root=str(self.ctx.repo_root), features_root=str(self.ctx.features_root))
-            if recorded.blocked_count:
-                return Await(
-                    paths.operator_context_path(Path(self.ctx.repo_root), self.service, self.ctx.scope_id),
-                    f"Behavior repairs exhausted their attempts. Report: {result.report_path}",
-                    self.retry_blocked,
-                ).because("behavior repair attempts exhausted: operator gate")
-            return Continue(recorded, self.select).because("behavior gaps queued by source file or book node")
-        # Queue the audit's blocking-unresolved items onto the worklist before
-        # deciding the gate: a ``no_source`` claim becomes a ``reground:no-source``
-        # row the drain picks up; a ``model_judgment`` verdict becomes a
-        # ``behavior-repair`` row. ``out_of_scope`` and ``validation_error`` items
-        # ship silently — the audit cannot change them and re-running would
-        # list the same items every pass, gating forever. ``last_added_counts``
-        # tells the gate body exactly how many of each kind this pass added, so
-        # the operator reads the worklist to see the rows.
-        requeue = _audit_unresolved_to_requeue(result.unresolved)
-        if requeue:
-            recorded = self.call(
-                record, self.ctx.worklist_path, None, requeue,
-                repo_root=str(self.ctx.repo_root), features_root=str(self.ctx.features_root),
-            )
-            counts = last_added_counts(self.ctx.worklist_path, recorded.added)
-            blocked = [b for b in recorded.blocked
-                       if b.get("kind") in {"behavior-repair", "reground:no-source"}]
-            if blocked:
-                return Await(
-                    paths.operator_context_path(Path(self.ctx.repo_root), self.service, self.ctx.scope_id),
-                    _audit_gate_message(
-                        result=result, rework=rework, queued=recorded.added,
-                        counts=counts, blocked=blocked,
-                        worklist_path=str(self.ctx.worklist_path),
-                    ),
-                    self.semantic_audit,
-                    rework=rework + 1,
-                ).because("unresolved rows exhausted attempts: operator gate")
-            return Continue(recorded, self.select).because(
-                "unresolved behavior items queued at the bottom of the worklist")
-        if result.clear_except_unaudited:
-            if passes < self.audit_max_passes:
-                return Continue(result, self.semantic_audit).because("turn budget spent: next pass")
-            if self.runtime_walkthrough:
-                return Continue(result, self.walkthrough).because("audit partial by budget: walkthrough requested")
-            return Continue(result, self.commit, walked=WebApp()).because(
-                "audit partial by budget at the pass cap: commit with unaudited list")
-        if result.blocking_unresolved or result.status != "assessed":
+        if blocked_or_failing:
             return Await(
                 paths.operator_context_path(Path(self.ctx.repo_root), self.service, self.ctx.scope_id),
-                _audit_gate_message(
-                    result=result, rework=rework, queued=0, counts={}, blocked=[],
-                    worklist_path=str(self.ctx.worklist_path),
-                ),
+                _live_audit_gate_message(reports),
                 self.semantic_audit,
-                rework=rework + 1,
-            ).because("unresolved behavior or incomplete scope: operator gate")
-        if self.runtime_walkthrough:
-            return Continue(result, self.walkthrough).because("audit clear: explicit runtime walkthrough requested")
-        return Continue(result, self.commit, walked=WebApp()).because("audit clear: runtime walkthrough not requested")
+                walked=walked,
+            ).because("live audit blocked or failing: operator gate")
+        if walked is None and self.runtime_walkthrough:
+            return Continue(reports, self.walkthrough).because("live audit clear: runtime walkthrough requested")
+        if walked is None:
+            return Continue(reports, self.commit, walked=WebApp()).because(
+                "live audit clear: runtime walkthrough not requested"
+            )
+        return Continue(reports, self.commit, walked=walked).because(
+            "live audit re-verified after the walkthrough"
+        )
 
     # --- the live-app walk (checkpoint-compatible) ---------------------------
 
     def walkthrough(self) -> Continue:
-        """Hand the complete book to the walk, then preserve what it found.
+        """Hand the complete book to the walk, then re-verify it with the live audit.
 
         A no-op for a service with no web surface — the sub-flow's own `detect_webapp`
         decides that, and it decides it by reading the book rather than by being told,
@@ -1328,27 +1193,15 @@ class OkfBuilder(Workflow):
             source_path=self.source_path,
             max_items=self.max_items,
         )
-        return Continue(walked, self.commit, walked=walked).because(
-            "book complete: walked when there is an app"
+        return Continue(walked, self.semantic_audit, walked=walked).because(
+            "book complete: re-verify with the live audit before commit"
         )
 
-    def commit(self, walked: WebApp) -> Done | Continue:
+    def commit(self, walked: WebApp) -> Done:
         """Record the completed book without touching work outside its directory."""
-        # Old paused commit states have no audit receipt. A runtime walk can also change
-        # the book. Neither may publish until the current bytes have cleared the audit.
-        work = self.call(
-            assess_audit,
-            AuditScope(docs_path=self.ctx.repo_root, source_path=self.ctx.source_root, service=self.service),
-            str(self.run_dir),
-        )
-        if not work.outcome.scope_clear:
-            passes = self.call(audit_pass, str(self.run_dir), False)
-            if not (work.outcome.clear_except_unaudited and passes >= self.audit_max_passes):
-                return Continue(work.outcome, self.semantic_audit).because(
-                    "current source/book lacks a clear audit receipt")
         self.call(commit_book, self.ctx.repo_root, self.ctx.features_root, self.story)
         return Done(walked).because("completed book committed")
 
 
 
-__all__ = ["MAX_RESCAN_ROUNDS", "MAX_STALL_ROUNDS", "REWORK_LIMIT", "OkfBuilder"]
+__all__ = ["MAX_RESCAN_ROUNDS", "MAX_STALL_ROUNDS", "OkfBuilder"]
