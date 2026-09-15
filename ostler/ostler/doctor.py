@@ -1338,6 +1338,15 @@ def _check_code_grounding(graph: Graph, f: list[Finding],
                 source_root = checkout
             separator = "::" if symbol else ""
             target = source_root / target_path
+            if target.is_dir():
+                f.append(Finding(
+                    "error", "directory-code-ref",
+                    f"{node.id}: `code:` target '{ref}' — '{target_path}' is a directory, "
+                    "not a file",
+                    path=rel, line=node.line, ref=ref,
+                    suggestion="a path to the specific file that declares this, as "
+                               "`path::symbol`"))
+                continue
             if not target.is_file():
                 f.append(Finding(
                     "error", "dangling-code-ref",

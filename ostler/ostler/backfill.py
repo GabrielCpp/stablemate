@@ -44,7 +44,7 @@ from ostler.doctor import Finding
 from ostler.model import Graph
 
 #: The doctor codes that say a citation points at nothing.
-DANGLING_CODES = frozenset({"dangling-code-ref", "missing-code-symbol"})
+DANGLING_CODES = frozenset({"dangling-code-ref", "directory-code-ref", "missing-code-symbol"})
 
 #: Ordered by how much work the row implies, cheapest first, so a rendered plan reads as a
 #: queue rather than a bag.

@@ -876,3 +876,17 @@ def test_stamp_page_from_catalog_keeps_a_changed_crlf_files_catalog_digest_and_i
     stale_refs = {f.ref for f in report.findings if f.code == "stale-citation"}
     assert any(ref.startswith("src/service.py::charge@") for ref in stale_refs)
 
+
+def test_directory_code_target_is_its_own_doctor_finding(tmp_path: Path):
+    from ostler import doctor
+    from ostler.model import load
+
+    _book(tmp_path, "`src`")
+    (tmp_path / "src").mkdir(parents=True, exist_ok=True)
+
+    report = doctor.run(load(tmp_path))
+
+    codes = {f.code for f in report.findings if f.ref == "src"}
+    assert "directory-code-ref" in codes
+    assert "dangling-code-ref" not in codes
+
