@@ -18,6 +18,9 @@ other spec dir from reporting.
 from __future__ import annotations
 
 import logging
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +44,18 @@ from workhorse_workflows.qa.schemas import StackStatus
 #: The ledger persists beside the plan it fingerprints, one file per spec dir — the same
 #: directory `run_qa_plan` already writes `qa/qa-run.ndjson` under.
 LEDGER_FILE = "qa-ledger.json"
+
+#: `ensure_stack`'s own health probe passes the instant a force-recreated container answers
+#: its first request, which can be moments before a sibling service it depends on (an auth
+#: emulator seeded by a one-shot `seed` container in the same compose file) has actually
+#: absorbed that seed data — the plan's first scenarios then see a connection reset or a
+#: real-but-wrong response (`EMAIL_NOT_FOUND` for an account the seed step already
+#: reported seeding), not a 5xx. A stack this flow just brought up (not one it adopted
+#: already serving) gets re-polled until the same probe passes a second time, rather than
+#: trusting `ensure_stack`'s first pass — a fixed sleep tried here first (3s, then 10s)
+#: still left one scenario in four hitting a live but not-yet-settled stack.
+FRESH_STACK_SETTLE_TRIES = 10
+FRESH_STACK_SETTLE_INTERVAL_S = 2.0
 
 
 class ScenarioResult(BaseModel):
@@ -69,6 +84,40 @@ class LiveAuditReport(BaseModel):
     scenarios: tuple[ScenarioResult, ...] = ()
     gaps: tuple[dict[str, Any], ...] = ()
     notes: str = ""
+
+
+#: How many consecutive passing probes prove the stack (and whatever it depends on, like a
+#: sibling service's seed data) has stopped changing, rather than just answered once.
+FRESH_STACK_SETTLE_CONSECUTIVE = 3
+
+
+def _wait_for_settled(entry_url: str, logger: logging.Logger) -> None:
+    """Re-poll a freshly brought-up stack's own health URL until it is stably answering.
+
+    `ensure_stack` already proved the URL answers once; a single pass is not proof the
+    stack (and a sibling one-shot seed step it may depend on) has stopped changing
+    underneath it, so this asks again, spaced out, requiring several passes in a row before
+    `run_qa_plan`'s real requests start. Bounded by `FRESH_STACK_SETTLE_TRIES` — a stack
+    that never stabilizes is a job for `run_qa_plan` and the scenario failures it will
+    report, not an infinite wait here.
+    """
+    if not entry_url:
+        return
+    consecutive = 0
+    for attempt in range(FRESH_STACK_SETTLE_TRIES):
+        time.sleep(FRESH_STACK_SETTLE_INTERVAL_S)
+        try:
+            urllib.request.urlopen(entry_url, timeout=5)  # noqa: S310
+        except urllib.error.HTTPError:
+            pass  # any HTTP response (even a 404 off this bare entry_url) proves it is up
+        except urllib.error.URLError as exc:
+            consecutive = 0
+            logger.info("settle probe %d/%d against %s not ready yet: %s",
+                        attempt + 1, FRESH_STACK_SETTLE_TRIES, entry_url, exc)
+            continue
+        consecutive += 1
+        if consecutive >= FRESH_STACK_SETTLE_CONSECUTIVE:
+            return
 
 
 def _covered_node_ids(covers: list[Any]) -> list[str]:
@@ -118,6 +167,8 @@ def audit_one_spec(
     stack = ensure_stack(logger, docs_path, repo_dir)
     if stack.ready in ("none", "no"):
         return LiveAuditReport(spec_dir=spec_dir, status="blocked", stack=stack, notes=stack.notes)
+    if "brought up" in stack.notes:
+        _wait_for_settled(stack.entry_url, logger)
 
     resolved_spec_dir = resolve_spec_dir(Path(spec_dir) / "qa_plan.py", Path(spec_dir), docs_root)
     document, problems = load_plan(Path(spec_dir) / "qa_plan.py", resolved_spec_dir, docs_root)
