@@ -215,3 +215,52 @@ def test_the_cli_flag_drives_a_failure_on_a_leak(
 
     assert proc.returncode == 1, proc.stdout + proc.stderr
     assert "acme" in proc.stderr, proc.stderr
+
+
+# --- the history walk's commit-message waiver -------------------------------------
+#
+# A waiver keys on a full SHA and covers that commit's message only. Two ways it must
+# still fail: the waived commit leaking somewhere else (a path), and the entry outliving
+# the commit (a rewrite made it unreachable) — the exit that keeps the list from growing.
+
+
+def _commit(root: Path, message: str, name: str = "file.txt") -> str:
+    (root / name).write_text(message + "\n", encoding="utf-8")
+    _git(root, "add", name)
+    _git(root, "commit", "-qm", message)
+    return _git(root, "rev-parse", "HEAD")
+
+
+def test_a_waived_commit_message_passes_the_history_walk(
+    public: Any, clone: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STABLEMATE_PRIVATE_NAMES", "acme")
+    (clone / "file.txt").write_text("clean\n", encoding="utf-8")
+    _git(clone, "commit", "-qam", "fix: wire the acme client")
+    sha = _git(clone, "rev-parse", "HEAD")
+
+    assert public.check_no_private_names_in_history(clone, {}) != []
+    assert public.check_no_private_names_in_history(clone, {sha: {"reason": "test"}}) == []
+
+
+def test_a_waived_commit_still_fails_on_a_leaking_path(
+    public: Any, clone: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STABLEMATE_PRIVATE_NAMES", "acme")
+    sha = _commit(clone, "fix: wire the acme client", name="acme.txt")
+
+    offenders = public.check_no_private_names_in_history(clone, {sha: {"reason": "test"}})
+
+    assert any("history path 'acme.txt'" in o for o in offenders), offenders
+    assert not any("commit message" in o for o in offenders), offenders
+
+
+def test_a_waiver_for_an_unreachable_commit_is_stale(
+    public: Any, clone: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STABLEMATE_PRIVATE_NAMES", "acme")
+    gone = "0" * 40
+
+    offenders = public.check_no_private_names_in_history(clone, {gone: {"reason": "test"}})
+
+    assert any("stale waiver" in o for o in offenders), offenders

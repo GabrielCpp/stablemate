@@ -113,6 +113,7 @@ HOOK_MARKERS = ("scripts/check_public.py", "make farrier-run-hook")
 BINARY_SNIFF_BYTES = 8000
 
 
+
 def _text_of(path: Path) -> str | None:
     """The file's text, or None if it reads as binary or cannot be opened."""
     try:
@@ -181,7 +182,9 @@ def check_no_private_names() -> list[str]:
     return offenders
 
 
-def check_no_private_names_in_history() -> list[str]:
+def check_no_private_names_in_history(
+    repo: Path = REPO, waived: dict[str, dict[str, str]] | None = None
+) -> list[str]:
     """No private name anywhere reachable from any ref — messages, paths, blobs.
 
     The tree sweep above sees only the checkout. A name committed and later removed
@@ -201,27 +204,44 @@ def check_no_private_names_in_history() -> list[str]:
         # The tree check already printed the skip note; stay quiet here.
         return []
 
+    # Waivers live beside the names, untracked, for the same reason the names do: an
+    # entry says which pushed commit leaked and why it stays, and that is the leak's
+    # location written down. Scope is the message only — the same commit leaking through
+    # a path or a blob still fails. Exit: an entry whose commit is unreachable (a
+    # rewrite) or whose message is clean fails as stale until it is deleted, so a
+    # waiver cannot outlive what it waived.
+    waivers = private_names.load_waivers()["commit_messages"] if waived is None else waived
+
     offenders: list[str] = []
 
     # Commit messages. -z NUL-separates records of "<sha>\n<subject+body>".
     log = subprocess.run(
-        ["git", "-C", str(REPO), "log", "--all", "-z", "--format=%H%n%B"],
+        ["git", "-C", str(repo), "log", "--all", "-z", "--format=%H%n%B"],
         capture_output=True,
         text=True,
         check=True,
     ).stdout
+    still_offending: set[str] = set()
     for record in log.split("\0"):
         if not record:
             continue
         sha, _, message = record.partition("\n")
         if pattern.search(message):
-            offenders.append(f"commit {sha[:12]}: (in the commit message)")
+            if sha in waivers:
+                still_offending.add(sha)
+            else:
+                offenders.append(f"commit {sha[:12]}: (in the commit message)")
+    for sha in sorted(set(waivers) - still_offending):
+        offenders.append(
+            f"commit {sha[:12]}: stale waiver in $GIT_DIR/{private_names.WAIVER_FILE} — the commit is "
+            "unreachable or its message is clean now; delete the entry"
+        )
 
     # Every object reachable from any ref, with the path it lives at. Commits have
     # no path; trees and blobs do. Paths count the same way they do in the tree
     # sweep — a private name in a historical filename ships too.
     listing = subprocess.run(
-        ["git", "-C", str(REPO), "rev-list", "--all", "--objects"],
+        ["git", "-C", str(repo), "rev-list", "--all", "--objects"],
         capture_output=True,
         text=True,
         check=True,
@@ -240,7 +260,7 @@ def check_no_private_names_in_history() -> list[str]:
     # One cat-file stream over the candidates; only blobs have content to scan.
     # Streamed, not captured: all historical versions of every file pass through.
     with subprocess.Popen(
-        ["git", "-C", str(REPO), "cat-file", "--batch"],
+        ["git", "-C", str(repo), "cat-file", "--batch"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
     ) as proc:
@@ -272,7 +292,7 @@ def check_no_private_names_in_history() -> list[str]:
             if pattern.search(text):
                 where = subprocess.run(
                     [
-                        "git", "-C", str(REPO), "log", "--all", "-1",
+                        "git", "-C", str(repo), "log", "--all", "-1",
                         f"--find-object={sha}", "--format=%h",
                     ],
                     capture_output=True,
@@ -285,7 +305,10 @@ def check_no_private_names_in_history() -> list[str]:
         feeder.join()
 
     if not offenders:
-        print(f"ok: no private project names in {scanned} historical blobs across all refs")
+        print(
+            f"ok: no private project names in {scanned} historical blobs across all refs"
+            f" ({len(waivers)} waived commit message(s))"
+        )
     else:
         offenders.append(
             "history offenders need a rewrite (git filter-repo --replace-text), "

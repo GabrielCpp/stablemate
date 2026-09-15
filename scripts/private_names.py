@@ -15,6 +15,9 @@ never part of a commit. A maintainer with the overlay drops the names in one of
 them and gets the guard; a public contributor has neither and the guard is inert
 (it cannot enforce a list nobody gave it).
 
+``$GIT_DIR/private-names-waivers.json`` sits beside the list, untracked too: the
+pushed commits whose messages the history walk waives, each with its reason and exit.
+
 Consumers: ``.githooks/pre-commit`` (blocks a leak at commit time, in staged changes
 only) and ``scripts/check_public.py`` (the whole-tree sweep the hook cannot be — it
 catches anything committed before the hook existed, or with ``--no-verify``).
@@ -22,6 +25,7 @@ catches anything committed before the hook existed, or with ``--no-verify``).
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -30,6 +34,9 @@ from pathlib import Path
 
 ENV_VAR = "STABLEMATE_PRIVATE_NAMES"
 GIT_FILE = "private-names"
+#: Waived history hits, beside the names and untracked for the same reason. Shape:
+#: ``{"commit_messages": {"<full sha>": {"reason": "...", "exit": "..."}}}``.
+WAIVER_FILE = "private-names-waivers.json"
 
 
 def _git_dir() -> Path | None:
@@ -74,6 +81,19 @@ def load() -> list[str]:
             if name and name not in names:
                 names.append(name)
     return names
+
+
+def load_waivers() -> dict[str, dict[str, dict[str, str]]]:
+    """The waived history hits, keyed by kind then full SHA. Empty when unconfigured.
+
+    A malformed file raises rather than reading as empty: an unreadable waiver list
+    that silently waived nothing would fail the history walk with no hint why, and
+    one that silently waived everything is not a shape this can take.
+    """
+    git_dir = _git_dir()
+    path = git_dir / WAIVER_FILE if git_dir else None
+    data = json.loads(path.read_text(encoding="utf-8")) if path and path.is_file() else {}
+    return {"commit_messages": dict(data.get("commit_messages", {}))}
 
 
 def pattern(names: list[str]) -> re.Pattern[str] | None:
