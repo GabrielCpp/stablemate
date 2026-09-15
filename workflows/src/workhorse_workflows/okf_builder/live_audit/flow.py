@@ -17,6 +17,7 @@ other spec dir from reporting.
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 import urllib.error
@@ -120,6 +121,44 @@ def _wait_for_settled(entry_url: str, logger: logging.Logger) -> None:
             return
 
 
+def _node_text(node: Any) -> str:
+    """A stable text rendering of one book node, for fingerprinting its content.
+
+    `UINode` carries no single `text` field — its content is `meta`/`bullet_order`, the
+    same bullets in document order. Rendering the ordered `key: value` pairs means an edit
+    to a fixture's setup steps (a changed seed value, a reordered step) changes this text
+    even though the node's identity and code citations do not.
+    """
+    return "\n".join(f"{key}: {value}" for key, value, _line in node.bullet_order)
+
+
+def _fixture_texts_for(
+    covers: list[Any],
+    obligations_by_id: dict[str, dict[str, Any]],
+    nodes_by_id: dict[str, Any],
+) -> dict[str, str]:
+    """Every fixture node text a scenario's covered obligations declare, keyed by node id.
+
+    `fixturesDeclared` rows (`ostler.qa.context`'s `_parse_fixtures`) name the fixture by
+    the same stem a `fixture:`/`needs:` bullet cites, which is the fixture node's own id in
+    `nodes_by_id` — resolving it gives the node whose bullets a change to the fixture's
+    arrangement would edit.
+    """
+    texts: dict[str, str] = {}
+    for cover_id in covers:
+        obligation = obligations_by_id.get(str(cover_id))
+        if not obligation:
+            continue
+        for row in obligation.get("fixturesDeclared") or []:
+            name = row.get("name") if isinstance(row, dict) else None
+            if not name or name in texts:
+                continue
+            node = nodes_by_id.get(name)
+            if node is not None:
+                texts[name] = _node_text(node)
+    return texts
+
+
 def _covered_node_ids(covers: list[Any]) -> list[str]:
     """Every `okf:<node-id>:<suffix>`-shaped covers id's middle segment, in order.
 
@@ -191,6 +230,11 @@ def audit_one_spec(
     scenario_summaries = scenario_summaries if isinstance(scenario_summaries, dict) else {}
 
     nodes_by_id = {node.id: node for node in graph.ui_nodes}
+    obligations_by_id = {
+        str(o.get("id")): o
+        for o in (document.context or {}).get("obligations", [])
+        if isinstance(o, dict)
+    }
     ledger_path = resolved_spec_dir / LEDGER_FILE
     ledger = load_ledger(ledger_path)
 
@@ -199,15 +243,21 @@ def audit_one_spec(
         if not isinstance(scenario, dict):
             continue
         scenario_id = str(scenario.get("id") or "")
+        covers = scenario.get("covers") or []
         refs: list[str] = []
-        for node_id in _covered_node_ids(scenario.get("covers") or []):
+        for node_id in _covered_node_ids(covers):
             node = nodes_by_id.get(node_id)
             if node is not None:
                 refs.extend(code_refs(node.meta.get("code")))
+        fixture_texts = _fixture_texts_for(covers, obligations_by_id, nodes_by_id)
+        # The compiled claim itself: the scenario's own rendered assertions and steps, not
+        # its bare id — an edited `preconditions`/`checkpoints`/`forbid` list must move the
+        # fingerprint even when no cited file or fixture text changed.
+        claim_content = json.dumps(scenario, sort_keys=True, default=str)
         summary = scenario_summaries.get(scenario_id) or {}
         status = str(summary.get("status") or run.status)
         fingerprint = claim_fingerprint(
-            refs, {}, scenario_id, repo_root, own_repository=own_repository,
+            refs, fixture_texts, claim_content, repo_root, own_repository=own_repository,
         )
         changed = needs_rerun(ledger, scenario_id, fingerprint)
         ledger = record_result(ledger_path, ledger, scenario_id, fingerprint, status)
