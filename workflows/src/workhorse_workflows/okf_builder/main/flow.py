@@ -311,7 +311,7 @@ class OkfBuilder(Workflow):
 
     #: Retired as selectors, kept declared for one release. They selected between two prepare
     #: functions and three ways of computing what was stale; one reconcile against the
-    #: book's own watermark answers all of them. Deleting a field kills every in-flight run
+    #: book's own `@digest` stamps answers all of them. Deleting a field kills every in-flight run
     #: on reload with a bare pydantic `extra_forbidden`, so a run that passes one gets a
     #: warning out of `prepare`, not a crash.
     since: str = ""
@@ -393,8 +393,8 @@ class OkfBuilder(Workflow):
 
         Then the run's one entry decision, and it is read off the book rather than passed
         in. A book that already holds markdown is **reconciled** to HEAD: the checkpoint
-        reads doctor, the coverage join reads the watermark, and between them they name
-        every unit the book owes work on — which is exactly what `recheck_only` used to ask
+        reads doctor, the coverage join reads the inventory and citations, and between them
+        they name every unit the book owes work on — which is exactly what `recheck_only` used to ask
         for by hand, and forgetting it re-enumerated a finished book's surfaces every run.
         An empty book has nothing to reconcile against, so it is filled top-down from the
         code's entry surfaces.

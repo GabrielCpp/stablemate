@@ -116,7 +116,7 @@ def prepare(
     `recheck_only`, `diff_base`, `workspace_file` and `sources` are **retired and unread**.
     `story` remains only as commit provenance. These inputs selected between two prepare
     functions and three ways of computing what was stale; one reconcile against the
-    book's own watermark answers all of them, and `recheck_only` falls out of the book
+    book's own `@digest` stamps answers all of them, and `recheck_only` falls out of the book
     already existing. They stay declared for one release because deleting a field kills
     every in-flight run on reload, so a run that passes one gets a warning, not a crash.
     """

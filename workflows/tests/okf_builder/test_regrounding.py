@@ -1,14 +1,8 @@
-"""The watermark and the regrounding queue (`main/nodes/coverage.py`).
+"""The regrounding queue (`main/nodes/coverage.py`).
 
-Two behaviours, one loop. The **watermark** is the record of what the book was written
-against, and it is claimed at exactly one moment: the verdict that says every unit is
-covered *and* nothing has drifted under it. Anywhere earlier — the clean checkpoint,
-which runs before this join — would stamp symbols nobody re-read as current and erase, in
-the same pass, the drift the join exists to report.
-
-**Regrounding** is the other half: when a cited file's bytes change under a citation that
-carries a digest, doctor reports `stale-citation` and the join queues one row per changed
-file, naming every node that cites it — rather than calling the book complete.
+When a cited file's bytes change under a citation that carries a digest, doctor reports
+`stale-citation` and the join queues one row per changed file, naming every node that
+cites it — rather than calling the book complete.
 """
 from __future__ import annotations
 
@@ -19,7 +13,6 @@ from pathlib import Path
 
 from workhorse_workflows.okf_builder.shared import paths
 from ostler import stamp as stamp_mod
-from ostler.source_snapshots import catalog_path
 
 from okf_builder.conftest import CONCEPT
 from workhorse_workflows.okf_builder.main.nodes.coverage import (
@@ -55,10 +48,6 @@ def _verdict(book: Path, logger: logging.Logger):
     )
 
 
-def _catalog(book: Path) -> dict:
-    return json.loads(catalog_path(book).read_text())
-
-
 def _stamp(book: Path, page: str = CHARGE_PAGE) -> None:
     """Stamp a page's citation with the digest of the file it currently cites.
 
@@ -70,49 +59,6 @@ def _stamp(book: Path, page: str = CHARGE_PAGE) -> None:
     """
     result = stamp_mod.stamp_page(book, paths.features_root(book, SERVICE), page)
     assert not result.unresolved, result.unresolved
-
-
-# --- the watermark ----------------------------------------------------------
-
-
-def test_a_complete_verdict_leaves_a_watermark_the_next_run_can_read(
-    booked: Path, logger: logging.Logger
-) -> None:
-    """`ostler backfill plan` can only call a citation drifted against a stored digest.
-
-    Nothing but a converged, full scan is entitled to say "this node was written against
-    these bytes", so the verdict is where the catalog is written and the digest is
-    per-declaration — the granularity the whole plan turns on.
-    """
-    result = _verdict(booked, logger)
-    assert result.coverage_complete
-    assert not result.regrounding
-
-    (repo,) = _catalog(booked)["repositories"]
-    (file,) = repo["files"]
-    assert file["path"] == SOURCE_FILE
-    assert [s["name"] for s in file["declarations"]] == ["charge"]
-    assert file["declarations"][0]["content_sha256"]
-
-
-def test_an_incomplete_verdict_claims_no_watermark(
-    booked: Path, logger: logging.Logger
-) -> None:
-    """A symbol nothing documents leaves the join short, and a short join earns no stamp.
-
-    Writing the catalog anyway would mark every *other* symbol current on the strength of a
-    round that documented none of them, and the next run would see a clean stale set over a
-    book nobody finished. (A dangling citation is the checkpoint's channel, not this one —
-    the join only reaches a verdict on a doctor-green book.)
-    """
-    (booked / SOURCE_FILE).write_text(
-        DRIFTED_SOURCE + "\n\ndef refund(amount):\n    return -amount\n", encoding="utf-8"
-    )
-    result = _verdict(booked, logger)
-
-    assert not result.coverage_complete
-    assert result.missing_count
-    assert not catalog_path(booked).exists()
 
 
 # --- regrounding ------------------------------------------------------------

@@ -142,11 +142,11 @@ def stamp_turn(
 
     Two sources of stampable targets, both scoped to what *this* turn actually resolved.
     A `fix:stale-citation` row restamps only the `(node, file)` pairs it was assigned —
-    and only when the turn's own `doc_status` says it finished (the `documented` verdict,
-    or unstated — the same convention regrounding itself gates on).
+    and only when the turn's own `doc_status` says it finished (a `documented` verdict, or
+    unstated; any other verdict means the turn never claimed to have re-read the citation).
     A `partial` or `skipped` turn never re-read the citation, so marking it fresh would
-    hide that gap; the row simply comes back on the next join, same as an unadvanced
-    watermark does. New-citation stamping below stays unconditional even on such a turn:
+    hide that gap; the row simply comes back on the next join. New-citation stamping below
+    stays unconditional even on such a turn:
     it stamps only targets `doctor` already found `unstamped-citation` (never an error),
     on nodes the turn's own diff shows it wrote — doctor gates that claim on its own.
     Any node the turn's own diff actually touched also gets its still-unstamped targets,

@@ -35,7 +35,6 @@ from ostler import Ostler, graph as graph_mod
 # green. Importing it means the join and the grounding check cannot disagree again.
 from ostler.inventory import SOURCE_SUFFIXES, symbols
 from ostler import refs
-from ostler import source_snapshots
 from workhorse_workflows.kit import short_sha
 from workhorse_workflows.okf_builder.shared import stubs
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
@@ -461,8 +460,6 @@ def compute_coverage(
                 "%d to reground → complete=%s", service or "(whole book)", result["covered"],
                 result["total"], result["waived"], screens, len(result["missing"]),
                 len(regrounding), "yes" if complete else "no")
-    if complete:
-        _watermark(logger, okf)
     return Coverage(
         coverage_complete=complete,
         missing_count=len(result["missing"]),
@@ -474,26 +471,6 @@ def compute_coverage(
         regrounding=regrounding,
         rescan_round=rescan,
     )
-
-
-def _watermark(logger: logging.Logger, okf: Ostler) -> None:
-    """Record what every cited symbol currently *is*, so the next run can tell what moved.
-
-    Taken here and only here: on the one verdict that says the book covers its source and no
-    citation has drifted under it. Anywhere earlier — the clean checkpoint, say, which runs
-    *before* this join — would stamp symbols nobody re-read as current and erase the drift
-    this node exists to detect, in the same pass that was supposed to report it.
-
-    A failure is logged and dropped. The catalog only ever makes the next run's plan cheaper,
-    never more correct, and a book that converged must not be reported as failed because a
-    cache could not be written.
-    """
-    try:
-        path = source_snapshots.write_catalog(okf.graph, ())
-    except (OSError, ValueError, RuntimeError) as exc:
-        logger.warning("could not write the source watermark: %s", exc)
-        return
-    logger.info("watermarked the cited source at %s", path)
 
 
 __all__ = ["compute_coverage", "inventory_source", "operational_units", "skipped"]

@@ -234,7 +234,7 @@ def _repair_scope(row: dict[str, Any]) -> tuple[str, list[dict[str, Any]]] | Non
     """The one book file a repair row is about, and its findings — or None if it has none.
 
     A row joins a batch only when its scope is one file: a group finding (`related`) spans
-    several, and a `fix:stale-citation` row moves its own watermark when it closes
+    several, and a `fix:stale-citation` row restamps its own pairs in `stamp_turn`
     (its own context names the one file it stamped), so both stay turns of their own.
     """
     kind = str(row.get("kind", ""))
