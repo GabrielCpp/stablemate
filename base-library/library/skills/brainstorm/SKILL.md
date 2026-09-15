@@ -2,6 +2,7 @@
 name: brainstorm
 description: Generate a wide field of genuinely distinct options for a problem, ground them in what the repo already knows, then converge to a ranked shortlist
 argument-hint: "[the problem, question or space to generate options for]"
+tags: [brainstorm]
 ---
 
 # Brainstorm
