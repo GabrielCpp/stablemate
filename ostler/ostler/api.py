@@ -794,14 +794,18 @@ class Ostler:
                             self._resolve(spec) if spec else None, root=self.root)
 
     def qa_run(self, plan_file: str | Path, *, spec: str | Path | None = None,
-               stop_on_fail: bool = False, label: str | None = None) -> QaOutcome:
+               stop_on_fail: bool = False, only: builtins.list[str] | None = None,
+               label: str | None = None) -> QaOutcome:
         """Execute a ``qa_plan.py`` in batch mode (``ostler qa run``).
 
         ``label`` makes it a dry run into ``<spec>/qa/<label>/`` that publishes no
-        ``qa-evidence.json`` — what ``--out-dir`` does on the CLI."""
+        ``qa-evidence.json`` — what ``--out-dir`` does on the CLI. ``only`` narrows to the
+        named scenario ids without forcing a dry run: paired with ``label=None`` it is
+        still a scored run (``qa_dirname`` stays the default), just over a subset of the
+        plan — the targeted re-run a fingerprint-keyed caller needs."""
 
         return cmd_run(Path(plan_file), self._resolve(spec) if spec else None,
-                       stop_on_fail=stop_on_fail, label=label, root=self.root)
+                       stop_on_fail=stop_on_fail, only=only, label=label, root=self.root)
 
     def qa_report(self, spec: str | Path, *, label: str | None = None,
                   ledger: bool = False) -> QaOutcome:
