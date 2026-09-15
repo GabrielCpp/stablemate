@@ -85,6 +85,17 @@ def test_a_filter_rooted_path_witnesses_in_a_list_not_a_dict() -> None:
     assert trial.sensitive
 
 
+def test_an_empty_path_witnesses_the_whole_document_not_a_container() -> None:
+    """`json_path(path="")` asserts on the whole body: `resolve_path` treats an empty path as
+    naming the document itself, so the witness is `value` and the drop mutation is `None`,
+    not a step walk over zero steps (which used to overrun `zip(..., strict=True)`)."""
+    assert sensitivity._set_path({}, "", "policy") == "policy"
+    assert sensitivity._drop_path("policy", "") is None
+    trial = _trial('json_path(path="", equals="policy")')
+    assert trial.witnessed
+    assert trial.sensitive
+
+
 def test_a_presence_assertion_is_not_asked_to_notice_a_changed_value() -> None:
     """`absent=false` claims the field is there and claims nothing about what it holds."""
     trial = _trial('json_path(path="errors.premium", absent=false)')

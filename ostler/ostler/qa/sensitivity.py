@@ -117,10 +117,14 @@ def _set_path(document: dict[str, Any], path: str, value: Any) -> Any:
     beside whatever the rest of the path puts there. The root container follows the same
     rule as every other step's `nxt`: a path whose first step is an index or a selector
     needs a list root, not the dict `document` a caller always starts from, so the root is
-    picked from `steps[0]` the same way `nxt` is picked from `following`.
+    picked from `steps[0]` the same way `nxt` is picked from `following`. An empty path
+    resolves to the document itself (`resolve_path`'s no-step case), so the witness is
+    `value` itself rather than a container `value` is set inside.
     """
     steps = _steps(path)
-    root: Any = [] if steps and isinstance(steps[0], int | _harness._Wild | _harness.Filter) else document
+    if not steps:
+        return value
+    root: Any = [] if isinstance(steps[0], int | _harness._Wild | _harness.Filter) else document
     cursor: Any = root
     for step, following in zip(steps, [*steps[1:], None], strict=True):
         nxt: Any = [] if isinstance(following, int | _harness._Wild | _harness.Filter) else {}
@@ -177,6 +181,9 @@ def _collection(subject: str, size: int) -> dict[str, Any]:
 def _drop_path(document: Any, path: str) -> Any:
     """The same document with the leaf `path` names taken out of it."""
     steps = _steps(path)
+    if not steps:
+        # An empty path names the document itself; dropping it is the document being gone.
+        return None
     cursor = document
     for step in steps[:-1]:
         cursor = cursor[0] if isinstance(step, _harness._Wild | _harness.Filter) else cursor[step]
