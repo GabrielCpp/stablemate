@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ostler import source_snapshots, stamp
 from ostler.cli import main
+from ostler.model import load
 
 SERVICE = "def charge(amount):\n    return amount\n"
 
@@ -200,6 +201,82 @@ def test_cli_stamp_node_file_pair_scopes_the_restamp_to_one_citation(
     text = feature.read_text(encoding="utf-8")
     assert "`src/service.py::charge` @" in text
     assert "`src/other.py::other` @" not in text
+
+
+def test_node_line_range_runs_to_end_of_file_for_a_lone_node(tmp_path: Path):
+    feature = _book(tmp_path, "`src/service.py::charge`")
+    _service(tmp_path)
+    graph = load(tmp_path)
+    node = graph.find_ui_node("docs/features/billing/charge.md")
+    assert node is not None
+    line_count = len(feature.read_text(encoding="utf-8").splitlines())
+    assert stamp.node_line_range(graph, node) == (node.line, line_count + 1)
+
+
+def test_node_line_range_stops_at_the_next_sibling_on_the_page(tmp_path: Path):
+    _two_node_book(tmp_path, "`src/service.py::charge`")
+    _service(tmp_path)
+    graph = load(tmp_path)
+    alpha = graph.find_ui_node("docs/features/billing/charge.md#alpha")
+    beta = graph.find_ui_node("docs/features/billing/charge.md#beta")
+    assert alpha is not None
+    assert beta is not None
+    assert stamp.node_line_range(graph, alpha) == (alpha.line, beta.line)
+
+
+def test_stamp_targets_scopes_the_restamp_to_the_given_node_and_file(tmp_path: Path):
+    _book(tmp_path, "`src/service.py::charge`, `src/other.py::other`")
+    _service(tmp_path)
+    (tmp_path / "src/other.py").write_text("def other():\n    pass\n", encoding="utf-8")
+    graph = load(tmp_path)
+
+    results = stamp.stamp_targets(
+        graph, tmp_path, [("docs/features/billing/charge.md", "src/service.py")],
+    )
+
+    assert len(results) == 1
+    assert results[0].unresolved == []
+    text = (tmp_path / "docs/features/billing/charge.md").read_text(encoding="utf-8")
+    assert "`src/service.py::charge` @" in text
+    assert "`src/other.py::other` @" not in text
+
+
+def test_stamp_targets_leaves_a_sibling_nodes_citation_of_the_same_file_untouched(
+    tmp_path: Path,
+):
+    _two_node_book(tmp_path, "`src/service.py::charge`")
+    _service(tmp_path)
+    graph = load(tmp_path)
+
+    results = stamp.stamp_targets(
+        graph, tmp_path, [("docs/features/billing/charge.md#alpha", "src/service.py")],
+    )
+
+    assert len(results) == 1
+    assert results[0].stamped == 1
+    text = (tmp_path / "docs/features/billing/charge.md").read_text(encoding="utf-8")
+    lines = text.splitlines()
+    alpha_line = next(i for i, line in enumerate(lines) if line == "## Alpha")
+    beta_line = next(i for i, line in enumerate(lines) if line == "## Beta")
+    assert "@" in lines[alpha_line + 2]
+    assert "@" not in lines[beta_line + 2]
+
+
+def test_stamp_targets_reports_an_unresolved_node_without_dropping_the_others(tmp_path: Path):
+    _book(tmp_path, "`src/service.py::charge`")
+    _service(tmp_path)
+    graph = load(tmp_path)
+
+    results = stamp.stamp_targets(
+        graph, tmp_path, [
+            ("docs/features/billing/charge.md", "src/service.py"),
+            ("docs/features/billing/missing.md#nope", "src/service.py"),
+        ],
+    )
+
+    by_page = {r.page: r for r in results}
+    assert by_page["docs/features/billing/charge.md"].stamped == 1
+    assert by_page[""].unresolved == ["docs/features/billing/missing.md#nope"]
 
 
 def test_cli_stamp_file_without_node_is_rejected(tmp_path: Path, capsys):

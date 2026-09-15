@@ -25,11 +25,12 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from ostler.markdown import split
+from ostler.model import Graph, UINode
 from ostler.refs import normalize_ref, parse_code_ref
 from ostler.source_snapshots import SourceCatalog, book_repository
 
@@ -191,6 +192,56 @@ def stamp_page(root: Path, features_root: Path, page: str, *,
         path.write_text(doc.render(), encoding="utf-8")
 
     return StampResult(page=page, stamped=stamped, unresolved=unresolved, changed=changed)
+
+
+def node_line_range(graph: Graph, node: UINode) -> tuple[int, int]:
+    """*node*'s own extent — its heading line up to (exclusive) the next node on its page.
+
+    Mirrors `ostler.cli`'s private `_node_line_range`, the shape `--node` stamping already
+    ships with (landed for the CLI in a prior commit); this is the same logic exposed for an
+    in-process caller that already holds a loaded `Graph`.
+    """
+    siblings = sorted(
+        (n.line for n in graph.ui_nodes if n.path == node.path and n.line > node.line),
+    )
+    end = siblings[0] if siblings else len(node.path.read_text(encoding="utf-8").splitlines()) + 1
+    return node.line, end
+
+
+def stamp_targets(
+    graph: Graph, features_root: Path, pairs: Iterable[tuple[str, str]],
+) -> list[StampResult]:
+    """Stamp exactly the ``(node, cited-file)`` pairs given — never a node's other citations.
+
+    Mirrors ``ostler stamp --node <id> --file <path>`` (repeatable), as an in-process call for
+    a caller that already holds a loaded `Graph` — okf-builder's turn-finalize step, which must
+    not shell out (ostler is called as a library there, never a subprocess). ``pairs`` may name
+    the same node more than once, once per file it should stamp; a node id this graph does not
+    resolve is reported back via a synthetic result rather than raising, so one bad pair does
+    not abort every other stamp the turn is entitled to.
+    """
+    pages: dict[str, list[tuple[int, int]]] = {}
+    only_targets: dict[str, dict[tuple[int, int], set[str]]] = {}
+    unresolved: list[str] = []
+    for node_id, file_target in pairs:
+        node = graph.find_ui_node(node_id)
+        if node is None:
+            unresolved.append(node_id)
+            continue
+        rel = node.path.relative_to(graph.root).as_posix()
+        node_range = node_line_range(graph, node)
+        pages.setdefault(rel, []).append(node_range)
+        only_targets.setdefault(rel, {}).setdefault(node_range, set()).add(file_target)
+    results = [
+        stamp_page(
+            graph.root, features_root, rel, line_ranges=ranges,
+            only_targets={r: frozenset(t) for r, t in only_targets[rel].items()},
+        )
+        for rel, ranges in pages.items()
+    ]
+    if unresolved:
+        results.append(StampResult(page="", stamped=0, unresolved=unresolved))
+    return results
 
 
 def stamp_page_from_catalog(root: Path, page: str, catalog: SourceCatalog) -> StampResult:
