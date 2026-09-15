@@ -27,18 +27,27 @@ def test_ledger_path_is_one_file_per_service(tmp_path: Path) -> None:
 def test_fingerprint_is_order_independent() -> None:
     refs = ["a.py::Foo@abc123", "b.py@def456"]
     fixtures = {"fx-1": "setup text", "fx-2": "other text"}
-    assert claim_fingerprint(refs, fixtures) == claim_fingerprint(list(reversed(refs)), fixtures)
+    assert claim_fingerprint(refs, fixtures, "plan-1") == claim_fingerprint(
+        list(reversed(refs)), fixtures, "plan-1"
+    )
 
 
 def test_fingerprint_changes_when_a_cited_digest_changes() -> None:
-    before = claim_fingerprint(["a.py@abc123"], {})
-    after = claim_fingerprint(["a.py@def456"], {})
+    before = claim_fingerprint(["a.py@abc123"], {}, "plan-1")
+    after = claim_fingerprint(["a.py@def456"], {}, "plan-1")
     assert before != after
 
 
 def test_fingerprint_changes_when_fixture_text_changes() -> None:
-    before = claim_fingerprint([], {"fx-1": "setup text"})
-    after = claim_fingerprint([], {"fx-1": "different setup"})
+    before = claim_fingerprint([], {"fx-1": "setup text"}, "plan-1")
+    after = claim_fingerprint([], {"fx-1": "different setup"}, "plan-1")
+    assert before != after
+
+
+def test_fingerprint_changes_when_claim_content_changes() -> None:
+    """A repaired expected value must invalidate the fingerprint even when nothing cited did."""
+    before = claim_fingerprint(["a.py@abc123"], {"fx-1": "setup text"}, "expect: 200")
+    after = claim_fingerprint(["a.py@abc123"], {"fx-1": "setup text"}, "expect: 204")
     assert before != after
 
 

@@ -20,7 +20,9 @@ from pathlib import Path
 from typing import Any
 
 
-def claim_fingerprint(code_refs: Sequence[str], fixture_texts: Mapping[str, str]) -> str:
+def claim_fingerprint(
+    code_refs: Sequence[str], fixture_texts: Mapping[str, str], claim_content: str
+) -> str:
     """A fingerprint over what one claim's targeted re-run depends on.
 
     `code_refs` are the claim's own `code:` citations, already rendered with their
@@ -28,12 +30,18 @@ def claim_fingerprint(code_refs: Sequence[str], fixture_texts: Mapping[str, str]
     already keeps current, so this never re-reads the cited files itself. `fixture_texts`
     is each fixture node's own text the claim's preconditions reach, keyed by node id, so a
     change to a fixture's setup steps changes the fingerprint without any code change at all.
+    `claim_content` is a canonical serialization of the claim's own compiled obligation or
+    plan step — whatever slice 6 actually executes — supplied by the caller: this module has
+    no opinion on what that shape is, only that a book-side repair (an edited expected value,
+    a rewritten step) must move the fingerprint even when no cited file or fixture changed.
 
     Two claims that cite the same files and fixtures in a different order still fingerprint
     equal — the set is what changed re-execution cares about, not the order a caller happened
     to list it in.
     """
     digest = hashlib.sha256()
+    digest.update(claim_content.encode())
+    digest.update(b"\0")
     for ref in sorted(set(code_refs)):
         digest.update(ref.encode())
         digest.update(b"\0")
