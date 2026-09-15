@@ -221,6 +221,11 @@ def migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) -> Q
     dest = Path(out_dir)
     if not dest.is_absolute():
         dest = root / dest
+    if not dest.resolve().is_relative_to(root.resolve()):
+        return QaOutcome(
+            ok=False,
+            message=f"--in {out_dir!r} resolves outside the repo root {root}",
+        )
     collisions = sorted(name for name in specs if (dest / f"{name}.md").exists())
     if collisions:
         return QaOutcome(

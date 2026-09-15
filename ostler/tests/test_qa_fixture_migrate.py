@@ -103,6 +103,17 @@ def test_fixture_modules_are_left_declared(tmp_path: Path) -> None:
     assert fixtures.declared_modules(tmp_path) == {"claims"}
 
 
+def test_an_out_dir_outside_the_repo_root_refuses_cleanly(tmp_path: Path) -> None:
+    _agents_yml(tmp_path, ONE_FIXTURE)
+    outside = tmp_path.parent / f"{tmp_path.name}-outside-fixtures"
+
+    result = fixtures.migrate(tmp_path, str(outside), cfg=_CFG)
+
+    assert not result.ok
+    assert str(outside) in result.message or "outside" in result.message
+    assert not outside.exists()
+
+
 @dataclass
 class _GraphStub:
     root: Path
