@@ -106,6 +106,21 @@ def test_a_symbol_moved_to_another_file_suppresses_its_uncovered_row(tmp_path: P
     assert "api/moved.py::alpha" not in reasons["uncovered"]
 
 
+def test_a_moved_symbols_dangling_row_names_where_it_went(tmp_path: Path) -> None:
+    # `relocated_to` is the single verdict a worklist builder reads instead of re-deriving
+    # its own "is this a rename" test against the inventory.
+    graph = _repo(tmp_path, "api/thing.py::alpha")
+    write(tmp_path / "api/thing.py", "def beta(value):\n    return value * 2\n")
+    write(tmp_path / "api/moved.py", "def alpha(value):\n    return value + 1\n")
+    inv = _inventory(tmp_path, [_symbol("api/moved.py", "alpha"),
+                                _symbol("api/thing.py", "beta")])
+    result = _plan(graph, inv)
+    dangling = result.by_reason()["dangling"]
+    assert [row.relocated_to for row in dangling if row.unit == "api/thing.py::alpha"] == [
+        "api/moved.py::alpha",
+    ]
+
+
 def test_a_repeated_symbol_name_is_not_suppressed(tmp_path: Path) -> None:
     # The name recurs in a third file, so it is not provably the moved symbol — both rows
     # must surface, or the real uncovered work at the third file goes unreported.
@@ -122,6 +137,8 @@ def test_a_repeated_symbol_name_is_not_suppressed(tmp_path: Path) -> None:
     assert reasons["uncovered"] == {
         "api/moved.py::alpha", "api/other.py::alpha", "api/thing.py::beta",
     }
+    dangling = result.by_reason()["dangling"]
+    assert [row.relocated_to for row in dangling] == [""]
 
 
 def test_a_symbol_renamed_in_place_is_a_dead_citation_and_new_code(tmp_path: Path) -> None:

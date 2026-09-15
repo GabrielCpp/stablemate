@@ -256,6 +256,78 @@ def test_a_deleted_path_does_not_emit_trim_when_nothing_cited_it(
     assert all(r["kind"] != "trim-bullet" for r in result.rows)
 
 
+# --- relocation: a moved symbol is not a deletion ---------------------------------
+
+
+def test_a_relocated_symbol_keeps_the_dangling_row_instead_of_trim(
+    booked_repo: Path, write: Callable[[Path, str], Path]
+) -> None:
+    """A citation whose symbol moved to another file: the ``dangling`` row survives so
+    the citation can be re-pointed, instead of trim deleting the node outright.
+    """
+    features = booked_repo / "docs/features/acme"
+    inv = features / ".source-inventory.json"
+    inv.parent.mkdir(parents=True, exist_ok=True)
+
+    # The cited file is gone; `charge` now lives, uniquely, at a new path.
+    (booked_repo / "acme/service.py").unlink()
+    write(booked_repo / "acme/moved.py", "def charge(amount):\n    return amount\n")
+
+    from workhorse_workflows.okf_builder.main.nodes.coverage import inventory_source
+    import logging
+    inventory_source(
+        logging.getLogger("test"), str(booked_repo / "acme"), str(inv), "", str(booked_repo),
+    )
+
+    result = build_worklist(booked_repo, features, SERVICE)
+    dangling = [r for r in result.rows if r["kind"] == "fix:dangling"]
+    assert dangling, result.rows
+    contexts = [json.loads(r["context"]) for r in dangling]
+    assert any(
+        c["citation"] == "acme/service.py::charge"
+        and c.get("relocated_to") == "acme/moved.py::charge"
+        for c in contexts
+    )
+    trim_rows = [r for r in result.rows if r["kind"] == "trim-bullet"]
+    assert all(
+        json.loads(r["context"])["citation"] != "acme/service.py::charge"
+        for r in trim_rows
+    )
+
+
+def test_a_repeated_symbol_name_elsewhere_still_trims(
+    booked_repo: Path, write: Callable[[Path, str], Path]
+) -> None:
+    """The symbol name recurs at more than one other path: not provably a move, so
+    trim still fires and the duplicated uncovered units are not suppressed.
+    """
+    features = booked_repo / "docs/features/acme"
+    inv = features / ".source-inventory.json"
+    inv.parent.mkdir(parents=True, exist_ok=True)
+
+    (booked_repo / "acme/service.py").unlink()
+    write(booked_repo / "acme/moved.py", "def charge(amount):\n    return amount\n")
+    write(booked_repo / "acme/other.py", "def charge(amount):\n    return amount * 2\n")
+
+    from workhorse_workflows.okf_builder.main.nodes.coverage import inventory_source
+    import logging
+    inventory_source(
+        logging.getLogger("test"), str(booked_repo / "acme"), str(inv), "", str(booked_repo),
+    )
+
+    result = build_worklist(booked_repo, features, SERVICE)
+    trim_rows = [r for r in result.rows if r["kind"] == "trim-bullet"]
+    assert any(
+        json.loads(r["context"])["citation"] == "acme/service.py::charge"
+        for r in trim_rows
+    )
+    dangling = [r for r in result.rows if r["kind"] == "fix:dangling"]
+    assert all(not json.loads(r["context"]).get("relocated_to") for r in dangling)
+    missing_units = {miss["code"] for miss in result.missing}
+    assert "acme/moved.py::charge" in missing_units
+    assert "acme/other.py::charge" in missing_units
+
+
 # --- the path filter --------------------------------------------------------------
 
 

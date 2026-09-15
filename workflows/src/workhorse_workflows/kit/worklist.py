@@ -32,7 +32,12 @@ bullets are cut, the node is queued for authored removal if it lost its last
 bullet, and the neighbours are queued for review so a journey whose third step
 vanished is read against the book rather than against the file. A foreign
 ``repo://`` citation is never trimmed this way — a checkout-less foreign ref is
-``unreachable-citation`` territory, not a deleted path in this tree.
+``unreachable-citation`` territory, not a deleted path in this tree. A citation
+whose symbol relocated (``backfill.plan`` marks the ``dangling`` row's
+``relocated_to``) is excluded from trim as well: the file is gone but the symbol
+is not, and trim's own rule against re-pointing a bullet to a neighbour means
+deleting the node instead of fixing the citation — so the row survives as
+``fix:dangling`` and drives a repair that re-points it.
 """
 from __future__ import annotations
 
@@ -101,16 +106,19 @@ def _stale_unit_to_row(unit: backfill_mod.StaleUnit) -> WorklistRow | None:
         return None
     kind = f"fix:{unit.reason}"
     target = unit.nodes[0]
+    context = {
+        "code": kind.removeprefix("fix:"),
+        "citation": unit.unit,
+        "evidence": unit.evidence,
+        "nodes": list(unit.nodes),
+        "grounded": True,
+    }
+    if unit.relocated_to:
+        context["relocated_to"] = unit.relocated_to
     return {
         "kind": kind,
         "target": target,
-        "context": json.dumps({
-            "code": kind.removeprefix("fix:"),
-            "citation": unit.unit,
-            "evidence": unit.evidence,
-            "nodes": list(unit.nodes),
-            "grounded": True,
-        }, sort_keys=True),
+        "context": json.dumps(context, sort_keys=True),
         "requeue": True,
     }
 
@@ -143,15 +151,18 @@ def _deleted_paths(repo_root: Path, service: str | None) -> list[str]:
 
 
 def _trim_rows(repo_root: Path, service: str | None,
-               deleted: Iterable[str]) -> list[WorklistRow]:
+               deleted: Iterable[str], relocated: frozenset[str] = frozenset()) -> list[WorklistRow]:
     """``trim-bullet`` rows for every node citing a path the tree no longer carries.
 
-    A path the book cites but the tree lacks leaves its bullets pointing at nothing in a
-    way doctor misses — doctor reads the *current* tree and finds no symbol to ground
-    against. The builder closes that gap: every node citing a deleted own-repository
-    path gets a row that retires the bullets and queues authored removal if the node
-    lost its last bullet. A foreign ``repo://`` citation is never matched here, even if
-    its path happens to collide with a deleted local one.
+    A path the book cites but the tree lacks leaves its bullets pointing at nothing —
+    doctor reports it as ``dangling-code-ref``, but trim is the more specific remedy,
+    since it also knows which path is gone and can retire the bullet rather than just
+    flag it. Every node citing a deleted own-repository path gets a row that retires
+    the bullets and queues authored removal if the node lost its last bullet. A
+    foreign ``repo://`` citation is never matched here, even if its path happens to
+    collide with a deleted local one. A citation in *relocated* is skipped: its symbol
+    moved rather than vanished, and ``backfill.plan`` already keeps a ``dangling`` row
+    for it so the citation gets re-pointed instead of retired.
     """
     deleted_set = set(deleted)
     if not deleted_set:
@@ -163,6 +174,8 @@ def _trim_rows(repo_root: Path, service: str | None,
         return []
     rows: list[WorklistRow] = []
     for ref, nodes in cited_by.items():
+        if ref in relocated:
+            continue
         try:
             parsed = refs_mod.parse_code_ref(ref)
         except ValueError:
@@ -185,14 +198,17 @@ def _trim_rows(repo_root: Path, service: str | None,
 
 
 def _trim_neighbour_rows(repo_root: Path, service: str | None,
-                         deleted: Iterable[str]) -> list[WorklistRow]:
+                         deleted: Iterable[str],
+                         relocated: frozenset[str] = frozenset()) -> list[WorklistRow]:
     """``trim-review`` rows for every node that linked to something trimmed.
 
     A journey whose third step vanished is structurally valid and reads as a corpse
     until somebody re-reads the steps against the book. The detection is one pass
     over the graph: every incoming edge to a node whose citations now dangle.
     Without this, an authored removal lands and its caller still lists a step that
-    does not exist.
+    does not exist. A citation in *relocated* is excluded from ``trimmed_citations``
+    the same way ``_trim_rows`` excludes it: its node is not being trimmed for that
+    citation, only for whichever others are genuinely gone.
     """
     deleted_set = set(deleted)
     if not deleted_set:
@@ -211,7 +227,9 @@ def _trim_neighbour_rows(repo_root: Path, service: str | None,
         cited = node.get("bullets", {}).get("code", []) or []
         if not isinstance(cited, list):
             cited = [cited]
-        if not any(_ref_path(ref) in deleted_set for ref in cited):
+        trimmed = [ref for ref in cited
+                  if _ref_path(ref) in deleted_set and ref not in relocated]
+        if not trimmed:
             continue
         for caller in incoming.get(node["id"], ()):
             rows.append({
@@ -220,8 +238,7 @@ def _trim_neighbour_rows(repo_root: Path, service: str | None,
                 "context": json.dumps({
                     "code": "trim-review",
                     "trimmed_node": node["id"],
-                    "trimmed_citations": [str(ref) for ref in cited
-                                          if _ref_path(ref) in deleted_set],
+                    "trimmed_citations": [str(ref) for ref in trimmed],
                 }, sort_keys=True),
                 "requeue": True,
             })
@@ -340,22 +357,30 @@ def build_worklist(
     if path_filter:
         deleted = [path for path in deleted if path in path_filter]
     deleted_set = set(deleted)
+    relocated_refs = frozenset(
+        unit.unit for unit in plan.units
+        if unit.reason == "dangling" and unit.relocated_to
+    )
 
     rows: list[WorklistRow] = []
     for unit in plan.units:
         if path_filter and unit.path not in path_filter:
             continue
-        if unit.reason == "dangling" and unit.path in deleted_set:
+        if unit.reason == "dangling" and unit.path in deleted_set and not unit.relocated_to:
             # Trim already covers this citation more specifically (it also queues
             # neighbour review), so a `dangling` row for a citation under a path trim
-            # is about to retire would just be the same finding queued twice.
+            # is about to retire would just be the same finding queued twice. A
+            # relocated citation is the exception: trim would delete the node outright
+            # (`investigate.md`'s trim-bullet forbids re-pointing to a neighbour), so
+            # the `dangling` row survives to drive a repair that re-points the bullet
+            # instead of erasing documentation of a symbol that still exists.
             continue
         row = _stale_unit_to_row(unit)
         if row is not None:
             rows.append(row)
 
-    rows.extend(_trim_rows(root, surface, deleted))
-    rows.extend(_trim_neighbour_rows(root, surface, deleted))
+    rows.extend(_trim_rows(root, surface, deleted, relocated_refs))
+    rows.extend(_trim_neighbour_rows(root, surface, deleted, relocated_refs))
 
     if path_filter is None:
         rows.extend(_orphan_rows(root, surface))

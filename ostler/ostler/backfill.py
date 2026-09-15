@@ -21,11 +21,12 @@ module's: a per-citation `@digest` stamp comparison against a live checkout, not
 this file used to keep and compare against. A cited symbol that *moved* to another path
 degrades to the same `dangling` row a renamed-away symbol always got — its old citation names
 code that is not there — and the coverage join would otherwise also raise the new location as
-`uncovered`, reporting the one edit as two. `_already_documented_elsewhere` is the guard
-against that double-count: it drops an `uncovered` unit whose symbol name is exactly the
-symbol part of a `dangling` citation this book already carries, but only when that name is
-unique across the inventory — a name that recurs elsewhere is not the moved symbol, and hiding
-it would bury real uncovered work behind a coincidence.
+`uncovered`, reporting the one edit as two. A `dangling` row whose symbol name is unique across
+the inventory carries that new path as `relocated_to`, set once here so every caller reads the
+same verdict rather than re-deriving it: `_already_documented_elsewhere` drops the `uncovered`
+row the move would otherwise double-count, and a repair worklist keeps the `dangling` row alive
+instead of trimming it, because the symbol did not vanish — it moved. A name that recurs
+elsewhere is not provably the moved symbol, so it is left unmarked and both rows stand.
 
 Everything here is a function of its arguments. The git diff, the doctor run and the file
 walk all happen in the caller (`cli`), because the property the three implementations this
@@ -33,6 +34,7 @@ replaces all lacked is being testable without a checkout, an agent or a workflow
 """
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
@@ -62,6 +64,11 @@ class StaleUnit:
     evidence: str = ""
     #: The book nodes citing this unit. Empty for `uncovered`, which is cited by nobody.
     nodes: tuple[str, ...] = ()
+    #: For a `dangling` row whose symbol is unique elsewhere in the inventory, the `code:`
+    #: target it moved to. Empty otherwise — including when the symbol recurs at more than
+    #: one other path, which is not provably a move. The single place this is decided; a
+    #: caller outside this module reads the field rather than re-deriving the verdict.
+    relocated_to: str = ""
 
     @property
     def path(self) -> str:
@@ -147,26 +154,44 @@ def _symbol_of(unit: str) -> str:
         return unit.rsplit("::", 1)[-1] if "::" in unit else ""
 
 
-def _dangling_symbols(dangling: Iterable[StaleUnit]) -> set[str]:
-    return {symbol for row in dangling if (symbol := _symbol_of(row.unit))}
+def _mark_relocated(
+    dangling: Iterable[StaleUnit], symbol_paths: dict[str, list[str]],
+) -> list[StaleUnit]:
+    """Tag each `dangling` row with where its symbol moved to, when that is unambiguous.
+
+    A symbol name unique across the inventory and present at a path other than the dangling
+    citation's own is not lost, it moved — `relocated_to` is the single place that verdict is
+    decided, computed here once so `_already_documented_elsewhere` and every caller outside
+    this module (a repair worklist included) read the same answer rather than each
+    re-deriving it, possibly disagreeing.
+    """
+    marked: list[StaleUnit] = []
+    for row in dangling:
+        symbol = _symbol_of(row.unit)
+        paths = symbol_paths.get(symbol, []) if symbol else []
+        other = [path for path in paths if path != row.path]
+        if symbol and len(paths) == 1 and other:
+            row = dataclasses.replace(row, relocated_to=f"{other[0]}::{symbol}")
+        marked.append(row)
+    return marked
 
 
 def _already_documented_elsewhere(
-    uncovered: Iterable[StaleUnit], dangling_symbols: set[str], symbol_counts: dict[str, int],
+    uncovered: Iterable[StaleUnit], relocated_symbols: set[str],
 ) -> list[StaleUnit]:
     """Drop an `uncovered` row whose symbol is a `dangling` citation's symbol, moved not lost.
 
     Without a stored watermark, a symbol that moved from file A to file B is invisible as a
     move — A's old citation surfaces as `dangling` on its own, and B's copy is indistinguishable
     from code the book never covered. Reporting both is reporting the same edit twice, so a row
-    is dropped here only when its symbol name is *unique* across the inventory: a name that
-    recurs elsewhere is not provably the moved symbol, and suppressing it would bury real
-    uncovered work behind a coincidence.
+    is dropped here only when `_mark_relocated` already tagged the matching `dangling` row as a
+    move: a name that recurs elsewhere is not provably the moved symbol, and suppressing it
+    would bury real uncovered work behind a coincidence.
     """
     kept: list[StaleUnit] = []
     for row in uncovered:
         symbol = _symbol_of(row.unit)
-        if symbol and symbol in dangling_symbols and symbol_counts.get(symbol, 0) <= 1:
+        if symbol and symbol in relocated_symbols:
             continue
         kept.append(row)
     return kept
@@ -195,15 +220,17 @@ def plan(graph: Graph, inventory: dict, *,
     cited = coverage_mod.citations(graph, surface)
     join = coverage_mod.compute(inventory, cited, waivers or {})
 
-    dangling_rows = _dangling(findings, cited)
-    dangling_symbols = _dangling_symbols(dangling_rows)
-    symbol_counts: dict[str, int] = {}
+    symbol_paths: dict[str, list[str]] = {}
     for unit in inventory["units"]:
         symbol = str(unit.get("symbol") or "")
+        path = str(unit.get("path") or "")
         if symbol:
-            symbol_counts[symbol] = symbol_counts.get(symbol, 0) + 1
-    uncovered_rows = _already_documented_elsewhere(_uncovered(join), dangling_symbols,
-                                                    symbol_counts)
+            symbol_paths.setdefault(symbol, []).append(path)
+    dangling_rows = _mark_relocated(_dangling(findings, cited), symbol_paths)
+    relocated_symbols = {
+        _symbol_of(row.unit) for row in dangling_rows if row.relocated_to
+    }
+    uncovered_rows = _already_documented_elsewhere(_uncovered(join), relocated_symbols)
 
     rows = dangling_rows + uncovered_rows
 

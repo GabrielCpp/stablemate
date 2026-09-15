@@ -158,9 +158,12 @@ def _emitted_codes() -> set[str]:
 #: Codes the *builder* mints, not `doctor` — so they carry a repair fragment while never
 #: appearing in doctor's source. `stale-citation` is the coverage join's regrounding row: a
 #: node whose grammar is green and whose cited symbol has been rewritten under it, which no
-#: static check of the book alone could ever see. Excluded from the retirement half of the
-#: tripwire, and only from that half — an unclassified doctor code still fails.
-BUILDER_CODES = frozenset({"stale-citation"})
+#: static check of the book alone could ever see. `dangling` is `backfill.plan`'s own label
+#: for a row grounded in one of `DANGLING_CODES` (`dangling-code-ref`, `missing-code-symbol`)
+#: — the worklist row carries the *reason*, not the doctor code, because either code lands
+#: the same row. Excluded from the retirement half of the tripwire, and only from that half —
+#: an unclassified doctor code still fails.
+BUILDER_CODES = frozenset({"stale-citation", "dangling"})
 
 
 def _fragment_codes() -> set[str]:
