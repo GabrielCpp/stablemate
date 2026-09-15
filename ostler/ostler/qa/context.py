@@ -650,6 +650,7 @@ def build_context(
                         ),
                     }
                 )
+    fixture_provides = _fixture_provides_index(nodes_by_id)
     obligations = [
         obligation
         for node_id in sorted(contracts)
@@ -661,6 +662,7 @@ def build_context(
             owed_keys=None if node_id in reached_by_the_diff else _SHARED_INVARIANT_KEYS,
             scope=node_scopes.get(node_id, ()),
             judgment=judgment_by_node.get(node_id),
+            fixture_provides=fixture_provides,
         )
     ] + [
         obligation
@@ -674,6 +676,7 @@ def build_context(
             ),
             scope=node_scopes.get(node_id, ()),
             judgment=judgment_by_node.get(node_id),
+            fixture_provides=fixture_provides,
         )
     ]
     obligations.sort(key=lambda item: _sort_key(str(item["id"])))
@@ -1750,19 +1753,89 @@ def _dedup_checks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list({row["call"]: row for row in rows}.values())
 
 
-def _parse_fixtures(values: list[str]) -> list[dict[str, Any]]:
+def _fixture_provides_index(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
+    """Every book fixture's own `provides:` keys, plus every one reachable through `needs:`.
+
+    Keyed by the fixture node's stem — the same name a `fixture:`/`needs:` bullet cites and
+    `_parse_fixtures` records as `row["name"]` — so a caller holding a fixture row can look its
+    reachable keys up without re-walking the graph. Each entry is spelled `<owner>.<key>`, the
+    same `@<node>.<key>` shape a reference uses: a fixture `needs:` another only composes its
+    state, it does not relabel it, so a reference to `@needed-fixture.key` still names the
+    fixture that actually declared it, not the one that pulled it in. `compile_plan` is the
+    caller: it needs to know every reference a scenario's arranged fixtures resolve, including
+    one supplied only by a fixture *that* fixture `needs:`.
+    """
+    fixtures = {node_id: node for node_id, node in nodes_by_id.items() if node.get("type") == "fixture"}
+    provides: dict[str, set[str]] = {}
+    needs: dict[str, set[str]] = {}
+    for node_id, node in fixtures.items():
+        keys: set[str] = set()
+        for value in _values(node.get("bullets", {}).get("provides")):
+            head = value.partition("—")[0].split()
+            if head:
+                keys.add(head[0])
+        provides[node_id] = keys
+        needs[node_id] = {
+            edge["to"] for edge in node.get("edges", [])
+            if edge.get("via") == "needs" and edge.get("to") in fixtures
+        }
+
+    closure: dict[str, set[tuple[str, str]]] = {}
+
+    def resolve(node_id: str, seen: frozenset[str]) -> set[tuple[str, str]]:
+        if node_id in closure:
+            return closure[node_id]
+        if node_id in seen:
+            return set()
+        owner = Path(node_id).stem
+        pairs = {(owner, key) for key in provides.get(node_id, ())}
+        for dep in needs.get(node_id, ()):
+            pairs |= resolve(dep, seen | {node_id})
+        closure[node_id] = pairs
+        return pairs
+
+    return {
+        Path(node_id).stem: sorted(f"{owner}.{key}" for owner, key in resolve(node_id, frozenset()))
+        for node_id in fixtures
+    }
+
+
+def _parse_captures(values: list[str]) -> list[dict[str, Any]]:
+    """The `capture: <name> from <json path | UI locator>` declarations among *values*.
+
+    Deduped on name — the same division of labour `_parse_fixtures`/`_parse_checks` keep: a
+    bullet that does not parse is dropped here and left for `ostler doctor` to report.
+    """
+    rows: list[dict[str, Any]] = []
+    for value in values:
+        name, sep, rest = value.partition(" from ")
+        name = name.strip()
+        if not sep or not name:
+            continue
+        rows.append({"name": name, "from": rest.strip()})
+    return list({row["name"]: row for row in rows}.values())
+
+
+def _parse_fixtures(
+    values: list[str], fixture_provides: dict[str, list[str]] | None = None
+) -> list[dict[str, Any]]:
     """The declared arrangements among *values*, in order, deduped on name and arguments.
 
     A bullet that does not parse is dropped here and reported by `ostler doctor`, the same
     division of labour `_parse_checks` keeps: the packet says what the book successfully
-    declared, and the lint says what it tried to.
+    declared, and the lint says what it tried to. `fixture_provides` — a book fixture's own
+    keys plus its `needs:` closure, each spelled `<owner>.<key>` — rides along on each row so
+    `compile_plan` can tell what an arrangement makes available without re-walking the graph.
     """
     rows: list[dict[str, Any]] = []
     for value in values:
         parsed = fixtures_mod.parse_bullet(value)
         if isinstance(parsed, fixtures_mod.FixtureRef):
-            rows.append({"name": parsed.name, "args": list(parsed.args),
-                         "provides": parsed.provides})
+            row = {"name": parsed.name, "args": list(parsed.args), "provides": parsed.provides}
+            keys = (fixture_provides or {}).get(parsed.name)
+            if keys:
+                row["providesKeys"] = keys
+            rows.append(row)
     return list({(row["name"], tuple(row["args"])): row for row in rows}.values())
 
 
@@ -1813,6 +1886,7 @@ def _obligations(
     owed_keys: frozenset[str] | None = None,
     scope: tuple[str, ...] = (),
     judgment: list[dict[str, Any]] | None = None,
+    fixture_provides: dict[str, list[str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Mint one obligation per normative bullet, plus the node-level contract.
 
@@ -1854,9 +1928,15 @@ def _obligations(
     node_fixtures, fixtures_per_bullet = registry.attributed_fixtures(
         str(node.get("type", "")), node.get("bulletOrder") or []
     )
-    ambient = _parse_fixtures(node_fixtures)
+    ambient = _parse_fixtures(node_fixtures, fixture_provides)
     if ambient:
         base["fixturesDeclared"] = ambient
+    # Unlike a fixture, a capture belongs to the one bullet whose action produces it — it does
+    # not ride ambient on every obligation the node mints, so this reads `attributed_captures`'
+    # per-bullet half only, the same shape `attributed_checks` yields.
+    _captures_contract, captures_per_bullet = registry.attributed_captures(
+        str(node.get("type", "")), node.get("bulletOrder") or []
+    )
     output = [base]
     for key in registry.normative_keys(str(node.get("type", ""))):
         for index, requirement in enumerate(_values(node.get("bullets", {}).get(key)), start=1):
@@ -1882,13 +1962,18 @@ def _obligations(
                 obligation["checksDeclared"] = rows
             else:
                 obligation.pop("checksDeclared", None)
-            arranged = _parse_fixtures(fixtures_per_bullet.get((key, index), []))
+            arranged = _parse_fixtures(fixtures_per_bullet.get((key, index), []), fixture_provides)
             combined = list({(row["name"], tuple(row["args"])): row
                              for row in [*ambient, *arranged]}.values())
             if combined:
                 obligation["fixturesDeclared"] = combined
             else:
                 obligation.pop("fixturesDeclared", None)
+            captures = _parse_captures(captures_per_bullet.get((key, index), []))
+            if captures:
+                obligation["capturesDeclared"] = captures
+            else:
+                obligation.pop("capturesDeclared", None)
             output.append(obligation)
     # Attached after the loop on purpose: `base` *is* the node-level obligation already in
     # `output`, and the per-bullet `{**base}` copies were taken before this line — so the

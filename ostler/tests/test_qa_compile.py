@@ -358,6 +358,101 @@ def test_checkpoints_and_forbid_scaffolding_never_appear_in_the_gap_report() -> 
     assert {g.kind for g in gaps} <= {"unresolved-precondition", "uncompilable-claim"}
 
 
+def test_a_reference_to_a_fixture_key_arranged_in_the_same_obligation_is_resolved() -> None:
+    """A fixture arranged for this obligation arranges before it verifies — so a reference to a
+    key that fixture's own `provides:` declares resolves, and is not a gap."""
+    oid = "okf:docs/features/acme/api.md#get-thing:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["GET /api/things/@seeded-acme.id"]},
+            checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+            fixturesDeclared=[{"name": "seeded-acme", "args": [], "provides": "an account exists",
+                               "providesKeys": ["seeded-acme.id"]}],
+        )
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == []
+
+
+def test_a_capture_resolves_a_reference_on_a_strictly_later_obligation() -> None:
+    """`$name` names a fact an earlier `capture:` bullet left behind — an obligation after the
+    one that captures it may reference it with no gap."""
+    capturing = "okf:docs/features/acme/api.md#post-thing:does:1"
+    referencing = "okf:docs/features/acme/api.md#get-thing:does:1"
+    context = _context(
+        _obligation(
+            capturing,
+            checksDeclared=[_check()],
+            capturesDeclared=[{"name": "captured", "from": "$.thing.id"}],
+        ),
+        _obligation(
+            referencing,
+            locators={"route": ["GET /api/things"]},
+            checksDeclared=[{"call": "ok", "name": "json_path", "args": {"path": "$captured"}}],
+            fixturesDeclared=[{"name": "seeded-acme", "args": [], "provides": "an account exists"}],
+        ),
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, referencing) == []
+
+
+def test_a_capture_declared_only_on_a_later_obligation_is_still_a_gap() -> None:
+    """The same-obligation exception generalises to ordering: a reference does not see into the
+    future, so a capture the book only produces afterward leaves the earlier reference a gap."""
+    referencing = "okf:docs/features/acme/api.md#get-thing:does:1"
+    capturing = "okf:docs/features/acme/api.md#post-thing:does:1"
+    context = _context(
+        _obligation(
+            referencing,
+            locators={"route": ["GET /api/things"]},
+            checksDeclared=[{"call": "ok", "name": "json_path", "args": {"path": "$captured"}}],
+            fixturesDeclared=[{"name": "seeded-acme", "args": [], "provides": "an account exists"}],
+        ),
+        _obligation(
+            capturing,
+            checksDeclared=[_check()],
+            capturesDeclared=[{"name": "captured", "from": "$.thing.id"}],
+        ),
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert "unresolved-precondition" in _gap_kinds(gaps, referencing)
+
+
+def test_a_reference_to_an_unarranged_fixtures_key_is_a_gap() -> None:
+    """`@node.key` names a fact only that fixture's own arrangement produces — a scenario that
+    never arranges it leaves the reference unresolved regardless of what else it did arrange."""
+    oid = "okf:docs/features/acme/api.md#get-thing:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["GET /api/things/@seeded-globex.id"]},
+            checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+            fixturesDeclared=[{"name": "seeded-acme", "args": [], "provides": "an account exists",
+                               "providesKeys": ["seeded-acme.id"]}],
+        )
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert "unresolved-precondition" in _gap_kinds(gaps, oid)
+
+
+def test_a_key_reached_only_through_needs_is_resolved() -> None:
+    """`seeded-globex` `needs:` `seeded-acme` — arranging the former also arranges the latter, so
+    a reference to a key only `seeded-acme` declares under `provides:` still resolves."""
+    oid = "okf:docs/features/acme/api.md#get-thing:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["GET /api/things/@seeded-acme.id"]},
+            checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+            fixturesDeclared=[{"name": "seeded-globex", "args": [], "provides": "a project exists",
+                               "providesKeys": ["seeded-globex.project_id", "seeded-acme.id"]}],
+        )
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == []
+
+
 def test_a_checkless_obligation_never_reaches_the_scenario_body() -> None:
     """The dead `TODO(undeclared)` branch removed from `_scenario_body`: a checkless obligation
     is book debt, filtered out before the body is ever asked to render one — so no gap, and no

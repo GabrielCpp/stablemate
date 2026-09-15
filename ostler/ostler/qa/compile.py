@@ -249,15 +249,41 @@ def _arrangements(obligations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list({(row["name"], tuple(row.get("args", []))): row for row in rows}.values())
 
 
+def _resolved(
+    ref: references.Reference,
+    produced_facts: set[tuple[str, str]],
+    produced_captures: set[str],
+) -> bool:
+    """Whether *ref* names a fact some earlier producer in the scenario already left behind.
+
+    `@node.key` resolves against `produced_facts`, which by the time this obligation's own
+    references are checked already carries this obligation's own arranged fixtures — arranging
+    happens before verifying on the same node, so a fixture that node itself arranges resolves
+    its own references. `$name` resolves against `produced_captures`, which does *not* yet carry
+    this obligation's own captures: a capture is the thing an action just produced, not a fact in
+    hand before that action ran, so a reference on the same obligation that captures it is still
+    a gap — only a *strictly earlier* obligation's capture resolves it.
+    """
+    if isinstance(ref, references.NodeRef):
+        return (ref.node, ref.key) in produced_facts
+    return ref.name in produced_captures
+
+
 def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[str]:
     """Compile every obligation's assertion half. Called only with `checksDeclared` obligations.
 
     `compile_plan` filters to `declared = [o for o in obligations if o.get("checksDeclared")]`
     before ever reaching here, so every obligation this sees already has at least one row —
     there is no "declares no `verify:`" case left to report from inside the loop.
+
+    References are resolved statically against a running producer set built by walking these
+    obligations in the book's own document order: a `@node.key`/`$name` the book has not yet
+    produced by this point is a gap, one it has is not — see `_resolved`.
     """
     lines: list[str] = []
     index = 0
+    produced_facts: set[tuple[str, str]] = set()
+    produced_captures: set[str] = set()
     for obligation in obligations:
         oid = obligation["id"]
         rows = obligation.get("checksDeclared", [])
@@ -265,6 +291,13 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[s
         lines.append("")
         lines.append(f"    # {oid}")
         lines.append(f"    # {requirement}")
+
+        for fixture_row in obligation.get("fixturesDeclared", []):
+            for qualified in fixture_row.get("providesKeys", []):
+                owner, sep, key = qualified.rpartition(".")
+                if sep:
+                    produced_facts.add((owner, key))
+
         route = _route(obligation)
         index += 1
         name = f"observed_{index}"
@@ -273,8 +306,9 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[s
             path = _concrete_path(rows) or template
             status = _expect_status(rows)
             for ref in references.find_references(path):
-                gaps.append(Gap(oid, "unresolved-precondition",
-                                 f"the path references {ref!r}, not resolvable without running the plan"))
+                if not _resolved(ref, produced_facts, produced_captures):
+                    gaps.append(Gap(oid, "unresolved-precondition",
+                                     f"the path references {ref!r}, not resolvable without running the plan"))
             body = "" if method in {"GET", "DELETE", "HEAD", "OPTIONS"} else ", json_body={}"
             todo = ""
             if body != "":
@@ -291,8 +325,9 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[s
             gaps.append(Gap(oid, "uncompilable-claim", "the book gives this node no `route:` to act on"))
         for row in rows:
             for ref in references.find_references(json.dumps(row.get("args", {}))):
-                gaps.append(Gap(oid, "unresolved-precondition",
-                                 f"a verify argument references {ref!r}, not resolvable without running the plan"))
+                if not _resolved(ref, produced_facts, produced_captures):
+                    gaps.append(Gap(oid, "unresolved-precondition",
+                                     f"a verify argument references {ref!r}, not resolvable without running the plan"))
             operand, note = _operand(row["name"], name)
             if note:
                 lines.append(f"    # TODO(arrange): {note}")
@@ -300,6 +335,11 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[s
             lines.append(
                 f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, covers=[{_lit(oid)}])"
             )
+
+        for capture in obligation.get("capturesDeclared", []):
+            cname = capture.get("name")
+            if cname:
+                produced_captures.add(cname)
     return lines
 
 
