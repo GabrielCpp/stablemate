@@ -100,7 +100,6 @@ ORG_GRAPH_CODES = frozenset({
     "story-fixture-stray",
     "story-section-order",
     "story-status-mismatch",
-    "source-catalog-invalid",
     "unclassified-seed",
     "undeclared-story-fixture",
     "unknown-story-fixture",
