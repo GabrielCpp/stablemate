@@ -1937,6 +1937,26 @@ def _obligations(
     _captures_contract, captures_per_bullet = registry.attributed_captures(
         str(node.get("type", "")), node.get("bulletOrder") or []
     )
+    # Where each normative bullet actually sits on the page. `obligations` is later sorted by
+    # `_sort_key`, which orders by id — alphabetical on the key name, not by where the author
+    # wrote it — so a producer walk that wants the book's own order (a capture read before the
+    # reference that consumes it, say) needs this stamped independently of that resort.
+    #
+    # `bullet_order`'s own ordinal (`row[2]`) is a position within *this node's* section — it
+    # resets for every node, so it is only comparable between obligations minted here. A scenario
+    # can owe evidence for several nodes that share one file (`by_source` groups by path, and a
+    # book runs several `### id` sections per file), so the node's own file-absolute heading line
+    # goes in front of it: two nodes never share a line, and within one node the line is constant,
+    # leaving the bullet ordinal to break the tie exactly as it did before.
+    node_line = int(node.get("line") or 0)
+    doc_position: dict[tuple[str, int], int] = {}
+    _seen = {key: 0 for key in registry.normative_keys(str(node.get("type", "")))}
+    for row in node.get("bulletOrder") or []:
+        row_key = str(row[0])
+        if row_key in _seen:
+            _seen[row_key] += 1
+            doc_position[(row_key, _seen[row_key])] = int(row[2])
+    base["docPosition"] = [node_line, -1]
     output = [base]
     for key in registry.normative_keys(str(node.get("type", ""))):
         for index, requirement in enumerate(_values(node.get("bullets", {}).get(key)), start=1):
@@ -1945,6 +1965,7 @@ def _obligations(
                 "id": f"okf:{node['id']}:{key.replace(' ', '-')}:{index}",
                 "kind": key.replace(" ", "-"),
                 "requirement": requirement,
+                "docPosition": [node_line, doc_position.get((key, index), 0)],
             }
             # The claim a planner reads is the prose alone, exactly as it read before subjects
             # existed. The subject is lifted to its own field so the obligation says what it is

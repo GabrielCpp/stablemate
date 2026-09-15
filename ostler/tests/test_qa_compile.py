@@ -453,6 +453,59 @@ def test_a_key_reached_only_through_needs_is_resolved() -> None:
     assert _gap_kinds(gaps, oid) == []
 
 
+def test_the_producer_walk_follows_document_order_not_alphabetical_id_order() -> None:
+    """A node written `returns:` (captures `account_id`) before `raises:` (reads `$account_id`)
+    resolves cleanly — even though `raises` sorts before `returns` alphabetically, and
+    `_sort_key` is what orders `obligations` on the way in here. The walk has to use each
+    obligation's stamped `docPosition`, not the order it arrives in, to get this right."""
+    ledger = {"name": "seeded-ledger", "args": [], "provides": "an account exists"}
+    returns = _obligation(
+        "okf:docs/features/acme/api.md#post-thing:returns:1",
+        docPosition=[10, 1],
+        locators={"route": ["GET /api/things"]},
+        checksDeclared=[_check(path="/api/things")],
+        capturesDeclared=[{"name": "account_id", "from": "$.thing.id"}],
+        fixturesDeclared=[ledger],
+    )
+    raises = _obligation(
+        "okf:docs/features/acme/api.md#post-thing:raises:1",
+        docPosition=[10, 2],
+        locators={"route": ["GET /api/things"]},
+        checksDeclared=[{"call": "ok", "name": "json_path", "args": {"path": "$account_id"}}],
+        fixturesDeclared=[ledger],
+    )
+    # Arrives alphabetically sorted, `raises` before `returns` — the order `_sort_key` produces
+    # and the opposite of the book's own document order stamped in `docPosition` above.
+    context = _context(raises, returns)
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, raises["id"]) == []
+
+
+def test_the_producer_walk_still_gaps_a_reference_that_precedes_its_producer() -> None:
+    """The mirror of the case above: `raises:` written *before* `returns:` in the book still
+    leaves the reference a gap, because the capture it needs has not happened yet at that point
+    in document order — regardless of what the two obligations' ids alphabetize to."""
+    ledger = {"name": "seeded-ledger", "args": [], "provides": "an account exists"}
+    raises = _obligation(
+        "okf:docs/features/acme/api.md#post-thing:raises:1",
+        docPosition=[10, 1],
+        locators={"route": ["GET /api/things"]},
+        checksDeclared=[{"call": "ok", "name": "json_path", "args": {"path": "$account_id"}}],
+        fixturesDeclared=[ledger],
+    )
+    returns = _obligation(
+        "okf:docs/features/acme/api.md#post-thing:returns:1",
+        docPosition=[10, 2],
+        locators={"route": ["GET /api/things"]},
+        checksDeclared=[_check(path="/api/things")],
+        capturesDeclared=[{"name": "account_id", "from": "$.thing.id"}],
+        fixturesDeclared=[ledger],
+    )
+    context = _context(raises, returns)
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert "unresolved-precondition" in _gap_kinds(gaps, raises["id"])
+
+
 def test_a_checkless_obligation_never_reaches_the_scenario_body() -> None:
     """The dead `TODO(undeclared)` branch removed from `_scenario_body`: a checkless obligation
     is book debt, filtered out before the body is ever asked to render one — so no gap, and no

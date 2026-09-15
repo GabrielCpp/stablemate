@@ -279,12 +279,20 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[s
     References are resolved statically against a running producer set built by walking these
     obligations in the book's own document order: a `@node.key`/`$name` the book has not yet
     produced by this point is a gap, one it has is not — see `_resolved`.
+
+    `obligations` arrives sorted by `_sort_key` (alphabetical on id, for stable ids and display),
+    which is not the book's document order — a node written `returns:` (capturing a value) then
+    `raises:` (reading it) sorts as `raises` before `returns`. The walk here re-sorts by each
+    obligation's stamped `docPosition`, a `[node line, bullet ordinal]` pair, so the producer set
+    fills in the order the author actually wrote the bullets — across the several nodes one
+    scenario can owe evidence for, not just within one — rather than the order their key names
+    happen to alphabetize to.
     """
     lines: list[str] = []
     index = 0
     produced_facts: set[tuple[str, str]] = set()
     produced_captures: set[str] = set()
-    for obligation in obligations:
+    for obligation in sorted(obligations, key=lambda o: tuple(o.get("docPosition") or (0, 0))):
         oid = obligation["id"]
         rows = obligation.get("checksDeclared", [])
         requirement = " ".join(str(obligation.get("requirement", "")).split())
