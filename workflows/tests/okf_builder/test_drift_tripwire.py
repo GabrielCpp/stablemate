@@ -25,7 +25,11 @@ from pathlib import Path
 
 import workhorse_workflows.okf_builder as okf_builder_pkg
 from ostler import doctor
-from workhorse_workflows.okf_builder.shared.checkpoint import _CODE_FAMILIES, GROUNDED_CODES
+from workhorse_workflows.okf_builder.shared.checkpoint import (
+    _CODE_FAMILIES,
+    GROUNDED_CODES,
+    NON_ACTIONABLE_CODES,
+)
 
 REPAIR_DIR = Path(okf_builder_pkg.__file__).parent / "main" / "prompts" / "repair"
 
@@ -167,7 +171,10 @@ def _fragment_codes() -> set[str]:
 def test_every_doctor_code_is_classified_on_purpose() -> None:
     emitted = _emitted_codes()
     fragments = _fragment_codes()
-    classified = fragments | DEFAULT_PROMPT_CODES | ORG_GRAPH_CODES
+    # `NON_ACTIONABLE_CODES` (`checkpoint.py`) is reused rather than duplicated here: those
+    # codes are ostler-only to clear (no agent turn can act on them), which is itself a
+    # deliberate classification, not an oversight this tripwire should flag.
+    classified = fragments | DEFAULT_PROMPT_CODES | ORG_GRAPH_CODES | NON_ACTIONABLE_CODES
 
     unclassified = emitted - classified
     assert not unclassified, (
@@ -188,7 +195,10 @@ def test_the_buckets_do_not_overlap() -> None:
     fragments = _fragment_codes()
     assert not fragments & DEFAULT_PROMPT_CODES
     assert not fragments & ORG_GRAPH_CODES
+    assert not fragments & NON_ACTIONABLE_CODES
     assert not DEFAULT_PROMPT_CODES & ORG_GRAPH_CODES
+    assert not DEFAULT_PROMPT_CODES & NON_ACTIONABLE_CODES
+    assert not ORG_GRAPH_CODES & NON_ACTIONABLE_CODES
 
 
 def test_the_drain_order_and_grounding_name_real_codes() -> None:
