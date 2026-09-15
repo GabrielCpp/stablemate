@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler.provenance import checkout_for
-from ostler.refs import parse_code_ref
+from ostler.refs import parse_code_ref, strip_digest
 from ostler.stamp import digest_file
 
 #: What a cited file's bytes hash to when the file cannot be read (missing, a repository- or
@@ -83,7 +83,11 @@ def claim_fingerprint(
     digest.update(claim_content.encode())
     digest.update(b"\0")
     checkout_map = dict(checkouts) if checkouts else {}
-    for ref in sorted(set(code_refs)):
+    # Digest-stripped (`ostler.refs.strip_digest`, the same identity `coverage`, `backfill` and
+    # `doctor`'s citation grouping all key on) before the dedup: two citations of the same
+    # target stamped at different points in its history are one dependency, not two entries
+    # that would otherwise feed the same file's bytes into the hash twice over.
+    for ref in sorted({strip_digest(item) for item in code_refs}):
         try:
             parsed = parse_code_ref(ref)
             path, repository = parsed.path, parsed.repository
