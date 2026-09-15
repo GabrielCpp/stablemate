@@ -53,6 +53,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from ostler import stamp as stamp_mod
 from ostler.behavior import AuditPacket, AuditVerdicts, CandidateVerdict, ClaimVerdict
 from git import Repo
 from _fakes import StubRunner
@@ -808,6 +809,22 @@ def charge(amount):
 '''
 
 
+def _stamp_charge(repo: Path) -> None:
+    """Stamp `charge`'s citation with the digest of the file it currently cites.
+
+    `booked`'s bullet carries no `@digest` — deliberately, since most drives have nothing
+    to do with staleness (`conftest.CONCEPT`). A bullet with no digest can only ever be
+    `unstamped-citation`; it is never `stale-citation`, no matter how far the cited file
+    later drifts. A test that means to exercise drift on an already-covered citation has to
+    stamp it first, the same way a real turn's finalize step would — see
+    `test_regrounding.py`'s `_stamp`.
+    """
+    result = stamp_mod.stamp_page(
+        repo, paths.features_root(repo, SERVICE), f"{BOOK}/concepts/charge.md",
+    )
+    assert not result.unresolved, result.unresolved
+
+
 def _park_stale_citation(repo: Path) -> None:
     """A `fix:stale-citation` row for `charge` that has already spent its attempts."""
     wl = paths.worklist_path(repo, SERVICE)
@@ -833,6 +850,7 @@ def test_a_blocked_regrounding_row_with_nothing_uncovered_parks_on_the_gate(
     same join until its round cap. With no uncovered unit left to adjudicate, the blocked
     row is the operator's, now, and the gate names it."""
     _drive(_env(tmp_path), _Agent(booked))  # converges and claims the watermark
+    _stamp_charge(booked)
     (booked / "acme/service.py").write_text(DRIFTED_SOURCE, encoding="utf-8")
     _park_stale_citation(booked)
     agent = _Agent(booked)
