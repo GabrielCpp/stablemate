@@ -17,7 +17,12 @@ import pytest
 
 from ostler import cli
 from ostler.cli import _build_parser
-from ostler.qa import fixtures
+from ostler.cli import main
+from ostler.model import load
+from ostler.qa import book_fixtures, fixtures
+
+from conftest import write
+from test_doctor_fixture_grammar import RUNBOOK, RUNBOOK_PATH
 
 ONE_FIXTURE = """\
 qa:
@@ -112,6 +117,35 @@ def test_an_out_dir_outside_the_repo_root_refuses_cleanly(tmp_path: Path) -> Non
     assert not result.ok
     assert str(outside) in result.message or "outside" in result.message
     assert not outside.exists()
+
+
+def test_a_migrated_node_round_trips_through_book_fixtures_and_doctor_clean(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """The shape sub-item b must not quietly break: a migrated node reads back as one run
+    step with the exact resolved command, and a repo with a stack to bring up (a runbook)
+    still reports zero doctor findings against it.
+    """
+    _agents_yml(tmp_path, ONE_FIXTURE)
+    write(tmp_path / RUNBOOK_PATH, RUNBOOK)
+
+    result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures", cfg=_CFG)
+    assert result.ok, result.message
+    [written_path] = result.data["paths"]
+
+    graph = load(tmp_path)
+    resolved = book_fixtures.resolved(graph)
+
+    [step] = resolved["three-identities"]["steps"]
+    assert step["command"] == "node auth/seed.mjs --holders=2"
+    assert step["cwd"] == str(tmp_path.resolve())
+    assert step["timeout"] == 600.0
+
+    code = main(["-C", str(tmp_path), "doctor", "--no-index",
+                 "--path", written_path, "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0, payload
+    assert payload["findings"] == []
 
 
 @dataclass
