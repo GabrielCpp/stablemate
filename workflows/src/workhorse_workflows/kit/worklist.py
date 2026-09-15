@@ -41,6 +41,7 @@ deleting the node instead of fixing the citation — so the row survives as
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -123,6 +124,22 @@ def _stale_unit_to_row(unit: backfill_mod.StaleUnit) -> WorklistRow | None:
     }
 
 
+def _undigested(ref: str) -> str:
+    """A citation's identity with any stamped ``@digest`` dropped.
+
+    ``coverage.citations`` keys its result the same way, so ``_trim_rows`` must strip
+    ``relocated`` to match: ``relocated`` comes from ``backfill.StaleUnit.unit``, which
+    is the raw bullet text and still carries ``@digest`` when the citation was stamped
+    before its symbol relocated. Comparing that against a digest-stripped key would
+    silently fail to recognise the relocation and trim a citation ``backfill.plan``
+    means to keep alive as ``dangling``.
+    """
+    try:
+        return refs_mod.render_code_ref(dataclasses.replace(refs_mod.parse_code_ref(ref), digest=None))
+    except ValueError:
+        return ref
+
+
 def _deleted_paths(repo_root: Path, service: str | None) -> list[str]:
     """Every own-repository path the book cites that the tree no longer carries.
 
@@ -172,9 +189,10 @@ def _trim_rows(repo_root: Path, service: str | None,
         cited_by = coverage_mod.citations(okf.graph, surface=service)
     except (OSError, ValueError, RuntimeError):
         return []
+    relocated_undigested = {_undigested(ref) for ref in relocated}
     rows: list[WorklistRow] = []
     for ref, nodes in cited_by.items():
-        if ref in relocated:
+        if ref in relocated_undigested:
             continue
         try:
             parsed = refs_mod.parse_code_ref(ref)
