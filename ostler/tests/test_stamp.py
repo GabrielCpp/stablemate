@@ -70,6 +70,43 @@ def test_restamp_leaves_a_value_with_no_leading_span_unchanged():
     ) == "see `api/a.py` for the handler"
 
 
+def test_restamp_stamps_a_bare_target_directly_abutting_the_digest():
+    # No space before `@`: `refs.parse_code_ref`'s digest suffix is anchored at the string's
+    # end with no whitespace tolerance, so a space here would leak into the parsed path.
+    out = stamp.restamp_leading_code_spans("api/a.py", lambda _: "3f9a1c07b2e4")
+    assert out == "api/a.py@3f9a1c07b2e4"
+
+
+def test_restamp_stamps_every_target_in_a_bare_multi_target_list():
+    digests = {"api/a.py": "3f9a1c07b2e4", "api/b.py": "abcdef012345"}
+    out = stamp.restamp_leading_code_spans(
+        "api/a.py, api/b.py", lambda target: digests[target],
+    )
+    assert out == "api/a.py@3f9a1c07b2e4, api/b.py@abcdef012345"
+
+
+def test_restamp_leaves_a_bare_target_unstamped_when_digest_for_returns_none():
+    out = stamp.restamp_leading_code_spans("api/a.py", lambda _: None)
+    assert out == "api/a.py"
+
+
+def test_restamp_leaves_a_bare_targets_existing_digest_standing_when_unassigned():
+    out = stamp.restamp_leading_code_spans("api/a.py@000000000000", lambda _: None)
+    assert out == "api/a.py@000000000000"
+
+
+def test_restamp_overwrites_a_bare_targets_existing_digest():
+    out = stamp.restamp_leading_code_spans("api/a.py@000000000000", lambda _: "3f9a1c07b2e4")
+    assert out == "api/a.py@3f9a1c07b2e4"
+
+
+def test_restamp_leaves_an_empty_token_bullet_unchanged():
+    # `code: none` is the package's sentinel vocabulary (`registry.EMPTY_TOKENS`), not a
+    # citation — a naive bare-target split would otherwise treat "none" as an unresolvable
+    # target and report it, a false positive that did not exist before this fallback existed.
+    assert stamp.restamp_leading_code_spans("none", lambda _: "3f9a1c07b2e4") == "none"
+
+
 def _book(root: Path, code: str) -> Path:
     feature = root / "docs/features/billing/charge.md"
     feature.parent.mkdir(parents=True, exist_ok=True)
@@ -105,6 +142,43 @@ def test_stamp_page_reports_a_missing_file_as_unresolved(tmp_path: Path):
     assert result.stamped == 0
     assert result.unresolved == ["src/missing.py::charge"]
     assert result.changed is False
+
+
+def test_stamp_page_reports_a_bare_missing_target_as_unresolved(tmp_path: Path):
+    # A bare (non-backticked) target that genuinely cannot be resolved must surface exactly
+    # like a backticked one does — invisible to neither `doctor` nor `stamp`.
+    _book(tmp_path, "src/missing.py::charge")
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    assert result.stamped == 0
+    assert result.unresolved == ["src/missing.py::charge"]
+    assert result.changed is False
+
+
+def test_stamp_page_stamps_both_a_backticked_and_a_bare_code_bullet(tmp_path: Path):
+    # One node citing a file through a backtick-quoted `code:` bullet and a sibling bullet
+    # citing another file bare (no backticks at all) — the bug this fixes: the bare bullet
+    # used to come back completely unchanged, neither stamped nor reported unresolved.
+    feature = tmp_path / "docs/features/billing/charge.md"
+    feature.parent.mkdir(parents=True, exist_ok=True)
+    feature.write_text(
+        "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
+        "# Charge\n\n"
+        "- code: `src/service.py::charge`\n"
+        "- code: src/other.py::other\n",
+        encoding="utf-8",
+    )
+    _service(tmp_path)
+    (tmp_path / "src/other.py").write_text("def other():\n    pass\n", encoding="utf-8")
+
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+
+    expected = stamp.digest_file(SERVICE)
+    other_digest = stamp.digest_file("def other():\n    pass\n")
+    assert result.stamped == 2
+    assert result.unresolved == []
+    text = feature.read_text(encoding="utf-8")
+    assert f"`src/service.py::charge` @{expected}" in text
+    assert f"src/other.py::other@{other_digest}" in text
 
 
 def test_stamp_page_leaves_a_ref_to_a_different_repository_unresolved(tmp_path: Path):
@@ -666,3 +740,35 @@ def test_cli_stamp_from_catalog_whole_book_covers_every_surface_sharing_one_cata
     assert f"@{service_digest[:12]}" in billing.read_text(encoding="utf-8")
     assert f"@{tracking_digest[:12]}" in shipping.read_text(encoding="utf-8")
     assert not catalog_path.exists()
+
+
+def test_stamp_touches_exactly_the_targets_doctor_flags_as_unstamped_citation(tmp_path: Path):
+    # Regression for the bare-target bug: `doctor`'s grounding check and `stamp` must agree on
+    # which targets are "cited but not yet stamped" -- a bare target `doctor` flagged that
+    # `stamp` silently skipped is exactly how the bug went unnoticed (doctor kept warning,
+    # stamp never cleared it, forever).
+    from ostler import doctor
+    from ostler.model import load
+
+    feature = tmp_path / "docs/features/billing/charge.md"
+    feature.parent.mkdir(parents=True, exist_ok=True)
+    feature.write_text(
+        "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
+        "# Charge\n\n"
+        "- code: `src/service.py::charge`\n"
+        "- code: src/other.py::other\n",
+        encoding="utf-8",
+    )
+    _service(tmp_path)
+    (tmp_path / "src/other.py").write_text("def other():\n    pass\n", encoding="utf-8")
+
+    before = doctor.run(load(tmp_path))
+    flagged = {f.ref for f in before.findings if f.code == "unstamped-citation"}
+    assert flagged == {"src/service.py::charge", "src/other.py::other"}
+
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    assert result.stamped == len(flagged)
+    assert result.unresolved == []
+
+    after = doctor.run(load(tmp_path))
+    assert not {f.ref for f in after.findings if f.code == "unstamped-citation"}

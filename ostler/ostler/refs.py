@@ -137,6 +137,23 @@ def normalize_ref(value: str) -> str:
     return value.strip().strip("`, ").strip()
 
 
+def bare_targets(value: str) -> list[tuple[str, int, int]]:
+    """Split *value* on commas into targets, each as ``(text, start, end)`` into *value*.
+
+    The rule :func:`code_refs` applies to a value that does not open with a code span —
+    kept here, in one place, so a positional caller (:mod:`ostler.stamp`, which has to
+    rewrite one target in place without disturbing the rest of the bullet) and a
+    content-only caller (:func:`code_refs` itself) read the same comma rule rather than
+    each inventing its own.
+    """
+    out: list[tuple[str, int, int]] = []
+    start = 0
+    for chunk in value.split(","):
+        out.append((chunk, start, start + len(chunk)))
+        start += len(chunk) + 1
+    return out
+
+
 def code_refs(value: Any) -> list[str]:
     """Every target a ``code:`` bullet cites, normalized and de-duplicated in order.
 
@@ -157,7 +174,7 @@ def code_refs(value: Any) -> list[str]:
         # A value that opens with inline code is a run of `path::symbol` spans; one that
         # opens with prose is a bare comma-separated list. The parser decides which, and
         # where each span ends — a backtick regex could not read ``a `b` c``.
-        parts = leading_code_spans(item) or item.split(",")
+        parts = leading_code_spans(item) or [text for text, _, _ in bare_targets(item)]
         for part in parts:
             normalized = normalize_ref(part)
             if not normalized:
@@ -231,6 +248,7 @@ def ref_path(ref: str) -> str:
 __all__ = [
     "CodeRef",
     "TEST_DIRS",
+    "bare_targets",
     "bullet_ref",
     "code_refs",
     "collision_ref",

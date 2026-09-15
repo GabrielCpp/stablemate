@@ -33,7 +33,8 @@ from pathlib import Path
 from ostler.markdown import split
 from ostler.model import Graph, UINode
 from ostler.provenance import checkout_for
-from ostler.refs import normalize_ref, parse_code_ref
+from ostler.refs import bare_targets, normalize_ref, parse_code_ref
+from ostler.registry import EMPTY_TOKENS
 from ostler.source_snapshots import SourceCatalog, book_repository
 
 #: 12 hex characters of a sha256 digest — plenty to catch a changed file, short enough to sit
@@ -46,6 +47,13 @@ DIGEST_LENGTH = 12
 #: ends*: a gap that is not whitespace/comma closes it, same as `leading_code_spans`.
 _SPAN = re.compile(r"`(?P<inner>[^`]*)`(?:\s*@(?P<digest>[0-9a-f]{12}))?")
 
+#: A bare (non-backticked) target's own stamped digest, written directly abutting the target
+#: with no separating space — unlike a backtick span's ``` `path` @digest ```, which drops the
+#: space when the two are folded back into one string (`ostler.markdown.leading_code_spans`).
+#: `refs.parse_code_ref`'s own `_DIGEST_SUFFIX` anchors `@...` at the string's end with no
+#: `\s*` tolerance, so a bare target keeps that same no-space contract rather than inventing one.
+_BARE_DIGEST = re.compile(r"@[0-9a-f]{12}$")
+
 
 def digest_file(text: str) -> str:
     """The stamp for a file's contents.
@@ -57,7 +65,7 @@ def digest_file(text: str) -> str:
 
 
 def restamp_leading_code_spans(value: str, digest_for: Callable[[str], str | None]) -> str:
-    """Rewrite a ``code:`` bullet's leading run of backtick-quoted targets with fresh digests.
+    """Rewrite a ``code:`` bullet's leading run of targets with fresh digests.
 
     ``digest_for(target)`` is called with each target's own text (backticks and any existing
     ``@digest`` stripped) and returns the digest to stamp, or ``None`` to leave that span
@@ -65,25 +73,63 @@ def restamp_leading_code_spans(value: str, digest_for: Callable[[str], str | Non
     is not "clear the digest": a target this call was not assigned to, or could not resolve, is
     a target nothing observed just now, and a stamp already standing on it is a real prior
     observation that this pass has no grounds to erase. Separators and anything after the
-    leading run — a trailing gloss, prose — are returned byte-for-byte unchanged; a value that
-    does not open with a code span is returned unchanged entirely.
+    leading run — a trailing gloss, prose — are returned byte-for-byte unchanged.
+
+    A value that opens with a backtick span is read the same way it always was. A value that
+    does not — a bare, unquoted target, or a bare comma-separated list of them — used to be
+    returned unchanged entirely: invisible to `doctor` (`refs.code_refs` reads the very same
+    bare targets, backtick or none) but invisible to `stamp` too, so a bare citation was never
+    stamped and never reported unresolved either. That is `_restamp_bare`'s fix, reusing
+    `refs.bare_targets` for the split — the same comma rule `code_refs` applies — rather than a
+    second parser. A bare target is stamped in place, digest directly abutting (no inserted
+    backticks): this pass writes digests, not opinions about a citation's own quoting.
     """
+    stripped = value.strip()
+    if stripped.lower() in EMPTY_TOKENS:
+        return value  # a sentinel (`none`, `-`, …), not a citation
     matches = list(_SPAN.finditer(value))
-    if not matches or value[:matches[0].start()].strip(" \t\r\n"):
-        return value
+    if matches and not value[:matches[0].start()].strip(" \t\r\n"):
+        out: list[str] = []
+        pos = 0
+        for i, m in enumerate(matches):
+            gap = value[pos:m.start()]
+            if i and gap.strip(" \t\r\n,"):
+                break  # prose between targets — the leading run is over
+            out.append(gap)
+            inner = m.group("inner")
+            digest = digest_for(inner)
+            out.append(f"`{inner}` @{digest}" if digest else m.group(0))
+            pos = m.end()
+        out.append(value[pos:])
+        return "".join(out)
+    if matches:
+        return value  # prose precedes the first code span — not a citation run
+    return _restamp_bare(value, digest_for)
+
+
+def _restamp_bare(value: str, digest_for: Callable[[str], str | None]) -> str:
+    """`restamp_leading_code_spans`'s fallback for a value with no leading backtick span.
+
+    Splits on `refs.bare_targets` — the identical comma rule `refs.code_refs` falls back to
+    for the same shape of value, so a bare target `doctor` resolves is exactly the target this
+    stamps. Whitespace around each piece is preserved byte for byte; only the piece's own text
+    (and its digest suffix, if any) changes.
+    """
     out: list[str] = []
-    pos = 0
-    for i, m in enumerate(matches):
-        gap = value[pos:m.start()]
-        if i and gap.strip(" \t\r\n,"):
-            break  # prose between targets — the leading run is over
-        out.append(gap)
-        inner = m.group("inner")
-        digest = digest_for(inner)
-        out.append(f"`{inner}` @{digest}" if digest else m.group(0))
-        pos = m.end()
-    out.append(value[pos:])
-    return "".join(out)
+    for chunk, _, _ in bare_targets(value):
+        core = chunk.strip()
+        if not core:
+            out.append(chunk)
+            continue
+        target = _BARE_DIGEST.sub("", core)
+        digest = digest_for(target)
+        if digest is None:
+            out.append(chunk)
+            continue
+        lead = chunk[:len(chunk) - len(chunk.lstrip())]
+        trail = chunk[len(chunk.rstrip()):]
+        out.append(f"{lead}{target}@{digest}{trail}")
+    return ",".join(out)
 
 
 @dataclass(frozen=True, slots=True)
