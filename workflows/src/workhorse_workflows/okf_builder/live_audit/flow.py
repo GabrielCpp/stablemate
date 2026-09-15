@@ -51,7 +51,8 @@ class ScenarioResult(BaseModel):
     id: str
     status: str
     assertions: int = 0
-    failures: tuple[str, ...] = ()
+    failures: int = 0
+    message: str = ""
     code_refs: tuple[str, ...] = ()
     fingerprint: str = ""
     changed: bool = True
@@ -162,7 +163,8 @@ def audit_one_spec(
         results.append(ScenarioResult(
             id=scenario_id, status=status,
             assertions=int(summary.get("assertions") or 0),
-            failures=tuple(str(f) for f in (summary.get("failures") or [])),
+            failures=int(summary.get("failures") or 0),
+            message=str(summary.get("message") or ""),
             code_refs=tuple(refs), fingerprint=fingerprint, changed=changed,
         ))
 
