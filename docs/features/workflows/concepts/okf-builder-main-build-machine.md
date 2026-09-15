@@ -42,8 +42,7 @@ and records `known-defect:`, and `story` records a story conflict or parks when 
 Clean doctor proceeds to a computed source-inventory join. Missing units are rechecked by the
 agent, while stale citations are re-grounded. Six coverage re-scans are allowed before an
 operator gate; this is a budget stop, not successful convergence. A completed full-scope join
-writes the source watermark and hands a complete book to a two-way semantic audit of source
-against book. An audit that surfaces repairs queues each as a `behavior-repair` item and returns
+hands a complete book to a two-way semantic audit of source against book. An audit that surfaces repairs queues each as a `behavior-repair` item and returns
 to the drain; a clear or budget-partial audit optionally hands off to the web walkthrough — a
 no-op when the book has no web surface — and then commits only the service feature directory.
 
@@ -146,7 +145,7 @@ no-op when the book has no web surface — and then commits only the service fea
 ### record_item
 
 - sig: `record_item(current_item: dict, discovered: list[dict], item_kind: str = "", item_context: str = "", doc_status: str = "", note: str = "", rnd: int = 0, rescan: int = 0, stall: int = 0, signature: str = "", refuels: int = 0) -> Continue`
-- does: advances a stale-citation watermark only when the item is complete, then closes the current row and opens discovered rows
+- does: closes the current row and opens discovered rows
 - verify: count(subject="OKF-builder recorded worklist items", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.record_item`
 
@@ -309,16 +308,6 @@ of blocked correspondence and routes verdicts; `finalize` performs the scoped co
 - verify: json_path(path="$.coverage_complete", equals=false)
 - code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py::compute_coverage`
 - tests: `workflows/tests/okf_builder/test_since_scope.py::test_a_scoped_coverage_does_not_overwrite_the_committed_book_artifact`
-
-### advance_watermark
-
-- sig: `advance_watermark(logger, repo_root: str = "", item_kind: str = "", item_context: str = "", doc_status: str = "") -> Watermarked`
-- does: advances the source catalog only for a complete stale-citation regrounding item
-- verify: persists(subject="OKF-builder source watermark")
-- does: leaves the watermark unchanged for partial or unrelated worklist items
-- verify: unchanged(subject="OKF-builder source watermark")
-- code: `workflows/src/workhorse_workflows/okf_builder/main/nodes/coverage.py::advance_watermark`
-- tests: `workflows/tests/okf_builder/test_regrounding.py::test_a_partial_turn_advances_nothing`
 
 ### method: blocked_rows
 

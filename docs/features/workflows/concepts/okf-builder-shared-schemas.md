@@ -56,12 +56,6 @@ relative roots.
 - verify: count(subject="OKF-builder settle schema results", equals=1)
 - code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Settled`
 
-### method: Watermarked
-- sig: `Watermarked(advanced: list[str] = [], watermark_error: str = "") -> Watermarked`
-- does: reports source files whose stale-citation watermark advanced and any watermark error
-- verify: count(subject="OKF-builder watermark schema results", equals=1)
-- code: `workflows/src/workhorse_workflows/okf_builder/shared/schemas.py::Watermarked`
-
 ### method: Recorded
 - sig: `Recorded(...) -> Recorded`
 - does: reports worklist counts, newly added rows, and the standing blocked-row set
