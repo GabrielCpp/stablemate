@@ -342,6 +342,77 @@ def test_a_code_finding_is_located_at_its_node(repo: Path):
     assert finding.ref == "groom/groom/gone.py::Diff"
 
 
+def _combined_grounding_refs(repo: Path, name: str) -> str:
+    """Write the backing files/dir for all four grounding scenarios under *name*, and return
+    a single multi-target `code:` value citing all four (the comma-separated grammar §4.4's
+    module doc describes) — one `code:` bullet, four independent things to get wrong.
+    """
+    from ostler.stamp import digest_file
+
+    write(repo / f"groom/groom/{name}_stale.py", "class Sym:\n    pass\n")
+    stale_digest = digest_file(b"class Sym:\n    pass\n    x = 1\n")
+    write(repo / f"groom/groom/{name}_unstamped.py", "class Sym:\n    pass\n")
+    (repo / f"groom/groom/{name}_dir").mkdir(parents=True, exist_ok=True)
+    return (
+        f"`groom/groom/{name}_missing.py::Sym`, "
+        f"`groom/groom/{name}_dir`, "
+        f"`groom/groom/{name}_stale.py::Sym@{stale_digest}`, "
+        f"`groom/groom/{name}_unstamped.py::Sym`"
+    )
+
+
+def test_code_grounding_is_uniform_across_previously_ungated_types(repo: Path):
+    """`_check_code_grounding` used to skip a whole node whenever its registry type left
+    `code` out of `bullet_by_key` — `screen`, `flow`, `step`, `fixture`, `untyped` — so a
+    dangling, directory, stale or unstamped `code:` citation on any of them went unchecked.
+    It now reads `node.meta.get('code')` directly, the same way `_check_test_subject` always
+    has, with no type gate — so every one of the four findings fires on every one of these
+    five types exactly as it already did on a type like `concept` that declared the key.
+    """
+    docs: dict[str, tuple[str, str]] = {
+        "screen": (
+            "docs/features/groom/gui/screens/s.md",
+            "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+            "- route: `/s`\n- requires: none\n- params: none\n- code: {refs}\n",
+        ),
+        "flow": (
+            "docs/features/groom/flows/f.md",
+            "---\ntype: flow\nslug: f\ntitle: F\n---\n# F\n\n"
+            "- start: begins\n- end: ends\n- code: {refs}\n",
+        ),
+        "step": (
+            "docs/features/groom/concepts/c-step.md",
+            "---\ntype: concept\nslug: c-step\ntitle: C\n---\n# C\n\n"
+            "## Steps\n\n### boot\n- kind: prepare\n- code: {refs}\n",
+        ),
+        "fixture": (
+            "docs/features/groom/fixtures/fx.md",
+            "---\ntype: fixture\nslug: fx\ntitle: FX\n---\n# FX\n\n"
+            "- code: {refs}\n\n## Steps\n\n### boot\n- kind: seed\n- run: `groom/boot.sh`\n",
+        ),
+        "untyped": (
+            "docs/features/groom/concepts/c-untyped.md",
+            "---\ntype: concept\nslug: c-untyped\ntitle: C\n---\n# C\n\n"
+            "## Notes\n\n- code: {refs}\n",
+        ),
+    }
+    for name, (rel_path, template) in docs.items():
+        refs = _combined_grounding_refs(repo, name)
+        write(repo / rel_path, template.format(refs=refs))
+
+    report = doctor.run(load(repo))
+    warns = codes(report, "warn")
+    for name in docs:
+        for code in ("dangling-code-ref", "directory-code-ref", "stale-citation"):
+            hits = [f for f in report.findings
+                    if f.code == code and f.ref and f"{name}_" in f.ref]
+            assert hits, f"{code} did not fire for {name}"
+        unstamped = [f for f in report.findings
+                     if f.code == "unstamped-citation" and f.ref and f"{name}_" in f.ref]
+        assert unstamped, f"unstamped-citation did not fire for {name}"
+    assert "unstamped-citation" in warns
+
+
 def test_cited_tests_stay_deferred(repo: Path):
     # `tests:` names test files for the regression node to attribute failures with; whether one
     # exists at this commit is the QA gate's question, not the linter's. `verify:` is grounded,

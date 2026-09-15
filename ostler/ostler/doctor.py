@@ -1285,6 +1285,12 @@ def _check_code_grounding(graph: Graph, f: list[Finding],
                            checkouts: dict[str, Path] | None = None) -> None:
     """`code:` targets name a file that exists, and a symbol that file declares.
 
+    Checked on every node, regardless of the node's registry type: `code:` owns and grounds on
+    every type (`registry.owning_keys`'s docstring — a flow or a screen cites the code it is
+    grounded in whether or not its profile lists the key, and always has), so this reads
+    `node.meta.get("code")` directly, the same way `_check_test_subject` already does, rather
+    than skipping a node whose type happens not to declare the key.
+
     This is what stops two path conventions from silently coexisting, what keeps the book
     honest as the source moves under it, and what surfaces a documented unit that has since
     been deleted. The grammar is the book's own (OKF UI profile §5):
@@ -1312,9 +1318,6 @@ def _check_code_grounding(graph: Graph, f: list[Finding],
     checkout_map = checkouts or {}
     own_repository = book_repository(features_root_of(graph))
     for node in graph.ui_nodes:
-        uitype = registry.ui_type(node.type)
-        if uitype is None or "code" not in uitype.bullet_by_key:
-            continue
         rel = node.path.relative_to(graph.root).as_posix()
         _check_test_subject(node, rel, f)
         for ref in refs_mod.code_refs(node.meta.get("code")):
