@@ -109,15 +109,19 @@ class ClaimReport:
 # -- witnesses ---------------------------------------------------------------
 
 
-def _set_path(document: dict[str, Any], path: str, value: Any) -> dict[str, Any]:
+def _set_path(document: dict[str, Any], path: str, value: Any) -> Any:
     """A document in which `path` resolves to `value`, built the way `resolve_path` walks.
 
     A selector step is witnessed by the smallest document that satisfies it: `[*]` by a
     one-element list, `[?(@.key==v)]` by a one-element list whose element carries `key: v`
-    beside whatever the rest of the path puts there.
+    beside whatever the rest of the path puts there. The root container follows the same
+    rule as every other step's `nxt`: a path whose first step is an index or a selector
+    needs a list root, not the dict `document` a caller always starts from, so the root is
+    picked from `steps[0]` the same way `nxt` is picked from `following`.
     """
     steps = _steps(path)
-    cursor: Any = document
+    root: Any = [] if steps and isinstance(steps[0], int | _harness._Wild | _harness.Filter) else document
+    cursor: Any = root
     for step, following in zip(steps, [*steps[1:], None], strict=True):
         nxt: Any = [] if isinstance(following, int | _harness._Wild | _harness.Filter) else {}
         if isinstance(step, _harness._Wild | _harness.Filter):
@@ -141,7 +145,7 @@ def _set_path(document: dict[str, Any], path: str, value: Any) -> dict[str, Any]
         else:
             cursor[step] = value if following is None else cursor.get(step) or nxt
             cursor = cursor[step]
-    return document
+    return root
 
 
 def _steps(path: str) -> list[Any]:

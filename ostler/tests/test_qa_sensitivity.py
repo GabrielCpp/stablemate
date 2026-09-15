@@ -65,6 +65,26 @@ def test_a_filter_witness_is_the_smallest_document_the_selector_is_satisfied_by(
     assert trial.flipped == ("the field holds something else", "the field is not there at all")
 
 
+def test_an_index_rooted_path_witnesses_in_a_list_not_a_dict() -> None:
+    """A path whose first step is an index needs a list root, the same as any other index
+    step: `[0].kind` used to hand the root dict to `cursor.append`, which does not exist."""
+    path = "[0].kind"
+    assert sensitivity._set_path({}, path, "policy") == [{"kind": "policy"}]
+    trial = _trial(f'json_path(path="{path}", equals="policy")')
+    assert trial.witnessed
+    assert trial.sensitive
+
+
+def test_a_filter_rooted_path_witnesses_in_a_list_not_a_dict() -> None:
+    """The same root-picking rule as a leading index: a filter as the first step still needs
+    a list to select into, not the dict every call starts from."""
+    path = "[?(@.who=='ana')].total_cents"
+    assert sensitivity._set_path({}, path, 4200) == [{"who": "ana", "total_cents": 4200}]
+    trial = _trial(f'json_path(path="{path}", equals=4200)')
+    assert trial.witnessed
+    assert trial.sensitive
+
+
 def test_a_presence_assertion_is_not_asked_to_notice_a_changed_value() -> None:
     """`absent=false` claims the field is there and claims nothing about what it holds."""
     trial = _trial('json_path(path="errors.premium", absent=false)')
