@@ -444,6 +444,34 @@ def test_a_capture_resolves_a_reference_on_a_strictly_later_obligation() -> None
     assert _gap_kinds(gaps, referencing) == []
 
 
+def test_a_dollar_capture_with_no_route_credits_nothing_and_still_gaps() -> None:
+    """No `route:` means `observed_N` compiles to `None` — nothing was ever requested to read a
+    `$.`-rooted capture off of. Crediting `produced_captures` anyway would let a later `$name`
+    resolve against a capture that can never run, and the emitted call would blow up on
+    `None.json()` with no fault record. This must fall through to the same TODO + gap scaffolding
+    a UI-locator capture gets: no emitted call, no credit."""
+    capturing = "okf:docs/features/demo/globex.md#note:does:1"
+    referencing = "okf:docs/features/acme/api.md#get-thing:does:1"
+    context = _context(
+        _obligation(
+            capturing,
+            locators={},
+            checksDeclared=[_check()],
+            capturesDeclared=[{"name": "captured", "from": "$.thing.id"}],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+        ),
+        _obligation(
+            referencing,
+            locators={"route": ["GET /api/things"]},
+            checksDeclared=[{"call": "ok", "name": "json_path", "args": {"path": "$captured"}}],
+            fixturesDeclared=[{"name": "seeded-acme", "args": [], "provides": "an account exists"}],
+        ),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert "qa.capture_field(" not in source
+    assert "unresolved-precondition" in _gap_kinds(gaps, referencing)
+
+
 def test_a_capture_declared_only_on_a_later_obligation_is_still_a_gap() -> None:
     """The same-obligation exception generalises to ordering: a reference does not see into the
     future, so a capture the book only produces afterward leaves the earlier reference a gap."""

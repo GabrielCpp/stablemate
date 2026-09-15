@@ -980,6 +980,14 @@ def test_qa_resolve_substitutes_a_reference_embedded_mid_string(tmp_path: Path) 
     assert qa.resolve("/orgs/$id/projects") == "/orgs/acme-1/projects"
 
 
+def test_qa_resolve_substitutes_a_node_ref_embedded_mid_string(tmp_path: Path) -> None:
+    """`@node.key` embeds mid-string exactly like `$name` above — a fixture's provided fact
+    is typically one segment of a larger route or verify literal, not the whole string."""
+    qa = _ui_qa(tmp_path)
+    qa._node_facts["seeded"] = {"id": "acme-1"}  # noqa: SLF001
+    assert qa.resolve("/orgs/@seeded.id/projects") == "/orgs/acme-1/projects"
+
+
 LITERAL_AT_AND_DOLLAR_PLAN = '''\
 import json
 import threading

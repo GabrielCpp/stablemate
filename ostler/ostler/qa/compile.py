@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ostler.checks import _rooted
 from ostler.qa import references
 from ostler.qa.outcome import QaOutcome
 
@@ -124,18 +125,6 @@ def _kwargs(args: dict[str, Any]) -> str:
         else:
             parts.append(f", {name}={_lit(value)}")
     return "".join(parts)
-
-
-def _stripped_path(path: str) -> str:
-    """A capture's declared JSON path with the `$` root token dropped, same as `checks._rooted`.
-
-    `$` is not a key — every reader of a document path (`checks._rooted`, the harness's own
-    `path_steps`) strips it before walking, so a compiled `capture_field` call names the
-    field the same way the book's `verify:` grammar does.
-    """
-    if not path.startswith("$"):
-        return path
-    return path[1:].lstrip(".")
 
 
 def _slug(path: str) -> str:
@@ -368,21 +357,29 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[s
             source_path = str(capture.get("from", ""))
             if not cname:
                 continue
-            if source_path.startswith("$"):
+            if source_path.startswith("$") and route is not None:
                 # A `$.`-rooted capture reads out of the response this obligation just bound —
                 # emitting the call here, not just crediting `produced_captures`, is the fix:
                 # a credit with nothing behind it at runtime means `$name` resolves against a
                 # fact that was never captured. Emitted right after `observed_N` is bound, so
-                # a strictly later obligation's `qa.resolve($name)` finds it already run.
+                # a strictly later obligation's `qa.resolve($name)` finds it already run. When
+                # this obligation has no route, `observed_N` is `None` and there is nothing to
+                # read `.json()` off of — that case falls through to the gap branch below, the
+                # same as a UI-locator capture, rather than crediting a call that never runs.
                 lines.append(
-                    f'    qa.capture_field({_lit(cname)}, {name}.json(), {_lit(_stripped_path(source_path))})'
+                    f'    qa.capture_field({_lit(cname)}, {name}.json(), {_lit(str(_rooted(source_path)))})'
                 )
                 produced_captures.add(cname)
             else:
                 # A UI-locator capture has no response here to read — the book says what to
-                # capture and not where the page action that would produce it lives. Same
-                # scaffolding as an arrangement gap: a TODO and a gap, no credit.
-                note = f"capture {cname!r} from {source_path!r} names a UI locator, not a response field"
+                # capture and not where the page action that would produce it lives. A `$.`-
+                # rooted capture with no route is the same shape: nothing was observed to read
+                # a field off of. Both get the same scaffolding as an arrangement gap: a TODO
+                # and a gap, no credit.
+                if source_path.startswith("$"):
+                    note = f"capture {cname!r} from {source_path!r} has no observed response to read"
+                else:
+                    note = f"capture {cname!r} from {source_path!r} names a UI locator, not a response field"
                 lines.append(f"    # TODO(arrange): {note}")
                 gaps.append(Gap(oid, "uncompilable-claim", note))
 
