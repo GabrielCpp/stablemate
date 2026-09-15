@@ -33,6 +33,16 @@ def write_cited_code(repo: Path) -> None:
           "<script>function wireChanges() {}</script>\n")
 
 
+def write_stack_runbook(repo: Path) -> None:
+    """A minimal stack runbook — `SCREEN` describes a served surface, so a green doctor now
+    requires one (`runbook-missing` is an error; see `doctor._check_runbook`)."""
+    write(repo / "docs" / "features" / "app" / "ops" / "qa-stack.md", (
+        "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n"
+        "- driver: web\n- entry-url: http://localhost:18084\n\n"
+        "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
+    ))
+
+
 SCREEN = """\
 ---
 type: screen
@@ -138,6 +148,7 @@ def test_screen_doc_under_features_keeps_doctor_green(repo: Path):
     write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
     # the `extends:` target must exist for the referentially-complete doc to be green
     write(repo / "docs/features/groom/gui/components/design-system.md", DESIGN_SYSTEM)
+    write_stack_runbook(repo)
     write_cited_code(repo)
     report = doctor.run(load(repo))
     # No `schema` finding: a type:screen doc is validated as a screen (no schema),
@@ -420,6 +431,7 @@ def test_cited_tests_stay_deferred(repo: Path):
     write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
     write(repo / "docs/features/groom/gui/components/design-system.md", DESIGN_SYSTEM)
     write_cited_code(repo)
+    write_stack_runbook(repo)
     report = doctor.run(load(repo))
     # SCREEN's `tests:` names a test file that does not exist; that is not a finding.
     assert report.errors == 0, [f.message for f in report.findings if f.severity == "error"]

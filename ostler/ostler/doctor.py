@@ -2025,14 +2025,20 @@ def _check_runbook(graph: Graph, f: list[Finding]) -> None:
     bring up", and the lane routed that identically to a healthy stack. Reporting it here moves
     the discovery to author time, where the remedy is one node instead of a repair loop.
 
-    Warn rather than error for the missing case: a book that documents a library, a CLI, or a
-    surface nobody serves has nothing to bring up and is not broken. The shape checks below are
-    errors, because a runbook that exists and cannot be run is a promise the lane will believe.
+    Error, not warn, for the missing case: this is the doctor gate the live-audit lane relies
+    on to keep it from ever reaching a QA run with nothing to run against. A repo that
+    documents a served surface and never says how it starts is not a style nit to note and
+    move past — it is the one finding that must stop `ostler doctor` clean, because the flow's
+    own "blocked" path is only a defensive backstop, not the intended gate. A book that
+    documents a library, a CLI, or a surface nobody serves is exempt from this branch entirely
+    (`has_served_surface` is false for it), so a library-only book never trips this check. The
+    shape checks below are errors for the same reason: a runbook that exists and cannot be run
+    is a promise the lane will believe.
 
     Only *stack* runbooks are held to that shape. `runbook` is the general ops type — "preview
     the plan", "rotate the keys" — and a procedure that starts nothing is not an incomplete
     stack, it is a different document. `is_stack_runbook` draws that line, and a book carrying
-    only procedures still gets the missing-stack warning.
+    only procedures still gets the missing-stack error.
     """
     runbooks = graph.ui_nodes_of_type("runbook")
     stacks = {n.id for n in runbook_mod.stack_runbooks(graph)}
@@ -2041,7 +2047,7 @@ def _check_runbook(graph: Graph, f: list[Finding]) -> None:
         and runbook_mod.has_served_surface(graph)
         and runbook_mod.select_server(graph) is None
     ):
-        f.append(Finding("warn", "runbook-missing",
+        f.append(Finding("error", "runbook-missing",
                          "no `runbook` node brings a system up: the book describes a surface "
                          "that has to be served and never says how it starts, so QA has no "
                          "stack to run against",

@@ -139,6 +139,13 @@ def ui_book(repo: Path) -> Path:
     write(repo / "docs/features/ui/dash.md",
           screen_md("dash", "Dash", entry=True, body=UI_DASH_LINKS))
     write(repo / "docs/features/ui/detail.md", screen_md("detail", "Detail"))
+    # A served surface needs a stack runbook, or `doctor` reports `runbook-missing` (an
+    # error) — none of the read-only parse sites this fixture exercises are about that check.
+    write(repo / "docs/features/app/ops/qa-stack.md", (
+        "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n"
+        "- driver: web\n- entry-url: http://localhost:18084\n\n"
+        "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
+    ))
     return repo
 
 

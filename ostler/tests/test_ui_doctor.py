@@ -1216,7 +1216,7 @@ A unified diff. See [ghost](./diff.md#nope).
 LINKED_REPORT_JSON = """\
 {
   "epics": [],
-  "errors": 2,
+  "errors": 3,
   "findings": [
     {
       "code": "missing-anchor",
@@ -1254,12 +1254,12 @@ LINKED_REPORT_JSON = """\
       "path": "",
       "ref": "",
       "related": [],
-      "severity": "warn",
+      "severity": "error",
       "suggestion": "ostler scaffold runbook qa-stack --service <service>"
     }
   ],
   "profile": "exploration",
-  "warnings": 1
+  "warnings": 0
 }"""
 
 
