@@ -151,6 +151,16 @@ def _step_command(node: UINode, root: Path, default_cwd: str) -> dict[str, str] 
     return step
 
 
+def step_command(node: UINode, root: Path, default_cwd: str) -> dict[str, str] | None:
+    """Public alias of `_step_command`, for a caller outside this module (`book_fixtures`).
+
+    A fixture's own `## Steps` are the same section type a runbook's are, so building the
+    manifest form of one is the same walk — this is the seam that lets `book_fixtures`
+    reuse it without reaching past the leading underscore.
+    """
+    return _step_command(node, root, default_cwd)
+
+
 def _env_exports(node: UINode) -> str:
     """A step's `env:` children as a shell prefix.
 

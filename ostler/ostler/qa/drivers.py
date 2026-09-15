@@ -22,6 +22,7 @@ from typing import Any
 
 
 from ostler.model import load as load_graph
+from ostler.qa import book_fixtures as qa_book_fixtures
 from ostler.qa import fixtures as qa_fixtures
 from ostler.qa import tools as qa_tools
 from ostler.qa.harness_host import (
@@ -294,6 +295,11 @@ class PythonDriver(QaDriver):
             # of a command already on the line above, and `start()` refused the run if
             # any fixture named a tool this repo never opted into.
             "fixtures": qa_fixtures.resolved(self.root),
+            # `{name: {steps, args, provides, needs, secrets}}` for every book `fixture`
+            # node — see `ostler.qa.book_fixtures`. `Qa.fixture()` checks this tier first
+            # and falls back to the `fixtures` entry above. Secrets are NAMES only: the
+            # harness resolves each from its own environment at run time.
+            "book_fixtures": qa_book_fixtures.resolved(load_graph(self.root)),
         }
         return self.launcher.execute(self, scenario_id, timeout, context)
 
