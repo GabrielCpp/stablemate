@@ -102,6 +102,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `fixture-arg-mismatch` | error | A `fixture:` bullet's `name=value` args do not match the target fixture's declared `args:`. |
 | `fixture-needs-cycle` | error | A fixture's `needs:` chain cycles back to itself. |
 | `fixture-undeclared-provides` | error | An `@<fixture>.<key>` reference names a key the target fixture's `provides:` does not declare at all. (A key it declares but has not yet arranged earlier in the scenario is `unresolved-precondition`, not this — order is `compile_plan`'s concern, not doctor's.) |
+| `fixture-secret-name` | error | A fixture's `secrets:` child is not a valid environment-variable name — it declares NAMES only, resolved from the harness's own environment at run time, never a value or a mint recipe. |
 
 ## Conformance and structure
 

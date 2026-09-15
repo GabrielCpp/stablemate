@@ -895,6 +895,11 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("provides", nested=True),
             # Another fixture this one composes on top of, before its own steps run.
             BulletKey("needs", nested=True, link=True),
+            # Environment variable NAMES this fixture's steps read — never values or mint
+            # recipes. The harness resolves each from its own environment at run time; a
+            # name declared here that is absent there is an environment fault, not a
+            # book/code defect, because the step never got to run.
+            BulletKey("secrets", nested=True),
         ),
     ),
     # A heading that names no type — promoted anyway so every section is a node (its links are

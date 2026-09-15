@@ -666,6 +666,34 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
     _check_fixture_needs_cycles(graph, fixtures, f)
     _check_fixture_arg_mismatch(graph, by_name, f)
     _check_fixture_undeclared_provides(graph, by_name, f)
+    _check_fixture_secret_names(graph, fixtures, f)
+
+
+#: A `secrets:` child must be a bare environment-variable name — no value, no mint recipe.
+#: The harness resolves it from its own `os.environ` at run time, so anything this pattern
+#: rejects (`FOO=bar`, `foo-bar`, a recipe) is a name no process's environment could hold.
+_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _check_fixture_secret_names(graph: Graph, fixtures: dict[str, UINode], f: list[Finding]) -> None:
+    """Every `secrets:` child is a plausible environment-variable name, nothing else.
+
+    Unlike a runbook's `secrets:` (`NAME: mint-recipe`, run once per stack bring-up), a
+    fixture's `secrets:` is a flat list of NAMES the harness resolves from its own
+    environment at run time — no recipe, because a fixture runs once per scenario and
+    minting a fresh credential that often is the plan's problem, not the fixture's.
+    """
+    for node in fixtures.values():
+        rel = _rel_path(graph, node)
+        for value in _bullet_values(node.meta.get("secrets", "")):
+            name = value.strip()
+            if name and not _ENV_NAME.match(name):
+                f.append(Finding(
+                    "error", "fixture-secret-name",
+                    f"{node.id}: `secrets:` child {name!r} is not a valid environment "
+                    "variable name — no value or mint recipe belongs here, only the NAME "
+                    "the harness resolves from its own environment at run time",
+                    path=rel, line=node.line, ref=name))
 
 
 def _check_fixture_needs_cycles(graph: Graph, fixtures: dict[str, UINode], f: list[Finding]) -> None:

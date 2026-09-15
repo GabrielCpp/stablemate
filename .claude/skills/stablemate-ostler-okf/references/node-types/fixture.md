@@ -31,6 +31,7 @@ same shape as a boot step.
 | `args:` | no | The parameters this fixture takes, space-separated names. A `fixture:` bullet elsewhere passes them as `name=value` pairs; passing a name not in this list is `fixture-arg-mismatch`. |
 | `provides:` | no | Nested. What the fixture's last step leaves behind — the keys a `@<this-fixture>.<key>` reference on another node may read. A reference naming a key not listed here is `fixture-undeclared-provides`. |
 | `needs:` | no | Nested, `link`. Another fixture this one composes on top of, referenced as a markdown link to that fixture's file. A `needs:` chain that cycles is `fixture-needs-cycle`. |
+| `secrets:` | no | Nested. Environment-variable NAMES this fixture's steps read — never a value or a mint recipe. The harness resolves each from its own environment at run time; a name that is not a valid environment-variable identifier is `fixture-secret-name`, and a name absent from the harness's environment at run time is an environment fault, not a book/code defect, because the step never got to run. |
 
 `args:` is spelled `args`, not `params` — `params` is a global relation key
 (`registry.RELATION_KEYS`) already checked by `relation-without-subject`, and a fixture's own
@@ -82,7 +83,8 @@ title: Seeded acme
 ## Doctor codes it can trip
 
 See [`../doctor-codes.md`](../doctor-codes.md): `unknown-book-fixture`, `fixture-step-kind`,
-`fixture-arg-mismatch`, `fixture-needs-cycle`, `fixture-undeclared-provides`.
+`fixture-arg-mismatch`, `fixture-needs-cycle`, `fixture-undeclared-provides`,
+`fixture-secret-name`.
 
 ## When bullets are not enough
 
