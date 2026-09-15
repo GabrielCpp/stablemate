@@ -182,10 +182,26 @@ def stamp_turn(
         def _blocked(node_id: str) -> bool:
             return node_id in blocked_nodes or _page_of(node_id) in blocked_pages
 
+        def _restamp_blocked(node_id: str, file_target: str) -> bool:
+            # A `fix:stale-citation` row exists *because* doctor reported exactly this
+            # stale-citation on this (node, file) pair — that is the one error the
+            # restamp itself is meant to clear, not evidence the restamp is unsafe. Any
+            # other error on the node (a different stale citation, a missing symbol) still
+            # blocks it.
+            if _page_of(node_id) in blocked_pages:
+                return True
+            for finding in report.findings:
+                if finding.severity != "error" or finding.node != node_id:
+                    continue
+                if finding.code == "stale-citation" and refs_mod.ref_path(finding.ref) == file_target:
+                    continue
+                return True
+            return False
+
         pairs: list[tuple[str, str]] = []
         skipped: set[str] = set()
         for node_id, file_target in restamp_pairs:
-            if _blocked(node_id):
+            if _restamp_blocked(node_id, file_target):
                 skipped.add(node_id)
             else:
                 pairs.append((node_id, file_target))

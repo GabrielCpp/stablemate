@@ -16,6 +16,9 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+from ostler import Ostler
+from ostler import doctor as doctor_mod
+from ostler import stamp as stamp_mod
 from workhorse_workflows.kit import head_sha
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.main.nodes.finalize import stamp_turn
@@ -90,6 +93,47 @@ def test_restamp_row_stamps_only_its_own_pair(
     assert DIGEST_RE.search((booked / CHARGE_PAGE).read_text())
     other_page = booked / f"docs/features/{SERVICE}/concepts/other.md"
     assert "@" not in other_page.read_text()
+
+
+def test_restamp_row_clears_its_own_stale_citation(
+    booked: Path, logger: logging.Logger
+) -> None:
+    """The stale-citation error a row exists to fix must not block that row's own restamp.
+
+    Regression test: the gate used to read every error on the node, including the very
+    stale-citation the row was assigned to clear, so the digest never refreshed — doctor
+    kept reporting the pair stale, stamp_turn kept withholding it, and the row regrounded
+    forever.
+    """
+    features_root = Path(_features_root(booked))
+    graph = Ostler(booked).graph
+    stamp_mod.stamp_targets(graph, features_root, [(CHARGE_PAGE, "acme/service.py")])
+    _commit(booked, "stamp the citation")
+
+    source = booked / "acme/service.py"
+    source.write_text(source.read_text().replace("return amount", "return amount * 100"))
+    _commit(booked, "change the cited file")
+
+    before = (booked / CHARGE_PAGE).read_text()
+    stale_digest = DIGEST_RE.search(before)
+    assert stale_digest is not None
+
+    pre_turn_sha = head_sha(booked)
+    context = json.dumps({"file": "acme/service.py", "nodes": [CHARGE_PAGE]})
+
+    result = stamp_turn(
+        logger, str(booked), _features_root(booked), pre_turn_sha,
+        "fix:stale-citation", context,
+    )
+
+    assert result.stamped == 1
+    assert not result.skipped_nodes
+    after = (booked / CHARGE_PAGE).read_text()
+    assert DIGEST_RE.search(after)
+    assert stale_digest.group() not in after
+
+    report = doctor_mod.run(Ostler(booked).graph)
+    assert not any(f.code == "stale-citation" for f in report.findings)
 
 
 def test_a_partial_turn_does_not_restamp_its_regrounding_row(
