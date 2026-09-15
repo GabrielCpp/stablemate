@@ -883,7 +883,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
     # Reuses the `step` section type for its own `## Steps`; `fixture-step-kind` restricts a
     # fixture's own steps to `{seed, run, verify}`, a narrower set than a runbook's `STEP_KINDS`.
     UINodeType(
-        name="fixture", kind="file", context="qa/fixtures",
+        name="fixture", kind="file", context="fixtures",
         required_sections=(SectionSpec("Steps"),),
         bullet_keys=(
             # `args:`, not `params:` — `params` is already a `RELATION_KEYS` entry checked

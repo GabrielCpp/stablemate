@@ -9,7 +9,7 @@ types' own `fixture:`/`verify:` pair is about *this one claim's* arrangement and
 
 ## Identity
 
-A `fixture` node is **file-level** (`kind="file"`, `context="qa/fixtures"`) — the whole file is
+A `fixture` node is **file-level** (`kind="file"`, `context="fixtures"`) — the whole file is
 the node, not a `### id` heading inside one. Its id is the repo-relative path
 (`docs/features/<surface>/fixtures/<name>.md`), and the name other bullets reference it by is the
 file's stem: `seeded-acme.md` is named `seeded-acme`. It reuses `## Steps` for its own body — the

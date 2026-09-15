@@ -1,6 +1,6 @@
 """`registry`'s fixture-node grammar and the `capture:` bullet it shares with `verify:`/`fixture:`.
 
-A `fixture` node is a file-level `qa/fixtures` type reusing the `step` section for its own
+A `fixture` node is a file-level `fixtures` type reusing the `step` section for its own
 `## Steps`. `capture:` is the mirror-image flag of `arrange`/`check` on the same seven node
 types that already carry `fixture:`/`verify:`, and its attribution
 (`capture_keys`/`attributed_captures`) is required to delegate to the same `_attributed` engine
@@ -29,10 +29,10 @@ def _run(repo: Path):
     return doctor.run(load(repo))
 
 
-def test_fixture_node_type_is_registered_as_a_qa_fixtures_file() -> None:
+def test_fixture_node_type_is_registered_as_a_fixtures_file() -> None:
     uitype = registry.UI_TYPES_BY_NAME["fixture"]
     assert uitype.kind == "file"
-    assert uitype.context == "qa/fixtures"
+    assert uitype.context == "fixtures"
     assert {b.key for b in uitype.bullet_keys} == {"args", "provides", "needs", "secrets"}
     needs = next(b for b in uitype.bullet_keys if b.key == "needs")
     provides = next(b for b in uitype.bullet_keys if b.key == "provides")

@@ -71,6 +71,20 @@ def test_scaffold_duplicate_section_refused(repo: Path):
     assert not res.ok and "already exists" in res.message
 
 
+def test_scaffold_fixture_writes_to_the_path_a_book_loads_fixtures_from(repo: Path):
+    """`context="fixtures"` (fixed from a stray `qa/fixtures`) must place the file where the
+    fixture node grammar's own id convention says: `docs/features/<surface>/fixtures/<name>.md`,
+    no `qa/` segment — and the book must find it back there as a `fixture` node.
+    """
+    res = scaffold.scaffold(load(repo), "fixture", "seeded-acme", service="acme")
+    assert res.ok
+    path = repo / "docs/features/acme/fixtures/seeded-acme.md"
+    assert path.exists()
+    graph = load(repo)
+    [node] = graph.ui_nodes_of_type("fixture")
+    assert node.id.endswith("acme/fixtures/seeded-acme.md")
+
+
 def test_scaffold_output_is_already_canonical(repo: Path):
     scaffold.scaffold(load(repo), "cli", "wh", service="workhorse")
     scaffold.scaffold(load(repo), "command", "run", in_file="workhorse/wh.md")
