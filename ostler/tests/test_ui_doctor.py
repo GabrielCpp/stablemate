@@ -803,6 +803,40 @@ def test_detail_is_declared_on_every_implementation_bearing_type(repo: Path):
     assert text.index("- verify:") < text.index("- code:") < text.index("- detail:")
 
 
+def test_code_is_declared_on_every_type(repo: Path):
+    """`code:` grounds on every type (`registry.owning_keys`'s docstring — a flow or a screen
+    cites the code it is grounded in whether or not its profile lists the key, and always
+    has), but only some types' own profiles listed it in `bullet_keys`. On the rest —
+    `screen`, `flow`, `step`, `fixture`, `untyped` — `unknown-bullet` called that citation
+    inert even though `_check_code_grounding` (which reads `node.meta.get('code')` directly,
+    with no type gate) has always graded it. `declared_keys` folding `code` in unconditionally,
+    the same way it already folds in the shared normative/advisory keys, is what stops
+    `unknown-bullet` from flagging a bullet the linter itself checks."""
+    for node_type in registry.UI_TYPES_BY_NAME:
+        assert "code" in registry.declared_keys(node_type), node_type
+
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+          "- route: `/s`\n- requires: none\n- params: none\n"
+          "- code: `groom/groom/diff.py::Diff`\n")
+    write(repo / "docs/features/groom/flows/f.md",
+          "---\ntype: flow\nslug: f\ntitle: F\n---\n# F\n\n"
+          "- start: begins\n- end: ends\n- code: `groom/groom/diff.py::Diff`\n")
+    write(repo / "docs/features/groom/fixtures/fx.md",
+          "---\ntype: fixture\nslug: fx\ntitle: FX\n---\n# FX\n\n"
+          "- code: `groom/groom/diff.py::Diff`\n\n"
+          "## Steps\n\n### boot\n- kind: seed\n- run: `groom/boot.sh`\n")
+    write(repo / "docs/features/groom/concepts/notify.md",
+          "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
+          "## Steps\n\n### boot\n- kind: prepare\n- code: `groom/groom/diff.py::Diff`\n\n"
+          "## Notes\n\n### Detail\n- code: `groom/groom/diff.py::Diff`\n")
+    write(repo / "groom/groom/diff.py", "class Diff:\n    pass\n")
+
+    hits = [f for f in _run(repo).findings
+            if f.code == "unknown-bullet" and f.ref and f.ref.endswith("#code")]
+    assert hits == []
+
+
 def test_concept_judgment_keys_are_advisory_relations(repo: Path):
     """`rule:`/`prefers:`/`deprecates:` are the concept's judgment vocabulary, and none is
     normative — a selection rule is not live-provable, so minting an obligation from one

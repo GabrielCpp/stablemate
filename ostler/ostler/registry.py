@@ -335,14 +335,19 @@ def normative_keys(node_type: str) -> tuple[str, ...]:
 
 def declared_keys(node_type: str) -> frozenset[str]:
     """Every bullet key `node_type` recognizes: its own declared bullets plus the keys that are
-    normative on every type. A key outside this set is one `fmt` cannot place and no reader
-    grades — which is what `doctor`'s `unknown-bullet` tells the author."""
+    normative on every type, plus `code:` (`CODE_GROUNDING_KEYS`) — which, like `owning_keys`'
+    copy of the same set, is declared on every type whether or not that type's own profile lists
+    it. A flow or a screen cites the code it is grounded in whether or not its profile lists the
+    key, and always has; `unknown-bullet` calling that citation inert was the mismatch, not the
+    citation. A key outside this set is one `fmt` cannot place and no reader grades — which is
+    what `doctor`'s `unknown-bullet` tells the author."""
     uitype = UI_TYPES_BY_NAME.get(node_type)
     own = () if uitype is None else uitype.bullet_keys
     return (
         frozenset(b.key for b in own)
         | frozenset(SHARED_NORMATIVE_KEYS)
         | frozenset(SHARED_ADVISORY_KEYS)
+        | CODE_GROUNDING_KEYS
     )
 
 
