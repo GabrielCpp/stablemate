@@ -26,6 +26,7 @@ from git.exc import GitError
 
 from ostler import Ostler
 from ostler import doctor as doctor_mod
+from ostler import index as index_mod
 from ostler import refs as refs_mod
 from ostler import stamp as stamp_mod
 from workhorse.pyflow import WorkflowFailed
@@ -127,69 +128,70 @@ def stamp_turn(
     """
     repo = Path(repo_root).resolve()
     pathspec = _book_pathspec(repo, features_root)
-    graph = Ostler(repo).graph
+    with index_mod.session(repo):
+        graph = Ostler(repo).graph
 
-    touched_pages = {
-        line for line in diff_text(repo, "--name-only", pre_turn_sha, "--", pathspec).splitlines()
-        if line
-    } if pre_turn_sha else set()
+        touched_pages = {
+            line for line in diff_text(repo, "--name-only", pre_turn_sha, "--", pathspec).splitlines()
+            if line
+        } if pre_turn_sha else set()
 
-    restamp_pairs: list[tuple[str, str]] = []
-    if item_kind == "fix:stale-citation" and item_context:
-        try:
-            context = json.loads(item_context)
-        except (json.JSONDecodeError, TypeError):
-            context = {}
-        file_target = str(context.get("file") or "")
-        if file_target:
-            restamp_pairs = [
-                (str(node_id), file_target) for node_id in context.get("nodes") or ()
-            ]
+        restamp_pairs: list[tuple[str, str]] = []
+        if item_kind == "fix:stale-citation" and item_context:
+            try:
+                context = json.loads(item_context)
+            except (json.JSONDecodeError, TypeError):
+                context = {}
+            file_target = str(context.get("file") or "")
+            if file_target:
+                restamp_pairs = [
+                    (str(node_id), file_target) for node_id in context.get("nodes") or ()
+                ]
 
-    def _page_of(node_id: str) -> str | None:
-        node = graph.find_ui_node(node_id)
-        return node.path.relative_to(graph.root).as_posix() if node is not None else None
+        def _page_of(node_id: str) -> str | None:
+            node = graph.find_ui_node(node_id)
+            return node.path.relative_to(graph.root).as_posix() if node is not None else None
 
-    scope_pages = set(touched_pages)
-    scope_pages.update(page for node_id, _ in restamp_pairs if (page := _page_of(node_id)))
-    if not scope_pages:
-        return Stamped()
+        scope_pages = set(touched_pages)
+        scope_pages.update(page for node_id, _ in restamp_pairs if (page := _page_of(node_id)))
+        if not scope_pages:
+            return Stamped()
 
-    report = doctor_mod.scope_to_paths(doctor_mod.run(graph), sorted(scope_pages))
-    blocked_nodes: set[str] = set()
-    blocked_pages: set[str] = set()
-    for finding in report.findings:
-        if finding.severity != "error":
-            continue
-        if finding.node:
-            blocked_nodes.add(finding.node)
-        elif finding.path:
-            blocked_pages.add(finding.path)
+        report = doctor_mod.scope_to_paths(doctor_mod.run(graph), sorted(scope_pages))
+        blocked_nodes: set[str] = set()
+        blocked_pages: set[str] = set()
+        for finding in report.findings:
+            if finding.severity != "error":
+                continue
+            if finding.node:
+                blocked_nodes.add(finding.node)
+            elif finding.path:
+                blocked_pages.add(finding.path)
 
-    def _blocked(node_id: str) -> bool:
-        return node_id in blocked_nodes or _page_of(node_id) in blocked_pages
+        def _blocked(node_id: str) -> bool:
+            return node_id in blocked_nodes or _page_of(node_id) in blocked_pages
 
-    pairs: list[tuple[str, str]] = []
-    skipped: set[str] = set()
-    for node_id, file_target in restamp_pairs:
-        if _blocked(node_id):
-            skipped.add(node_id)
-        else:
-            pairs.append((node_id, file_target))
+        pairs: list[tuple[str, str]] = []
+        skipped: set[str] = set()
+        for node_id, file_target in restamp_pairs:
+            if _blocked(node_id):
+                skipped.add(node_id)
+            else:
+                pairs.append((node_id, file_target))
 
-    for finding in report.findings:
-        if finding.code != "unstamped-citation" or not finding.node or finding.path not in touched_pages:
-            continue
-        if _blocked(finding.node):
-            skipped.add(finding.node)
-            continue
-        pairs.append((finding.node, refs_mod.ref_path(finding.ref)))
+        for finding in report.findings:
+            if finding.code != "unstamped-citation" or not finding.node or finding.path not in touched_pages:
+                continue
+            if _blocked(finding.node):
+                skipped.add(finding.node)
+                continue
+            pairs.append((finding.node, refs_mod.ref_path(finding.ref)))
 
-    if not pairs:
-        return Stamped(skipped_nodes=sorted(skipped))
+        if not pairs:
+            return Stamped(skipped_nodes=sorted(skipped))
 
-    results = stamp_mod.stamp_targets(graph, Path(features_root).resolve(), pairs)
-    stamped = sum(r.stamped for r in results)
+        results = stamp_mod.stamp_targets(graph, Path(features_root).resolve(), pairs)
+        stamped = sum(r.stamped for r in results)
     if stamped:
         logger.info("stamped %d citation target(s) this turn", stamped)
     return Stamped(stamped=stamped, skipped_nodes=sorted(skipped))
