@@ -22,8 +22,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from ostler import inventory, path as path_mod, refs
-from ostler.model import Graph
+from ostler import path as path_mod
 from ostler.qa.source_context import SourceRepository, SourceScope
 
 
@@ -132,21 +131,6 @@ def load_catalog(root: Path) -> SourceCatalog | None:
     return SourceCatalog.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def _text_at(repository: SourceRepository, path: str) -> str:
-    checkout = Path(repository.checkout).resolve()
-    if repository.head == "WORKTREE":
-        target = checkout / path
-        return target.read_text(encoding="utf-8") if target.is_file() else ""
-    result = subprocess.run(
-        ["git", "show", f"{repository.head}:{path}"],
-        cwd=checkout,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    return result.stdout if result.returncode == 0 else ""
-
-
 def _git(repository: SourceRepository, *args: str) -> bytes | None:
     try:
         result = subprocess.run(
@@ -208,95 +192,6 @@ def source_fingerprint(repository: SourceRepository) -> str:
     return digest.hexdigest()
 
 
-def _snapshot_file(path: str, text: str) -> SourceFile:
-    """One cited file's snapshot: its bytes, what it declares, and each declaration's digest."""
-    digests = inventory.symbol_digests(path, text)
-    return SourceFile(
-        path=path,
-        content_sha256=hashlib.sha256(text.encode()).hexdigest(),
-        symbols=tuple(sorted(inventory.declared_names(path, text))),
-        declarations=tuple(
-            SourceSymbol(name=name, content_sha256=digests[name]) for name in sorted(digests)
-        ),
-    )
-
-
-def _cited_paths(graph: Graph) -> dict[str, set[str]]:
-    """Every path the book cites, grouped by the repository the citation names.
-
-    An unqualified ref lands under `SELF_REPOSITORY`, which is what `parse_code_ref` already
-    returns for one — the grouping is the ref grammar's own answer, not a second reading of it.
-    """
-    cited: dict[str, set[str]] = {}
-    for node in graph.ui_nodes:
-        for value in refs.code_refs(node.meta.get("code")):
-            try:
-                parsed = refs.parse_code_ref(value)
-            except ValueError:
-                continue
-            cited.setdefault(parsed.repository, set()).add(parsed.path)
-    return cited
-
-
-def _self_snapshot(graph: Graph, paths: set[str]) -> RepositorySnapshot:
-    """The graph's own repository, read off the working tree it is checked out into.
-
-    It carries no `base`, no revisions and no `source_fingerprint`: those describe a *diff*
-    against another checkout, and the graph's own repo is the one the book already sits in.
-    What it carries is the watermark, which is the whole reason it exists.
-    """
-    files: list[SourceFile] = []
-    for path in sorted(paths):
-        target = graph.root / path
-        if not target.is_file():
-            continue
-        try:
-            text = target.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        if text:
-            files.append(_snapshot_file(path, text))
-    return RepositorySnapshot(id=SELF_REPOSITORY, base="", head="WORKTREE", files=tuple(files))
-
-
-def build_catalog(graph: Graph, repositories: tuple[SourceRepository, ...]) -> SourceCatalog:
-    """Snapshot every file the current feature graph cites under `code:`, own repo included."""
-    by_id = {repository.id: repository for repository in repositories}
-    cited = _cited_paths(graph)
-
-    snapshots: list[RepositorySnapshot] = []
-    if cited.get(SELF_REPOSITORY):
-        snapshots.append(_self_snapshot(graph, cited[SELF_REPOSITORY]))
-    for identifier in sorted(cited):
-        if identifier == SELF_REPOSITORY:
-            continue
-        repository = by_id.get(identifier)
-        if repository is None:
-            continue
-        files: list[SourceFile] = []
-        for path in sorted(cited[identifier]):
-            text = _text_at(repository, path)
-            if not text:
-                continue
-            files.append(_snapshot_file(path, text))
-        snapshots.append(RepositorySnapshot(
-            id=identifier,
-            base=repository.base,
-            head=repository.head,
-            base_sha=resolved_sha(repository, repository.base),
-            head_sha=(
-                "" if repository.head == "WORKTREE" else resolved_sha(repository, repository.head)
-            ),
-            head_anchor_sha=(
-                resolved_sha(repository, "HEAD") if repository.head == "WORKTREE" else ""
-            ),
-            scopes=repository.scopes,
-            source_fingerprint=source_fingerprint(repository),
-            files=tuple(files),
-        ))
-    return SourceCatalog(repositories=tuple(snapshots))
-
-
 __all__ = [
     "REPOSITORY_DECL_FILENAME",
     "SELF_REPOSITORY",
@@ -305,7 +200,6 @@ __all__ = [
     "SourceFile",
     "SourceSymbol",
     "book_repository",
-    "build_catalog",
     "catalog_path",
     "load_catalog",
     "set_book_repository",

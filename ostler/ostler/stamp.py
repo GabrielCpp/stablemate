@@ -12,9 +12,10 @@ inventory the catalog already builds (``ostler.inventory``), and this module doe
 A symbol's citation goes stale exactly when its file does — the file is what doctor already
 watches for a missing declaration — so there is nothing a finer-grained hash would catch sooner.
 
-Hashing matches :func:`ostler.source_snapshots._snapshot_file`'s recipe exactly — decode the
-file as UTF-8 text, then hash the *text*, not the raw bytes — so a digest computed here and one
-migrated from the catalog agree for a file nobody has touched.
+Hashing (:func:`digest_file`) decodes the file as UTF-8 text, then hashes the *text*, not the
+raw bytes — the same recipe the retired catalog builder used, so a digest computed here and
+one migrated from a catalog written before it was retired still agree for a file nobody has
+touched.
 
 Only this module writes ``@digest`` suffixes. Nothing else should: doctor reads them, a repair
 prompt must never write or edit one, and only okf-builder's turn-finalize path calls ``ostler
@@ -49,9 +50,8 @@ _SPAN = re.compile(r"`(?P<inner>[^`]*)`(?:\s*@(?P<digest>[0-9a-f]{12}))?")
 def digest_file(text: str) -> str:
     """The stamp for a file's contents.
 
-    Matches `ostler.source_snapshots._snapshot_file`'s recipe — decode-then-hash, not raw
-    bytes — so a digest stamped here and one migrated from the catalog compare equal for a
-    file nobody has touched since the catalog was built.
+    Decode-then-hash, not raw bytes — so a digest stamped here and one migrated from a
+    catalog compare equal for a file nobody has touched since the catalog was built.
     """
     return hashlib.sha256(text.encode()).hexdigest()[:DIGEST_LENGTH]
 
