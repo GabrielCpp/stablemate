@@ -102,6 +102,6 @@ emitted as a YAML flow list — `tags: [web, tests]` — only when the source de
 what the skill *answers* rather than what it is called, which is how a workflow prompt asks for a
 capability it has no name for; the run-time half of that query is workhorse's
 `find_by_tags(*tags)`, reading the same values out of the [context
- manifest](../../workhorse/context-manifest.md#field-instruction_tags). They ride inside `metadata:` rather
+ manifest](../../workhorse/formats/context-manifest.md#field-instruction_tags). They ride inside `metadata:` rather
 than at the front matter's top level for the same reason the rest of this block does: it is the
 namespace every harness's parser already ignores.
