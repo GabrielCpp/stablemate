@@ -1205,6 +1205,41 @@ def test_a_citation_whose_definition_left_the_file_is_still_dangling(tmp_path: P
     assert dangling == ["svc/backend.py::MANIFEST"], packet["healthFindings"]
 
 
+def test_a_digest_pinned_citation_still_grounds(tmp_path: Path):
+    """A stamped `@digest` must not defeat grounding, for a bare file or a symbol citation.
+
+    `_grounding_exists` used to split a ref on `::` before parsing it, instead of reading the
+    already-parsed `CodeRef`. A bare-file ref pinned with `@digest` (`path@digest`) then failed
+    `is_file` outright — the digest never got stripped, so the existence probe looked for a
+    file literally named `path@digest`. A symbol ref pinned with `@digest`
+    (`path::symbol@digest`) fared worse: the naive split put the digest suffix inside the
+    symbol half, so the `.py`-gated declaration check went looking for a symbol named
+    `symbol@digest` and never matched. Both were silently reported dangling even though the
+    citation was correct and current.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "svc").mkdir()
+    (tmp_path / "docs/features/demo/backend.md").write_text(
+        "---\ntype: concept\ntitle: Backend\n---\n# Backend\n\n"
+        "- code: `svc/backend.py::serve`, `svc/backend.py::serve@0123456789ab`, "
+        "`svc/backend.py`, `svc/backend.py@0123456789ab`\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "svc/backend.py").write_text("def serve(port):\n    return port\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "svc/backend.py").write_text("def serve(bind):\n    return bind\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["svc"]})
+
+    dangling = [f["ref"] for f in packet["healthFindings"] if f["kind"] == "dangling-grounding"]
+    assert dangling == [], packet["healthFindings"]
+
+
 def test_a_backticked_verify_ref_keeps_the_commas_inside_its_test_name():
     """A comma in a test title is content, not a separator — the span boundary says so.
 

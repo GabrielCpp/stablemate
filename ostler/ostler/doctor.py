@@ -1274,10 +1274,7 @@ def _check_test_subject(node, rel: str, f: list[Finding]) -> None:
     """
     cited: dict[str, None] = {}
     for value in refs_mod.code_refs(node.meta.get("code")):
-        try:
-            cited[refs_mod.parse_code_ref(value).path] = None
-        except ValueError:
-            cited[value.partition("::")[0]] = None
+        cited[refs_mod.ref_path(value)] = None
     tests = [path for path in cited if refs_mod.is_test_source(path)]
     if not tests:
         return
@@ -1493,8 +1490,11 @@ def _check_judgment(graph: Graph, f: list[Finding],
             # in this file" — two interactions of one form both live in its component
             # file without being alternatives — and a region (prose after `::`) is a
             # description, not a name two nodes could collide on.
-            _path, separator, symbol = ref.partition("::")
-            if not (separator and symbol) or _SPACE.search(symbol):
+            try:
+                symbol = refs_mod.parse_code_ref(ref).symbol
+            except ValueError:
+                continue
+            if not symbol or _SPACE.search(symbol):
                 continue
             # Strip the `@digest` stamp before grouping: two citations of the identical
             # symbol at different stamp states are still the identical competition, not

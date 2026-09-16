@@ -1314,8 +1314,8 @@ def _revision_holds(root: Path, revision: str, path: str) -> bool:
     return True
 
 
-def _grounding_exists(root: Path, base: str, head: str, ref: str) -> bool:
-    path, separator, symbol = ref.partition("::")
+def _grounding_exists(root: Path, base: str, head: str, ref: refs_mod.CodeRef) -> bool:
+    path, symbol = ref.path, ref.symbol
     # Existence is asked of the filesystem and the object store, not of `_revision_text` /
     # `_working_text`. Those answer "" for a file they cannot decode as UTF-8, and reading
     # that as "not there" made a `code:` bullet citing any *binary* file permanently
@@ -1328,7 +1328,7 @@ def _grounding_exists(root: Path, base: str, head: str, ref: str) -> bool:
     )
     if not present:
         return False
-    if not separator or not symbol or not path.endswith(".py"):
+    if not symbol or not path.endswith(".py"):
         return True
     texts = [
         text
@@ -1360,11 +1360,11 @@ def _grounding_for_ref(
     except ValueError:
         return False
     if not parsed.repository:
-        return _grounding_exists(root, base, head, ref)
+        return _grounding_exists(root, base, head, parsed)
     repository = repositories.get(parsed.repository)
     if repository is None:
         return False
-    local_ref = refs_mod.render_code_ref(replace(parsed, repository=""))
+    local_ref = replace(parsed, repository="")
     return _grounding_exists(
         Path(repository.checkout).resolve(),
         repository.base,
