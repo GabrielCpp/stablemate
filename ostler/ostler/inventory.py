@@ -509,9 +509,21 @@ def declares(path: str | Path, text: str, symbol: str) -> bool:
     return _grounds(declared_names(path, text), symbol)
 
 
+def symbol_parts(symbol: str) -> frozenset[str]:
+    """The identifiers inside a qualified symbol, order- and punctuation-independent.
+
+    `(*Writer).SetRoleClaims` and `Writer.SetRoleClaims` both reduce to
+    `{"Writer", "SetRoleClaims"}`. This is the one place that tolerance is defined — both
+    :func:`_grounds` (a citation against a file's declared names) and `ostler.qa.context`'s
+    changed-symbol join (an extracted symbol against a citation) read it, so a receiver's
+    star never becomes two string transforms that happen to agree today.
+    """
+    return frozenset(SYMBOL_PART.findall(symbol))
+
+
 def _grounds(names: set[str] | frozenset[str], symbol: str) -> bool:
-    parts = SYMBOL_PART.findall(symbol)
-    return bool(parts) and all(part in names for part in parts)
+    parts = symbol_parts(symbol)
+    return bool(parts) and parts.issubset(names)
 
 
 # ── the second cached product: a file's symbol table, keyed on its bytes and its grammar ──
