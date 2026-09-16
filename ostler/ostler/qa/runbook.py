@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ostler import checks
 from ostler import links as links_mod
 from ostler import markdown
 from ostler import model
@@ -135,7 +136,13 @@ def _step_command(node: UINode, root: Path, default_cwd: str) -> dict[str, str] 
     an author never meets that asymmetry.
     """
     command = bullet_value(node.meta, "run")
-    if not command:
+    if not command or checks.is_check_expression(command):
+        # A check expression (`http_status(200, path="/healthz")`) is not a command —
+        # `ensure_stack`/`book_fixtures` shell this verbatim, and handing it a check call
+        # buys nothing but a bash syntax error two stages later. Treated the same as an
+        # absent `run:`: the doctor's `check-expression-as-command` is the loud finding an
+        # author sees before bring-up ever runs; this is only the backstop that keeps a
+        # book that skipped the doctor from reaching bash with the wrong grammar.
         return None
     if bullet_value(node.meta, "optional").lower() in ("true", "yes"):
         # Best-effort, per the profile. `ensure_stack` has no soft mode, so the intent is
@@ -241,7 +248,10 @@ def _from_runbook(graph: Graph, runbook: UINode) -> dict[str, Any]:
             if step and "launch" not in manifest:
                 manifest["launch"] = step["run"]
             gate = bullet_value(node.meta, "health")
-            if gate:
+            if gate and not checks.is_check_expression(gate):
+                # Same backstop as `_step_command`'s: a check expression here is a book
+                # defect the doctor already reports (`check-expression-as-command`), not a
+                # gate this reader should hand to bash.
                 phases["health"].append({"run": gate, "working-directory": step["working-directory"]
                                          if step else manifest["app_cwd"]})
             continue

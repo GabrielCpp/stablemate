@@ -673,6 +673,7 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
                     "error", "fixture-step-no-run",
                     f"{step.id}: no `run:` bullet — this step would run nothing",
                     path=rel, line=step.line))
+            _check_step_command_bullets(step, rel, f)
 
     _check_fixture_needs_cycles(graph, fixtures, f)
     _check_needs_binding_args(graph, by_name, f)
@@ -2097,6 +2098,7 @@ def _check_runbook(graph: Graph, f: list[Finding]) -> None:
                                  suggestion="- kind: " + "|".join(sorted(runbook_mod.STEP_KINDS))))
             if kind == "service":
                 services.append(step)
+            _check_step_command_bullets(step, rel, f)
 
         if node.id not in stacks:
             # A procedure runbook: its steps and its environment are still checked above and
@@ -2154,6 +2156,39 @@ def _check_runbook_environment(graph: Graph, node, rel: str, f: list[Finding]) -
                              f"that environment points at {service}",
                              path=rel, line=node.line, ref=target.id,
                              suggestion="point it at localhost, or drop `local-only: true`"))
+
+
+#: The bullets a `step` node shells (`ensure_stack`, `book_fixtures`) rather than parses —
+#: see `_check_step_command_bullets`.
+_STEP_COMMAND_KEYS: tuple[str, ...] = ("run", "health")
+
+
+def _check_step_command_bullets(step: UINode, rel: str, f: list[Finding]) -> None:
+    """A `run:`/`health:` bullet is shelled, never parsed — a check expression there is wrong.
+
+    `ensure_stack` and `book_fixtures` both hand these bullets to `bash -c` verbatim
+    (`runbook._step_command`, `runbook._from_runbook`'s health gate); neither reads
+    `verify:`'s grammar. A value that nonetheless *parses* as a check call
+    (`checks.is_check_expression`) was written for `verify:` and put on the wrong key — an
+    author reaching for `http_status(200, path="/healthz")` here meant a check, not a
+    command, and bash would only ever answer with a syntax error, one stage after this
+    stage already reported green. `error`, not `warn`: the whole point is to replace that
+    bring-up-time bash failure with a doctor finding an author sees before the stack runs at
+    all — the same bar `undeclared-check-locator` holds for a locator argument.
+    """
+    for key in _STEP_COMMAND_KEYS:
+        value = runbook_mod.bullet_value(step.meta, key)
+        if not value or not checks.is_check_expression(value):
+            continue
+        f.append(Finding(
+            "error", "check-expression-as-command",
+            f"{step.id}: `{key}:` ({value}) is a check expression, not a shell command — "
+            f"`{key}:` is shelled at bring-up time, so this would fail with a bash syntax "
+            f"error instead of running; write a shell command that exits non-zero on "
+            f"failure (e.g. `curl -fsS <url>`), or move this check onto the `verify:` of "
+            f"the claim it actually observes",
+            path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, key),
+            suggestion=f"- {key}: curl -fsS <url>"))
 
 
 #: Hosts a `local-only: true` environment may name. `*.localhost` and `*.local` resolve on the

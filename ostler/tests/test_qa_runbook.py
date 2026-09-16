@@ -79,6 +79,34 @@ def test_load_stack_folds_steps_into_phases(repo: Path) -> None:
         "curl -fsS http://localhost:18084/healthz"]
 
 
+def test_a_check_expression_on_run_or_health_is_not_shelled(tmp_path: Path) -> None:
+    # The doctor's `check-expression-as-command` is the loud finding an author sees before
+    # bring-up ever runs; this is only the backstop that keeps a book that skipped the doctor
+    # from handing bash a check call instead of a command. Both bullets are treated as absent,
+    # the same as a `step` that declared no `run:`/`health:` at all.
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, """---
+type: runbook
+---
+
+# QA stack
+
+- driver: web
+- entry-url: http://localhost:18084
+
+## Steps
+
+### serve
+
+- kind: service
+- run: http_status(200, path="/healthz")
+- health: http_status(200, path="/healthz")
+""")
+    manifest = rb.load_stack(tmp_path)
+    assert manifest.get("launch") is None
+    assert manifest.get("health", []) == []
+
+
 def test_scalars_are_spelled_the_way_ensure_stack_reads_them(repo: Path) -> None:
     manifest = rb.load_stack(repo)
     assert manifest["entry_url"] == "http://localhost:18084"
@@ -462,3 +490,34 @@ def test_a_loopback_service_is_not_a_local_only_violation(tmp_path: Path) -> Non
                  "- environment: [local](local.md)\n- entry-url: http://localhost:1\n\n"
                  "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n")
     assert "runbook-local-only" not in codes(tmp_path)
+
+
+def test_doctor_reports_a_check_expression_on_a_service_health_bullet(tmp_path: Path) -> None:
+    # `ensure_stack` shells `health:` verbatim — a check call there is a bullet written for
+    # `verify:` and put on the wrong key, and bash would only ever answer with a syntax error.
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
+                 "- entry-url: http://localhost:1\n\n## Steps\n\n### serve\n\n"
+                 "- kind: service\n- run: ./serve.sh\n"
+                 '- health: http_status(200, path="/healthz")\n')
+    assert "check-expression-as-command" in codes(tmp_path)
+
+
+def test_doctor_reports_a_check_expression_on_a_run_bullet(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
+                 "- entry-url: http://localhost:1\n\n## Steps\n\n### serve\n\n"
+                 "- kind: service\n"
+                 '- run: http_status(200, path="/healthz")\n\n'
+                 "### smoke\n\n- kind: run\n"
+                 '- run: http_status(200, path="/healthz")\n')
+    assert "check-expression-as-command" in codes(tmp_path)
+
+
+def test_doctor_stays_quiet_on_a_real_command(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
+                 "- entry-url: http://localhost:1\n\n## Steps\n\n### serve\n\n"
+                 "- kind: service\n- run: ./serve.sh\n"
+                 "- health: curl -fsS http://localhost:1/healthz\n")
+    assert "check-expression-as-command" not in codes(tmp_path)

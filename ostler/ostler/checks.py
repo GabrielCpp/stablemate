@@ -381,6 +381,20 @@ def parse_check(value: str) -> CheckCall | str:
     return bind(name, args)
 
 
+def is_check_expression(value: str) -> bool:
+    """Whether *value* parses as a check call — the single test for "this is a check, not a
+    command", shared by every caller that must tell the two apart.
+
+    A runbook step's `run:`/`health:` bullet is shelled (`ostler.qa.stack.ensure_stack`, and
+    `ostler.qa.book_fixtures` for a fixture's own steps); `verify:` is parsed. The vocabulary
+    is closed — :func:`parse_check` already recognises it or explains why not — so this is
+    not a heuristic: a bullet that parses here was written for `verify:` and put on the wrong
+    key, and bash would have told the author so at bring-up time, one stage later than the
+    doctor now does.
+    """
+    return isinstance(parse_check(value), CheckCall)
+
+
 def _unwrap(value: str) -> str:
     """The bullet's value as markdown reads it: every soft line break is one space.
 

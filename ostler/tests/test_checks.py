@@ -34,6 +34,17 @@ def test_a_soft_wrapped_bullet_parses_as_markdown_renders_it() -> None:
         checks.CHECK_BY_NAME["persists"].signature()
 
 
+def test_is_check_expression_is_the_one_test_for_a_check_shaped_value() -> None:
+    """The single predicate `doctor` and `runbook` both call to tell a check call apart from a
+    shell command — see `check-expression-as-command`. A value that fails to parse (a plain
+    command, an empty string) is not a check expression; one that does is, regardless of
+    whether it names a declared check."""
+    assert checks.is_check_expression('http_status(200, path="/healthz")') is True
+    assert checks.is_check_expression("curl -fsS http://localhost:8080/healthz") is False
+    assert checks.is_check_expression("docker compose up -d --wait") is False
+    assert checks.is_check_expression("") is False
+
+
 def test_list_arguments_round_trip() -> None:
     call = checks.parse_check('unchanged(subject="manifest", except_fields=["pages.a.fr.slug"])')
     assert isinstance(call, checks.CheckCall)
