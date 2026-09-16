@@ -90,7 +90,7 @@ linter cannot judge "enough to regenerate."
 
 ## The written model — one reference per node type
 
-There are seventeen types. They sort by **role**, which is how you pick one, and each links its own
+The types sort by **role**, which is how you pick one, and each links its own
 reference — the authority wherever this page and it disagree.
 
 | Role | GUI | CLI | HTTP/WS | context-free |
