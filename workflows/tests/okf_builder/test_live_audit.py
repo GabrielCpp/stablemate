@@ -406,6 +406,22 @@ title: App things write
 
 CREATE_PATH = "docs/features/app/server-write.md"
 
+#: Phase 2h reads a target's `base_url` off the book instead of a fixed CLI default, so a
+#: surface with obligations needs a `server` node stating `entry-url:` or every obligation
+#: gaps as `undeclared-entry-url` regardless of what else it declares.
+SERVER_NODE = """---
+type: server
+title: App server
+---
+# App server
+
+- launch: `python -m app.service`
+- entry-url: http://localhost:8000
+- walkthrough: true
+"""
+
+SERVER_PATH = "docs/features/app/server.md"
+
 
 def _git(root: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True)
@@ -428,6 +444,7 @@ def compiled_book(tmp_path: Path) -> Path:
     (root / GET_PATH).parent.mkdir(parents=True, exist_ok=True)
     (root / GET_PATH).write_text(GET_NODE, encoding="utf-8")
     (root / CREATE_PATH).write_text(CREATE_NODE, encoding="utf-8")
+    (root / SERVER_PATH).write_text(SERVER_NODE, encoding="utf-8")
     (root / "app/service.py").parent.mkdir(parents=True, exist_ok=True)
     (root / "app/service.py").write_text(
         "def get_thing():\n    return 'thing'\n\n\ndef create_thing():\n    return 'thing'\n",
