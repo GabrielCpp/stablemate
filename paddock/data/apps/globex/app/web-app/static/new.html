@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Add a widget</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <h1>Add a widget</h1>
+    <form id="new-widget-form">
+      <p>
+        <label for="name">Name</label>
+        <input id="name" name="name" type="text" />
+        <span id="name-error" role="alert"></span>
+      </p>
+      <p>
+        <label for="quantity">Quantity</label>
+        <input id="quantity" name="quantity" type="number" value="0" />
+        <span id="quantity-error" role="alert"></span>
+      </p>
+      <button type="submit">Add widget</button>
+    </form>
+    <script src="config.js"></script>
+    <script src="new.js"></script>
+  </body>
+</html>

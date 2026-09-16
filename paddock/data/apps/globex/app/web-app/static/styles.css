@@ -1,0 +1,5 @@
+body { font-family: sans-serif; max-width: 640px; margin: 2rem auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; }
+p[role="alert"] { color: #a00; }
+p.empty-notice { color: #555; }

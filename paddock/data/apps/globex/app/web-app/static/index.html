@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Widget directory</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <h1>Widget directory</h1>
+    <p><a id="new-widget-link" href="new.html">Add a widget</a></p>
+    <table aria-label="Widgets on hand" hidden>
+      <thead>
+        <tr><th>Name</th><th>Quantity</th></tr>
+      </thead>
+      <tbody id="widget-rows"></tbody>
+    </table>
+    <p class="empty-notice" hidden>No widgets are on file yet.</p>
+    <p role="alert" hidden></p>
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

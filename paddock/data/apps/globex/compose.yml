@@ -1,0 +1,33 @@
+# Two named services, two ports, two healthchecks — the project name is explicit for the
+# same reason policy-desk's is: a run started from a materialized copy of this tree talks
+# to the same stack a run started from the fixture does.
+
+name: globex-bench
+
+services:
+  api-service:
+    build:
+      context: .
+      dockerfile: app/api-service/Dockerfile
+    ports:
+      - "18101:18101"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:18101/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  web-app:
+    build:
+      context: .
+      dockerfile: app/web-app/Dockerfile
+    ports:
+      - "18102:18102"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:18102/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    depends_on:
+      api-service:
+        condition: service_healthy
