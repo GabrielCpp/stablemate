@@ -111,6 +111,46 @@ A `verify:` or `fixture:` binds to a claim by **position**, not by name
   is read in — so it fans out to **all** the node's obligations. (This is the one asymmetry: an
   observation is specific by nature, an arrangement is ambient by nature.)
 
+## A nested claim list says how its children combine
+
+Fan-out — the third rule above — is sound over a list whose children are **parts of one thing**
+and unsound over a list whose children are **mutually exclusive branches**. On an endpoint,
+`body:`/`status:`/`path:` under one parent are parts: a check about the whole is a check about
+each. On an interaction, `does:` is routinely branches:
+
+```markdown
+- does: branches
+  - success: browser navigates to [widget-list](widget-list.md)
+  - failure: field error spans are populated from the response body
+  - failure: page stays put (no navigation)
+```
+
+Fanned out across those, a check observing the success branch does not merely fail to inform on
+the other two — against "page stays put" it is a **refutation**, and an unqualified fan-out files
+it as a proof. That is the one way a green run can be evidence for a claim the run disproved.
+
+So the parent states the combiner in its own value, which is otherwise empty:
+
+| Value | Children are | Fan-out |
+| --- | --- | --- |
+| `all` | parts of one effect, all true together | a check binds to every child |
+| `branches` | mutually exclusive outcomes, one per run | a check binds to **no** child; each branch carries its own `verify:` |
+
+The label before the colon on a child (`success:`, `failure:`, `navigation:`) stays free prose —
+it is for the reader, and nothing derives the combiner from it. Deriving it would fail *open*: a
+list whose labels the vocabulary did not anticipate would silently read as `all`, which is the
+unsound direction. Stating it fails closed, the same reason `requires:` and `params:` must say
+`none` rather than be omitted — a walk cannot tell "these all hold" from "nobody wrote it down".
+
+`doctor` requires the combiner only where it changes an outcome: a nested claim list with more
+than one child **and a check written under it**. A list nobody observes binds nothing, and
+demanding a word there would be churn across every book in the tree. Missing there →
+`unstated-claim-combiner` (error): undetermined, so no executable code is emitted for it, and
+`compile_plan` gaps every child rather than guessing. A branch with no check of its own is
+`unobserved-branch` — a real gap, and on a book that previously borrowed the success branch's
+check it is a gap that *appears* the day the combiner is stated. That is the debt becoming
+visible, not new debt.
+
 Canonical bullet order is the type's `bullet_keys` order and is applied by `ostler fmt`, so a
 stub written in the wrong place is one the formatter moves the first time the file is touched.
 `ostler scaffold` already emits check stubs under the last claim for this reason.
