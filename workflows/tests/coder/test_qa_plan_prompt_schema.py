@@ -113,9 +113,15 @@ def test_the_example_scenario_would_survive_the_substantiveness_gate():
 
 def test_the_prose_names_only_mechanisms_and_drivers_ostler_accepts():
     """`mechanism` and `driver` are ostler's vocabularies. The prompt enumerates both, and
-    naming one ostler rejects sends the agent confidently into a validation error."""
+    naming one ostler rejects sends the agent confidently into a validation error.
+
+    The driver vocabulary is read from `DRIVER_NAMES`, not from `DRIVERS`: a driver stopped
+    being a bare name when it started declaring what it can observe, and `DRIVERS` is now a
+    tuple of `DriverSpec`. Comparing the prompt's strings against those records rejects every
+    driver the prompt correctly names.
+    """
     text = PROMPT.read_text()
-    for label, vocabulary in (("mechanism", harness.MECHANISMS), ("driver", harness.DRIVERS)):
+    for label, vocabulary in (("mechanism", harness.MECHANISMS), ("driver", harness.DRIVER_NAMES)):
         clause = re.search(rf"`{label}` is \w+ \(([^)]*)\)", text)
         assert clause, f"plan-qa.md no longer enumerates the {label} vocabulary"
         named = set(re.findall(r"`([a-z_]+)`", clause.group(1)))
