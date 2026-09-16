@@ -77,8 +77,8 @@ crash, not a nuance:
    the *same* code as the full run, including writing the result file. A rehearsal that
    takes a different branch rehearses nothing.
 3. Wire the result file: same writer for both commands, in the job's cwd.
-4. Run `uv run ruff format`, `uv run ruff check` and `uv run pytest` over what you
-   touched until clean.
+4. A lint/test gate and a code-review pass both run on what you hand over, after this
+   turn — leave it passing both.
 5. Run the rehearsal yourself once, then hand over both commands. Do not run the full
    measurement — that is the runner's job, and your turn is far too short for it.
 

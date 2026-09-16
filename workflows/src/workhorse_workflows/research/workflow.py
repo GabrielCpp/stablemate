@@ -33,6 +33,8 @@ from typing import Any, ClassVar
 
 from workhorse.cli import console_script
 from workhorse.pyflow import Await, Continue, Done, Registry, Workflow
+from workhorse_workflows.coder.shared.blueprint import blueprint as gate_blueprint
+from workhorse_workflows.coder.shared.dev import GATE_ORDER, run_gate
 from workhorse_workflows.research.nodes import (
     append_history,
     blueprint,
@@ -58,6 +60,7 @@ from workhorse_workflows.research.nodes.dossier import (
 from workhorse_workflows.research.schemas import (
     Budget,
     Build,
+    CodeReview,
     Collected,
     Design,
     Dossier,
@@ -694,6 +697,52 @@ class Research(Workflow):
                 reason="the build produced no command",
                 detail=build.notes,
                 where="the build",
+            )
+        gate_outcome = None
+        for check in GATE_ORDER:
+            gate_outcome = self.call(
+                run_gate,
+                build.cwd or self.ctx.repo_dir,
+                "",
+                check,
+                repo_dir=self.ctx.repo_dir,
+            )
+            if gate_outcome.status == "dirty":
+                break
+        if gate_outcome is not None and gate_outcome.status == "dirty":
+            return self._repair(
+                gate_id,
+                gate_doc_path,
+                design,
+                budget,
+                locus="repo",
+                component="",
+                reason=f"the {gate_outcome.gate} gate failed: {gate_outcome.reason}",
+                detail=gate_outcome.output,
+                where=f"the {gate_outcome.gate} gate",
+            )
+        review = self.agent(
+            "prompts/code-review-experiment.md",
+            returns=CodeReview,
+            power="medium",
+            args=self._program_args(
+                gate_id=gate_id,
+                gate_doc_path=gate_doc_path,
+                design=design.model_dump(mode="json"),
+                build=build.model_dump(mode="json"),
+            ),
+        )
+        if review.status != "approve":
+            return self._repair(
+                gate_id,
+                gate_doc_path,
+                design,
+                budget,
+                locus="repo",
+                component="",
+                reason=f"code review: {review.findings}",
+                detail=review.notes,
+                where="the code review",
             )
         rehearsal = self.call(
             dry_run,
@@ -1768,7 +1817,9 @@ class Research(Workflow):
         return Done(result)
 
 
-workflow = Registry("research", package=__package__).add_blueprints(blueprint).stub_agents(
+workflow = Registry("research", package=__package__).add_blueprints(
+    blueprint, gate_blueprint
+).stub_agents(
     {
         # What `--dry-run` gets back, and why it is these two prompts. Every arm of
         # this machine returns to `start`, and `start` routes on whatever

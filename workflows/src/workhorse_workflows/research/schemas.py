@@ -353,6 +353,21 @@ class DryRun(ResearchResult):
     reason: str = ""
 
 
+class CodeReview(ResearchResult):
+    """`prompts/code-review-experiment.md` — a correctness pass over the gate's diff.
+
+    Catches what the lint/test gate cannot: code that runs clean and still does
+    something other than what the gate's own spec says — a control that isn't
+    actually randomized, a protocol step run in the wrong process. `status` defaults
+    to `""`, which matches neither branch below and falls through to `revise`, the
+    conservative arm.
+    """
+
+    status: str = ""
+    findings: str = ""
+    notes: str = ""
+
+
 class EnvelopeCheck(ResearchResult):
     """Does the design fit the machine the program declared?"""
 

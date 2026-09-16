@@ -266,6 +266,7 @@ def _drive(
     caps: dict[str, int] | None = None,
     answer: str = "",
     readme: str = "",
+    makefile: str = "",
     **inputs: Any,
 ) -> _Run:
     """Drive `Research` against a real repo until it terminates, parks, or halts.
@@ -278,6 +279,10 @@ def _drive(
     `answer` is an operator who is *present*: the block writes it onto the gate and the
     wait returns, so the run resumes through the block instead of ending at it. Without
     it a block is the end of the drive, which is what most tests here want.
+
+    `makefile` is real, committed content — the lint/test gate is not one of the
+    substituted nodes (`run_gate` runs for real, against this repo), so a test that
+    wants it dirty has to give it an actual failing target rather than a scripted reply.
     """
     waited: list[Path] = []
     checkpoints: list[dict[str, Any]] = []
@@ -305,6 +310,10 @@ def _drive(
             (repo / PROGRAM_DIR / "ledger.yml").write_text(ledger)
         if readme:
             (repo / PROGRAM_DIR / "README.md").write_text(readme)
+        if makefile:
+            (repo / "Makefile").write_text(makefile)
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-qm", "add Makefile")
         agent = _Agent(script)
         nodes = nodes or _Nodes()
         result: Any = None
@@ -378,6 +387,7 @@ GATE = {
     ],
     "design-experiment": [{"status": "ok", "memory_mb": 4000, "estimate_s": 600.0}],
     "build-experiment": [{"status": "ok", "command": ["python", "run.py"]}],
+    "code-review-experiment": [{"status": "approve"}],
     "record-result": [{"status": "ok", "outcome": "PASS"}],
     "lead-goal-review": [{"verdict": "reached"}],
     # The program lead waves the gate-level question through: a fresh program has no
@@ -752,6 +762,58 @@ def test_the_operator_s_answer_reaches_the_state_it_released():
     assert "The host rebooted" in turns[1]["fix_reason"], turns[1]["fix_reason"]
     assert "Do not raise this again" in turns[1]["fix_reason"]
     # And the release was real: the run went on to rehearse and submit.
+    assert outcome.nodes.counts()["dry_run"] == 1, outcome.nodes.counts()
+
+
+def test_a_dirty_lint_gate_is_repaired_before_the_rehearsal_runs():
+    """The lint/test gate is deterministic and runs for real — a Makefile target that
+    actually fails routes back to the engineer with no rehearsal spent, the same way a
+    failed rehearsal itself does. The Makefile here fails every time it is invoked, so
+    the repair never clears it; that is fine, since what is under test is the routing
+    of the first failure, not a second attempt this test cannot script a fix for."""
+    outcome = _parking(
+        _script(
+            **{
+                "research-lead-review": [{"verdict": "new_direction"}],
+                "define-new-direction": [{"status": "ok", "direction_name": "beta"}],
+            }
+        ),
+        makefile="lint:\n\texit 1\n",
+        caps={"MAX_BUILD_FIXES": 1},
+    )
+
+    turns = outcome.agent.args_for("build-experiment")
+    assert len(turns) == 2, outcome.agent.counts()
+    assert "the lint gate failed" in turns[1]["fix_reason"], turns[1]
+    assert outcome.nodes.counts()["dry_run"] == 0, outcome.nodes.counts()
+    review = outcome.agent.args_for("research-lead-review")[0]
+    assert review["escalation"] == "max_build_fixes", review
+
+
+def test_a_code_review_verdict_of_revise_is_repaired_before_the_rehearsal_runs():
+    """A build that passes the deterministic gate clean can still be told to revise by
+    the code-review turn — a spec-conformance bug lint and tests cannot see — and that
+    routes back to the engineer exactly as a dirty gate does, before any CPU is spent
+    on a rehearsal."""
+    outcome = _run(
+        _script(
+            **{
+                "build-experiment": [
+                    {"status": "ok", "command": ["python", "run.py"]},
+                    {"status": "ok", "command": ["python", "run.py"]},
+                ],
+                "code-review-experiment": [
+                    {"status": "revise", "findings": "the control isn't shuffled"},
+                    {"status": "approve"},
+                ],
+                "gate-check": [{"status": "approved"}],
+            }
+        )
+    )
+
+    turns = outcome.agent.args_for("build-experiment")
+    assert len(turns) == 2, outcome.agent.counts()
+    assert "the control isn't shuffled" in turns[1]["fix_reason"], turns[1]
     assert outcome.nodes.counts()["dry_run"] == 1, outcome.nodes.counts()
 
 
@@ -1675,6 +1737,7 @@ def test_a_resume_rebuilds_the_budget_from_the_checkpoint():
     reworking = {
         "design-experiment": [{"status": "ok", "memory_mb": 4000, "estimate_s": 600.0}],
         "build-experiment": [{"status": "ok", "command": ["python", "run.py"]}],
+        "code-review-experiment": [{"status": "approve"}],
         "gate-check": [{"status": "needs_rework", "notes": "again"}],
         "record-result": [{"status": "ok"}],
         "research-lead-review": [{"verdict": "revive"}],
