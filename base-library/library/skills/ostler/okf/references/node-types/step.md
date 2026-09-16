@@ -23,7 +23,6 @@ Section type. A `### <id>` under the runbook's `## Steps` heading. Its id is `pa
 | `verify` | no | **a link, not a check** — golden or deterministic output |
 | `optional` | no | `true` for best-effort steps |
 | `depends-on` | no | ordering hint (default: document order) |
-| `provenance` | no | `derived` (build pass) \| `verified` (walkthrough) |
 
 **`verify:` on a step is the trap.** On every normative type it is a check; here it is a
 `link`. A boot step's `verify:` says how to tell *the step* ran — a golden file, a
@@ -70,7 +69,6 @@ timeout 30 ostler scaffold step serve --in docs/features/acme/ops/links-local.md
   - PORT: 8080
 - health: GET /healthz returns 200 with "links-api" in the body
 - timeout: 120
-- provenance: verified
 ```
 
 ## Doctor codes it can trip
