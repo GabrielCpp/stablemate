@@ -27,6 +27,9 @@ written before, not after `doctor` refuses one.
 - Types are `str`, `int`, `bool`, `scalar`, `str[]`.
 - Arguments marked *(path)* are paths into the observed document, not free prose. Both resolvers
   strip a leading `$` root token, so `$.policy.id` and `policy.id` name the same field.
+- Arguments marked *(locator)* name a **component the book declares** — the `- selector:` of a
+  `component` or `interaction`, by its anchor. Also not free prose, and for the same reason one
+  level up: see below.
 
 Arguments are parsed as **literals only**, via `ast` (`checks.py:265-310`) — no expressions, no
 names, no interpolation. A `verify:` whose value is a test path is not a parse failure to fix in
@@ -66,7 +69,7 @@ Excludes a delete asserted only by absence afterwards, which passes identically 
 was never there — the presence before the action is what makes the disappearance attributable to
 it.
 
-### `visible(locator: str*, text: str)`
+### `visible(locator: str* (locator), text: str)`
 Excludes an element present in the tree but not on the screen, and the right widget showing the
 wrong content.
 
@@ -92,6 +95,44 @@ on the way to a non-zero exit.
 ### `conflict_on_stale(subject: str*, token: str)`
 Excludes an unconditional overwrite standing in for compare-and-swap — a write followed by a read
 cannot tell them apart, only a stale write refused can.
+
+## A locator names a declared component
+
+A `locator` argument is a reference into the book, not a string the driver happens to accept.
+Written as free text it type-checks, runs, and goes green against an element the book has never
+heard of — so renaming that element breaks the run and leaves the book undisturbed, which puts
+the staleness on the wrong artifact.
+
+Measured across the paddock fixtures: **26 of 31 distinct check locators name nothing any
+`- selector:` declares**, written in three incompatible dialects that had accumulated because
+nothing ever read them —
+
+```
+#new-widget-form              a CSS id no component declares
+button:Save policy            a role:name form
+text=End date must be after the start date.
+```
+
+None of these is wrong about the app. All of them are unresolvable, which is the same defect the
+`link` flag exists to prevent one bullet over. A locator therefore names the declared component
+by its anchor, and the selector lives in exactly one place — the component that declares it:
+
+```markdown
+### widget-table
+- selector: table[aria-label="Widgets on hand"]
+...
+- verify: visible(locator="#widget-table")
+```
+
+`#widget-table` there is the node anchor `ostler` already resolves links by — the same
+`path#anchor` identity `trace` walks — and *not* a CSS id that happens to start with `#`. A
+component in another document is named the long way, `screens/widget-list.md#widget-table`.
+
+`doctor` reports a locator resolving to no declared component as `undeclared-check-locator`
+(error), and `compile_plan` gaps rather than emitting against it — undetermined, so no executable
+code. A navigation interaction is the common case that should not be using a locator at all: what
+it observes is the destination *screen*, so it verifies that screen rather than an element picked
+out of it.
 
 ## Why the vocabulary is small
 

@@ -1953,7 +1953,8 @@ def _cmd_checks(args: argparse.Namespace) -> int:
             {
                 "name": s.name,
                 "signature": s.signature(),
-                "params": [{"name": p.name, "type": p.type, "required": p.required}
+                "params": [{"name": p.name, "type": p.type, "required": p.required,
+                            "path": p.path, "locator": p.locator}
                            for p in s.params],
                 "excludes": s.excludes,
             }

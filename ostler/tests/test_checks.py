@@ -146,7 +146,7 @@ def test_a_lifecycle_check_names_its_subject() -> None:
     result = checks.parse_check("created()")
     assert isinstance(result, str)
     assert "requires `subject: str`" in result
-    assert checks.expected_form("created()") == "created(subject: str)"
+    assert checks.expected_form("created()") == "created(subject: str*)"
 
 
 def test_every_declarable_check_is_observable_by_the_harness() -> None:
@@ -221,8 +221,8 @@ def test_a_runbook_step_verify_stays_a_reference() -> None:
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        ('absent(locator="the row")', "absent(subject: str)"),
-        ('emitted(subject="page.published")', "emitted(event: str, count: int = …)"),
+        ('absent(locator="the row")', "absent(subject: str*)"),
+        ('emitted(subject="page.published")', "emitted(event: str*, count: int)"),
     ],
 )
 def test_the_expected_form_is_the_failing_checks_own_signature(value: str, expected: str) -> None:
@@ -230,6 +230,16 @@ def test_the_expected_form_is_the_failing_checks_own_signature(value: str, expec
     mis-calling `absent` learns nothing about `absent`, and guesses again on the next lap."""
     assert isinstance(checks.parse_check(value), str)
     assert checks.expected_form(value) == expected
+
+
+def test_a_signature_says_which_kind_of_string_an_argument_is() -> None:
+    """`str` is three different obligations here — free prose, a path into the observed
+    document, the anchor of a declared component — and an author writing a call has to know
+    which. The reference page names the tool as the authority on that, so the rendering the
+    tool prints is what has to carry it."""
+    assert checks.CHECK_BY_NAME["json_path"].signature().startswith("json_path(path: str* (path)")
+    assert "locator: str* (locator)" in checks.CHECK_BY_NAME["visible"].signature()
+    assert "text: str)" in checks.CHECK_BY_NAME["visible"].signature()
 
 
 def test_the_expected_form_falls_back_to_the_whole_vocabulary() -> None:

@@ -61,6 +61,14 @@ class CheckParam:
     #: so `$.policy.id` and `policy.id` name the same field — and a binding check that
     #: compares spellings would otherwise refuse a plan invoking exactly what was declared.
     path: bool = False
+    #: Whether the value names a component the book declares, by its anchor, rather than a
+    #: selector the driver happens to accept. The distinction is the same one the `link` flag
+    #: draws one bullet up: written as free text a locator type-checks, runs, and goes green
+    #: against an element the book has never heard of, so renaming that element breaks the run
+    #: and leaves the book undisturbed — the staleness lands on the wrong artifact. `doctor`
+    #: reports one resolving to no declared component as `undeclared-check-locator`, and
+    #: `compile_plan` gaps rather than emitting against it.
+    locator: bool = False
 
 
 #: What a check's compiled call is handed: `response` for the HTTP response object,
@@ -104,7 +112,17 @@ class CheckSpec:
         return {p.name: p for p in self.params}
 
     def signature(self) -> str:
-        parts = [f"{p.name}: {p.type}{'' if p.required else ' = …'}" for p in self.params]
+        # `*` for required, and the argument class in parentheses. The class is part of the
+        # signature because it is part of what the caller has to write: a `(path)` argument is
+        # a path into the observed document and a `(locator)` argument is the anchor of a
+        # component the book declares. Rendering only name and type prints a `str` where the
+        # reader needs to know which of the three kinds of string is meant, and the reference
+        # page claims this tool is the authority on exactly that.
+        parts = [
+            f"{p.name}: {p.type}{'*' if p.required else ''}"
+            f"{' (path)' if p.path else ''}{' (locator)' if p.locator else ''}"
+            for p in self.params
+        ]
         rendered = f"{self.name}({', '.join(parts)})"
         if self.one_of:
             rendered += f" — one of {', '.join(self.one_of)}"
@@ -191,7 +209,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec(
         name="visible",
         params=(
-            CheckParam("locator", "str", required=True),
+            CheckParam("locator", "str", required=True, locator=True),
             CheckParam("text", "str"),
         ),
         excludes="an element present in the tree but not on the screen, and the right widget "
