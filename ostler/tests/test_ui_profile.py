@@ -69,6 +69,16 @@ Groups every worker's working-tree diff per repo.
 
 A leaf of the per-worker file tree.
 
+### single-file-diff
+- selector: `.diff-pane`
+- role: region
+- name: Diff
+- placement: width 40-100%, x 30-100%, y 10-100%
+- keyboard: none, because it is read rather than operated
+- code: `groom/groom/render.py::_changes_worker`
+
+The pane the selected file's diff is rendered into.
+
 ## Interactions
 
 ### click-file-opens-diff
@@ -82,7 +92,7 @@ A leaf of the per-worker file tree.
   - state: mark row `.active`, clear siblings
   - dom: render single-file diff
 - code: `groom/groom/templates/dashboard.html::wireChanges`
-- verify: visible(locator="single-file diff")
+- verify: visible(locator="#single-file-diff")
 - tests: `groom/tests/test_render.py::test_changes_groups_diffs_per_repo`
 """
 
@@ -455,7 +465,7 @@ def test_section_nodes_loaded_with_anchor_and_meta(repo: Path):
     write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
     graph = load(repo)
     comps = graph.ui_nodes_of_type("component")
-    assert [c.anchor for c in comps] == ["changes-file-row"]
+    assert [c.anchor for c in comps] == ["changes-file-row", "single-file-diff"]
     row = comps[0]
     assert row.kind == "section"
     assert row.id == "docs/features/groom/gui/screens/changes-view.md#changes-file-row"

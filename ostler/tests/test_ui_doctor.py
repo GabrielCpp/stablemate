@@ -369,6 +369,51 @@ def test_a_declared_check_grounds(repo: Path):
     assert "unparsed-check" not in all_codes(_run(repo))
 
 
+def _screen_with_locator(locator: str, *, declare_table: bool = True) -> str:
+    table = ("### widget-table\n- selector: table[aria-label=\"Widgets\"]\n- role: table\n"
+             "- name: Widgets\n\n" if declare_table else "")
+    return ("---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+            f"## Components\n\n{table}"
+            "## Interactions\n\n### click\n- on: [S](#s)\n- trigger: click\n"
+            "- does: the table appears\n"
+            f"- verify: visible(locator=\"{locator}\")\n")
+
+
+def test_a_raw_selector_is_not_a_locator(repo: Path):
+    # It type-checks, it runs, and it goes green against an element the book has never heard
+    # of — so renaming that element breaks the run and leaves the book undisturbed.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _screen_with_locator("table[aria-label='Widgets']"))
+    finding = next(f for f in _run(repo).findings if f.code == "undeclared-check-locator")
+    assert finding.severity == "error"
+    assert "not a reference into the book" in finding.message
+    assert finding.ref == "docs/features/groom/gui/screens/s.md#click#verify:1"
+
+
+def test_a_locator_naming_no_declared_component_is_reported(repo: Path):
+    # Anchor-shaped and still unresolvable: the distinction the rule draws is whether the book
+    # declares the thing, not whether the string starts with a `#`.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _screen_with_locator("#widget-table", declare_table=False))
+    finding = next(f for f in _run(repo).findings if f.code == "undeclared-check-locator")
+    assert "names no component this book declares" in finding.message
+
+
+def test_a_locator_naming_a_declared_component_grounds(repo: Path):
+    write(repo / "docs/features/groom/gui/screens/s.md", _screen_with_locator("#widget-table"))
+    assert "undeclared-check-locator" not in all_codes(_run(repo))
+
+
+def test_a_locator_may_name_a_component_in_another_document(repo: Path):
+    # The destination of a navigation lives on the screen it lands on, so the common correct
+    # locator is cross-document and the rule has to resolve one.
+    write(repo / "docs/features/groom/gui/screens/other.md",
+          _screen_with_locator("#widget-table"))
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _screen_with_locator("other.md#widget-table", declare_table=False))
+    assert "undeclared-check-locator" not in all_codes(_run(repo))
+
+
 def test_a_node_that_declares_nothing_is_reported(repo: Path):
     # The gap `unparsed-check` cannot see: no value to reject. `verify:` is required on no
     # type, so this node is otherwise green while every obligation it mints reaches QA with
@@ -1164,7 +1209,7 @@ Presents the [diff](../../concepts/diff.md) concept and a [gone](./gone.md) one.
 - name: Row
 - extends: [tree-node](../components/design-system.md#tree-node)
 - keyboard: Enter activates
-- verify: visible(locator="[role=button][name='Row']")
+- verify: visible(locator="#changes-file-row")
 
 ## Interactions
 
@@ -1174,7 +1219,7 @@ Presents the [diff](../../concepts/diff.md) concept and a [gone](./gone.md) one.
 - role: button
 - name: Row
 - keyboard: Enter
-- verify: visible(locator=".tree-file", text="marked")
+- verify: visible(locator="#changes-file-row", text="marked")
 - does:
   - state: mark row
 """
@@ -1194,7 +1239,7 @@ title: DS
 - role: button
 - name: Node
 - keyboard: Enter activates
-- verify: visible(locator="[role=button][name='Node']")
+- verify: visible(locator="#tree-node")
 """
 
 LINKED_DIFF = """\

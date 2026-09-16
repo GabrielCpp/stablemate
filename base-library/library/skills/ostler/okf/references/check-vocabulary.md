@@ -122,9 +122,17 @@ component in another document is named the long way, `screens/widget-list.md#wid
 
 `doctor` reports a locator resolving to no declared component as `undeclared-check-locator`
 (error), and `compile_plan` gaps rather than emitting against it — undetermined, so no executable
-code. A navigation interaction is the common case that should not be using a locator at all: what
-it observes is the destination *screen*, so it verifies that screen rather than an element picked
-out of it.
+code.
+
+Only a `component` or an `interaction` may be named: a `screen` is the page, and `visible` has
+nothing to point at on it. A navigation interaction is the common case that gets this wrong, and
+the fix is not to name the destination screen but to name the one thing on it that says you
+arrived — its heading, its record summary — and declare that component if the book has not:
+
+```markdown
+- does: navigates to [the policy's detail screen](policy-detail.md)
+- verify: visible(locator="policy-detail.md#policy-heading", text="Policy PN-1001")
+```
 
 ## Why the vocabulary is small
 

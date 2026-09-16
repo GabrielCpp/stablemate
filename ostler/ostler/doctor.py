@@ -2304,6 +2304,31 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
             **_at(item["node"])))
 
 
+#: The node types a check locator may name. A locator is what the driver is pointed at, and
+#: only these two describe something on a screen the driver can point at — a screen is the
+#: page, not an element on it, and everything else is not rendered at all.
+_LOCATABLE_TYPES = frozenset({"component", "interaction"})
+
+
+def locator_target(graph: Graph, value: str, origin: Path) -> str:
+    """The node identity a check locator names, or ``""`` when it names no node at all.
+
+    Two spellings, and deliberately no third: ``#anchor`` for a component declared in the same
+    document, ``path/to/doc.md#anchor`` for one declared elsewhere. A value with no ``#`` is not
+    a reference — it is the CSS selector or ``role:name`` string this rule exists to retire, and
+    returning ``""`` for it is what lets the caller say so.
+    """
+    if "#" not in value:
+        return ""
+    if value.startswith("#"):
+        try:
+            rel = origin.relative_to(graph.root).as_posix()
+        except ValueError:
+            return ""
+        return f"{rel}#{value[1:]}"
+    return graph.resolve_doc_ref(value, origin=origin)
+
+
 def _check_placement(node, rel: str, f: list[Finding]) -> None:
     """A structural component says where it sits, and says it in a form QA can check.
 
@@ -2524,6 +2549,35 @@ def _check_ui(graph: Graph, f: list[Finding],
                         # shown `http_status(code=…)` after mis-calling `absent` learns nothing
                         # about `absent`, and guesses again on the next lap.
                         suggestion=f"- {key}: {checks.expected_form(value)}"))
+                    continue
+                # A locator argument is a reference into the book, not a string the driver
+                # happens to accept: written as free text it type-checks, runs, and goes green
+                # against an element the book has never heard of, so renaming that element
+                # breaks the run and leaves the book undisturbed — the staleness lands on the
+                # wrong artifact. Resolved here for the reason `dangling-link` is: an
+                # unresolvable reference is visible in the book alone, before any driver runs.
+                # An `error`, and mechanical rather than an obligation finding: what it says is
+                # that the book does not contain the thing the check names, which is true of the
+                # book whether or not anyone ever writes a QA plan against it.
+                for param in checks.CHECK_BY_NAME[parsed.name].params:
+                    if not param.locator or param.name not in parsed.args:
+                        continue
+                    named = str(parsed.args[param.name])
+                    target = locator_target(graph, named, node.path)
+                    resolved = graph.find_ui_node(target) if target else None
+                    if resolved is not None and resolved.type in _LOCATABLE_TYPES:
+                        continue
+                    why = ("names no component this book declares" if target
+                           else "is a raw selector, not a reference into the book")
+                    f.append(Finding(
+                        "error", "undeclared-check-locator",
+                        f"{node.id}: `{key}:{index}` points `{param.name}=` at "
+                        f"`{named}`, which {why} — name the `component` or `interaction` "
+                        f"that declares it, by its anchor, so the selector lives in one "
+                        f"place and renaming the element shows up here",
+                        path=rel, line=node.line,
+                        ref=refs_mod.bullet_ref(node.id, key, index),
+                        suggestion=f'- {key}: {parsed.name}({param.name}="#<component-anchor>")'))
 
         # Every check the node declared could go red for the reason the node exists, or the
         # claim it was written under proves nothing. Per claim rather than per node: a node
