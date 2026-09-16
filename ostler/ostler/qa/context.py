@@ -180,6 +180,44 @@ def _ref_owns_change(value: str, change: ChangedUnit) -> bool:
     )
 
 
+#: The git empty-tree object, present in every repository without needing a commit —
+#: diffing against it is how `book_context` reads every currently-grounded node as
+#: directly reached, with no real revision required on either side.
+EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+
+def book_context(
+    root: Path,
+    *,
+    source_roots: dict[str, list[str]] | None = None,
+    features_root: str = "",
+    repositories: Sequence[SourceRepository] = (),
+) -> dict[str, Any]:
+    """Every obligation the book currently owns — no story, no diff, nothing to be proportional to.
+
+    `build_context` maps a `base..head` code diff onto the graph so a story's packet stays
+    proportional to what that story touched; that is the right shape when a story exists.
+    A book documenting an already-existing app with no authored story has no diff to be
+    proportional to, and "book is plan source" (measured against a real book, see
+    `audit_one_spec`) means the book's own current content is what a live audit owes
+    evidence for, not nothing.
+
+    This is `build_context` against `EMPTY_TREE_SHA..WORKTREE`: every path the book cites
+    reads as freshly added, so every grounded node the diff-directness test in `_is_required`
+    already applies is required exactly as if the whole tree had just been written — which,
+    from "no prior story reached it", it structurally has. No new obligation-selection logic
+    is added; this only supplies the diff endpoints a whole-book scan has none of otherwise.
+    """
+    return build_context(
+        root,
+        base=EMPTY_TREE_SHA,
+        head="WORKTREE",
+        source_roots=source_roots,
+        features_root=features_root,
+        repositories=repositories,
+    )
+
+
 def build_context(
     root: Path,
     *,
