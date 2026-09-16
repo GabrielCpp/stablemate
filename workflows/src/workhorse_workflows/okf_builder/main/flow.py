@@ -134,7 +134,15 @@ def investigation_power(current_item: dict[str, Any]) -> str:
 
 
 def _live_audit_gate_message(reports: list[LiveAuditReport]) -> str:
-    """The live-audit gate body: every blocked spec dir and failing scenario, by name.
+    """The live-audit gate body: every blocked obligation and failing scenario, by name.
+
+    Blocked and failed are two different facts about two different kinds of thing, and
+    they are said in separate sentences, never merged into one line: a `Gap` names an
+    obligation `compile_plan_gaps` could not turn into a runnable call at all — there is
+    no scenario behind it to have failed — while a failed `ScenarioResult` is a claim that
+    *did* run, for real, against a live stack, and came back wrong. Collapsing "N claims
+    have no evidence yet" and "M claims ran and lied" into one count reads as one problem
+    with one fix; they are not, and the operator needs to know which one to reach for.
 
     Unlike the retired LLM audit's counts-only body, there is no per-item enumeration to
     protect against here — a live-audit report is real pass/fail against a real stack, one
@@ -143,13 +151,25 @@ def _live_audit_gate_message(reports: list[LiveAuditReport]) -> str:
     """
     lines = ["okf-builder's live audit found work the operator must clear before this book can commit."]
     for report in reports:
-        if report.status == "blocked":
+        if report.gaps:
+            blocked_ids = sorted({str(gap.get("obligation_id", "")) for gap in report.gaps})
+            lines.append(
+                f"- {report.spec_dir}: {len(blocked_ids)} obligation(s) blocked "
+                "(book not yet executable) — no compiled call exists yet for:"
+            )
+            for gap in report.gaps:
+                lines.append(
+                    f"  - {gap.get('obligation_id')} {gap.get('kind')}: {gap.get('detail')}"
+                )
+        if report.status == "blocked" and not report.gaps:
             lines.append(f"- {report.spec_dir}: blocked — {report.notes}")
             continue
-        for scenario in report.scenarios:
-            if scenario.status != "passed":
+        failing = [scenario for scenario in report.scenarios if scenario.status != "passed"]
+        if failing:
+            lines.append(f"- {report.spec_dir}: {len(failing)} scenario(s) failed")
+            for scenario in failing:
                 lines.append(
-                    f"- {report.spec_dir}: {scenario.id} {scenario.status} "
+                    f"  - {scenario.id} {scenario.status} "
                     f"({scenario.failures}/{scenario.assertions} failed): {scenario.message}"
                 )
     lines.append(
@@ -1154,8 +1174,17 @@ class OkfBuilder(Workflow):
         """
         result = self.handoff(LiveAudit, docs_path=self.ctx.repo_root, repo_dir=self.ctx.source_root)
         reports = [LiveAuditReport.model_validate(r) for r in result["reports"]]
+        # `report.gaps` is checked independently of `report.status` and `report.scenarios`:
+        # a book compiled from its own obligations (no authored plan) can come back with
+        # `status="ran"` and every scenario in `report.scenarios` passing, while some other
+        # obligations on the same book gapped and were never turned into a scenario at all
+        # (see `audit_one_spec`). Gating on status/scenarios alone would clear this gate on
+        # a book that is nowhere near fully executable — the exact inversion this slice
+        # exists to fix, recurring one level up.
         blocked_or_failing = any(
-            report.status == "blocked" or any(s.status != "passed" for s in report.scenarios)
+            report.status == "blocked"
+            or bool(report.gaps)
+            or any(s.status != "passed" for s in report.scenarios)
             for report in reports
         )
         if blocked_or_failing:
