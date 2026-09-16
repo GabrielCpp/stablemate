@@ -550,6 +550,29 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
                 run.fired.discard("BLOCKED")
                 run.fired.discard("WAITING")
         elif name == "workhorse.wait.elapsed_s":
+            # wait_kind lives only in this in-memory cache, set by the edge-triggered
+            # workhorse.wait.active point. A groom restart wipes it while the wait is
+            # still open on the producer's side — that edge already fired and won't
+            # fire again until the gate closes and reopens — so a still-open wait
+            # would stay invisible forever. This periodic tick carries wait_kind (and
+            # gate context) in its own attrs on every point, so it can rehydrate the
+            # cache from telemetry instead of from process memory a restart can lose.
+            if not run.wait_kind and (incoming_kind := str(attrs.get("wait_kind") or "")):
+                run.wait_series = _wait_series(attrs)
+                run.wait_kind = incoming_kind
+                if run.wait_kind in ("operator", "machine"):
+                    run.wait_gate_path = str(attrs.get("gate_path") or "")
+                    run.wait_gate_question = str(attrs.get("gate_question") or "")
+                run.fired.discard("STUCK")
+                if run.wait_kind == "operator":
+                    _fire(
+                        run,
+                        "BLOCKED",
+                        f"{run.workflow or 'run'} {run_id}: parked on an operator gate"
+                        + (f" in '{run.current_node}'" if run.current_node else "")
+                        + " — it will not move until someone answers it",
+                        alerts,
+                    )
             if run.wait_kind:
                 run.wait_elapsed_s = value
         elif name == "workhorse.turn.active":

@@ -1319,6 +1319,37 @@ def test_an_operator_gate_pages_the_moment_it_opens() -> None:
         assert "review_plan" in fired[0].message
 
 
+def test_a_restart_rehydrates_an_already_open_wait_from_the_elapsed_tick() -> None:
+    """wait_kind lives only in the hot cache, set by the edge-triggered
+    workhorse.wait.active point. A groom restart wipes it while the wait stays
+    open on the producer's side, and that edge won't fire again until the gate
+    closes and reopens — so the very next tick groom sees for this run is a
+    bare workhorse.wait.elapsed_s. It still carries wait_kind in its own attrs
+    and must be enough to rediscover the wait, or a restart during any open
+    gate would report that run as unblocked forever.
+    """
+    with _TelemetryEnv():
+        fired = alerts.ingest_metrics(
+            otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.wait.elapsed_s",
+                    value=180 * 60,
+                    node="review_plan",
+                    gauge=True,
+                    attrs={"wait_kind": "operator", "gate_path": "docs/gate.md",
+                           "gate_question": "Proceed?"},
+                )
+            ),
+            now=1000.0,
+        )
+        run = state.RUNS["run-1"]
+        assert run.wait_kind == "operator"
+        assert run.wait_elapsed_s == 180 * 60
+        assert run.wait_gate_path == "docs/gate.md"
+        assert run.wait_gate_question == "Proceed?"
+        assert [alert.rule for alert in fired] == ["BLOCKED"]
+
+
 def test_a_cap_wait_pages_nobody() -> None:
     """The runner throttling itself is not a question anyone can answer."""
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_WAIT_MIN": "30"}):
