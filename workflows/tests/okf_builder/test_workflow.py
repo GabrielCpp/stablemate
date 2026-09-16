@@ -1030,8 +1030,16 @@ def test_a_code_verdict_files_a_seed_and_records_the_defect_on_the_nodes(
     """`code` on a UI node: the source is the side at fault, so the book keeps saying
     what it says and carries the record — a seed in the invariant epic (no story covers
     the nodes) and a `known-defect:` bullet naming it on each node. Doctor takes the
-    finding back while the seed is open, and this fixture has no QA plan for the live
-    audit to gate on, so the run converges rather than parking."""
+    finding back while the seed is open, and the adjudication side of the fixture fully
+    converges before the run ever reaches the live audit.
+
+    `COLLIDING_SCREEN` is a `type: screen` node with no stack runbook, so once the
+    worklist drains, the run reaches `semantic_audit` with a served surface and nothing
+    to bring it up — the compiled book-as-plan-source path (`discover_compiled_targets`)
+    correctly reports it blocked and parks the operator gate; this is the known,
+    intentional consequence of a served surface without a runbook, not a bug this test
+    exists to guard against. The assertions below all read state the adjudication turns
+    already wrote before that park, so they hold regardless."""
     from ostler import Ostler
 
     from workhorse_workflows.okf_builder.main.nodes.adjudicate import INVARIANT_EPIC
@@ -1041,7 +1049,10 @@ def test_a_code_verdict_files_a_seed_and_records_the_defect_on_the_nodes(
     subprocess.run(["git", "commit", "-qm", "a colliding screen"], cwd=booked, check=True)
 
     agent = _Agent(booked, doc_status="partial", note="both buttons are in the source", verdict="code")
-    _drive(_env(tmp_path), agent)
+    seen: list[str] = []
+    with patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
+        _drive(_env(tmp_path), agent)
+    assert seen and "live audit" in seen[0], seen
 
     # One finding per node, so one adjudication per node — each with its own seed.
     assert agent.counts()["adjudicate"] == 2, agent.counts()
