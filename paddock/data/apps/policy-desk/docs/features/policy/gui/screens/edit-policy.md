@@ -33,7 +33,7 @@ walkthrough can produce.
 - keyboard: `Tab` through the fields in document order, then `Enter` to submit.
 - parent: [Edit policy form](#edit-policy-form)
 - states: opens filled from the stored record — the holder, the term and the premium as they stand.
-- verify: visible(locator="form:Edit policy")
+- verify: visible(locator="#edit-form")
 - code: app/web/src/EditPolicy.tsx
 
 Offers the fields an edit may change, and neither shows nor sends the policy number.
@@ -47,7 +47,7 @@ Offers the fields an edit may change, and neither shows nor sends the policy num
 - keyboard: none, because it is announced rather than operated.
 - parent: [Edit policy form](#edit-policy-form)
 - states: present only after a stale save is refused.
-- verify: visible(locator="alert", text="Stale Policy")
+- verify: visible(locator="#stale-policy-alert", text="Stale Policy")
 - code: app/web/src/EditPolicy.tsx
 
 Reports that the policy moved under the form, and says to reload — rather than letting the save look
@@ -60,7 +60,7 @@ as though it landed.
 - name: Save policy
 - placement: width 0-40%, x 0-30%, y 10-100%
 - keyboard: `Tab` to the button, `Enter` or `Space` to submit.
-- verify: visible(locator="button:Save policy")
+- verify: visible(locator="#save-policy-button")
 - parent: [Edit policy form](#edit-policy-form)
 - code: app/web/src/EditPolicy.tsx
 
@@ -78,8 +78,8 @@ Submits the edit together with the version the form was opened at.
 - when: the edit is acceptable and the quoted version is the policy's current one.
 - does:
   - saves the edit and navigates back to [the detail screen](policy-detail.md), which shows the new values.
-- verify: visible(locator="heading:Policy PN-1001")
-- verify: visible(locator="text=$1350.00")
+- verify: visible(locator="policy-detail.md#policy-heading", text="Policy PN-1001")
+- verify: visible(locator="policy-detail.md#policy-summary", text="$1350.00")
 - code: app/web/src/EditPolicy.tsx
 
 ### refuse-stale-edit
@@ -92,6 +92,6 @@ Submits the edit together with the version the form was opened at.
 - when: the policy has been written since the form was opened.
 - does:
   - leaves the stored record as it is and says on the form that it moved, rather than navigating away as though the edit had landed.
-- verify: visible(locator="alert", text="Stale Policy")
+- verify: visible(locator="#stale-policy-alert", text="Stale Policy")
 - verify: conflict_on_stale(subject="policy pn-1001", token="version")
 - code: app/web/src/EditPolicy.tsx

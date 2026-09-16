@@ -20,8 +20,8 @@ title: Underwrite a policy
     [lands on the new policy's detail screen](../gui/screens/new-policy.md#submit-new-policy).
 - end: [Policy detail](../gui/screens/policy-detail.md), showing the new policy at status `Draft`
   with the premium that was entered.
-- verify: visible(locator="heading:Policy PN-1001")
-- verify: visible(locator="text=Draft")
+- verify: visible(locator="../gui/screens/policy-detail.md#policy-heading", text="Policy PN-1001")
+- verify: visible(locator="../gui/screens/policy-detail.md#policy-summary", text="Draft")
 - tests:
 
 The journey the desk exists for, and the one that makes the conditional rules observable: what the

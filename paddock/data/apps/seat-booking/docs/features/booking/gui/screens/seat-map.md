@@ -28,11 +28,11 @@ server wrote, and every locator the book names is addressable the moment the pag
 ### seat-map-region
 
 - selector: `section[role="region"]`
-- verify: visible(locator="region:Seat map")
+- verify: visible(locator="#seat-map-region")
 - role: region
-- verify: visible(locator="region:Seat map")
+- verify: visible(locator="#seat-map-region")
 - name: Seat map
-- verify: visible(locator="region:Seat map")
+- verify: visible(locator="#seat-map-region")
 - placement: width 40-100%, x 0-30%, y 10-100%
 - keyboard: reachable by `Tab` from the document start, with no shortcut of its own.
 - parent: [Seat map](#seat-map)
@@ -45,31 +45,57 @@ Holds every seat button for the showing and nothing else.
 - selector: `button.seat`
 - verify: count(subject="seat buttons", equals=12)
 - role: button
-- verify: visible(locator="button:Seat A1")
+- verify: visible(locator="#seat-button")
 - name: Seat A1
-- verify: visible(locator="button:Seat A1", text="A1")
+- verify: visible(locator="#seat-button", text="A1")
 - keyboard: `Tab` to the seat, `Enter` or `Space` to act on it.
 - parent: [Seat map](#seat-map)
 - states: carries the seat's state as `data-state`, one of `free`, `held` or `booked`.
-- verify: visible(locator="button:Seat A1", text="free")
-- verify: visible(locator="button[data-state='booked']")
+- verify: visible(locator="#seat-button", text="free")
+- verify: visible(locator="#booked-seat-button")
 - states: a seat that is not free is rendered `disabled`, so a sold seat cannot be clicked at all.
-- verify: visible(locator="button[data-state='booked'][disabled]")
+- verify: visible(locator="#disabled-seat-button")
 - code: app/page.py::_seat_button
 - refs: [seat](../../concepts/seat.md)
 
 Renders one button per seat in the showing — twelve, in three rows of four. Names the button by its
 seat id alone, so the name a scenario addresses does not change when the seat does.
 
+### booked-seat-button
+
+- selector: `button.seat[data-state="booked"]`
+- role:
+- name:
+- parent: [Seat map](#seat-map)
+- code: app/page.py::_seat_button
+- refs: [seat](../../concepts/seat.md)
+
+The same button once the seat is sold. Declared separately from [seat-button](#seat-button) because
+the state is in the selector: a check that says "this seat reads as booked" has to be pointed at
+something whose selector says `booked`, and pointing it at the seat button would pass on a free one.
+
+### disabled-seat-button
+
+- selector: `button.seat[disabled]`
+- role:
+- name:
+- parent: [Seat map](#seat-map)
+- code: app/page.py::_seat_button
+- refs: [seat](../../concepts/seat.md)
+
+A seat the page refuses to accept a click on. Distinct from [booked-seat-button](#booked-seat-button)
+because the two claims are separable: a sold seat that is still clickable matches one and not the
+other, and that is the defect this pair exists to catch.
+
 ### free-seat-summary
 
 - selector: `p.summary`
-- verify: visible(locator="status", text="12 of 12 seats free")
-- verify: visible(locator="status", text="11 of 12 seats free")
+- verify: visible(locator="#free-seat-summary", text="12 of 12 seats free")
+- verify: visible(locator="#free-seat-summary", text="11 of 12 seats free")
 - role: status
-- verify: visible(locator="status")
+- verify: visible(locator="#free-seat-summary")
 - name: seats free
-- verify: visible(locator="status", text="seats free")
+- verify: visible(locator="#free-seat-summary", text="seats free")
 - keyboard: none, because it is announced rather than operated.
 - parent: [Seat map](#seat-map)
 - code: app/page.py::render

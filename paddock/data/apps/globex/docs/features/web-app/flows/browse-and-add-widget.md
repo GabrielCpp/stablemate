@@ -21,7 +21,7 @@ stack crossing into api-service and not part of this journey at all.
   - [open-new-widget](../gui/screens/widget-list.md#open-new-widget)
   - [submit-new-widget](../gui/screens/new-widget.md#submit-new-widget)
 - end: [widget-list](../gui/screens/widget-list.md)
-- verify: visible(locator="table[aria-label='Widgets on hand']")
+- verify: visible(locator="../gui/screens/widget-list.md#widget-table")
 - detail: seed one widget via `POST /api/widgets` before the journey starts so the table is
   non-empty on arrival; the journey itself never calls the API directly.
 - fixture: [web-app (local)](../ops/web-app-stack.md) and

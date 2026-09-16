@@ -24,6 +24,21 @@ the second policy is shown under the first one's record.
 
 ## Components
 
+### policy-heading
+
+- selector: `h1`
+- role: heading
+- name: Policy PN-1001
+- placement: width 40-100%, x 0-30%, y 0-20%
+- keyboard: none, because it is read rather than operated.
+- parent: [Policy detail](#policy-detail)
+- verify: visible(locator="#policy-heading", text="Policy PN-1001")
+- code: app/web/src/PolicyDetail.tsx
+
+Names the policy the screen is showing. Declared because it is what every navigation that lands
+here observes: arriving is seeing *this* policy's number, and a check that says so needs something
+in the book to point at.
+
 ### policy-summary
 
 - selector: `dl`
@@ -34,8 +49,8 @@ the second policy is shown under the first one's record.
 - parent: [Policy detail](#policy-detail)
 - states: a policy still open reads `Draft`, and an auto policy shows the vehicle VIN it was
   written against.
-- verify: visible(locator="text=Draft")
-- verify: visible(locator="text=1HGCM82633A004352")
+- verify: visible(locator="#policy-summary", text="Draft")
+- verify: visible(locator="#policy-summary", text="1HGCM82633A004352")
 - code: app/web/src/PolicyDetail.tsx
 
 States the policy's status, holder, coverage, term and premium, and the conditional field its
@@ -48,7 +63,7 @@ coverage type carries.
 - name: Edit policy
 - placement: width 0-40%, x 0-30%, y 10-100%
 - keyboard: `Tab` to the link, `Enter` to follow it.
-- verify: visible(locator="link:Edit policy")
+- verify: visible(locator="#edit-policy-link")
 - parent: [Policy detail](#policy-detail)
 - code: app/web/src/PolicyActions.tsx
 
@@ -64,7 +79,7 @@ Opens [the edit form](edit-policy.md) for this policy as a client route.
 - parent: [Policy detail](#policy-detail)
 - states: present only while the policy's status is `Draft`, so a cancelled policy offers no way
   to cancel it again.
-- verify: visible(locator="form:Cancel policy")
+- verify: visible(locator="#cancel-policy-form")
 - code: app/web/src/PolicyActions.tsx
 
 Makes a cancellation something typed out — the policy's own number — rather than a button a stray
@@ -82,7 +97,7 @@ click can hit.
 - when: the typed confirmation is the policy's own number.
 - does:
   - cancels the policy and shows it at status `Cancelled`, with the cancellation form gone.
-- verify: visible(locator="text=Cancelled")
+- verify: visible(locator="#policy-summary", text="Cancelled")
 - code: app/web/src/PolicyActions.tsx
 
 ### refuse-cancellation
@@ -95,5 +110,5 @@ click can hit.
 - when: the typed confirmation is anything else.
 - does:
   - leaves the policy at `Draft` and says beside the field what has to be typed.
-- verify: visible(locator="text=Type the policy number to confirm the cancellation.")
+- verify: visible(locator="#cancel-policy-form", text="Type the policy number to confirm the cancellation.")
 - code: app/web/src/PolicyActions.tsx

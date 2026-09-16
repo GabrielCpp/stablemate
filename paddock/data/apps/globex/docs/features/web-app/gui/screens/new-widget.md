@@ -33,7 +33,7 @@ request carried, but never substitute an HTTP client for the click.
 - exclusive-with:
 - states:
   - invalid: `#name-error` carries the field's error message
-- verify: visible(locator="#name")
+- verify: visible(locator="#name-field")
 - code: `app/web-app/static/new.html` @bf0832921aaf
 - detail:
 - fixture:
@@ -53,9 +53,30 @@ request carried, but never substitute an HTTP client for the click.
 - exclusive-with:
 - states:
   - invalid: `#quantity-error` carries the field's error message
-- verify: visible(locator="#quantity")
+- verify: visible(locator="#quantity-field")
 - code: `app/web-app/static/new.html` @bf0832921aaf
 - detail:
+- fixture:
+- tests:
+
+### new-widget-form
+- selector: #new-widget-form
+- role: none
+- one-per:
+- variants:
+- name:
+- unique-by:
+- placement:
+- keyboard:
+- extends:
+- parent:
+- exclusive-with:
+- states:
+- verify: visible(locator="#new-widget-form")
+- code: `app/web-app/static/new.html` @bf0832921aaf
+- detail: the form element the two fields sit in. Declared because it is what
+  `widget-list`'s `open-new-widget` observes on arrival — the screen is reached when the form
+  is on it, and an interaction that lands here needs something in this book to point at.
 - fixture:
 - tests:
 
@@ -76,7 +97,7 @@ request carried, but never substitute an HTTP client for the click.
   - success: browser navigates to [widget-list](widget-list.md)
   - failure: field error spans are populated from the response body
   - failure: page stays put (no navigation)
-- verify: visible(locator="table[aria-label='Widgets on hand']")
+- verify: visible(locator="widget-list.md#widget-table")
 - verify: http_status(201, path="/api/widgets")
 - code: `app/web-app/static/new.js::submitNewWidget` @6f983e4202a9
 - detail:

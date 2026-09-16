@@ -18,7 +18,7 @@ title: Amend a policy on the books
     [returns to the detail screen](../gui/screens/edit-policy.md#save-edit), showing the new values
     at the next version.
 - end: [Policy detail](../gui/screens/policy-detail.md), showing the amended values.
-- verify: visible(locator="heading:Policy PN-1001")
+- verify: visible(locator="../gui/screens/policy-detail.md#policy-heading", text="Policy PN-1001")
 - verify: conflict_on_stale(subject="policy pn-1001", token="version")
 - tests:
 

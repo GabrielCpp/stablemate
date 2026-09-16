@@ -38,7 +38,7 @@ driven directly.
   - populated: visible, one row per widget, `name` and `quantity` in each row
   - empty: hidden; `p.empty-notice` shown instead
   - error: hidden; `p[role="alert"]` shown instead
-- verify: visible(locator="table[aria-label='Widgets on hand']")
+- verify: visible(locator="#widget-table")
 - code: `app/web-app/static/app.js::renderWidgetTable` @a9a308e1d664
 - detail:
 - fixture:
@@ -78,7 +78,7 @@ driven directly.
 - exclusive-with:
 - does:
   - navigation: browser navigates to [new-widget](new-widget.md)
-- verify: visible(locator="#new-widget-form")
+- verify: visible(locator="new-widget.md#new-widget-form")
 - code: `app/web-app/static/index.html` @55269916a58e
 - detail:
 - fixture:

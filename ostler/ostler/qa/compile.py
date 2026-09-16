@@ -387,6 +387,10 @@ def compile_plan_gaps(
     the compiled Python.
     """
     gaps: list[Gap] = []
+    # Every id an emitted `covers=[...]` actually names — filled in by the same code that
+    # writes each `covers=[...]` list below, never reconstructed from the compiled source
+    # after the fact. The totality assert (below) and its mirror both read off this and `gaps`.
+    covered_ids: set[str] = set()
     owed = _owed(context)
     # Page-checked obligations (a screen's `visible(...)` bullets) are compiled by navigating
     # there, not by the HTTP-verb-and-path machinery below (`_route`/`_ROUTE`) — split them out
@@ -415,19 +419,35 @@ def compile_plan_gaps(
     debt: list[dict[str, Any]] = []
     for source, obligations in by_source.items():
         declared = [o for o in obligations if o.get("checksDeclared")]
-        debt.extend(o for o in obligations if not o.get("checksDeclared"))
+        undeclared = [o for o in obligations if not o.get("checksDeclared")]
+        debt.extend(undeclared)
         # A scenario claiming an id its body never asserts is refused by `qa validate`, and
         # rightly: the claim would read as covered in every report while nothing observed it.
-        # An obligation with no declared check is book debt, listed below rather than claimed.
+        # An obligation with no declared check is book debt, listed below rather than claimed —
+        # and, so a caller reading `gaps` alone sees the whole owed set accounted for, gapped
+        # here by the same code that declined to emit it, not left to a diff against `owed`.
+        gaps.extend(
+            Gap(o["id"], "no-verify-declared", "the book declares no check for this obligation to prove")
+            for o in undeclared
+        )
         if not declared:
             continue
+        scenario_covered: set[str] = set()
+        body_lines = _scenario_body(declared, gaps, scenario_covered)
+        if not scenario_covered:
+            # Every declared obligation here turned out route-less — `_scenario_body` already
+            # gapped each one as `uncompilable-claim` and emitted no `qa.verify` for any of
+            # them. A scenario with nothing left to claim is not emitted with an empty
+            # `covers=[]`; it is not emitted at all.
+            continue
+        covered_ids.update(scenario_covered)
         lines.append("")
         lines.append("")
         lines.append("@scenario(")
         lines.append("    target=api,")
         lines.append('    mechanism="live",')
         lines.append("    covers=[")
-        lines.extend(f"        {_lit(o['id'])}," for o in declared)
+        lines.extend(f"        {_lit(o['id'])}," for o in declared if o["id"] in scenario_covered)
         lines.append("    ],")
         arranged = _arrangements(declared)
         if arranged:
@@ -457,13 +477,28 @@ def compile_plan_gaps(
                 + ")"
                 for row in arranged
             )
-        lines.extend(_scenario_body(declared, gaps))
+        lines.extend(body_lines)
 
     page_declared = [o for o in page_owed if o.get("checksDeclared")]
-    debt.extend(o for o in page_owed if not o.get("checksDeclared"))
+    page_undeclared = [o for o in page_owed if not o.get("checksDeclared")]
+    debt.extend(page_undeclared)
+    gaps.extend(
+        Gap(o["id"], "no-verify-declared", "the book declares no check for this obligation to prove")
+        for o in page_undeclared
+    )
     navigation = context.get("navigation", {}) if isinstance(context.get("navigation"), dict) else {}
-    if page_declared and _has_screens(navigation):
-        lines.extend(_compile_page_scenarios(context, page_declared, gaps, base_url))
+    if page_declared:
+        if _has_screens(navigation):
+            lines.extend(_compile_page_scenarios(context, page_declared, gaps, covered_ids, base_url))
+        else:
+            # The book declares page checks but its navigation graph has no screen nodes on any
+            # surface — there is nothing here to walk to, the same dead end `unreachable-screen`
+            # names for a single node, just found before a walk ever starts rather than mid-hop.
+            gaps.extend(
+                Gap(o["id"], "unreachable-screen",
+                    "the book's navigation graph has no screen nodes on any surface to walk to")
+                for o in page_declared
+            )
 
     if debt:
         lines.append("")
@@ -483,6 +518,18 @@ def compile_plan_gaps(
             "obligation id — every Gap must be filterable by the live-audit's "
             "`covers` intersection, which only ever holds real obligation ids"
         )
+
+    # Totality: every obligation this compiler owes evidence for either got a real `covers=[...]`
+    # claim compiled for it, or carries a gap explaining why not — minted by the code that
+    # declined, above, not reconstructed here by diffing `owed` against what happened to come
+    # out. An id in neither bucket is a silent drop, the defect this loop exists to make
+    # impossible.
+    gapped_ids = {gap.obligation_id for gap in gaps}
+    dropped = {str(o["id"]) for o in owed} - gapped_ids - covered_ids
+    assert not dropped, (
+        f"{len(dropped)} owed obligation(s) landed in neither `gaps` nor a compiled scenario: "
+        f"{sorted(dropped)!r}"
+    )
 
     return "\n".join(lines).rstrip() + "\n", gaps
 
@@ -520,7 +567,7 @@ def _resolved(
     return ref.name in produced_captures
 
 
-def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[str]:
+def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap], covered: set[str]) -> list[str]:
     """Compile every obligation's assertion half. Called only with `checksDeclared` obligations.
 
     `compile_plan` filters to `declared = [o for o in obligations if o.get("checksDeclared")]`
@@ -620,6 +667,13 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[s
                 lines.append(f"    # TODO(arrange): {note}")
                 gaps.append(Gap(oid, "uncompilable-claim", note))
 
+        # A gap already fired above for a route-less obligation — `name` is bound to `None`
+        # there, and a `qa.verify` call built from it would read as a real assertion, one that
+        # crashes the moment anyone runs the plan. The gap already minted is the whole story;
+        # nothing here would add to it, only stand a broken call up alongside it.
+        if route is None:
+            continue
+
         for row in rows:
             for ref in references.find_references(json.dumps(row.get("args", {}))):
                 if not _resolved(ref, produced_facts, produced_captures):
@@ -632,6 +686,7 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[s
             lines.append(
                 f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, covers=[{_lit(oid)}])"
             )
+            covered.add(oid)
     return lines
 
 
@@ -678,6 +733,7 @@ def _compile_page_scenarios(
     context: dict[str, Any],
     page_declared: list[dict[str, Any]],
     gaps: list[Gap],
+    covered: set[str],
     base_url: str,
 ) -> list[str]:
     """Compile every screen's `visible(...)` bullets, partitioned per Amendment 3.
@@ -791,14 +847,14 @@ def _compile_page_scenarios(
 
         if plain:
             scenario_lines.extend(_arrival_scenario(root_path, source, hops, node_index, plain, gaps,
-                                                      name=f"{_slug(source)}_arrival"))
+                                                      covered, name=f"{_slug(source)}_arrival"))
         for node_id in exclusive:
             scenario_lines.extend(_arrival_scenario(root_path, source, hops, node_index,
-                                                      {node_id: by_node[node_id]}, gaps,
+                                                      {node_id: by_node[node_id]}, gaps, covered,
                                                       name=f"{_slug(source)}_{_node_slug(node_id)}"))
         for node_id in interactions:
             scenario_lines.extend(_interaction_scenario(root_path, source, hops, node_index, node_id,
-                                                          by_node[node_id], gaps,
+                                                          by_node[node_id], gaps, covered,
                                                           name=f"{_slug(source)}_{_node_slug(node_id)}"))
 
     if not scenario_lines:
@@ -866,30 +922,16 @@ def _arrival_scenario(
     node_index: dict[str, dict[str, list[str]]],
     by_node: dict[str, list[dict[str, Any]]],
     gaps: list[Gap],
+    covered: set[str],
     *,
     name: str,
 ) -> list[str]:
     obligations = [o for obs in by_node.values() for o in obs]
     ids = sorted(o["id"] for o in obligations)
-    lines = [
-        "",
-        "",
-        "@scenario(",
-        "    target=web,",
-        '    mechanism="live",',
-        "    covers=[",
-        *(f"        {_lit(oid)}," for oid in ids),
-        "    ],",
-        "    preconditions=[],  # TODO(arrange): what must hold before this scenario runs",
-        "    checkpoints=[],  # TODO(arrange): what an observer should see it prove",
-        "    forbid=[],  # TODO: the weaker observations this scenario must not settle for",
-        ")",
-        f"def {name}(qa: Qa) -> None:",
-        f'    """Arrive at {source} via the book\'s own navigation and check what it shows."""',
-        "",
-        f"    qa.goto({_lit(root_path)})",
-    ]
-    lines.extend(_walk_hops(hops, node_index, gaps, ids))
+    body: list[str] = [f"    qa.goto({_lit(root_path)})"]
+    body.extend(_walk_hops(hops, node_index, gaps, ids))
+    assertions: list[str] = []
+    scenario_covered: set[str] = set()
     for _node_id, obs in sorted(by_node.items()):
         for obligation in obs:
             operand = _assertion_operand(obligation.get("locators", {}), obligation["id"], gaps)
@@ -898,13 +940,39 @@ def _arrival_scenario(
                     gaps.append(_unobservable_gap(obligation["id"], row.get("name"), PLAYWRIGHT))
                     continue
                 if operand is None:
-                    lines.append(f"    # TODO(arrange): no addressable subject for "
-                                 f"{obligation['id']}")
+                    assertions.append(f"    # TODO(arrange): no addressable subject for "
+                                       f"{obligation['id']}")
                     continue
-                lines.append(
+                assertions.append(
                     f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, "
                     f"covers=[{_lit(obligation['id'])}])"
                 )
+                scenario_covered.add(str(obligation["id"]))
+    if not scenario_covered:
+        # Every obligation this arrival would have claimed was gapped above — no addressable
+        # subject, or a check this driver cannot observe. A scenario that drives a UI and vets
+        # no screen is a hole in the plan wearing a function signature, so nothing is emitted.
+        return []
+    covered.update(scenario_covered)
+    lines = [
+        "",
+        "",
+        "@scenario(",
+        "    target=web,",
+        '    mechanism="live",',
+        "    covers=[",
+        *(f"        {_lit(oid)}," for oid in ids if oid in scenario_covered),
+        "    ],",
+        "    preconditions=[],  # TODO(arrange): what must hold before this scenario runs",
+        "    checkpoints=[],  # TODO(arrange): what an observer should see it prove",
+        "    forbid=[],  # TODO: the weaker observations this scenario must not settle for",
+        ")",
+        f"def {name}(qa: Qa) -> None:",
+        f'    """Arrive at {source} via the book\'s own navigation and check what it shows."""',
+        "",
+        *body,
+        *assertions,
+    ]
     return lines
 
 
@@ -916,6 +984,7 @@ def _interaction_scenario(
     node_id: str,
     obligations: list[dict[str, Any]],
     gaps: list[Gap],
+    covered: set[str],
     *,
     name: str,
 ) -> list[str]:
@@ -944,6 +1013,47 @@ def _interaction_scenario(
     on_label = (on_href or on_value or "").lstrip("#") or on_value
     on_node_id = f"{source}#{on_href.lstrip('#')}" if on_href else (f"{source}#{on_value}" if on_value else "")
     ids = sorted(o["id"] for o in obligations)
+    body: list[str] = [f"    qa.goto({_lit(root_path)})"]
+    body.extend(_walk_hops(hops, node_index, gaps, ids))
+    on_expr = _page_locator_expr(node_index.get(on_node_id, {}))
+    if on_expr is None:
+        body.append(f"    # TODO(arrange): no locator declared for {on_label!r}")
+        # Amendment 1: one gap per obligation this interaction scenario covers, not a single
+        # id keyed by the interaction's own node — every covered obligation is blocked by the
+        # same missing `on:` locator.
+        gaps.extend(Gap(oid, "unresolved-precondition",
+                         f"no locator declared for `on:` component {on_label!r}")
+                    for oid in ids)
+        on_expr = "qa.page.locator('body')"
+    body.append(f"    {on_expr}.click()  # trigger: {trigger_value}")
+    if does_value:
+        body.append(f"    # does: {does_value}")
+    gaps.extend(Gap(oid, "unresolved-precondition",
+                     f"trigger {trigger_value!r} compiles to a scaffold click on {on_label!r}, "
+                     "not a verified action, and `does:` is not resolved to a target screen")
+                for oid in ids)
+    assertions: list[str] = []
+    scenario_covered: set[str] = set()
+    for obligation in obligations:
+        operand = _assertion_operand(obligation.get("locators", {}), obligation["id"], gaps)
+        for row in obligation.get("checksDeclared", []):
+            if _observes(row.get("name")) != "page":
+                gaps.append(_unobservable_gap(obligation["id"], row.get("name"), PLAYWRIGHT))
+                continue
+            if operand is None:
+                assertions.append(f"    # TODO(arrange): no addressable subject for {obligation['id']}")
+                continue
+            assertions.append(
+                f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, "
+                f"covers=[{_lit(obligation['id'])}])"
+            )
+            scenario_covered.add(str(obligation["id"]))
+    if not scenario_covered:
+        # Every obligation this interaction would have claimed was gapped above — no addressable
+        # subject, or a check this driver cannot observe. A scenario that drives a UI and vets
+        # no screen is a hole in the plan wearing a function signature, so nothing is emitted.
+        return []
+    covered.update(scenario_covered)
     lines = [
         "",
         "",
@@ -951,7 +1061,7 @@ def _interaction_scenario(
         "    target=web,",
         '    mechanism="live",',
         "    covers=[",
-        *(f"        {_lit(oid)}," for oid in ids),
+        *(f"        {_lit(oid)}," for oid in ids if oid in scenario_covered),
         "    ],",
         "    preconditions=[],  # TODO(arrange): what must hold before this scenario runs",
         "    checkpoints=[],  # TODO(arrange): what an observer should see it prove",
@@ -960,39 +1070,9 @@ def _interaction_scenario(
         f"def {name}(qa: Qa) -> None:",
         f'    """{on_label or node_id}: {trigger_value}"""',
         "",
-        f"    qa.goto({_lit(root_path)})",
+        *body,
+        *assertions,
     ]
-    lines.extend(_walk_hops(hops, node_index, gaps, ids))
-    on_expr = _page_locator_expr(node_index.get(on_node_id, {}))
-    if on_expr is None:
-        lines.append(f"    # TODO(arrange): no locator declared for {on_label!r}")
-        # Amendment 1: one gap per obligation this interaction scenario covers, not a single
-        # id keyed by the interaction's own node — every covered obligation is blocked by the
-        # same missing `on:` locator.
-        gaps.extend(Gap(oid, "unresolved-precondition",
-                         f"no locator declared for `on:` component {on_label!r}")
-                    for oid in ids)
-        on_expr = "qa.page.locator('body')"
-    lines.append(f"    {on_expr}.click()  # trigger: {trigger_value}")
-    if does_value:
-        lines.append(f"    # does: {does_value}")
-    gaps.extend(Gap(oid, "unresolved-precondition",
-                     f"trigger {trigger_value!r} compiles to a scaffold click on {on_label!r}, "
-                     "not a verified action, and `does:` is not resolved to a target screen")
-                for oid in ids)
-    for obligation in obligations:
-        operand = _assertion_operand(obligation.get("locators", {}), obligation["id"], gaps)
-        for row in obligation.get("checksDeclared", []):
-            if _observes(row.get("name")) != "page":
-                gaps.append(_unobservable_gap(obligation["id"], row.get("name"), PLAYWRIGHT))
-                continue
-            if operand is None:
-                lines.append(f"    # TODO(arrange): no addressable subject for {obligation['id']}")
-                continue
-            lines.append(
-                f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, "
-                f"covers=[{_lit(obligation['id'])}])"
-            )
     return lines
 
 
@@ -1022,10 +1102,16 @@ def cmd_compile_plan(
 
     owed = _owed(packet)
     declared = [o for o in owed if o.get("checksDeclared")]
+    # `debt` reads off the same `{emitted, gap}` partition `compile_plan_gaps` already proved
+    # total, rather than re-deriving "declares no check" here a second time by re-filtering
+    # `checksDeclared` — `no-verify-declared` is the gap the compiler itself mints for exactly
+    # that obligation, in the order it walked them, so this reads the id off the gap instead.
+    owed_ids = [str(o["id"]) for o in owed]
+    no_verify_ids = {gap.obligation_id for gap in gaps if gap.kind == "no-verify-declared"}
     data = {
         "owed": len(owed),
         "declared": len(declared),
-        "debt": [o["id"] for o in owed if not o.get("checksDeclared")],
+        "debt": [oid for oid in owed_ids if oid in no_verify_ids],
         # Doctor-shaped, not doctor-imported: `severity`/`code`/`message`/`ref` are the field
         # names `doctor.Finding` uses, and `code` is the gap's own `kind` — the vocabulary the
         # `Gap` docstring already promises doctor reads rather than redefines. A caller that

@@ -5,10 +5,10 @@ title: Hold and confirm a seat
 ---
 # Hold and confirm a seat
 
-- verify: visible(locator="status", text="11 of 12 seats free")
+- verify: visible(locator="../gui/screens/seat-map.md#free-seat-summary", text="11 of 12 seats free")
 - start: [Seat map](../gui/screens/seat-map.md)
-- verify: visible(locator="region:Seat map")
-- verify: visible(locator="status", text="12 of 12 seats free")
+- verify: visible(locator="../gui/screens/seat-map.md#seat-map-region")
+- verify: visible(locator="../gui/screens/seat-map.md#free-seat-summary", text="12 of 12 seats free")
 - steps:
   - Open the seat map and read which seats are free from
     [the free-seat summary](../gui/screens/seat-map.md#free-seat-summary).
@@ -22,7 +22,7 @@ title: Hold and confirm a seat
   - Reload the seat map: the seat now reads `booked` and is no longer clickable, and the summary has
     dropped by one.
 - end: [Seat map](../gui/screens/seat-map.md)
-- verify: visible(locator="status", text="11 of 12 seats free")
+- verify: visible(locator="../gui/screens/seat-map.md#free-seat-summary", text="11 of 12 seats free")
 - tests:
 
 The journey the whole product exists for, and the one that makes the version token observable: the

@@ -28,9 +28,9 @@ that looks current is the one failure mode a register must not have.
 - selector: `table`
 - role: table
 - name: Policies on file
-- verify: visible(locator="table:Policies on file")
-- verify: visible(locator="table:Policies on file", text="PN-1001")
-- verify: visible(locator="link:PN-1001")
+- verify: visible(locator="#policy-table")
+- verify: visible(locator="#policy-table", text="PN-1001")
+- verify: visible(locator="#open-policy")
 - placement: width 60-100%, x 0-20%, y 10-100%
 - keyboard: reachable by `Tab` from the document start, with no shortcut of its own.
 - parent: [Policy register](#policy-register)
@@ -46,7 +46,7 @@ Names each row by its policy number, as a link to that policy's detail screen.
 - name: none
 - placement: width 40-100%, x 0-20%, y 10-60%
 - keyboard: none, because it is read rather than operated.
-- verify: visible(locator="text=No policies are on file yet")
+- verify: visible(locator="#empty-register-notice", text="No policies are on file yet")
 - parent: [Policy register](#policy-register)
 - exclusive-with: [policy-table](#policy-table)
 - code: app/web/src/PolicyList.tsx
@@ -62,7 +62,7 @@ Stands in for the table when the books are empty, and points at the way to start
 - keyboard: none, because it is announced rather than operated.
 - parent: [Policy register](#policy-register)
 - states: present only after a register read fails.
-- verify: visible(locator="alert")
+- verify: visible(locator="#register-error-alert")
 - code: app/web/src/RegisterError.tsx
 
 Says so when the register cannot be re-read, rather than leaving the previous table on screen
@@ -73,7 +73,7 @@ looking current.
 - selector: `#new-policy`
 - role: link
 - name: New policy
-- verify: visible(locator="link:New policy")
+- verify: visible(locator="#new-policy-link")
 - placement: width 0-40%, x 0-30%, y 0-20%
 - keyboard: `Tab` to the link, `Enter` to follow it.
 - parent: [Policy register](#policy-register)
@@ -92,5 +92,5 @@ Opens [the new policy form](new-policy.md) as a client route, without reloading 
 - keyboard: `Tab` to the link, `Enter` to follow it.
 - does:
   - navigates to [the policy's detail screen](policy-detail.md) at `/policies/{id}`, client-side, and the detail screen shows that policy rather than the one visited before it.
-- verify: visible(locator="heading:Policy PN-1001")
+- verify: visible(locator="policy-detail.md#policy-heading", text="Policy PN-1001")
 - code: app/web/src/PolicyList.tsx

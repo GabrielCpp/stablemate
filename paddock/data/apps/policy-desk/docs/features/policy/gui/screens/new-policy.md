@@ -31,7 +31,7 @@ one rule (the umbrella prerequisite) depends on a record that is not on this scr
 - name: New policy
 - placement: width 40-100%, x 0-30%, y 10-100%
 - keyboard: `Tab` through the fields in document order, then `Enter` to submit.
-- verify: visible(locator="form:New policy")
+- verify: visible(locator="#policy-form")
 - parent: [New policy form](#new-policy-form)
 - code: app/web/src/NewPolicy.tsx
 
@@ -48,7 +48,7 @@ conditional field the coverage type calls for.
 - parent: [New policy form](#new-policy-form)
 - states: opens on `auto`.
 - states: offers exactly the three coverage types the service accepts.
-- verify: visible(locator="combobox:Coverage type")
+- verify: visible(locator="#coverage-type-select")
 - code: app/web/src/NewPolicy.tsx
 
 Decides which conditional field the form shows and which premium band the entry is judged against.
@@ -63,7 +63,7 @@ Decides which conditional field the form shows and which premium band the entry 
 - parent: [New policy form](#new-policy-form)
 - exclusive-with: [property-address-field](#property-address-field)
 - states: present only while the coverage type is `auto`.
-- verify: visible(locator="textbox:Vehicle VIN")
+- verify: visible(locator="#vehicle-vin-field")
 - code: app/web/src/NewPolicy.tsx
 
 Carries the VIN the auto policy covers, and carries the service's `vehicle_vin` message when the
@@ -79,7 +79,7 @@ field is refused.
 - parent: [New policy form](#new-policy-form)
 - exclusive-with: [vehicle-vin-field](#vehicle-vin-field)
 - states: present only while the coverage type is `home`.
-- verify: visible(locator="textbox:Property address")
+- verify: visible(locator="#property-address-field")
 - code: app/web/src/NewPolicy.tsx
 
 Carries the address the home policy covers, and carries the service's `property_address` message
@@ -94,7 +94,7 @@ when the field is refused.
 - keyboard: none, because it is read beside the field it belongs to.
 - parent: [New policy form](#new-policy-form)
 - states: present only beside a field the service refused.
-- verify: visible(locator="text=End date must be after the start date.")
+- verify: visible(locator="#field-error-message", text="End date must be after the start date.")
 - code: app/web/src/FieldError.tsx
 
 Shows the refusal for one field, next to that field, in the words the service used.
@@ -108,7 +108,7 @@ Shows the refusal for one field, next to that field, in the words the service us
 - keyboard: none, because it is announced rather than operated.
 - parent: [New policy form](#new-policy-form)
 - states: present only after a refusal that belongs to no single field.
-- verify: visible(locator="alert", text="Duplicate Policy Number")
+- verify: visible(locator="#duplicate-policy-alert", text="Duplicate Policy Number")
 - code: app/web/src/NewPolicy.tsx
 
 Reports a refusal that belongs to no single field — a duplicate policy number above all — at the top
@@ -121,7 +121,7 @@ of the form.
 - name: Create policy
 - placement: width 0-40%, x 0-30%, y 10-100%
 - keyboard: `Tab` to the button, `Enter` or `Space` to submit.
-- verify: visible(locator="button:Create policy")
+- verify: visible(locator="#create-policy-button")
 - parent: [New policy form](#new-policy-form)
 - code: app/web/src/NewPolicy.tsx
 
@@ -141,8 +141,8 @@ sent twice.
 - does:
   - adds a policy that was not on the books before to the register, and navigates to its detail screen at `/policies/{id}` — so the operator lands on the record they just made rather than back on the register.
 - verify: created(subject="policy pn-1001")
-- verify: visible(locator="heading:Policy PN-1001")
-- verify: visible(locator="text=Draft")
+- verify: visible(locator="policy-detail.md#policy-heading", text="Policy PN-1001")
+- verify: visible(locator="policy-detail.md#policy-summary", text="Draft")
 - code: app/web/src/NewPolicy.tsx
 
 ### refuse-new-policy
@@ -155,6 +155,6 @@ sent twice.
 - when: the service refuses the entry.
 - does:
   - shows each field's refusal beside that field and stays on the form with the entry intact, rather than navigating away or printing the response body.
-- verify: visible(locator="text=Auto coverage needs the vehicle VIN.")
-- verify: visible(locator="form:New policy")
+- verify: visible(locator="#field-error-message", text="Auto coverage needs the vehicle VIN.")
+- verify: visible(locator="#policy-form")
 - code: app/web/src/NewPolicy.tsx

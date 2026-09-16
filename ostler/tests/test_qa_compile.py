@@ -657,12 +657,13 @@ def test_the_producer_walk_still_gaps_a_reference_that_precedes_its_producer() -
 
 def test_a_checkless_obligation_never_reaches_the_scenario_body() -> None:
     """The dead `TODO(undeclared)` branch removed from `_scenario_body`: a checkless obligation
-    is book debt, filtered out before the body is ever asked to render one — so no gap, and no
-    scenario, is emitted for it at all."""
+    is book debt, filtered out before the body is ever asked to render one — no scenario is
+    emitted for it, but it is not a silent drop either: the same code that declined to compile
+    it is the code that gaps it, so it still lands in `{emitted, gap}` like every owed id."""
     oid = "okf:docs/features/demo/globex.md#post-things:does:2"
     context = _context(_obligation(oid))
     source, gaps = compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(gaps, oid) == []
+    assert _gap_kinds(gaps, oid) == ["no-verify-declared"]
     assert "# Book debt." in source
     assert f"#   {oid}" in source
 
@@ -803,7 +804,10 @@ def test_an_interactions_assertion_never_lands_on_the_arrival_scenario() -> None
     never be emitted as an arrival assertion on the screen's own page-load scenario. The
     interaction row itself carries no `role`/`name`/`selector` of its own (only `on`/`trigger`/
     `does`), so per Finding 1 its `visible(...)` claim has no addressable subject and is gapped
-    as `uncompilable-claim` rather than silently asserting on `qa.page`/the document body."""
+    as `uncompilable-claim` rather than silently asserting on `qa.page`/the document body — and
+    since that is this fixture's only interaction obligation, nothing survives to claim, so the
+    interaction scenario itself is not emitted at all (a `covers=[]` scenario is a hole in the
+    plan wearing a function signature, never the compiled output)."""
     button = f"{_SCREEN}#create-policy-button"
     interaction = f"{_SCREEN}#submit-new-policy"
     interaction_oid = "okf:new-policy:submit-new-policy:visible:1"
@@ -825,13 +829,17 @@ def test_an_interactions_assertion_never_lands_on_the_arrival_scenario() -> None
     interactions = [s for s in scenarios if "submit_new_policy(" in s]
     assert len(arrival) == 1
     assert "heading:Policy PN-1001" not in arrival[0]
-    assert len(interactions) == 1
-    # No addressable subject for the interaction's own `visible(...)` claim, so it is a TODO
-    # scaffold and a gap, never a compiled `qa.verify(...)` call against a guessed operand.
-    assert "heading:Policy PN-1001" not in interactions[0]
-    assert f"no addressable subject for {interaction_oid}" in interactions[0]
-    assert "create-policy-button" in interactions[0] or "button:Create policy" not in interactions[0]
-    assert "uncompilable-claim" in _gap_kinds(gaps, interaction_oid)
+    # No addressable subject for the interaction's own `visible(...)` claim, so it is gapped as
+    # `uncompilable-claim` rather than compiled against a guessed operand — and since that is
+    # this scenario's only obligation, nothing survives to claim, so the scenario itself is not
+    # emitted (an emitted `covers=[]` scenario is a hole in the plan wearing a function
+    # signature, never the compiled output).
+    assert len(interactions) == 0
+    # Two independent gaps land on this id: the trigger itself is an unverified scaffold click
+    # (`unresolved-precondition`, minted unconditionally for every interaction obligation — see
+    # `_interaction_scenario`), and its `visible(...)` claim has no addressable subject of its
+    # own (`uncompilable-claim`). Both are real, neither supersedes the other.
+    assert sorted(_gap_kinds(gaps, interaction_oid)) == ["uncompilable-claim", "unresolved-precondition"]
 
 
 def test_a_subject_only_verb_on_a_page_obligation_is_a_gap_not_a_silent_drop() -> None:
