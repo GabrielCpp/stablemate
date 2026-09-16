@@ -299,6 +299,13 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
     resolvable root (`reach.UnknownStart` — no screen's `route:` is the root path) is a real
     book gap, reported as every one of that surface's screens being unreachable rather than
     raised as an exception that would take context-building down with it.
+
+    Every entry also carries `entryUrl` — the surface's `scheme://host[:port]`, read off its
+    `server`/`runbook` nodes by `reach.entry_origin` — for `compile.py` to resolve a `target(...)`'s
+    `base_url` from the book instead of one CLI flag applied to every surface alike. A book whose
+    sources disagree (`reach.ConflictingEntryOrigin`) does not fail context-building either: `entryUrl`
+    stays `None` and the conflict is recorded under `entryUrlError`, the same shape `UnknownStart`
+    already gets.
     """
     dump = graph_mod.build(head_graph)
     surfaces = sorted({n["surface"] for n in dump["nodes"] if n.get("surface")})
@@ -307,11 +314,18 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
         surface_dump = graph_mod.subset(dump, surface)
         root_path, _server = reach.root_path(surface_dump)
         screens = reach.screens_of(surface_dump)
+        try:
+            entry_url = reach.entry_origin(dump, surface)
+            entry_url_error = None
+        except reach.ConflictingEntryOrigin as exc:
+            entry_url = None
+            entry_url_error = str(exc)
         if not screens:
             navigation[surface] = {
                 "start": "",
                 "surface": surface,
                 "rootPath": root_path,
+                "entryUrl": entry_url,
                 "counts": {
                     "screens": 0, "reachable": 0, "unreachable": 0, "undeclared": 0, "nav_edges": 0,
                 },
@@ -319,15 +333,19 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
                 "unreachable": [],
                 "undeclared": [],
             }
+            if entry_url_error is not None:
+                navigation[surface]["entryUrlError"] = entry_url_error
             continue
         try:
             navigation[surface] = reach.reachability(head_graph, surface=surface)
             navigation[surface]["rootPath"] = root_path
+            navigation[surface]["entryUrl"] = entry_url
         except reach.UnknownStart as exc:
             navigation[surface] = {
                 "start": "",
                 "surface": surface,
                 "rootPath": root_path,
+                "entryUrl": entry_url,
                 "counts": {
                     "screens": len(screens), "reachable": 0,
                     "unreachable": len(screens), "undeclared": 0, "nav_edges": 0,
@@ -337,6 +355,8 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
                 "undeclared": [],
                 "error": str(exc),
             }
+        if entry_url_error is not None:
+            navigation[surface]["entryUrlError"] = entry_url_error
     return navigation
 
 

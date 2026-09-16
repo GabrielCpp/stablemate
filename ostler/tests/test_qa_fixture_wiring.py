@@ -92,12 +92,14 @@ ENDPOINT_PATH = "docs/features/acme/server.md"
 def _endpoint_book(*, capture: bool) -> str:
     capture_line = "- capture: name from $.project.name\n" if capture else ""
     return f"""---
-type: endpoint
+type: server
 title: Acme projects
 ---
 # Acme projects
 
-## Invocations
+- entry-url: http://localhost:18101
+
+## Endpoints
 
 ### create-project
 

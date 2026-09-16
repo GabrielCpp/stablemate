@@ -23,10 +23,54 @@ from ostler.qa.compile import (
     PLAYWRIGHT,
     PYTHON,
     _unobservable_gap,
-    cmd_compile_plan,
-    compile_plan,
-    compile_plan_gaps,
+    cmd_compile_plan as _cmd_compile_plan,
+    compile_plan as _compile_plan,
+    compile_plan_gaps as _compile_plan_gaps,
 )
+from ostler.qa.outcome import QaOutcome
+
+
+#: Phase 2h reads each target's `base_url` off `context["navigation"][surface]["entryUrl"]`,
+#: falling back to `--base-url` only for a surface stating none, and never at all for an
+#: obligation with no `surface:` — that shape is the http/api side's, which has no notion of
+#: "surface" to look navigation up by. Every test in this file that isn't itself about
+#: entry-url resolution just wants a plan that compiles, so `compile_plan`/`compile_plan_gaps`/
+#: `cmd_compile_plan` below wrap the real ones with this as the `--base-url` fallback, exactly
+#: as if every call in this file had passed it on the command line. The handful of tests
+#: pinning entry-url resolution itself (undeclared-entry-url, per-surface base_url) call the
+#: real, unwrapped functions instead, imported above with a leading underscore.
+_BASE_URL = "http://localhost:8000"
+
+
+def compile_plan(
+    context: dict,
+    *,
+    story: str,
+    run_id: str | None = None,
+    base_url: str | None = _BASE_URL,
+) -> str:
+    return _compile_plan(context, story=story, run_id=run_id, base_url=base_url)
+
+
+def compile_plan_gaps(
+    context: dict,
+    *,
+    story: str,
+    run_id: str | None = None,
+    base_url: str | None = _BASE_URL,
+) -> tuple[str, list[Gap]]:
+    return _compile_plan_gaps(context, story=story, run_id=run_id, base_url=base_url)
+
+
+def cmd_compile_plan(
+    spec_dir: Path,
+    *,
+    out: Path | None = None,
+    story: str = "",
+    run_id: str | None = None,
+    base_url: str | None = _BASE_URL,
+) -> QaOutcome:
+    return _cmd_compile_plan(spec_dir, out=out, story=story, run_id=run_id, base_url=base_url)
 
 
 def _obligation(oid: str, **extra: object) -> dict:
@@ -722,6 +766,7 @@ def _arrival_navigation(source: str = _SCREEN, surface: str = "policy", *,
         surface: {
             "start": source,
             "surface": surface,
+            "entryUrl": _BASE_URL,
             "counts": {"screens": 1, "reachable": 1, "unreachable": 0, "undeclared": 0, "nav_edges": 0},
             "routes": {} if source in (unreachable or []) else {source: []},
             "unreachable": unreachable or [],
@@ -975,7 +1020,7 @@ def test_a_zero_screen_book_grows_no_playwright_target() -> None:
                           checks=[_visible("text=irrelevant")]),
         navigation={
             "policy": {
-                "start": "", "surface": "policy",
+                "start": "", "surface": "policy", "entryUrl": _BASE_URL,
                 "counts": {"screens": 0, "reachable": 0, "unreachable": 0, "undeclared": 0, "nav_edges": 0},
                 "routes": {}, "unreachable": [], "undeclared": [],
             }
@@ -1429,3 +1474,71 @@ def test_an_obligation_half_of_whose_checks_compile_is_claimed_by_nobody() -> No
     assert oid not in _covers(source)
     assert "#name-error" not in source
     assert "uncompilable-claim" in _gap_kinds(gaps, oid)
+
+
+# --- Per-surface `base_url` (Phase 2h) ----------------------------------------------------------
+#
+# `ostler qa compile-plan` used to grow every target's `base_url` from one CLI flag. A book with
+# two services on two ports made that flag a lie for whichever surface didn't get it — these pin
+# the replacement: each surface's own `entry-url:`, read off `navigation[surface]["entryUrl"]`
+# (`reach.entry_origin`, by way of `qa.context._navigation`), with `--base-url` only as the
+# fallback for a surface stating none, and `undeclared-entry-url` the gap when neither exists.
+# The two below call the *real*, unwrapped `compile_plan`/`compile_plan_gaps` — the module-level
+# wrapper above exists so the rest of this file doesn't have to care about entry-url resolution;
+# these two are the tests that do.
+
+
+def test_a_two_surface_book_compiles_two_different_base_urls() -> None:
+    """The `api` target's address comes from the http obligation's own surface, and the `web`
+    target's from the page obligation's — a book with two services on two ports must not see
+    either one's address bleed onto the other's target line."""
+    api_oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    page_oid = "okf:new-policy:button:role:1"
+    context = _navigation_context(
+        _obligation(
+            api_oid,
+            surface="api-service",
+            locators={"route": ["GET /api/things"]},
+            checksDeclared=[
+                {"call": "the response", "name": "http_status", "args": {"code": 200, "path": "/api/things"}},
+            ],
+            fixturesDeclared=[{"name": "seeded-thing", "args": [], "provides": "a thing exists"}],
+        ),
+        _page_obligation(page_oid, f"{_SCREEN}#create-policy-button", surface="web-app",
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")]),
+        navigation={
+            "api-service": {"entryUrl": "http://localhost:18101"},
+            "web-app": {**_arrival_navigation(surface="web-app")["web-app"],
+                        "entryUrl": "http://localhost:18102"},
+        },
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert gaps == []
+    assert 'api = target("api", driver="python", base_url="http://localhost:18101")' in source
+    assert 'web = target("web", driver="playwright", base_url="http://localhost:18102")' in source
+
+
+def test_a_surface_with_no_entry_url_and_no_fallback_gaps_instead_of_guessing() -> None:
+    """No `--base-url` and no book-stated `entry-url:` on this obligation's surface: the compiler
+    drops it as `undeclared-entry-url` rather than compiling it against an address nobody wrote
+    down — the failure mode Phase 2h exists to replace (one CLI default applied to every surface,
+    right or wrong)."""
+    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            surface="api-service",
+            checksDeclared=[
+                {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}},
+            ],
+        ),
+    )
+    context["navigation"] = {}
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert oid not in _covers(source)
+    assert "qa.http.post" not in source
+    assert _gap_kinds(gaps, oid) == ["undeclared-entry-url"]
+    assert "base_url=None" in source

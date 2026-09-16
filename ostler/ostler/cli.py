@@ -949,8 +949,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     qa_compile_plan.add_argument("--run-id", default=None, dest="run_id")
     qa_compile_plan.add_argument(
-        "--base-url", default="http://localhost:8000", dest="base_url",
-        help="base URL for the compiled `target(...)`",
+        "--base-url", default=None, dest="base_url",
+        help="fallback base URL for a surface whose book states no `entry-url:` "
+        "(default: none — such a surface compiles an `undeclared-entry-url` gap instead)",
     )
     qa_compile_plan.add_argument("--json", action="store_true")
 

@@ -234,6 +234,64 @@ def root_path(data: dict) -> tuple[str, str | None]:
     return _norm_path(urlparse(url).path if url else ROOT_PATH), chosen["id"]
 
 
+RUNBOOK_TYPE = "runbook"
+SURFACES_BULLET = "surfaces"
+
+
+class ConflictingEntryOrigin(ValueError):
+    """More than one book source states a different origin for the same surface's entry URL."""
+
+    def __init__(self, surface: str, origins: list[tuple[str, str]]) -> None:
+        self.surface = surface
+        self.origins = origins  # [(node_id, origin), ...], in the order each source was found
+        named = "; ".join(f"{node} says {origin}" for node, origin in origins)
+        super().__init__(f"surface {surface!r} has conflicting entry origins: {named}")
+
+
+def _origin(url: str) -> str:
+    """``scheme://host[:port]`` off a full ``entry-url:`` value; empty when it has none."""
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
+
+
+def entry_origin(dump: dict, surface: str) -> str | None:
+    """The ``scheme://host[:port]`` a QA walk should open for *surface*; ``None`` if the book
+    states none.
+
+    Two kinds of source state it, and both are read at full-book scope so a runbook filed under
+    a different surface than the one it stands up still counts: the surface's own ``server`` node
+    (the same one ``root_path`` already selects — the one marked ``walkthrough: true``, or the
+    sole server) via its ``entry-url:``; and any ``runbook`` node whose ``surfaces:`` bullet links
+    into this surface, via that runbook's own ``entry-url:``. When those sources name more than
+    one distinct origin, that is ``ConflictingEntryOrigin`` rather than an arbitrary pick — a
+    silently wrong base URL is worse than a compile-time gap.
+    """
+    by_id = {n["id"]: n for n in dump["nodes"]}
+    candidates: list[tuple[str, str]] = []
+
+    surface_dump = graph_mod.subset(dump, surface)
+    _path, server_id = root_path(surface_dump)
+    if server_id is not None:
+        origin = _origin(bullet_value(by_id[server_id]["bullets"], ENTRY_URL_BULLET))
+        if origin:
+            candidates.append((server_id, origin))
+
+    for node in dump["nodes"]:
+        if node["type"] != RUNBOOK_TYPE or node["kind"] != "file":
+            continue
+        targets = {edge["to"] for edge in node["edges"] if edge["via"] == SURFACES_BULLET}
+        if not any(by_id.get(target, {}).get("surface") == surface for target in targets):
+            continue
+        origin = _origin(bullet_value(node["bullets"], ENTRY_URL_BULLET))
+        if origin:
+            candidates.append((node["id"], origin))
+
+    origins = sorted({origin for _node, origin in candidates})
+    if len(origins) > 1:
+        raise ConflictingEntryOrigin(surface, candidates)
+    return origins[0] if origins else None
+
+
 def root_screen(data: dict) -> str | None:
     """The screen whose ``route:`` is the surface's root path — the one node a walk starts on."""
     path, _ = root_path(data)

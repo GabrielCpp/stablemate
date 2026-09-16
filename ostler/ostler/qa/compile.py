@@ -207,9 +207,12 @@ def _lit(value: Any) -> str:
     `repr` picks single quotes, which every other plan in the tree does not use; the
     compiled file has to read like one an author wrote or the diff against a filled-in
     version is all quotation marks. `json.dumps` picks the right quotes and the wrong
-    booleans — `absent=false` is the book's spelling and a `NameError` in Python — so the
-    two literals JSON and Python disagree about are spelled here.
+    booleans and the wrong absence — `absent=false` and `base_url=null` are the book's
+    and JSON's spelling and both are a `NameError` in Python — so the three literals
+    JSON and Python disagree about are spelled here.
     """
+    if value is None:
+        return "None"
     if isinstance(value, bool):
         return "True" if value else "False"
     if isinstance(value, list):
@@ -268,6 +271,52 @@ def _has_screens(navigation: dict[str, Any]) -> bool:
         int(surface_nav.get("counts", {}).get("screens", 0)) > 0
         for surface_nav in navigation.values()
     )
+
+
+def _split_by_entry_url(
+    obligations: list[dict[str, Any]],
+    navigation: dict[str, Any],
+    base_url: str | None,
+    gaps: list[Gap],
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Partition *obligations* on whether their surface's target `base_url` is known.
+
+    One target ("api", "web") is shared across however many surfaces feed it obligations, and
+    each surface may state its own address — `navigation[surface]["entryUrl"]`, Phase 2h's
+    per-surface resolution in `reach.entry_origin`. A surface with nothing stated falls back to
+    the CLI `--base-url` only when one was actually passed (`base_url is not None`); with
+    neither, every obligation on that surface is gapped `undeclared-entry-url` and dropped from
+    the returned list rather than silently compiled against a fixed, unrelated address.
+
+    Several surfaces feeding one target is a pre-existing shape this compiler does not split
+    into several `target(...)` calls — when more than one surface resolves and they disagree,
+    the alphabetically-first surface's address wins, pragmatically, for the one `target(...)`
+    line this compiler emits.
+    """
+    resolved_by_surface: dict[str, str | None] = {}
+    for obligation in obligations:
+        surface = str(obligation.get("surface") or "")
+        if surface in resolved_by_surface:
+            continue
+        entry_url = navigation.get(surface, {}).get("entryUrl") if surface else None
+        resolved_by_surface[surface] = entry_url or base_url
+
+    kept: list[dict[str, Any]] = []
+    for obligation in obligations:
+        surface = str(obligation.get("surface") or "")
+        url = resolved_by_surface[surface]
+        if url is None:
+            gaps.append(Gap(
+                str(obligation["id"]), "undeclared-entry-url",
+                f"surface {surface!r} states no `entry-url:` on a `server` or `runbook` node, "
+                "and no --base-url was passed to fall back on",
+            ))
+            continue
+        kept.append(obligation)
+
+    known = sorted(surface for surface, url in resolved_by_surface.items() if url is not None)
+    target_url = resolved_by_surface[known[0]] if known else None
+    return kept, target_url
 
 
 def _node_locator_index(context: dict[str, Any]) -> dict[str, dict[str, list[str]]]:
@@ -384,13 +433,19 @@ def compile_plan(
     *,
     story: str,
     run_id: str | None = None,
-    base_url: str = "http://localhost:8000",
+    base_url: str | None = None,
 ) -> str:
     """Render a `qa_plan.py` skeleton covering every obligation the change owes live proof.
 
     The plan is not expected to pass as emitted — a POST whose body the book never wrote
     cannot be. It is expected to *validate*: `ostler qa validate` reports zero uncovered
     obligations against it exactly when the book declared a check for everything it owes.
+
+    `base_url` is a fallback, not a default: each target's real `base_url` is read off the
+    book (`context["navigation"][surface]["entryUrl"]`, Phase 2h), and this is used only when
+    a surface's book states none *and* a caller explicitly passed this. Left `None`, a surface
+    with nothing to say compiles an `undeclared-entry-url` gap instead of silently defaulting
+    to a fixed address that has nothing to do with the surface being tested.
     """
     source, _gaps = compile_plan_gaps(context, story=story, run_id=run_id, base_url=base_url)
     return source
@@ -401,7 +456,7 @@ def compile_plan_gaps(
     *,
     story: str,
     run_id: str | None = None,
-    base_url: str = "http://localhost:8000",
+    base_url: str | None = None,
 ) -> tuple[str, list[Gap]]:
     """`compile_plan`'s source, plus the structured gap report it compiled alongside it.
 
@@ -437,6 +492,13 @@ def compile_plan_gaps(
     # up front so the `by_source` grouping and its `target=api` scenarios never see them.
     http_owed = [o for o in owed if not _is_page_obligation(o)]
     page_owed = [o for o in owed if _is_page_obligation(o)]
+    # Read once here (rather than where the old single `base_url` used to be handed to
+    # `_compile_page_scenarios`, further down) because the `api` target line above needs its
+    # own resolved address before `lines` is even started.
+    navigation = context.get("navigation", {}) if isinstance(context.get("navigation"), dict) else {}
+    http_owed, api_base_url = _split_by_entry_url(http_owed, navigation, base_url, gaps)
+    page_owed, web_base_url = _split_by_entry_url(page_owed, navigation, base_url, gaps)
+    api_target = f'api = target("api", driver={_lit(PYTHON.name)}, base_url={_lit(api_base_url)})'
     lines: list[str] = [
         "# Compiled from the book by `ostler qa compile-plan`. Every `covers=` below is the",
         "# obligation the book itself attributed the check to. Fill the TODO markers from the",
@@ -448,7 +510,7 @@ def compile_plan_gaps(
         "",
         f"plan(run_id={_lit(run_id or f'qa-{story}')}, story={_lit(story)})",
         "",
-        f'api = target("api", driver={_lit(PYTHON.name)}, base_url={_lit(base_url)})',
+        api_target,
         "",
     ]
 
@@ -526,10 +588,10 @@ def compile_plan_gaps(
         Gap(o["id"], "no-verify-declared", "the book declares no check for this obligation to prove")
         for o in page_undeclared
     )
-    navigation = context.get("navigation", {}) if isinstance(context.get("navigation"), dict) else {}
     if page_declared:
         if _has_screens(navigation):
-            lines.extend(_compile_page_scenarios(context, page_declared, gaps, covered_ids, base_url))
+            lines.extend(
+                _compile_page_scenarios(context, page_declared, gaps, covered_ids, web_base_url))
         else:
             # The book declares page checks but its navigation graph has no screen nodes on any
             # surface — there is nothing here to walk to, the same dead end `unreachable-screen`
@@ -573,8 +635,8 @@ def compile_plan_gaps(
     # The mirror: an obligation reported as unobserved and also claimed by a scenario is the
     # same silent drop seen from the other side — the report says nobody looked and the plan
     # says somebody did, and whichever a reader consults first is the one they believe. Read
-    # over the gaps that are claims about the observation; a scaffold-fidelity gap
-    # (`blocks_coverage=False`, see `Gap`) stacks on the same id on purpose and is not one.
+    # over the gaps that are claims about the observation; an arrangement gap
+    # (`kind` in `_ARRANGEMENT_GAPS`, see `Gap`) stacks on the same id on purpose and is not one.
     unobserved = {gap.obligation_id for gap in gaps if gap.kind not in _ARRANGEMENT_GAPS}
     contradicted = unobserved & covered_ids
     assert not contradicted, (
@@ -797,7 +859,7 @@ def _compile_page_scenarios(
     page_declared: list[dict[str, Any]],
     gaps: list[Gap],
     covered: set[str],
-    base_url: str,
+    base_url: str | None,
 ) -> list[str]:
     """Compile every screen's `visible(...)` bullets, partitioned per Amendment 3.
 
@@ -924,8 +986,8 @@ def _compile_page_scenarios(
         # Minor correction: a `web` target with nothing compiled under it is an unused fixture
         # in the plan — emit it only when at least one scenario actually landed.
         return []
-    return ["", "", 'web = target("web", driver=' + _lit(PLAYWRIGHT.name) + ", base_url=" + _lit(base_url) + ")",
-            *scenario_lines]
+    web_target = f'web = target("web", driver={_lit(PLAYWRIGHT.name)}, base_url={_lit(base_url)})'
+    return ["", "", web_target, *scenario_lines]
 
 
 def _node_slug(node_id: str) -> str:
@@ -1233,9 +1295,14 @@ def cmd_compile_plan(
     out: Path | None = None,
     story: str = "",
     run_id: str | None = None,
-    base_url: str = "http://localhost:8000",
+    base_url: str | None = None,
 ) -> QaOutcome:
     """Compile `spec_dir/qa-okf-context.json` into a plan skeleton.
+
+    `base_url` is a fallback for a surface whose book states no `entry-url:`, used only when
+    a caller explicitly passed one — each target's real `base_url` is read per-surface off the
+    book (Phase 2h). Left `None` (the CLI's own default), a surface with nothing stated compiles
+    an `undeclared-entry-url` gap instead.
 
     Writing over an existing plan is refused. What is on disk may be an authored plan with
     hours of arrangement in it, and this command has no way to tell that from its own last

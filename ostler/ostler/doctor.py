@@ -1012,6 +1012,8 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             findings.append(
                 Finding("error", "needs-out-of-band-observation", message, ref=gap.obligation_id)
             )
+        elif gap.kind == "undeclared-entry-url":
+            findings.append(Finding("error", "undeclared-entry-url", message, ref=gap.obligation_id))
         else:
             findings.append(Finding("error", "uncompilable-claim", message, ref=gap.obligation_id))
     return findings
