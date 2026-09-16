@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 from pathlib import Path
 from typing import Literal
 
@@ -26,7 +27,7 @@ from ostler.qa.plan import load_plan, resolve_spec_dir
 
 from workhorse_workflows.okf_builder.live_audit import flow as live_audit_flow
 from workhorse_workflows.okf_builder.live_audit.flow import (
-    _fixture_texts_for, _node_text, audit_one_spec,
+    BOOK_TARGET, _fixture_texts_for, _node_text, audit_one_spec,
 )
 from workhorse_workflows.okf_builder.shared.ledger import claim_fingerprint
 from workhorse_workflows.qa.schemas import QaPlanRun, StackStatus
@@ -337,3 +338,232 @@ def test_failing_scenario_is_overwritten_by_a_later_passing_run(
     record = json.loads(ledger_path.read_text())["claims"]
     assert len(record) == 1
     assert record["charge-is-covered"]["verdict"] == "passed"
+
+
+# --- Book-as-plan-source: no authored `qa_plan.py`, the compiled path -----------------
+
+FIXTURE_NODE = """---
+type: fixture
+title: Seeded thing
+---
+# Seeded thing
+
+- provides:
+  - id — the seeded thing's id
+
+## Steps
+
+### seed-it
+
+- kind: seed
+- run: ./scripts/seed-thing.sh
+"""
+
+FIXTURE_PATH = "docs/features/app/fixtures/seeded-thing.md"
+
+#: One gap-free obligation (`get-thing`: GET, a fixture declared, a plain `http_status`
+#: check, no unresolved template variable) and one obligation that gaps (`create-thing`:
+#: checks declared but no `fixture:` at all, so `compile_plan_gaps` reports
+#: `unresolved-precondition: no fixture arranged for this obligation` — see
+#: `ostler/ostler/qa/compile.py`). `compile_plan` groups obligations into one scenario
+#: per *source file*, so the two live in separate files — otherwise the gap-free
+#: obligation would be folded into the same scenario function as the gapped one and
+#: excluded along with it, rather than compiling and running on its own.
+GET_NODE = """---
+type: endpoint
+title: App things read
+---
+# App things read
+
+## Invocations
+
+### get-thing
+
+- route: `GET /api/things`
+- does: a thing is fetched.
+- fixture: seeded-thing
+- verify: http_status(code=200)
+- code: app/service.py::get_thing
+"""
+
+GET_PATH = "docs/features/app/server-read.md"
+
+CREATE_NODE = """---
+type: endpoint
+title: App things write
+---
+# App things write
+
+## Invocations
+
+### create-thing
+
+- route: `POST /api/things`
+- does: a thing is created.
+- verify: http_status(code=201)
+- code: app/service.py::create_thing
+"""
+
+CREATE_PATH = "docs/features/app/server-write.md"
+
+
+def _git(root: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True)
+
+
+@pytest.fixture
+def compiled_book(tmp_path: Path) -> Path:
+    """A single-root book (docs and source share a git worktree) with no authored plan.
+
+    `book_context` diffs `EMPTY_TREE_SHA..WORKTREE`, which needs a git repository but no
+    commit at all — the empty-tree object is present in every repository already.
+    """
+    root = tmp_path / "book"
+    root.mkdir()
+    _git(root, "init")
+    _git(root, "config", "user.email", "qa@example.com")
+    _git(root, "config", "user.name", "QA")
+    (root / FIXTURE_PATH).parent.mkdir(parents=True, exist_ok=True)
+    (root / FIXTURE_PATH).write_text(FIXTURE_NODE, encoding="utf-8")
+    (root / GET_PATH).parent.mkdir(parents=True, exist_ok=True)
+    (root / GET_PATH).write_text(GET_NODE, encoding="utf-8")
+    (root / CREATE_PATH).write_text(CREATE_NODE, encoding="utf-8")
+    (root / "app/service.py").parent.mkdir(parents=True, exist_ok=True)
+    (root / "app/service.py").write_text(
+        "def get_thing():\n    return 'thing'\n\n\ndef create_thing():\n    return 'thing'\n",
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_compiled_book_reports_blocked_obligations_with_gap_details(
+    logger: logging.Logger, compiled_book: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A book with no authored plan uses `compile_plan_gaps`, and reports every gap.
+
+    Before this slice, `discover_spec_dirs()` on a book like this returned `[]`, `LiveAudit`
+    reported zero specs, and the operator gate's `any(...)` over an empty list passed
+    silently — nothing ran and nothing was said. This pins the fix: the compiled path
+    reports the gap, by obligation id and kind, with the compiler's own detail line.
+    """
+    monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
+    monkeypatch.setattr(live_audit_flow, "run_qa_plan", lambda *a, **k: _fake_run("passed"))
+
+    report = audit_one_spec(
+        logger, BOOK_TARGET, docs_path=str(compiled_book), repo_dir=str(compiled_book),
+    )
+
+    assert report.gaps, "the gapped create-thing obligation must be reported"
+    gap_ids = {g["obligation_id"] for g in report.gaps}
+    assert any("create-thing" in gid for gid in gap_ids)
+    for gap in report.gaps:
+        assert gap["kind"] and gap["detail"]
+
+
+def test_compiled_book_runs_a_gap_free_obligation_for_real(
+    logger: logging.Logger, compiled_book: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one obligation that compiles clean is actually executed as a real scenario.
+
+    `get-thing` (GET, fixture declared, plain `http_status`) must reach `run_qa_plan`,
+    get fingerprinted, and gain a ledger row — the gapped `create-thing` must not.
+    """
+    monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
+
+    ran_only: list[object] = []
+
+    def _record_and_run(*args: object, only: list[str] | None = None, **kwargs: object) -> QaPlanRun:
+        ran_only.append(only)
+        assert only is not None
+        return QaPlanRun(
+            status="passed",
+            notes="Ostler QA run returned passed.",
+            ostler={
+                "scenarios": {
+                    sid: {"status": "passed", "assertions": 1, "failures": 0, "message": "ok"}
+                    for sid in only
+                },
+            },
+        )
+
+    monkeypatch.setattr(live_audit_flow, "run_qa_plan", _record_and_run)
+
+    report = audit_one_spec(
+        logger, BOOK_TARGET, docs_path=str(compiled_book), repo_dir=str(compiled_book),
+    )
+
+    assert report.status == "ran"
+    assert len(report.scenarios) == 1
+    scenario = report.scenarios[0]
+    assert "create-thing" not in scenario.id
+    assert scenario.status == "passed"
+    assert ran_only and ran_only[0]
+
+    ledger_path = compiled_book / live_audit_flow._COMPILED_RUN_ROOT / "book" / live_audit_flow.LEDGER_FILE
+    ledger = json.loads(ledger_path.read_text())["claims"]
+    assert len(ledger) == 1
+    assert scenario.id in ledger
+
+
+def test_compiled_gaps_never_ledgered_and_re_report_every_pass(
+    logger: logging.Logger, compiled_book: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Condition 3: a compile gap is not a result — it is never fingerprinted or ledgered.
+
+    A gapped obligation has no scenario to run, so it never becomes a `ScenarioResult`
+    (blocked and failed are distinct — condition 2) and never gains a ledger row (the
+    ledger only records an executed claim's verdict). Because nothing about the gap is
+    ever recorded, re-running reports the identical gap every single pass — there is no
+    ledger-based suppression of book debt the way a passing scenario's fingerprint would
+    suppress a re-run.
+    """
+    monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
+    monkeypatch.setattr(live_audit_flow, "run_qa_plan", lambda *a, **k: _fake_run("passed"))
+
+    first = audit_one_spec(
+        logger, BOOK_TARGET, docs_path=str(compiled_book), repo_dir=str(compiled_book),
+    )
+    second = audit_one_spec(
+        logger, BOOK_TARGET, docs_path=str(compiled_book), repo_dir=str(compiled_book),
+    )
+
+    assert first.gaps and second.gaps
+    assert {g["obligation_id"] for g in first.gaps} == {g["obligation_id"] for g in second.gaps}
+
+    # No `ScenarioResult` for the gapped obligation, on either pass.
+    for report in (first, second):
+        assert not any("create-thing" in s.id for s in report.scenarios)
+
+    ledger_path = compiled_book / live_audit_flow._COMPILED_RUN_ROOT / "book" / live_audit_flow.LEDGER_FILE
+    ledger = json.loads(ledger_path.read_text())["claims"]
+    assert len(ledger) == 1
+    assert not any("create-thing" in claim_id for claim_id in ledger)
+
+
+def test_authored_plan_takes_precedence_over_the_compiled_book(
+    logger: logging.Logger, two_root_book: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An authored `qa_plan.py` wins even when the book itself could also compile a plan.
+
+    `two_root_book`'s spec dir authors a `qa_plan.py`; if the compiled path were ever
+    reached instead, `book_context` would be called against `two_root_book`'s split
+    docs/checkout layout, which `_book_context_or_note` explicitly cannot support (see
+    its own docstring) and would return a blocked report naming that gap. Getting a real
+    `status="ran"` result with the authored scenario's own id proves the authored path,
+    not the compiled one, ran.
+    """
+    docs_root, repo_root = two_root_book
+    monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
+    monkeypatch.setattr(live_audit_flow, "run_qa_plan", lambda *a, **k: _fake_run("passed"))
+
+    def _fail_if_book_context_used(*args: object, **kwargs: object) -> dict[str, object]:
+        raise AssertionError("the compiled book_context path must not run when a plan is authored")
+
+    monkeypatch.setattr(live_audit_flow, "book_context", _fail_if_book_context_used)
+
+    report = audit_one_spec(
+        logger, "docs/specs/story-1", docs_path=str(docs_root), repo_dir=str(repo_root),
+    )
+
+    assert report.status == "ran"
+    assert report.scenarios[0].id == "charge-is-covered"

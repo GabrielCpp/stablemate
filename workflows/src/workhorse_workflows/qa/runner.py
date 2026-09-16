@@ -169,8 +169,14 @@ def run_qa_plan(
     docs_path: str = "",
     repo_dir: str = "",
     only: list[str] | None = None,
+    plan_file: str | None = None,
 ) -> QaPlanRun:
     """Execute the QA plan through ostler and normalize its four-state outcome.
+
+    `plan_file`, when given, overrides the default `<spec_dir>/qa_plan.py` path — the
+    live-audit lane's compiled-from-the-book fallback writes its plan under a scratch run
+    directory outside the book tree (never back into `docs/specs`) and passes that path
+    here rather than an authored spec dir's default location.
 
     The returncode is deliberately ignored: `failed` and `blocked` are answers the runner
     is *supposed* to give, and both exit non-zero. The status comes off the payload, and
@@ -189,7 +195,7 @@ def run_qa_plan(
     before this parameter existed.
     """
     docs_root = find_docs_root(docs_path, repo_dir)
-    plan = str(Path(spec_dir) / QA_PLAN_FILE)
+    plan = plan_file if plan_file is not None else str(Path(spec_dir) / QA_PLAN_FILE)
     manifest = runbook.load_stack(docs_root, logger=logger)
     minted, error = _mint_qa_secrets(manifest.get("secrets") or {}, docs_root, logger)
     if error:

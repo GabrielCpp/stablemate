@@ -25,7 +25,9 @@ from typing import Any
 
 from ostler import model
 from ostler.path import features_root as features_root_of, specs_root_in
+from ostler.qa import runbook
 from ostler.qa.compile import compile_plan_gaps
+from ostler.qa.context import book_context
 from ostler.qa.plan import load_plan, resolve_spec_dir
 from ostler.refs import code_refs
 from ostler.source_snapshots import book_repository
@@ -43,6 +45,17 @@ from workhorse_workflows.qa.schemas import StackStatus
 #: The ledger persists beside the plan it fingerprints, one file per spec dir — the same
 #: directory `run_qa_plan` already writes `qa/qa-run.ndjson` under.
 LEDGER_FILE = "qa-ledger.json"
+
+#: Where a book-compiled plan and its evidence live when no authored spec dir names one —
+#: deliberately outside `docs/specs`, so `compile_plan_gaps`'s rendered skeleton is never
+#: mistaken for an authored plan and is never written back into the book tree it was
+#: compiled from.
+_COMPILED_RUN_ROOT = ".qa-live-audit"
+
+#: The synthetic `spec_dir` label `discover_compiled_targets` reports for "no authored
+#: spec dir names a plan, but the book itself is a plan source" — never a real path under
+#: `docs/specs`, so it can never collide with one, and it reads unambiguously in a report.
+BOOK_TARGET = "(book)"
 
 
 class ScenarioResult(BaseModel):
@@ -137,6 +150,30 @@ def _covered_node_ids(covers: list[Any]) -> list[str]:
     return ids
 
 
+def _book_context_or_note(
+    graph: Any, docs_root: Path, repo_root: Path
+) -> tuple[dict[str, Any], str]:
+    """`book_context` against *repo_root*, or ("", note) when the layout cannot support it.
+
+    `book_context` diffs one repo's git history against its own empty tree; a docs tree
+    that does not live inside `repo_root` — the split docs-repo/checkout layout a
+    multi-repo book can use — has no path relative to it to diff, so compiling a plan
+    from the book itself is not yet supported for that split. The honest answer is a
+    blocked report naming the gap, never a silent fallback that fabricates a green one.
+    """
+    try:
+        features_root_rel = (
+            features_root_of(graph).resolve().relative_to(repo_root.resolve()).as_posix()
+        )
+    except ValueError:
+        return {}, (
+            "this book's docs root is not inside its checkout's git history (a separate "
+            "docs repo) — compiling a plan from the book itself is not yet supported for "
+            "that layout; author a qa_plan.py for this spec dir instead"
+        )
+    return book_context(repo_root, features_root=features_root_rel), ""
+
+
 @blueprint.node
 def audit_one_spec(
     logger: logging.Logger,
@@ -145,7 +182,16 @@ def audit_one_spec(
     repo_dir: str = "",
     rerun_all: bool = False,
 ) -> LiveAuditReport:
-    """Run one spec directory's already-authored QA plan and fingerprint every scenario.
+    """Run one spec directory's QA plan for real and fingerprint every scenario.
+
+    An authored `docs/specs/<story>/qa_plan.py` is the plan whenever one exists, unchanged
+    from before this docstring. **A book with no authored plan is not a book with nothing
+    to audit** — `discover_compiled_targets` hands this node `BOOK_TARGET` in that case,
+    and this falls through to compiling the plan from the book's own current obligations
+    (`ostler.qa.context.book_context` + `ostler.qa.compile.compile_plan_gaps`), written
+    under a scratch run directory (`_COMPILED_RUN_ROOT`) — never into `docs/specs` — and
+    run from there. The two paths converge immediately after: fingerprinting, the ledger,
+    and `run_qa_plan` do not know or care which one produced their `scenarios_data`.
 
     Only claims whose fingerprint moved since the ledger's last record are actually
     executed (`only=` into `run_qa_plan`, a real scored subset — see `runner.run_qa_plan`).
@@ -155,6 +201,24 @@ def audit_one_spec(
     `rerun_all=True` forces every claim through `run_qa_plan` regardless of its
     fingerprint — the operator override for "the fixture data or environment moved in a
     way no citation captures, run everything for real."
+
+    **Measured 2026-09-15, against a real book with no authored plan** (a small
+    seat-booking-style app; see this slice's commit for the number's provenance): 21
+    nodes compiled to 67 obligations, 51 of them declaring at least one `verify:` check
+    (the other 16 declare none at all — pure book debt `compile_plan_gaps` never reports
+    a `Gap` for, since there is no check to fail to compile). Of those 51, **zero**
+    compiled gap-free — 106 gaps total (64 `unresolved-precondition`: a missing fixture,
+    request body, or template variable; 42 `uncompilable-claim`: no route, or a
+    subject-observing check like `persists`/`count`/`unchanged`/`keys_unchanged`, which
+    always gaps regardless of route, since compiling one would mean inventing the
+    arrangement the book never wrote). 24 of the 51 sit on a routed node and still gap
+    only on the missing fixture/body/template-var; the rest have no route at all. Today's
+    compiler turns a routed, checkable obligation into a runnable call and turns
+    everything else into a `Gap` this report carries as blocked book debt, never as a
+    failed scenario (see `LiveAuditReport`/`_live_audit_gate_message`) and never as a
+    ledger row (a gapped obligation has no scenario to fingerprint or record). Slice 3
+    (fixture-node execution) is what is expected to move that 0% up — nothing here
+    invents an arrangement the book has not written yet.
 
     `own_repository` is resolved and threaded through every ledger call the same way
     `doctor.py` does it (`book_repository(features_root_of(graph))`): the ledger's
@@ -175,32 +239,76 @@ def audit_one_spec(
     if stack.ready in ("none", "no"):
         return LiveAuditReport(spec_dir=spec_dir, status="blocked", stack=stack, notes=stack.notes)
 
-    resolved_spec_dir = resolve_spec_dir(Path(spec_dir) / "qa_plan.py", Path(spec_dir), docs_root)
-    document, problems = load_plan(Path(spec_dir) / "qa_plan.py", resolved_spec_dir, docs_root)
-    if document is None:
-        return LiveAuditReport(
-            spec_dir=spec_dir, status="blocked", stack=stack,
-            notes="; ".join(problems) or "plan could not be loaded",
-        )
-
+    authored_path = docs_root / spec_dir / "qa_plan.py"
     gaps: tuple[dict[str, Any], ...] = ()
-    if document.context:
-        _source, gap_list = compile_plan_gaps(document.context, story=document.story)
+    gapped_ids: set[str] = set()
+
+    if authored_path.is_file():
+        resolved_spec_dir = resolve_spec_dir(Path(spec_dir) / "qa_plan.py", Path(spec_dir), docs_root)
+        document, problems = load_plan(Path(spec_dir) / "qa_plan.py", resolved_spec_dir, docs_root)
+        if document is None:
+            return LiveAuditReport(
+                spec_dir=spec_dir, status="blocked", stack=stack,
+                notes="; ".join(problems) or "plan could not be loaded",
+            )
+        if document.context:
+            _source, gap_list = compile_plan_gaps(document.context, story=document.story)
+            gaps = tuple(
+                {"obligation_id": g.obligation_id, "kind": g.kind, "detail": g.detail}
+                for g in gap_list
+            )
+        context = document.context
+        all_scenarios = [s for s in document.data.get("scenarios", []) if isinstance(s, dict)]
+        # An authored plan's scenarios are hand-written, independent of what the
+        # auto-compiler would have done with the same obligations — a compile gap here is
+        # reported alongside the run, never used to drop a scenario a human already wrote.
+        scenarios_data = all_scenarios
+        plan_file_for_run: str | None = None
+        run_spec_dir = spec_dir
+    else:
+        context, note = _book_context_or_note(graph, docs_root, repo_root)
+        if not context:
+            return LiveAuditReport(spec_dir=spec_dir, status="blocked", stack=stack, notes=note)
+        run_dir = docs_root / _COMPILED_RUN_ROOT / "book"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        source, gap_list = compile_plan_gaps(context, story=BOOK_TARGET)
+        plan_path = run_dir / "qa_plan.py"
+        plan_path.write_text(source, encoding="utf-8")
+        (run_dir / "qa-okf-context.json").write_text(json.dumps(context), encoding="utf-8")
+        document, problems = load_plan(plan_path, run_dir, docs_root)
+        if document is None:
+            return LiveAuditReport(
+                spec_dir=spec_dir, status="blocked", stack=stack,
+                notes="compiled plan could not be loaded: " + ("; ".join(problems) or "unknown"),
+            )
         gaps = tuple(
             {"obligation_id": g.obligation_id, "kind": g.kind, "detail": g.detail}
             for g in gap_list
         )
+        gapped_ids = {g.obligation_id for g in gap_list}
+        resolved_spec_dir = run_dir
+        all_scenarios = [s for s in document.data.get("scenarios", []) if isinstance(s, dict)]
+        # A compiled scenario with any gapped check still gets a function body (compile.py
+        # always emits one once an obligation declares a check, gap-free or not) — running
+        # it would score a claim the compiler itself could not finish, which is exactly the
+        # blocked/failed conflation condition 2 forbids. Only the gap-free ones run; every
+        # gapped obligation is reported (via `gaps` above) and nothing else — no
+        # `ScenarioResult`, no fingerprint, no ledger row.
+        scenarios_data = [
+            s for s in all_scenarios if not (set(s.get("covers") or []) & gapped_ids)
+        ]
+        plan_file_for_run = str(plan_path)
+        run_spec_dir = str(run_dir)
 
     nodes_by_id = {node.id: node for node in graph.ui_nodes}
     obligations_by_id = {
         str(o.get("id")): o
-        for o in (document.context or {}).get("obligations", [])
+        for o in (context or {}).get("obligations", [])
         if isinstance(o, dict)
     }
     ledger_path = resolved_spec_dir / LEDGER_FILE
     ledger = load_ledger(ledger_path)
 
-    scenarios_data = [s for s in document.data.get("scenarios", []) if isinstance(s, dict)]
     fingerprints: dict[str, str] = {}
     refs_by_id: dict[str, list[str]] = {}
     changed_by_id: dict[str, bool] = {}
@@ -232,7 +340,13 @@ def audit_one_spec(
     scenario_summaries: dict[str, Any] = {}
     run_notes = "no claim's fingerprint changed since its last recorded run; nothing re-run"
     if to_run:
-        run = run_qa_plan(logger, spec_dir, docs_path, repo_dir, only=None if rerun_all else to_run)
+        # Never `only=None` here even when `rerun_all` — `to_run` already lists every
+        # gap-free scenario id when `rerun_all` is set (`fingerprints` only ever has keys
+        # for `scenarios_data`, the gap-free subset), and passing `None` on the compiled
+        # path would run the whole plan file, gapped scenario functions included.
+        run = run_qa_plan(
+            logger, run_spec_dir, docs_path, repo_dir, only=to_run, plan_file=plan_file_for_run,
+        )
         summaries = run.ostler.get("scenarios") if isinstance(run.ostler, dict) else None
         scenario_summaries = summaries if isinstance(summaries, dict) else {}
         run_notes = run.notes
@@ -267,6 +381,20 @@ def audit_one_spec(
             changed=changed_by_id[scenario_id], source=source,
         ))
 
+    if not scenarios_data:
+        # Nothing compiled clean enough to run at all — the whole-book equivalent of the
+        # "plan could not be loaded" block above, except every reason is a named `Gap`
+        # rather than a load failure. This is the expected outcome for a book like
+        # seat-booking's measurement in this node's docstring: every obligation blocked,
+        # nothing executed, the operator gate parked immediately — not a bug to fix here.
+        return LiveAuditReport(
+            spec_dir=spec_dir, status="blocked", stack=stack, gaps=gaps,
+            notes=(
+                f"{len(gaps)} obligation(s) blocked on a compile gap; nothing compiled "
+                "clean enough to run" if gaps else "no obligations to audit"
+            ),
+        )
+
     return LiveAuditReport(
         spec_dir=spec_dir, status="ran", stack=stack, scenarios=tuple(results),
         gaps=gaps, notes=run_notes,
@@ -286,6 +414,26 @@ def discover_spec_dirs(logger: logging.Logger, docs_path: str = "", repo_dir: st
     if not root.is_dir():
         return []
     return sorted(str(p.parent.relative_to(docs_root)) for p in root.rglob("qa_plan.py"))
+
+
+@blueprint.node
+def discover_compiled_targets(logger: logging.Logger, docs_path: str = "", repo_dir: str = "") -> list[str]:
+    """`[BOOK_TARGET]` when the book serves something and no spec dir authors its own plan.
+
+    `discover_spec_dirs` finds every story's own `qa_plan.py`; a book documenting an
+    already-existing app with no authored story has none, which used to make `LiveAudit`
+    report zero specs — and the caller's gate is an `any(...)` over that empty report
+    list, so it passed silently, having run nothing and said nothing. `LiveAudit.start()`
+    calls this only when `discover_spec_dirs` (or an explicit `spec_dirs=`) found nothing,
+    so an authored plan always takes precedence where one exists.
+
+    `has_served_surface` is the same test `runner.ensure_stack` and doctor's
+    `runbook-missing` already gate on: a book serving nothing has no live behavior to
+    audit against a stack, compiled or authored, so there is nothing to hand back either.
+    """
+    docs_root = find_docs_root(docs_path, repo_dir)
+    graph = model.load(docs_root)
+    return [BOOK_TARGET] if runbook.has_served_surface(graph) else []
 
 
 class LiveAudit(Workflow):
@@ -310,6 +458,8 @@ class LiveAudit(Workflow):
 
     def start(self) -> Done:
         spec_dirs = self.spec_dirs or self.call(discover_spec_dirs, self.docs_path, self.repo_dir)
+        if not spec_dirs:
+            spec_dirs = self.call(discover_compiled_targets, self.docs_path, self.repo_dir)
         reports = [
             self.call(audit_one_spec, spec_dir, self.docs_path, self.repo_dir, self.rerun_all)
             for spec_dir in spec_dirs
@@ -320,5 +470,6 @@ class LiveAudit(Workflow):
 
 
 __all__ = [
-    "LiveAudit", "LiveAuditReport", "ScenarioResult", "audit_one_spec", "discover_spec_dirs",
+    "BOOK_TARGET", "LiveAudit", "LiveAuditReport", "ScenarioResult", "audit_one_spec",
+    "discover_compiled_targets", "discover_spec_dirs",
 ]
