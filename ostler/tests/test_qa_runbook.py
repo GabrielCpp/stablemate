@@ -253,6 +253,76 @@ def test_cmd_stack_down_without_a_stop_recipe_leaves_it_serving(tmp_path: Path) 
     assert outcome.data["torn_down"] == "skipped"
 
 
+def _two_stacks(root: Path, *, environments: tuple[str, str]) -> None:
+    """Two stack runbooks under `app/ops`, each binding to the named environment file."""
+    for env in set(environments):
+        write(root / "docs" / "features" / "app" / "ops" / f"{env}.md",
+              f"---\ntype: environment\n---\n\n# {env}\n\n- local-only: true\n")
+    for name, port, env in (("api-stack", 1111, environments[0]),
+                            ("web-stack", 2222, environments[1])):
+        make_runbook(root, f"---\ntype: runbook\n---\n\n# {name}\n\n"
+                     f"- driver: web\n- entry-url: http://localhost:{port}\n"
+                     f"- environment: [{env}]({env}.md)\n\n"
+                     "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
+                     "- health: curl -fsS localhost\n", name=name)
+
+
+def test_stack_runbooks_sharing_an_environment_come_up_together(tmp_path: Path) -> None:
+    # The unit is the environment, not the runbook: a journey through a web surface that
+    # calls an API needs both serving, and what makes them one system is that the author
+    # bound both to one `environment:` node.
+    (tmp_path / ".git").mkdir()
+    _two_stacks(tmp_path, environments=("local", "local"))
+    graph = model.load(tmp_path)
+    selection = rb.select_stack(graph)
+    assert selection.reason == ""
+    assert [n.path.stem for n in selection.runbooks] == ["api-stack", "web-stack"]
+    assert selection.environment.endswith("local.md")
+    manifests, _ = rb.load_stacks(graph)
+    assert [m["entry_url"] for m in manifests] == ["http://localhost:1111",
+                                                   "http://localhost:2222"]
+
+
+def test_an_environment_link_is_resolved_not_compared_as_text(tmp_path: Path) -> None:
+    # globex's two runbooks sit in different service directories and spell the same
+    # environment `local.md` and `../../api-service/ops/local.md`. A string compare says
+    # those are two systems.
+    (tmp_path / ".git").mkdir()
+    write(tmp_path / "docs" / "features" / "api" / "ops" / "local.md",
+          "---\ntype: environment\n---\n\n# local\n\n- local-only: true\n")
+    for svc, port, href in (("api", 1111, "local.md"),
+                            ("web", 2222, "../../api/ops/local.md")):
+        write(tmp_path / "docs" / "features" / svc / "ops" / f"{svc}-stack.md",
+              f"---\ntype: runbook\n---\n\n# {svc}\n\n- driver: web\n"
+              f"- entry-url: http://localhost:{port}\n- environment: [local]({href})\n\n"
+              "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
+              "- health: curl -fsS localhost\n")
+    selection = rb.select_stack(model.load(tmp_path))
+    assert selection.reason == ""
+    assert len(selection.runbooks) == 2
+
+
+def test_several_environments_and_no_name_is_a_refusal_not_an_absence(tmp_path: Path) -> None:
+    # Opposite findings want opposite fixes: "write a runbook" is the wrong instruction to
+    # hand someone whose book declares two.
+    (tmp_path / ".git").mkdir()
+    _two_stacks(tmp_path, environments=("local", "staging"))
+    selection = rb.select_stack(model.load(tmp_path))
+    assert selection.reason == "ambiguous"
+    assert len(selection.candidates) == 2
+    outcome = rb.cmd_stack_up(tmp_path)
+    assert not outcome.ok and outcome.status == "ambiguous"
+    assert "--runbook" in outcome.message
+    assert rb.cmd_stack_down(tmp_path).status == "ambiguous"
+
+
+def test_a_name_that_matches_nothing_is_distinct_from_a_bookless_book(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    _two_stacks(tmp_path, environments=("local", "local"))
+    outcome = rb.cmd_stack_up(tmp_path, name="nope")
+    assert not outcome.ok and outcome.status == "unknown-runbook"
+
+
 # --- the doctor half: the book saying nothing, or saying something unrunnable ---
 
 

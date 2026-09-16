@@ -865,6 +865,11 @@ def build_context(
         "available": bool(nodes_by_id),
         "base": base,
         "head": head,
+        # The aim. Every later stage reads this packet and none of them is told on its own
+        # argv which book the run is about, so a stage that needs the answer either repeats
+        # a flag the caller must keep in sync or guesses from its cwd. This is the one place
+        # the aim was ever known.
+        "featuresRoot": features_root,
         "changedCode": changed_code,
         **({"changedUnits": changed_code, "repositories": repository_rows} if repositories else {}),
         "directNodes": [

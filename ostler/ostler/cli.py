@@ -14,6 +14,7 @@ import yaml
 from ostler import autofix as autofix_mod, backfill as backfill_mod, backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import checks as checks_mod
 from ostler import census
+from ostler import provenance
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
@@ -863,9 +864,15 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_stack_up = qa_stack_ops.add_parser("up", help="bring the declared stack to ready")
     qa_stack_up.add_argument("--runbook", default="",
                              help="which runbook, when the book carries more than one")
+    qa_stack_up.add_argument("--spec", default="",
+                             help="the qa context packet directory; its `featuresRoot` says "
+                                  "which book to bring up")
     qa_stack_up.add_argument("--json", action="store_true")
     qa_stack_down = qa_stack_ops.add_parser("down", help="run the declared teardown recipe")
     qa_stack_down.add_argument("--runbook", default="")
+    qa_stack_down.add_argument("--spec", default="",
+                               help="the qa context packet directory; its `featuresRoot` "
+                                    "says which book to tear down")
     qa_stack_down.add_argument("--json", action="store_true")
 
     qa_tools = qas.add_parser("tools", help="inspect this repo's opted-in QA tools")
@@ -1066,6 +1073,25 @@ def _parse_checkouts(raw_checkouts: list[str]) -> dict[str, Path] | None:
             return None
         checkouts[repository] = Path(checkout).expanduser().resolve()
     return checkouts
+
+
+def _packet_aim(spec: str) -> str:
+    """The `featuresRoot` the qa context packet in `spec` recorded, or "".
+
+    A missing packet is not an error here: with no `--spec` the caller means the book at
+    the repo root, which is a real answer. A packet that predates the field is also "" —
+    and the command says which book it read, so a wrong aim is visible rather than
+    reported as a book that declares nothing.
+    """
+    if not spec:
+        return ""
+    packet = Path(spec) / provenance.CONTEXT_FILE
+    if not packet.is_file():
+        return ""
+    try:
+        return str(json.loads(packet.read_text(encoding="utf-8")).get("featuresRoot", ""))
+    except (OSError, ValueError):
+        return ""
 
 
 def _out(value="") -> None:
@@ -1736,10 +1762,11 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         return 0 if result.ok else 1
 
     if op == "stack":
+        aim = _packet_aim(args.spec)
         if args.stack_op == "up":
-            result = qa_mod.runbook.cmd_stack_up(root, name=args.runbook)
+            result = qa_mod.runbook.cmd_stack_up(root, name=args.runbook, features_root=aim)
         else:
-            result = qa_mod.runbook.cmd_stack_down(root, name=args.runbook)
+            result = qa_mod.runbook.cmd_stack_down(root, name=args.runbook, features_root=aim)
         if args.json:
             _out(json.dumps(result.data, indent=2))
         else:

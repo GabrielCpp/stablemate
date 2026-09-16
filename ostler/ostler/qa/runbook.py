@@ -36,10 +36,14 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ostler import links as links_mod
+from ostler import markdown
 from ostler import model
+from ostler import path as path_mod
 from ostler.model import Graph, UINode
 from ostler.qa import stack as stack_mod
 from ostler.qa.outcome import QaOutcome
@@ -274,24 +278,91 @@ def stack_runbooks(graph: Graph) -> list[UINode]:
     return [n for n in graph.ui_nodes_of_type("runbook") if is_stack_runbook(graph, n)]
 
 
-def select_runbook(graph: Graph, name: str = "") -> UINode | None:
-    """The runbook this repo's QA stack comes from, or None.
+@dataclass(frozen=True)
+class StackSelection:
+    """Which runbooks a bring-up covers — or, when none was chosen, *why* none was.
+
+    The reason is the point. `load_stack` answers this question with `{}`, which reads as
+    "the book declares no stack" no matter which of three things happened: the book really
+    declares none, the caller named a runbook that is not there, or the book declares
+    several bound to different environments and the caller named none. The last is a
+    **refusal** — the right answer, since guessing would bring the wrong stack up — and
+    reporting a refusal as an absence sends the reader to write a runbook that already
+    exists. Opposite findings want opposite fixes, so they get different values.
+    """
+
+    #: Every runbook this bring-up covers, in document order. Empty iff `reason` is set.
+    runbooks: tuple[UINode, ...] = ()
+    #: `""` when runbooks were chosen; otherwise one of `no-runbook`, `no-such-name`,
+    #: `ambiguous`.
+    reason: str = ""
+    #: The environment node id the chosen runbooks share, when more than one was chosen.
+    environment: str = ""
+    #: The stack runbooks that were on the table, for a reason the caller must report.
+    candidates: tuple[str, ...] = field(default=())
+
+
+def environment_of(node: UINode, resolver: links_mod.LinkResolver) -> str:
+    """The node id *node*'s `environment:` link resolves to, or `""`.
+
+    Resolved rather than compared as text: globex's two runbooks both bind to `local.md`
+    and spell it `local.md` and `../../api-service/ops/local.md`, because they sit in
+    different service directories. Those are the same environment, and a string compare
+    says they are two.
+    """
+    value = node.meta.get("environment", "")
+    if isinstance(value, list):
+        value = value[0] if value else ""
+    for _text, href in markdown.extract_refs(str(value)).links:
+        target = resolver.resolve(node.path, href)
+        if target is not None and target.resolved:
+            return target.node_id
+    return ""
+
+
+def select_stack(graph: Graph, name: str = "") -> StackSelection:
+    """Which runbooks bring this book's system up, or why the question has no answer.
 
     With `name`, the runbook whose slug/id matches it — named explicitly, so a procedure
-    runbook is the caller's business. Without, the sole *stack* runbook: a book carrying
-    several and naming none is ambiguous, and guessing would silently bring the wrong
-    stack up.
+    runbook is the caller's business.
+
+    Without, **the environment is the unit, not the runbook.** A book describing one
+    service has one stack runbook and the two units coincide; a book describing a web
+    surface and the API it calls has two, and a journey through the web surface needs both
+    serving. What makes them one system is that they bind to the same `environment:` node —
+    which is a thing the author wrote down, not an inference — so every stack runbook
+    sharing one environment comes up together. Stack runbooks bound to *different*
+    environments are genuinely several systems, and picking one of those is the caller's
+    to do by name.
     """
     runbooks = graph.ui_nodes_of_type("runbook")
-    if not runbooks:
-        return None
     if name:
         for node in runbooks:
             if name in (node.id, node.path.stem, node.title):
-                return node
-        return None
+                return StackSelection(runbooks=(node,))
+        return StackSelection(reason="no-such-name")
     stacks = stack_runbooks(graph)
-    return stacks[0] if len(stacks) == 1 else None
+    if not stacks:
+        return StackSelection(reason="no-runbook")
+    if len(stacks) == 1:
+        return StackSelection(runbooks=(stacks[0],))
+    resolver = links_mod.LinkResolver(graph)
+    environments = {environment_of(node, resolver) for node in stacks}
+    if len(environments) == 1 and "" not in environments:
+        return StackSelection(runbooks=tuple(stacks), environment=environments.pop())
+    return StackSelection(reason="ambiguous",
+                          candidates=tuple(node.id for node in stacks))
+
+
+def select_runbook(graph: Graph, name: str = "") -> UINode | None:
+    """The single runbook this repo's QA stack comes from, or None.
+
+    The one-manifest reading of :func:`select_stack`, kept for callers that take one stack
+    or nothing. A multi-service environment resolves to None here — correctly, since there
+    is no single runbook — and such a caller should be reading `select_stack` instead.
+    """
+    chosen = select_stack(graph, name).runbooks
+    return chosen[0] if len(chosen) == 1 else None
 
 
 def select_server(graph: Graph) -> UINode | None:
@@ -351,36 +422,130 @@ def load_stack(root: Path | None = None, *, name: str = "",
     return {}
 
 
-def cmd_stack_up(root: Path, *, name: str = "",
+def load_stacks(graph: Graph, *, name: str = "",
+                logger: logging.Logger | None = None,
+                ) -> tuple[list[dict[str, Any]], StackSelection]:
+    """Every manifest this book's bring-up covers, with the selection that produced it.
+
+    One manifest per runbook rather than one merged manifest: each stack runbook carries
+    its own `entry-url`, `health-path` and `boot-timeout`, and folding two services into
+    one manifest would have to invent a single health check no author wrote — and then
+    report the wrong service when it failed.
+
+    The fallback to a `walkthrough: true` server stays where it was, reached only when the
+    book declares no stack runbook at all. A book that declares several and named none has
+    not fallen back to anything; it has been refused.
+    """
+    log = logger or logging.getLogger(__name__)
+    selection = select_stack(graph, name)
+    if selection.runbooks:
+        for node in selection.runbooks:
+            log.info("stack declared by runbook %s", node.id)
+        return [_from_runbook(graph, node) for node in selection.runbooks], selection
+    if selection.reason == "no-such-name":
+        log.warning("no runbook named %r in the book", name)
+        return [], selection
+    if selection.reason == "ambiguous":
+        log.warning("%d stack runbooks across several environments and none named: %s",
+                    len(selection.candidates), ", ".join(selection.candidates))
+        return [], selection
+    server = select_server(graph)
+    if server is not None and bullet_value(server.meta, "launch"):
+        log.info("no runbook; falling back to the walkthrough contract on %s", server.id)
+        return [_from_server(graph, server)], selection
+    log.info("the book declares no runbook and no walkthrough server — nothing to bring up")
+    return [], selection
+
+
+def _aimed(root: Path, features_root: str) -> Graph | None:
+    """The graph for the book `features_root` names, or None to let the caller default.
+
+    `qa context` resolves which book a run is about and records it in the packet; every
+    later stage reads that packet. Passing the aim down is what stops a stage from
+    answering a question about whichever book happens to sit under its cwd.
+    """
+    if not features_root:
+        return None
+    return model.load(root, root_overrides={"features": features_root})
+
+
+def _aim_label(root: Path, features_root: str) -> str:
+    return features_root or path_mod.features_root_in(root).relative_to(root).as_posix()
+
+
+def _graph_for(root: Path, features_root: str) -> Graph:
+    aimed = _aimed(root, features_root)
+    return aimed if aimed is not None else model.load(root)
+
+
+def _refusal(root: Path, features_root: str, selection: StackSelection,
+             verb: str) -> QaOutcome | None:
+    """The outcome for a selection that chose nothing, or None when it chose something.
+
+    Three answers, three statuses. `none` is an honest verdict only about a book we
+    actually read, so it says which one — aimed at the wrong book it used to be
+    indistinguishable from a book that declares nothing, and the run continued against no
+    stack at all. `ambiguous` and `unknown-runbook` are refusals rather than absences, and
+    both are `ok=False`: the caller asked for a stack and is not getting one.
+    """
+    where = _aim_label(root, features_root)
+    data: dict[str, Any] = {"manifest": {}, "featuresRoot": features_root,
+                            "runbooks": list(selection.candidates)}
+    if selection.reason == "no-such-name":
+        return QaOutcome(ok=False, status="unknown-runbook", data=data,
+                         message=f"the book under {where} declares no runbook by that name")
+    if selection.reason == "ambiguous":
+        return QaOutcome(
+            ok=False, status="ambiguous", data=data,
+            message=("the book under {} declares {} stack runbooks across several "
+                     "environments and none was named — pass --runbook: {}".format(
+                         where, len(selection.candidates), ", ".join(selection.candidates))))
+    return QaOutcome(
+        ok=True, status="none", data=data,
+        message=("the book under {} declares no runbook and no walkthrough server — "
+                 "nothing to {}".format(where, verb)))
+
+
+def cmd_stack_up(root: Path, *, name: str = "", features_root: str = "",
                  logger: logging.Logger | None = None) -> QaOutcome:
     """`ostler qa stack up` — bring the book's declared stack to ready, or say why not.
 
-    The manifest it derived travels out in `data` beside the verdict: a repairer told only
+    The manifests it derived travel out in `data` beside the verdict: a repairer told only
     that `prepare[1]` failed re-derives from the book what the reader already knew, and a
     book whose recipe is subtly not the one the author meant is otherwise invisible.
+
+    A multi-service environment comes up one runbook at a time, in document order, and
+    stops at the first that will not go healthy — the later services in a stack are the
+    ones that call the earlier, so continuing past a failure only produces a second,
+    derived failure to read.
     """
     log = logger or logging.getLogger(__name__)
-    manifest = load_stack(root, name=name, logger=log)
-    if not manifest:
-        return QaOutcome(
-            ok=True, status="none",
-            message=("the book declares no runbook and no walkthrough server — nothing to "
-                     "bring up"),
-            data={"manifest": {}},
-        )
-    result = stack_mod.ensure_stack(manifest, repo_root=str(root), logger=log)
-    ready = result.get("ready") == "yes"
-    how = "adopted" if result.get("adopted") == "yes" else "brought up"
-    where = result.get("entry_url") or "(no entry url)"
-    message = (f"stack {how} and healthy at {where}" if ready else
-               "stack bring-up failed at step '{}'{}".format(
-                   result.get("failed_step", "unknown"),
-                   f": {result['error'].strip()}" if result.get("error") else ""))
-    return QaOutcome(ok=ready, message=message,
-                     data={**result, "manifest": manifest, "source": manifest.get("source", "")})
+    manifests, selection = load_stacks(_graph_for(root, features_root), name=name, logger=log)
+    refused = _refusal(root, features_root, selection, "bring up")
+    if refused is not None and not manifests:
+        return refused
+    results: list[dict[str, Any]] = []
+    for manifest in manifests:
+        result = stack_mod.ensure_stack(manifest, repo_root=str(root), logger=log)
+        results.append({**result, "manifest": manifest, "source": manifest.get("source", "")})
+        if result.get("ready") != "yes":
+            return QaOutcome(
+                ok=False,
+                message="stack bring-up failed for '{}' at step '{}'{}".format(
+                    manifest.get("source", "?"), result.get("failed_step", "unknown"),
+                    f": {result['error'].strip()}" if result.get("error") else ""),
+                data={**result, "manifest": manifest, "stacks": results,
+                      "source": manifest.get("source", "")})
+    last = results[-1]
+    how = "adopted" if last.get("adopted") == "yes" else "brought up"
+    where = ", ".join(r.get("entry_url") or "(no entry url)" for r in results)
+    plural = "" if len(results) == 1 else f" ({len(results)} services)"
+    return QaOutcome(
+        ok=True, message=f"stack {how} and healthy at {where}{plural}",
+        data={**last, "stacks": results, "environment": selection.environment})
 
 
-def cmd_stack_down(root: Path, *, name: str = "",
+def cmd_stack_down(root: Path, *, name: str = "", features_root: str = "",
                    logger: logging.Logger | None = None) -> QaOutcome:
     """`ostler qa stack down` — run the declared teardown, or leave an expensive stack up.
 
@@ -396,18 +561,22 @@ def cmd_stack_down(root: Path, *, name: str = "",
     emulator is cheaper left serving than rebuilt.
     """
     log = logger or logging.getLogger(__name__)
-    manifest = load_stack(root, name=name, logger=log)
-    if not manifest:
-        return QaOutcome(ok=True, status="none",
-                         message="the book declares no runbook — nothing to tear down")
-    result = stack_mod.teardown_stack({}, manifest, logger=log)
-    torn = result.get("torn_down", "no")
+    manifests, selection = load_stacks(_graph_for(root, features_root), name=name, logger=log)
+    refused = _refusal(root, features_root, selection, "tear down")
+    if refused is not None and not manifests:
+        return refused
+    # Reverse of bring-up order: the service that was started last is the one holding
+    # connections to the ones under it.
+    results = [stack_mod.teardown_stack({}, manifest, logger=log)
+               for manifest in reversed(manifests)]
+    torn = {r.get("torn_down", "no") for r in results}
+    verdict = "no" if "no" in torn else ("skipped" if torn == {"skipped"} else "yes")
     return QaOutcome(
-        ok=torn != "no",
+        ok=verdict != "no",
         message={"yes": "stack torn down",
                  "skipped": "no `stop:` recipe — leaving the stack serving"}.get(
-                     torn, "teardown failed"),
-        data=result,
+                     verdict, "teardown failed"),
+        data={**results[-1], "stacks": results},
     )
 
 
@@ -419,8 +588,12 @@ __all__ = [
     "cmd_stack_down",
     "cmd_stack_up",
     "is_stack_runbook",
+    "StackSelection",
+    "environment_of",
     "load_stack",
+    "load_stacks",
     "select_runbook",
+    "select_stack",
     "select_server",
     "stack_runbooks",
     "steps_of",
