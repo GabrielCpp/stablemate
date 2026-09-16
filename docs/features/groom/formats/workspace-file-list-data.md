@@ -5,7 +5,7 @@ title: Workspace file list data
 ---
 # Workspace file list data
 
-Workspace file list data is the file-tree contract used by the [serve workspace file list](http/groom.md#serve-workspace-file-list) invocation, the connected sidecar data plane described by [sidecar live sessions](sidecar-live-sessions.md), and the fallback [workspace volume file-list reader](concepts/workspace-volume-file-list-reader.md). It represents one selected workflow checkout as repo-relative file paths and is consumed by the [dashboard tree builder](concepts/dashboard-tree-builder.md) for the [groom dashboard](gui/screens/groom-dashboard.md) Files panel. On the sidecar websocket it is the successful `getTree` [sidecar websocket frame](sidecar-websocket-frame.md) result object under `rpc_result.data`; on the HTTP surface the endpoint first asks the [sidecar RPC helper](concepts/sidecar-rpc-helper.md) for that object and returns the resulting path list as the JSON object `{"paths": [...]}`.
+Workspace file list data is the file-tree contract used by the [serve workspace file list](../http/groom.md#serve-workspace-file-list) invocation, the connected sidecar data plane described by [sidecar live sessions](../sidecar-live-sessions.md), and the fallback [workspace volume file-list reader](../concepts/workspace-volume-file-list-reader.md). It represents one selected workflow checkout as repo-relative file paths and is consumed by the [dashboard tree builder](../concepts/dashboard-tree-builder.md) for the [groom dashboard](../gui/screens/groom-dashboard.md) Files panel. On the sidecar websocket it is the successful `getTree` [sidecar websocket frame](sidecar-websocket-frame.md) result object under `rpc_result.data`; on the HTTP surface the endpoint first asks the [sidecar RPC helper](../concepts/sidecar-rpc-helper.md) for that object and returns the resulting path list as the JSON object `{"paths": [...]}`.
 
 The list stays flat on the wire. Nesting is a pure function of the paths and a display decision the browser is already making — it decides which directories start collapsed — so projecting a tree here would put half a rendering choice on the wire.
 
@@ -19,7 +19,7 @@ The path-list contract, including endpoint source selection, sidecar handling, p
 - code: groom/groom/localfs.py::list_files
 - code: groom/groom/assets/dashboard.js::loadFiles
 - code: groom/groom/assets/dashboard.js::buildTree
-- detail: [Dashboard tree input selection](concepts/dashboard-tree-input-selection.md)
+- detail: [Dashboard tree input selection](../concepts/dashboard-tree-input-selection.md)
 - tests: groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
   groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
   groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors,
@@ -34,7 +34,7 @@ The path-list contract, including endpoint source selection, sidecar handling, p
 The sidecar's `getTree` handler delegates path discovery to its local tree reader; `groom/groom/sidecar.py::_handle_rpc` places that result in the successful `rpc_result` frame.
 
 - consistency: sidecar-websocket-frame — a live sidecar handling `rpc` method `getTree` returns `{"paths": [...]}` as the `data` object in a successful `rpc_result` frame, as constructed by `groom/groom/sidecar.py::_rpc_get_tree`.
-- endpoint producer: the `/files/{container_id}` endpoint first asks the live sidecar for a `getTree` result through the [sidecar RPC helper](concepts/sidecar-rpc-helper.md) and otherwise asks the fallback reader — the local-filesystem one for a native run, the Docker-volume one otherwise — for the same path list; both branches return only the final path list, not producer metadata.
+- endpoint producer: the `/files/{container_id}` endpoint first asks the live sidecar for a `getTree` result through the [sidecar RPC helper](../concepts/sidecar-rpc-helper.md) and otherwise asks the fallback reader — the local-filesystem one for a native run, the Docker-volume one otherwise — for the same path list; both branches return only the final path list, not producer metadata.
 - websocket consumer: the host-side sidecar RPC resolver delivers the successful `data` object unchanged to the `/files/{container_id}` endpoint, while an absent connection or expected sidecar RPC error becomes `None` so the endpoint can use the fallback volume reader.
 - HTTP consumer: the dashboard parses the JSON body, reads its `paths` member, and builds the collapsible Files panel tree from those path strings. There is no line splitting, trimming, or blank-line filtering step — the list arrives as a list.
 - media forms: both surfaces use the same JSON object with one `paths` member — `rpc_result.data` on the sidecar socket, the whole response body over HTTP. The browser-internal form is the parsed `paths` array, used as-is.

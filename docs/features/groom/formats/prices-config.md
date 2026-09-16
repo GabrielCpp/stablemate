@@ -5,12 +5,12 @@ title: Prices configuration file
 ---
 # Prices configuration file
 
-Override or extend the built-in [pricing module](concepts/groom-prices-module.md) rate table by adding vendor rate cards as TOML. The file is read once per process and cached, so a rate card change requires a new `groom` invocation. A malformed file is logged and ignored rather than failing startup, so pricing becomes unavailable rather than blocking the dashboard.
+Override or extend the built-in [pricing module](../concepts/groom-prices-module.md) rate table by adding vendor rate cards as TOML. The file is read once per process and cached, so a rate card change requires a new `groom` invocation. A malformed file is logged and ignored rather than failing startup, so pricing becomes unavailable rather than blocking the dashboard.
 
 - file: `~/.config/stablemate/prices.toml` (or `$GROOM_PRICES` if set)
 - config: per-operator, per-vendor, keyed by model id
 - code: groom/groom/prices.py::_overrides
-- detail: [Price dataclass](concepts/groom-prices-module.md#price)
+- detail: [Price dataclass](../concepts/groom-prices-module.md#price)
 - tests: groom/tests/test_prices.py
 
 ## Format
@@ -48,8 +48,8 @@ Dollars per million input tokens at this vendor's rates.
 - semantics: must be non-negative
 - semantics: replaces the built-in rate for this model
 - code: groom/groom/prices.py::_overrides
-- detail: [Price.input](concepts/groom-prices-module.md#field-input)
-- detail: [Prices override entry fields](concepts/prices-override-entry-fields.md)
+- detail: [Price.input](../concepts/groom-prices-module.md#field-input)
+- detail: [Prices override entry fields](../concepts/prices-override-entry-fields.md)
 
 ### field: output
 
@@ -61,8 +61,8 @@ Dollars per million output tokens at this vendor's rates.
 - semantics: must be non-negative
 - semantics: replaces the built-in rate for this model
 - code: groom/groom/prices.py::_overrides
-- detail: [Price.output](concepts/groom-prices-module.md#field-output)
-- detail: [Prices override entry fields](concepts/prices-override-entry-fields.md)
+- detail: [Price.output](../concepts/groom-prices-module.md#field-output)
+- detail: [Prices override entry fields](../concepts/prices-override-entry-fields.md)
 
 ### field: cache_read
 
@@ -74,8 +74,8 @@ Dollars per million cache-hit tokens at this vendor's rates.
 - semantics: cache-read cost in USD
 - semantics: when omitted, derived from input rate at Anthropic's 0.1x multiplier
 - code: groom/groom/prices.py::_overrides
-- detail: [Price.cache_read](concepts/groom-prices-module.md#field-cache_read)
-- detail: [Prices override entry fields](concepts/prices-override-entry-fields.md)
+- detail: [Price.cache_read](../concepts/groom-prices-module.md#field-cache_read)
+- detail: [Prices override entry fields](../concepts/prices-override-entry-fields.md)
 
 ### field: cache_write
 
@@ -87,6 +87,6 @@ Dollars per million cache-creation tokens at this vendor's rates.
 - semantics: cache-write cost for hour-TTL contexts in USD
 - semantics: when omitted, derived from input rate at Anthropic's 2.0x multiplier
 - code: groom/groom/prices.py::_overrides
-- detail: [Price.cache_write](concepts/groom-prices-module.md#field-cache_write)
-- detail: [Prices override entry fields](concepts/prices-override-entry-fields.md)
+- detail: [Price.cache_write](../concepts/groom-prices-module.md#field-cache_write)
+- detail: [Prices override entry fields](../concepts/prices-override-entry-fields.md)
 

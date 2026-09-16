@@ -5,7 +5,7 @@ title: Sidecar websocket frame
 ---
 # Sidecar websocket frame
 
-The sidecar websocket frame is the JSON message format exchanged on the [websocket-sidecar](http/groom.md#websocket-sidecar) endpoint during [sidecar live sessions](sidecar-live-sessions.md). Incoming sidecar-to-groom frames are consumed by `dashboard_sidecar`; [method-_hello_frame](#method-_hello_frame) creates the full-state `hello` frame from [sidecar identity data](sidecar-identity-data.md) and [sidecar snapshot data](sidecar-snapshot-data.md), while the [sidecar connected session](concepts/sidecar-connected-session.md) and [sidecar outbound sender](concepts/sidecar-outbound-sender.md) emit `progress`, `blocked`, and `rpc_result` frames from filesystem change events and local data-plane RPC handlers. Groom-to-sidecar `rpc` and `reload` frames are emitted through the registered [sidecar connection](concepts/sidecar-connection.md) held by the [sidecar connection registry](concepts/sidecar-connection-registry.md). `hello` and `blocked` variants create or replace [gate info](concepts/gate-info.md) records when they advertise non-empty gate paths, while `rpc_result.data` embeds the sidecar-produced portions of [workspace file list data](workspace-file-list-data.md), [workspace file content data](workspace-file-content-data.md), or [workspace diff data](workspace-diff-data.md).
+The sidecar websocket frame is the JSON message format exchanged on the [websocket-sidecar](../http/groom.md#websocket-sidecar) endpoint during [sidecar live sessions](../sidecar-live-sessions.md). Incoming sidecar-to-groom frames are consumed by `dashboard_sidecar`; [method-_hello_frame](#method-_hello_frame) creates the full-state `hello` frame from [sidecar identity data](sidecar-identity-data.md) and [sidecar snapshot data](sidecar-snapshot-data.md), while the [sidecar connected session](../concepts/sidecar-connected-session.md) and [sidecar outbound sender](../concepts/sidecar-outbound-sender.md) emit `progress`, `blocked`, and `rpc_result` frames from filesystem change events and local data-plane RPC handlers. Groom-to-sidecar `rpc` and `reload` frames are emitted through the registered [sidecar connection](../concepts/sidecar-connection.md) held by the [sidecar connection registry](../concepts/sidecar-connection-registry.md). `hello` and `blocked` variants create or replace [gate info](../concepts/gate-info.md) records when they advertise non-empty gate paths, while `rpc_result.data` embeds the sidecar-produced portions of [workspace file list data](workspace-file-list-data.md), [workspace file content data](workspace-file-content-data.md), or [workspace diff data](workspace-diff-data.md).
 
 - file: websocket text frames on `WS /sidecar`; no on-disk file.
 - code: groom/groom/app.py::dashboard_sidecar
@@ -34,7 +34,7 @@ The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_m
 - discriminator: top-level `type` string selects the variant.
 - direction: `hello`, `progress`, `blocked`, and `rpc_result` are sidecar-to-groom frames; `rpc` and `reload` are groom-to-sidecar frames.
 - variants: `hello` is a full-state advertise sent immediately on every sidecar connect or reconnect; `progress` is a current-node liveness delta; `blocked` is a single open-gate delta; `rpc` is a host request for sidecar-local file tree, file content, or diff data; `rpc_result` is the sidecar reply to one `rpc`; `reload` is a host request to reload the sidecar process.
-- consistency rule: sidecar-serving-loop — receiving a `reload` frame makes the [sidecar serving loop](concepts/sidecar-serving-loop.md) end its websocket session and exit with reload status `3`, as implemented by `groom/groom/sidecar.py::_serve`.
+- consistency rule: sidecar-serving-loop — receiving a `reload` frame makes the [sidecar serving loop](../concepts/sidecar-serving-loop.md) end its websocket session and exit with reload status `3`, as implemented by `groom/groom/sidecar.py::_serve`.
 - serialization: the sidecar serializes outbound frames with ordinary JSON text and parses inbound host frames from JSON text; the host endpoint accepts decoded websocket JSON values and sends host-originated `rpc` and `reload` frames as JSON objects through the accepted socket.
 - message object rule: every first-party frame is a JSON object; the host endpoint explicitly ignores non-object decoded sidecar frames, while the sidecar session defines only object-shaped host frames as valid input after JSON parsing.
 - ordering: frames are processed in socket receive order; a useful `hello` must establish the connection before non-hello sidecar-to-groom frames have effects.
@@ -77,14 +77,14 @@ The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_m
 - required: true for sidecar registration
 - meaning: workflow container id; groom normalizes it with `str(value)[:12]` and ignores the hello when the normalized value is empty.
 - applies-to: `hello.identity`
-- consumer effect: a useful normalized id scopes the registered [sidecar connection](concepts/sidecar-connection.md), the workflow upsert, and any [gate info](concepts/gate-info.md) rebuilt from the hello snapshot.
+- consumer effect: a useful normalized id scopes the registered [sidecar connection](../concepts/sidecar-connection.md), the workflow upsert, and any [gate info](../concepts/gate-info.md) rebuilt from the hello snapshot.
 
 ### field-identity-name
 
 - type: any JSON value accepted by workflow assignment
 - default: omitted
 - required: false
-- meaning: workflow display name; non-null values update the [workflow container](concepts/workflow-container.md).
+- meaning: workflow display name; non-null values update the [workflow container](../concepts/workflow-container.md).
 - applies-to: `hello.identity`
 
 ### field-identity-repo-name
@@ -92,7 +92,7 @@ The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_m
 - type: any JSON value accepted by workflow assignment
 - default: omitted
 - required: false
-- meaning: repository name shown for the workflow; non-null values update the [workflow container](concepts/workflow-container.md).
+- meaning: repository name shown for the workflow; non-null values update the [workflow container](../concepts/workflow-container.md).
 - applies-to: `hello.identity`
 
 ### field-identity-repo-branch
@@ -100,7 +100,7 @@ The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_m
 - type: any JSON value accepted by workflow assignment
 - default: omitted
 - required: false
-- meaning: repository branch shown for the workflow; non-null values update the [workflow container](concepts/workflow-container.md).
+- meaning: repository branch shown for the workflow; non-null values update the [workflow container](../concepts/workflow-container.md).
 - applies-to: `hello.identity`
 
 ### field-snapshot
@@ -125,7 +125,7 @@ The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_m
 - type: truthy/falsy JSON value
 - default: falsey
 - required: false
-- meaning: truthy values mark the [workflow state](concepts/workflow-state.md) as `finished`; otherwise rebuilt gates decide `blocked` versus `running`.
+- meaning: truthy values mark the [workflow state](../concepts/workflow-state.md) as `finished`; otherwise rebuilt gates decide `blocked` versus `running`.
 - applies-to: `hello.snapshot`
 
 ### field-snapshot-gates
@@ -141,7 +141,7 @@ The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_m
 - type: string-convertible JSON value
 - default: `""`
 - required: true for a gate entry to be retained
-- meaning: gate file path and dictionary key for a rebuilt [gate info](concepts/gate-info.md) record; empty values are skipped.
+- meaning: gate file path and dictionary key for a rebuilt [gate info](../concepts/gate-info.md) record; empty values are skipped.
 - applies-to: `hello.snapshot.gates[]`
 
 ### field-snapshot-gates-question
@@ -149,7 +149,7 @@ The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_m
 - type: string-convertible JSON value
 - default: `""`
 - required: false
-- meaning: operator question text stored on the rebuilt [gate info](concepts/gate-info.md) record.
+- meaning: operator question text stored on the rebuilt [gate info](../concepts/gate-info.md) record.
 - applies-to: `hello.snapshot.gates[]`
 
 ### field-current-node
@@ -187,7 +187,7 @@ The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_m
 - required: true for RPC correlation
 - meaning: per-connection correlation id for `rpc_result` replies and host-issued `rpc` requests.
 - applies-to: `rpc_result`, `rpc`
-- correlation: host-issued `rpc` ids are decimal strings increasing by one per [sidecar connection](concepts/sidecar-connection.md); the sidecar copies the request id unchanged into the reply frame.
+- correlation: host-issued `rpc` ids are decimal strings increasing by one per [sidecar connection](../concepts/sidecar-connection.md); the sidecar copies the request id unchanged into the reply frame.
 - unknown-result rule: host-side `rpc_result` frames whose normalized id does not match a pending request are ignored without raising, broadcasting, or mutating workflow state.
 
 ### field-ok
@@ -291,7 +291,7 @@ The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_m
 - abstract: false
 - raises: none intentionally raised by the wrapper itself.
 - verify: json_path(path="exception.type", absent=true)
-- raises: exceptions outside the delegated [sidecar identity data](sidecar-identity-data.md) or [sidecar snapshot](concepts/sidecar-snapshot.md) contracts can propagate to the caller.
+- raises: exceptions outside the delegated [sidecar identity data](sidecar-identity-data.md) or [sidecar snapshot](../concepts/sidecar-snapshot.md) contracts can propagate to the caller.
 - verify: json_path(path="exception.type", matches=".+")
 - code: groom/groom/sidecar.py::_hello_frame
 - tests: groom/tests/test_sidecar_session.py::test_hello_frame_carries_identity_and_snapshot
@@ -302,10 +302,10 @@ The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_m
 - snapshot: the returned frame embeds a fresh [sidecar snapshot data](sidecar-snapshot-data.md) object under top-level `snapshot` for current node, terminal state, and open gates.
 - freshness: both delegated values are evaluated for this call; the helper does not cache identity or snapshot data across reconnects.
 - effects: performs only the delegated local reads needed by identity and snapshot production; does not serialize JSON, send on a websocket, open or close a socket, install filesystem watches, register host-side connections, perform HTTP pushes, mutate workflow state, write files, or decide host workflow state.
-- calls: [Sidecar identity data](sidecar-identity-data.md) and [method-snapshot](concepts/sidecar-snapshot.md#method-snapshot), in that order.
+- calls: [Sidecar identity data](sidecar-identity-data.md) and [method-snapshot](../concepts/sidecar-snapshot.md#method-snapshot), in that order.
 - algorithm:
 1. Build fresh [sidecar identity data](sidecar-identity-data.md).
-2. Build fresh [sidecar snapshot data](sidecar-snapshot-data.md) through [method-snapshot](concepts/sidecar-snapshot.md#method-snapshot).
+2. Build fresh [sidecar snapshot data](sidecar-snapshot-data.md) through [method-snapshot](../concepts/sidecar-snapshot.md#method-snapshot).
 3. Return a JSON-compatible object containing `type: "hello"`, the identity object, and the snapshot object.
 
 ### method-_classify_event
@@ -317,12 +317,12 @@ The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_m
 - raises: unexpected exceptions from the current-node reader or gate text parser can propagate.
 - verify: json_path(path="exception.type", matches=".+")
 - code: groom/groom/sidecar.py::_classify_event
-- input: one absolute changed path, as reported by the [sidecar filesystem watch](concepts/sidecar-filesystem-watch.md).
+- input: one absolute changed path, as reported by the [sidecar filesystem watch](../concepts/sidecar-filesystem-watch.md).
 - output: one outbound sidecar websocket frame object for an interesting file event, or `None` when the path should not emit a frame.
 - effects: reads local sidecar filesystem state only when a non-runs path must be classified; it does not send websocket text, enqueue frames, install watches, send residual HTTP pushes, mutate files, mutate host workflow state, or raise reload control signals.
 - directory rule: no special case is needed. A directory is not readable as text, so it falls out at the read below, and a subtree created inside a watched tree needs no watch installed for it.
 - mount-comparison rule: a path is tested against each mount literally and then with both sides resolved, so a mount reached through a symlink (macOS's `/var` -> `/private/var`) still yields a mount-relative path rather than an absolute one.
-- runs rule: when the changed path is under the configured runs mount, returns a `progress` frame with `type: "progress"` and `current_node` equal to a fresh [method-_current_node](concepts/sidecar-snapshot.md#method-_current_node) read.
+- runs rule: when the changed path is under the configured runs mount, returns a `progress` frame with `type: "progress"` and `current_node` equal to a fresh [method-_current_node](../concepts/sidecar-snapshot.md#method-_current_node) read.
 - verify: json_path(path="$.current_node", equals="resolve")
 - tests: groom/tests/test_sidecar_session.py::test_classify_event_runs_write_is_progress
 - workspace read rule: non-runs paths are read as text; an `OSError` while reading — a directory, or a file already deleted by the time the coalesced batch arrives — returns `None`.
@@ -334,7 +334,7 @@ The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_m
 - tests: groom/tests/test_sidecar_session.py::test_classify_event_awaiting_gate_is_blocked
 - path rule: the `blocked.file_path` value is workspace-relative when the full event path can be relativized to the configured workspace mount, otherwise it falls back to the observed full path string.
 - freshness: both progress and blocked frame payloads are computed at classification time; the method carries no cursor, debounce state, deduplication cache, timestamp, or previous event memory.
-- calls: [method-_current_node](concepts/sidecar-snapshot.md#method-_current_node) for runs events, [method-status-of](operator-gate-context-file.md#method-status-of) for gate lifecycle classification, and [method-extract-question](operator-gate-context-file.md#method-extract-question) for blocked-question extraction.
+- calls: [method-_current_node](../concepts/sidecar-snapshot.md#method-_current_node) for runs events, [method-status-of](operator-gate-context-file.md#method-status-of) for gate lifecycle classification, and [method-extract-question](operator-gate-context-file.md#method-extract-question) for blocked-question extraction.
 - algorithm:
   1. If the changed path is under the runs mount, return a `progress` frame with the latest current node.
   2. Read the changed path as text; return `None` if it cannot be read — which is also how directories and already-deleted files fall out.

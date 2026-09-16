@@ -5,7 +5,7 @@ title: Sidecar hello applier
 ---
 # Sidecar hello applier
 
-The sidecar hello applier is the groom server layer that folds a connected sidecar's useful `hello` [sidecar websocket frame](../sidecar-websocket-frame.md) into the process-local [workflow registry](workflow-registry.md) during the [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) invocation. It treats the embedded [sidecar snapshot data](../sidecar-snapshot-data.md) as authoritative for the connected container's current gates, uses the [push-first volume metadata resolver](push-first-volume-metadata-resolver.md) before applying workflow identity, writes [workflow container](workflow-container.md) state through [upsert workflow](workflow-registry.md#method-upsert-workflow), creates [gate info](gate-info.md) records for retained snapshot gates, and finishes by calling the [dashboard shell broadcaster](dashboard-shell-broadcaster.md).
+The sidecar hello applier is the groom server layer that folds a connected sidecar's useful `hello` [sidecar websocket frame](../formats/sidecar-websocket-frame.md) into the process-local [workflow registry](workflow-registry.md) during the [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) invocation. It treats the embedded [sidecar snapshot data](../formats/sidecar-snapshot-data.md) as authoritative for the connected container's current gates, uses the [push-first volume metadata resolver](push-first-volume-metadata-resolver.md) before applying workflow identity, writes [workflow container](workflow-container.md) state through [upsert workflow](workflow-registry.md#method-upsert-workflow), creates [gate info](gate-info.md) records for retained snapshot gates, and finishes by calling the [dashboard shell broadcaster](dashboard-shell-broadcaster.md).
 
 The [method contract](groom-app-module.md#method-apply-hello) and [sidecar hello state transition](workflow-state.md#transition-sidecar-hello) document the same implementation from different contexts; neither supersedes the other. Use the method contract for its callable interface and propagated failures. Use the transition for lifecycle-state inputs and outcomes. `_apply_hello` clears the existing gate map before inspecting the snapshot, then selects `finished` for a terminal marker or `blocked`/`running` from the rebuilt gates, so the two views must remain aligned.
 
@@ -64,7 +64,7 @@ Fold one useful sidecar `hello` frame for one already accepted sidecar websocket
 
 #### Effects
 
-- Reads: `identity` and `snapshot` from the decoded [sidecar websocket frame](../sidecar-websocket-frame.md), replacing missing or falsey objects with empty objects.
+- Reads: `identity` and `snapshot` from the decoded [sidecar websocket frame](../formats/sidecar-websocket-frame.md), replacing missing or falsey objects with empty objects.
 - Calls: [push-first volume metadata resolver](push-first-volume-metadata-resolver.md) for the normalized container id before any hello-specific registry upsert.
 - Calls: [workflow registry upsert](workflow-registry.md#method-upsert-workflow) with `name`, `repo_name`, and `repo_branch` from the hello identity.
 - Writes: the returned [workflow container](workflow-container.md)'s current node only when `snapshot.current_node` is truthy.

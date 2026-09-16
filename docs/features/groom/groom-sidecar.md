@@ -106,7 +106,7 @@ exit through argparse's standard usage/error path.
     selected mode is never entered.
   - An import-time sidecar runtime failure propagates out of the command.
   - When `--query` is true, calls `groom/groom/sidecar.py::snapshot`.
-  - Query mode serializes the returned [sidecar snapshot data](sidecar-snapshot-data.md)
+  - Query mode serializes the returned [sidecar snapshot data](formats/sidecar-snapshot-data.md)
     as JSON to stdout.
   - Query mode returns after writing its JSON snapshot.
   - Query mode does not start the exit-notice path.
@@ -123,7 +123,7 @@ exit through argparse's standard usage/error path.
   - Exit-notice mode returns after calling `groom/groom/sidecar.py::push_exited`.
   - Exit-notice mode does not start the live watch/session loop.
   - The exited notice path merges sidecar identity into the
-    [exited push payload](exited-push-payload.md).
+    [exited push payload](formats/exited-push-payload.md).
   - The exited push payload carries the supplied `exit_code` integer.
   - The exited notice posts its JSON body to `POST /push/exited` on the host
     groom service.

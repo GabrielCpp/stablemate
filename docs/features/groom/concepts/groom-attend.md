@@ -52,7 +52,7 @@ A second dispatch for the same run is rejected — the blocked check calls `_blo
 - does: dispatch an `AttendJob` with `kind = "gate"` and return it when no rejection fires
 - returns: the job if dispatched, `None` if any reject clause fired
 - code: `groom/groom/attend.py::attend_gate`
-- detail: [attend job](../attend-job.md)
+- detail: [attend job](../formats/attend-job.md)
 - verify: emitted(event="AttendJob", count=1)
 
 ### method: attend_death
@@ -63,7 +63,7 @@ A second dispatch for the same run is rejected — the blocked check calls `_blo
 - does: dispatch the job and return it
 - returns: the job if dispatched, `None` if rejected
 - code: `groom/groom/attend.py::attend_death`
-- detail: [attend job](../attend-job.md)
+- detail: [attend job](../formats/attend-job.md)
 - verify: emitted(event="AttendJob", count=1)
 
 ### read_failure
@@ -84,7 +84,7 @@ The headless dispatch spawns a Claude agent in the run's workspace and owns its 
   - write a row to the `attend` table with `status = running` before the process runs
   - start a daemon thread that waits on the process, fetches its transcript if it ran, and finishes the row
 - code: `groom/groom/attend.py::spawn_headless`
-- detail: [reason method](../attend-job.md#reason)
+- detail: [reason method](../formats/attend-job.md#reason)
 - verify: persists(subject="attend table row", field="status", value="running")
 
 The spawned prompt is the attendant doctrine (shipped in `groom/groom/prompts/attend-gate.md`) followed by the job's `.facts()` summary. The doctrine establishes the rules; the facts give context (run id, workspace, gate body or failure summary, etc.). The stdout is discarded (the session transcript is the record).

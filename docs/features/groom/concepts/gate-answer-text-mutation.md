@@ -8,7 +8,7 @@ title: Gate answer text mutation
 `groom/groom/gates.py::apply_answer` has one implementation and two complementary
 documentation views. The [Groom gates module](groom-gates-module.md#apply-answer)
 view is for callers of the pure helper and its boundary from the asynchronous answer
-operation. The [operator gate context file](../operator-gate-context-file.md#method-apply-answer)
+operation. The [operator gate context file](../formats/operator-gate-context-file.md#method-apply-answer)
 view is for the resulting artifact: the status replacement, answer paragraph, and
 preservation rules that its consumers observe.
 

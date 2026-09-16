@@ -5,7 +5,7 @@ title: OTLP span record
 ---
 # OTLP span record
 
-The decoded intermediate representation of one OpenTelemetry span, produced by [parse_traces](./concepts/groom-otlp-module.md#parse_traces) and consumed by the store and alert ingestion. The span identity (trace_id, span_id, parent_id) comes directly from the protobuf; resource identity (run_id, workflow, repo, branch) is denormalized from the OTLP resource attributes so the store and alerts never need to re-join resources. Span attributes, events, and status message are flattened into the `attrs` dict, which the store JSON-encodes for later querying.
+The decoded intermediate representation of one OpenTelemetry span, produced by [parse_traces](../concepts/groom-otlp-module.md#parse_traces) and consumed by the store and alert ingestion. The span identity (trace_id, span_id, parent_id) comes directly from the protobuf; resource identity (run_id, workflow, repo, branch) is denormalized from the OTLP resource attributes so the store and alerts never need to re-join resources. Span attributes, events, and status message are flattened into the `attrs` dict, which the store JSON-encodes for later querying.
 
 - code: groom/groom/otlp.py::parse_traces
 - tests: groom/tests/test_telemetry.py

@@ -18,7 +18,7 @@ and file/diff endpoints prefer live sidecar RPC before the workspace-volume
 fallback readers.
 
 Every one of these paths ends in JSON. The push endpoints broadcast a
-[dashboard state payload](../dashboard-state-payload.md) — the same frame the live
+[dashboard state payload](../formats/dashboard-state-payload.md) — the same frame the live
 clock pushes — rather than any per-producer markup, and the file/diff endpoints
 return the same JSON bodies whether a live sidecar RPC or a workspace-volume read
 answered. That is what makes the fallback invisible to the browser: it renders one
@@ -56,10 +56,10 @@ The implementation anchors for this flow are `groom/groom/cli.py::sidecar_main`,
   3. Inside the container, [`groom-sidecar root`](../groom-sidecar.md#groom-sidecar-root)
      parses the root flags before importing the sidecar runtime. When `--query`
      is present, query mode wins even if `--exit-code` is also supplied: it calls
-     the sidecar snapshot reader, prints exactly one [sidecar snapshot data](../sidecar-snapshot-data.md)
+     the sidecar snapshot reader, prints exactly one [sidecar snapshot data](../formats/sidecar-snapshot-data.md)
      JSON object to stdout, and returns without starting the live watch/session
      loop or sending an exited notice.
-  4. The [sidecar snapshot data](../sidecar-snapshot-data.md) object contains the
+  4. The [sidecar snapshot data](../formats/sidecar-snapshot-data.md) object contains the
      latest current node from run checkpoint data, the terminal marker from run
      metadata, and every awaiting gate found by a workspace scan. Missing or
      malformed source files become empty strings or an empty gate list; a truthy
@@ -89,7 +89,7 @@ The implementation anchors for this flow are `groom/groom/cli.py::sidecar_main`,
      `push_exited(exit_code)` and returns without starting the live watch/session
      loop.
   9. The [sidecar residual HTTP push helper](../concepts/sidecar-residual-http-push-helper.md)
-     merges [sidecar identity data](../sidecar-identity-data.md) with the exited
+     merges [sidecar identity data](../formats/sidecar-identity-data.md) with the exited
      event payload, serializes a UTF-8 JSON request, and attempts exactly one
      `POST` to `http://{GROOM_HOST}:{GROOM_PORT}/push/exited` with the configured
      one-shot timeout. HTTP-open and response-close failures are swallowed, so the
@@ -100,26 +100,26 @@ The implementation anchors for this flow are `groom/groom/cli.py::sidecar_main`,
       false`, resolves Docker volume metadata when possible, upserts the workflow
       as finished, records a numeric exit code when the payload supplies one,
       clears every open gate for that workflow, broadcasts a [dashboard state
-      payload](../dashboard-state-payload.md) to every tab plus that run's
+      payload](../formats/dashboard-state-payload.md) to every tab plus that run's
       refreshed detail to the tabs watching it, and returns `ok: true` after
       broadcast succeeds.
   11. Residual progress and blocked HTTP producers use the same helper. A legacy
       or test-only event path classifies watched run writes as progress and
       awaiting workspace files as blocked, then calls `push_progress(current_node)`
       or `push_blocked(file_path, question)`. The `await_operator.py` backstop may
-      also post the same [blocked push payload](../blocked-push-payload.md)
+      also post the same [blocked push payload](../formats/blocked-push-payload.md)
       directly, making the endpoint idempotent with live sidecar delivery.
   12. The host [receive progress push](../http/groom.md#receive-progress-push)
       endpoint rejects missing container ids without mutation; otherwise it
       ensures volume metadata when possible, upserts the workflow as running,
       applies optional identity and current-node fields, preserves existing gates,
-      broadcasts a [dashboard state payload](../dashboard-state-payload.md) plus
+      broadcasts a [dashboard state payload](../formats/dashboard-state-payload.md) plus
       that run's refreshed detail to its watchers, and returns `ok: true`.
   13. The host [receive blocked push](../http/groom.md#receive-blocked-push)
       endpoint rejects missing container ids or empty gate paths without mutation;
       otherwise it ensures volume metadata when possible, upserts the workflow as
       blocked, stores or replaces the gate record for the supplied path,
-      broadcasts a [dashboard state payload](../dashboard-state-payload.md) plus
+      broadcasts a [dashboard state payload](../formats/dashboard-state-payload.md) plus
       that run's refreshed detail to its watchers, and then broadcasts a separate
       one-shot `notify` frame carrying the workflow name and the question truncated
       to the [question notification limit](../concepts/groom-app-module.md#field-question-notify-limit),

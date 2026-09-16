@@ -5,12 +5,12 @@ title: Groom sidecar hub module
 ---
 # Groom sidecar hub module
 
-The Groom sidecar hub module is the host-process side of persistent sidecar sessions. It defines the current [sidecar connection registry](sidecar-connection-registry.md), the per-socket [sidecar connection](sidecar-connection.md) object, and the [sidecar error](sidecar-error.md) failure signal used when host requests over [sidecar live sessions](../sidecar-live-sessions.md) cannot complete. The [websocket-sidecar](../http/groom.md#websocket-sidecar) endpoint owns socket acceptance and incoming [sidecar websocket frame](../sidecar-websocket-frame.md) dispatch; this module owns only the host-side connection state and outbound RPC/reload data plane. When a sidecar connection is lost, its cleanup affects only that local connection state and pending RPCs; workflow containers, gates, operator answers, workflow state, and HTTP response bodies remain owned by their respective callers and surfaces.
+The Groom sidecar hub module is the host-process side of persistent sidecar sessions. It defines the current [sidecar connection registry](sidecar-connection-registry.md), the per-socket [sidecar connection](sidecar-connection.md) object, and the [sidecar error](sidecar-error.md) failure signal used when host requests over [sidecar live sessions](../sidecar-live-sessions.md) cannot complete. The [websocket-sidecar](../http/groom.md#websocket-sidecar) endpoint owns socket acceptance and incoming [sidecar websocket frame](../formats/sidecar-websocket-frame.md) dispatch; this module owns only the host-side connection state and outbound RPC/reload data plane. When a sidecar connection is lost, its cleanup affects only that local connection state and pending RPCs; workflow containers, gates, operator answers, workflow state, and HTTP response bodies remain owned by their respective callers and surfaces.
 
 - code: groom/groom/sidecar_hub.py
 - tests: groom/tests/test_sidecar_hub.py::test_ask_questions_rides_the_registered_connections_rpc
 - tests: groom/tests/test_sidecar_hub.py::test_answer_gate_carries_run_path_and_body
-- refs: [sidecar connection registry](sidecar-connection-registry.md), [sidecar connection](sidecar-connection.md), [sidecar error](sidecar-error.md), [sidecar websocket frame](../sidecar-websocket-frame.md), [sidecar live sessions](../sidecar-live-sessions.md), [websocket-sidecar](../http/groom.md#websocket-sidecar)
+- refs: [sidecar connection registry](sidecar-connection-registry.md), [sidecar connection](sidecar-connection.md), [sidecar error](sidecar-error.md), [sidecar websocket frame](../formats/sidecar-websocket-frame.md), [sidecar live sessions](../sidecar-live-sessions.md), [websocket-sidecar](../http/groom.md#websocket-sidecar)
 
 ## Contract
 

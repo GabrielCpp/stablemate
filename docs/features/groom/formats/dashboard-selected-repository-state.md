@@ -5,7 +5,7 @@ title: Dashboard selected repository state
 ---
 # Dashboard selected repository state
 
-Dashboard selected repository state is the `repo` slice of the [dashboard client store](concepts/dashboard-client-store.md): the container/checkout pair the operator picked, plus the menu's own open-time state. It is written when a [repository menu data](repository-menu-data.md) entry is selected, and read by the files and diff panes to scope every `GET /files`, `GET /file`, and `GET /diff` request. It changes no route and no server-side state.
+Dashboard selected repository state is the `repo` slice of the [dashboard client store](../concepts/dashboard-client-store.md): the container/checkout pair the operator picked, plus the menu's own open-time state. It is written when a [repository menu data](repository-menu-data.md) entry is selected, and read by the files and diff panes to scope every `GET /files`, `GET /file`, and `GET /diff` request. It changes no route and no server-side state.
 
 Selection and menu contents live in one slice rather than two because they are read together on every render of the picker — the menu needs the entry list *and* the active index, and the picker button needs the label. Splitting them would mean two subscriptions to keep in step for a component that is one dropdown.
 
@@ -13,8 +13,8 @@ Selection and menu contents live in one slice rather than two because they are r
 - code: groom/groom/assets/dashboard.js::selectRepo
 - code: groom/groom/assets/dashboard.js::openRepoMenu
 - code: groom/groom/assets/dashboard.js::repoItems
-- detail: [repository picker item projection](concepts/repository-picker-item-projection.md)
-- refs: [dashboard client store](concepts/dashboard-client-store.md), [repository menu data](repository-menu-data.md), [workspace file list data](workspace-file-list-data.md), [workspace file content data](workspace-file-content-data.md), [workspace diff data](workspace-diff-data.md)
+- detail: [repository picker item projection](../concepts/repository-picker-item-projection.md)
+- refs: [dashboard client store](../concepts/dashboard-client-store.md), [repository menu data](repository-menu-data.md), [workspace file list data](workspace-file-list-data.md), [workspace file content data](workspace-file-content-data.md), [workspace diff data](workspace-diff-data.md)
 
 ## Contract
 

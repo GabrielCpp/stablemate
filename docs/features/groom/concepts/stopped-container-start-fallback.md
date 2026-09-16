@@ -5,13 +5,13 @@ title: Stopped container start fallback
 ---
 # Stopped container start fallback
 
-Stopped container start fallback is Groom's post-answer recovery path for a workflow container that is no longer running after the [gate-answering layer](gate-answering-layer.md) has successfully written an operator answer and cleared the in-memory [gate info](gate-info.md). The [container running-state check](container-running-state-check.md) selects this path by returning `False`; containers it reports as running continue through the normal in-place wake path without a Docker start. The fallback performs exactly one Docker `start` attempt through the [Docker subprocess runner](docker-subprocess-runner.md) owned by the [Groom Docker I/O module](groom-docker-io-module.md), then reports the outcome through an [answer result](../answer-result.md). It is intentionally narrower than workflow recreation: removed containers, compose services, missing environment, and cached launch metadata are outside this fallback.
+Stopped container start fallback is Groom's post-answer recovery path for a workflow container that is no longer running after the [gate-answering layer](gate-answering-layer.md) has successfully written an operator answer and cleared the in-memory [gate info](gate-info.md). The [container running-state check](container-running-state-check.md) selects this path by returning `False`; containers it reports as running continue through the normal in-place wake path without a Docker start. The fallback performs exactly one Docker `start` attempt through the [Docker subprocess runner](docker-subprocess-runner.md) owned by the [Groom Docker I/O module](groom-docker-io-module.md), then reports the outcome through an [answer result](../formats/answer-result.md). It is intentionally narrower than workflow recreation: removed containers, compose services, missing environment, and cached launch metadata are outside this fallback.
 
 Focused coverage for the running-container and stopped-container answer paths is provided by `groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running` and `groom/tests/test_gates.py::test_answer_gate_restarts_when_container_stopped`.
 
 - code: groom/groom/docker_io.py::docker_start
 - detail: [Docker start documentation scope](docker-start-documentation-scope.md)
-- refs: [Gate-answering layer](gate-answering-layer.md), [Container running-state check](container-running-state-check.md), [Docker subprocess runner](docker-subprocess-runner.md), [Groom Docker I/O module](groom-docker-io-module.md), [Answer result](../answer-result.md)
+- refs: [Gate-answering layer](gate-answering-layer.md), [Container running-state check](container-running-state-check.md), [Docker subprocess runner](docker-subprocess-runner.md), [Groom Docker I/O module](groom-docker-io-module.md), [Answer result](../formats/answer-result.md)
 
 ## Contract
 

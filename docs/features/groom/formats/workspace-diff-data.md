@@ -5,9 +5,9 @@ title: Workspace diff data
 ---
 # Workspace diff data
 
-Workspace diff data is the diff-viewer contract used by the [serve workspace diff](http/groom.md#serve-working-tree-diff) invocation, the connected sidecar data plane described by [sidecar live sessions](sidecar-live-sessions.md), and the fallback [workspace volume diff reader](concepts/workspace-volume-diff-reader.md). It represents one selected workflow checkout's working-tree changes as raw unified diff text. On the sidecar websocket it is the successful `getDiff` [sidecar websocket frame](sidecar-websocket-frame.md) result object under `rpc_result.data`; on the HTTP surface it serializes as the JSON object `{"diff": "<unified diff text>"}` for two [groom dashboard](gui/screens/groom-dashboard.md) consumers: diff mode, described in [changes view](changes-view.md), and the run detail pane's collapsed working-tree disclosure. The endpoint producer first asks the [sidecar RPC helper](concepts/sidecar-rpc-helper.md) for the connected sidecar's result and falls back to a volume reader — the local-filesystem one for a native run, the Docker-volume one otherwise — only when that helper returns no data.
+Workspace diff data is the diff-viewer contract used by the [serve workspace diff](../http/groom.md#serve-working-tree-diff) invocation, the connected sidecar data plane described by [sidecar live sessions](../sidecar-live-sessions.md), and the fallback [workspace volume diff reader](../concepts/workspace-volume-diff-reader.md). It represents one selected workflow checkout's working-tree changes as raw unified diff text. On the sidecar websocket it is the successful `getDiff` [sidecar websocket frame](sidecar-websocket-frame.md) result object under `rpc_result.data`; on the HTTP surface it serializes as the JSON object `{"diff": "<unified diff text>"}` for two [groom dashboard](../gui/screens/groom-dashboard.md) consumers: diff mode, described in [changes view](../changes-view.md), and the run detail pane's collapsed working-tree disclosure. The endpoint producer first asks the [sidecar RPC helper](../concepts/sidecar-rpc-helper.md) for the connected sidecar's result and falls back to a volume reader — the local-filesystem one for a native run, the Docker-volume one otherwise — only when that helper returns no data.
 
-The raw unified text stays whole inside the `diff` member instead of being projected into per-file entries. `diff2html` parses it in the browser to build the file list and the coloring, so splitting it up on the server would mean reimplementing a parser that already runs on the other end. The JSON object exists to make the body self-describing and to leave room for a member that is not the diff; it is not an attempt to structure the diff itself. Sidecar diff defaulting discovers local checkout directories with [method-_find_repo_dirs](#method-_find_repo_dirs) before [method-_git_diff](#method-_git_diff) resolves the selected checkout with [method-_repo_base](#method-_repo_base) and runs git against it; fallback diff defaulting delegates empty repository selection to the [workspace volume repository-directory reader](concepts/workspace-volume-repository-directory-reader.md).
+The raw unified text stays whole inside the `diff` member instead of being projected into per-file entries. `diff2html` parses it in the browser to build the file list and the coloring, so splitting it up on the server would mean reimplementing a parser that already runs on the other end. The JSON object exists to make the body self-describing and to leave room for a member that is not the diff; it is not an attempt to structure the diff itself. Sidecar diff defaulting discovers local checkout directories with [method-_find_repo_dirs](#method-_find_repo_dirs) before [method-_git_diff](#method-_git_diff) resolves the selected checkout with [method-_repo_base](#method-_repo_base) and runs git against it; fallback diff defaulting delegates empty repository selection to the [workspace volume repository-directory reader](../concepts/workspace-volume-repository-directory-reader.md).
 
 - file: not an on-disk artifact; this is a websocket RPC data object, HTTP response body, and sidecar/fallback handoff shape.
 - code: groom/groom/app.py::diff
@@ -18,7 +18,7 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 - code: groom/groom/sidecar.py::_rpc_get_diff
 - code: groom/groom/sidecar.py::_git_diff
 - code: groom/groom/sidecar.py::_repo_base
-- detail: [dashboard diff representation selection](concepts/dashboard-diff-representation-selection.md)
+- detail: [dashboard diff representation selection](../concepts/dashboard-diff-representation-selection.md)
 - tests: groom/tests/test_app.py::test_diff_prefers_sidecar_socket,
   groom/tests/test_app.py::test_diff_endpoint_passes_repo_through,
   groom/tests/test_docker_io.py::test_git_diff_returns_stdout_on_success,
@@ -74,7 +74,7 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 - type: `str`
 - default: `""`
 - required: false
-- wire-location: server-side [workflow container](concepts/workflow-container.md) state, not an HTTP or sidecar frame field.
+- wire-location: server-side [workflow container](../concepts/workflow-container.md) state, not an HTTP or sidecar frame field.
 - meaning: workspace volume name — or, for a native run, the checkout root path — used only by the fallback producer when sidecar RPC data is unavailable. Unknown workflow ids, missing workflow records, and empty values produce an empty `diff` member instead of starting a fallback diff read.
 
 ### field-sidecar-result
@@ -118,13 +118,13 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 - verify: json_path(path="exception.type", matches="Error$")
 - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
 - code: groom/groom/app.py::diff
-- detail: [diff documentation scopes](concepts/diff-documentation-scopes.md)
+- detail: [diff documentation scopes](../concepts/diff-documentation-scopes.md)
 - tests: groom/tests/test_app.py::test_diff_prefers_sidecar_socket
 - tests: groom/tests/test_app.py::test_diff_endpoint_passes_repo_through
 - input: `container_id` is the required HTTP path variable; `repo` is the optional query value forwarded unchanged to both producers.
 - output: one JSON object, [field-json-body](#field-json-body).
 - effects: performs a read-only sidecar RPC attempt or read-only fallback volume diff; it does not mutate workflow state, broadcast dashboard messages, render diff markup, validate repository existence, or write workspace files.
-- calls: [sidecar RPC helper](concepts/sidecar-rpc-helper.md) with method `getDiff`, then [workspace volume diff reader](concepts/workspace-volume-diff-reader.md#git-diff) or its native equivalent, only when no sidecar data is returned and the workflow has a known workspace volume.
+- calls: [sidecar RPC helper](../concepts/sidecar-rpc-helper.md) with method `getDiff`, then [workspace volume diff reader](../concepts/workspace-volume-diff-reader.md#git-diff) or its native equivalent, only when no sidecar data is returned and the workflow has a known workspace volume.
 - algorithm:
   1. Request `getDiff` over the connected sidecar data plane with `{"repo": repo}`.
   2. If the sidecar call returns any data object, return `{"diff": data.get("diff") or ""}` without consulting the fallback reader.
@@ -198,7 +198,7 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 - raises: process-launch and timeout exceptions from the shared Docker subprocess runner can propagate.
 - verify: json_path(path="exception.type", matches="(OSError|TimeoutExpired)")
 - code: groom/groom/docker_io.py::git_diff
-- detail: [Docker git diff documentation scope](concepts/docker-git-diff-documentation-scope.md)
+- detail: [Docker git diff documentation scope](../concepts/docker-git-diff-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_git_diff_returns_empty_when_no_repo_found
 - tests: groom/tests/test_docker_io.py::test_git_diff_returns_stdout_on_success
 - tests: groom/tests/test_docker_io.py::test_git_diff_returns_empty_on_git_failure
@@ -207,7 +207,7 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 - repository selection: an explicit non-empty `repo_dir` value selects `/vol/{repo_dir}` directly; an empty value asks the first-repository lookup for the first sorted checkout path in the volume, and an empty lookup result remains the no-checkout state.
 - command: runs a temporary read-only Docker container from the git image with the workspace volume mounted at `/vol`, `safe.directory=*`, selected checkout working directory, and `diff HEAD` as the only git command.
 - effects: reads Docker volume metadata and launches a read-only Docker diff command; it does not mutate files, send sidecar frames, broadcast dashboard updates, alter workflow state, or create a persistent container.
-- calls: [workspace volume repository-directory reader](concepts/workspace-volume-repository-directory-reader.md#find-repo-dir) when `repo_dir` is empty, then the [Docker subprocess runner](concepts/docker-subprocess-runner.md#run) for the read-only git command.
+- calls: [workspace volume repository-directory reader](../concepts/workspace-volume-repository-directory-reader.md#find-repo-dir) when `repo_dir` is empty, then the [Docker subprocess runner](../concepts/docker-subprocess-runner.md#run) for the read-only git command.
 - algorithm:
   1. If `repo_dir` is empty, resolve it with the first-repository lookup for `volume`.
   2. If the resolved repository directory is still empty, return `""` without starting a git command.
@@ -228,7 +228,7 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 - raises: the shared timeout becomes `""`.
 - verify: count(subject="diff lines when git exceeds the shared timeout", equals=0)
 - code: groom/groom/localfs.py::git_diff
-- detail: [native git diff documentation scope](concepts/native-git-diff-documentation-scope.md)
+- detail: [native git diff documentation scope](../concepts/native-git-diff-documentation-scope.md)
 - input: `base` is the native run's checkout root on the groom host; `repo_dir` is the optional base-relative checkout directory from the repository picker.
 - output: raw unified working-tree-versus-`HEAD` diff stdout for the selected checkout, or `""` when no checkout resolves or git exits non-zero.
 - repository selection: resolves `base/repo_dir` first; when that does not resolve and no `repo_dir` was supplied, asks the base's first-checkout lookup and resolves again. An unresolvable base returns `""` without running git.

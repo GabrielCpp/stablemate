@@ -5,7 +5,7 @@ title: Workspace volume repository-directory reader
 ---
 # Workspace volume repository-directory reader
 
-Workspace volume repository-directory reader is the fallback checkout discovery used by the [serve repository menu](../http/groom.md#serve-repository-menu) invocation to produce [repository menu data](../repository-menu-data.md) and by the [workspace volume diff reader](workspace-volume-diff-reader.md) when a diff request does not name a checkout. It reads a known workflow workspace Docker volume through the shared [Docker subprocess runner](docker-subprocess-runner.md), discovers git checkout directories near the volume root, returns volume-relative repository paths for dashboard repository selection, and can collapse that ordered list to the first checkout for single-repository callers without mutating the workspace, workflow state, sidecar registry, or dashboard clients.
+Workspace volume repository-directory reader is the fallback checkout discovery used by the [serve repository menu](../http/groom.md#serve-repository-menu) invocation to produce [repository menu data](../formats/repository-menu-data.md) and by the [workspace volume diff reader](workspace-volume-diff-reader.md) when a diff request does not name a checkout. It reads a known workflow workspace Docker volume through the shared [Docker subprocess runner](docker-subprocess-runner.md), discovers git checkout directories near the volume root, returns volume-relative repository paths for dashboard repository selection, and can collapse that ordered list to the first checkout for single-repository callers without mutating the workspace, workflow state, sidecar registry, or dashboard clients.
 
 - code: groom/groom/docker_io.py::list_repo_dirs
 - tests: groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git,
@@ -38,7 +38,7 @@ Workspace volume repository-directory reader is the fallback checkout discovery 
 
 - sig: `list_repo_dirs(volume: str) -> list[str]`
 - abstract: false
-- does: discover git checkout roots inside a workspace volume and return their volume-relative directories for [repository menu data](../repository-menu-data.md).
+- does: discover git checkout roots inside a workspace volume and return their volume-relative directories for [repository menu data](../formats/repository-menu-data.md).
 - verify: json_path(path="$[0]", equals="Acme")
 - does: builds a shell-free `docker run` command using `alpine:3.20` and `find /vol -mindepth 1 -maxdepth 2 -name .git -type d`.
 - does: accepts only trimmed stdout paths beginning with `/vol/` and ending with `/.git`, then strips those sentinels.

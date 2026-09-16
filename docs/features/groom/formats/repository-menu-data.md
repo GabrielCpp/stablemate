@@ -5,7 +5,7 @@ title: Repository menu data
 ---
 # Repository menu data
 
-Repository menu data is the JSON body of the [serve repository menu](http/groom.md#serve-repository-menu) invocation: one group per workflow container, each carrying the checkouts found on that container's workspace. The [Groom projection module](concepts/groom-projection-module.md) produces the groups after the [workspace volume repository-directory reader](concepts/workspace-volume-repository-directory-reader.md) has enumerated checkouts; the [groom dashboard](gui/screens/groom-dashboard.md) picker turns them into selectable rows. The container/repository pair the operator picks is what every later files and diff request is scoped to.
+Repository menu data is the JSON body of the [serve repository menu](../http/groom.md#serve-repository-menu) invocation: one group per workflow container, each carrying the checkouts found on that container's workspace. The [Groom projection module](../concepts/groom-projection-module.md) produces the groups after the [workspace volume repository-directory reader](../concepts/workspace-volume-repository-directory-reader.md) has enumerated checkouts; the [groom dashboard](../gui/screens/groom-dashboard.md) picker turns them into selectable rows. The container/repository pair the operator picks is what every later files and diff request is scoped to.
 
 It arrives **grouped, not flat**, because grouped is the shape the server actually has — one checkout enumeration per container — and because a row's label is derived from both halves of the pair. Flattening on the server would throw away the grouping and then oblige the client to reconstruct it to render group order. The client flattens instead, in one function, at render time.
 
@@ -15,7 +15,7 @@ Nothing in this format is markup. Every value is a string or an integer, and the
 - code: groom/groom/projection.py::repo_entries
 - code: groom/groom/assets/dashboard.js::repoItems
 - code: groom/groom/assets/dashboard.js::RepoMenu
-- detail: [repository picker item projection](concepts/repository-picker-item-projection.md)
+- detail: [repository picker item projection](../concepts/repository-picker-item-projection.md)
 - tests: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
   groom/tests/test_app.py::test_repos_endpoint_reads_native_run_from_local_disk,
   groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container,
@@ -25,7 +25,7 @@ An empty repository menu contains zero groups.
 
 ## Contract
 
-- producer: [serve repository menu](http/groom.md#serve-repository-menu) filters the process-local workflow registry to workflows with a known workspace, enumerates each one's checkouts concurrently, and hands the resulting pairs to the projection.
+- producer: [serve repository menu](../http/groom.md#serve-repository-menu) filters the process-local workflow registry to workflows with a known workspace, enumerates each one's checkouts concurrently, and hands the resulting pairs to the projection.
 - media: `application/json`. A list of group objects — the top level is a list, not an object, because there is nothing fleet-wide to say alongside it.
 - source snapshot: the endpoint reads the workflow registry once for the request; later registry changes do not mutate an already-returned menu. The picker is re-fetched every time it opens, which is how it stays current without a subscription.
 - consistency: repository-menu-data — repository menu data is never sent in dashboard WebSocket frames.
@@ -76,7 +76,7 @@ The picker fetches this shape from `GET /repos` in `groom/groom/assets/dashboard
 - default: none
 - required: true
 - wire-key: `state`
-- source: [workflow state](concepts/workflow-state.md).
+- source: [workflow state](../concepts/workflow-state.md).
 - meaning: the lifecycle state the picker's state dot shows and the projection's group sort key. It travels as the enum's value, never the enum object.
 
 ### field-group-type
@@ -136,7 +136,7 @@ The picker fetches this shape from `GET /repos` in `groom/groom/assets/dashboard
 - returns: the sorted repository menu group list, with one group per input workflow container.
 - verify: count(subject="repository menu groups", equals=2)
 - code: groom/groom/projection.py::repo_entries
-- detail: [repository menu projection contexts](concepts/repository-menu-projection-contexts.md)
+- detail: [repository menu projection contexts](../concepts/repository-menu-projection-contexts.md)
 - tests: groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container,
   groom/tests/test_projection.py::test_repo_entries_empty_when_nothing_is_running
 - input: pairs of workflow container and its discovered volume-relative checkout directories, in any order.
@@ -165,7 +165,7 @@ The picker fetches this shape from `GET /repos` in `groom/groom/assets/dashboard
 - output: [field-groups](#field-groups), serialized as the JSON response body.
 - effects: reads workflow registry state and launches one read-only checkout enumeration per eligible workflow, on worker threads; it mutates nothing.
 - concurrency: repository-enumeration — enumerations run concurrently rather than in sequence, because each is an independent throwaway process and a serial fleet-sized loop would make opening the picker feel like a page load.
-- calls: the local-filesystem or Docker-volume [workspace volume repository-directory reader](concepts/workspace-volume-repository-directory-reader.md) per workflow, then [method-repo-entries](#method-repo-entries).
+- calls: the local-filesystem or Docker-volume [workspace volume repository-directory reader](../concepts/workspace-volume-repository-directory-reader.md) per workflow, then [method-repo-entries](#method-repo-entries).
 - algorithm:
   1. Take the fleet snapshot and keep only workflows with a non-empty workspace volume.
   2. For each, pick the native or Docker checkout lister by the workflow's native flag and run it on a worker thread.

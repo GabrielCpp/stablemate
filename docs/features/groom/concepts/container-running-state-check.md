@@ -5,10 +5,10 @@ title: Container running-state check
 ---
 # Container running-state check
 
-Container running-state check is the `is_running` public member of the [Groom Docker I/O module](groom-docker-io-module.md) and Groom's read-only boolean lifecycle probe for one Docker container id. The [gate-answering layer](gate-answering-layer.md) uses it after a successful answer-file write to distinguish the normal in-place wake path from the [stopped container start fallback](stopped-container-start-fallback.md), while the check itself delegates raw metadata lookup to the [Docker inspection reader](docker-inspection-reader.md) and reads only the `State.Running` value from the [Docker inspect container object](../docker-inspect-container-object.md).
+Container running-state check is the `is_running` public member of the [Groom Docker I/O module](groom-docker-io-module.md) and Groom's read-only boolean lifecycle probe for one Docker container id. The [gate-answering layer](gate-answering-layer.md) uses it after a successful answer-file write to distinguish the normal in-place wake path from the [stopped container start fallback](stopped-container-start-fallback.md), while the check itself delegates raw metadata lookup to the [Docker inspection reader](docker-inspection-reader.md) and reads only the `State.Running` value from the [Docker inspect container object](../formats/docker-inspect-container-object.md).
 
 - code: groom/groom/docker_io.py::is_running
-- refs: [Groom Docker I/O module](groom-docker-io-module.md), [Docker inspection reader](docker-inspection-reader.md), [Docker inspect container object](../docker-inspect-container-object.md)
+- refs: [Groom Docker I/O module](groom-docker-io-module.md), [Docker inspection reader](docker-inspection-reader.md), [Docker inspect container object](../formats/docker-inspect-container-object.md)
 
 ## Contract
 
@@ -16,7 +16,7 @@ Container running-state check is the `is_running` public member of the [Groom Do
 - input: `container_id` is a required string passed unchanged to the Docker inspection reader; this concept does not normalize, truncate, validate, or map it to another workflow identity.
 - identity semantics: accepts whatever full or short id Docker accepts for inspection; a successful result only reports process liveness for that Docker target and does not prove that the target is still a workhorse workflow container.
 - lookup: obtains raw container metadata from the [Docker inspection reader](docker-inspection-reader.md), which returns the first parsed `docker inspect` object or no metadata.
-- observed field: reads the nested `State.Running` value from the [Docker inspect container object](../docker-inspect-container-object.md#field-state-running).
+- observed field: reads the nested `State.Running` value from the [Docker inspect container object](../formats/docker-inspect-container-object.md#field-state-running).
 - call boundary: calls exactly one Groom source symbol, `docker_inspect`, and performs no direct Docker subprocess call itself.
 - defaulting: Docker inspection failures represented by the reader as no metadata, including non-zero `docker inspect`, malformed JSON, and an empty inspect array, are all treated as not running.
 - output: returns `True` only when inspection metadata is present and the nested `State.Running` value is truthy.

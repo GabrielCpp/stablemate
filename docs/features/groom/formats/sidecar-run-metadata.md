@@ -7,19 +7,19 @@ title: Sidecar run metadata
 
 Sidecar run metadata is the latest workflow run's `run.json` object stored under
 a workflow container's `/runs` mount. Groom consumes it in two places: the
-[sidecar snapshot](concepts/sidecar-snapshot.md) terminal reader maps its
+[sidecar snapshot](../concepts/sidecar-snapshot.md) terminal reader maps its
 `terminal` field into [sidecar snapshot data](sidecar-snapshot-data.md), and the
-[workflow discovery scan](concepts/workflow-discovery-scan.md#method-current-run-state)
+[workflow discovery scan](../concepts/workflow-discovery-scan.md#method-current-run-state)
 volume fallback maps the same field into the [volume reconstruction workflow-state
-transition](concepts/workflow-state.md#transition-volume-reconstruction). A
-truthy terminal value is terminal evidence for the [workflow state](concepts/workflow-state.md);
+transition](../concepts/workflow-state.md#transition-volume-reconstruction). A
+truthy terminal value is terminal evidence for the [workflow state](../concepts/workflow-state.md);
 missing runs, missing files, unreadable or malformed JSON, absent `terminal`, and
 falsey `terminal` values all mean no terminal marker is available.
 
 - file: `/runs/<latest-run-directory>/run.json`
 - code: groom/groom/sidecar.py::_terminal
 - code: groom/groom/discovery.py::_current_run_state
-- detail: [volume run-state evidence](concepts/volume-run-state-evidence.md)
+- detail: [volume run-state evidence](../concepts/volume-run-state-evidence.md)
 - tests: groom/tests/test_sidecar.py::test_terminal_reads_latest_run_json
 - tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
 - tests: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
@@ -42,7 +42,7 @@ falsey `terminal` values all mean no terminal marker is available.
 - directory selection: Groom consults only the latest run directory reported by
   the caller's runs-directory selector: the sidecar selects the final path after
   sorting direct child directories of `/runs`, and discovery uses the final entry
-  from the [Docker run-directory reader](concepts/docker-run-directory-reader.md).
+  from the [Docker run-directory reader](../concepts/docker-run-directory-reader.md).
 - ordering assumption: latest means lexicographically last after the reader has
   collected only direct child directories; the run-directory naming scheme is
   expected to make that order match run recency.

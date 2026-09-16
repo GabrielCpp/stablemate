@@ -14,7 +14,7 @@ Nothing here emits markup, reads a request, opens a socket, or touches Docker. I
 Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sort rank, an exit hint — are computed here rather than in the browser. They are policy, they are thresholded against server-side constants, and two implementations of them would disagree. Raw numbers ride along beside every label so the client can re-format without re-deciding.
 
 - code: groom/groom/projection.py
-- refs: [workflow container](workflow-container.md), [gate info](gate-info.md), [dashboard state payload](../dashboard-state-payload.md), [runs fleet view](../runs-fleet-view.md), [dashboard client store](dashboard-client-store.md), [dashboard shell broadcaster](dashboard-shell-broadcaster.md), [run watch registry](run-watch-registry.md)
+- refs: [workflow container](workflow-container.md), [gate info](gate-info.md), [dashboard state payload](../formats/dashboard-state-payload.md), [runs fleet view](../runs-fleet-view.md), [dashboard client store](dashboard-client-store.md), [dashboard shell broadcaster](dashboard-shell-broadcaster.md), [run watch registry](run-watch-registry.md)
 
 The projection tests cover JSON serializability, consistency between a run message and its
 state message, consistency between pushed detail and fetched detail, and the rule that gate
@@ -89,7 +89,7 @@ questions travel as data rather than markup.
 - step: Resolve the clock, defaulting to wall time.
 - step: Project the filtered fleet through `fleet_rows` in display order.
 - step: Project the unfiltered fleet through `status_bar` so counts stay fleet-wide.
-- step: Return `{"type": "state", "ts", "scanning", "runs", "status", "store", "attend"}` — the [dashboard state payload](../dashboard-state-payload.md), including the collector health independently of fleet counts and the attendant's per-run dispatch summary from `attend_summary()`.
+- step: Return `{"type": "state", "ts", "scanning", "runs", "status", "store", "attend"}` — the [dashboard state payload](../formats/dashboard-state-payload.md), including the collector health independently of fleet counts and the attendant's per-run dispatch summary from `attend_summary()`.
 
 ### method-run-message
 

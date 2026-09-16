@@ -5,7 +5,7 @@ title: Workspace file content data
 ---
 # Workspace file content data
 
-Workspace file content data is the file-viewer contract used by the [serve workspace file content](http/groom.md#serve-workspace-file-content) invocation, the connected sidecar data plane described by [sidecar live sessions](sidecar-live-sessions.md), and the fallback [workspace volume file-content reader](concepts/workspace-volume-file-content-reader.md). It represents one selected workflow checkout file as raw text, with sidecar-local read paths constrained by the [sidecar-local relative path guard](concepts/sidecar-local-relative-path-guard.md) and fallback read paths constrained by the [workspace volume relative path guard](concepts/workspace-volume-relative-path-guard.md). On the sidecar websocket it is the successful `getFile` [sidecar websocket frame](sidecar-websocket-frame.md) result object under `rpc_result.data`; on the HTTP surface it serializes as the JSON object `{"path", "content", "lang"}` for the [groom dashboard](gui/screens/groom-dashboard.md) Files panel.
+Workspace file content data is the file-viewer contract used by the [serve workspace file content](../http/groom.md#serve-workspace-file-content) invocation, the connected sidecar data plane described by [sidecar live sessions](../sidecar-live-sessions.md), and the fallback [workspace volume file-content reader](../concepts/workspace-volume-file-content-reader.md). It represents one selected workflow checkout file as raw text, with sidecar-local read paths constrained by the [sidecar-local relative path guard](../concepts/sidecar-local-relative-path-guard.md) and fallback read paths constrained by the [workspace volume relative path guard](../concepts/workspace-volume-relative-path-guard.md). On the sidecar websocket it is the successful `getFile` [sidecar websocket frame](sidecar-websocket-frame.md) result object under `rpc_result.data`; on the HTTP surface it serializes as the JSON object `{"path", "content", "lang"}` for the [groom dashboard](../gui/screens/groom-dashboard.md) Files panel.
 
 The HTTP body carries more than the sidecar result object does, and deliberately. `path` echoes what was asked for, so a viewer that fired two requests can drop the loser instead of showing the wrong file's text under the right file's heading. `lang` is the highlight.js grammar the file name implies, decided on the server so the extension table lives in one place next to the rest of the presentation policy rather than being duplicated in the viewer.
 
@@ -30,7 +30,7 @@ The sidecar and HTTP behaviors described here are covered by `test_file_content_
 - sidecar wire shape: sidecar success is exactly a JSON-compatible object whose first-party member is `content`; any additional members would be ignored by the HTTP endpoint and dashboard consumer.
 - path scope: `repo` and `path` select one file inside the workflow workspace volume; `repo` is prepended to `path` when present, and an empty combined path produces empty content.
 - path normalization: first-party producers convert missing `repo` and `path` values to `""` before composing the read path; the sidecar string-converts supplied values before validation.
-- path safety: sidecar reads reject absolute paths, empty path segments, and parent traversal through the [sidecar-local relative path guard](concepts/sidecar-local-relative-path-guard.md) before reading; fallback reads apply the same relative-path safety contract through the [workspace volume relative path guard](concepts/workspace-volume-relative-path-guard.md).
+- path safety: sidecar reads reject absolute paths, empty path segments, and parent traversal through the [sidecar-local relative path guard](../concepts/sidecar-local-relative-path-guard.md) before reading; fallback reads apply the same relative-path safety contract through the [workspace volume relative path guard](../concepts/workspace-volume-relative-path-guard.md).
 - empty-state: an empty `content` value means no file is selected, the selected file is empty, or no content is available from the sidecar or fallback path; clients render the `(empty or binary file)` viewer state rather than reporting a transport error.
 - error behavior: missing files and unreadable files become empty content; an unsafe sidecar path becomes an `ok=false` `rpc_result` so the endpoint can fall back, and an unsafe fallback path becomes a `200 OK` body with empty `content`. A rejected fetch is the client's only error signal, and it renders `failed to load`.
 - decoding: sidecar file reads decode text with replacement for invalid characters before placing it in `content`; fallback volume reads return the text stream captured from the reader process.
@@ -158,15 +158,15 @@ The sidecar and HTTP behaviors described here are covered by `test_file_content_
 - effects: reads at most one text file from the sidecar container's local workspace; does not send websocket frames, serialize JSON, call Docker, run Git, mutate workspace files, mutate workflow state, register sidecars, or broadcast dashboard updates.
 - path composition: when `repo` is non-empty, combines it with `path` as `repo/path` after removing leading slashes from the combined value; when `repo` is empty, uses `path` unchanged.
 - empty rule: when the composed relative path is empty, returns `{"content": ""}` without validating a path or touching the filesystem.
-- validation: validates the composed relative path with the [sidecar-local relative path guard](concepts/sidecar-local-relative-path-guard.md) before reading; absolute paths, empty path segments, and parent traversal raise `ValueError` to the RPC wrapper so the websocket reply becomes an `ok=false` `rpc_result`.
+- validation: validates the composed relative path with the [sidecar-local relative path guard](../concepts/sidecar-local-relative-path-guard.md) before reading; absolute paths, empty path segments, and parent traversal raise `ValueError` to the RPC wrapper so the websocket reply becomes an `ok=false` `rpc_result`.
 - read rule: reads the selected local workspace file as text with replacement for invalid characters; any `OSError` while reading becomes `{"content": ""}`.
-- calls: [sidecar-local relative path guard](concepts/sidecar-local-relative-path-guard.md) at `groom/groom/sidecar.py::_safe_relpath`; otherwise only local filesystem text reading is used.
+- calls: [sidecar-local relative path guard](../concepts/sidecar-local-relative-path-guard.md) at `groom/groom/sidecar.py::_safe_relpath`; otherwise only local filesystem text reading is used.
 - algorithm:
   1. Read `repo` and `path` from the params object, defaulting each to `""`.
   2. Convert both values to text.
   3. Compose a workspace-relative read path from `repo` and `path`.
   4. If the composed read path is empty, return an empty `content` object.
-  5. Validate the composed path with the [sidecar-local relative path guard](concepts/sidecar-local-relative-path-guard.md).
+  5. Validate the composed path with the [sidecar-local relative path guard](../concepts/sidecar-local-relative-path-guard.md).
   6. Read the selected file below the sidecar workspace using replacement decoding.
   7. If the read fails with `OSError`, use empty text.
   8. Return the text under the `content` key.
@@ -182,13 +182,13 @@ The sidecar and HTTP behaviors described here are covered by `test_file_content_
 - raises: unexpected HTTP framework failures or fallback reader exceptions other than `ValueError` can propagate.
 - verify: json_path(path="exception.type", matches="^(?!ValueError$).+")
 - code: groom/groom/app.py::file_content
-- detail: [file content documentation scopes](concepts/file-content-documentation-scopes.md)
+- detail: [file content documentation scopes](../concepts/file-content-documentation-scopes.md)
 - tests: `groom/tests/test_app.py::test_file_content_prefers_sidecar_socket`
 - tests: `groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content`
 - tests: `groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path`
 - input: `container_id` is the route-selected workflow container id; `repo` is the optional volume-relative checkout directory; `path` is the optional repo-relative file path.
 - output: one JSON object with `path`, `content`, and `lang`; `content` is empty when neither the connected sidecar nor the fallback reader supplies truthy text.
-- effects: may send one `getFile` RPC through the [sidecar RPC helper](concepts/sidecar-rpc-helper.md), may read one fallback file through the [workspace volume file-content reader](concepts/workspace-volume-file-content-reader.md) or its native equivalent, and never mutates workflow registry state, sidecar registrations, workspace files, dashboard clients, file trees, diffs, or viewer state.
+- effects: may send one `getFile` RPC through the [sidecar RPC helper](../concepts/sidecar-rpc-helper.md), may read one fallback file through the [workspace volume file-content reader](../concepts/workspace-volume-file-content-reader.md) or its native equivalent, and never mutates workflow registry state, sidecar registrations, workspace files, dashboard clients, file trees, diffs, or viewer state.
 - language first: projects `lang` from the requested path before doing any I/O, so every return path below carries the same value and no branch can forget it.
 - sidecar preference: calls the sidecar data plane first with method `getFile` and params `{"repo": repo, "path": path}`; any non-`None` result wins over the volume fallback, even when its `content` member is missing or falsey.
 - sidecar serialization: reads `content` from the returned sidecar result object and returns `served.get("content") or ""` under the `content` member. The sidecar's other members, if any, do not reach the body.
@@ -196,7 +196,7 @@ The sidecar and HTTP behaviors described here are covered by `test_file_content_
 - fallback path composition: when `repo` is non-empty, composes `repo/path` and strips leading slashes from the combined value; when `repo` is empty, uses `path` unchanged.
 - fallback empty rule: missing workspace volume, empty composed path, fallback path `ValueError`, fallback reader `None`, and falsey fallback text all return the same `200 OK` body with empty `content` — the guard rejection is deliberately indistinguishable from a missing file, so a probe learns nothing from the difference.
 - media rule: every intentional return is `application/json` with the same three members; the method does not escape content, add syntax highlighting, attach an error sentinel, or vary the status code.
-- calls: [sidecar RPC helper](concepts/sidecar-rpc-helper.md) for connected sidecar reads, [workflow registry](concepts/workflow-registry.md) for fallback volume lookup, the [groom projection module](concepts/groom-projection-module.md) for the language, and [workspace volume file-content reader](concepts/workspace-volume-file-content-reader.md) for volume fallback reads.
+- calls: [sidecar RPC helper](../concepts/sidecar-rpc-helper.md) for connected sidecar reads, [workflow registry](../concepts/workflow-registry.md) for fallback volume lookup, the [groom projection module](../concepts/groom-projection-module.md) for the language, and [workspace volume file-content reader](../concepts/workspace-volume-file-content-reader.md) for volume fallback reads.
 - algorithm:
   1. Project `lang` from the requested path.
   2. Ask the sidecar RPC helper for `getFile` with the selected repository and file path.

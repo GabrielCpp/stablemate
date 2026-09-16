@@ -5,7 +5,7 @@ title: OTLP log record
 ---
 # OTLP log record
 
-The decoded intermediate representation of one OpenTelemetry log record, produced by [parse_logs](./concepts/groom-otlp-module.md#parse_logs) and consumed by the store. Script node diagnostics land here now that workhorse runs scripts in-process: their log records ride the engine's own logger and arrive with the same run_id and run_dir resource identity as spans. The node is read from the record's attributes rather than the trace context, since workhorse never makes its node spans current (trace_id would be zeroes).
+The decoded intermediate representation of one OpenTelemetry log record, produced by [parse_logs](../concepts/groom-otlp-module.md#parse_logs) and consumed by the store. Script node diagnostics land here now that workhorse runs scripts in-process: their log records ride the engine's own logger and arrive with the same run_id and run_dir resource identity as spans. The node is read from the record's attributes rather than the trace context, since workhorse never makes its node spans current (trace_id would be zeroes).
 
 - code: groom/groom/otlp.py::parse_logs
 - tests: groom/tests/test_telemetry.py

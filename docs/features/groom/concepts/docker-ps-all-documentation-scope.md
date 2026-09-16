@@ -17,7 +17,7 @@ want the one-line pointer to the matching field without reading the whole concep
 [Docker ps-all value pipeline](docker-ps-all-value-pipeline.md) when you need to trace how one
 value moves through the whole one-pass call — argv, raw stdout, decoded result, and the
 row-shape payload of that result documented on [Docker ps container
-row](../docker-ps-container-row.md#additional-docker-fields) — rather than read any single
+row](../formats/docker-ps-container-row.md#additional-docker-fields) — rather than read any single
 stage in isolation. Use [Groom Docker I/O module](groom-docker-io-module.md#docker-ps-all) when
 navigating the module's public helper inventory and its relationships to the other Docker
 operations. All four describe the same function and must remain consistent rather than being

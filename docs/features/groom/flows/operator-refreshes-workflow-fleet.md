@@ -10,7 +10,7 @@ rescan control to [POST /refresh](../http/groom.md#post-refresh), the
 [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md)
 pre-scan broadcast, one Docker-backed [workflow discovery scan](../concepts/workflow-discovery-scan.md),
 registry replacement and prune through the [workflow registry](../concepts/workflow-registry.md),
-and the two [dashboard state payload](../dashboard-state-payload.md) frames that
+and the two [dashboard state payload](../formats/dashboard-state-payload.md) frames that
 re-render the runs list and status bar in every connected
 [groom dashboard](../gui/screens/groom-dashboard.md) tab. The path is available
 from the settings pane through [rescan containers from settings](../gui/screens/groom-dashboard.md#rescan-containers-from-settings)
@@ -50,7 +50,7 @@ in it the socket does not already deliver, in a shape the renderer already knows
   3. [Refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) sets the
      [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md)
      to `True` *before* Docker reconciliation starts, then broadcasts one
-     [dashboard state payload](../dashboard-state-payload.md) built from the
+     [dashboard state payload](../formats/dashboard-state-payload.md) built from the
      current registry snapshot through the [dashboard shell broadcaster](../concepts/dashboard-shell-broadcaster.md).
      The flag rides in that JSON frame as a `scanning` boolean; the server picks
      no wording for it.
@@ -88,7 +88,7 @@ in it the socket does not already deliver, in a shape the renderer already knows
      outage cannot erase workflows that were already visible.
   8. Whether reconciliation succeeds or raises, the endpoint clears the scanning
      flag in its reconciliation cleanup path. On the successful path only, it
-     broadcasts a second [dashboard state payload](../dashboard-state-payload.md)
+     broadcasts a second [dashboard state payload](../formats/dashboard-state-payload.md)
      after the flag is false, then returns JSON `{ "ok": true, "count": n }`,
      where `count` is the number of workflows returned by the discovery scan
      before stale-entry pruning is considered.

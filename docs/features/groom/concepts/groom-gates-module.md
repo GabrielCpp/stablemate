@@ -5,12 +5,12 @@ title: Groom gates module
 ---
 # Groom gates module
 
-Groom gates module is the code boundary that owns Groom's shared operator-gate status tokens, [operator gate context file](../operator-gate-context-file.md) text parsing and answer text mutation helpers, and the asynchronous [gate-answering layer](gate-answering-layer.md). It is consumed by host-side discovery, the sidecar snapshot path, and dashboard answer handling so all gate readers and writers agree on the same `STATUS:` lifecycle semantics. Its answer operation composes the [per-gate answer lock](per-gate-answer-lock.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), [workspace volume file writer](workspace-volume-file-writer.md), [workflow gate clearer](workflow-gate-clearer.md), [container running-state check](container-running-state-check.md), and [stopped container start fallback](stopped-container-start-fallback.md) and reports its terminal domain outcome as an [answer result](../answer-result.md).
+Groom gates module is the code boundary that owns Groom's shared operator-gate status tokens, [operator gate context file](../formats/operator-gate-context-file.md) text parsing and answer text mutation helpers, and the asynchronous [gate-answering layer](gate-answering-layer.md). It is consumed by host-side discovery, the sidecar snapshot path, and dashboard answer handling so all gate readers and writers agree on the same `STATUS:` lifecycle semantics. Its answer operation composes the [per-gate answer lock](per-gate-answer-lock.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), [workspace volume file writer](workspace-volume-file-writer.md), [workflow gate clearer](workflow-gate-clearer.md), [container running-state check](container-running-state-check.md), and [stopped container start fallback](stopped-container-start-fallback.md) and reports its terminal domain outcome as an [answer result](../formats/answer-result.md).
 
 - code: groom/groom/gates.py
 - tests: groom/tests/test_gates.py::test_apply_answer_flips_status_and_appends_text
 - tests: groom/tests/test_gates.py::test_apply_answer_with_blank_answer_still_flips_status
-- refs: [operator gate context file](../operator-gate-context-file.md), [gate-answering layer](gate-answering-layer.md), [per-gate answer lock](per-gate-answer-lock.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), [workspace volume file writer](workspace-volume-file-writer.md), [workflow gate clearer](workflow-gate-clearer.md), [container running-state check](container-running-state-check.md), [stopped container start fallback](stopped-container-start-fallback.md), [answer result](../answer-result.md)
+- refs: [operator gate context file](../formats/operator-gate-context-file.md), [gate-answering layer](gate-answering-layer.md), [per-gate answer lock](per-gate-answer-lock.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), [workspace volume file writer](workspace-volume-file-writer.md), [workflow gate clearer](workflow-gate-clearer.md), [container running-state check](container-running-state-check.md), [stopped container start fallback](stopped-container-start-fallback.md), [answer result](../formats/answer-result.md)
 
 The module-level test coverage includes `test_status_of_reads_the_status_line`,
 `test_is_awaiting`, `test_extract_question_pulls_the_named_section`,
@@ -31,8 +31,8 @@ pure text helpers use the fallback outputs specified by their individual method 
 - import behavior: importing the module binds the status constants, compiles the status and question parsers, and exposes the public helper functions; import does not read Docker, inspect containers, read or write gate files, acquire gate locks, mutate process state, render HTML, or broadcast websocket fragments.
 - public data members: the public status-token fields are exactly `AWAITING`, `ANSWERED`, and `CONSUMED`.
 - public function members: the public helpers are exactly `status_of`, `is_awaiting`, `extract_question`, `apply_answer`, and `answer_gate`.
-- private parser members: `_STATUS_RE`, `_QUESTIONS_RE`, and `_QUESTION_PREVIEW_LIMIT` are private module implementation details folded into the [operator gate context file](../operator-gate-context-file.md) format contract rather than separate public concepts.
-- file contract: every parser and writer in this module operates on the [operator gate context file](../operator-gate-context-file.md) text format rather than on rendered dashboard HTML, database rows, or Docker inspect metadata.
+- private parser members: `_STATUS_RE`, `_QUESTIONS_RE`, and `_QUESTION_PREVIEW_LIMIT` are private module implementation details folded into the [operator gate context file](../formats/operator-gate-context-file.md) format contract rather than separate public concepts.
+- file contract: every parser and writer in this module operates on the [operator gate context file](../formats/operator-gate-context-file.md) text format rather than on rendered dashboard HTML, database rows, or Docker inspect metadata.
 - status contract: the only public open-gate token is [field-awaiting](#field-awaiting), the only token this module writes is [field-answered](#field-answered), and [field-consumed](#field-consumed) is recognized as a non-awaiting lifecycle value for compatibility with wait scripts.
 - purity boundary: [status-of](#status-of), [is-awaiting](#is-awaiting), [extract-question](#extract-question), and [apply-answer](#apply-answer) are deterministic string helpers with no Docker, state, network, filesystem, or dashboard side effects.
 - orchestration boundary: [answer-gate](#answer-gate) delegates the host-side answer operation to the grounded [gate-answering layer](gate-answering-layer.md), which is the only public member that reads or writes a workspace volume, acquires a per-gate lock, clears process-local gate state, or starts a stopped container.
@@ -80,7 +80,7 @@ pure text helpers use the fallback outputs specified by their individual method 
 - verify: json_path(path="return value", equals="AWAITING_OPERATOR")
 - code: groom/groom/gates.py::status_of
 - detail: [gate status parser documentation contexts](gate-status-parser-documentation-contexts.md)
-- detail: [operator gate context file status parser](../operator-gate-context-file.md#method-status-of)
+- detail: [operator gate context file status parser](../formats/operator-gate-context-file.md#method-status-of)
 - tests: groom/tests/test_gates.py::test_status_of_reads_the_status_line
 
 Parses one supplied gate-file text string into the normalized lifecycle token used by discovery and stale-answer checks. In `groom/groom/gates.py::status_of`, a text string without a matching status line returns an empty string.
@@ -88,7 +88,7 @@ Parses one supplied gate-file text string into the normalized lifecycle token us
 #### Effects
 
 - reads: only the supplied text string.
-- matches: the first line-start `STATUS:` token accepted by the [operator gate context file](../operator-gate-context-file.md#field-status-line) contract.
+- matches: the first line-start `STATUS:` token accepted by the [operator gate context file](../formats/operator-gate-context-file.md#field-status-line) contract.
 - normalizes: uppercases the captured token before returning it.
 - calls: no other Groom source symbol.
 - does not mutate: gate file text, workspace volumes, Docker containers, in-memory workflow state, gate locks, answer logs, dashboard clients, or rendered fragments.
@@ -101,7 +101,7 @@ Parses one supplied gate-file text string into the normalized lifecycle token us
 - returns: `true` only when [status-of](#status-of) returns [field-awaiting](#field-awaiting).
 - verify: json_path(path="return value", equals=true)
 - code: groom/groom/gates.py::is_awaiting
-- detail: [operator gate context file awaiting classifier](../operator-gate-context-file.md#method-is-awaiting)
+- detail: [operator gate context file awaiting classifier](../formats/operator-gate-context-file.md#method-is-awaiting)
 - detail: [is awaiting documentation contexts](is-awaiting-documentation-contexts.md)
 - tests: groom/tests/test_gates.py::test_is_awaiting
 
@@ -134,7 +134,7 @@ Extracts the operator-facing question preview from one gate file for gate record
 #### Effects
 
 - reads: only the supplied text string.
-- matches: every recognized singular or plural question heading described by [field-question-section](../operator-gate-context-file.md#field-question-section).
+- matches: every recognized singular or plural question heading described by [field-question-section](../formats/operator-gate-context-file.md#field-question-section).
 - selects: the stripped body of the latest recognized section when present, otherwise the stripped whole text string.
 - calls: no other Groom source symbol.
 - does not mutate: gate file text, workspace volumes, Docker containers, in-memory workflow state, gate locks, answer logs, dashboard clients, or rendered fragments.
@@ -149,7 +149,7 @@ Extracts the operator-facing question preview from one gate file for gate record
 - verify: count(subject="STATUS: ANSWERED lines in returned gate text", equals=1)
 - verify: count(subject="submitted non-blank answer occurrences in returned gate text", equals=1)
 - code: groom/groom/gates.py::apply_answer
-- detail: [operator gate context file answer applier](../operator-gate-context-file.md#method-apply-answer)
+- detail: [operator gate context file answer applier](../formats/operator-gate-context-file.md#method-apply-answer)
 - detail: [gate answer text mutation](gate-answer-text-mutation.md)
 - tests: groom/tests/test_gates.py::test_apply_answer_flips_status_and_appends_text
 - tests: groom/tests/test_gates.py::test_apply_answer_with_blank_answer_still_flips_status
@@ -171,7 +171,7 @@ Builds the answered form of one gate file text string without performing the fil
 - abstract: false
 - raises: propagates exceptions from Docker volume access, container-status helpers, and unsafe path validation.
 - raises: represents expected domain failures as `AnswerResult(ok=False, message=...)`.
-- returns: an [answer result](../answer-result.md) indicating whether the answer file write was rejected, applied, applied with no restart needed, or applied with a stopped-container restart fallback.
+- returns: an [answer result](../formats/answer-result.md) indicating whether the answer file write was rejected, applied, applied with no restart needed, or applied with a stopped-container restart fallback.
 - verify: conflict_on_stale(subject="gate file")
 - code: groom/groom/gates.py::answer_gate
 - detail: [gate-answering layer operation](gate-answering-layer.md#answer-gate)
@@ -197,7 +197,7 @@ Applies one submitted operator answer to one awaiting gate file in a workspace v
 ### algorithm-module-initialization
 
 - step: Bind the public status token constants [field-awaiting](#field-awaiting), [field-answered](#field-answered), and [field-consumed](#field-consumed).
-- step: Bind private parser state for the [operator gate context file](../operator-gate-context-file.md): one status-line pattern, one question-section pattern, and the 4000-character question preview limit.
+- step: Bind private parser state for the [operator gate context file](../formats/operator-gate-context-file.md): one status-line pattern, one question-section pattern, and the 4000-character question preview limit.
 - step: Expose four pure text helpers and one asynchronous gate-answering operation.
 - step: Complete import without inspecting Docker, opening a workspace volume, reading a gate file, writing a gate file, mutating state, acquiring a gate lock, or emitting dashboard output.
 

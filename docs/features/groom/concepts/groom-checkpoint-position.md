@@ -6,7 +6,7 @@ title: Groom checkpoint position
 # Groom checkpoint position
 
 Groom checkpoint position is the normalized representation of a workflow's
-current checkpoint state, extracted from the [checkpoint data](../sidecar-run-checkpoint-data.md)
+current checkpoint state, extracted from the [checkpoint data](../formats/sidecar-run-checkpoint-data.md)
 written by workhorse. It bridges two checkpoint formats — the current `pyflow`
 engine format and a retired format — into a unified `CheckpointPosition` type,
 so consumers like the [sidecar snapshot](sidecar-snapshot.md), 

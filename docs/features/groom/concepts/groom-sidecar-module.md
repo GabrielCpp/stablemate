@@ -11,12 +11,12 @@ import-time configuration, local snapshot readers, residual HTTP push producers,
 recursive watch-backed websocket session, sidecar-local RPC data plane, reload
 control signal, and the blocking handoff from the CLI into [sidecar live
 sessions](../sidecar-live-sessions.md). The module exchanges [sidecar identity
-data](../sidecar-identity-data.md), [sidecar snapshot data](../sidecar-snapshot-data.md),
-[sidecar websocket frame](../sidecar-websocket-frame.md), [progress push
-payload](../progress-push-payload.md), [blocked push payload](../blocked-push-payload.md),
-[exited push payload](../exited-push-payload.md), [workspace file list
-data](../workspace-file-list-data.md), [workspace file content
-data](../workspace-file-content-data.md), and [workspace diff data](../workspace-diff-data.md)
+data](../formats/sidecar-identity-data.md), [sidecar snapshot data](../formats/sidecar-snapshot-data.md),
+[sidecar websocket frame](../formats/sidecar-websocket-frame.md), [progress push
+payload](../formats/progress-push-payload.md), [blocked push payload](../formats/blocked-push-payload.md),
+[exited push payload](../formats/exited-push-payload.md), [workspace file list
+data](../formats/workspace-file-list-data.md), [workspace file content
+data](../formats/workspace-file-content-data.md), and [workspace diff data](../formats/workspace-diff-data.md)
 without owning host workflow registry state or deciding the workflow process'
 exit result.
 
@@ -181,7 +181,7 @@ exit result.
 - raises: same producer-side propagation boundary as [method-_push](sidecar-residual-http-push-helper.md#method-_push); residual HTTP open and close failures are swallowed by the helper.
 - code: groom/groom/sidecar.py::push_progress
 - verify: groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape
-- refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-progress), [progress push payload](../progress-push-payload.md)
+- refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-progress), [progress push payload](../formats/progress-push-payload.md)
 - input: current workhorse graph-node id or `""` when no current node is known.
 - returns: `None` after delegating the one-shot push attempt.
 - does:
@@ -200,7 +200,7 @@ its caller.
 - raises: same producer-side propagation boundary as [method-_push](sidecar-residual-http-push-helper.md#method-_push); residual HTTP open and close failures are swallowed by the helper.
 - code: groom/groom/sidecar.py::push_blocked
 - verify: groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape
-- refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-blocked), [blocked push payload](../blocked-push-payload.md)
+- refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-blocked), [blocked push payload](../formats/blocked-push-payload.md)
 - input-file-path: workspace-relative awaiting gate file path or the observed path
   fallback supplied by an event classifier.
 - input-question: operator-facing question text extracted from the gate context
@@ -222,7 +222,7 @@ its caller.
 - code: groom/groom/sidecar.py::push_exited
 - verify: groom/tests/test_sidecar.py::test_push_exited_posts_expected_shape
 - verify: groom/tests/test_sidecar.py::test_push_exited_is_silent_when_groom_is_unreachable
-- refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-exited), [exited push payload](../exited-push-payload.md)
+- refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-exited), [exited push payload](../formats/exited-push-payload.md)
 - input: integer exit code returned by the workflow process after workhorse exits.
 - does:
   - Builds an exited event payload with only the `exit_code` key.
@@ -243,7 +243,7 @@ its caller.
 - verify: absent(subject="gates from files that could not be read")
 - tests: groom/tests/test_sidecar.py::test_scan_gates_finds_awaiting_and_skips_git_and_non_awaiting
 - detail: [sidecar snapshot](sidecar-snapshot.md#method-scan_gates)
-- refs: [operator gate context file](../operator-gate-context-file.md), [sidecar snapshot data](../sidecar-snapshot-data.md)
+- refs: [operator gate context file](../formats/operator-gate-context-file.md), [sidecar snapshot data](../formats/sidecar-snapshot-data.md)
 - input: no call arguments; uses [field-workspace-dir](#field-workspace-dir).
 - output: list of gate entries with `file_path` and `question` keys.
 - does:
@@ -268,7 +268,7 @@ its caller.
 - verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
 - verify: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch
 - detail: [sidecar snapshot](sidecar-snapshot.md#method-snapshot)
-- refs: [sidecar snapshot data](../sidecar-snapshot-data.md), [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md), [sidecar run metadata](../sidecar-run-metadata.md)
+- refs: [sidecar snapshot data](../formats/sidecar-snapshot-data.md), [sidecar run checkpoint data](../formats/sidecar-run-checkpoint-data.md), [sidecar run metadata](../formats/sidecar-run-metadata.md)
 - input: no call arguments; uses [field-workspace-dir](#field-workspace-dir) and
   [field-runs-dir](#field-runs-dir).
 - output: one object with `current_node`, `terminal`, and `gates` keys.
@@ -284,7 +284,7 @@ its caller.
 
 ReloadRequested is the sidecar-local reload control signal raised by the
 [sidecar connected session](sidecar-connected-session.md) after it receives a
-host `reload` [sidecar websocket frame](../sidecar-websocket-frame.md). The
+host `reload` [sidecar websocket frame](../formats/sidecar-websocket-frame.md). The
 [sidecar serving loop](sidecar-serving-loop.md) catches it, closes the current
 socket best-effort, and converts it into the reserved reload exit code consumed
 by the container entrypoint.
@@ -305,7 +305,7 @@ serialized on the websocket or exposed through the CLI or HTTP API.
 - code: groom/groom/sidecar.py::ReloadRequested
 - tests: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises,
   groom/tests/test_sidecar_session.py::test_serve_returns_reload_code_when_session_requests_reload
-- refs: [sidecar connected session](sidecar-connected-session.md), [sidecar serving loop](sidecar-serving-loop.md), [sidecar websocket frame](../sidecar-websocket-frame.md)
+- refs: [sidecar connected session](sidecar-connected-session.md), [sidecar serving loop](sidecar-serving-loop.md), [sidecar websocket frame](../formats/sidecar-websocket-frame.md)
 - trigger: raised only by a connected sidecar session after decoding an inbound
   websocket message whose `type` field is `reload`.
 - base: standard-library `Exception`; no Groom-specific base concept is created
@@ -344,14 +344,14 @@ the caller.
 
 ## Folded Private Helper Contract
 
-- identity producer: `groom/groom/sidecar.py::_identity` is folded into [sidecar identity data](../sidecar-identity-data.md); it derives `container_id`, `name`, `repo_name`, and `repo_branch` from hostname and repository environment variables.
+- identity producer: `groom/groom/sidecar.py::_identity` is folded into [sidecar identity data](../formats/sidecar-identity-data.md); it derives `container_id`, `name`, `repo_name`, and `repo_branch` from hostname and repository environment variables.
 - residual push core: `groom/groom/sidecar.py::_push` is folded into [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md); it merges identity and event fields, serializes JSON, and performs one best-effort HTTP `POST`.
 - run-state readers: `groom/groom/sidecar.py::_latest_run_dir`, `groom/groom/sidecar.py::_current_node`, and `groom/groom/sidecar.py::_terminal` are folded into [sidecar snapshot](sidecar-snapshot.md); they select the latest run directory, checkpoint current node, and terminal marker.
 - filesystem watch: `groom/groom/sidecar.py::_watch_roots` and `groom/groom/sidecar.py::_watch_loop` are folded into [sidecar filesystem watch](sidecar-filesystem-watch.md); together they select the watchable mounts and feed classified frames to the session's outbound queue.
-- event classifiers: `groom/groom/sidecar.py::_classify_event` is folded into [sidecar websocket frame](../sidecar-websocket-frame.md#method-_classify_event); `groom/groom/sidecar.py::_handle_event` is the residual HTTP adapter for the same classification result and emits progress or blocked push wrappers.
-- path guard and repository readers: `groom/groom/sidecar.py::_safe_relpath`, `groom/groom/sidecar.py::_repo_base`, `groom/groom/sidecar.py::_find_repo_dirs`, `groom/groom/sidecar.py::_list_tree`, and `groom/groom/sidecar.py::_git_diff` are folded into [sidecar-local relative path guard](sidecar-local-relative-path-guard.md), [workspace file list data](../workspace-file-list-data.md), and [workspace diff data](../workspace-diff-data.md).
-- RPC handlers: `groom/groom/sidecar.py::_rpc_get_tree`, `groom/groom/sidecar.py::_rpc_get_file`, and `groom/groom/sidecar.py::_rpc_get_diff` are folded into [workspace file list data](../workspace-file-list-data.md), [workspace file content data](../workspace-file-content-data.md), and [workspace diff data](../workspace-diff-data.md); `groom/groom/sidecar.py::_handle_rpc` is folded into [sidecar websocket frame](../sidecar-websocket-frame.md#method-_handle_rpc).
-- session helpers: `groom/groom/sidecar.py::_hello_frame`, `groom/groom/sidecar.py::_sender_loop`, `groom/groom/sidecar.py::_run_session`, and `groom/groom/sidecar.py::_serve` are folded into [sidecar websocket frame](../sidecar-websocket-frame.md#method-_hello_frame), [sidecar outbound sender](sidecar-outbound-sender.md), [sidecar connected session](sidecar-connected-session.md), and [sidecar serving loop](sidecar-serving-loop.md).
+- event classifiers: `groom/groom/sidecar.py::_classify_event` is folded into [sidecar websocket frame](../formats/sidecar-websocket-frame.md#method-_classify_event); `groom/groom/sidecar.py::_handle_event` is the residual HTTP adapter for the same classification result and emits progress or blocked push wrappers.
+- path guard and repository readers: `groom/groom/sidecar.py::_safe_relpath`, `groom/groom/sidecar.py::_repo_base`, `groom/groom/sidecar.py::_find_repo_dirs`, `groom/groom/sidecar.py::_list_tree`, and `groom/groom/sidecar.py::_git_diff` are folded into [sidecar-local relative path guard](sidecar-local-relative-path-guard.md), [workspace file list data](../formats/workspace-file-list-data.md), and [workspace diff data](../formats/workspace-diff-data.md).
+- RPC handlers: `groom/groom/sidecar.py::_rpc_get_tree`, `groom/groom/sidecar.py::_rpc_get_file`, and `groom/groom/sidecar.py::_rpc_get_diff` are folded into [workspace file list data](../formats/workspace-file-list-data.md), [workspace file content data](../formats/workspace-file-content-data.md), and [workspace diff data](../formats/workspace-diff-data.md); `groom/groom/sidecar.py::_handle_rpc` is folded into [sidecar websocket frame](../formats/sidecar-websocket-frame.md#method-_handle_rpc).
+- session helpers: `groom/groom/sidecar.py::_hello_frame`, `groom/groom/sidecar.py::_sender_loop`, `groom/groom/sidecar.py::_run_session`, and `groom/groom/sidecar.py::_serve` are folded into [sidecar websocket frame](../formats/sidecar-websocket-frame.md#method-_hello_frame), [sidecar outbound sender](sidecar-outbound-sender.md), [sidecar connected session](sidecar-connected-session.md), and [sidecar serving loop](sidecar-serving-loop.md).
 
 ## Module Flow
 

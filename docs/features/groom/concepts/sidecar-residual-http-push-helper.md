@@ -9,9 +9,9 @@ Sidecar residual HTTP push helper is the shared producer used by residual
 `groom-sidecar` HTTP notices before they reach the [groom server](../http/groom.md)
 push endpoints. It is reached from the [`groom-sidecar-root`](../groom-sidecar.md#groom-sidecar-root)
 exit-notice invocation and by the progress/blocked residual paths described in
-[sidecar protocol](../sidecar-protocol.md); it turns [sidecar identity data](../sidecar-identity-data.md)
-plus one event payload into a best-effort JSON POST for [progress push payload](../progress-push-payload.md),
-[blocked push payload](../blocked-push-payload.md), or [exited push payload](../exited-push-payload.md).
+[sidecar protocol](../sidecar-protocol.md); it turns [sidecar identity data](../formats/sidecar-identity-data.md)
+plus one event payload into a best-effort JSON POST for [progress push payload](../formats/progress-push-payload.md),
+[blocked push payload](../formats/blocked-push-payload.md), or [exited push payload](../formats/exited-push-payload.md).
 After opening a response, it closes that response and completes without inspecting
 its status, headers, or body.
 
@@ -25,7 +25,7 @@ test_push_is_silent_on_any_unexpected_exception.
 
 - code: groom/groom/sidecar.py::_push
 - tests: groom/tests/test_sidecar.py
-- refs: [sidecar identity data](../sidecar-identity-data.md), [progress push payload](../progress-push-payload.md), [blocked push payload](../blocked-push-payload.md), [exited push payload](../exited-push-payload.md), [sidecar protocol](../sidecar-protocol.md)
+- refs: [sidecar identity data](../formats/sidecar-identity-data.md), [progress push payload](../formats/progress-push-payload.md), [blocked push payload](../formats/blocked-push-payload.md), [exited push payload](../formats/exited-push-payload.md), [sidecar protocol](../sidecar-protocol.md)
 
 ## Contract
 
@@ -41,7 +41,7 @@ test_push_is_silent_on_any_unexpected_exception.
 - payload variants: progress supplies only `current_node`, blocked supplies
   `file_path` and `question`, and exited supplies only `exit_code` before the
   shared identity fields are merged.
-- identity: each request body includes [sidecar identity data](../sidecar-identity-data.md)
+- identity: each request body includes [sidecar identity data](../formats/sidecar-identity-data.md)
   fields from the sidecar process before event-specific fields are applied:
   `container_id`, `name`, `repo_name`, and `repo_branch`.
 - endpoint: sends to `http://{GROOM_HOST}:{GROOM_PORT}{path}`; `GROOM_HOST`
@@ -65,7 +65,7 @@ test_push_is_silent_on_any_unexpected_exception.
 
 ## Algorithm
 
-1. Build [sidecar identity data](../sidecar-identity-data.md) for the current
+1. Build [sidecar identity data](../formats/sidecar-identity-data.md) for the current
    process.
 2. Merge the identity object with the caller's event payload, letting payload
    keys win on collision.
@@ -98,7 +98,7 @@ test_push_is_silent_on_any_unexpected_exception.
   configured groom host and port, closes an opened response object, and performs
   no retry, queueing, logging, stdout/stderr output, workflow mutation, or local
   filesystem mutation.
-- calls: [sidecar identity data](../sidecar-identity-data.md) production and
+- calls: [sidecar identity data](../formats/sidecar-identity-data.md) production and
   standard-library JSON and HTTP request/open helpers.
 - algorithm:
   1. Read current sidecar identity fields.
@@ -121,7 +121,7 @@ test_push_is_silent_on_any_unexpected_exception.
   known.
 - output: returns `None`; it does not report whether groom accepted, rejected, or
   received the notice.
-- effects: delegates one [progress push payload](../progress-push-payload.md)
+- effects: delegates one [progress push payload](../formats/progress-push-payload.md)
   producer call to [method-_push](#method-_push) with endpoint path
   `/push/progress` and payload key `current_node`.
 
@@ -135,7 +135,7 @@ test_push_is_silent_on_any_unexpected_exception.
   question text.
 - output: returns `None`; it does not report whether groom accepted, rejected, or
   received the notice.
-- effects: delegates one [blocked push payload](../blocked-push-payload.md)
+- effects: delegates one [blocked push payload](../formats/blocked-push-payload.md)
   producer call to [method-_push](#method-_push) with endpoint path
   `/push/blocked` and payload keys `file_path` and `question`.
 
@@ -149,16 +149,16 @@ test_push_is_silent_on_any_unexpected_exception.
   `groom-sidecar --exit-code` invocation after workhorse returns.
 - output: returns `None`; it does not report whether groom accepted, rejected, or
   received the notice.
-- effects: delegates one [exited push payload](../exited-push-payload.md)
+- effects: delegates one [exited push payload](../formats/exited-push-payload.md)
   producer call to [method-_push](#method-_push) with endpoint path
   `/push/exited` and payload key `exit_code`.
 
 ## Deeper Calls
 
-- [Sidecar identity data](../sidecar-identity-data.md) supplies the shared
+- [Sidecar identity data](../formats/sidecar-identity-data.md) supplies the shared
   sidecar identity fields merged into every residual push body.
-- [Progress push payload](../progress-push-payload.md), [blocked push payload](../blocked-push-payload.md),
-  and [exited push payload](../exited-push-payload.md) are the three first-party
+- [Progress push payload](../formats/progress-push-payload.md), [blocked push payload](../formats/blocked-push-payload.md),
+  and [exited push payload](../formats/exited-push-payload.md) are the three first-party
   residual request shapes produced through this helper.
 - The helper's remaining callees are standard-library JSON and HTTP functions;
   the identity producer calls only standard-library process, socket, and

@@ -37,9 +37,9 @@ and
 [select diff file row](gui/screens/groom-dashboard.md#select-diff-file-row).
 The HTTP endpoint is
 [get working tree diff](http/groom.md#get-working-tree-diff), which serves
-[workspace diff data](workspace-diff-data.md) as the unified-diff text the
+[workspace diff data](formats/workspace-diff-data.md) as the unified-diff text the
 browser parses. The parsed array lives in the
-[dashboard parsed diff file cache](dashboard-parsed-diff-file-cache.md), the
+[dashboard parsed diff file cache](formats/dashboard-parsed-diff-file-cache.md), the
 nested tree comes from the
 [dashboard tree builder](concepts/dashboard-tree-builder.md), and the
 [diff representation selection](concepts/dashboard-diff-representation-selection.md)
@@ -116,6 +116,6 @@ file the operator is currently reading with another file's diff.
 ## Related
 
 - [runs-fleet-view](runs-fleet-view.md) ·
-  [workspace-diff-data](workspace-diff-data.md) ·
-  [repository-menu-data](repository-menu-data.md) ·
-  [dashboard path tree](dashboard-path-tree.md)
+  [workspace-diff-data](formats/workspace-diff-data.md) ·
+  [repository-menu-data](formats/repository-menu-data.md) ·
+  [dashboard path tree](formats/dashboard-path-tree.md)

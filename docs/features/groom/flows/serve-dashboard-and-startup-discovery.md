@@ -9,7 +9,7 @@ This journey covers the as-built path from the operator running
 [`groom serve`](../groom-cli.md#serve) to the browser seeing the
 [groom dashboard](../gui/screens/groom-dashboard.md) shell, mounting its islands,
 opening [WS /ws](../http/groom.md#websocket-dashboard), receiving the initial
-[dashboard state payload](../dashboard-state-payload.md), and then receiving the
+[dashboard state payload](../formats/dashboard-state-payload.md), and then receiving the
 post-startup-discovery broadcast that replaces the
 [runs fleet view](../runs-fleet-view.md) rows and the status bar. The startup
 portion is scheduled by the [groom server](../http/groom.md) app factory — three
@@ -101,7 +101,7 @@ resync path are not two renderers that can drift apart, and the first frame a fr
   8. [Run dashboard websocket session](../http/groom.md#run-dashboard-websocket-session)
      accepts the connection, creates one browser-client queue, registers it
      *before* emitting anything, and immediately sends one
-     [dashboard state payload](../dashboard-state-payload.md) built from the
+     [dashboard state payload](../formats/dashboard-state-payload.md) built from the
      current [workflow registry](../concepts/workflow-registry.md) snapshot. The
      registration-then-send order is what makes a broadcast racing the handshake
      land as a second frame rather than be dropped.

@@ -7,7 +7,7 @@ title: Docker ps-all value pipeline
 
 Four nodes each ground themselves in [`docker_ps_all`](../../../../groom/groom/docker_io.py) —
 three `field:` nodes on the [Docker all-container listing reader](docker-all-container-listing-reader.md)
-and the `additional-docker-fields` field on the [Docker ps container row](../docker-ps-container-row.md)
+and the `additional-docker-fields` field on the [Docker ps container row](../formats/docker-ps-container-row.md)
 format. They are not competing descriptions of one value with a winner to pick; each names a
 different stage of the same one-pass call, and a reader needs all of them together rather than a
 choice between them.
@@ -23,7 +23,7 @@ is the argv vector the reader sends to Docker before any output exists.
 the raw stdout of that command split into lines, before any line is parsed as JSON.
 [`parsed-container-entries`](docker-all-container-listing-reader.md#field-parsed-container-entries)
 is the function's return value — the sequence of successfully decoded JSON values, in stdout
-order. [`additional Docker fields`](../docker-ps-container-row.md#additional-docker-fields)
+order. [`additional Docker fields`](../formats/docker-ps-container-row.md#additional-docker-fields)
 describes the shape of one element of that sequence: the Docker-provided keys beyond `ID` that
 pass through `docker_ps_all` unvalidated and unused by workflow discovery.
 

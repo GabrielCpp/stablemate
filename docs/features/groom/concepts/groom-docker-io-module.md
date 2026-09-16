@@ -7,7 +7,7 @@ title: Groom Docker I/O module
 
 Its public helpers present Docker and workspace-volume operations through small return values for callers to interpret.
 
-Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server](../http/groom.md) and [groom sidecar](../groom-sidecar.md) control plane: it centralizes shell-free local Docker subprocess execution, container fleet reads, live container commands, workspace-volume file and diff reads, gate-file writes, and repository discovery. Its public helpers are documented as sibling concepts, including the [Docker subprocess runner](docker-subprocess-runner.md), [Docker all-container listing reader](docker-all-container-listing-reader.md), [Docker container-id listing reader](docker-container-id-listing-reader.md), [Docker exec runner](docker-exec-runner.md), [host-to-container sidecar query](host-to-container-sidecar-query.md), [Docker inspection reader](docker-inspection-reader.md), [stopped container start fallback](stopped-container-start-fallback.md), [container running-state check](container-running-state-check.md), [workspace volume relative-path guard](workspace-volume-relative-path-guard.md), [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md), [workspace volume file-list reader](workspace-volume-file-list-reader.md), [Docker run-directory reader](docker-run-directory-reader.md), [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md), [workspace volume diff reader](workspace-volume-diff-reader.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), and [workspace volume file writer](workspace-volume-file-writer.md). It exchanges [Docker ps container row](../docker-ps-container-row.md), [Docker inspect container object](../docker-inspect-container-object.md), [sidecar snapshot data](../sidecar-snapshot-data.md), [workspace file list data](../workspace-file-list-data.md), [workspace file content data](../workspace-file-content-data.md), and [workspace diff data](../workspace-diff-data.md) without owning workflow registry state, dashboard rendering, sidecar websocket state, or gate-answer orchestration.
+Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server](../http/groom.md) and [groom sidecar](../groom-sidecar.md) control plane: it centralizes shell-free local Docker subprocess execution, container fleet reads, live container commands, workspace-volume file and diff reads, gate-file writes, and repository discovery. Its public helpers are documented as sibling concepts, including the [Docker subprocess runner](docker-subprocess-runner.md), [Docker all-container listing reader](docker-all-container-listing-reader.md), [Docker container-id listing reader](docker-container-id-listing-reader.md), [Docker exec runner](docker-exec-runner.md), [host-to-container sidecar query](host-to-container-sidecar-query.md), [Docker inspection reader](docker-inspection-reader.md), [stopped container start fallback](stopped-container-start-fallback.md), [container running-state check](container-running-state-check.md), [workspace volume relative-path guard](workspace-volume-relative-path-guard.md), [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md), [workspace volume file-list reader](workspace-volume-file-list-reader.md), [Docker run-directory reader](docker-run-directory-reader.md), [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md), [workspace volume diff reader](workspace-volume-diff-reader.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), and [workspace volume file writer](workspace-volume-file-writer.md). It exchanges [Docker ps container row](../formats/docker-ps-container-row.md), [Docker inspect container object](../formats/docker-inspect-container-object.md), [sidecar snapshot data](../formats/sidecar-snapshot-data.md), [workspace file list data](../formats/workspace-file-list-data.md), [workspace file content data](../formats/workspace-file-content-data.md), and [workspace diff data](../formats/workspace-diff-data.md) without owning workflow registry state, dashboard rendering, sidecar websocket state, or gate-answer orchestration.
 
 - code: groom/groom/docker_io.py
 - tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_short_id_set
@@ -163,7 +163,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - abstract: false
 - raises: no intentional exception for expected Docker missing, timeout, non-zero exit, non-JSON output, or non-dictionary JSON output.
 - raises: unexpected non-subprocess failures can propagate.
-- returns: parsed [sidecar snapshot data](../sidecar-snapshot-data.md) dictionary from `groom-sidecar --query`, or `None` when the live sidecar query path is unavailable.
+- returns: parsed [sidecar snapshot data](../formats/sidecar-snapshot-data.md) dictionary from `groom-sidecar --query`, or `None` when the live sidecar query path is unavailable.
 - verify: json_path(path="$.current_node", equals="n1")
 - verify: absent(subject="sidecar snapshot data after a non-zero sidecar query exit")
 - verify: absent(subject="sidecar snapshot data after non-JSON sidecar query output")
@@ -184,7 +184,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
 - verify: json_path(path="exception.type", matches="^(OSError|TimeoutExpired)$")
-- returns: the first parsed [Docker inspect container object](../docker-inspect-container-object.md) for a zero-exit, valid-JSON, truthy response.
+- returns: the first parsed [Docker inspect container object](../formats/docker-inspect-container-object.md) for a zero-exit, valid-JSON, truthy response.
 - verify: json_path(path="result.Id", equals="container-123")
 - returns: `None` for Docker failure.
 - verify: absent(subject="Docker inspect object after Docker failure")
@@ -237,7 +237,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - sig: `grep_awaiting_files(volume: str, mount_subdir: str = "") -> list[str]`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
-- returns: workspace-volume-relative paths for files that contain an awaiting [operator gate context file](../operator-gate-context-file.md) status line, or `[]` for Docker failure or no matches.
+- returns: workspace-volume-relative paths for files that contain an awaiting [operator gate context file](../formats/operator-gate-context-file.md) status line, or `[]` for Docker failure or no matches.
 - verify: count(subject="awaiting file paths after a successful sweep", equals=2)
 - verify: count(subject="awaiting file paths after Docker failure", equals=0)
 - code: groom/groom/docker_io.py::grep_awaiting_files
@@ -252,7 +252,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
 - verify: json_path(path="exception.type", matches="^(FileNotFoundError|TimeoutExpired)$")
-- returns: sorted repo-relative [workspace file list data](../workspace-file-list-data.md), or `[]` for Docker failure or an empty tree.
+- returns: sorted repo-relative [workspace file list data](../formats/workspace-file-list-data.md), or `[]` for Docker failure or an empty tree.
 - verify: count(subject="repo-relative file paths from successful listing", equals=1)
 - verify: count(subject="file paths after Docker failure or empty tree", equals=0)
 - code: groom/groom/docker_io.py::list_files
@@ -315,7 +315,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - sig: `git_diff(volume: str, repo_dir: str = "") -> str`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
-- returns: raw [workspace diff data](../workspace-diff-data.md) from `git diff HEAD`, or `""` when no repository is available or the git process fails.
+- returns: raw [workspace diff data](../formats/workspace-diff-data.md) from `git diff HEAD`, or `""` when no repository is available or the git process fails.
 - verify: count(subject="diff output bytes when no repository is found", equals=0)
 - verify: count(subject="diff output bytes for a successful git diff", equals=31)
 - verify: count(subject="diff output bytes when git exits non-zero", equals=0)
@@ -334,7 +334,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - verify: json_path(path="exception.type", equals="ValueError")
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
 - verify: json_path(path="exception.type", matches="FileNotFoundError|TimeoutExpired")
-- returns: text [workspace file content data](../workspace-file-content-data.md), or `None` when Docker cannot read the selected safe path.
+- returns: text [workspace file content data](../formats/workspace-file-content-data.md), or `None` when Docker cannot read the selected safe path.
 - verify: json_path(path="result", equals="print(1)\n")
 - verify: absent(subject="file content when Docker cannot read the selected safe path")
 - code: groom/groom/docker_io.py::read_file

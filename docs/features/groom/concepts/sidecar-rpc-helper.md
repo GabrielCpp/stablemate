@@ -5,7 +5,7 @@ title: Sidecar RPC helper
 ---
 # Sidecar RPC helper
 
-Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers ask a connected [sidecar connection](sidecar-connection.md) for workspace data without knowing registry or socket failure details. The [groom server](../http/groom.md) file-list, file-content, and diff invocations call it before falling back to local-filesystem or Docker-volume readers, and it uses the [sidecar connection registry](sidecar-connection-registry.md#method-get) plus the [sidecar connection RPC method](sidecar-connection.md#method-rpc) to exchange [sidecar websocket frame](../sidecar-websocket-frame.md) messages. Successful helper results bridge sidecar `rpc_result.data` objects into [workspace file list data](../workspace-file-list-data.md), [workspace file content data](../workspace-file-content-data.md), and [workspace diff data](../workspace-diff-data.md) endpoint responses; unavailable or failed sockets preserve those endpoints' fallback paths.
+Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers ask a connected [sidecar connection](sidecar-connection.md) for workspace data without knowing registry or socket failure details. The [groom server](../http/groom.md) file-list, file-content, and diff invocations call it before falling back to local-filesystem or Docker-volume readers, and it uses the [sidecar connection registry](sidecar-connection-registry.md#method-get) plus the [sidecar connection RPC method](sidecar-connection.md#method-rpc) to exchange [sidecar websocket frame](../formats/sidecar-websocket-frame.md) messages. Successful helper results bridge sidecar `rpc_result.data` objects into [workspace file list data](../formats/workspace-file-list-data.md), [workspace file content data](../formats/workspace-file-content-data.md), and [workspace diff data](../formats/workspace-diff-data.md) endpoint responses; unavailable or failed sockets preserve those endpoints' fallback paths.
 
 - code: groom/groom/app.py::_sidecar_rpc
 - detail: [Sidecar RPC documentation scope](sidecar-rpc-documentation-scope.md)
@@ -19,7 +19,7 @@ Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers a
 - consistency: rpc-method — it forwards the supplied method unchanged
 - consistency: rpc-params — it forwards the supplied params unchanged
 - consistency: rpc-result — it returns successful connection data unchanged
-- first-party method mapping: file-list handlers pass `getTree` with `{repo}` and expect a result object whose `paths` member feeds [workspace file list data](../workspace-file-list-data.md); file-content handlers pass `getFile` with `{repo, path}` and expect `content` for [workspace file content data](../workspace-file-content-data.md); diff handlers pass `getDiff` with `{repo}` and expect `diff` for [workspace diff data](../workspace-diff-data.md).
+- first-party method mapping: file-list handlers pass `getTree` with `{repo}` and expect a result object whose `paths` member feeds [workspace file list data](../formats/workspace-file-list-data.md); file-content handlers pass `getFile` with `{repo, path}` and expect `content` for [workspace file content data](../formats/workspace-file-content-data.md); diff handlers pass `getDiff` with `{repo}` and expect `diff` for [workspace diff data](../formats/workspace-diff-data.md).
 - transport shape: the helper never serializes frames itself; it delegates to the connection RPC method, which emits a host-to-sidecar `rpc` frame with a connection-local id, the supplied method string, and the supplied params object, then resolves with the matching `rpc_result.data` value.
 - availability boundary: a missing connection and an expected sidecar RPC failure both mean "not served by the live socket"; they do not mean the workflow is gone or the endpoint should fail.
 - retry boundary: each helper call performs one registry lookup and, when present, one socket RPC attempt; it does not retry, re-read the registry after failure, or attempt a Docker-volume fallback itself.
@@ -36,7 +36,7 @@ Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers a
 - abstract: false
 - does: reads the current [sidecar connection registry](sidecar-connection-registry.md) once for `container_id` through [method-get](sidecar-connection-registry.md#method-get)
 - verify: json_path(path="file-list response.paths", matches=".+")
-- does: sends at most one `rpc` [sidecar websocket frame](../sidecar-websocket-frame.md) through the returned [sidecar connection](sidecar-connection.md), carrying the method and params unchanged and relying on the connection's default RPC timeout
+- does: sends at most one `rpc` [sidecar websocket frame](../formats/sidecar-websocket-frame.md) through the returned [sidecar connection](sidecar-connection.md), carrying the method and params unchanged and relying on the connection's default RPC timeout
 - verify: json_path(path="file-content response.content", matches=".+")
 - does: converts only expected sidecar socket failures reported as [sidecar error](sidecar-error.md) into `None` so callers can use their fallback readers
 - verify: omits(subject="HTTP response", text="sidecar transport error")
@@ -54,7 +54,7 @@ Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers a
 - tests: groom/tests/test_app.py::test_file_content_prefers_sidecar_socket
 - tests: groom/tests/test_app.py::test_diff_prefers_sidecar_socket
 - input-container-id: already-selected workflow container id used exactly as the [sidecar connection registry](sidecar-connection-registry.md) lookup key; the helper does not normalize, truncate, coerce, or validate it.
-- input-method: sidecar data-plane method requested by the caller; first-party callers use `getTree`, `getFile`, and `getDiff`, matching the `rpc.method` field in [sidecar websocket frame](../sidecar-websocket-frame.md), but the helper accepts any string and sends it unchanged.
+- input-method: sidecar data-plane method requested by the caller; first-party callers use `getTree`, `getFile`, and `getDiff`, matching the `rpc.method` field in [sidecar websocket frame](../formats/sidecar-websocket-frame.md), but the helper accepts any string and sends it unchanged.
 - input-params: JSON-object payload sent unchanged in the outgoing RPC; current callers pass the selected `repo`, and file-content calls also pass `path`; the helper does not inspect, complete, copy, validate, escape-check, or default this object.
 - output-success: when a current [sidecar connection](sidecar-connection.md) exists and its [method-rpc](sidecar-connection.md#method-rpc) completes successfully, returns the RPC result object exactly as delivered by that connection.
 - output-unavailable: returns `None` when no sidecar is currently registered for the supplied container id.

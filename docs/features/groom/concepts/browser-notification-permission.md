@@ -5,7 +5,7 @@ title: Browser notification permission
 ---
 # Browser notification permission
 
-Browser notification permission is browser-owned state requested by the dashboard's [enable browser notifications from settings](../gui/screens/groom-dashboard.md#enable-browser-notifications-from-settings) interaction and the dashboard's one-time first-click bootstrap, then consumed when a [dashboard notify message](../dashboard-notify-message.md) arrives on the socket after a [blocked push payload](../blocked-push-payload.md), a [sidecar blocked applier](sidecar-blocked-applier.md) delta, or a fired alert rule records the event. The browser owns the permission prompt, stored permission value, repeat-request behavior, denied-state recovery, and persistence; the dashboard only calls the Notification API during click handling and reads its exposed permission value before creating a system notification. It gates only system-level browser notifications for the [groom dashboard](../gui/screens/groom-dashboard.md); the in-page [dashboard toast pusher](dashboard-toast-pusher.md) remains available without this permission.
+Browser notification permission is browser-owned state requested by the dashboard's [enable browser notifications from settings](../gui/screens/groom-dashboard.md#enable-browser-notifications-from-settings) interaction and the dashboard's one-time first-click bootstrap, then consumed when a [dashboard notify message](../formats/dashboard-notify-message.md) arrives on the socket after a [blocked push payload](../formats/blocked-push-payload.md), a [sidecar blocked applier](sidecar-blocked-applier.md) delta, or a fired alert rule records the event. The browser owns the permission prompt, stored permission value, repeat-request behavior, denied-state recovery, and persistence; the dashboard only calls the Notification API during click handling and reads its exposed permission value before creating a system notification. It gates only system-level browser notifications for the [groom dashboard](../gui/screens/groom-dashboard.md); the in-page [dashboard toast pusher](dashboard-toast-pusher.md) remains available without this permission.
 
 - code: groom/groom/assets/dashboard.js::wireEvents
 - code: groom/groom/assets/dashboard.js::onNotify
@@ -23,7 +23,7 @@ Browser notification permission is browser-owned state requested by the dashboar
 - first-click request path: when the dashboard script loads and the browser reports both Notification API availability and `Notification.permission === "default"`, groom registers one body click listener that calls `Notification.requestPermission()` on the first body click and then removes itself.
 - settings request path: the settings `Enable notifications` button asks for permission on activation when `window.Notification` exists; the delegated handler requires the event target itself to have `id="btn-notify"`.
 - double-request edge: if the first eligible body click is the settings button activation while permission is still `default`, the one-time first-click listener may call `Notification.requestPermission()` before the delegated settings branch calls it again because the first-click listener is registered before the delegated body-click handler.
-- granted behavior: when a later [dashboard notify message](../dashboard-notify-message.md) arrives and `Notification.permission === "granted"`, the dashboard creates one browser notification titled `groom: workflow blocked` with the frame's `message` string, or the fallback text, as the notification body.
+- granted behavior: when a later [dashboard notify message](../formats/dashboard-notify-message.md) arrives and `Notification.permission === "granted"`, the dashboard creates one browser notification titled `groom: workflow blocked` with the frame's `message` string, or the fallback text, as the notification body.
 - fallback behavior: when permission is `default`, `denied`, unavailable, or otherwise not `granted`, the same frame still creates the in-page blocked toast and no system notification is created.
 - local state: the dashboard does not mirror the permission value into application state, local storage, server state, websocket messages, CSS classes, or visible button state.
 - operator feedback: the settings request does not read the returned permission value, disable the button, change its label, add busy state, change focus, or show a success/failure toast after the browser permission flow resolves.
@@ -84,7 +84,7 @@ Browser notification permission is browser-owned state requested by the dashboar
 - type: browser `Notification` object construction attempt
 - default: absent for every notify frame unless Notification API exists and permission is `granted`
 - required: false
-- meaning: optional system notification created from an arriving [dashboard notify message](../dashboard-notify-message.md) after the in-page blocked toast is queued; title is fixed to `groom: workflow blocked` and body is the frame's `message` string or `A workflow needs your input.` when it is empty.
+- meaning: optional system notification created from an arriving [dashboard notify message](../formats/dashboard-notify-message.md) after the in-page blocked toast is queued; title is fixed to `groom: workflow blocked` and body is the frame's `message` string or `A workflow needs your input.` when it is empty.
 
 ### system-notification-title
 
@@ -98,7 +98,7 @@ Browser notification permission is browser-owned state requested by the dashboar
 - type: browser notification options body string
 - default: `A workflow needs your input.` when the notify frame's `message` is empty
 - required: true when `notify-frame-system-notification` is created
-- meaning: notification body passed as `{ body: body }`; it is the [dashboard notify message](../dashboard-notify-message.md) `message` string when non-empty, otherwise the fallback prompt text.
+- meaning: notification body passed as `{ body: body }`; it is the [dashboard notify message](../formats/dashboard-notify-message.md) `message` string when non-empty, otherwise the fallback prompt text.
 
 ## Methods
 

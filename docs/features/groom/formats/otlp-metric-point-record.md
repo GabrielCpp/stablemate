@@ -5,7 +5,7 @@ title: OTLP metric point record
 ---
 # OTLP metric point record
 
-The decoded intermediate representation of one OpenTelemetry metric data point, produced by [parse_metrics](./concepts/groom-otlp-module.md#parse_metrics) and consumed by the store and alert ingestion. Metric points of gauge and sum kinds are extracted; other kinds (histogram, exponential histogram, summary) are skipped. Resource identity (run_id, workflow, repo, branch, run_dir, workspace, pid) is denormalized from the OTLP resource, because metrics reach groom early (heartbeats and node.active start at second zero) while spans export only when a node completes, so the native run's dashboard row is materialized from metrics and needs the same identity a span carries.
+The decoded intermediate representation of one OpenTelemetry metric data point, produced by [parse_metrics](../concepts/groom-otlp-module.md#parse_metrics) and consumed by the store and alert ingestion. Metric points of gauge and sum kinds are extracted; other kinds (histogram, exponential histogram, summary) are skipped. Resource identity (run_id, workflow, repo, branch, run_dir, workspace, pid) is denormalized from the OTLP resource, because metrics reach groom early (heartbeats and node.active start at second zero) while spans export only when a node completes, so the native run's dashboard row is materialized from metrics and needs the same identity a span carries.
 
 - code: groom/groom/otlp.py::parse_metrics
 - tests: groom/tests/test_telemetry.py

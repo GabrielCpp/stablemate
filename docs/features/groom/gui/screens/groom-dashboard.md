@@ -16,7 +16,7 @@ The `groom` dashboard is the browser screen served by the [root dashboard endpoi
 
 The dashboard's automated coverage includes the open-gate accessibility path (`groom/tests/test_a11y_dynamic.py::test_runs_pane_with_an_open_gate_is_accessible`), client-module parsing (`groom/tests/test_dashboard_client.py::test_the_client_module_parses`), and JSON serialization of state messages (`groom/tests/test_projection.py::test_state_message_is_json_serializable`). Its visual review evidence is recorded in `docs/specs/groom-dashboard/vet.md`.
 
-Nothing on either side of the wire is HTML. The endpoint ships a static shell — landmarks, live regions, overlays, and the ids the client mounts into — and every visible region is a Preact island rendered from JSON by `groom/groom/assets/dashboard.js`. The screen opens a browser websocket to `/ws` and receives fleet-wide [dashboard state payloads](../../dashboard-state-payload.md) on the server's clock; it subscribes that tab to the one run it has open and receives that run's detail pushed back to it alone; and it fetches per-selection panel data — repositories, files, diffs, traces — over HTTP, because those are one tab's choices and not fleet-wide facts. A socket `state` frame and the body of [GET /api/state](../../http/groom.md#get-dashboard-state) are the same JSON and go through the same apply function, so recovering from a dead socket is not a second rendering path that can rot unobserved.
+Nothing on either side of the wire is HTML. The endpoint ships a static shell — landmarks, live regions, overlays, and the ids the client mounts into — and every visible region is a Preact island rendered from JSON by `groom/groom/assets/dashboard.js`. The screen opens a browser websocket to `/ws` and receives fleet-wide [dashboard state payloads](../../formats/dashboard-state-payload.md) on the server's clock; it subscribes that tab to the one run it has open and receives that run's detail pushed back to it alone; and it fetches per-selection panel data — repositories, files, diffs, traces — over HTTP, because those are one tab's choices and not fleet-wide facts. A socket `state` frame and the body of [GET /api/state](../../http/groom.md#get-dashboard-state) are the same JSON and go through the same apply function, so recovering from a dead socket is not a second rendering path that can rot unobserved.
 
 The visible shell has five activity modes selected by the left activity rail: runs, files, diff, telemetry, and settings. The app starts in **runs** mode. It holds the selected run id, the selected `(container, repo)` pair, per-pane loading state, and transient overlay state for the repository picker and command palette in the [dashboard client store](../../concepts/dashboard-client-store.md), and keeps the source of truth for run rows and counts on the server. Selecting a row follows [select run row](#select-run-row), which marks one [run row](#run-row) current and fills `#detail` from [get run detail](../../http/groom.md#get-run-detail) and the tab's own watch subscription — without changing the active mode.
 
@@ -38,8 +38,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 ## States
 
 - mode: `runs` by default; `files`, `diff`, `telemetry`, and `settings` are mutually exclusive alternatives written to `.app[data-mode]` and to the store together.
-- selected run: absent until a run row, palette result, or `j`/`k` row movement writes [dashboard selected worker state](../../dashboard-selected-worker-state.md). Selecting one clears the detail pane, sends this tab's watch subscription, and fetches `GET /worker/{container_id}` once.
-- selected repository: absent until a repository menu item is chosen; choosing one writes [dashboard selected repository state](../../dashboard-selected-repository-state.md), updates both picker labels, and loads whichever of the files or diff panes is active.
+- selected run: absent until a run row, palette result, or `j`/`k` row movement writes [dashboard selected worker state](../../formats/dashboard-selected-worker-state.md). Selecting one clears the detail pane, sends this tab's watch subscription, and fetches `GET /worker/{container_id}` once.
+- selected repository: absent until a repository menu item is chosen; choosing one writes [dashboard selected repository state](../../formats/dashboard-selected-repository-state.md), updates both picker labels, and loads whichever of the files or diff panes is active.
 - repository menu: closed by default with `#repo-menu-wrap` lacking `open`.
 - consistency: repository-menu — opening it positions it under the invoking picker.
 - verify: json_path(path="repository_menu.position.anchor", equals="invoking picker")
@@ -462,7 +462,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.re_expansion.fetch_count", equals=1)
 - code: groom/groom/assets/dashboard.js::DiffDisclosure
 - dom: a native `<details>`/`<summary>` pair, keyed by run id so switching runs resets the disclosure rather than showing the previous run's diff.
-- leads-to: [toggle detail working tree diff](#toggle-detail-working-tree-diff), which lazily loads that run's [workspace diff data](../../workspace-diff-data.md).
+- leads-to: [toggle detail working tree diff](#toggle-detail-working-tree-diff), which lazily loads that run's [workspace diff data](../../formats/workspace-diff-data.md).
 - screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-working-tree-diff-toggle.png
 
 ### detail-metrics-grid
@@ -712,7 +712,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: count(subject="elements matching role=button name={node.name} in the rendered DOM", equals=1)
 - code: groom/groom/assets/dashboard.js::FilesTree
 - dom: a native `<button type="button">` keyed by full path, holding only the base name. The full path is closed over by the click handler rather than written to a data attribute.
-- leads-to: [select files file row](#select-files-file-row), which fetches that file's [workspace file content data](../../workspace-file-content-data.md).
+- leads-to: [select files file row](#select-files-file-row), which fetches that file's [workspace file content data](../../formats/workspace-file-content-data.md).
 - screenshot: docs/specs/groom-dashboard/vet/files-files-file-row.png
 - known-defect: stablemate-01M20XH81XHKWMJNZF15C0S43R ambiguous-locator — FilesTree leaf buttons (dashboard.js:795-808) name each tree row solely by the bare file/directory name with no distinguishing aria-label, so a file named Diff/Files/Runs/Telemetry/Settings/'Open command palette'/'Rescan containers (reconcile + prune)'/'Select container / repo…' collides role=button name with the corresponding fixed rail or status-bar control — same defect already seeded as stablemate-01M20X2HWR7MDGSZG3XJSKRYQ0 / stablemate-01M20X0XEEFYDZQRAKKYET9H4Z / stablemate-01M20WYV4PDZDZQMW55XEA47X4 / stablemate-01M20X67QXFMXFWTHH9P1HXGNR / stablemate-01M20X4DPRXNNG3RDZEDGSSQHD / stablemate-01M20X81BGCYQRWEAS1BX191P3; files-file-row just needs the matching known-defect bullets.
 
@@ -795,7 +795,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: every other row omits `aria-current`.
 - verify: json_path(path="states.other_rows", equals="aria-current absent")
 - code: groom/groom/assets/dashboard.js::DiffTree
-- dom: keyed by its index into the [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md); the index is closed over by the click handler rather than written to a data attribute. A file added or deleted in the diff is addressed by its non-`/dev/null` name.
+- dom: keyed by its index into the [dashboard parsed diff file cache](../../formats/dashboard-parsed-diff-file-cache.md); the index is closed over by the click handler rather than written to a data attribute. A file added or deleted in the diff is addressed by its non-`/dev/null` name.
 - leads-to: [select diff file row](#select-diff-file-row).
 - screenshot: docs/specs/groom-dashboard/vet/diff-diff-file-row.png
 
@@ -1336,7 +1336,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator=".app[data-mode='files']", text="Files")
 - when:
   - The click target or an ancestor matches `.act-btn` with `data-mode="files"`.
-  - A selected repository may be absent, or may hold a container id plus an optional repository path in [dashboard selected repository state](../../dashboard-selected-repository-state.md).
+  - A selected repository may be absent, or may hold a container id plus an optional repository path in [dashboard selected repository state](../../formats/dashboard-selected-repository-state.md).
 - does:
   - Writes `files` to `.app[data-mode]`.
 - verify: visible(locator=".app[data-mode='files']", text="Files")
@@ -1380,7 +1380,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Sends an unset repository path as an empty `repo` query value.
 - verify: json_path(path="request.url", matches="\\?repo=$")
 - does:
-  - Parses the response as JSON [workspace file list data](../../workspace-file-list-data.md).
+  - Parses the response as JSON [workspace file list data](../../formats/workspace-file-list-data.md).
 - verify: json_path(path="response.paths[0]", equals="README.md")
 - does:
   - Stores the response path array.
@@ -1389,7 +1389,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Renders `(no files)` when the response path array is empty.
 - verify: visible(locator="#files-tree", text="(no files)")
 - does:
-  - Groups the flat repository-relative paths into a [dashboard path tree](../../dashboard-path-tree.md) at render time.
+  - Groups the flat repository-relative paths into a [dashboard path tree](../../formats/dashboard-path-tree.md) at render time.
 - verify: visible(locator="#files-tree", text="README.md")
 - does:
   - Sorts directories by name before files in the rendered path tree.
@@ -1471,7 +1471,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Reads the JSON body's raw unified diff.
 - verify: visible(locator="#diff-view")
 - does:
-  - Parses that text into a [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md) with diff2html, storing an empty list for an empty diff.
+  - Parses that text into a [dashboard parsed diff file cache](../../formats/dashboard-parsed-diff-file-cache.md) with diff2html, storing an empty list for an empty diff.
 - verify: count(subject="diff.files", equals=0)
 - does:
   - Leaves the selected index unset so the viewer shows its prompt.
@@ -1826,7 +1826,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Fetches `GET /repos` from [get repository menu](../../http/groom.md#get-repository-menu).
 - verify: count(subject="GET /repos requests when opening the files picker", equals=1)
 - does:
-  - Stores returned [repository menu data](../../repository-menu-data.md) groups.
+  - Stores returned [repository menu data](../../formats/repository-menu-data.md) groups.
 - verify: json_path(path="repo.groups[0].container", equals="acme")
 - does:
   - Stores an empty group list when the repository request is rejected.
@@ -1944,13 +1944,13 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - when:
   - The menu is open and the flattened option list is non-empty.
 - does:
-  - Writes the chosen container id to [dashboard selected repository state](../../dashboard-selected-repository-state.md).
+  - Writes the chosen container id to [dashboard selected repository state](../../formats/dashboard-selected-repository-state.md).
 - verify: json_path(path="repo.container", equals="acme")
 - does:
-  - Writes the chosen repository path to [dashboard selected repository state](../../dashboard-selected-repository-state.md).
+  - Writes the chosen repository path to [dashboard selected repository state](../../formats/dashboard-selected-repository-state.md).
 - verify: json_path(path="repo.dir", equals="web-app")
 - does:
-  - Writes the chosen label to [dashboard selected repository state](../../dashboard-selected-repository-state.md).
+  - Writes the chosen label to [dashboard selected repository state](../../formats/dashboard-selected-repository-state.md).
 - verify: json_path(path="repo.label", equals="acme / web-app")
 - does:
   - Replaces the label text on *both* repository pickers, so the files and diff panes never disagree about what is selected.
@@ -2049,7 +2049,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Records the clicked path as the open path and puts the viewer into its loading state under that path, so the previous file's body is gone before the new one arrives.
   - Sends `GET /file/{container_id}?repo={repo}&path={path}` to [get workspace file content](../../http/groom.md#get-workspace-file-content), URL-encoding the container, repository, and path.
   - Discards the reply — success or failure — when a later click has already changed the open path, so a slow response cannot overwrite a newer file.
-  - Stores the returned [workspace file content data](../../workspace-file-content-data.md): the resolved path, the content, and the server-decided language, whose extension table lives with the rest of the presentation policy.
+  - Stores the returned [workspace file content data](../../formats/workspace-file-content-data.md): the resolved path, the content, and the server-decided language, whose extension table lives with the rest of the presentation policy.
   - Renders `(empty or binary file)` under the path header for empty content.
   - Highlights the content with highlight.js when it is available, falling back to a plain text node when the library is absent or throws — the highlighted output is escaped HTML, which is why it may be set as markup at all.
   - Marks this row `active` with `aria-current="true"` and clears the marking from the previously open row.
@@ -2109,7 +2109,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - when:
   - A repository is selected and the parsed diff holds at least one changed file.
 - does:
-  - Writes that file's index into the [dashboard parsed diff file cache](../../dashboard-parsed-diff-file-cache.md) to the diff slice.
+  - Writes that file's index into the [dashboard parsed diff file cache](../../formats/dashboard-parsed-diff-file-cache.md) to the diff slice.
 - verify: json_path(path="diff.selected_file_index", matches="^[0-9]+$")
 - does:
   - Fetches nothing, because the whole diff was parsed when the pane loaded.
@@ -2169,7 +2169,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Prevents the browser's own form submission.
 - verify: unchanged(subject="browser URL")
 - does:
-  - Sends an `answer` command in the [dashboard websocket answer frame](../../dashboard-websocket-answer-frame.md).
+  - Sends an `answer` command in the [dashboard websocket answer frame](../../formats/dashboard-websocket-answer-frame.md).
 - verify: json_path(path="websocket.frames[0].cmd", equals="answer")
 - does:
   - Sends the form's workflow id in the answer frame.
@@ -2199,7 +2199,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Does not re-fetch the pane after submission.
 - verify: count(subject="HTTP requests after answer submission", equals=0)
 - does:
-  - Shows the `✓ answer sent` confirmation when it receives a [dashboard answered message](../../dashboard-answered-message.md).
+  - Shows the `✓ answer sent` confirmation when it receives a [dashboard answered message](../../formats/dashboard-answered-message.md).
 - verify: visible(locator="#toasts", text="✓ answer sent")
 - does:
   - Refreshes the pane from the `detail` push triggered by the answer command.

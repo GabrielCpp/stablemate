@@ -14,8 +14,8 @@ returns the result as `{"path", "content", "lang"}`.
 Read [file-content](groom-app-module.md#method-file-content) for the handler's place in the
 [groom app module](groom-app-module.md): its route wiring, its exception behavior, and its role
 among the module's other endpoint handlers. Read [workspace file content data
-method-file_content](../workspace-file-content-data.md#method-file_content) when the question
-concerns the [workspace file content data](../workspace-file-content-data.md) format it produces:
+method-file_content](../formats/workspace-file-content-data.md#method-file_content) when the question
+concerns the [workspace file content data](../formats/workspace-file-content-data.md) format it produces:
 the language-projection and sidecar-versus-fallback algorithm, the empty-state and error rules,
 and how it relates to the sibling producer method (`_rpc_get_file`) that ultimately supplies the
 sidecar-side text. Neither view supersedes the other; each describes the same current handler

@@ -8,8 +8,8 @@ title: Sidecar identity data
 Sidecar identity data is the sidecar-produced JSON object that identifies one
 workflow container to [sidecar websocket frame](sidecar-websocket-frame.md)
 `hello` messages and residual HTTP payloads sent through the [sidecar residual
-HTTP push helper](concepts/sidecar-residual-http-push-helper.md). Its fields can
-update the displayed identity of a [workflow container](concepts/workflow-container.md)
+HTTP push helper](../concepts/sidecar-residual-http-push-helper.md). Its fields can
+update the displayed identity of a [workflow container](../concepts/workflow-container.md)
 when consumed by hello, progress, blocked, or exited paths, while the event
 payloads that merge it may add their own event-specific fields.
 

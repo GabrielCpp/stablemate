@@ -12,7 +12,7 @@ host [`WS /sidecar`](../http/groom.md#websocket-sidecar) endpoint, authoritative
 `hello` snapshot application, live `progress` and `blocked` deltas, host-issued
 sidecar RPCs used by workspace file and diff reads, disconnect fallback to volume
 readers, and the [`POST /reload`](../http/groom.md#post-reload) development-loop
-exit path. The protocol payload is the [sidecar websocket frame](../sidecar-websocket-frame.md),
+exit path. The protocol payload is the [sidecar websocket frame](../formats/sidecar-websocket-frame.md),
 the host-side live socket is the [sidecar connection](../concepts/sidecar-connection.md),
 and the visible workflow row state is stored as a [workflow container](../concepts/workflow-container.md).
 
@@ -45,10 +45,10 @@ and the visible workflow row state is stored as a [workflow container](../concep
      keeps trying until it yields a socket, and each later ordinary socket close
      returns to this same reconnect path.
   4. For each connected socket, [sidecar connected session](../concepts/sidecar-connected-session.md)
-     immediately sends one `hello` [sidecar websocket frame](../sidecar-websocket-frame.md)
+     immediately sends one `hello` [sidecar websocket frame](../formats/sidecar-websocket-frame.md)
      before installing watches or reading host frames. The `hello` combines
-     [sidecar identity data](../sidecar-identity-data.md) from hostname and repo
-     environment values with [sidecar snapshot data](../sidecar-snapshot-data.md)
+     [sidecar identity data](../formats/sidecar-identity-data.md) from hostname and repo
+     environment values with [sidecar snapshot data](../formats/sidecar-snapshot-data.md)
      read from the latest run checkpoint, latest run metadata, and a workspace
      sweep for awaiting operator gates.
   5. The host [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session)
@@ -67,7 +67,7 @@ and the visible workflow row state is stored as a [workflow container](../concep
      clears stale gates, rebuilds gates from non-empty `snapshot.gates[].file_path`
      entries, marks the workflow `finished` for a truthy terminal marker,
      otherwise marks it `blocked` when rebuilt gates exist or `running` when none
-     exist, and broadcasts the [dashboard state payload](../dashboard-state-payload.md)
+     exist, and broadcasts the [dashboard state payload](../formats/dashboard-state-payload.md)
      to every connected browser.
   8. After advertising, the sidecar session installs recursive watches below the
      workspace and runs mounts, starts the [sidecar outbound sender](../concepts/sidecar-outbound-sender.md),
@@ -78,7 +78,7 @@ and the visible workflow row state is stored as a [workflow container](../concep
      [sidecar progress applier](../concepts/sidecar-progress-applier.md), upserts
      the connected workflow as `running`, applies non-null current-node values,
      preserves existing gates, and broadcasts the
-     [dashboard state payload](../dashboard-state-payload.md) to browser
+     [dashboard state payload](../formats/dashboard-state-payload.md) to browser
      websocket clients.
   10. When a watched workspace file is classified as an awaiting gate, the sidecar
       emits a `blocked` frame with workspace-relative `file_path` when possible
@@ -86,8 +86,8 @@ and the visible workflow row state is stored as a [workflow container](../concep
       [sidecar blocked applier](../concepts/sidecar-blocked-applier.md), ignores
       empty paths, otherwise upserts the workflow as `blocked`, stores or replaces
       one [gate info](../concepts/gate-info.md), broadcasts the
-      [dashboard state payload](../dashboard-state-payload.md), and sends one
-      [dashboard notify message](../dashboard-notify-message.md) so the operator
+      [dashboard state payload](../formats/dashboard-state-payload.md), and sends one
+      [dashboard notify message](../formats/dashboard-notify-message.md) so the operator
       is interrupted rather than merely updated.
   11. When the dashboard Files or Diff path requests workspace data, the
       corresponding server invocation first uses the live connection instead of
@@ -110,9 +110,9 @@ and the visible workflow row state is stored as a [workflow container](../concep
       late, duplicate, unknown, or already-timed-out ids are ignored without
       mutating workflow state or broadcasting.
   14. If a sidecar RPC succeeds, the HTTP handler wraps the returned sidecar data
-      in the endpoint's JSON body and returns it: [workspace file list data](../workspace-file-list-data.md)
-      as `{"paths": [...]}`, [workspace file content data](../workspace-file-content-data.md)
-      as `{"path", "content", "lang"}`, or [workspace diff data](../workspace-diff-data.md)
+      in the endpoint's JSON body and returns it: [workspace file list data](../formats/workspace-file-list-data.md)
+      as `{"paths": [...]}`, [workspace file content data](../formats/workspace-file-content-data.md)
+      as `{"path", "content", "lang"}`, or [workspace diff data](../formats/workspace-diff-data.md)
       as `{"diff": "..."}`. The handler does not consult Docker volumes on the
       successful sidecar path. The sidecar's own frames are unchanged by this —
       the JSON body is the browser's contract, not the sidecar's.

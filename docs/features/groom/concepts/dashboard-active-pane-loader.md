@@ -5,18 +5,18 @@ title: Dashboard active pane loader
 ---
 # Dashboard active pane loader
 
-Dashboard active pane loader is the browser-side dispatch layer that reloads whichever pane depends on the selected checkout. It is called after [dashboard selected repository state](../dashboard-selected-repository-state.md) is written by a repository-menu selection, and it reads the store's current mode to decide what — if anything — to request: `files` reloads [workspace file list data](../workspace-file-list-data.md), `diff` reloads [workspace diff data](../workspace-diff-data.md), and every other mode is a no-op. It is the boundary between picking a checkout and the Files/Changes pane reload behaviour documented on the [groom dashboard](../gui/screens/groom-dashboard.md).
+Dashboard active pane loader is the browser-side dispatch layer that reloads whichever pane depends on the selected checkout. It is called after [dashboard selected repository state](../formats/dashboard-selected-repository-state.md) is written by a repository-menu selection, and it reads the store's current mode to decide what — if anything — to request: `files` reloads [workspace file list data](../formats/workspace-file-list-data.md), `diff` reloads [workspace diff data](../formats/workspace-diff-data.md), and every other mode is a no-op. It is the boundary between picking a checkout and the Files/Changes pane reload behaviour documented on the [groom dashboard](../gui/screens/groom-dashboard.md).
 
 It exists because the picker is shared. One repository menu serves both repository-backed panes, so the selection handler cannot name the loader it wants — it has to ask what is open. The mirror-image case, switching mode with a checkout already selected, is handled by the mode setter, which calls the same two loaders directly; this dispatcher is the selection-changed half of that pair.
 
 - code: groom/groom/assets/dashboard.js::loadActivePane
-- refs: [dashboard client store](dashboard-client-store.md), [dashboard selected repository state](../dashboard-selected-repository-state.md), [workspace file list data](../workspace-file-list-data.md), [workspace diff data](../workspace-diff-data.md)
+- refs: [dashboard client store](dashboard-client-store.md), [dashboard selected repository state](../formats/dashboard-selected-repository-state.md), [workspace file list data](../formats/workspace-file-list-data.md), [workspace diff data](../formats/workspace-diff-data.md)
 - detail: [Dashboard active-pane documentation scope](dashboard-active-pane-documentation-scope.md)
 
 ## Contract
 
 - purpose: route a newly selected checkout to the data loader for the currently active repository-backed pane.
-- consistency: dashboard-selected-repository-state — repository-menu selection writes the chosen entry's container, checkout directory, and label into [dashboard selected repository state](../dashboard-selected-repository-state.md) before synchronously calling this loader.
+- consistency: dashboard-selected-repository-state — repository-menu selection writes the chosen entry's container, checkout directory, and label into [dashboard selected repository state](../formats/dashboard-selected-repository-state.md) before synchronously calling this loader.
 - verify: persists(subject="selected repository state")
 - consistency: repo-picker-label — repository-menu selection updates every picker label to reflect the selection before calling this loader.
 - verify: visible(locator="picker label")

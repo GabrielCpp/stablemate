@@ -60,7 +60,7 @@ instrument, not part of the product surface.
      pane to prove the same five panes accessible would be time spent on nothing.
   5. Each check opens a page at the server's root, waits for the first run row to
      exist — which only happens after the socket has delivered a
-     [dashboard state payload](../dashboard-state-payload.md) and the islands have
+     [dashboard state payload](../formats/dashboard-state-payload.md) and the islands have
      rendered it — and then injects the vendored axe bundle from disk.
   6. The harness drives the page into one pane and waits for that pane's content to
      actually load. An empty pane passes axe trivially and proves nothing, so the
@@ -89,7 +89,7 @@ instrument, not part of the product surface.
       [detail answer textarea](../gui/screens/groom-dashboard.md#detail-answer-textarea),
       type, press Tab, and assert focus lands on that form's submit button, then
       press Enter and wait for the textarea to clear. The answer travels the real
-      [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md)
+      [dashboard websocket answer frame](../formats/dashboard-websocket-answer-frame.md)
       path and lands in the gate file on disk, so this is an end-to-end keyboard
       path and not a focus-order assertion.
   11. Teardown closes the browser, stops the server, and removes the temporary

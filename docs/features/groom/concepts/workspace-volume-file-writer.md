@@ -5,12 +5,12 @@ title: Workspace volume file writer
 ---
 # Workspace volume file writer
 
-Workspace volume file writer is the shared Docker-volume write operation used by the [gate-answering layer](gate-answering-layer.md) to persist an operator answer back into the selected [operator gate context file](../operator-gate-context-file.md) inside a workflow workspace volume. It is the write-side sibling of the [workspace volume file-content reader](workspace-volume-file-content-reader.md): it delegates destination validation to the [workspace volume relative path guard](workspace-volume-relative-path-guard.md), delegates process execution to the [Docker subprocess runner](docker-subprocess-runner.md), streams the complete replacement file text through standard input, and reports only whether the temporary writer process exited successfully.
+Workspace volume file writer is the shared Docker-volume write operation used by the [gate-answering layer](gate-answering-layer.md) to persist an operator answer back into the selected [operator gate context file](../formats/operator-gate-context-file.md) inside a workflow workspace volume. It is the write-side sibling of the [workspace volume file-content reader](workspace-volume-file-content-reader.md): it delegates destination validation to the [workspace volume relative path guard](workspace-volume-relative-path-guard.md), delegates process execution to the [Docker subprocess runner](docker-subprocess-runner.md), streams the complete replacement file text through standard input, and reports only whether the temporary writer process exited successfully.
 
 The `volume` argument is passed unchanged as a read-write `/vol` mount to the temporary Docker writer; Docker determines whether that named volume is usable.
 
 - code: groom/groom/docker_io.py::write_file
-- refs: [workspace volume relative path guard](workspace-volume-relative-path-guard.md), [Docker subprocess runner](docker-subprocess-runner.md), [gate-answering layer](gate-answering-layer.md), [operator gate context file](../operator-gate-context-file.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), [Groom Docker I/O module](groom-docker-io-module.md#write-file)
+- refs: [workspace volume relative path guard](workspace-volume-relative-path-guard.md), [Docker subprocess runner](docker-subprocess-runner.md), [gate-answering layer](gate-answering-layer.md), [operator gate context file](../formats/operator-gate-context-file.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), [Groom Docker I/O module](groom-docker-io-module.md#write-file)
 
 ## Contract
 
@@ -120,5 +120,5 @@ contract.
 
 ## Consumers
 
-- uses: [gate-answering layer](gate-answering-layer.md) writes the answered [operator gate context file](../operator-gate-context-file.md) back into the workflow workspace volume after its stale-status guard passes and maps a `false` result to `AnswerResult(ok=False, message="failed to write answer")`.
+- uses: [gate-answering layer](gate-answering-layer.md) writes the answered [operator gate context file](../formats/operator-gate-context-file.md) back into the workflow workspace volume after its stale-status guard passes and maps a `false` result to `AnswerResult(ok=False, message="failed to write answer")`.
 - not used by: dashboard file-content browsing, sidecar file reads, discovery scans, repository listing, diff rendering, or host filesystem writes; those paths use read-only Docker helpers or sidecar APIs instead.

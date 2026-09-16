@@ -498,7 +498,7 @@ snapshot of the connection and resilience state at that moment. Eleven attribute
 positional, all required; the class holds no defaults. Constructed fresh per call and never
 mutated afterwards; consumed verbatim by [`_STORE.health()`](#health)'s sibling
 [`health_dict()`](groom-store.md#health-and-health_dict), which `asdict`s the same fields
-into the JSON shape under the `store` key of [dashboard state payload](../dashboard-state-payload.md#field-store),
+into the JSON shape under the `store` key of [dashboard state payload](../formats/dashboard-state-payload.md#field-store),
 so a viewer of `/api/state` reads this object as one mapping of the same eleven fields.
 
 The snapshot is named `StoreHealth` (not `status` or `store_state`) because the snapshot

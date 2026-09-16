@@ -5,7 +5,7 @@ title: Dashboard run selector
 ---
 # Dashboard run selector
 
-Dashboard run selector is the browser-side handler that opens one run. Every way of choosing a run on the [groom dashboard](../gui/screens/groom-dashboard.md) — clicking a fleet row, moving through rows with the keyboard, or picking a command-palette result — ends here. It writes [dashboard selected worker state](../dashboard-selected-worker-state.md), subscribes this tab to that run over the socket, and fetches the detail pane once so the pane is filled immediately rather than up to a tick later.
+Dashboard run selector is the browser-side handler that opens one run. Every way of choosing a run on the [groom dashboard](../gui/screens/groom-dashboard.md) — clicking a fleet row, moving through rows with the keyboard, or picking a command-palette result — ends here. It writes [dashboard selected worker state](../formats/dashboard-selected-worker-state.md), subscribes this tab to that run over the socket, and fetches the detail pane once so the pane is filled immediately rather than up to a tick later.
 
 These are not competing selector implementations and none is preferred. Use a fleet row for the run already visible under the pointer or focus, `j` and `k` to move among the currently rendered fleet rows, and a command-palette result to reach a matching run from any dashboard pane. Each entry path supplies its run id to the same selector: the delegated row handler calls `select(node.dataset.workerId)`, the `j`/`k` handler calls `select(next.dataset.workerId)`, and palette selection calls `select(id)` after returning to runs mode. The choice changes only how the run id is reached, not the selection, watch, or detail-loading behavior.
 
@@ -17,7 +17,7 @@ The fetch and the subscription are both issued because they answer different que
 - code: groom/groom/assets/dashboard.js::RunRow
 - rule: choose the direct row, keyboard traversal, or command palette for its input context; all three select through the same run selector, and no ranking exists among them
 - detail: [dashboard run select authority](dashboard-run-select-authority.md)
-- refs: [dashboard selected worker state](../dashboard-selected-worker-state.md), [run watch registry](run-watch-registry.md), [dashboard client store](dashboard-client-store.md)
+- refs: [dashboard selected worker state](../formats/dashboard-selected-worker-state.md), [run watch registry](run-watch-registry.md), [dashboard client store](dashboard-client-store.md)
 
 ## Contract
 

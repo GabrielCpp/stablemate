@@ -6,11 +6,11 @@ title: Sidecar snapshot
 # Sidecar snapshot
 
 Sidecar snapshot is the sidecar's local read of the workflow container state,
-returned as [sidecar snapshot data](../sidecar-snapshot-data.md) for
+returned as [sidecar snapshot data](../formats/sidecar-snapshot-data.md) for
 [`groom-sidecar --query`](../groom-sidecar.md#groom-sidecar-root) and embedded in
-the `hello` [sidecar websocket frame](../sidecar-websocket-frame.md). It reads the
-current node from [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md),
-the terminal marker from [sidecar run metadata](../sidecar-run-metadata.md), and
+the `hello` [sidecar websocket frame](../formats/sidecar-websocket-frame.md). It reads the
+current node from [sidecar run checkpoint data](../formats/sidecar-run-checkpoint-data.md),
+the terminal marker from [sidecar run metadata](../formats/sidecar-run-metadata.md), and
 open gates from the container's mounted `/workspace` tree by sweeping for
 awaiting gate context files; it does not open network connections, install
 filesystem watches, mutate files, or decide the workflow's state on the host.
@@ -23,7 +23,7 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
 - input: no call arguments; the reader uses the sidecar process environment's
   workspace and runs mount paths, which default to `/workspace` and `/runs` when
   `GROOM_WORKSPACE_DIR` and `GROOM_RUNS_DIR` are unset.
-- output: one [sidecar snapshot data](../sidecar-snapshot-data.md) object with
+- output: one [sidecar snapshot data](../formats/sidecar-snapshot-data.md) object with
   `current_node`, `terminal`, and `gates` keys present on every successful call.
 - effects: performs local file reads only; emits no HTTP request, websocket frame,
   stdout text, filesystem watch, process exit, or filesystem write.
@@ -46,7 +46,7 @@ filesystem watches, mutate files, or decide the workflow's state on the host.
   durable identity.
 
 Reading the current node is [sidecar run checkpoint
-data](../sidecar-run-checkpoint-data.md) from the latest available run
+data](../formats/sidecar-run-checkpoint-data.md) from the latest available run
 directory: a present `current_id` value maps unchanged to snapshot
 `current_node`, while missing run directories, missing checkpoints, `OSError`
 during checkpoint reading or parsing, malformed JSON, and an absent
@@ -78,7 +78,7 @@ over the three delegated reads and adds no exception handling of its own.
   read/parse `OSError`, or normalized parse failures. `UnicodeDecodeError` propagates.
 - `_terminal() -> str` returns the latest run's truthy terminal-state value, or
   `""` when the run has not finished or no readable [sidecar run
-  metadata](../sidecar-run-metadata.md) exists.
+  metadata](../formats/sidecar-run-metadata.md) exists.
 - `scan_gates() -> list[dict]` returns every currently awaiting gate as snapshot
   gate entries.
 
@@ -99,7 +99,7 @@ over the three delegated reads and adds no exception handling of its own.
 - tests: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch
 - input: no call arguments; uses the sidecar's configured runs mount and
   workspace mount.
-- output: one [sidecar snapshot data](../sidecar-snapshot-data.md) dictionary with
+- output: one [sidecar snapshot data](../formats/sidecar-snapshot-data.md) dictionary with
   `current_node`, `terminal`, and `gates` keys in every successful return value.
 - effects: performs the delegated local file reads needed to collect the three
   fields; performs no network I/O, websocket send, stdout write, watch
@@ -166,7 +166,7 @@ over the three delegated reads and adds no exception handling of its own.
 - input: no call arguments; uses `method-_latest_run_dir` to find the latest run
   directory from the sidecar's configured runs mount.
 - output: current workhorse graph-node id from the latest [sidecar run checkpoint
-  data](../sidecar-run-checkpoint-data.md) `current_id` value, normally a string;
+  data](../formats/sidecar-run-checkpoint-data.md) `current_id` value, normally a string;
   a present value is returned unchanged, while no usable value returns `""`.
 - effects: reads at most one `checkpoint.json` file from the latest run
   directory; performs no workspace scan, network I/O, watch subscription,
@@ -198,7 +198,7 @@ over the three delegated reads and adds no exception handling of its own.
 - input: no call arguments; uses `method-_latest_run_dir` to find the latest run
   directory from the sidecar's configured runs mount.
 - output: truthy terminal-state value from the latest run's [sidecar run
-  metadata](../sidecar-run-metadata.md) `terminal` field, returned unchanged, or
+  metadata](../formats/sidecar-run-metadata.md) `terminal` field, returned unchanged, or
   `""` when no usable terminal marker is available.
 - effects: reads at most one `run.json` file from the latest run directory;
   performs no workspace scan, network I/O, watch subscription, stdout write,
@@ -228,7 +228,7 @@ over the three delegated reads and adds no exception handling of its own.
 - tests: groom/tests/test_sidecar.py::test_scan_gates_finds_awaiting_and_skips_git_and_non_awaiting
 - input: no call arguments; uses the sidecar's configured workspace mount as the
   scan root.
-- output: a list of [sidecar snapshot data](../sidecar-snapshot-data.md) gate
+- output: a list of [sidecar snapshot data](../formats/sidecar-snapshot-data.md) gate
   entries, one per currently awaiting gate file encountered by the workspace
   sweep.
 - effects: recursively reads the workspace directory tree, reads a small prefix
@@ -239,13 +239,13 @@ over the three delegated reads and adds no exception handling of its own.
   pruned at every visited level before files are inspected.
 - status rule: the first 512 characters of each file are decoded with replacement
   for invalid characters and retained only when [operator gate context file
-  status parser](../operator-gate-context-file.md#method-status-of) returns
+  status parser](../formats/operator-gate-context-file.md#method-status-of) returns
   exactly `AWAITING_OPERATOR`.
 - file path rule: the retained `file_path` is workspace-relative when the file can
   be relativized to the workspace mount; otherwise it falls back to the observed
   path string.
 - question rule: the retained `question` is produced by [operator gate context
-  file](../operator-gate-context-file.md#method-extract-question) extraction
+  file](../formats/operator-gate-context-file.md#method-extract-question) extraction
   from the full gate-file content after the status check succeeds.
 - error handling: an `OSError` while opening, prefix-reading, or full-reading a
   file skips that file and does not abort the scan.
@@ -260,11 +260,11 @@ over the three delegated reads and adds no exception handling of its own.
   4. For each file, read only the initial status prefix; skip the file when that
      read fails.
   5. Classify the status prefix with [operator gate context file status
-     parser](../operator-gate-context-file.md#method-status-of); skip the file
+     parser](../formats/operator-gate-context-file.md#method-status-of); skip the file
      unless the result is exactly `AWAITING_OPERATOR`.
   6. Read the full file text; skip the file when that read fails.
   7. Extract the operator-facing question with [operator gate context
-     file](../operator-gate-context-file.md#method-extract-question) rules, build
+     file](../formats/operator-gate-context-file.md#method-extract-question) rules, build
      a gate entry from the relative file path and extracted question, then append
      it to the result list.
   8. Return the accumulated gate-entry list.

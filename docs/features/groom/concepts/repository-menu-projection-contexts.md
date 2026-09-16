@@ -12,7 +12,7 @@ projection nor retains a legacy branch.
 
 Read [the projection-module method](groom-projection-module.md#method-repo-entries) to understand
 how this pure transformation fits with the other dashboard wire projections. Read [the
-repository-menu-format method](../repository-menu-data.md#method-repo-entries) to understand the
+repository-menu-format method](../formats/repository-menu-data.md#method-repo-entries) to understand the
 same callable's input, output, error, and empty-checkout contract. These are complementary
 documentation contexts for one callable, not implementations to select between.
 

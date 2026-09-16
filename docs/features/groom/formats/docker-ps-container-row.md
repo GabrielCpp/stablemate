@@ -5,11 +5,11 @@ title: Docker ps container row
 ---
 # Docker ps container row
 
-Docker ps container row is one JSON-line value emitted by Docker's `docker ps -a --format "{{json .}}"` command and accepted by Groom's [Docker all-container listing reader](concepts/docker-all-container-listing-reader.md). This format describes the intended Docker object shape, but [`docker_ps_all`](../../../groom/groom/docker_io.py) preserves each successfully decoded JSON value without validating it as an object — it does not reject a decoded non-object JSON value — and [`scan`](../../../groom/groom/discovery.py) calls `entry.get("ID", "")` to derive the container IDs it inspects. Docker's normal output therefore needs to decode to object rows for discovery to proceed; fields other than `ID` are not used by the scan.
+Docker ps container row is one JSON-line value emitted by Docker's `docker ps -a --format "{{json .}}"` command and accepted by Groom's [Docker all-container listing reader](../concepts/docker-all-container-listing-reader.md). This format describes the intended Docker object shape, but [`docker_ps_all`](../../../../groom/groom/docker_io.py) preserves each successfully decoded JSON value without validating it as an object — it does not reject a decoded non-object JSON value — and [`scan`](../../../../groom/groom/discovery.py) calls `entry.get("ID", "")` to derive the container IDs it inspects. Docker's normal output therefore needs to decode to object rows for discovery to proceed; fields other than `ID` are not used by the scan.
 
 - file: not an on-disk Groom artifact; this is one stdout line from the Docker CLI `docker ps -a --format "{{json .}}"` stream.
 - code: `groom/groom/docker_io.py::docker_ps_all` @4778bf1b6bc6
-- detail: [Docker all-container listing reader](concepts/docker-all-container-listing-reader.md)
+- detail: [Docker all-container listing reader](../concepts/docker-all-container-listing-reader.md)
 - tests: `groom/tests/test_discovery.py::test_scan_skips_containers_that_are_not_workhorse_containers`
 
 ## Contract
@@ -37,4 +37,4 @@ Docker ps container row is one JSON-line value emitted by Docker's `docker ps -a
 - required: false
 - semantics: image, command, status, names, labels, ports, size metadata, and other Docker-provided fields pass through the listing reader but do not affect workflow discovery.
 - code: `groom/groom/docker_io.py::docker_ps_all` @4778bf1b6bc6
-- detail: [Docker ps-all value pipeline](concepts/docker-ps-all-value-pipeline.md)
+- detail: [Docker ps-all value pipeline](../concepts/docker-ps-all-value-pipeline.md)

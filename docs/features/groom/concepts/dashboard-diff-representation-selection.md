@@ -9,9 +9,9 @@ The dashboard carries one working-tree diff through two current representations.
 alternatives: the response keeps the raw unified text at the data boundary, while the Diff pane
 parses that text into changed-file entries for its tree and selected-file viewer.
 
-Use [workspace diff data](../workspace-diff-data.md) when producing or consuming the sidecar,
+Use [workspace diff data](../formats/workspace-diff-data.md) when producing or consuming the sidecar,
 HTTP, or run-detail disclosure payload. The disclosure renders the whole raw diff when it opens
-and does not need file selection state. Use [dashboard parsed diff file cache](../dashboard-parsed-diff-file-cache.md)
+and does not need file selection state. Use [dashboard parsed diff file cache](../formats/dashboard-parsed-diff-file-cache.md)
 only in the Diff pane after `loadDiff` has received that payload: its parsed entries supply the
 changed-file tree and let selecting a row render one already-parsed file without another request.
 Keeping the payload raw avoids duplicating the browser parser on the producer, and keeping the

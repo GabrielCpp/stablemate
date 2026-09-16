@@ -5,7 +5,7 @@ title: Sidecar progress applier
 ---
 # Sidecar progress applier
 
-The sidecar progress applier is the groom server layer that folds a connected sidecar's live `progress` [sidecar websocket frame](../sidecar-websocket-frame.md) into the process-local [workflow registry](workflow-registry.md) during the [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) invocation. It marks the connected [workflow container](workflow-container.md) as [workflow state](workflow-state.md) `running`, optionally updates its current-node field through [upsert workflow](workflow-registry.md#method-upsert-workflow), and finishes by calling the [dashboard shell broadcaster](dashboard-shell-broadcaster.md) so browser dashboard tabs converge on the latest running-state snapshot. The websocket session derives the non-empty, truncated container id from a useful `hello` frame before this layer receives it; the applier uses that supplied registry key without further identity handling.
+The sidecar progress applier is the groom server layer that folds a connected sidecar's live `progress` [sidecar websocket frame](../formats/sidecar-websocket-frame.md) into the process-local [workflow registry](workflow-registry.md) during the [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) invocation. It marks the connected [workflow container](workflow-container.md) as [workflow state](workflow-state.md) `running`, optionally updates its current-node field through [upsert workflow](workflow-registry.md#method-upsert-workflow), and finishes by calling the [dashboard shell broadcaster](dashboard-shell-broadcaster.md) so browser dashboard tabs converge on the latest running-state snapshot. The websocket session derives the non-empty, truncated container id from a useful `hello` frame before this layer receives it; the applier uses that supplied registry key without further identity handling.
 
 - code: groom/groom/app.py::_apply_socket_progress
 - detail: [sidecar progress documentation contexts](sidecar-progress-documentation-contexts.md)
@@ -40,7 +40,7 @@ remaining step. That propagation is the obligation captured by the `raises:` cla
 - type: any JSON value
 - default: `None` from `data.get("current_node")` when the key is absent or JSON `null`.
 - required: false
-- source: [sidecar websocket frame current-node](../sidecar-websocket-frame.md#field-current-node).
+- source: [sidecar websocket frame current-node](../formats/sidecar-websocket-frame.md#field-current-node).
 - meaning: optional current workhorse node to display for the connected workflow while marking it running.
 - update rule: any value other than `None`, including `""`, `0`, `false`, an object, or a list, is assigned to the stored workflow's `current_node` field by registry upsert semantics.
 - preserve rule: absent and JSON `null` values preserve the stored workflow's previous `current_node` field.
@@ -64,7 +64,7 @@ remaining step. That propagation is the obligation captured by the `raises:` cla
 
 ### field: dashboard-shell-broadcast
 
-- type: [dashboard state payload](../dashboard-state-payload.md) side effect
+- type: [dashboard state payload](../formats/dashboard-state-payload.md) side effect
 - default: none
 - required: true on successful completion after registry mutation
 - sink: [dashboard shell broadcaster](dashboard-shell-broadcaster.md)
@@ -113,7 +113,7 @@ Fold one connected sidecar `progress` frame for one already accepted sidecar web
 
 #### Effects
 
-- Reads: the `current_node` member from the decoded [sidecar websocket frame](../sidecar-websocket-frame.md) using missing-field default `None`.
+- Reads: the `current_node` member from the decoded [sidecar websocket frame](../formats/sidecar-websocket-frame.md) using missing-field default `None`.
 - Calls: [workflow registry upsert](workflow-registry.md#method-upsert-workflow) with the connected container id, the raw `current_node` value, and [workflow state](workflow-state.md) `RUNNING`.
 - Creates: a placeholder [workflow container](workflow-container.md) named from the normalized container id if the registry entry is absent despite the preceding hello requirement.
 - Writes: the workflow container's state to `RUNNING` on every call.

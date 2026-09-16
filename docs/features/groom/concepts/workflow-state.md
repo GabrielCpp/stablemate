@@ -5,7 +5,7 @@ title: Workflow state
 ---
 # Workflow state
 
-Workflow state is the lifecycle enum stored on each [workflow container](workflow-container.md), used by the [runs fleet view](../runs-fleet-view.md) to order actionable workers, counted and displayed by the [groom dashboard](../gui/screens/groom-dashboard.md), carried as a plain string in the [dashboard state payload](../dashboard-state-payload.md) for the browser's own state-dot component to colour, and mutated by the [groom server](../http/groom.md) from Docker discovery, residual push endpoints, sidecar websocket snapshots/deltas, and successful gate-answer handling. The enum is process-local display and routing state: it is rebuilt from [sidecar snapshot data](../sidecar-snapshot-data.md), Docker volume reads of [sidecar run metadata](../sidecar-run-metadata.md), [progress push payload](../progress-push-payload.md), [blocked push payload](../blocked-push-payload.md), and [exited push payload](../exited-push-payload.md) rather than persisted as its own file or database record.
+Workflow state is the lifecycle enum stored on each [workflow container](workflow-container.md), used by the [runs fleet view](../runs-fleet-view.md) to order actionable workers, counted and displayed by the [groom dashboard](../gui/screens/groom-dashboard.md), carried as a plain string in the [dashboard state payload](../formats/dashboard-state-payload.md) for the browser's own state-dot component to colour, and mutated by the [groom server](../http/groom.md) from Docker discovery, residual push endpoints, sidecar websocket snapshots/deltas, and successful gate-answer handling. The enum is process-local display and routing state: it is rebuilt from [sidecar snapshot data](../formats/sidecar-snapshot-data.md), Docker volume reads of [sidecar run metadata](../formats/sidecar-run-metadata.md), [progress push payload](../formats/progress-push-payload.md), [blocked push payload](../formats/blocked-push-payload.md), and [exited push payload](../formats/exited-push-payload.md) rather than persisted as its own file or database record.
 
 - code: groom/groom/models.py::WorkflowState
 - tests: `groom/tests/test_discovery.py::test_container_from_inspect_reads_env_name_and_volumes`
@@ -59,7 +59,7 @@ The default is observed by `created(subject="workflow container")` and `json_pat
 
 ### transition-discovery-initial
 
-- from: [Docker inspect container object](../docker-inspect-container-object.md)
+- from: [Docker inspect container object](../formats/docker-inspect-container-object.md)
 - to: a baseline [workflow container](workflow-container.md) whose state is `running` when `State.Running` is truthy and `idle` otherwise.
 - code: groom/groom/discovery.py::container_from_inspect
 - detail: [workflow container conversion contexts](workflow-container-conversion-contexts.md)
@@ -96,7 +96,7 @@ A running container can report its current node, terminal marker, and gates with
 
 ### transition-volume-reconstruction
 
-- from: run-volume reads of [sidecar run metadata](../sidecar-run-metadata.md) and workspace-volume gate reads during discovery fallback
+- from: run-volume reads of [sidecar run metadata](../formats/sidecar-run-metadata.md) and workspace-volume gate reads during discovery fallback
 - to: `finished` when latest run metadata has a terminal marker; `blocked` when awaiting gate files are found and the workflow is not already finished.
 - code: groom/groom/discovery.py::_resolve_via_volumes
 This reconstruction is covered by `groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run` and `groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes`.
@@ -104,7 +104,7 @@ This reconstruction is covered by `groom/tests/test_discovery.py::test_scan_mark
 
 ### transition-progress-push
 
-- from: [progress push payload](../progress-push-payload.md)
+- from: [progress push payload](../formats/progress-push-payload.md)
 - to: `running`
 - code: groom/groom/app.py::push_progress
 - detail: [progress push documentation contexts](progress-push-documentation-contexts.md)
@@ -112,7 +112,7 @@ This reconstruction is covered by `groom/tests/test_discovery.py::test_scan_mark
 
 ### transition-blocked-push
 
-- from: [blocked push payload](../blocked-push-payload.md)
+- from: [blocked push payload](../formats/blocked-push-payload.md)
 - to: `blocked`
 - code: groom/groom/app.py::push_blocked
 - detail: [blocked push documentation scopes](blocked-push-documentation-scopes.md)
@@ -120,7 +120,7 @@ This reconstruction is covered by `groom/tests/test_discovery.py::test_scan_mark
 
 ### transition-exited-push
 
-- from: [exited push payload](../exited-push-payload.md)
+- from: [exited push payload](../formats/exited-push-payload.md)
 - to: `finished`
 - code: groom/groom/app.py::push_exited
 - detail: [exited push documentation scopes](exited-push-documentation-scopes.md)
@@ -128,7 +128,7 @@ This reconstruction is covered by `groom/tests/test_discovery.py::test_scan_mark
 
 ### transition-successful-last-gate-answer
 
-- from: [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md)
+- from: [dashboard websocket answer frame](../formats/dashboard-websocket-answer-frame.md)
 - to: `running`
 - code: groom/groom/app.py::_handle_command
 - detail: [dashboard command handling](dashboard-command-handling.md)
@@ -136,7 +136,7 @@ This reconstruction is covered by `groom/tests/test_discovery.py::test_scan_mark
 
 ### transition-sidecar-hello
 
-- from: [sidecar websocket frame](../sidecar-websocket-frame.md) with type `hello` and [sidecar snapshot data](../sidecar-snapshot-data.md)
+- from: [sidecar websocket frame](../formats/sidecar-websocket-frame.md) with type `hello` and [sidecar snapshot data](../formats/sidecar-snapshot-data.md)
 - to: `finished` for a terminal snapshot; `blocked` when the rebuilt gate map is non-empty; `running` when the connected sidecar reports no terminal marker and no gates.
 - code: groom/groom/app.py::_apply_hello
 - detail: [sidecar hello application contract](sidecar-hello-applier.md)
@@ -144,7 +144,7 @@ This reconstruction is covered by `groom/tests/test_discovery.py::test_scan_mark
 
 ### transition-sidecar-progress
 
-- from: [sidecar websocket frame](../sidecar-websocket-frame.md) with type `progress`
+- from: [sidecar websocket frame](../formats/sidecar-websocket-frame.md) with type `progress`
 - to: `running`
 - code: groom/groom/app.py::_apply_socket_progress
 - detail: [sidecar progress documentation contexts](sidecar-progress-documentation-contexts.md)
@@ -152,7 +152,7 @@ This reconstruction is covered by `groom/tests/test_discovery.py::test_scan_mark
 
 ### transition-sidecar-blocked
 
-- from: [sidecar websocket frame](../sidecar-websocket-frame.md) with type `blocked`
+- from: [sidecar websocket frame](../formats/sidecar-websocket-frame.md) with type `blocked`
 - to: `blocked`
 - code: groom/groom/app.py::_apply_socket_blocked
 - detail: [sidecar blocked update context](sidecar-blocked-update-context.md)
@@ -160,7 +160,7 @@ This reconstruction is covered by `groom/tests/test_discovery.py::test_scan_mark
 
 ### transition-sidecar-disconnect-no-state-change
 
-- from: [sidecar websocket frame](../sidecar-websocket-frame.md) session cleanup after a useful `hello` registered a [sidecar connection](sidecar-connection.md)
+- from: [sidecar websocket frame](../formats/sidecar-websocket-frame.md) session cleanup after a useful `hello` registered a [sidecar connection](sidecar-connection.md)
 - to: unchanged workflow state
 - code: groom/groom/app.py::dashboard_sidecar
 - detail: [sidecar session and workflow state](sidecar-session-and-workflow-state.md)

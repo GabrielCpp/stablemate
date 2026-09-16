@@ -7,11 +7,11 @@ title: Operator answers blocked gate
 
 This journey covers the as-built operator path from a workflow becoming blocked,
 through the [groom dashboard](../gui/screens/groom-dashboard.md) runs list and run
-detail, to submitting the [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md)
+detail, to submitting the [dashboard websocket answer frame](../formats/dashboard-websocket-answer-frame.md)
 over [WS /ws](../http/groom.md#websocket-dashboard), writing the answered
-[operator gate context file](../operator-gate-context-file.md), pushing the run's
+[operator gate context file](../formats/operator-gate-context-file.md), pushing the run's
 refreshed detail to the tabs watching it, and broadcasting the
-[dashboard answered message](../dashboard-answered-message.md). The entry gate can
+[dashboard answered message](../formats/dashboard-answered-message.md). The entry gate can
 arrive from [receive blocked push](../http/groom.md#receive-blocked-push),
 [workflow discovery scan](../concepts/workflow-discovery-scan.md), or the
 [sidecar blocked applier](../concepts/sidecar-blocked-applier.md); once visible,
@@ -37,7 +37,7 @@ with the same command has already replaced the pane's gate list, so no tab re-fe
 - verify: json_path(path="workflow.entry", matches="push|discovery|gate-info")
 - steps:
   1. A blocked gate reaches groom through one of the supported sources. A valid
-     [blocked push payload](../blocked-push-payload.md) sent to [receive blocked push](../http/groom.md#receive-blocked-push)
+     [blocked push payload](../formats/blocked-push-payload.md) sent to [receive blocked push](../http/groom.md#receive-blocked-push)
      normalizes the workflow id and gate file path, hydrates Docker volume
      metadata when possible, upserts the workflow as blocked, and stores one
      [gate info](../concepts/gate-info.md) keyed by that file path. Startup or
@@ -45,7 +45,7 @@ with the same command has already replaced the pane's gate list, so no tab re-fe
      can also reconstruct the same visible blocked state from existing Docker
      and gate-file evidence, while the [sidecar blocked applier](../concepts/sidecar-blocked-applier.md)
      applies the persistent sidecar equivalent of the blocked delta.
-  2. The blocked update broadcasts a [dashboard state payload](../dashboard-state-payload.md)
+  2. The blocked update broadcasts a [dashboard state payload](../formats/dashboard-state-payload.md)
      built from the current [workflow registry](../concepts/workflow-registry.md)
      to every connected dashboard client queue, and — because one named run is what
      changed — pushes that run's detail to the tabs watching it through the
@@ -87,7 +87,7 @@ with the same command has already replaced the pane's gate list, so no tab re-fe
      `<textarea>` DOM node rather than replacing it.
   8. The operator activates [send detail answer](../gui/screens/groom-dashboard.md#send-detail-answer).
      The client's own submit handler prevents the browser's navigation, serializes the
-     form fields into one [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md)
+     form fields into one [dashboard websocket answer frame](../formats/dashboard-websocket-answer-frame.md)
      with `cmd: "answer"`, the selected workflow id, the selected gate file path,
      and the textarea value, then sends that JSON object over the existing
      [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-session).
@@ -105,7 +105,7 @@ with the same command has already replaced the pane's gate list, so no tab re-fe
       `(container_id, file_path)` pair, rereads the current gate file through the
       [workspace volume file-content reader](../concepts/workspace-volume-file-content-reader.md),
       accepts only a current `AWAITING_OPERATOR` status, builds the answered text
-      through [operator gate context file](../operator-gate-context-file.md#method-apply-answer),
+      through [operator gate context file](../formats/operator-gate-context-file.md#method-apply-answer),
       and writes it back through the [workspace volume file writer](../concepts/workspace-volume-file-writer.md).
   11. After a successful gate-file write, the gate-answering layer removes the
       matching in-memory gate through the [workflow gate clearer](../concepts/workflow-gate-clearer.md).
@@ -113,19 +113,19 @@ with the same command has already replaced the pane's gate list, so no tab re-fe
       [container running-state check](../concepts/container-running-state-check.md);
       a running container wakes in place from the changed file, while a stopped
       container receives exactly one [stopped container start fallback](../concepts/stopped-container-start-fallback.md)
-      attempt. The layer returns an [answer result](../answer-result.md) whose
+      attempt. The layer returns an [answer result](../formats/answer-result.md) whose
       `ok` flag means the gate-file write succeeded, even if the stopped
       restart fallback failed afterward.
-  12. `_handle_command` records one [answer log entry](../answer-log-entry.md)
+  12. `_handle_command` records one [answer log entry](../formats/answer-log-entry.md)
       in the process-local [answer event log](../concepts/answer-event-log.md)
       for every returned answer result. If the result succeeded, the workflow
       still exists, the answered gate was the last visible gate, and the workflow
       is still blocked, the handler applies the [successful last gate answer](../concepts/workflow-state.md#transition-successful-last-gate-answer)
       state transition to show the worker as running immediately.
-  13. `_handle_command` broadcasts a fresh [dashboard state payload](../dashboard-state-payload.md)
+  13. `_handle_command` broadcasts a fresh [dashboard state payload](../formats/dashboard-state-payload.md)
       for every expected answer result, and pushes that run's refreshed detail —
       gates included — to the tabs watching it. On success only, it also broadcasts a
-      [dashboard answered message](../dashboard-answered-message.md) naming the run and
+      [dashboard answered message](../formats/dashboard-answered-message.md) naming the run and
       the answered gate file. Expected failures broadcast the state frame alone, leave
       the visible gate present, and emit no success event.
   14. Each dashboard tab applies the broadcast. The runs list and status bar

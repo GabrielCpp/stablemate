@@ -5,7 +5,7 @@ title: Groom local-filesystem module
 ---
 # Groom local-filesystem module
 
-Groom local-filesystem module is the native-run local-filesystem adapter for the [groom server](../http/groom.md) and [groom sidecar](../groom-sidecar.md) control plane: it centralizes same-host workspace and run directory reads, live process state checks, file-content reads and writes, and repository discovery without Docker. Every function reads directly from the host's filesystem — no throwaway container, no volume mount, no docker at all — and mirrors the [groom Docker I/O module](groom-docker-io-module.md) signatures so handlers branch on `WorkflowContainer.native` and call one or the other with the same shape. Its public helpers exchange [workspace file list data](../workspace-file-list-data.md), [workspace file content data](../workspace-file-content-data.md), and [workspace diff data](../workspace-diff-data.md) without owning workflow registry state, dashboard rendering, sidecar websocket state, or gate-answer orchestration. Every function is best-effort — a bad base path yields an empty result, never a raise — because a diff/tree panel is a nice-to-have, not on any critical path.
+Groom local-filesystem module is the native-run local-filesystem adapter for the [groom server](../http/groom.md) and [groom sidecar](../groom-sidecar.md) control plane: it centralizes same-host workspace and run directory reads, live process state checks, file-content reads and writes, and repository discovery without Docker. Every function reads directly from the host's filesystem — no throwaway container, no volume mount, no docker at all — and mirrors the [groom Docker I/O module](groom-docker-io-module.md) signatures so handlers branch on `WorkflowContainer.native` and call one or the other with the same shape. Its public helpers exchange [workspace file list data](../formats/workspace-file-list-data.md), [workspace file content data](../formats/workspace-file-content-data.md), and [workspace diff data](../formats/workspace-diff-data.md) without owning workflow registry state, dashboard rendering, sidecar websocket state, or gate-answer orchestration. Every function is best-effort — a bad base path yields an empty result, never a raise — because a diff/tree panel is a nice-to-have, not on any critical path.
 
 - code: groom/groom/localfs.py
 - extends: [groom Docker I/O module](groom-docker-io-module.md)
@@ -137,7 +137,7 @@ Each helper returns a specific shape: boolean for existence/readiness checks, st
 - repository resolution: delegates to [_base](#_base) to resolve the checkout root; returns `[]` if resolution fails.
 - pruning: skips any directory named `.git`, `node_modules`, `__pycache__`, or `.venv` during the tree walk.
 - path normalization: returned paths use forward slashes as separators, regardless of host OS, for consistent wire representation.
-- consumer: used by the Files pane to render the repository tree; also consumed by [workspace file list data](../workspace-file-list-data.md).
+- consumer: used by the Files pane to render the repository tree; also consumed by [workspace file list data](../formats/workspace-file-list-data.md).
 - effects: walks the host filesystem tree; reads only metadata and does not read file contents, launch processes, mutate files, or call docker.
 - algorithm:
   1. Resolve the checkout root with [_base](#_base); return `[]` if it fails.
@@ -198,7 +198,7 @@ Each helper returns a specific shape: boolean for existence/readiness checks, st
 - command: runs host-local `git -c safe.directory=* -C <selected checkout> diff HEAD` with captured text stdout and the shared [DOCKER_TIMEOUT](#field-docker-timeout) timeout.
 - timeout: maximum of [field-docker-timeout](#field-docker-timeout) seconds to allow the git process to run.
 - failure behavior: process launch failures, subprocess exceptions, timeout exceptions, and non-zero git exit all return `""`.
-- consumer: used by the Changes pane to show working-tree differences; also consumed by [workspace diff data](../workspace-diff-data.md).
+- consumer: used by the Changes pane to show working-tree differences; also consumed by [workspace diff data](../formats/workspace-diff-data.md).
 - parity: returns the same string the Docker-volume reader would for the same checkout, which is what lets the endpoint pick between them by a boolean and return one shape.
 - detail: [native git diff documentation scope](native-git-diff-documentation-scope.md)
 - effects: reads the host filesystem and launches a read-only git subprocess; does not mutate files, touch docker, send sidecar frames, or update workflow/dashboard state.

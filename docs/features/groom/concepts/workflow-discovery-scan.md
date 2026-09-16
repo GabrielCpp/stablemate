@@ -5,9 +5,9 @@ title: Workflow discovery scan
 ---
 # Workflow discovery scan
 
-Workflow discovery scan is the importable Groom discovery module used by the [workflow registry](workflow-registry.md) reconciliation path to recover [workflow container](workflow-container.md) records that existed before the Groom server started or before an operator requested a refresh. The module exposes the top-level [scan](#method-scan), [present-container-id lookup](#method-present-container-ids), [workhorse-container classifier](#method-classify-workhorse-container), and Docker-inspect-to-workflow conversion folded into the [initial workflow-state transition](workflow-state.md#transition-discovery-initial) and [Docker inspect workflow-container consumer](../docker-inspect-container-object.md#consumer-workflow-container-conversion). It also owns the private helpers that index mounts, derive workflow type, normalize environment entries, resolve one candidate container, apply sidecar query snapshots through the [sidecar query snapshot transition](workflow-state.md#transition-sidecar-query-or-discovery-snapshot), and reconstruct fallback state through the [volume reconstruction transition](workflow-state.md#transition-volume-reconstruction).
+Workflow discovery scan is the importable Groom discovery module used by the [workflow registry](workflow-registry.md) reconciliation path to recover [workflow container](workflow-container.md) records that existed before the Groom server started or before an operator requested a refresh. The module exposes the top-level [scan](#method-scan), [present-container-id lookup](#method-present-container-ids), [workhorse-container classifier](#method-classify-workhorse-container), and Docker-inspect-to-workflow conversion folded into the [initial workflow-state transition](workflow-state.md#transition-discovery-initial) and [Docker inspect workflow-container consumer](../formats/docker-inspect-container-object.md#consumer-workflow-container-conversion). It also owns the private helpers that index mounts, derive workflow type, normalize environment entries, resolve one candidate container, apply sidecar query snapshots through the [sidecar query snapshot transition](workflow-state.md#transition-sidecar-query-or-discovery-snapshot), and reconstruct fallback state through the [volume reconstruction transition](workflow-state.md#transition-volume-reconstruction).
 
-As a one-shot Docker fleet reader, the module enumerates Docker containers through the [Docker all-container listing reader](docker-all-container-listing-reader.md), resolves each candidate through the [per-container discovery resolver](#method-resolve-container), classifies inspected containers through the [workhorse-container classifier](#method-classify-workhorse-container), uses the [mount destination index](#method-index-mounts-by-destination) to recognize workhorse mount contracts and read volume metadata from the [Docker inspect container object](../docker-inspect-container-object.md), creates baseline records through the [initial workflow-state transition](workflow-state.md#transition-discovery-initial), names the workflow kind from the `/workflow` mount or compose service label, applies running-container [sidecar snapshot data](../sidecar-snapshot-data.md), reconstructs fallback state from [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md), [sidecar run metadata](../sidecar-run-metadata.md), and [operator gate context files](../operator-gate-context-file.md), returns only workhorse-backed containers in Docker's reported order, and exposes the live-container-id lookup that reconciliation uses to decide whether stale registry entries may be pruned safely.
+As a one-shot Docker fleet reader, the module enumerates Docker containers through the [Docker all-container listing reader](docker-all-container-listing-reader.md), resolves each candidate through the [per-container discovery resolver](#method-resolve-container), classifies inspected containers through the [workhorse-container classifier](#method-classify-workhorse-container), uses the [mount destination index](#method-index-mounts-by-destination) to recognize workhorse mount contracts and read volume metadata from the [Docker inspect container object](../formats/docker-inspect-container-object.md), creates baseline records through the [initial workflow-state transition](workflow-state.md#transition-discovery-initial), names the workflow kind from the `/workflow` mount or compose service label, applies running-container [sidecar snapshot data](../formats/sidecar-snapshot-data.md), reconstructs fallback state from [sidecar run checkpoint data](../formats/sidecar-run-checkpoint-data.md), [sidecar run metadata](../formats/sidecar-run-metadata.md), and [operator gate context files](../formats/operator-gate-context-file.md), returns only workhorse-backed containers in Docker's reported order, and exposes the live-container-id lookup that reconciliation uses to decide whether stale registry entries may be pruned safely.
 
 For stopped or legacy containers, the scan's current-run-state method selects the latest run through the [Docker run-directory reader](docker-run-directory-reader.md) before reading checkpoint and terminal metadata from that run directory.
 
@@ -31,7 +31,7 @@ reconciliation path.
 
 - role: importable discovery module for startup and manual-refresh reconciliation; it reads Docker and mounted workflow volumes but does not own registry persistence, server routes, websocket queues, dashboard rendering, or gate-answer writes.
 - public members: `scan`, `present_container_ids`, `is_workhorse_container`, and `container_from_inspect` are the module's supported call surface.
-- folded members: `container_from_inspect` is grounded by the [initial workflow-state transition](workflow-state.md#transition-discovery-initial) and [Docker inspect workflow-container consumer](../docker-inspect-container-object.md#consumer-workflow-container-conversion); `_apply_snapshot` is grounded by the [sidecar query snapshot transition](workflow-state.md#transition-sidecar-query-or-discovery-snapshot); `_resolve_via_volumes` is grounded by the [volume reconstruction transition](workflow-state.md#transition-volume-reconstruction).
+- folded members: `container_from_inspect` is grounded by the [initial workflow-state transition](workflow-state.md#transition-discovery-initial) and [Docker inspect workflow-container consumer](../formats/docker-inspect-container-object.md#consumer-workflow-container-conversion); `_apply_snapshot` is grounded by the [sidecar query snapshot transition](workflow-state.md#transition-sidecar-query-or-discovery-snapshot); `_resolve_via_volumes` is grounded by the [volume reconstruction transition](workflow-state.md#transition-volume-reconstruction).
 - import behavior: defining the module imports Docker I/O, gate parsing, and workflow model collaborators and initializes only literal constants; it does not list Docker containers, inspect containers, query sidecars, read volumes, mutate workflow records, or start background work at import time.
 - collaborator boundary: calls stay inside Groom's Docker I/O, gate parsing, and model layers, plus Python standard-library JSON, POSIX path, and worker-pool facilities; third-party packages and external services are reached only through the first-party Docker I/O helpers documented separately.
 - purpose: produce one best-effort snapshot of discoverable workhorse workflow containers for startup and manual refresh reconciliation.
@@ -124,7 +124,7 @@ reconciliation path.
 - step: Return `None` when the inspect payload is absent or fails the workhorse mount-contract classifier.
 - step: Convert eligible inspect metadata into a baseline workflow container through the [initial workflow-state transition](workflow-state.md#transition-discovery-initial).
 - step: If the inspected container is running, request a sidecar query snapshot using the normalized baseline container id.
-- step: If the sidecar query returns a dictionary snapshot, apply [sidecar snapshot data](../sidecar-snapshot-data.md) through the [sidecar query snapshot transition](workflow-state.md#transition-sidecar-query-or-discovery-snapshot) and skip volume reconstruction.
+- step: If the sidecar query returns a dictionary snapshot, apply [sidecar snapshot data](../formats/sidecar-snapshot-data.md) through the [sidecar query snapshot transition](workflow-state.md#transition-sidecar-query-or-discovery-snapshot) and skip volume reconstruction.
 - step: If the container is stopped or the sidecar query does not return a dictionary snapshot, reconstruct state from run and workspace volumes through the [volume reconstruction transition](workflow-state.md#transition-volume-reconstruction).
 - consistency: workflow-container — an eligible candidate's resolved [workflow container](workflow-container.md) reaches the top-level scan after sidecar or volume state resolution.
 - verify: json_path(path="$.state", equals="FINISHED")
@@ -178,13 +178,13 @@ Runs one bounded discovery pass and returns the ordered workflow-container recor
 - raises: malformed truthy inspect subtrees or mount rows may propagate ordinary mapping, sequence, or attribute errors from the helpers that read them.
 - verify: json_path(path="exception.type", matches="AttributeError|TypeError")
 - refs: [initial workflow-state transition](workflow-state.md#transition-discovery-initial)
-- refs: [Docker inspect workflow-container consumer](../docker-inspect-container-object.md#consumer-workflow-container-conversion)
+- refs: [Docker inspect workflow-container consumer](../formats/docker-inspect-container-object.md#consumer-workflow-container-conversion)
 
 Converts one Docker inspect container object into a baseline workflow-container record before sidecar or volume evidence can refine runtime state. The symbol's code grounding lives on the state-transition and format-consumer nodes because those nodes are the authoritative contracts for the conversion semantics.
 
 #### Contract
 
-- input: one [Docker inspect container object](../docker-inspect-container-object.md) or partial inspect-shaped dictionary.
+- input: one [Docker inspect container object](../formats/docker-inspect-container-object.md) or partial inspect-shaped dictionary.
 - output: one [workflow container](workflow-container.md) with normalized container id, display name, repository name, repository branch, workflow type, initial state, workspace volume, and runs volume.
 - identity mapping: `Id` becomes the first twelve characters of `container_id`; `Name` loses leading slashes and falls back to the truncated id when empty.
 - repository mapping: only `REPO_NAME` and `REPO_BRANCH` from the environment map are copied; unrelated environment values and secrets are not copied into the workflow record.
@@ -211,7 +211,7 @@ Converts one Docker inspect container object into a baseline workflow-container 
 - tests: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
 - tests: groom/tests/test_discovery.py::test_scan_skips_containers_that_are_not_workhorse_containers
 
-Resolves one Docker candidate id into either one [workflow container](workflow-container.md) or no result for the scan. The method reads one [Docker inspect container object](../docker-inspect-container-object.md), rejects absent metadata and containers that do not carry the workhorse mount contract, creates the baseline workflow record from inspect metadata, then chooses between a running-container [sidecar snapshot data](../sidecar-snapshot-data.md) query and the existing volume-reconstruction fallback. It owns the discovery-time choice between the [initial workflow-state transition](workflow-state.md#transition-discovery-initial), the [sidecar query snapshot transition](workflow-state.md#transition-sidecar-query-or-discovery-snapshot), and the [volume reconstruction transition](workflow-state.md#transition-volume-reconstruction).
+Resolves one Docker candidate id into either one [workflow container](workflow-container.md) or no result for the scan. The method reads one [Docker inspect container object](../formats/docker-inspect-container-object.md), rejects absent metadata and containers that do not carry the workhorse mount contract, creates the baseline workflow record from inspect metadata, then chooses between a running-container [sidecar snapshot data](../formats/sidecar-snapshot-data.md) query and the existing volume-reconstruction fallback. It owns the discovery-time choice between the [initial workflow-state transition](workflow-state.md#transition-discovery-initial), the [sidecar query snapshot transition](workflow-state.md#transition-sidecar-query-or-discovery-snapshot), and the [volume reconstruction transition](workflow-state.md#transition-volume-reconstruction).
 
 #### Contract
 
@@ -240,7 +240,7 @@ Resolves one Docker candidate id into either one [workflow container](workflow-c
 - Derives: workflow type through [method-derive-workflow-type](#method-derive-workflow-type), reading the `/workflow` mount source basename first and the compose service label only when the basename is absent or generic.
 - Reads: the inspect `State.Running` value after the baseline record is built to decide whether a live sidecar query is allowed.
 - Calls: the [host-to-container sidecar query](host-to-container-sidecar-query.md) only for running containers, using the normalized workflow container id.
-- Applies: returned [sidecar snapshot data](../sidecar-snapshot-data.md) to update current node, terminal state, and open gates when the sidecar query succeeds.
+- Applies: returned [sidecar snapshot data](../formats/sidecar-snapshot-data.md) to update current node, terminal state, and open gates when the sidecar query succeeds.
 - Falls back: to [volume reconstruction](workflow-state.md#transition-volume-reconstruction) when the sidecar query is skipped or unavailable, allowing stopped and legacy containers to recover current node, terminal state, and awaiting gates from mounted volumes.
 - Returns: the resolved workflow container with sidecar or fallback state applied when the candidate is eligible.
 - Preserves: Docker container lifecycle, mounted volume contents, sidecar process state, workflow registry membership, websocket queues, dashboard DOM, answer files, and gate files.
@@ -266,7 +266,7 @@ Resolves one Docker candidate id into either one [workflow container](workflow-c
 - tests: groom/tests/test_discovery.py::test_is_workhorse_container_requires_all_three_mounts
 - tests: groom/tests/test_discovery.py::test_is_workhorse_container_ignores_unrelated_containers
 
-Classifies whether one [Docker inspect container object](../docker-inspect-container-object.md) carries the workhorse mount contract required for Groom discovery. The classifier is intentionally metadata-only: it does not inspect process state, sidecar availability, run artifacts, gate files, repository identity, or workflow type.
+Classifies whether one [Docker inspect container object](../formats/docker-inspect-container-object.md) carries the workhorse mount contract required for Groom discovery. The classifier is intentionally metadata-only: it does not inspect process state, sidecar availability, run artifacts, gate files, repository identity, or workflow type.
 
 #### Contract
 
@@ -314,7 +314,7 @@ Produces the normalized mount lookup shared by workhorse-container eligibility, 
 
 #### Contract
 
-- input: one [Docker inspect container object](../docker-inspect-container-object.md) or partial inspect-shaped dictionary.
+- input: one [Docker inspect container object](../formats/docker-inspect-container-object.md) or partial inspect-shaped dictionary.
 - source-field: reads only the top-level `Mounts` value.
 - output: `dict[str, dict[str, Any]]` whose keys are each retained mount row's `Destination` value and whose values are the original mount-row dictionaries.
 - empty-source: missing `Mounts`, `None`, or any other falsey `Mounts` value produces `{}`.
@@ -365,7 +365,7 @@ Chooses the workflow type used by the [initial workflow-state transition](workfl
 
 #### Contract
 
-- input-inspect: one [Docker inspect container object](../docker-inspect-container-object.md) or partial inspect-shaped dictionary.
+- input-inspect: one [Docker inspect container object](../formats/docker-inspect-container-object.md) or partial inspect-shaped dictionary.
 - input-mounts: destination-keyed mount lookup whose `/workflow` entry, when present, may carry a `Source` string.
 - primary-source: `Config.Env` entry named `WORKFLOW` from the inspect object.
 - accepted-primary: any non-empty `WORKFLOW` value is returned unchanged as the workflow type.
@@ -417,11 +417,11 @@ Chooses the workflow type used by the [initial workflow-state transition](workfl
 - code: groom/groom/discovery.py::_env_map
 - tests: groom/tests/test_discovery.py::test_container_from_inspect_reads_env_name_and_volumes
 
-Builds the transient environment lookup used by the [initial workflow-state transition](workflow-state.md#transition-discovery-initial) and baseline [workflow container](workflow-container.md) creation. The method treats the [Docker inspect container object](../docker-inspect-container-object.md) as the source of truth, returns only parsed environment key/value pairs, and leaves the caller responsible for choosing which keys are safe to copy onto the workflow record.
+Builds the transient environment lookup used by the [initial workflow-state transition](workflow-state.md#transition-discovery-initial) and baseline [workflow container](workflow-container.md) creation. The method treats the [Docker inspect container object](../formats/docker-inspect-container-object.md) as the source of truth, returns only parsed environment key/value pairs, and leaves the caller responsible for choosing which keys are safe to copy onto the workflow record.
 
 #### Contract
 
-- input: one [Docker inspect container object](../docker-inspect-container-object.md) or partial inspect-shaped dictionary.
+- input: one [Docker inspect container object](../formats/docker-inspect-container-object.md) or partial inspect-shaped dictionary.
 - source-field: reads only nested `Config.Env`; missing `Config`, missing `Env`, `None`, or any other falsey value produces `{}`.
 - accepted-entry: a string containing at least one `=` is parsed as an environment assignment.
 - key: the substring before the first `=`; an empty key is retained as `""` if Docker supplied one.
@@ -465,13 +465,13 @@ Builds the transient environment lookup used by the [initial workflow-state tran
 - tests: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
 - tests: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
 
-Reads the latest run directory in a workflow's `/runs` volume and returns the two run-derived state fields needed by volume reconstruction: the current node from [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md) and the terminal marker from run metadata.
+Reads the latest run directory in a workflow's `/runs` volume and returns the two run-derived state fields needed by volume reconstruction: the current node from [sidecar run checkpoint data](../formats/sidecar-run-checkpoint-data.md) and the terminal marker from run metadata.
 
 #### Contract
 
 - input: `runs_volume` is a Docker named volume string previously copied from the eligible container's `/runs` mount.
 - directory-selection: the latest run is the final entry from the sorted run-directory list returned by the [Docker run-directory reader](docker-run-directory-reader.md).
-- checkpoint-source: reads [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md) and extracts `current_id` from the parsed JSON object when available.
+- checkpoint-source: reads [sidecar run checkpoint data](../formats/sidecar-run-checkpoint-data.md) and extracts `current_id` from the parsed JSON object when available.
 - terminal-source: reads `<latest>/run.json` and extracts `terminal` from the parsed JSON object when available.
 - output: `(current_node, terminal)`, where each element is a string and missing, unreadable, malformed, absent, or falsey data becomes `""` for that element.
 - persistence: run-state-evidence — returns transient state evidence only.
@@ -518,8 +518,8 @@ Reconstructs open operator gates from a workflow's `/workspace` volume during di
 - input: `workspace_volume` is a Docker named volume string previously copied from the eligible container's `/workspace` mount.
 - candidate-source: the [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md) supplies workspace-relative paths whose file content appeared to contain `STATUS: AWAITING_OPERATOR` during the sweep.
 - reread-rule: each candidate path is read again before it becomes a gate record, because a file may have changed after the grep sweep.
-- status-rule: only files whose reread content is still classified as `AWAITING_OPERATOR` by the [operator gate context file](../operator-gate-context-file.md#method-status-of) status parser are retained.
-- question-rule: retained files use the [operator gate context file](../operator-gate-context-file.md#method-extract-question) extractor for the gate question text.
+- status-rule: only files whose reread content is still classified as `AWAITING_OPERATOR` by the [operator gate context file](../formats/operator-gate-context-file.md#method-status-of) status parser are retained.
+- question-rule: retained files use the [operator gate context file](../formats/operator-gate-context-file.md#method-extract-question) extractor for the gate question text.
 - output: `list[GateInfo]`, preserving the awaiting-file reader's path order for retained gates.
 - workflow-id: emitted gate records have `workflow_id=""`; the volume reconstruction transition assigns the containing workflow container id before storing them on the workflow.
 - persistence: discovered-gate-records — returns in-memory gate records only.

@@ -12,7 +12,7 @@ no repository resolves or the command fails.
 
 Use [the Docker I/O module method](groom-docker-io-module.md#git-diff) for the adapter's public
 API, [the workspace-volume diff reader method](workspace-volume-diff-reader.md#git-diff) for the
-fallback reader's request context and read-only behavior, and [the workspace diff data method](../workspace-diff-data.md#method-git_diff)
+fallback reader's request context and read-only behavior, and [the workspace diff data method](../formats/workspace-diff-data.md#method-git_diff)
 for its role in the data handoff. These views are complementary; source code records no preference
 or deprecation among them because they name the one callable at different documentation scopes.
 

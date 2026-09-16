@@ -10,11 +10,11 @@ with entries from different stages of their own flows. Neither format supersedes
 the other: one is the Files pane's flat input and the other is the derived shape
 the shared renderer walks.
 
-Use [workspace file list data](../workspace-file-list-data.md) when the Files
+Use [workspace file list data](../formats/workspace-file-list-data.md) when the Files
 pane has received repo-relative path strings from its `/files` response. The
 Files pane wraps each string as a path entry before giving it to `buildTree`.
 
-Use [dashboard path tree](../dashboard-path-tree.md) after `buildTree` has
+Use [dashboard path tree](../formats/dashboard-path-tree.md) after `buildTree` has
 grouped either Files-path entries or Diff parsed-file entries by their slash
 segments. The shared renderer consumes this nested shape and receives a
 pane-specific leaf renderer, so the tree does not select or describe either

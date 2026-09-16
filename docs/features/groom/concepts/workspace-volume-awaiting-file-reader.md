@@ -5,13 +5,13 @@ title: Workspace-volume awaiting-file reader
 ---
 # Workspace-volume awaiting-file reader
 
-Workspace-volume awaiting-file reader is the Docker-volume sweep used by the [workflow discovery scan](workflow-discovery-scan.md#method-find-awaiting-gates) when the sidecar query path is unavailable and Groom must recover open gates from a workflow container's `/workspace` volume. It uses the [Docker subprocess runner](docker-subprocess-runner.md) to start one throwaway read-only Alpine container, searches for files whose status line contains the [operator gate context file](../operator-gate-context-file.md) awaiting token, prunes heavy vendor and VCS directories, and returns workspace-volume-relative candidate paths for the discovery layer to reread before creating [gate info](gate-info.md) records.
+Workspace-volume awaiting-file reader is the Docker-volume sweep used by the [workflow discovery scan](workflow-discovery-scan.md#method-find-awaiting-gates) when the sidecar query path is unavailable and Groom must recover open gates from a workflow container's `/workspace` volume. It uses the [Docker subprocess runner](docker-subprocess-runner.md) to start one throwaway read-only Alpine container, searches for files whose status line contains the [operator gate context file](../formats/operator-gate-context-file.md) awaiting token, prunes heavy vendor and VCS directories, and returns workspace-volume-relative candidate paths for the discovery layer to reread before creating [gate info](gate-info.md) records.
 
 - code: groom/groom/docker_io.py::grep_awaiting_files
 - tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths
 - tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_empty_on_docker_failure
 - detail: [Grep awaiting-files documentation views](grep-awaiting-files-documentation-views.md)
-- refs: [workflow discovery scan](workflow-discovery-scan.md#method-find-awaiting-gates), [Docker subprocess runner](docker-subprocess-runner.md), [operator gate context file](../operator-gate-context-file.md), [gate info](gate-info.md)
+- refs: [workflow discovery scan](workflow-discovery-scan.md#method-find-awaiting-gates), [Docker subprocess runner](docker-subprocess-runner.md), [operator gate context file](../formats/operator-gate-context-file.md), [gate info](gate-info.md)
 
 ## Contract
 
@@ -132,7 +132,7 @@ Returns the workspace-volume-relative paths of files that appear to carry an awa
 
 - input: accepts one Docker volume name and an optional volume-relative subdirectory string.
 - output: returns candidate paths relative to the mounted volume root, including the subdirectory prefix when the scan target is below the root.
-- caller contract: callers that need a live gate must reread each candidate and apply the shared [operator gate context file](../operator-gate-context-file.md) parser before creating state.
+- caller contract: callers that need a live gate must reread each candidate and apply the shared [operator gate context file](../formats/operator-gate-context-file.md) parser before creating state.
 - consistency: candidate-paths — returns only Docker stdout lines whose stripped text begins with `/vol/`, removing that prefix from each retained path.
 - verify: count(subject="candidate paths after stdout contains two /vol/ paths and one non-/vol/ line", equals=2)
 

@@ -7,19 +7,19 @@ title: Operator gate context file
 
 Operator gate context file is the workspace-volume text artifact that represents
 one live operator gate. The [Groom gates
-module](concepts/groom-gates-module.md) owns the shared parser and writer contract
+module](../concepts/groom-gates-module.md) owns the shared parser and writer contract
 for this file. The [gate-answering
-layer](concepts/gate-answering-layer.md) rereads it, rejects stale submissions
+layer](../concepts/gate-answering-layer.md) rereads it, rejects stale submissions
 through [method-is-awaiting](#method-is-awaiting), and rewrites it to accept an
 answer through [method-apply-answer](#method-apply-answer), the [sidecar
-snapshot](concepts/sidecar-snapshot.md) scans workspace files in this shape,
+snapshot](../concepts/sidecar-snapshot.md) scans workspace files in this shape,
 classifies each prefix through [method-status-of](#method-status-of), and
 extracts the retained prompt through
 [method-extract-question](#method-extract-question) to produce [sidecar snapshot
 data](sidecar-snapshot-data.md), and each awaiting file becomes one in-memory
-[gate info](concepts/gate-info.md) record keyed by the file's workspace-relative
+[gate info](../concepts/gate-info.md) record keyed by the file's workspace-relative
 path. Host-side discovery reaches the same file shape through the [workspace
-volume awaiting file reader](concepts/workspace-volume-awaiting-file-reader.md),
+volume awaiting file reader](../concepts/workspace-volume-awaiting-file-reader.md),
 then rereads and reclassifies each candidate before creating gate info.
 
 - file: arbitrary workspace-relative path inside a workflow container's `/workspace` tree; common paths vary by workflow node and are not fixed by groom.
@@ -120,7 +120,7 @@ then rereads and reclassifies each candidate before creating gate info.
 - verify: json_path(path="return value", equals="UNRECOGNIZED")
 - verify: json_path(path="return value", equals="AWAITING_OPERATOR")
 - code: groom/groom/gates.py::status_of
-- detail: [gate status parser documentation contexts](concepts/gate-status-parser-documentation-contexts.md)
+- detail: [gate status parser documentation contexts](../concepts/gate-status-parser-documentation-contexts.md)
 - tests: groom/tests/test_gates.py::test_status_of_reads_the_status_line
 
 Parses one operator gate context file text into the normalized lifecycle token that consumers use for discovery, stale-answer checks, and non-awaiting filtering.
@@ -134,7 +134,7 @@ Parses one operator gate context file text into the normalized lifecycle token t
 - Token boundary: captures exactly the first non-whitespace run after `STATUS:` and ignores any later words, punctuation, sections, or additional status-like lines.
 - Normalizes: uppercases the captured token before returning it, so `consumed` and `CONSUMED` classify identically while preserving non-letter characters as part of the token.
 - Return shape: the value is a string (an empty string when no line has `STATUS:` followed by a token); `None` is not produced.
-- Used by: [method-scan_gates](concepts/sidecar-snapshot.md#method-scan_gates) passes each file's initial 512-character prefix through this classifier and retains only the exact `AWAITING_OPERATOR` result.
+- Used by: [method-scan_gates](../concepts/sidecar-snapshot.md#method-scan_gates) passes each file's initial 512-character prefix through this classifier and retains only the exact `AWAITING_OPERATOR` result.
 - Calls: no other groom source symbols.
 - Does not mutate: file text, workspace-volume files, gate records, workflow state, answer locks, dashboard clients, or sidecar sessions.
 
@@ -145,7 +145,7 @@ Parses one operator gate context file text into the normalized lifecycle token t
 - raises: none intentionally raised for any string input.
 - verify: json_path(path="return value", equals=true)
 - code: groom/groom/gates.py::is_awaiting
-- detail: [is awaiting documentation contexts](concepts/is-awaiting-documentation-contexts.md)
+- detail: [is awaiting documentation contexts](../concepts/is-awaiting-documentation-contexts.md)
 - tests: groom/tests/test_gates.py::test_is_awaiting
 
 Classifies whether one operator gate context file is currently answerable by comparing its normalized lifecycle token to the sole open-gate value.
@@ -158,7 +158,7 @@ Classifies whether one operator gate context file is currently answerable by com
 - Compares against: [field-status-value](#field-status-value)'s `AWAITING_OPERATOR` token as the only answerable lifecycle state.
 - Returns: `true` only when the normalized token is exactly `AWAITING_OPERATOR`.
 - Rejects as false: `ANSWERED`, `CONSUMED`, an absent status line, an empty token, or any other token.
-- Used by: [gate-answering layer](concepts/gate-answering-layer.md) after rereading the current file under the per-gate lock, so a browser tab can write only when the file is still awaiting at the time of submission.
+- Used by: [gate-answering layer](../concepts/gate-answering-layer.md) after rereading the current file under the per-gate lock, so a browser tab can write only when the file is still awaiting at the time of submission.
 - Does not mutate: file text, workspace-volume files, gate records, workflow state, answer locks, dashboard clients, or sidecar sessions.
 
 ### method-extract-question
@@ -171,11 +171,11 @@ Classifies whether one operator gate context file is currently answerable by com
 - verify: json_path(path="return value", equals="Should the fallback default to \"unknown\" or raise?")
 - verify: json_path(path="return value", equals="STATUS: AWAITING_OPERATOR\n\njust a blob, no section header")
 - code: groom/groom/gates.py::extract_question
-- detail: [gate question extraction contexts](concepts/gate-question-extraction-contexts.md)
+- detail: [gate question extraction contexts](../concepts/gate-question-extraction-contexts.md)
 - tests: `groom/tests/test_gates.py::test_extract_question_pulls_the_named_section`
 - tests: `groom/tests/test_gates.py::test_extract_question_falls_back_to_whole_text_when_no_header`
 
-Extracts the operator-facing prompt text from one gate file for [gate info](concepts/gate-info.md), sidecar snapshot gate entries, inbox previews, and worker-detail answer forms.
+Extracts the operator-facing prompt text from one gate file for [gate info](../concepts/gate-info.md), sidecar snapshot gate entries, inbox previews, and worker-detail answer forms.
 
 #### Effects
 
@@ -188,7 +188,7 @@ Extracts the operator-facing prompt text from one gate file for [gate info](conc
 - Extracts: all text after the recognized heading's newline run and before the next newline followed by `##` or the end of the file.
 - Fallback: uses the stripped whole file text when no recognized question heading exists.
 - Normalizes: strips leading and trailing whitespace from the selected body before applying the preview limit.
-- Used by: [method-scan_gates](concepts/sidecar-snapshot.md#method-scan_gates)
+- Used by: [method-scan_gates](../concepts/sidecar-snapshot.md#method-scan_gates)
   after a file is known to be awaiting, so the snapshot stores only the
   operator-facing prompt rather than the full gate context whenever the
   recognized question section is present.
@@ -208,7 +208,7 @@ Extracts the operator-facing prompt text from one gate file for [gate info](conc
 - verify: count(subject="STATUS: ANSWERED lines in returned gate text", equals=1)
 - verify: count(subject="answer paragraphs in returned gate text", equals=0)
 - code: groom/groom/gates.py::apply_answer
-- detail: [gate answer text mutation](concepts/gate-answer-text-mutation.md)
+- detail: [gate answer text mutation](../concepts/gate-answer-text-mutation.md)
 - tests: groom/tests/test_gates.py::test_apply_answer_flips_status_and_appends_text
 - tests: groom/tests/test_gates.py::test_apply_answer_with_blank_answer_still_flips_status
 

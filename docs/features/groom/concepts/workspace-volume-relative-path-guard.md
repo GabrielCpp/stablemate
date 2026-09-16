@@ -9,7 +9,7 @@ Workspace volume relative path guard is the validation layer used by the [worksp
 
 - code: groom/groom/docker_io.py::safe_relpath
 - detail: [safe relpath documentation views](safe-relpath-documentation-views.md)
-- refs: [workspace volume file-content reader](workspace-volume-file-content-reader.md), [workspace volume file writer](workspace-volume-file-writer.md), [gate-answering layer](gate-answering-layer.md), [workspace file content data](../workspace-file-content-data.md), [operator gate context file](../operator-gate-context-file.md)
+- refs: [workspace volume file-content reader](workspace-volume-file-content-reader.md), [workspace volume file writer](workspace-volume-file-writer.md), [gate-answering layer](gate-answering-layer.md), [workspace file content data](../formats/workspace-file-content-data.md), [operator gate context file](../formats/operator-gate-context-file.md)
 
 ## Contract
 

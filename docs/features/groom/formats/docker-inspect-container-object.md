@@ -5,7 +5,7 @@ title: Docker inspect container object
 ---
 # Docker inspect container object
 
-Docker inspect container object is the raw JSON object Groom accepts from the [Docker inspection reader](concepts/docker-inspection-reader.md). Discovery, the [push-first volume metadata resolver](concepts/push-first-volume-metadata-resolver.md), and the [container running-state check](concepts/container-running-state-check.md) consume only the identity, display-name, running-state, configuration, and mount fields needed to recognize a workhorse workflow container and populate a [workflow container](concepts/workflow-container.md); additional Docker keys may be present and are ignored by Groom's documented readers.
+Docker inspect container object is the raw JSON object Groom accepts from the [Docker inspection reader](../concepts/docker-inspection-reader.md). Discovery, the [push-first volume metadata resolver](../concepts/push-first-volume-metadata-resolver.md), and the [container running-state check](../concepts/container-running-state-check.md) consume only the identity, display-name, running-state, configuration, and mount fields needed to recognize a workhorse workflow container and populate a [workflow container](../concepts/workflow-container.md); additional Docker keys may be present and are ignored by Groom's documented readers.
 
 - file: not an on-disk Groom artifact; this is one object from the Docker CLI `docker inspect` JSON array.
 - code: groom/groom/docker_io.py::docker_inspect
@@ -41,7 +41,7 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 - default: `""`
 - required: false
 - meaning: full Docker container id; discovery truncates it to the first 12 characters for the workflow-container identity.
-- consumers: [workflow discovery scan](concepts/workflow-discovery-scan.md#method-resolve-container) and the [initial workflow-state transition](concepts/workflow-state.md#transition-discovery-initial) use this field through workflow-container conversion; running-state checks ignore it because their input id is supplied by the caller.
+- consumers: [workflow discovery scan](../concepts/workflow-discovery-scan.md#method-resolve-container) and the [initial workflow-state transition](../concepts/workflow-state.md#transition-discovery-initial) use this field through workflow-container conversion; running-state checks ignore it because their input id is supplied by the caller.
 - missing-or-empty: produces an empty workflow-container id, and an empty name fallback when `Name` is also empty.
 
 ### field-name
@@ -70,7 +70,7 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 - meaning: nested `State.Running` value; true maps discovery state to running and false maps it to idle before sidecar or volume state resolution.
 - path: `State.Running`
 - conversion: consumers apply Python truthiness, so any truthy value behaves as running and any falsey or absent value behaves as not running.
-- consumers: [container running-state check](concepts/container-running-state-check.md) returns this booleanized value, the [initial workflow-state transition](concepts/workflow-state.md#transition-discovery-initial) converts it into `WorkflowState.RUNNING` or `WorkflowState.IDLE`, and the [per-container discovery resolver](concepts/workflow-discovery-scan.md#method-resolve-container) uses it to choose sidecar query versus volume reconstruction.
+- consumers: [container running-state check](../concepts/container-running-state-check.md) returns this booleanized value, the [initial workflow-state transition](../concepts/workflow-state.md#transition-discovery-initial) converts it into `WorkflowState.RUNNING` or `WorkflowState.IDLE`, and the [per-container discovery resolver](../concepts/workflow-discovery-scan.md#method-resolve-container) uses it to choose sidecar query versus volume reconstruction.
 
 ### field-config
 
@@ -87,10 +87,10 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 - required: false
 - meaning: environment entries in `KEY=VALUE` form; Groom recognizes `REPO_NAME` and `REPO_BRANCH`, ignores entries without `=`, and ignores unrelated variables.
 - path: `Config.Env`
-- consumer: [workflow discovery scan](concepts/workflow-discovery-scan.md#method-extract-environment-map) parses this list into a transient lookup before baseline workflow-container creation.
+- consumer: [workflow discovery scan](../concepts/workflow-discovery-scan.md#method-extract-environment-map) parses this list into a transient lookup before baseline workflow-container creation.
 - encoding: each accepted entry is split only at the first `=`, so values may themselves contain `=` and empty values are retained.
 - duplicate-key: if Docker supplies the same variable more than once, the later accepted entry wins in Groom's lookup.
-- privacy: unrelated entries, including secret-bearing variables, are not copied into the [workflow container](concepts/workflow-container.md); current discovery copies only `REPO_NAME` and `REPO_BRANCH`.
+- privacy: unrelated entries, including secret-bearing variables, are not copied into the [workflow container](../concepts/workflow-container.md); current discovery copies only `REPO_NAME` and `REPO_BRANCH`.
 - malformed-entry: strings without `=` are skipped by Groom's environment-map extractor.
 - recognized-key: `REPO_NAME` becomes the workflow container's repository name.
 - recognized-key: `REPO_BRANCH` becomes the workflow container's repository branch.
@@ -114,7 +114,7 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 - required: false
 - meaning: optional `REPO_NAME` assignment inside `Config.Env`; Groom copies its parsed value into the workflow container repository-name field during Docker discovery conversion.
 - path: `Config.Env[].REPO_NAME`
-- consumer: [workflow-container conversion](#consumer-workflow-container-conversion) through the [environment-map extractor](concepts/workflow-discovery-scan.md#method-extract-environment-map).
+- consumer: [workflow-container conversion](#consumer-workflow-container-conversion) through the [environment-map extractor](../concepts/workflow-discovery-scan.md#method-extract-environment-map).
 - missing-or-empty: produces an empty workflow-container repository name.
 - duplicate-key: the later `REPO_NAME=` entry wins if Docker supplies more than one.
 
@@ -125,7 +125,7 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 - required: false
 - meaning: optional `REPO_BRANCH` assignment inside `Config.Env`; Groom copies its parsed value into the workflow container repository-branch field during Docker discovery conversion.
 - path: `Config.Env[].REPO_BRANCH`
-- consumer: [workflow-container conversion](#consumer-workflow-container-conversion) through the [environment-map extractor](concepts/workflow-discovery-scan.md#method-extract-environment-map).
+- consumer: [workflow-container conversion](#consumer-workflow-container-conversion) through the [environment-map extractor](../concepts/workflow-discovery-scan.md#method-extract-environment-map).
 - missing-or-empty: produces an empty workflow-container repository branch.
 - duplicate-key: the later `REPO_BRANCH=` entry wins if Docker supplies more than one.
 
@@ -136,7 +136,7 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 - required: false
 - meaning: Docker label map; Groom reads `com.docker.compose.service` only when the `/workflow` mount source basename is empty or generic.
 - path: `Config.Labels`
-- consumer: [workflow-type derivation](concepts/workflow-discovery-scan.md#method-derive-workflow-type) reads this map as the fallback workflow-kind source.
+- consumer: [workflow-type derivation](../concepts/workflow-discovery-scan.md#method-derive-workflow-type) reads this map as the fallback workflow-kind source.
 
 ### field-config-labels-compose-service
 
@@ -234,10 +234,10 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 ### consumer-workflow-container-conversion
 
 - code: groom/groom/discovery.py::container_from_inspect
-- detail: [workflow container conversion contexts](concepts/workflow-container-conversion-contexts.md)
+- detail: [workflow container conversion contexts](../concepts/workflow-container-conversion-contexts.md)
 - input: one Docker inspect container object or partial inspect-shaped dictionary.
 - reads: `Id`, `Name`, `State.Running`, `Config.Env`, `Config.Labels`, `Mounts[].Destination`, `Mounts[].Name`, and `Mounts[].Source`.
-- emits: one [workflow container](concepts/workflow-container.md) value with normalized id, display name, repository identity, workflow type, initial workflow state, workspace volume, and runs volume.
+- emits: one [workflow container](../concepts/workflow-container.md) value with normalized id, display name, repository identity, workflow type, initial workflow state, workspace volume, and runs volume.
 - defaulting: missing fields become empty strings, empty mappings, empty lists, or `idle` initial state rather than a format-level rejection.
 - side effects: none; conversion does not update the registry, broadcast, query sidecars, read Docker volumes, or answer gates.
 
@@ -248,19 +248,19 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 - verify: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
 - input: one Docker inspect container object returned for a candidate id during workflow discovery.
 - reads: `State.Running` after the object has passed workhorse-container classification and baseline workflow-container conversion.
-- emits: a control-flow choice in which running containers are queried through the [host-to-container sidecar query](concepts/host-to-container-sidecar-query.md) path.
+- emits: a control-flow choice in which running containers are queried through the [host-to-container sidecar query](../concepts/host-to-container-sidecar-query.md) path.
 - verify: emitted(event="host-to-container sidecar query", count=1)
-- emits: a control-flow choice in which stopped or non-running containers skip sidecar query and use [volume reconstruction](concepts/workflow-state.md#transition-volume-reconstruction).
+- emits: a control-flow choice in which stopped or non-running containers skip sidecar query and use [volume reconstruction](../concepts/workflow-state.md#transition-volume-reconstruction).
 - verify: emitted(event="volume reconstruction", count=1)
-- running-path: truthy `State.Running` calls the [host-to-container sidecar query](concepts/host-to-container-sidecar-query.md) with the normalized workflow container id produced from the same inspect object.
-- stopped-path: falsey or absent `State.Running` does not call the sidecar query and falls directly back to [volume reconstruction](concepts/workflow-state.md#transition-volume-reconstruction).
-- fallback: a running-path sidecar query that returns no snapshot also falls back to [volume reconstruction](concepts/workflow-state.md#transition-volume-reconstruction).
+- running-path: truthy `State.Running` calls the [host-to-container sidecar query](../concepts/host-to-container-sidecar-query.md) with the normalized workflow container id produced from the same inspect object.
+- stopped-path: falsey or absent `State.Running` does not call the sidecar query and falls directly back to [volume reconstruction](../concepts/workflow-state.md#transition-volume-reconstruction).
+- fallback: a running-path sidecar query that returns no snapshot also falls back to [volume reconstruction](../concepts/workflow-state.md#transition-volume-reconstruction).
 - side effects: this consumer does not mutate the inspect object; any workflow-container mutation happens through sidecar snapshot application or volume reconstruction after the path choice.
 
 ### consumer-push-first-volume-hydration
 
 - code: groom/groom/app.py::_ensure_volumes
-- detail: [push-first volume metadata resolver](concepts/push-first-volume-metadata-resolver.md)
+- detail: [push-first volume metadata resolver](../concepts/push-first-volume-metadata-resolver.md)
 - input: one Docker inspect container object returned for the caller-supplied workflow id after a push or sidecar path sees a container before discovery has supplied Docker volume metadata.
 - reads: the [workflow-container conversion](#consumer-workflow-container-conversion) output derived from `Mounts[].Destination`, `Mounts[].Name`, `Mounts[].Source`, and `Config.Labels.com.docker.compose.service`.
 - emits: registry metadata for the caller's id containing only `workspace_volume`, `runs_volume`, and `workflow_type` from the converted object.
@@ -272,7 +272,7 @@ Docker inspect container object is the raw JSON object Groom accepts from the [D
 ### consumer-running-state-check
 
 - code: groom/groom/docker_io.py::is_running
-- input: one Docker inspect container object returned by the [Docker inspection reader](concepts/docker-inspection-reader.md), or no metadata.
+- input: one Docker inspect container object returned by the [Docker inspection reader](../concepts/docker-inspection-reader.md), or no metadata.
 - reads: `State.Running` only.
 - emits: `True` only when inspection metadata exists and `State.Running` is truthy.
 - verify: json_path(path="return value", equals=true)

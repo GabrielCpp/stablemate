@@ -5,7 +5,7 @@ title: Sidecar connection
 ---
 # Sidecar connection
 
-Sidecar connection is the host-side object for one live [workflow container](workflow-container.md) sidecar socket. The [groom server](../http/groom.md#websocket-sidecar) creates it after a useful `hello` [sidecar websocket frame](../sidecar-websocket-frame.md), the [sidecar connection registry](sidecar-connection-registry.md) keeps the current connection per container id, file/diff/reload handlers use it as the data plane for [sidecar live sessions](../sidecar-live-sessions.md), [run-sidecar-websocket-session](../http/groom.md#run-sidecar-websocket-session) resolves returned RPC frames through `resolve`, and [sidecar error](sidecar-error.md) is its soft-failure signal for callers that can fall back.
+Sidecar connection is the host-side object for one live [workflow container](workflow-container.md) sidecar socket. The [groom server](../http/groom.md#websocket-sidecar) creates it after a useful `hello` [sidecar websocket frame](../formats/sidecar-websocket-frame.md), the [sidecar connection registry](sidecar-connection-registry.md) keeps the current connection per container id, file/diff/reload handlers use it as the data plane for [sidecar live sessions](../sidecar-live-sessions.md), [run-sidecar-websocket-session](../http/groom.md#run-sidecar-websocket-session) resolves returned RPC frames through `resolve`, and [sidecar error](sidecar-error.md) is its soft-failure signal for callers that can fall back.
 
 - code: groom/groom/sidecar_hub.py::SidecarConnection
 - tests: groom/tests/test_sidecar_hub.py::test_rpc_sends_request_and_returns_resolved_data,
@@ -144,7 +144,7 @@ Sidecar connection is the host-side object for one live [workflow container](wor
 - code: groom/groom/sidecar_hub.py::SidecarConnection._send
 - tests: groom/tests/test_sidecar_hub.py::test_rpc_sends_request_and_returns_resolved_data,
   groom/tests/test_sidecar_hub.py::test_send_reload_emits_reload_frame
-- input-frame: JSON-serializable [sidecar websocket frame](../sidecar-websocket-frame.md) object supplied by the caller.
+- input-frame: JSON-serializable [sidecar websocket frame](../formats/sidecar-websocket-frame.md) object supplied by the caller.
 - output: returns `None` after the socket sender accepts the frame.
 - calls: the stored socket sender's async `send_json(data)` operation.
 - boundary: the socket sender protocol is the only external operation; receive-loop dispatch, socket acceptance, disconnect cleanup, and incoming-frame normalization remain endpoint responsibilities.
@@ -161,7 +161,7 @@ Sidecar connection is the host-side object for one live [workflow container](wor
 - does:
   - Allocates the request correlation id through [method-next-id](#method-next-id), so ids are connection-local decimal strings that increase by one per attempted RPC.
   - Stores a pending future under that id before sending the request frame.
-  - Sends one `rpc` [sidecar websocket frame](../sidecar-websocket-frame.md) with `type`, `id`, `method`, and `params` through [method-send](#method-send), so the frame shares the connection's serialized host-to-sidecar write path with reload frames.
+  - Sends one `rpc` [sidecar websocket frame](../formats/sidecar-websocket-frame.md) with `type`, `id`, `method`, and `params` through [method-send](#method-send), so the frame shares the connection's serialized host-to-sidecar write path with reload frames.
   - Waits up to the timeout for `resolve` or `fail_all` to complete the future, returns the resolved data unchanged on success, propagates [sidecar error](sidecar-error.md) placed on the future, and converts send failure or timeout to [sidecar error](sidecar-error.md).
   - Always removes the pending future before returning or raising, including send failure before a result wait begins, sidecar-reported failure, registry displacement, socket-close failure, timeout, and caller cancellation.
   - verify: removed(subject="pending RPC future for the correlation id")
@@ -249,7 +249,7 @@ Sidecar connection is the host-side object for one live [workflow container](wor
 - sig: `async send_reload() -> None`
 - abstract: false
 - does:
-  - Sends exactly one `reload` [sidecar websocket frame](../sidecar-websocket-frame.md) through the serialized send path.
+  - Sends exactly one `reload` [sidecar websocket frame](../formats/sidecar-websocket-frame.md) through the serialized send path.
   - Propagates socket-send exceptions to the caller so reload can treat a dead socket as unavailable.
   - Performs no wait for restart, acknowledgement, registry cleanup, or workflow-state mutation.
 - verify: emitted(event="reload sidecar websocket frame", count=1)

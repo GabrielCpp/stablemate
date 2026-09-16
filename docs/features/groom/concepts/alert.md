@@ -48,4 +48,4 @@ per run until recovery, forward progress, wait closure, or a resumed session ret
 - verify: json_path(path="$.message", matches="^.+$")
 - code: `groom/groom/alerts.py::Alert.message` @777d4be85477
 - tests: `groom/tests/test_telemetry.py::test_a_run_that_dies_pages_instead_of_quietly_leaving_the_queue_idle`
-- detail: [dashboard notify message](../dashboard-notify-message.md#field-message)
+- detail: [dashboard notify message](../formats/dashboard-notify-message.md#field-message)

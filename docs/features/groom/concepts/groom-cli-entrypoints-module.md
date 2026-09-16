@@ -135,7 +135,7 @@ the server app itself is produced by the [Groom app module](groom-app-module.md)
   is absent, before importing the sidecar module.
 - does: imports the sidecar runtime module only after parsing succeeds.
 - does: in query mode, reads [method-snapshot](sidecar-snapshot.md#method-snapshot)
-  and serializes the returned [sidecar snapshot data](../sidecar-snapshot-data.md)
+  and serializes the returned [sidecar snapshot data](../formats/sidecar-snapshot-data.md)
   as compact JSON to stdout without attempting the exit-notice or live-session
   paths.
 - does: in exit-notice mode, calls

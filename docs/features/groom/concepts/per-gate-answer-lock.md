@@ -102,7 +102,7 @@ Returns the shared lock for one container-and-gate-file pair, creating it when t
 ### algorithm-answer-serialization
 
 - step: A dashboard answer request reaches the [gate-answering layer](gate-answering-layer.md) with a container id, gate file path, answer text, and workspace volume.
-- concurrency: answer-result — If the request has no workspace volume, the answer path returns an [answer result](../answer-result.md) failure before asking for a lock, reading files, mutating workflow state, or changing the lock registry.
+- concurrency: answer-result — If the request has no workspace volume, the answer path returns an [answer result](../formats/answer-result.md) failure before asking for a lock, reading files, mutating workflow state, or changing the lock registry.
 - step: The gate-answering layer asks for the per-gate answer lock for that container id and gate file path.
 - step: The answer path enters the returned lock before reading the current gate file from the workspace volume.
 - step: While still holding the lock, it rejects the submission if the gate file cannot be read or unless the freshly-read file status is `AWAITING_OPERATOR`.

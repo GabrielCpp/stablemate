@@ -17,8 +17,8 @@ transition](workflow-state.md#transition-blocked-push) for only the `BLOCKED` li
 effect it produces.
 
 Flow contexts answers a different question: *which surrounding document to read next* — the
-[blocked push payload](../blocked-push-payload.md) format that producers send in, the
-[dashboard notify message](../dashboard-notify-message.md) format the endpoint emits, or one of
+[blocked push payload](../formats/blocked-push-payload.md) format that producers send in, the
+[dashboard notify message](../formats/dashboard-notify-message.md) format the endpoint emits, or one of
 the two flows ([operator answers blocked
 gate](../flows/operator-answers-blocked-gate.md), [residual sidecar push and query
 fallback](../flows/residual-sidecar-push-and-query-fallback.md)) that carry a blocked

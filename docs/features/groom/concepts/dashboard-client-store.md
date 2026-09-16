@@ -16,7 +16,7 @@ The store is also the boundary that decides what is fleet-wide and what is per-t
 - code: groom/groom/assets/dashboard.js::applyRun
 - code: groom/groom/assets/dashboard.js::setIn
 - code: groom/groom/assets/dashboard.js::useStore
-- refs: [dashboard state payload](../dashboard-state-payload.md), [runs fleet view](../runs-fleet-view.md), [groom projection module](groom-projection-module.md), [dashboard connection state machine](dashboard-connection-state-machine.md), [dashboard resync poller](dashboard-resync-poller.md), [run watch registry](run-watch-registry.md)
+- refs: [dashboard state payload](../formats/dashboard-state-payload.md), [runs fleet view](../runs-fleet-view.md), [groom projection module](groom-projection-module.md), [dashboard connection state machine](dashboard-connection-state-machine.md), [dashboard resync poller](dashboard-resync-poller.md), [run watch registry](run-watch-registry.md)
 
 The client module's parsing, JSON endpoint handling, resistance to fragment swapping, and markup
 boundary are covered by `groom/tests/test_dashboard_client.py::test_the_client_module_parses`,

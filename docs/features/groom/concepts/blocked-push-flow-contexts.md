@@ -12,9 +12,9 @@ dashboard refresh, notification, and immediate reconciliation regardless of
 which producer arrives first. A second delivery is a harmless re-render;
 the run's own `questions` listing remains authoritative for the gate.
 
-The [blocked push payload](../blocked-push-payload.md) is the input to this
+The [blocked push payload](../formats/blocked-push-payload.md) is the input to this
 operation: producers use it to tell Groom which gate blocked. The [dashboard
-notify message](../dashboard-notify-message.md) is the output edge from the
+notify message](../formats/dashboard-notify-message.md) is the output edge from the
 same operation: Groom broadcasts it after the state and detail refresh so
 connected tabs interrupt the operator. They are not interchangeable wire
 formats or alternative ways to report a block; one request may produce one

@@ -11,7 +11,7 @@ Each token class (input, output, cache reads, cache writes) carries its own rate
 
 - code: groom/groom/prices.py
 - tests: groom/tests/test_prices.py
-- detail: [prices configuration file](../prices-config.md)
+- detail: [prices configuration file](../formats/prices-config.md)
 
 ## Public members
 

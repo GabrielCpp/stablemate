@@ -5,7 +5,7 @@ title: Answer event log
 ---
 # Answer event log
 
-Answer event log is groom's process-local, bounded history of dashboard answer attempts. The [edit detail answer textarea](../gui/screens/groom-dashboard.md#edit-detail-answer-textarea) and [send detail answer](../gui/screens/groom-dashboard.md#send-detail-answer) interactions reach it after the gate-answering layer returns an [answer result](../answer-result.md); the dashboard websocket command handler builds an [answer log entry](../answer-log-entry.md) from the submitted [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md) and appends that object through [record answer log entry](#method-record-answer-log-entry).
+Answer event log is groom's process-local, bounded history of dashboard answer attempts. The [edit detail answer textarea](../gui/screens/groom-dashboard.md#edit-detail-answer-textarea) and [send detail answer](../gui/screens/groom-dashboard.md#send-detail-answer) interactions reach it after the gate-answering layer returns an [answer result](../formats/answer-result.md); the dashboard websocket command handler builds an [answer log entry](../formats/answer-log-entry.md) from the submitted [dashboard websocket answer frame](../formats/dashboard-websocket-answer-frame.md) and appends that object through [record answer log entry](#method-record-answer-log-entry).
 
 - code: groom/groom/state.py::LOG
 - code: groom/groom/state.py::record_log
@@ -16,8 +16,8 @@ Answer event log is groom's process-local, bounded history of dashboard answer a
 - initialization: importing the groom state module creates the log as an empty bounded sequence before any dashboard request, websocket connection, background discovery scan, or answer command runs.
 - container: bounded append-only sequence with newest entries appended at the tail and oldest entries automatically evicted after capacity is reached.
 - capacity: exactly 200 retained events.
-- value type: dictionary matching [answer log entry](../answer-log-entry.md) for the current answer-command producer; the storage layer itself accepts any dictionary supplied by a first-party caller.
-- producer mapping: the current first-party producer is the dashboard websocket answer-command handler, which builds the entry only after receiving an [answer result](../answer-result.md) and before broadcasting the refreshed dashboard shell.
+- value type: dictionary matching [answer log entry](../formats/answer-log-entry.md) for the current answer-command producer; the storage layer itself accepts any dictionary supplied by a first-party caller.
+- producer mapping: the current first-party producer is the dashboard websocket answer-command handler, which builds the entry only after receiving an [answer result](../formats/answer-result.md) and before broadcasting the refreshed dashboard shell.
 - writer: [record answer log entry](#method-record-answer-log-entry) is the only first-party mutation API for appending an answer-attempt event.
 - readers: no first-party route, websocket command, UI component, serializer, or background task currently reads entries back from the log.
 - retention: bounded to the newest 200 entries; appending entry 201 or later may discard the oldest retained entry.
@@ -27,7 +27,7 @@ Answer event log is groom's process-local, bounded history of dashboard answer a
 - synchronization: the log has no groom-specific lock, async queue, await point, or cross-task coordination mechanism; callers that need sequencing must establish it before calling the append API.
 - persistence: answer-event-log — no disk file, database, external sink, replay protocol, acknowledgement frame, or cross-process coordination participates.
 - visibility: the log is internal process state; the current dashboard surface records answer attempts into it but does not expose a route, websocket frame, or UI panel that reads it back.
-- command coverage: handled answer-command successes and handled answer-command failures are both logged; frames whose command is not exactly `answer`, and exceptions raised before an [answer result](../answer-result.md) is returned, produce no answer log entry.
+- command coverage: handled answer-command successes and handled answer-command failures are both logged; frames whose command is not exactly `answer`, and exceptions raised before an [answer result](../formats/answer-result.md) is returned, produce no answer log entry.
 - failure behavior: the log has no domain-level validation or recovery path; if the underlying append operation raises, that ordinary runtime error propagates to the caller.
 
 ### algorithm-log-initialization
@@ -70,7 +70,7 @@ runs when `groom.state` is first imported.
 
 ### field-log-entry
 
-- type: [answer log entry](../answer-log-entry.md)
+- type: [answer log entry](../formats/answer-log-entry.md)
 - default: none
 - verify: count(subject="the answer event log before any append", equals=0)
 - required: true for appended members
@@ -94,7 +94,7 @@ runs when `groom.state` is first imported.
 - verify: json_path(path="exception.type", equals="RuntimeError")
 - code: groom/groom/state.py::record_log
 
-Appends one already-built event dictionary to the process-local answer event log without validating, normalizing, cloning, broadcasting, or persisting it. The parameter is documented in `sig:`; the layer does not enforce keys or value types, so the dictionary is accepted as supplied (for dashboard answer commands it matches [answer log entry](../answer-log-entry.md)).
+Appends one already-built event dictionary to the process-local answer event log without validating, normalizing, cloning, broadcasting, or persisting it. The parameter is documented in `sig:`; the layer does not enforce keys or value types, so the dictionary is accepted as supplied (for dashboard answer commands it matches [answer log entry](../formats/answer-log-entry.md)).
 
 #### Effects
 

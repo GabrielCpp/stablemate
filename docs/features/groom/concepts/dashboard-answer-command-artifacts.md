@@ -6,9 +6,9 @@ title: Dashboard answer command artifacts
 # Dashboard answer command artifacts
 
 The dashboard command handler has three distinct data artifacts for one `cmd="answer"`
-operation. It consumes the [dashboard websocket answer frame](../dashboard-websocket-answer-frame.md),
-records an [answer log entry](../answer-log-entry.md) after `_answer` returns, and broadcasts a
-[dashboard answered message](../dashboard-answered-message.md) only when that result succeeds.
+operation. It consumes the [dashboard websocket answer frame](../formats/dashboard-websocket-answer-frame.md),
+records an [answer log entry](../formats/answer-log-entry.md) after `_answer` returns, and broadcasts a
+[dashboard answered message](../formats/dashboard-answered-message.md) only when that result succeeds.
 
 They are not competing implementations and have no ranking: choose the inbound frame when
 describing what the browser submits, the log entry when describing the process-local record of

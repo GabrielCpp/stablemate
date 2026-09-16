@@ -5,7 +5,7 @@ title: Docker run-directory reader
 ---
 # Docker run-directory reader
 
-Docker run-directory reader, also described by Groom's run-artifact formats as the Docker volume run-directory reader, is the read-only Docker volume helper in the [Groom Docker I/O module](groom-docker-io-module.md) used by the [workflow discovery scan](workflow-discovery-scan.md#method-current-run-state) to choose the latest stopped-or-legacy run directory before reading [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md) and [sidecar run metadata](../sidecar-run-metadata.md). Its [list-run-dirs](#list-run-dirs) method mounts the workflow's runs volume through the shared [Docker subprocess runner](docker-subprocess-runner.md), lists only top-level directories under the volume root, strips the container-local `/vol/` prefix, and returns sorted volume-relative directory names.
+Docker run-directory reader, also described by Groom's run-artifact formats as the Docker volume run-directory reader, is the read-only Docker volume helper in the [Groom Docker I/O module](groom-docker-io-module.md) used by the [workflow discovery scan](workflow-discovery-scan.md#method-current-run-state) to choose the latest stopped-or-legacy run directory before reading [sidecar run checkpoint data](../formats/sidecar-run-checkpoint-data.md) and [sidecar run metadata](../formats/sidecar-run-metadata.md). Its [list-run-dirs](#list-run-dirs) method mounts the workflow's runs volume through the shared [Docker subprocess runner](docker-subprocess-runner.md), lists only top-level directories under the volume root, strips the container-local `/vol/` prefix, and returns sorted volume-relative directory names.
 
 The `list_run_dirs` implementation in `groom/groom/docker_io.py` treats a non-zero Docker listing result as unusable rather than processing any output it carried.
 
@@ -15,7 +15,7 @@ The `list_run_dirs` implementation in `groom/groom/docker_io.py` treats a non-ze
 - detail: [Docker run-directory listing documentation views](docker-run-directory-listing-documentation-views.md)
 - parent: [Groom Docker I/O module](groom-docker-io-module.md)
 - alias: Docker volume run-directory reader
-- refs: [Docker subprocess runner](docker-subprocess-runner.md), [sidecar run checkpoint data](../sidecar-run-checkpoint-data.md), [sidecar run metadata](../sidecar-run-metadata.md), [workflow discovery scan](workflow-discovery-scan.md#method-current-run-state)
+- refs: [Docker subprocess runner](docker-subprocess-runner.md), [sidecar run checkpoint data](../formats/sidecar-run-checkpoint-data.md), [sidecar run metadata](../formats/sidecar-run-metadata.md), [workflow discovery scan](workflow-discovery-scan.md#method-current-run-state)
 
 ## Contract
 

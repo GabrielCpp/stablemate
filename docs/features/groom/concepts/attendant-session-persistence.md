@@ -71,7 +71,7 @@ Session ids are appended when an attendance is resumed after a groom restart, ma
 - raises: sqlite3.Error if the INSERT OR REPLACE fails after one reopen attempt by the [@_resilient](../concepts/_store-class.md#method-_resilient) wrapper
 - idempotency: attend-sessions-row — INSERT OR REPLACE on job_id, so re-calling with the same job_id replaces the row rather than duplicating
 - code: `groom/groom/store.py::attend_start`
-- detail: [reason method](../attend-job.md#reason)
+- detail: [reason method](../formats/attend-job.md#reason)
 - verify: json_path(path="status", equals="running")
 - tests: `groom/tests/test_attend.py::test_a_row_is_running_until_the_owner_finishes_it`
 

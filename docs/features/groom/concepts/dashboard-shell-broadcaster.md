@@ -5,11 +5,11 @@ title: Dashboard shell broadcaster
 ---
 # Dashboard shell broadcaster
 
-Dashboard shell broadcaster is the shared groom server helper that turns the current [workflow registry](workflow-registry.md) snapshot into a [dashboard state payload](../dashboard-state-payload.md) through the [groom projection module](groom-projection-module.md) and offers that payload to every connected [websocket-dashboard](../http/groom.md#websocket-dashboard) client through the [dashboard client queue set](dashboard-client-queue-set.md). When the caller names the one run that changed, it also pushes that run's detail payload to the tabs that declared themselves watchers in the [run watch registry](run-watch-registry.md) — both halves of a state change travel together, because a gate opening changes the row *and* the pane the operator has open. The [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet), [receive progress push](../http/groom.md#receive-progress-push), [receive blocked push](../http/groom.md#receive-blocked-push), [receive exited push](../http/groom.md#receive-exited-push), [sidecar hello applier](sidecar-hello-applier.md), [sidecar progress applier](sidecar-progress-applier.md), [sidecar blocked applier](sidecar-blocked-applier.md), and [startup background discovery scan](startup-background-discovery-scan.md) paths use it when they need dashboard tabs to converge on the current fleet and status-bar state without directly handling projection or client-queue details.
+Dashboard shell broadcaster is the shared groom server helper that turns the current [workflow registry](workflow-registry.md) snapshot into a [dashboard state payload](../formats/dashboard-state-payload.md) through the [groom projection module](groom-projection-module.md) and offers that payload to every connected [websocket-dashboard](../http/groom.md#websocket-dashboard) client through the [dashboard client queue set](dashboard-client-queue-set.md). When the caller names the one run that changed, it also pushes that run's detail payload to the tabs that declared themselves watchers in the [run watch registry](run-watch-registry.md) — both halves of a state change travel together, because a gate opening changes the row *and* the pane the operator has open. The [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet), [receive progress push](../http/groom.md#receive-progress-push), [receive blocked push](../http/groom.md#receive-blocked-push), [receive exited push](../http/groom.md#receive-exited-push), [sidecar hello applier](sidecar-hello-applier.md), [sidecar progress applier](sidecar-progress-applier.md), [sidecar blocked applier](sidecar-blocked-applier.md), and [startup background discovery scan](startup-background-discovery-scan.md) paths use it when they need dashboard tabs to converge on the current fleet and status-bar state without directly handling projection or client-queue details.
 
 - code: groom/groom/app.py::_broadcast_shell
 - detail: [dashboard shell broadcast contexts](dashboard-shell-broadcast-contexts.md)
-- refs: [workflow registry](workflow-registry.md), [groom projection module](groom-projection-module.md), [dashboard state payload](../dashboard-state-payload.md), [dashboard client queue set](dashboard-client-queue-set.md), [run watch registry](run-watch-registry.md), [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md)
+- refs: [workflow registry](workflow-registry.md), [groom projection module](groom-projection-module.md), [dashboard state payload](../formats/dashboard-state-payload.md), [dashboard client queue set](dashboard-client-queue-set.md), [run watch registry](run-watch-registry.md), [dashboard discovery scanning flag](dashboard-discovery-scanning-flag.md)
 
 ## Contract
 
@@ -71,7 +71,7 @@ push has been enqueued.
 
 ### field: enqueued-state-payload
 
-- type: [dashboard state payload](../dashboard-state-payload.md)
+- type: [dashboard state payload](../formats/dashboard-state-payload.md)
 - default: none
 - required: true
 - sink: [broadcast dashboard message](dashboard-client-queue-set.md#method-broadcast-dashboard-message)
@@ -114,7 +114,7 @@ Project and enqueue the current dashboard state for browser dashboard websocket 
 - Calls: [state message](groom-projection-module.md#method-state-message) once with the snapshot and the default empty query.
 - Calls: [broadcast dashboard message](dashboard-client-queue-set.md#method-broadcast-dashboard-message) once with the already-projected payload; all per-client queue snapshotting and queue writes belong to that downstream layer.
 - Calls: the run-detail push once when `changed` is non-empty.
-- Emits: one [dashboard state payload](../dashboard-state-payload.md) and, conditionally, one detail payload per watching queue.
+- Emits: one [dashboard state payload](../formats/dashboard-state-payload.md) and, conditionally, one detail payload per watching queue.
 - Preserves: workflow registry contents, individual workflow fields, gate maps, discovery scanning flag, answer log entries, sidecar websocket registrations, dashboard client membership, watch subscriptions, and Docker volume state.
 - Excludes: repository menu, files tree, file contents, diffs, traces, notification messages, answered confirmations, sidecar JSON frames, and HTTP response metadata.
 
@@ -147,7 +147,7 @@ Project and enqueue the current dashboard state for browser dashboard websocket 
 
 - step: Read the current workflow registry values into a new list through [all workflows snapshot](workflow-registry.md#method-all-workflows-snapshot).
 - step: Pass that list to [state message](groom-projection-module.md#method-state-message) with no query override.
-- step: Receive one [dashboard state payload](../dashboard-state-payload.md) carrying the ordered run list, the fleet-wide status counts, and the discovery scanning flag.
+- step: Receive one [dashboard state payload](../formats/dashboard-state-payload.md) carrying the ordered run list, the fleet-wide status counts, and the discovery scanning flag.
 - step: Offer the payload to [broadcast dashboard message](dashboard-client-queue-set.md#method-broadcast-dashboard-message), which snapshots the registered dashboard client queues and awaits one enqueue per queue.
 
 With no named changed run, the sequence ends after the fleet payload is offered. A named changed run continues by pushing its detail to its watchers; when nobody watches it, the detail push ends before reading telemetry or logs.

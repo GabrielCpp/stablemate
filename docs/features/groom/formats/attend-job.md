@@ -8,7 +8,7 @@ title: Attend job
 One stopped run and everything an attendant needs to start on it. Holds both gate and death metadata; the `kind` field determines which branch applies.
 
 - code: `groom/groom/attend.py::AttendJob`
-- detail: [Attendant session transcript](concepts/attend-transcript.md)
+- detail: [Attendant session transcript](../concepts/attend-transcript.md)
 - tests: `groom/tests/test_attend.py`
 
 ## Fields

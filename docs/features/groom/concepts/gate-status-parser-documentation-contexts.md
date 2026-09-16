@@ -10,7 +10,7 @@ contexts. `groom/groom/gates.py::status_of` delegates status-line parsing to
 the shared Workhorse gate-file implementation; it does not provide two parser
 implementations to choose between.
 
-Use [operator gate context file status parser](../operator-gate-context-file.md#method-status-of)
+Use [operator gate context file status parser](../formats/operator-gate-context-file.md#method-status-of)
 when determining what a gate-file status line accepts and what a caller receives
 from a full file or prefix. Use [status-of](groom-gates-module.md#status-of)
 when determining the Groom module's public pure-helper boundary and its

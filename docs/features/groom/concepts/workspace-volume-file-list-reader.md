@@ -5,7 +5,7 @@ title: Workspace volume file-list reader
 ---
 # Workspace volume file-list reader
 
-Workspace volume file-list reader is the fallback implementation used by the [serve workspace file list](../http/groom.md#serve-workspace-file-list) invocation when the connected sidecar cannot provide [workspace file list data](../workspace-file-list-data.md). It is the [Groom Docker I/O module](groom-docker-io-module.md) detail for [list-files](groom-docker-io-module.md#list-files): it delegates process execution to the [Docker subprocess runner](docker-subprocess-runner.md), reads one selected checkout inside a known workspace Docker volume through a shell-free, read-only Docker command, and returns repo-relative file paths without mutating the workflow container or broadcasting dashboard updates.
+Workspace volume file-list reader is the fallback implementation used by the [serve workspace file list](../http/groom.md#serve-workspace-file-list) invocation when the connected sidecar cannot provide [workspace file list data](../formats/workspace-file-list-data.md). It is the [Groom Docker I/O module](groom-docker-io-module.md) detail for [list-files](groom-docker-io-module.md#list-files): it delegates process execution to the [Docker subprocess runner](docker-subprocess-runner.md), reads one selected checkout inside a known workspace Docker volume through a shell-free, read-only Docker command, and returns repo-relative file paths without mutating the workflow container or broadcasting dashboard updates.
 
 - code: groom/groom/docker_io.py::list_files
 - tests: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs,

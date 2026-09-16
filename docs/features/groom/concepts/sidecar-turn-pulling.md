@@ -14,7 +14,7 @@ The puller stays non-authoritative by design: if it never connects, or a pull fa
 
 ## Contract
 
-Runs announced via the [sidecar websocket](../sidecar-websocket-frame.md) are pulled asynchronously without blocking the receive loop. Announces coalesce into at most two passes per container via in-flight state tracking: `schedule()` enqueues the first pass if none is in flight, and if another announce arrives while a pull is running, a single re-run is queued behind it instead of one pass per frame.
+Runs announced via the [sidecar websocket](../formats/sidecar-websocket-frame.md) are pulled asynchronously without blocking the receive loop. Announces coalesce into at most two passes per container via in-flight state tracking: `schedule()` enqueues the first pass if none is in flight, and if another announce arrives while a pull is running, a single re-run is queued behind it instead of one pass per frame.
 
 Fetched run dirs are mirrored under `<archive-root>/.incoming/<container-id>/<run>` before `harvest_run` archives them. Pulled files are written to a `.part` temp file and atomically moved into place, so an interrupted pull cannot leave a half-file the next harvest would digest as though it were the whole turn. One pull is bounded by `MAX_PULL_BYTES` (default 256MB, configurable via `GROOM_TURN_PULL_MAX_BYTES`), so a long run's ever-growing dir is pulled in multiple passes.
 

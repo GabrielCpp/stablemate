@@ -5,7 +5,7 @@ title: Sidecar filesystem watch
 ---
 # Sidecar filesystem watch
 
-Sidecar filesystem watch is the delegated filesystem-observation layer used by the [sidecar connected session](sidecar-connected-session.md). It selects which of the configured sidecar mounts can be watched, subscribes to them recursively through the portable `watchfiles` backend, and feeds the classified [sidecar websocket frame](../sidecar-websocket-frame.md) objects into the session's outbound queue until the session asks it to stop.
+Sidecar filesystem watch is the delegated filesystem-observation layer used by the [sidecar connected session](sidecar-connected-session.md). It selects which of the configured sidecar mounts can be watched, subscribes to them recursively through the portable `watchfiles` backend, and feeds the classified [sidecar websocket frame](../formats/sidecar-websocket-frame.md) objects into the session's outbound queue until the session asks it to stop.
 
 When a runs volume has not mounted yet, only filesystem observation degrades; the sidecar session remains available for data-plane RPCs.
 
@@ -35,7 +35,7 @@ The watch behavior is covered by `groom/tests/test_sidecar_session.py::test_the_
 1. Collect the configured workspace and runs mounts that are directories; return when none is.
 2. Subscribe recursively to those roots with the skip-directory filter and the session's stop event.
 3. For each yielded batch of changes, drop deletions.
-4. Classify each remaining changed path with [method-_classify_event](../sidecar-websocket-frame.md#method-_classify_event).
+4. Classify each remaining changed path with [method-_classify_event](../formats/sidecar-websocket-frame.md#method-_classify_event).
 5. Enqueue every non-`None` frame on the session's outbound queue.
 6. Exit when the stop event is set or the task is cancelled.
 
@@ -66,7 +66,7 @@ The watch behavior is covered by `groom/tests/test_sidecar_session.py::test_the_
 - input: `outbox` is the caller-owned FIFO the [sidecar outbound sender](sidecar-outbound-sender.md) drains; `stop` is the shared event the session sets during cleanup.
 - output: `None`; all useful result data is the frames placed on `outbox`.
 - effects: subscribes to the watchable roots, drops deletions, classifies the remaining changed paths, and enqueues the resulting frames.
-- calls: [method-_watch_roots](#method-_watch_roots), [method-_classify_event](../sidecar-websocket-frame.md#method-_classify_event), and the third-party watch backend.
+- calls: [method-_watch_roots](#method-_watch_roots), [method-_classify_event](../formats/sidecar-websocket-frame.md#method-_classify_event), and the third-party watch backend.
 - algorithm:
   1. Return immediately when no configured mount is a directory.
   2. Iterate batches of changes from the recursive, filtered watch over those roots.
@@ -77,5 +77,5 @@ The watch behavior is covered by `groom/tests/test_sidecar_session.py::test_the_
 ## Related
 
 - [Sidecar connected session](sidecar-connected-session.md) owns the watch task, the outbound queue, and the stop event.
-- [method-_classify_event](../sidecar-websocket-frame.md#method-_classify_event) turns one changed path into the frame this layer enqueues.
+- [method-_classify_event](../formats/sidecar-websocket-frame.md#method-_classify_event) turns one changed path into the frame this layer enqueues.
 - [Sidecar outbound sender](sidecar-outbound-sender.md) drains the queue this layer fills.

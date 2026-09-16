@@ -8,7 +8,7 @@ area: groom
 ---
 # Runs fleet view
 
-The runs fleet view is the `runs` array inside the [dashboard state payload](dashboard-state-payload.md): one row per [workflow container](concepts/workflow-container.md) groom knows about, already ordered by how much it deserves the operator's attention, already carrying every label the row displays. It is projected by the [groom projection module](concepts/groom-projection-module.md) and rendered by the [run row](gui/screens/groom-dashboard.md#run-row) component.
+The runs fleet view is the `runs` array inside the [dashboard state payload](formats/dashboard-state-payload.md): one row per [workflow container](concepts/workflow-container.md) groom knows about, already ordered by how much it deserves the operator's attention, already carrying every label the row displays. It is projected by the [groom projection module](concepts/groom-projection-module.md) and rendered by the [run row](gui/screens/groom-dashboard.md#run-row) component.
 
 It is the whole fleet, not a needs-you-now subset. An earlier design showed only workflows holding an open [gate info](concepts/gate-info.md) record and kept everything else in a separate tree; that split meant a run that had silently died was in neither place an operator was looking. Ordering carries that concern instead: blocked runs sort first because they are waiting on *you*, then alive runs, then runs that stopped reporting, then finished ones.
 
@@ -16,7 +16,7 @@ Every row is data. The state dot, the type badge's hue, the liveness chip, the o
 
 Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_include_every_instance`, `groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished`, `groom/tests/test_projection.py::test_liveness_is_unknown_without_telemetry`, `groom/tests/test_projection.py::test_finished_row_carries_its_exit_hint`, `groom/tests/test_projection.py::test_query_filters_the_fleet`, `groom/tests/test_projection.py::test_run_message_row_matches_the_same_row_in_the_state_message`, and `groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup`.
 
-- refs: [dashboard state payload](dashboard-state-payload.md), [groom projection module](concepts/groom-projection-module.md), [run question preview](concepts/run-question-preview.md), [workflow state](concepts/workflow-state.md), [dashboard discovery scanning flag](concepts/dashboard-discovery-scanning-flag.md), [dashboard client store](concepts/dashboard-client-store.md)
+- refs: [dashboard state payload](formats/dashboard-state-payload.md), [groom projection module](concepts/groom-projection-module.md), [run question preview](concepts/run-question-preview.md), [workflow state](concepts/workflow-state.md), [dashboard discovery scanning flag](concepts/dashboard-discovery-scanning-flag.md), [dashboard client store](concepts/dashboard-client-store.md)
 
 ## Contract
 

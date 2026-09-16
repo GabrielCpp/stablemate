@@ -10,7 +10,7 @@ Sidecar serving loop is the async websocket dial-and-retry layer started by the
 container-side sidecar to the host [websocket-sidecar](../http/groom.md#websocket-sidecar)
 endpoint, hands each accepted socket to the connected session layer, and returns
 the reserved reload exit code when a host-issued `reload` [sidecar websocket
-frame](../sidecar-websocket-frame.md) asks the container entrypoint to restart the
+frame](../formats/sidecar-websocket-frame.md) asks the container entrypoint to restart the
 sidecar. Ordinary socket drops are not terminal; they cause a reconnect and a new
 session advertisement for [sidecar live sessions](../sidecar-live-sessions.md).
 

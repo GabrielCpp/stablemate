@@ -28,7 +28,7 @@ Decodes an OpenTelemetry `ExportTraceServiceRequest` protobuf into a list of spa
 
 - sig: `parse_traces(body: bytes) -> list[dict[str, Any]]`
 - raises: undecodable input raises an exception; the HTTP receiver turns this into a 400 response
-- returns: a list of [OTLP span record](../otlp-span-record.md) dicts
+- returns: a list of [OTLP span record](../formats/otlp-span-record.md) dicts
 - code: groom/groom/otlp.py::parse_traces
 - tests: groom/tests/test_telemetry.py
 
@@ -38,7 +38,7 @@ Decodes an OpenTelemetry `ExportLogsServiceRequest` protobuf into a list of log 
 
 - sig: `parse_logs(body: bytes) -> list[dict[str, Any]]`
 - raises: undecodable input raises an exception; the HTTP receiver turns this into a 400 response
-- returns: a list of [OTLP log record](../otlp-log-record.md) dicts
+- returns: a list of [OTLP log record](../formats/otlp-log-record.md) dicts
 - code: groom/groom/otlp.py::parse_logs
 - tests: groom/tests/test_telemetry.py
 
@@ -48,7 +48,7 @@ Decodes an OpenTelemetry `ExportMetricsServiceRequest` protobuf into a list of m
 
 - sig: `parse_metrics(body: bytes) -> list[dict[str, Any]]`
 - raises: undecodable input raises an exception; the HTTP receiver turns this into a 400 response
-- returns: a list of [OTLP metric point record](../otlp-metric-point-record.md) dicts
+- returns: a list of [OTLP metric point record](../formats/otlp-metric-point-record.md) dicts
 - code: groom/groom/otlp.py::parse_metrics
 - tests: groom/tests/test_telemetry.py
 

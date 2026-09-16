@@ -6,13 +6,13 @@ title: Dashboard parsed diff file cache
 # Dashboard parsed diff file cache
 
 Dashboard parsed diff file cache is the parsed changed-file array the Diff pane
-holds in the [dashboard client store](concepts/dashboard-client-store.md) as the
+holds in the [dashboard client store](../concepts/dashboard-client-store.md) as the
 `diff` slice's `files` member. It is created once per Diff pane load, when
 [workspace diff data](workspace-diff-data.md) comes back with non-whitespace unified
 diff text and the third-party diff2html parser turns it into file entries. It feeds
-the [dashboard tree builder](concepts/dashboard-tree-builder.md) — which is what puts
-[diff file row](gui/screens/groom-dashboard.md#diff-file-row) entries on the page —
-and it is what makes [select diff file row](gui/screens/groom-dashboard.md#select-diff-file-row)
+the [dashboard tree builder](../concepts/dashboard-tree-builder.md) — which is what puts
+[diff file row](../gui/screens/groom-dashboard.md#diff-file-row) entries on the page —
+and it is what makes [select diff file row](../gui/screens/groom-dashboard.md#select-diff-file-row)
 free: the whole diff was parsed when the pane loaded, so choosing a file renders one
 already-parsed entry rather than issuing another request.
 
@@ -27,7 +27,7 @@ the array they address to come from different loads, because one render derives 
 - code: groom/groom/assets/dashboard.js::loadDiff
 - code: groom/groom/assets/dashboard.js::DiffTree
 - code: groom/groom/assets/dashboard.js::DiffView
-- detail: [dashboard diff representation selection](concepts/dashboard-diff-representation-selection.md)
+- detail: [dashboard diff representation selection](../concepts/dashboard-diff-representation-selection.md)
 - refs: [workspace diff data](workspace-diff-data.md), [dashboard path tree](dashboard-path-tree.md)
 
 ## Contract
@@ -42,7 +42,7 @@ fulfilled response as JSON before considering its `diff` member.
 - absent states: an empty array is stored, rather than the slice left untouched, for whitespace-only diff text and for a parse that yields no files. The two are indistinguishable by design and both render `(no changes)`. A rejected fetch or unparseable body sets `status: "error"` with an empty array.
 - reset rule: every load begins by writing `{status: "loading", files: [], idx: -1}`, so a failed or empty reload cannot leave the previous load's entries addressable. This is what the DOM-property version could not guarantee.
 - selection invariant: `idx` is a position in the array stored in the same slice, and both are written by the same store update. There is no path by which a row's index and the array it indexes come from different loads, and no bounds check is needed beyond the viewer's `files[idx]` returning undefined for the initial `-1`.
-- consistency: field-files — array positions in `files` are parser order and are never reordered — each diff-tree entry's `idx` is fixed to its position at build time (`diff.files.map((file, i) => ({..., idx: i}))`), not recomputed after the [dashboard tree builder](concepts/dashboard-tree-builder.md) sorts a copy of the entries per level for display, so a row's position on screen says nothing about its index into `files`.
+- consistency: field-files — array positions in `files` are parser order and are never reordered — each diff-tree entry's `idx` is fixed to its position at build time (`diff.files.map((file, i) => ({..., idx: i}))`), not recomputed after the [dashboard tree builder](../concepts/dashboard-tree-builder.md) sorts a copy of the entries per level for display, so a row's position on screen says nothing about its index into `files`.
 - third-party boundary: each entry is an opaque diff2html payload for final rendering. First-party code reads only `newName`, `oldName`, `addedLines` and `deletedLines`, and retains the whole object for the viewer.
 - escaping: diff2html escapes what it emits, which is why the raw diff crosses the wire unsplit rather than having half a parser reimplemented server-side. Nothing in this cache is interpolated into markup by first-party code.
 

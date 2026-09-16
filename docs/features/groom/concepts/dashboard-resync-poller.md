@@ -11,7 +11,7 @@ The design constraint that makes it worth a document is that the resync must not
 
 - code: groom/groom/assets/dashboard.js::resync
 - code: groom/groom/assets/dashboard.js::startConnection
-- refs: [dashboard connection state machine](dashboard-connection-state-machine.md), [dashboard client store](dashboard-client-store.md), [groom projection module](groom-projection-module.md), [dashboard state payload](../dashboard-state-payload.md)
+- refs: [dashboard connection state machine](dashboard-connection-state-machine.md), [dashboard client store](dashboard-client-store.md), [groom projection module](groom-projection-module.md), [dashboard state payload](../formats/dashboard-state-payload.md)
 
 The behavior is covered by `groom/tests/test_dashboard_client.py::test_every_endpoint_is_read_as_json`,
 `groom/tests/test_connection_state.py::test_open_but_silent_socket_goes_stale_and_starts_resyncing`,

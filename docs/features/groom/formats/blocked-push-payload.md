@@ -5,13 +5,13 @@ title: Blocked push payload
 ---
 # Blocked push payload
 
-Blocked push payload is the JSON request body accepted by the [receive blocked push](http/groom.md#receive-blocked-push) invocation on the [groom server](http/groom.md). It is produced by the residual HTTP path in [sidecar protocol](sidecar-protocol.md) through the [sidecar residual HTTP push helper](concepts/sidecar-residual-http-push-helper.md), and records one open [gate info](concepts/gate-info.md) entry on a [workflow container](concepts/workflow-container.md), marking that workflow blocked and notifying connected dashboard tabs with a [dashboard notify message](dashboard-notify-message.md). It is the residual HTTP counterpart of the websocket [sidecar blocked applier](concepts/sidecar-blocked-applier.md): both carry one gate-file delta, replace only that gate key, and leave other open gates intact. The full producer/consumer contract — shape, producer identity, normalization rules, success guard, and result effects — is detailed in the [Contract section](#contract) below.
+Blocked push payload is the JSON request body accepted by the [receive blocked push](../http/groom.md#receive-blocked-push) invocation on the [groom server](../http/groom.md). It is produced by the residual HTTP path in [sidecar protocol](../sidecar-protocol.md) through the [sidecar residual HTTP push helper](../concepts/sidecar-residual-http-push-helper.md), and records one open [gate info](../concepts/gate-info.md) entry on a [workflow container](../concepts/workflow-container.md), marking that workflow blocked and notifying connected dashboard tabs with a [dashboard notify message](dashboard-notify-message.md). It is the residual HTTP counterpart of the websocket [sidecar blocked applier](../concepts/sidecar-blocked-applier.md): both carry one gate-file delta, replace only that gate key, and leave other open gates intact. The full producer/consumer contract — shape, producer identity, normalization rules, success guard, and result effects — is detailed in the [Contract section](#contract) below.
 
 - file: not an on-disk artifact; this is a best-effort HTTP JSON request body for `POST /push/blocked`.
 - code: groom/groom/app.py::push_blocked
 - code: groom/groom/sidecar.py::push_blocked
 - code: groom/groom/state.py::upsert_workflow
-- detail: [blocked push flow contexts](concepts/blocked-push-flow-contexts.md)
+- detail: [blocked push flow contexts](../concepts/blocked-push-flow-contexts.md)
 
 The payload contract is covered by `groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape`,
 `groom/tests/test_sidecar.py::test_handle_event_on_awaiting_gate_triggers_blocked_push`,
@@ -39,7 +39,7 @@ The payload contract is covered by `groom/tests/test_sidecar.py::test_push_block
 - verify: json_path(path="$.runs[0].name", equals="workflow-name")
 - consistency rule: workflow-container — when a valid payload creates a new workflow without a truthy `name`, it falls back to the normalized container id
 - verify: json_path(path="$.runs[0].name", equals="abc123abc123")
-- metadata rule: before applying the blocked update, the endpoint tries [push-first volume metadata resolver](concepts/push-first-volume-metadata-resolver.md) hydration for workflows that are absent or do not yet have a workspace volume; this can fill `workspace_volume`, `runs_volume`, and `workflow_type` independently of the JSON payload.
+- metadata rule: before applying the blocked update, the endpoint tries [push-first volume metadata resolver](../concepts/push-first-volume-metadata-resolver.md) hydration for workflows that are absent or do not yet have a workspace volume; this can fill `workspace_volume`, `runs_volume`, and `workflow_type` independently of the JSON payload.
 - gate replacement: a valid payload inserts or replaces the one gate keyed by normalized `file_path` and preserves any other open gates on the same workflow.
 - state result: a valid payload marks the workflow as `blocked`, stores one gate for `file_path`, preserves current node, exit code, run id, workflow type, workspace volume, and runs volume unless Docker metadata resolution fills the volume/type fields first, then broadcasts the refreshed shell plus a blocked notification script.
 - response result: the endpoint response is an object with `ok: false` on the success-guard failure path and `ok: true` after registry mutation and broadcast complete.

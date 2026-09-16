@@ -5,7 +5,7 @@ title: Host-to-container sidecar query
 ---
 # Host-to-container sidecar query
 
-Host-to-container sidecar query is the discovery-time Docker I/O pull path that asks one running [workflow container](workflow-container.md) for its current [sidecar snapshot data](../sidecar-snapshot-data.md) by executing [`groom-sidecar --query`](../groom-sidecar.md#groom-sidecar-root) inside that container. The [per-container discovery resolver](workflow-discovery-scan.md#method-resolve-container) calls this layer only after Docker inspection has identified an eligible running container; a successful JSON object feeds the [sidecar query snapshot transition](workflow-state.md#transition-sidecar-query-or-discovery-snapshot), while every represented query-unavailable case returns `None` so the resolver can use [volume reconstruction](workflow-state.md#transition-volume-reconstruction) instead. The query uses Groom's [Docker exec runner](docker-exec-runner.md), which delegates shell-free process execution, text capture, and timeout enforcement to the [Docker subprocess runner](docker-subprocess-runner.md).
+Host-to-container sidecar query is the discovery-time Docker I/O pull path that asks one running [workflow container](workflow-container.md) for its current [sidecar snapshot data](../formats/sidecar-snapshot-data.md) by executing [`groom-sidecar --query`](../groom-sidecar.md#groom-sidecar-root) inside that container. The [per-container discovery resolver](workflow-discovery-scan.md#method-resolve-container) calls this layer only after Docker inspection has identified an eligible running container; a successful JSON object feeds the [sidecar query snapshot transition](workflow-state.md#transition-sidecar-query-or-discovery-snapshot), while every represented query-unavailable case returns `None` so the resolver can use [volume reconstruction](workflow-state.md#transition-volume-reconstruction) instead. The query uses Groom's [Docker exec runner](docker-exec-runner.md), which delegates shell-free process execution, text capture, and timeout enforcement to the [Docker subprocess runner](docker-subprocess-runner.md).
 
 - code: groom/groom/docker_io.py::sidecar_query
 - tests: groom/tests/test_docker_io.py::test_sidecar_query_parses_snapshot_json
@@ -25,7 +25,7 @@ Host-to-container sidecar query is the discovery-time Docker I/O pull path that 
 - docker user: executes as container user `nobody`.
 - environment: sets `HOME=/claude-state` for the exec process so the sidecar command resolves its tool environment consistently with the workflow entrypoint.
 - timeout: inherits the [Docker exec runner](docker-exec-runner.md)'s default Docker I/O timeout of twenty seconds, enforced by the [Docker subprocess runner](docker-subprocess-runner.md).
-- output: `dict[str, Any] | None`; a dictionary is the decoded stdout JSON object and is intended to satisfy the [sidecar snapshot data](../sidecar-snapshot-data.md) contract.
+- output: `dict[str, Any] | None`; a dictionary is the decoded stdout JSON object and is intended to satisfy the [sidecar snapshot data](../formats/sidecar-snapshot-data.md) contract.
 - fallback signal: `None` means the host could not obtain a usable sidecar query object; it does not distinguish stopped containers, missing Docker, timeout, legacy images, non-zero exits, malformed stdout, or non-object JSON.
 - validation boundary: does not validate snapshot fields, gate entry shape, terminal precedence, or current-node semantics; the discovery state transition validates and applies the returned object.
 - scope boundary: performs no Docker inspect, running-state check, sidecar websocket registration, volume reconstruction, or workflow-state mutation; callers decide when the query is allowed and how to apply or ignore the result.
@@ -69,7 +69,7 @@ The query is read-only with respect to Docker metadata, named volumes, the workf
 - verify: absent(subject="exception from a represented query-unavailable case")
 - raises: unexpected failures outside `OSError` and subprocess exceptions can propagate.
 - verify: absent(subject="unexpected failure converted to None")
-- returns: decoded [sidecar snapshot data](../sidecar-snapshot-data.md) as a dictionary when the in-container query command exits successfully and stdout is a JSON object; otherwise `None`.
+- returns: decoded [sidecar snapshot data](../formats/sidecar-snapshot-data.md) as a dictionary when the in-container query command exits successfully and stdout is a JSON object; otherwise `None`.
 - verify: json_path(path="$.current_node", equals="n1")
 - code: groom/groom/docker_io.py::sidecar_query
 - detail: [sidecar query source selection](sidecar-query-source-selection.md)

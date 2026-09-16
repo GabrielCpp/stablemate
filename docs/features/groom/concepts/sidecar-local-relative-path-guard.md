@@ -5,7 +5,7 @@ title: Sidecar-local relative path guard
 ---
 # Sidecar-local relative path guard
 
-Sidecar-local relative path guard is the sidecar data-plane validation layer used by [workspace file content data](../workspace-file-content-data.md) before a `getFile` RPC reads from the sidecar container's local workspace mount. It mirrors the path-safety contract of the [workspace volume relative path guard](workspace-volume-relative-path-guard.md) for local sidecar reads: accept one non-empty relative path, normalize Windows separators to `/`, and reject absolute paths, empty path segments, and parent traversal before any local file read can occur. Unsafe paths are raised as `ValueError` by the guard, then surface through the [sidecar websocket frame](../sidecar-websocket-frame.md) RPC failure contract as an `ok=false` `rpc_result` handled by the [sidecar connected session](sidecar-connected-session.md).
+Sidecar-local relative path guard is the sidecar data-plane validation layer used by [workspace file content data](../formats/workspace-file-content-data.md) before a `getFile` RPC reads from the sidecar container's local workspace mount. It mirrors the path-safety contract of the [workspace volume relative path guard](workspace-volume-relative-path-guard.md) for local sidecar reads: accept one non-empty relative path, normalize Windows separators to `/`, and reject absolute paths, empty path segments, and parent traversal before any local file read can occur. Unsafe paths are raised as `ValueError` by the guard, then surface through the [sidecar websocket frame](../formats/sidecar-websocket-frame.md) RPC failure contract as an `ok=false` `rpc_result` handled by the [sidecar connected session](sidecar-connected-session.md).
 
 The guard and its RPC error propagation are covered by
 `groom/tests/test_sidecar_session.py::test_safe_relpath_accepts_normal_and_rejects_traversal`,
@@ -13,7 +13,7 @@ The guard and its RPC error propagation are covered by
 `groom/tests/test_sidecar_session.py::test_handle_rpc_get_file_traversal_replies_error`.
 
 - code: groom/groom/sidecar.py::_safe_relpath
-- refs: [workspace file content data](../workspace-file-content-data.md), [workspace volume relative path guard](workspace-volume-relative-path-guard.md), [sidecar websocket frame](../sidecar-websocket-frame.md), [sidecar connected session](sidecar-connected-session.md)
+- refs: [workspace file content data](../formats/workspace-file-content-data.md), [workspace volume relative path guard](workspace-volume-relative-path-guard.md), [sidecar websocket frame](../formats/sidecar-websocket-frame.md), [sidecar connected session](sidecar-connected-session.md)
 
 ## Contract
 
@@ -47,7 +47,7 @@ segments with `/`; this gives later local-path construction one separator conven
 - invariant: accepted output is never absolute and never contains an empty or `..` path segment.
 - failure-message: rejected paths use `unsafe path: {path!r}` as the exception message that the RPC wrapper relays in the websocket error result.
 - non-effect: performs no I/O and no mutation.
-- consumer: [workspace file content data](../workspace-file-content-data.md) method `_rpc_get_file` is the first-party caller.
+- consumer: [workspace file content data](../formats/workspace-file-content-data.md) method `_rpc_get_file` is the first-party caller.
 - consistency: composed-path — before a local file read, the sidecar-local guard rejects a composed path that is empty or begins with `/` or `\\`.
 - verify: count(subject="empty and rooted paths rejected by _safe_relpath", equals=3)
 
@@ -77,7 +77,7 @@ sections above; this paragraph is the mechanism, not a separate claim.
 
 ## Consumers
 
-- uses: [workspace file content data](../workspace-file-content-data.md) calls this guard from `method-_rpc_get_file` after composing a sidecar-local read path and before reading `WORKSPACE_DIR / normalized_path`.
-- consistency: rpc-result-error — when this guard raises `ValueError`, the [sidecar connected session](sidecar-connected-session.md) catches it through [method-_handle_rpc](../sidecar-websocket-frame.md#method-_handle_rpc) and sends one [sidecar websocket frame](../sidecar-websocket-frame.md) `rpc_result` frame with `ok=false` instead of terminating the persistent socket session.
+- uses: [workspace file content data](../formats/workspace-file-content-data.md) calls this guard from `method-_rpc_get_file` after composing a sidecar-local read path and before reading `WORKSPACE_DIR / normalized_path`.
+- consistency: rpc-result-error — when this guard raises `ValueError`, the [sidecar connected session](sidecar-connected-session.md) catches it through [method-_handle_rpc](../formats/sidecar-websocket-frame.md#method-_handle_rpc) and sends one [sidecar websocket frame](../formats/sidecar-websocket-frame.md) `rpc_result` frame with `ok=false` instead of terminating the persistent socket session.
 - verify: emitted(event="rpc_result error for a rejected sidecar path", count=1)
 - compares-with: [workspace volume relative path guard](workspace-volume-relative-path-guard.md) provides the same syntactic path-safety contract for fallback Docker-volume reads and writes outside the sidecar-local filesystem.

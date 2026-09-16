@@ -5,10 +5,10 @@ title: Groom models module
 ---
 # Groom models module
 
-The Groom models module is the first-party in-memory data-shape boundary shared by the [groom server](../http/groom.md), discovery, rendering, gate answering, sidecar handling, telemetry ingestion, and alerting layers. It defines the process-local [workflow state](workflow-state.md), [gate info](gate-info.md), [workflow container](workflow-container.md), [answer result](../answer-result.md), and [run telemetry](run-telemetry.md) contracts, plus the shared liveness-metric vocabulary. It owns no Docker access, async transports, file I/O, rendering, persistence, locking, or state transitions; those behaviors live in the consuming modules that link back to these model nodes.
+The Groom models module is the first-party in-memory data-shape boundary shared by the [groom server](../http/groom.md), discovery, rendering, gate answering, sidecar handling, telemetry ingestion, and alerting layers. It defines the process-local [workflow state](workflow-state.md), [gate info](gate-info.md), [workflow container](workflow-container.md), [answer result](../formats/answer-result.md), and [run telemetry](run-telemetry.md) contracts, plus the shared liveness-metric vocabulary. It owns no Docker access, async transports, file I/O, rendering, persistence, locking, or state transitions; those behaviors live in the consuming modules that link back to these model nodes.
 
 - code: groom/groom/models.py
-- refs: [workflow state](workflow-state.md), [gate info](gate-info.md), [workflow container](workflow-container.md), [answer result](../answer-result.md), [run telemetry](run-telemetry.md)
+- refs: [workflow state](workflow-state.md), [gate info](gate-info.md), [workflow container](workflow-container.md), [answer result](../formats/answer-result.md), [run telemetry](run-telemetry.md)
 
 ## Contract
 
@@ -97,10 +97,10 @@ The Groom models module is the first-party in-memory data-shape boundary shared 
 
 ### field-answer-result
 
-- type: [answer result](../answer-result.md) dataclass type
+- type: [answer result](../formats/answer-result.md) dataclass type
 - default: class object bound during module import
 - required: true
-- detail: [answer result](../answer-result.md)
+- detail: [answer result](../formats/answer-result.md)
 - meaning: gate-answering return shape consumed by the dashboard websocket answer handler.
 
 ### field-run-telemetry

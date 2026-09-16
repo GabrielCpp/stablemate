@@ -7,13 +7,13 @@ title: Sidecar run checkpoint data
 
 Sidecar run checkpoint data is the latest workflow run's `checkpoint.json` object
 stored under a workflow container's `/runs` mount. Groom consumes it as
-current-node evidence in three host-visible paths: the [sidecar snapshot](concepts/sidecar-snapshot.md)
+current-node evidence in three host-visible paths: the [sidecar snapshot](../concepts/sidecar-snapshot.md)
 current-node reader maps its `current_id` field into [sidecar snapshot data](sidecar-snapshot-data.md)
 for query and `hello` frames, the live runs-event classifier maps the same field
 into `progress` [sidecar websocket frames](sidecar-websocket-frame.md#field-current-node),
-and the [workflow discovery scan](concepts/workflow-discovery-scan.md#method-current-run-state)
+and the [workflow discovery scan](../concepts/workflow-discovery-scan.md#method-current-run-state)
 volume fallback maps it into the
-[volume reconstruction workflow-state transition](concepts/workflow-state.md#transition-volume-reconstruction).
+[volume reconstruction workflow-state transition](../concepts/workflow-state.md#transition-volume-reconstruction).
 The file is current-node evidence only; missing runs, missing files, unreadable
 or malformed JSON, and absent `current_id` values all mean no current node is
 available from this source.
@@ -25,7 +25,7 @@ Reader coverage is exercised by `groom/tests/test_sidecar.py::test_snapshot_repo
 - file: `/runs/<latest-run-directory>/checkpoint.json`
 - code: groom/groom/sidecar.py::_current_node
 - code: groom/groom/discovery.py::_current_run_state
-- detail: [volume run-state evidence](concepts/volume-run-state-evidence.md)
+- detail: [volume run-state evidence](../concepts/volume-run-state-evidence.md)
 
 ## Contract
 
@@ -40,13 +40,13 @@ Reader coverage is exercised by `groom/tests/test_sidecar.py::test_snapshot_repo
 - reader paths: the in-container sidecar reads from the local runs mount selected
   by its configured runs directory, while discovery reads from the Docker named
   runs volume through Groom's read-only [workspace volume file content
-  reader](concepts/workspace-volume-file-content-reader.md).
+  reader](../concepts/workspace-volume-file-content-reader.md).
 - path rule: the file is named exactly `checkpoint.json` inside the selected
   latest run directory.
 - directory selection: Groom consults only the latest run directory reported by
   the caller's runs-directory selector: the sidecar selects the final path after
   sorting direct child directories of `/runs`, and discovery uses the final entry
-  from the [Docker run-directory reader](concepts/docker-run-directory-reader.md).
+  from the [Docker run-directory reader](../concepts/docker-run-directory-reader.md).
 - scope: only the selected latest run directory can contribute current-node
   evidence; older run directories, files directly under `/runs`, and
   non-directory entries are ignored by this format's documented Groom readers.

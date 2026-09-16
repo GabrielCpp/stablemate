@@ -6,14 +6,14 @@ title: Dashboard path tree
 # Dashboard path tree
 
 Dashboard path tree is the browser-local recursive shape produced by the
-[dashboard tree builder](concepts/dashboard-tree-builder.md) and walked by the
+[dashboard tree builder](../concepts/dashboard-tree-builder.md) and walked by the
 dashboard's shared tree renderer. One shape serves both panes: the Files pane
 builds it from [workspace file list data](workspace-file-list-data.md) paths and the
 Diff pane from the [dashboard parsed diff file cache](dashboard-parsed-diff-file-cache.md),
-and the renderer that turns it into [files directory toggle](gui/screens/groom-dashboard.md#files-directory-toggle),
-[diff directory toggle](gui/screens/groom-dashboard.md#diff-directory-toggle),
-[files file row](gui/screens/groom-dashboard.md#files-file-row) and
-[diff file row](gui/screens/groom-dashboard.md#diff-file-row) components cannot tell
+and the renderer that turns it into [files directory toggle](../gui/screens/groom-dashboard.md#files-directory-toggle),
+[diff directory toggle](../gui/screens/groom-dashboard.md#diff-directory-toggle),
+[files file row](../gui/screens/groom-dashboard.md#files-file-row) and
+[diff file row](../gui/screens/groom-dashboard.md#diff-file-row) components cannot tell
 which pane it is serving except through the leaf renderer it was handed.
 
 It is not on the wire. No endpoint returns it, no websocket frame carries it, and it
@@ -22,13 +22,13 @@ in the browser, per render, for one pane.
 
 - file: not an on-disk artifact; this is an in-memory browser object derived per render.
 - code: groom/groom/assets/dashboard.js::buildTree
-- detail: [Dashboard tree input selection](concepts/dashboard-tree-input-selection.md)
+- detail: [Dashboard tree input selection](../concepts/dashboard-tree-input-selection.md)
 - tests: `groom/tests/test_tree_builder.py::test_flat_paths_become_directory_nodes_and_file_leaves`
 - tests: `groom/tests/test_tree_builder.py::test_an_empty_entry_list_yields_an_empty_root`
 
 ## Contract
 
-- producer: the [dashboard tree builder](concepts/dashboard-tree-builder.md), and nothing else.
+- producer: the [dashboard tree builder](../concepts/dashboard-tree-builder.md), and nothing else.
 - consumer: the shared tree renderer, which receives a root node and a pane-supplied leaf renderer.
 - lifetime: one tree per render of a non-empty Files or Diff tree. It is derived from the store slice rather than stored in it, so a re-render rebuilds it and no invalidation step exists to get wrong.
 - scope: one selected container and repository, in one tab.

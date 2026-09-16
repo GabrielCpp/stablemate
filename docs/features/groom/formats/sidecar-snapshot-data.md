@@ -6,12 +6,12 @@ title: Sidecar snapshot data
 # Sidecar snapshot data
 
 Sidecar snapshot data is the JSON-compatible object returned by the
-[sidecar snapshot](concepts/sidecar-snapshot.md) reader. It is printed by
-[`groom-sidecar --query`](groom-sidecar.md#groom-sidecar-root), embedded in a
+[sidecar snapshot](../concepts/sidecar-snapshot.md) reader. It is printed by
+[`groom-sidecar --query`](../groom-sidecar.md#groom-sidecar-root), embedded in a
 `hello` [sidecar websocket frame](sidecar-websocket-frame.md), and consumed by
-the [run sidecar websocket session](http/groom.md#run-sidecar-websocket-session)
-and Docker discovery paths to rebuild a [workflow container](concepts/workflow-container.md)'s
-current node, finished/running/blocked state, and open [gate info](concepts/gate-info.md)
+the [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session)
+and Docker discovery paths to rebuild a [workflow container](../concepts/workflow-container.md)'s
+current node, finished/running/blocked state, and open [gate info](../concepts/gate-info.md)
 records from local run metadata and [operator gate context files](operator-gate-context-file.md).
 
 - file: not an on-disk artifact; this is an in-memory object serialized as JSON

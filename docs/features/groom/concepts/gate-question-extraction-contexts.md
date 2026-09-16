@@ -8,7 +8,7 @@ title: Gate question extraction contexts
 `extract_question` has one implementation but two documentation contexts. The
 [Groom gates module](groom-gates-module.md#extract-question) is the callable's
 general pure-string helper contract. The [operator gate context
-file](../operator-gate-context-file.md#method-extract-question) is the same
+file](../formats/operator-gate-context-file.md#method-extract-question) is the same
 callable's input-format contract: it defines which Markdown-like heading is
 recognized and what the fallback means for a gate file.
 
