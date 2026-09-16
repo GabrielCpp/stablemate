@@ -988,8 +988,25 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
     """
     findings: list[Finding] = []
     for gap in gaps:
-        code = "unresolved-precondition" if gap.kind == "unresolved-precondition" else "uncompilable-claim"
-        findings.append(Finding("error", code, f"{gap.obligation_id}: {gap.detail}", ref=gap.obligation_id))
+        # Every `Gap.kind` `compile_plan_gaps` can mint is spelled out as its own literal
+        # `Finding(...)` call, on purpose: `test_every_doctor_code_is_classified_on_purpose`
+        # (workflows/tests/okf_builder/test_drift_tripwire.py) reads doctor's codes off its
+        # AST and cannot resolve a code passed through a variable assigned from an attribute
+        # access like `gap.kind` — nor should it, since the whole point of that tripwire is
+        # that a *new* kind forces a deliberate classification decision here, not a silent
+        # pass-through. An empty or unrecognized kind — which `compile_plan_gaps` should
+        # never produce, but this function does not trust that — falls back to
+        # `uncompilable-claim`, the existing code for "this obligation compiles to no action
+        # at all".
+        message = f"{gap.obligation_id}: {gap.detail}"
+        if gap.kind == "unresolved-precondition":
+            findings.append(Finding("error", "unresolved-precondition", message, ref=gap.obligation_id))
+        elif gap.kind == "unreachable-screen":
+            findings.append(Finding("error", "unreachable-screen", message, ref=gap.obligation_id))
+        elif gap.kind == "screen-preconditions-undeclared":
+            findings.append(Finding("error", "screen-preconditions-undeclared", message, ref=gap.obligation_id))
+        else:
+            findings.append(Finding("error", "uncompilable-claim", message, ref=gap.obligation_id))
     return findings
 
 
