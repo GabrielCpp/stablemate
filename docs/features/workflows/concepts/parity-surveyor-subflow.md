@@ -21,7 +21,7 @@ splitting, or clustering stage.
 - tests: `workflows/tests/author/parity_surveyor/test_flow.py::test_a_two_surface_baseline_surveys_both_and_emits_only_the_unowned_one`
 - tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_expand_freezes_one_unit_per_baseline_surface`
 - detail: [parity configuration documentation roles](parity-config-documentation-roles.md)
-- detail: [parity configuration](../parity-config.md)
+- detail: [parity configuration](../formats/parity-config.md)
 - detail: [shared survey library](survey-shared-library.md)
 - detail: [parity surveyor concern boundaries](parity-surveyor-concern-boundaries.md)
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
@@ -59,7 +59,7 @@ directory and keeps derived paths repository-relative.
 - sig: `setup() -> ParityConfig`
 - does: resolves the baseline, target feature-book, survey artifacts, backlog, and epic paths before states run
 - raises: raises `WorkflowFailed` when the baseline inventory is empty or absent
-- returns: returns [parity configuration](../parity-config.md) containing all resolved comparison paths
+- returns: returns [parity configuration](../formats/parity-config.md) containing all resolved comparison paths
 - verify: count(subject="parity configuration results", equals=1)
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.setup` @afa650d81faa
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
@@ -151,7 +151,7 @@ directory and keeps derived paths repository-relative.
 - does: strips the baseline and survey-directory inputs and restores the default survey directory when blank
 - raises: raises `WorkflowFailed` with failure class `parity-baseline-missing` when the baseline path is blank or absent
 - raises: raises `WorkflowFailed` with failure class `parity-target-missing` when the target feature book is absent
-- returns: returns a [parity configuration](../parity-config.md) with paths derived from the selected repository root
+- returns: returns a [parity configuration](../formats/parity-config.md) with paths derived from the selected repository root
 - verify: count(subject="loaded parity configurations", equals=1)
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::load_parity_config` @09b3ca61b54d
 

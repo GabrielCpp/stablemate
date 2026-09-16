@@ -29,8 +29,8 @@ The [workhorse-author run command](../workhorse-author.md#run) selects this flow
 - verify: emitted(event="story-split completes", count=1)
 - verify: json_path(path="$.epic", matches=".+")
 - detail: [author story-split subflow](../concepts/story-split-subflow.md)
-- detail: [story-split prompt](../story-split-prompt.md)
-- detail: [coverage review prompt](../coverage-review-prompt.md)
+- detail: [story-split prompt](../formats/story-split-prompt.md)
+- detail: [coverage review prompt](../formats/coverage-review-prompt.md)
 - tests: `workflows/tests/author/story_split/test_flow.py::test_accepts_one_epic_graph_without_selecting_authoring_or_git`
 
 ## Split stories

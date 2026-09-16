@@ -12,10 +12,10 @@ flows derive story identity from their workflow context; the backlog-drain lane 
 explicitly because its workflow context identifies the workspace instead.
 
 - code: `workflows/src/workhorse_workflows/coder/shared/escalation.py` @42d37b966a0e
-- detail: [operator gate result](../operator-gate.md)
-- detail: [coder operator resolution result](../coder-operator-resolution.md)
-- detail: [Coder story paths](../story-paths.md)
-- detail: [Coder finding](../finding.md)
+- detail: [operator gate result](../formats/operator-gate.md)
+- detail: [coder operator resolution result](../formats/coder-operator-resolution.md)
+- detail: [Coder story paths](../formats/story-paths.md)
+- detail: [Coder finding](../formats/finding.md)
 
 The body starts with `STATUS: AWAITING_OPERATOR`, identifies the escalation and story, then places
 the block, resolver investigation, node findings, unblock summary, locations, and bounded earlier

@@ -12,7 +12,7 @@ is rendered into exactly one block according to its score.
 
 - rule: use `must_fix_findings` for findings scored at least 80; use `advisory_findings` only as
   non-binding context for findings scored below 80
-- prefers: [must fix findings](../coder-review-implementation-prompt.md#must_fix_findings)
+- prefers: [must fix findings](../formats/coder-review-implementation-prompt.md#must_fix_findings)
 
 ## Methods
 

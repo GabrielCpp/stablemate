@@ -48,7 +48,7 @@ repository directory rather than the process working directory.
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_every_workspace_repo_is_checked_once_and_the_loop_ends`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_named_repo_pins_the_loop_to_that_one`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_repo_absent_from_the_workspace_is_a_warning_not_a_failure`
-- emits: [ci-repo-pick](../ci-repo-pick.md)
+- emits: [ci-repo-pick](../formats/ci-repo-pick.md)
 - verify: json_path(path="$.repo", equals="api")
 - verify: count(subject="selected repository processing list", equals=1)
 
@@ -76,7 +76,7 @@ repository directory rather than the process working directory.
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_no_branch_is_nothing_to_gate_on`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_red_branch_is_fixed_pushed_and_re_polled_until_it_is_green`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_the_fix_budget_is_spent_and_the_loop_reports_the_branch_still_red`
-- emits: [ci-checks](../ci-checks.md)
+- emits: [ci-checks](../formats/ci-checks.md)
 - verify: json_path(path="$.status", equals="passed")
 - verify: json_path(path="$.summary", matches="/.+/")
 
@@ -102,5 +102,5 @@ repository directory rather than the process working directory.
 - returns: a `PushOutcome` with status `pushed`, `unavailable`, or `failed`
 - code: `workflows/src/workhorse_workflows/coder/shared/ci.py::push_ci_fix` @9df48b30e438
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_push_that_does_not_land_ends_the_loop_instead_of_spending_an_attempt`
-- emits: [push-outcome](../push-outcome.md)
+- emits: [push-outcome](../formats/push-outcome.md)
 - verify: json_path(path="$.status", equals="failed")

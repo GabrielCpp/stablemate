@@ -9,8 +9,8 @@ title: Hello-world Greeting Context
 response model declared at `workflow.py::Greeting`. `HelloWorld.greet` passes it as the agent
 turn's `returns=` contract and returns the validated instance in `Done(reply)`.
 
-Use the [greeting prompt field](../hello-world-greeting-prompt.md#greeting) to specify the JSON
-value the agent must supply. Use the [workflow greeting field](../hello-world-greeting.md#greeting)
+Use the [greeting prompt field](../formats/hello-world-greeting-prompt.md#greeting) to specify the JSON
+value the agent must supply. Use the [workflow greeting field](../formats/hello-world-greeting.md#greeting)
 to specify that same validated value as the workflow result. Neither representation supersedes the
 other: each documents its boundary of the same `Greeting` model.
 

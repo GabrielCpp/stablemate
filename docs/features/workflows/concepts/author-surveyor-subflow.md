@@ -37,11 +37,11 @@ re-planning completed work.
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_two_components_are_planned_assessed_verified_and_emitted`
 - tests: `workflows/tests/author/surveyor/test_config.py::test_the_config_derives_every_path_from_survey_dir`
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_one_bullet_per_cluster_lands_in_the_fenced_section`
-- detail: [survey plan prompt](../survey-plan-prompt.md)
-- detail: [survey assessment prompt](../survey-assessment-prompt.md)
-- detail: [survey record repair prompt](../survey-record-repair-prompt.md)
-- detail: [survey partition prompt](../survey-partition-prompt.md)
-- detail: [survey operator diagnosis prompt](../survey-operator-diagnosis-prompt.md)
+- detail: [survey plan prompt](../formats/survey-plan-prompt.md)
+- detail: [survey assessment prompt](../formats/survey-assessment-prompt.md)
+- detail: [survey record repair prompt](../formats/survey-record-repair-prompt.md)
+- detail: [survey partition prompt](../formats/survey-partition-prompt.md)
+- detail: [survey operator diagnosis prompt](../formats/survey-operator-diagnosis-prompt.md)
 - detail: [shared survey library](survey-shared-library.md)
 - detail: [author shared paths](author-shared-paths.md)
 - detail: [author shared schemas](author-shared-schemas.md)

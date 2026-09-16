@@ -17,7 +17,7 @@ resolved back to Ostler's numbered directory name before it is passed to later n
 - detail: [Epic selection documentation roles](epic-selection-documentation-roles.md)
 - detail: [Author main package](author-main-package.md)
 - detail: [Author shared schemas](author-shared-schemas.md)
-- detail: [Epic choice](../epic-choice.md)
+- detail: [Epic choice](../formats/epic-choice.md)
 
 ## Methods
 

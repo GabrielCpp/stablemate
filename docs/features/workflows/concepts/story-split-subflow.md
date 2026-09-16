@@ -21,15 +21,15 @@ only composes them for one story-split run.
 - code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @7e464639145e
 - code: `workflows/src/workhorse_workflows/author/story_split/nodes/_blueprint.py::blueprint` @c780d75bd248
 - tests: `workflows/tests/author/story_split/test_flow.py::test_accepts_one_epic_graph_without_selecting_authoring_or_git`
-- detail: [story-split prompt](../story-split-prompt.md)
-- detail: [coverage review prompt](../coverage-review-prompt.md)
+- detail: [story-split prompt](../formats/story-split-prompt.md)
+- detail: [coverage review prompt](../formats/coverage-review-prompt.md)
 - detail: [story-split flow concept selection](story-split-flow-concept-selection.md)
 - detail: [story-split flow inputs](story-split-flow-inputs.md)
-- detail: [story split completion](../story-split-done.md)
-- detail: [story split review receipt](../story-split-receipt.md)
-- detail: [story split agent result](../story-split-agent-result.md)
-- detail: [story split coverage review](../coverage-review.md)
-- detail: [story split coverage defects](../coverage-defects.md)
+- detail: [story split completion](../formats/story-split-done.md)
+- detail: [story split review receipt](../formats/story-split-receipt.md)
+- detail: [story split agent result](../formats/story-split-agent-result.md)
+- detail: [story split coverage review](../formats/coverage-review.md)
+- detail: [story split coverage defects](../formats/coverage-defects.md)
 
 ## Fields
 

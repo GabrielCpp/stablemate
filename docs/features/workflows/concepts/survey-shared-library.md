@@ -18,8 +18,8 @@ shared inventory, unit-walking, and record-validation operations.
 
 - tests: `workflows/tests/author/shared/survey/test_inventory.py::test_an_existing_inventory_is_consumed_verbatim`
 - detail: [author shared survey blueprint](author-shared-survey-blueprint.md)
-- detail: [survey record check](../record-check.md)
-- detail: [survey verification result](../verify-result.md)
+- detail: [survey record check](../formats/record-check.md)
+- detail: [survey verification result](../formats/verify-result.md)
 
 The package exports inventory, unit-walking, and record-validation operations. It does not own
 the survey-specific planning, partitioning, parity expansion, or artifact emission nodes; those

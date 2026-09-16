@@ -91,7 +91,7 @@ pre-author snapshot.
 ### document
 
 - kind: drive
-- detail: [coder document-story prompt](../coder-document-story-prompt.md)
+- detail: [coder document-story prompt](../formats/coder-document-story-prompt.md)
 
 The first author turn uses the `document-story` prompt with medium power and the story, epic,
 features-root, implementation context, workspace directories, and the initial grounding worklist.
@@ -137,7 +137,7 @@ specification first.
 ### review
 
 - kind: verify
-- detail: [coder review-story-documentation prompt](../coder-review-story-documentation-prompt.md)
+- detail: [coder review-story-documentation prompt](../formats/coder-review-story-documentation-prompt.md)
 
 After a passed gate, the flow dispatches one independent high-power `review-story-documentation`
 turn. The reviewer receives the original, unnarrowed story obligations even after the grounding
@@ -206,7 +206,7 @@ result contract before the flow can enter repair. The module exports only `Docs`
   - leaves nodes not cited by the current findings unchanged
 - does:
   - accumulates node identities across repair passes
-- consumes: [coder-repair-documentation-prompt](../coder-repair-documentation-prompt.md)
+- consumes: [coder-repair-documentation-prompt](../formats/coder-repair-documentation-prompt.md)
 - status: returns `DocumentationResult` with status `documented` and authored node list on success
 - verify: json_path(path="$.status", equals="documented")
 - errors: workflow failure if malformed agent result or excessive overrun

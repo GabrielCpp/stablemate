@@ -7,9 +7,9 @@ title: Hello-world workflow composition root
 
 The `workhorse-hello-world` console script imports `main`, which binds a registry to the
 two-state `HelloWorld` machine. The machine first produces a
-[subject](../hello-world-subject.md), then gives its name and measured letter count to the
-[greeting prompt](../hello-world-greeting-prompt.md); the agent reply is validated as a
-[greeting](../hello-world-greeting.md) before the run finishes. Its
+[subject](../formats/hello-world-subject.md), then gives its name and measured letter count to the
+[greeting prompt](../formats/hello-world-greeting-prompt.md); the agent reply is validated as a
+[greeting](../formats/hello-world-greeting.md) before the run finishes. Its
 [package initializer](hello-world-workflow-package-initializer.md) exposes no separate API.
 
 The registry includes the `hello-world` blueprint and supplies a deterministic greeting for

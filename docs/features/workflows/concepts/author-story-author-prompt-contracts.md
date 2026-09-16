@@ -17,7 +17,7 @@ keys of its declared reply. The package's prompt contracts are also covered by t
 [workflow prompt static contracts](workflow-prompt-static-contracts.md).
 
 When a story write or validation cannot proceed, the subflow also renders the shared [author
-resolve-operator prompt](../author-resolve-operator-prompt.md) with `block_stage: "write-story"`.
+resolve-operator prompt](../formats/author-resolve-operator-prompt.md) with `block_stage: "write-story"`.
 That diagnostic turn investigates the epic and preserves its findings for the operator; it does
 not decide the product or scope question and the subflow resumes through an operator-awaiting
 context.
@@ -132,7 +132,7 @@ The design turn runs only when the covered story has a frontend seed whose mocku
 design. It receives `epic`, `story_slug`, `story_dir`, `features_dir`, and `epics_dir`. It reads the
 feature book and prior story-local mockups for style and existing surface behavior, then writes
 only the current story's `mockup.html`; failure to produce a mockup is non-blocking. Its response
-is [MockupResult](../mockup-result.md): `status`, `surface`, `mockup`, and `notes`. The returned
+is [MockupResult](../formats/mockup-result.md): `status`, `surface`, `mockup`, and `notes`. The returned
 `mockup` path is passed to the writing turn, including an empty path when design failed. Browser
 inspection is ephemeral: screenshots, evidence, and rendered exports are not written to the
 repository.
@@ -146,7 +146,7 @@ Acceptance Criteria, Non-Functional Acceptance Criteria, Technical Notes, and th
 sections preserved. The focused contract is grounded in existing feature-book nodes where present;
 new in-scope behavior may be made explicit, but implementation plans and proposed component or
 library choices are excluded. A blocked product or scope decision returns `status: "blocked"` with
-the question in `notes`; a successful turn returns `status` and `notes` in [WriteStoryResult](../write-story-result.md).
+the question in `notes`; a successful turn returns `status` and `notes` in [WriteStoryResult](../formats/write-story-result.md).
 
 ### audit-story.md
 
@@ -157,7 +157,7 @@ hidden decisions, changed-journey completeness, classification, and technical gr
 the independent audit section to the story-local audit artifact and returns `AuditResult`; the
 workflow uses `findings`, not free-text `status`, as the verdict. A finding has `id`, one of
 `journey`, `chrome`, `transient-feedback`, or `grounding` as `kind`, plus its `target`, `issue`, and
-`repair` as specified by [AuditFinding](../audit-finding.md). The response is [AuditResult](../audit-result.md);
+`repair` as specified by [AuditFinding](../formats/audit-finding.md). The response is [AuditResult](../formats/audit-result.md);
 an empty `findings` list is a pass, while non-empty findings are routed to bounded rework.
 
 ### rework-story.md

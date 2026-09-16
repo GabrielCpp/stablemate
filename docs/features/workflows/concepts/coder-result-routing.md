@@ -19,7 +19,7 @@ again. `blocked` is derived from the status and is not an independent result fie
 Python node's pessimistic default does not become an operator block.
 
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::__all__` @5964d4cd22a1
-- detail: [Coder finding](../finding.md)
+- detail: [Coder finding](../formats/finding.md)
 
 ## Fields
 

@@ -11,7 +11,7 @@ does not register another flow name. The parent registry imports `Author` lazily
 so importing a node does not eagerly import the composition flow.
 
 The imported node package is the deterministic work surface for the main machine: configuration
-loading is documented in [Author workflow configuration](../author-config.md), intake in [Author
+loading is documented in [Author workflow configuration](../formats/author-config.md), intake in [Author
 main intake](author-main-intake.md), epic selection in [Author main epic selection](author-main-epic-selection.md),
 artifact gates in [Author artifact gates](author-artifact-gates.md), and stage selection in
 [artifact-derived author stage selection](artifact-derived-author-stage-selection.md). Story

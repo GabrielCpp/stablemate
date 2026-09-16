@@ -10,7 +10,7 @@ title: Author story edit
   for the only mutation pass. The [author workflow composition root](../concepts/author-workflow-composition-root.md)
   registers the flow.
 - The [author story edit subflow](../concepts/author-story-edit-subflow.md) owns the named machine
-  and its `author-story-edit` deterministic-node blueprint; the [edit intent](../edit-intent.md)
+  and its `author-story-edit` deterministic-node blueprint; the [edit intent](../formats/edit-intent.md)
   is the handoff format. Its entry points are `StoryEdit.setup`, `StoryEdit.start`, and
   `resolve_story_intent` in `workflows/src/workhorse_workflows/author/story_edit/flow.py` and
   `workflows/src/workhorse_workflows/author/story_edit/nodes.py`.

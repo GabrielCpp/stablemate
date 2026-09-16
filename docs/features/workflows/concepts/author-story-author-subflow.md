@@ -183,7 +183,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - does: returns the authored story result after recording the passing audit
 - verify: json_path(path="$.status", equals="authored")
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.story_feedback` @6c2b77a93e13
-- emits: [story-author-done](../story-author-done.md)
+- emits: [story-author-done](../formats/story-author-done.md)
 
 ### apply_feedback
 - sig: `apply_feedback(target: StoryTarget, notes: str, mockup: str = "", reworks: int = 0, resolves: int = 0) -> Continue`
@@ -233,7 +233,7 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: count(subject="story-author missing-section scaffolds", equals=1)
 - returns: returns normalized epic, story, epic directory, story directory, and story document paths
 - verify: json_path(path="$.story_path", matches="/story\\.md$")
-- emits: [story-author-target](../story-author-target.md)
+- emits: [story-author-target](../formats/story-author-target.md)
 - code: `workflows/src/workhorse_workflows/author/story_author/nodes/story.py::prepare_story` @11ff984b297e
 
 ### record_story_audit
@@ -244,5 +244,5 @@ The four agent-facing templates are specified in [author story-author prompt con
 - verify: created(subject="audit-receipt.json")
 - consistency: audit-receipt — returns an `AuditReceipt` containing the SHA-256 digest and repository-relative receipt path
 - verify: json_path(path="$.path", matches="audit-receipt\\.json$")
-- emits: [story-author-audit-receipt](../story-author-audit-receipt.md)
+- emits: [story-author-audit-receipt](../formats/story-author-audit-receipt.md)
 - code: `workflows/src/workhorse_workflows/author/story_author/nodes/story.py::record_story_audit` @11ff984b297e

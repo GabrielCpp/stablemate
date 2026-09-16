@@ -6,9 +6,9 @@ title: Coder story pipeline
 # Coder story pipeline
 
 The shared story pipeline prepares the inputs used by the Coder development, review, docs, QA,
-and main flows. Its schema contracts are [Story paths](../story-paths.md),
-[Workflow workspace directories](../workspace-dirs.md), [Worktree snapshot](../worktree-snapshot.md),
-[Plan scrub result](../plan-scrub.md), and [Stamped specs result](../specs-stamped.md). It resolves
+and main flows. Its schema contracts are [Story paths](../formats/story-paths.md),
+[Workflow workspace directories](../formats/workspace-dirs.md), [Worktree snapshot](../formats/worktree-snapshot.md),
+[Plan scrub result](../formats/plan-scrub.md), and [Stamped specs result](../formats/specs-stamped.md). It resolves
 a story through Ostler's configured document roots, rejects an unauthored or unreadable story
 before an agent turn, records the directories an agent may read, protects code repositories from
 planning mutations, and stamps first-party spec artifacts with their OKF type.
@@ -55,7 +55,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - does: returns the minted story id alongside the resolved paths
 - verify: count(subject="resolved story id results", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/story.py::prepare_story` @f47c3ed624b0
-- detail: [Story paths](../story-paths.md)
+- detail: [Story paths](../formats/story-paths.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`
 
 ### resolve_workspace_dirs
@@ -67,7 +67,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - returns: the ordered directory list for agent turns
 - verify: json_path(path="$.dirs", matches=".+")
 - code: `workflows/src/workhorse_workflows/coder/shared/story.py::resolve_workspace_dirs` @f47c3ed624b0
-- detail: [Workflow workspace directories](../workspace-dirs.md)
+- detail: [Workflow workspace directories](../formats/workspace-dirs.md)
 
 ### workspace_dirs
 - sig: `workspace_dirs(flow: Workflow) -> list[str]`
@@ -76,7 +76,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - returns: a copy of the recorded agent-readable directory list
 - verify: json_path(path="$.dirs", matches=".+")
 - code: `workflows/src/workhorse_workflows/coder/shared/story.py::workspace_dirs` @f47c3ed624b0
-- detail: [Workflow workspace directories](../workspace-dirs.md)
+- detail: [Workflow workspace directories](../formats/workspace-dirs.md)
 
 ### snapshot_worktrees
 - sig: `snapshot_worktrees(logger, docs_path: str = "", repo_dir: str = "", workspace_file: str = "") -> WorktreeSnapshot`
@@ -89,7 +89,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - returns: status text keyed by absolute repository path
 - verify: json_path(path="$.status", matches=".+")
 - code: `workflows/src/workhorse_workflows/coder/shared/story.py::snapshot_worktrees` @f47c3ed624b0
-- detail: [Worktree snapshot](../worktree-snapshot.md)
+- detail: [Worktree snapshot](../formats/worktree-snapshot.md)
 - tests: `workflows/tests/coder/shared/test_clean_tree.py::test_the_snapshot_covers_the_code_repos_and_not_the_docs_root`
 
 ### scrub_plan_mutations
@@ -105,7 +105,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - returns: porcelain and discarded-diff details keyed by affected repository path
 - verify: json_path(path="$.reverted", matches=".+")
 - code: `workflows/src/workhorse_workflows/coder/shared/story.py::scrub_plan_mutations` @f47c3ed624b0
-- detail: [Plan scrub result](../plan-scrub.md)
+- detail: [Plan scrub result](../formats/plan-scrub.md)
 - tests: `workflows/tests/coder/shared/test_clean_tree.py::test_the_scrub_reverts_what_the_turn_wrote_and_only_that`
 - tests: `workflows/tests/coder/shared/test_clean_tree.py::test_a_turn_that_kept_to_reading_scrubs_nothing`
 
@@ -120,7 +120,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - returns: the number of documents newly stamped in this pass
 - verify: json_path(path="$.stamped", matches="^[0-9]+$")
 - code: `workflows/src/workhorse_workflows/coder/shared/story.py::stamp_specs` @f47c3ed624b0
-- detail: [Stamped specs result](../specs-stamped.md)
+- detail: [Stamped specs result](../formats/specs-stamped.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`
 
 ### prepare_fix_story
@@ -130,4 +130,4 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - does: records the fix preparation under a distinct node identity so it cannot overwrite the parent story preparation output
 - verify: count(subject="distinct fix-story preparation outputs", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/story.py::prepare_fix_story` @f47c3ed624b0
-- detail: [Story paths](../story-paths.md)
+- detail: [Story paths](../formats/story-paths.md)

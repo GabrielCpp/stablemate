@@ -11,7 +11,7 @@ The `parity_surveyor` flow asks one question of a rewrite — which legacy surfa
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/__init__.py` @6f9286a54558
 - tests: `workflows/tests/author/parity_surveyor/test_flow.py::test_every_baseline_surface_is_either_assessed_or_suppressed`
 - tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_emitting_each_baseline_surface_as_its_own_bullet`
-- detail: [parity assessment prompt](../parity-assessment-prompt.md)
+- detail: [parity assessment prompt](../formats/parity-assessment-prompt.md)
 - detail: [shared survey library](survey-shared-library.md)
 - detail: [author shared paths](author-shared-paths.md)
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)

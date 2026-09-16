@@ -65,7 +65,7 @@ rejected before planning begins.
 ### plan
 
 - kind: run
-- detail: [coder plan-story prompt](../coder-plan-story-prompt.md)
+- detail: [coder plan-story prompt](../formats/coder-plan-story-prompt.md)
 
 The high-power `plan-story` turn receives the story, epic, spec directory, workspace markers, and
 story-derived conversation. It snapshots code worktrees first, writes the plan artifacts in the
@@ -84,7 +84,7 @@ resets the repair conversation before validation resumes.
 ### replan-with-answer
 
 - kind: run
-- detail: [coder replan-with-answer prompt](../coder-replan-with-answer-prompt.md)
+- detail: [coder replan-with-answer prompt](../formats/coder-replan-with-answer-prompt.md)
 
 A plan blocked at the validation gate receives an operator answer from the story context. The
 `replan-with-answer` turn re-plans the story around the operator's decision, using a fresh
@@ -111,7 +111,7 @@ implementation.
 ### implementation
 
 - kind: run
-- detail: [coder implement-plan prompt](../coder-implement-plan-prompt.md)
+- detail: [coder implement-plan prompt](../formats/coder-implement-plan-prompt.md)
 
 Each selected layer starts a fresh story implementation conversation on the first entry, spends a
 session turn, and runs one high-power `implement-plan` turn with the layer plan, service path and
@@ -130,7 +130,7 @@ The clean result advances the cursor to the next layer.
 ### repair
 
 - kind: run
-- detail: [coder dev-fix prompt](../coder-dev-fix-prompt.md)
+- detail: [coder dev-fix prompt](../formats/coder-dev-fix-prompt.md)
 
 A dirty status or gate is converted into a `FailureReport`. While the shared three-lap repair
 budget remains, a `dev-fix` turn receives the report, changed files, service identity, and story
@@ -160,7 +160,7 @@ but the underlying block is never abandoned.
   - leaves plan design and narrative text unchanged
 - does:
   - returns full replacement `PlanResult` structure
-- consumes: [coder-repair-plan-paths-prompt](../coder-repair-plan-paths-prompt.md)
+- consumes: [coder-repair-plan-paths-prompt](../formats/coder-repair-plan-paths-prompt.md)
 - status: returns `PlanResult` with status `rework` when paths are corrected and re-validated
 - verify: json_path(path="$.status", equals="rework")
 - errors: workflow failure if validator continues to reject paths after correction

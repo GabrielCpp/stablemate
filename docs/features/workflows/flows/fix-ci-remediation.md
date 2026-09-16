@@ -6,8 +6,8 @@ title: Coder CI remediation flow
 # Coder CI remediation flow
 
 The `FixCi` sub-flow checks the configured epic branch in workspace repositories. It uses one
-`CiLoop` value across all states. The [loop state](../ci-loop.md), [CI verdict](../ci-checks.md),
-[fixer result](../fix-ci-result.md), and [workspace directories](../workspace-dirs.md) are the
+`CiLoop` value across all states. The [loop state](../formats/ci-loop.md), [CI verdict](../formats/ci-checks.md),
+[fixer result](../formats/fix-ci-result.md), and [workspace directories](../formats/workspace-dirs.md) are the
 data contracts carried by this flow. Its repository selection, polling, branch conversion, and
 push behavior are defined by the [CI gating helpers](../concepts/ci-gating.md).
 
@@ -78,7 +78,7 @@ The flow is implemented by `workflows/src/workhorse_workflows/coder/fix_ci/flow.
 - kind: prepare
 
 `setup` resolves the workspace and documentation directories once and returns a
-[workspace directory set](../workspace-dirs.md). The docs root is prepended when it is not already
+[workspace directory set](../formats/workspace-dirs.md). The docs root is prepended when it is not already
 one of the existing directories. It calls `resolve_workspace_dirs` through the workflow context,
 and a resumed run carries that result rather than re-deriving it.
 
@@ -123,7 +123,7 @@ the reported Actions run and job logs through the Actions API, reproduce the fai
 repository commands, repair only the CI cause, and rerun the same local gate. It forbids changes to
 user-facing contracts when no story context is available. The agent commits on the epic branch
 with an exact `Epic: <epic>` trailer and never pushes; the flow's `push` state owns that operation.
-Its final response must be the declared [CI fixer result](../fix-ci-result.md) JSON object.
+Its final response must be the declared [CI fixer result](../formats/fix-ci-result.md) JSON object.
 
 ### push
 

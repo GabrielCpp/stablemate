@@ -12,9 +12,9 @@ affected code repository and never auto-merges it. Remote operations are best-ef
 checkout has no usable GitHub origin or credential: the workflow advances locally and leaves the
 branch for manual follow-up.
 
-Its result contracts are [pull request gate](../pr-gate.md), [merge outcome](../merge-outcome.md),
-[story pull request](../story-pr.md), [CI failure flag](../ci-flagged.md), [merge failure flag](../merge-flagged.md),
-and [merge fix](../merge-fix-result.md).
+Its result contracts are [pull request gate](../formats/pr-gate.md), [merge outcome](../formats/merge-outcome.md),
+[story pull request](../formats/story-pr.md), [CI failure flag](../formats/ci-flagged.md), [merge failure flag](../formats/merge-flagged.md),
+and [merge fix](../formats/merge-fix-result.md).
 
 - code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py` @e8d4d2f497da
 

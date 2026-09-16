@@ -8,8 +8,8 @@ title: Coder CI remediation setup outputs
 [`setup`](../flows/fix-ci-remediation.md#setup) and [`start`](../flows/fix-ci-remediation.md#start)
 are two sequential steps of the same [CI remediation flow](../flows/fix-ci-remediation.md), and
 each carries its own result: `setup` runs once and resolves the
-[workspace directory set](../workspace-dirs.md) an agent turn may read; `start` runs once per
-loop pass and resolves the [CI repository selection](../ci-repo-pick.md) that pass will poll and
+[workspace directory set](../formats/workspace-dirs.md) an agent turn may read; `start` runs once per
+loop pass and resolves the [CI repository selection](../formats/ci-repo-pick.md) that pass will poll and
 fix. Neither result supersedes or substitutes for the other — a resumed run keeps both, one
 recorded from `setup` and carried forward, one recomputed by `start` on every pass — and the
 source assigns them no priority or preference between them.

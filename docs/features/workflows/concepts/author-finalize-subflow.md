@@ -66,7 +66,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: count(subject="finalize configuration loads", equals=1)
 - does: stores the resolved configuration as the flow context
 - verify: count(subject="finalize run contexts", equals=1)
-- returns: returns the resolved [run context](../author-config.md)
+- returns: returns the resolved [run context](../formats/author-config.md)
 - verify: json_path(path="$.repo_root", matches=".+")
 - code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.setup` @b80ea2cb1cae
 
@@ -107,7 +107,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - returns: returns the resolver's operator resolution
 - verify: json_path(path="$.decision", equals="answered")
 - code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity` @b80ea2cb1cae
-- detail: [author resolve-integrity prompt](../author-resolve-integrity-prompt.md)
+- detail: [author resolve-integrity prompt](../formats/author-resolve-integrity-prompt.md)
 
 ### _fail_validation
 - sig: `_fail_validation(heading: str, errors: str) -> None`
@@ -192,7 +192,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - returns: returns an integrity continuation or an operator await state
 - verify: count(subject="graph resolution outcomes", equals=1)
 - code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_graph` @b80ea2cb1cae
-- detail: [author resolve-integrity prompt](../author-resolve-integrity-prompt.md)
+- detail: [author resolve-integrity prompt](../formats/author-resolve-integrity-prompt.md)
 
 ### roadmap_milestone
 - sig: `roadmap_milestone(resolves: int = 0) -> Continue | Await`
@@ -223,7 +223,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - returns: returns a milestone continuation or an operator await state
 - verify: count(subject="milestone resolution outcomes", equals=1)
 - code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_milestone` @b80ea2cb1cae
-- detail: [author resolve-integrity prompt](../author-resolve-integrity-prompt.md)
+- detail: [author resolve-integrity prompt](../formats/author-resolve-integrity-prompt.md)
 
 ### close
 - sig: `close() -> Done`

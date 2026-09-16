@@ -5,7 +5,7 @@ title: Workflow kit workspace
 ---
 # Workflow kit workspace
 
-The workspace kit reads the [`.code-workspace` format](../../workhorse/code-workspace-file.md),
+The workspace kit reads the [`.code-workspace` format](../../workhorse/formats/code-workspace-file.md),
 derives a single-repository workspace from the supplied repository directory when no manifest is
 present, and does not let `agents.yml` rename that repository key. Its checkout operation supports
 the default disposable clone and a host-backed worktree: worktrees are detached, preserve committed

@@ -12,15 +12,15 @@ produced by the flow use conservative defaults where the flow owns the value.
 
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::__all__` @2f54962a8770
 - detail: [coder review flow](../flows/coder-review.md)
-- detail: [coder finding](../finding.md)
+- detail: [coder finding](../formats/finding.md)
 - detail: [coder result routing contract](coder-result-routing.md)
-- detail: [coder review finding](../review-finding.md)
-- detail: [coder code review result](../code-review-result.md)
-- detail: [coder review verdict](../review-verdict.md)
-- detail: [coder review context](../review-context.md)
-- detail: [coder review feedback](../review-feedback.md)
-- detail: [coder review loop state](../review-loop.md)
-- detail: [coder review result](../review-result.md)
+- detail: [coder review finding](../formats/review-finding.md)
+- detail: [coder code review result](../formats/code-review-result.md)
+- detail: [coder review verdict](../formats/review-verdict.md)
+- detail: [coder review context](../formats/review-context.md)
+- detail: [coder review feedback](../formats/review-feedback.md)
+- detail: [coder review loop state](../formats/review-loop.md)
+- detail: [coder review result](../formats/review-result.md)
 
 `ReviewCategory` closes finding lenses to `Bug`, `Standard`, and `Reuse`. `CodeReviewStatus`
 distinguishes findings, a clean checked diff, no affected changes, and an unreadable diff.

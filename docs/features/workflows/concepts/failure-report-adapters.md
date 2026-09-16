@@ -5,7 +5,7 @@ title: Failure report adapters
 ---
 # Failure report adapters
 
-The shared failure module converts three gate result vocabularies into the [Failure report](../failure-report.md)
+The shared failure module converts three gate result vocabularies into the [Failure report](../formats/failure-report.md)
 format. It performs no I/O, logging, or finding parsing; callers hand it the result already held in
 the current state. All three constructors preserve the caller's source context and clip captured
 output before the repair turn sees it.

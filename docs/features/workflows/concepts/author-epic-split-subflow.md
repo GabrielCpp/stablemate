@@ -25,15 +25,15 @@ automatic resolution. A successful split does not commit, author prose, or creat
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.resolve` @0f21033e17f5
 - code: `workflows/src/workhorse_workflows/author/epic_split/nodes/_blueprint.py::blueprint` @3578fa081522
 - tests: `workflows/tests/author/epic_split/test_flow.py::test_creates_only_ordered_epic_skeletons_after_review_rework`
-- detail: [epic split context](../epic-split-context.md)
-- detail: [epic split result](../epic-split-result.md)
-- detail: [epic split review](../epic-split-review.md)
-- detail: [epic split validation](../epic-split-validation.md)
-- detail: [operator resolution](../operator-resolution.md)
-- detail: [author split-epics prompt](../author-split-epics-prompt.md)
-- detail: [author review-epic-split prompt](../author-review-epic-split-prompt.md)
-- detail: [author rework-epic-split prompt](../author-rework-epic-split-prompt.md)
-- detail: [author resolve-epic-split prompt](../author-resolve-epic-split-prompt.md)
+- detail: [epic split context](../formats/epic-split-context.md)
+- detail: [epic split result](../formats/epic-split-result.md)
+- detail: [epic split review](../formats/epic-split-review.md)
+- detail: [epic split validation](../formats/epic-split-validation.md)
+- detail: [operator resolution](../formats/operator-resolution.md)
+- detail: [author split-epics prompt](../formats/author-split-epics-prompt.md)
+- detail: [author review-epic-split prompt](../formats/author-review-epic-split-prompt.md)
+- detail: [author rework-epic-split prompt](../formats/author-rework-epic-split-prompt.md)
+- detail: [author resolve-epic-split prompt](../formats/author-resolve-epic-split-prompt.md)
 - detail: [epic split resolve documentation scope](epic-split-resolve-documentation-scope.md)
 
 ## Fields
@@ -59,7 +59,7 @@ automatic resolution. A successful split does not commit, author prose, or creat
 ### setup
 - sig: `setup() -> EpicSplitContext`
 - does: prepares the approved roadmap milestone and snapshots the existing planning graph
-- returns: returns the [epic split context](../epic-split-context.md) used by later states
+- returns: returns the [epic split context](../formats/epic-split-context.md) used by later states
 - verify: count(subject="prepared epic-split contexts", equals=1)
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.setup` @0f21033e17f5
 
@@ -148,7 +148,7 @@ automatic resolution. A successful split does not commit, author prose, or creat
 - verify: count(subject="roadmap-owned epic-split milestones", equals=1)
 - does: snapshots milestone documents, epic documents, seed identities, and story identities
 - verify: created(subject="an epic-split graph snapshot")
-- consistency: epic-split-context — returns the [epic split context](../epic-split-context.md) with the selected milestone path to bound later mutations
+- consistency: epic-split-context — returns the [epic split context](../formats/epic-split-context.md) with the selected milestone path to bound later mutations
 - verify: json_path(path="$.milestone_path", equals="docs/milestones/account-access.md")
 - code: `workflows/src/workhorse_workflows/author/epic_split/nodes/epics.py::prepare_epic_split` @d4c6146b8803
 

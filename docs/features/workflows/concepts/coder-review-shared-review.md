@@ -12,9 +12,9 @@ authority for whether findings are complete.
 
 - code: `workflows/src/workhorse_workflows/coder/shared/review.py::__all__` @8b413c3466c1
 - detail: [coder review flow](../flows/coder-review.md)
-- detail: [coder review context](../review-context.md)
-- detail: [coder review feedback](../review-feedback.md)
-- detail: [coder implementation result](../impl-result.md)
+- detail: [coder review context](../formats/review-context.md)
+- detail: [coder review feedback](../formats/review-feedback.md)
+- detail: [coder implementation result](../formats/impl-result.md)
 
 ## Methods
 

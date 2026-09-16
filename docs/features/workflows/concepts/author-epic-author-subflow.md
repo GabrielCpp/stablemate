@@ -18,8 +18,8 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor` @60dae86955d2
 - code: `workflows/src/workhorse_workflows/author/epic_author/nodes/_blueprint.py::blueprint` @52b7dc7c36b1
 - tests: `workflows/tests/author/epic_author/test_flow.py::test_authors_only_the_explicit_epic_and_returns_document_evidence`
-- detail: [author write-epic prompt](../author-write-epic-prompt.md)
-- detail: [author resolve-operator prompt](../author-resolve-operator-prompt.md)
+- detail: [author write-epic prompt](../formats/author-write-epic-prompt.md)
+- detail: [author resolve-operator prompt](../formats/author-resolve-operator-prompt.md)
 
 ## Methods
 
@@ -52,7 +52,7 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - verify: json_path(path="$.epic_path", matches=".+")
 - verify: count(subject="prepared explicit epic-author contexts", equals=1)
 - code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.setup` @60dae86955d2
-- emits: [epic-author-context](../epic-author-context.md)
+- emits: [epic-author-context](../formats/epic-author-context.md)
 
 ### labels
 - sig: `labels() -> dict[str, str]`
@@ -100,7 +100,7 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - returns: returns the validated epic identity, document path, seed count, and resolution count with status `authored`
 - verify: count(subject="completed epic-author results", equals=1)
 - code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @60dae86955d2
-- emits: [epic-author-done](../epic-author-done.md)
+- emits: [epic-author-done](../formats/epic-author-done.md)
 
 ### _context_path
 - sig: `_context_path() -> Path`
@@ -145,7 +145,7 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - verify: json_path(path="$.epic_path", matches="/epic\\.md$")
 - returns: returns the normalized explicit epic identity and its canonical paths
 - verify: json_path(path="$.epic", matches=".+")
-- emits: [epic-target](../epic-target.md)
+- emits: [epic-target](../formats/epic-target.md)
 - code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::prepare_epic_target` @7248edb8cd3e
 
 ### method: validate_authored_epic
@@ -162,5 +162,5 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - verify: json_path(path="$.ok", equals=True)
 - returns: returns the epic identity, canonical document path, seed count, and newline-separated validation errors
 - verify: json_path(path="$.seed_count", matches=".+")
-- emits: [epic-evidence](../epic-evidence.md)
+- emits: [epic-evidence](../formats/epic-evidence.md)
 - code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::validate_authored_epic` @7248edb8cd3e

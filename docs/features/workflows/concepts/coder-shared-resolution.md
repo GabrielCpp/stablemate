@@ -6,7 +6,7 @@ title: Coder resolver decision handling
 # Coder resolver decision handling
 
 - code: `workflows/src/workhorse_workflows/coder/shared/resolution.py` @e05c618533ae
-- detail: [coder operator resolution result](../coder-operator-resolution.md)
+- detail: [coder operator resolution result](../formats/coder-operator-resolution.md)
 - detail: [coder path resolution](coder-path-resolution.md)
 
 The coder resolver boundary prepares the single operator-resolution prompt, locates the

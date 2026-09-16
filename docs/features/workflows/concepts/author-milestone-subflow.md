@@ -14,10 +14,10 @@ validation returns to the same agent state through an operator-awaiting context 
 - code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone` @931c134725ac
 - code: `workflows/src/workhorse_workflows/author/milestone/nodes/_blueprint.py::blueprint` @f4aa3774f4ed
 - tests: `workflows/tests/author/milestone/test_flow.py::test_builds_then_reuses_one_milestone_without_epics`
-- detail: [build milestone prompt](../build-milestone-prompt.md)
-- detail: [milestone context](../milestone-context.md)
-- detail: [milestone result](../milestone-result.md)
-- detail: [milestone validation](../milestone-validation.md)
+- detail: [build milestone prompt](../formats/build-milestone-prompt.md)
+- detail: [milestone context](../formats/milestone-context.md)
+- detail: [milestone result](../formats/milestone-result.md)
+- detail: [milestone validation](../formats/milestone-validation.md)
 
 ## Nodes
 
@@ -71,7 +71,7 @@ validation returns to the same agent state through an operator-awaiting context 
 - sig: `setup() -> MilestoneContext`
 - does: calls `prepare_milestone` to resolve the consuming repository and approved roadmap
 - verify: count(subject="approved roadmap preparations", equals=1)
-- does: returns the [milestone context](../milestone-context.md) containing the roadmap, resolved epic directory, existing roadmap-owned milestone state, and pre-turn fingerprints
+- does: returns the [milestone context](../formats/milestone-context.md) containing the roadmap, resolved epic directory, existing roadmap-owned milestone state, and pre-turn fingerprints
 - verify: json_path(path="$.roadmap", matches=".+")
 - returns: returns the prepared context before any agent turn runs
 - verify: json_path(path="$.epics_dir", matches=".+")
@@ -88,7 +88,7 @@ validation returns to the same agent state through an operator-awaiting context 
 - sig: `start() -> Done | Await`
 - does: asks one high-power agent turn to create or reuse the roadmap-owned milestone
 - verify: count(subject="milestone authoring agent turns", equals=1)
-- does: renders the [build milestone prompt](../build-milestone-prompt.md) with the approved roadmap as `roadmap`
+- does: renders the [build milestone prompt](../formats/build-milestone-prompt.md) with the approved roadmap as `roadmap`
 - verify: json_path(path="$.roadmap", matches=".+")
 - does: requests a `MilestoneResult` response with high agent power and runs the turn from the repository root
 - verify: json_path(path="$.status", matches="^(complete|blocked)$")
@@ -100,6 +100,6 @@ validation returns to the same agent state through an operator-awaiting context 
 - verify: visible(locator="operator-awaiting context", text="milestone")
 - does: completes with the validation result when the milestone passes all ownership and immutability checks
 - verify: json_path(path="$.ok", equals=True)
-- returns: returns `Done` with the [milestone validation](../milestone-validation.md) when validation succeeds, otherwise `Await` resuming `start`
+- returns: returns `Done` with the [milestone validation](../formats/milestone-validation.md) when validation succeeds, otherwise `Await` resuming `start`
 - verify: json_path(path="$.ok", equals=True)
 - code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.start` @931c134725ac

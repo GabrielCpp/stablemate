@@ -14,8 +14,8 @@ notes, so `review_notes` renders populated there. `resolve` calls it too, then l
 `context_path` and `block_notes` on top for the operator-resolution turn.
 
 This is not a competition between implementations: every `field` node across
-[split-epics](../author-split-epics-prompt.md), [review-epic-split](../author-review-epic-split-prompt.md),
-and [rework-epic-split](../author-rework-epic-split-prompt.md) that cites `_split_args` as its
+[split-epics](../formats/author-split-epics-prompt.md), [review-epic-split](../formats/author-review-epic-split-prompt.md),
+and [rework-epic-split](../formats/author-rework-epic-split-prompt.md) that cites `_split_args` as its
 `code:` is documenting the same value, produced by the same call, for a different prompt render.
 `roadmap`, `milestone`, and `epics_dir` are identical across all three turns because they are the
 same immutable context fields; only `review_notes` differs, and each of those three docs states

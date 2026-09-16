@@ -13,7 +13,7 @@ as the empty string on this turn — then layers `context_path` (from `self._con
 `block_notes` (the accumulated notes explaining why review/rework could not converge) on top.
 
 This is not a competition between implementations: all six `field` nodes on
-[author resolve-epic-split prompt](../author-resolve-epic-split-prompt.md) that cite
+[author resolve-epic-split prompt](../formats/author-resolve-epic-split-prompt.md) that cite
 `EpicSplit.resolve` as their `code:` are documenting distinct members of the one payload this
 method assembles for a single prompt call, not alternative ways of producing the same value. No
 ranking exists among them — a consumer reads each field for its own named role, and none is a

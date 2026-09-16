@@ -6,8 +6,8 @@ title: Hello-world Greeting Prompt Input Fields
 # Hello-world Greeting Prompt Input Fields
 
 `HelloWorld.greet` renders the greeting prompt with both the configured workflow name and the
-measured character count. The [name](../hello-world-greeting-prompt.md#name) field identifies
-the greeting recipient; the [letters](../hello-world-greeting-prompt.md#letters) field gives the
+measured character count. The [name](../formats/hello-world-greeting-prompt.md#name) field identifies
+the greeting recipient; the [letters](../formats/hello-world-greeting-prompt.md#letters) field gives the
 count the agent must mention. They are complementary inputs to one agent turn, not alternative
 implementations.
 

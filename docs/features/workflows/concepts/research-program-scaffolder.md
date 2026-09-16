@@ -6,14 +6,14 @@ title: Research program scaffolder
 # Research program scaffolder
 
 The scaffolder is a one-shot operator tool that creates the directory consumed by the research
-workflow. It resolves the repository and program paths, writes the [program manifest](../research-program-manifest.md),
+workflow. It resolves the repository and program paths, writes the [program manifest](../formats/research-program-manifest.md),
 renders the README, progress log, and first gate from the bundled templates, creates `findings/`,
 and optionally writes `.agents/program` as the active-program pointer. It refuses to overwrite
 existing generated files unless `--force` is supplied. The package initializer has no public API;
 the executable surface is `new_program.py`.
 
 - code: `workflows/src/workhorse_workflows/research/scaffold/new_program.py::main` @9b6cebdf8be0
-- detail: [research program manifest](../research-program-manifest.md)
+- detail: [research program manifest](../formats/research-program-manifest.md)
 - detail: [research program scaffolder concerns](research-program-scaffolder-concerns.md)
 - detail: [research program scaffolder documentation scope](research-program-scaffolder-documentation-scope.md)
 

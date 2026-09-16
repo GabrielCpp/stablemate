@@ -73,9 +73,9 @@ otherwise from the queue selection or the explicit epic parameter.
 ### agent-turn-contract
 
 - kind: drive
-- detail: [coder replan-epic prompt](../coder-replan-epic-prompt.md)
-- detail: [coder settle-worktree prompt](../coder-settle-worktree-prompt.md)
-- detail: [coder fix-merge prompt](../coder-fix-merge-prompt.md)
+- detail: [coder replan-epic prompt](../formats/coder-replan-epic-prompt.md)
+- detail: [coder settle-worktree prompt](../formats/coder-settle-worktree-prompt.md)
+- detail: [coder fix-merge prompt](../formats/coder-fix-merge-prompt.md)
 
 The main flow hands story implementation, review, documentation, QA, and backlog work to typed
 sub-flows. Their turns receive the story-derived backbone or a lane-specific session according to

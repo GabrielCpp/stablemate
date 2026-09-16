@@ -6,7 +6,7 @@ title: Author story edit subflow
 # Author story edit subflow
 
 The `story_edit` package is the thin story-scope entry point for Author. It validates one add or
-remove request, resolves it to an [edit intent](../edit-intent.md), and hands that intent to the
+remove request, resolves it to an [edit intent](../formats/edit-intent.md), and hands that intent to the
 [author epic edit flow](../flows/author-epic-edit.md). It owns no graph mutation: the epic-edit
 subflow performs the sole reconciliation and commit pass. Its deterministic nodes are registered
 on one package-local blueprint, which the author composition root imports into its registry.
@@ -75,12 +75,12 @@ on one package-local blueprint, which the author composition root imports into i
 - does: for `remove`, strips the reason before storing it
 - does: for `remove`, uses `Remove story <story> and reconcile its epic scope` when the stripped reason is empty
 - does: for `remove`, preserves the caller's force flag
-- returns: for `add`, returns an [edit intent](../edit-intent.md) with kind `add-story`
+- returns: for `add`, returns an [edit intent](../formats/edit-intent.md) with kind `add-story`
 - returns: for `add`, returns the trimmed epic
 - returns: for `add`, returns the resolved bullet id and source text
 - returns: for `add`, returns whether the bullet came from the backlog
 - returns: for `add`, returns the supplied or generated change reason
-- returns: for `remove`, returns an [edit intent](../edit-intent.md) with kind `remove-story`
+- returns: for `remove`, returns an [edit intent](../formats/edit-intent.md) with kind `remove-story`
 - returns: for `remove`, returns the selected story's parent epic and slug
 - returns: for `remove`, returns the supplied or generated change reason
 - returns: for `remove`, returns the force flag

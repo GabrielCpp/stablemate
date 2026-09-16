@@ -72,7 +72,7 @@ The optional `branch` and `pr_number` inputs are preserved for the feeder review
 ### feeder-review
 
 - kind: run
-- detail: [coder code-review prompt](../coder-code-review-prompt.md)
+- detail: [coder code-review prompt](../formats/coder-code-review-prompt.md)
 
 The flow clears the previous cycle's `review-resolution.json` and `review-settlement.json`, resets
 the feeder conversation, and dispatches one medium-power `code-review` turn. It passes the story
@@ -94,7 +94,7 @@ required.
 ### implementation-verdict
 
 - kind: verify
-- detail: [coder review-implementation prompt](../coder-review-implementation-prompt.md)
+- detail: [coder review-implementation prompt](../formats/coder-review-implementation-prompt.md)
 
 The high-power `review-implementation` turn receives the story, plan identity, affected paths,
 and two rendered finding lists. The mandatory list contains findings with confidence greater than
@@ -114,7 +114,7 @@ block approval.
 ### settlement
 
 - kind: verify
-- detail: [coder apply-review prompt](../coder-apply-review-prompt.md)
+- detail: [coder apply-review prompt](../formats/coder-apply-review-prompt.md)
 
 Each apply pass dispatches the shared `apply-review` turn with review notes or operator feedback,
 using the story's implementation conversation when available. The turn must write a structured
