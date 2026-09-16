@@ -989,6 +989,47 @@ def _check_document(row: dict[str, Any], obligation: dict[str, Any]) -> str:
     return str(obligation.get("source", ""))
 
 
+def _page_assertions(
+    obligation: dict[str, Any], gaps: list[Gap]
+) -> tuple[list[str], list[str]] | None:
+    """One obligation's assertions and the screens they observe, or `None` if it is not whole.
+
+    An obligation's `verify:` bullets are a conjunction: they all describe the same claim, so
+    observing some of them is not observing it. A claim whose refusal is visible on the screen
+    *and* answered by a 400 is not discharged by the span alone — a scenario that reported the
+    span and skipped the status would file a green against an app that renders the error and
+    returns 201. F16 admits three states, and "partly" is not one of them, so an obligation
+    with any uncompilable row is claimed by nobody and stands as its gap.
+    """
+    lines: list[str] = []
+    documents: list[str] = []
+    whole = True
+    for row in obligation.get("checksDeclared", []):
+        if _observes(row.get("name")) != "page":
+            gaps.append(_unobservable_gap(obligation["id"], row.get("name"), PLAYWRIGHT))
+            whole = False
+            continue
+        # Per row, not per obligation: an interaction's claims are observed by whatever
+        # component each check names — the refusal by an error span, the acceptance by the
+        # table on the next screen — and the node's own locator is only the fallback for a
+        # check that named nothing.
+        operand = _check_operand(row, obligation, gaps)
+        if operand is None:
+            whole = False
+            continue
+        document = _check_document(row, obligation)
+        if document and document not in documents:
+            documents.append(document)
+        lines.append(
+            f"    qa.verify({_lit(row['name'])}, {operand}"
+            f"{_kwargs(row.get('args', {}))}, "
+            f"covers=[{_lit(obligation['id'])}])"
+        )
+    if not whole:
+        return None
+    return lines, documents
+
+
 def _arrival_scenario(
     root_path: str,
     source: str,
@@ -1012,21 +1053,13 @@ def _arrival_scenario(
     scenario_covered: set[str] = set()
     for _node_id, obs in sorted(by_node.items()):
         for obligation in obs:
-            for row in obligation.get("checksDeclared", []):
-                if _observes(row.get("name")) != "page":
-                    gaps.append(_unobservable_gap(obligation["id"], row.get("name"), PLAYWRIGHT))
-                    continue
-                operand = _check_operand(row, obligation, gaps)
-                if operand is None:
-                    assertions.append(f"    # TODO(arrange): no addressable subject for "
-                                       f"{obligation['id']}")
-                    continue
-                assertions.append(
-                    f"    qa.verify({_lit(row['name'])}, {operand}"
-                    f"{_kwargs(row.get('args', {}))}, "
-                    f"covers=[{_lit(obligation['id'])}])"
-                )
-                scenario_covered.add(str(obligation["id"]))
+            compiled = _page_assertions(obligation, gaps)
+            if compiled is None:
+                assertions.append(f"    # TODO(arrange): {obligation['id']} declares an "
+                                   "observation this scenario cannot make")
+                continue
+            assertions.extend(compiled[0])
+            scenario_covered.add(str(obligation["id"]))
     if not scenario_covered:
         # Every obligation this arrival would have claimed was gapped above — no addressable
         # subject, or a check this driver cannot observe. A scenario that drives a UI and vets
@@ -1115,27 +1148,14 @@ def _interaction_scenario(
     scenario_covered: set[str] = set()
     vetted: list[str] = []
     for obligation in obligations:
-        for row in obligation.get("checksDeclared", []):
-            if _observes(row.get("name")) != "page":
-                gaps.append(_unobservable_gap(obligation["id"], row.get("name"), PLAYWRIGHT))
-                continue
-            # Per row, not per obligation: an interaction's claims are observed by whatever
-            # component each check names — the refusal by an error span, the acceptance by the
-            # table on the next screen — and the interaction's own locator is only the fallback
-            # for a check that named nothing.
-            operand = _check_operand(row, obligation, gaps)
-            if operand is None:
-                assertions.append(f"    # TODO(arrange): no addressable subject for {obligation['id']}")
-                continue
-            document = _check_document(row, obligation)
-            if document and document not in vetted:
-                vetted.append(document)
-            assertions.append(
-                f"    qa.verify({_lit(row['name'])}, {operand}"
-                f"{_kwargs(row.get('args', {}))}, "
-                f"covers=[{_lit(obligation['id'])}])"
-            )
-            scenario_covered.add(str(obligation["id"]))
+        compiled = _page_assertions(obligation, gaps)
+        if compiled is None:
+            assertions.append(f"    # TODO(arrange): {obligation['id']} declares an "
+                               "observation this scenario cannot make")
+            continue
+        assertions.extend(compiled[0])
+        vetted.extend(document for document in compiled[1] if document not in vetted)
+        scenario_covered.add(str(obligation["id"]))
     if not scenario_covered:
         # Every obligation this interaction would have claimed was gapped above — no addressable
         # subject, or a check this driver cannot observe. A scenario that drives a UI and vets

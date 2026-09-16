@@ -848,7 +848,8 @@ def test_a_subject_only_verb_on_a_page_obligation_is_a_gap_not_a_silent_drop() -
     """`unchanged` observes a subject (a before/after pair), not the rendered page — a
     Playwright driver cannot serve it. Before the fix this row was dropped with a bare
     `continue`: no call, no gap, no note. It must now surface as a real `uncompilable-claim`
-    gap naming the verb, while the obligation's own `visible(...)` row still compiles."""
+    gap naming the verb — and the obligation goes uncovered, because its `verify:` bullets
+    are a conjunction and the `visible(...)` row is only half of what it claims."""
     node = f"{_SCREEN}#policy-table"
     oid = "okf:policy-list:policy-table:visible:1"
     context = _navigation_context(
@@ -860,7 +861,7 @@ def test_a_subject_only_verb_on_a_page_obligation_is_a_gap_not_a_silent_drop() -
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
     ast.parse(source)
-    assert "table:Policies on file" in source
+    assert oid not in _covers(source)
     kinds = _gap_kinds(gaps, oid)
     assert "uncompilable-claim" in kinds
     [gap] = [g for g in gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
@@ -1390,3 +1391,36 @@ def test_an_interaction_photographs_the_screen_its_checks_name() -> None:
     assert re.findall(r"qa\.vet\(\"(.+?)\"\)", interactions[0]) == [elsewhere]
     # …and the click comes first: a photograph taken before the trigger is of the wrong state.
     assert interactions[0].index(".click()") < interactions[0].index("qa.vet(")
+
+
+def test_an_obligation_half_of_whose_checks_compile_is_claimed_by_nobody() -> None:
+    """A claim whose refusal is visible on screen *and* answered by a 400 is one claim.
+
+    The failure this pins is a green filed against an app that renders the error span and
+    returns 201: the scenario reported the span, the status was gapped as unobservable, and
+    the obligation was claimed anyway on the strength of the row that compiled. `ostler qa
+    validate` sees it from the other side — the declared call no assertion invokes, against
+    an id the plan says it covers.
+    """
+    interaction = f"{_SCREEN}#submit-new-policy"
+    oid = f"okf:{interaction}:does:2"
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:button:role:1", f"{_SCREEN}#create-policy-button",
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")]),
+        _page_obligation(oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["submit the form with no name"],
+                                    "does": ["refuses and says why"]},
+                          checks=[_located("#name-error", f"{_SCREEN}#name-error",
+                                           {"selector": ["`#name-error`"]}),
+                                  {"call": 'http_status(code=400, path="/api/policies")',
+                                   "name": "http_status",
+                                   "args": {"code": 400, "path": "/api/policies"}}]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert oid not in _covers(source)
+    assert "#name-error" not in source
+    assert "uncompilable-claim" in _gap_kinds(gaps, oid)
