@@ -13,6 +13,7 @@ import yaml
 
 from ostler import autofix as autofix_mod, backfill as backfill_mod, backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import checks as checks_mod
+from ostler import census
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
@@ -113,6 +114,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     d.add_argument(
         "--no-schema", action="store_true", help="skip JSON Schema validation"
+    )
+    d.add_argument(
+        "--census", action="store_true",
+        help="classify every doctor code as fired, dormant-clean or dormant-unreachable "
+             "and exit non-zero on an unreachable code with no recorded reason",
     )
     d.add_argument(
         "--verify-index", action="store_true", dest="verify_index",
@@ -1318,9 +1324,22 @@ def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
     checkouts = _parse_checkouts(args.checkout)
     if checkouts is None:
         return 2
-    report = doctor.run(
-        graph, epic_filter=args.epic, check_schema=not args.no_schema, checkouts=checkouts,
-    )
+    def _run_doctor():
+        return doctor.run(
+            graph, epic_filter=args.epic, check_schema=not args.no_schema,
+            checkouts=checkouts,
+        )
+
+    if args.census:
+        # The census is a property of a whole run, so it deliberately ignores --path and
+        # --epic scoping: a checker family skipped because the caller narrowed the tree
+        # is not the same finding as one nothing calls, and only the unscoped run can
+        # tell them apart.
+        result = census.take_census(_run_doctor)
+        _out(census.render(result))
+        return 1 if (result.undeclared or result.stale) else 0
+
+    report = _run_doctor()
     if wanted:
         report = doctor.scope_to_paths(report, wanted)
     if args.json:
