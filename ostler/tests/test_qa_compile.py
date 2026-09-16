@@ -760,6 +760,30 @@ def test_an_interactions_assertion_never_lands_on_the_arrival_scenario() -> None
     assert "uncompilable-claim" in _gap_kinds(gaps, interaction_oid)
 
 
+def test_a_subject_only_verb_on_a_page_obligation_is_a_gap_not_a_silent_drop() -> None:
+    """`unchanged` observes a subject (a before/after pair), not the rendered page — a
+    Playwright driver cannot serve it. Before the fix this row was dropped with a bare
+    `continue`: no call, no gap, no note. It must now surface as a real `uncompilable-claim`
+    gap naming the verb, while the obligation's own `visible(...)` row still compiles."""
+    node = f"{_SCREEN}#policy-table"
+    oid = "okf:policy-list:policy-table:visible:1"
+    context = _navigation_context(
+        _page_obligation(oid, node,
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file"),
+                                  {"call": "the count", "name": "unchanged", "args": {"of": "policy.count"}}]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert "table:Policies on file" in source
+    kinds = _gap_kinds(gaps, oid)
+    assert "uncompilable-claim" in kinds
+    [gap] = [g for g in gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
+    assert "unchanged" in gap.detail
+    assert "not observable from a Playwright driver" in gap.detail
+
+
 def test_a_reachable_screen_with_no_declared_preconditions_is_undeclared_not_silent() -> None:
     """Amendment 2: reachable, but the screen's `requires:`/`params:` bullets are literally
     absent — a third outcome, distinct from `unreachable`, with its own gap kind, and emitted

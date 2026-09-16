@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 from typing import get_args as _get_args
 
+from ostler.checks import CHECK_BY_NAME
 from ostler.checks import _rooted
 from ostler.markdown import extract_refs
 from ostler.qa import references
@@ -49,16 +50,31 @@ class Gap:
     kind: str
     detail: str
 
-#: What each check is handed. `http_status` and `conflict_on_stale` read a response — status
-#: line, headers, problem body — so the compiled call takes the response object. `json_path`
-#: walks a decoded document, `visible` addresses the page. Everything else observes a subject
-#: the scenario must already be holding: a record read before *and* after, a key inventory, an
-#: event log. The book names that subject and not where it came from, which is exactly the
-#: arrangement it does not carry, so those compile to a marker rather than to a call whose
-#: operand would have to be invented.
-_RESPONSE_CHECKS = frozenset({"http_status", "conflict_on_stale"})
-_BODY_CHECKS = frozenset({"json_path"})
-_PAGE_CHECKS = frozenset({"visible"})
+#: What each check is handed is declared on the check itself (`CheckSpec.observes`, in
+#: `ostler.checks`), not guessed here from its name. `http_status` and `conflict_on_stale`
+#: read a response — status line, headers, problem body — so the compiled call takes the
+#: response object (`observes="response"`). `json_path` walks a decoded document
+#: (`"body"`), `visible` addresses the page (`"page"`). Everything else observes a subject
+#: (`"subject"`) the scenario must already be holding: a record read before *and* after, a
+#: key inventory, an event log. The book names that subject and not where it came from,
+#: which is exactly the arrangement it does not carry, so those compile to a marker rather
+#: than to a call whose operand would have to be invented — or, on a driver that cannot
+#: observe a subject at all (the Playwright page path), to an `uncompilable-claim` gap.
+
+
+def _observes(name: str | None) -> str | None:
+    """What check *name* is handed to look at, or `None` for an unknown/missing check."""
+    spec = CHECK_BY_NAME.get(name) if name else None
+    return spec.observes if spec is not None else None
+
+
+def _unobservable_gap(oid: str, name: str | None) -> Gap:
+    """A page scenario cannot serve *name* — a real gap, not a silently dropped row."""
+    observes = _observes(name)
+    what = f"a {observes}" if observes else "an unknown check"
+    return Gap(oid, "uncompilable-claim",
+               f"`{name}` observes {what}, not a page — not observable from a Playwright driver")
+
 
 _ROUTE = re.compile(r"^\s*`?\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(\S+?)\s*`?\s*$", re.I)
 _IDENT = re.compile(r"[^0-9a-zA-Z]+")
@@ -148,7 +164,7 @@ def _owed(context: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _is_page_obligation(obligation: dict[str, Any]) -> bool:
-    return any(row.get("name") in _PAGE_CHECKS for row in obligation.get("checksDeclared", []))
+    return any(_observes(row.get("name")) == "page" for row in obligation.get("checksDeclared", []))
 
 
 def _has_screens(navigation: dict[str, Any]) -> bool:
@@ -242,7 +258,7 @@ def _page_locator_expr(locators: dict[str, list[str]]) -> str | None:
     `_verify_visible` (the harness's `visible` check implementation) calls `observed.is_visible()`
     when `observed` has that method, and otherwise falls back to `bool(observed)` — which is
     always `True` for a Playwright `Page`. Handing it the bare `page` object (as the older,
-    HTTP-oriented `_operand` does for every `_PAGE_CHECKS` row) is a check that can never fail;
+    HTTP-oriented `_operand` does for every `page`-observed row) is a check that can never fail;
     this builds a real `Locator` instead, from `role`/`name` (preferred — the same identity a
     person clicking through the screen would use) or `selector` (the escape hatch a `role:`-less
     component's book entry gives it).
@@ -556,12 +572,18 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[s
 
 def _operand(check: str, observed: str) -> tuple[str, str]:
     """What the compiled call is handed, and the arrangement note it still needs."""
-    if check in _RESPONSE_CHECKS:
+    observes = _observes(check)
+    if observes == "response":
         return observed, ""
-    if check in _BODY_CHECKS:
+    if observes == "body":
         return f"{observed}.json()", ""
     # A subject check compares observations the book never says how to take — `persists`
     # wants the record from before the process died and the one read after it came back.
+    # `page` cannot reach here (`_is_page_obligation` routes any obligation carrying a
+    # page-observed row to `_compile_page_scenarios` instead), and an unknown check has
+    # already been refused by `checks.parse_check` before compile.py ever sees it — both
+    # fall through to the same subject-shaped note rather than a third branch for cases
+    # this function is never actually called with.
     return observed, f"`{check}` observes a subject, not a response — hand it the pair"
 
 
@@ -785,7 +807,8 @@ def _arrival_scenario(
         for obligation in obs:
             operand = _assertion_operand(obligation.get("locators", {}), obligation["id"], gaps)
             for row in obligation.get("checksDeclared", []):
-                if row.get("name") not in _PAGE_CHECKS:
+                if _observes(row.get("name")) != "page":
+                    gaps.append(_unobservable_gap(obligation["id"], row.get("name")))
                     continue
                 if operand is None:
                     lines.append(f"    # TODO(arrange): no addressable subject for "
@@ -873,7 +896,8 @@ def _interaction_scenario(
     for obligation in obligations:
         operand = _assertion_operand(obligation.get("locators", {}), obligation["id"], gaps)
         for row in obligation.get("checksDeclared", []):
-            if row.get("name") not in _PAGE_CHECKS:
+            if _observes(row.get("name")) != "page":
+                gaps.append(_unobservable_gap(obligation["id"], row.get("name")))
                 continue
             if operand is None:
                 lines.append(f"    # TODO(arrange): no addressable subject for {obligation['id']}")

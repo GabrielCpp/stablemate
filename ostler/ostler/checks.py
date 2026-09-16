@@ -63,6 +63,15 @@ class CheckParam:
     path: bool = False
 
 
+#: What a check's compiled call is handed: `response` for the HTTP response object,
+#: `body` for a decoded document (`.json()`), `page` for a Playwright locator on the
+#: rendered screen, or `subject` for a named thing the book points at but does not say how
+#: to arrange — a record read before and after, a key inventory, an event log. A compiler
+#: dispatches on this to decide what operand a check's call takes and whether a given
+#: driver (HTTP, Playwright) can observe it at all, rather than guessing from the name.
+Observation = str
+
+
 @dataclass(frozen=True)
 class CheckSpec:
     """One named check: what it observes, and the defect observing it less would admit."""
@@ -70,6 +79,8 @@ class CheckSpec:
     name: str
     params: tuple[CheckParam, ...]
     excludes: str
+    #: See `Observation` above.
+    observes: Observation
     #: Arguments of which the call must carry at least one. `required` cannot say this: each
     #: of these is optional on its own, and it is the *choice* that is mandatory. Without it
     #: a check can be spelled so that nothing it observes can come out false — `json_path`
@@ -102,6 +113,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         ),
         excludes="a branch that returns the right shape under the wrong status, and an error "
                  "response distinguished from its siblings only by a body nobody read",
+        observes="response",
     ),
     CheckSpec(
         name="json_path",
@@ -114,6 +126,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         one_of=("equals", "matches", "absent"),
         excludes="a field asserted by presence rather than value, which passes on the "
                  "default the defect also produces",
+        observes="body",
     ),
     CheckSpec(
         name="unchanged",
@@ -123,12 +136,14 @@ CHECKS: tuple[CheckSpec, ...] = (
         ),
         excludes="collateral damage outside the field under test — the defect a diff that "
                  "masks the whole object before comparing cannot see",
+        observes="subject",
     ),
     CheckSpec(
         name="keys_unchanged",
         params=(CheckParam("subject", "str", required=True),),
         excludes="a move implemented as a copy: every object compared individually matches, "
                  "and only the key inventory shows the old one is still there",
+        observes="subject",
     ),
     CheckSpec(
         name="count",
@@ -137,12 +152,14 @@ CHECKS: tuple[CheckSpec, ...] = (
             CheckParam("equals", "int", required=True),
         ),
         excludes="an operation that produced the expected item *and* extras nobody counted",
+        observes="subject",
     ),
     CheckSpec(
         name="absent",
         params=(CheckParam("subject", "str", required=True),),
         excludes="a delete that hid the thing from one surface and left it readable on "
                  "another",
+        observes="subject",
     ),
     CheckSpec(
         name="created",
@@ -150,6 +167,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a thing that was already there reported as created — a presence check run "
                  "only afterwards passes identically on a no-op, so the absence before the "
                  "action is part of the observation rather than an assumption about it",
+        observes="subject",
     ),
     CheckSpec(
         name="removed",
@@ -157,6 +175,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a delete asserted only by absence afterwards, which passes identically when "
                  "the subject was never there — the presence before the action is what makes "
                  "the disappearance attributable to it",
+        observes="subject",
     ),
     CheckSpec(
         name="visible",
@@ -166,12 +185,14 @@ CHECKS: tuple[CheckSpec, ...] = (
         ),
         excludes="an element present in the tree but not on the screen, and the right widget "
                  "showing the wrong content",
+        observes="page",
     ),
     CheckSpec(
         name="persists",
         params=(CheckParam("subject", "str", required=True),),
         excludes="a write observed only through the same session that made it, which cannot "
                  "tell a commit from a cache",
+        observes="subject",
     ),
     CheckSpec(
         name="emitted",
@@ -181,6 +202,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         ),
         excludes="an effect asserted at its source instead of at its subscriber, and an "
                  "at-most-once effect fired twice",
+        observes="subject",
     ),
     CheckSpec(
         name="omits",
@@ -195,6 +217,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "other check in this vocabulary passes over, because they all assert what "
                  "the subject does hold and a book's clause about what it may *not* hold has "
                  "no positive form",
+        observes="subject",
     ),
     CheckSpec(
         name="exit_status",
@@ -202,6 +225,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a command that failed, or succeeded for the wrong reason, and the plan only "
                  "read its output — a tool result asserted by what it printed passes identically "
                  "when the process printed it on the way to a non-zero exit",
+        observes="subject",
     ),
     CheckSpec(
         name="conflict_on_stale",
@@ -211,6 +235,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         ),
         excludes="an unconditional overwrite standing in for compare-and-swap — a write "
                  "followed by a read cannot tell them apart, only a stale write refused can",
+        observes="response",
     ),
 )
 

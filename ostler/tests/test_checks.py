@@ -85,6 +85,30 @@ def test_canonical_text_parses_back_to_the_same_call() -> None:
         assert again == first
 
 
+def test_every_spec_declares_what_it_observes() -> None:
+    """`observes` is what a compiler dispatches on to pick an operand and to know whether a
+    given driver (HTTP, Playwright) can serve the check at all — every check names one, and
+    the four values are the whole vocabulary a compiler needs to handle."""
+    expected = {
+        "http_status": "response",
+        "conflict_on_stale": "response",
+        "json_path": "body",
+        "visible": "page",
+        "unchanged": "subject",
+        "keys_unchanged": "subject",
+        "count": "subject",
+        "absent": "subject",
+        "created": "subject",
+        "removed": "subject",
+        "persists": "subject",
+        "emitted": "subject",
+        "omits": "subject",
+        "exit_status": "subject",
+    }
+    assert {spec.name: spec.observes for spec in checks.CHECKS} == expected
+    assert {spec.observes for spec in checks.CHECKS} == {"response", "body", "page", "subject"}
+
+
 def test_every_spec_names_the_defect_it_excludes() -> None:
     """`excludes:` is the sentence a refusal quotes and the test of whether a check earns a
     place in the vocabulary at all — a check that excludes nothing is prose with parentheses."""
