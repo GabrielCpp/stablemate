@@ -352,6 +352,14 @@ def test_claude_no_effort_omits_flag():
     assert "--effort" not in cmd
 
 
+def test_claude_disallows_the_agent_tool():
+    """A node's turn is one bounded, reaped CLI session; the Agent tool can dispatch
+    work that outlives it (`run_in_background`), which the ladder cannot recover
+    when the session is torn down. See runner/backends/claude.py."""
+    cmd = _capture_claude_cmd(model="opus")
+    assert cmd[cmd.index("--disallowedTools") + 1] == "Agent"
+
+
 def test_claude_keeps_a_large_prompt_on_stdin():
     prompt = "large prompt\n" * 12_000
     captured = {}

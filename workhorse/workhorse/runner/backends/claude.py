@@ -54,6 +54,14 @@ class ClaudeBackend(AgentBackend):
             "--dangerously-skip-permissions",
             "--output-format", "stream-json",
             "--verbose",
+            # A node's turn is one bounded CLI session, reaped the moment it ends
+            # (success, failure or timeout — see runner/process.py's process-group
+            # kill). The Agent tool can dispatch work that outlives that session
+            # (`run_in_background`), which the ladder has no channel to await or
+            # collect: the session is torn down and the dispatched work is lost
+            # with it, unrecoverable by construction. No node prompt asks for a
+            # subagent, so there is nothing here to preserve by allowing it.
+            "--disallowedTools", "Agent",
         ]
         if model:
             cmd.extend(["--model", model])
