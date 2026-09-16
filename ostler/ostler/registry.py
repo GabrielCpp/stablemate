@@ -579,7 +579,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         ),
     ),
     UINodeType(
-        name="format", kind="file", context="",
+        name="format", kind="file", context="formats",
         bullet_keys=(
             BulletKey("file", owns=True),
             # A configuration file this format describes — `config:` is an *owning* key that
