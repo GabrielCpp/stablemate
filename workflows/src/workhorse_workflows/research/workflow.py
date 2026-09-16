@@ -1514,7 +1514,17 @@ class Research(Workflow):
                     self.start,
                     budget=spent,
                 )
-            return Continue(verdict, self.recharter, review=verdict, budget=spent)
+            return Continue(
+                verdict,
+                self.recharter,
+                review=verdict,
+                budget=spent,
+                gate_id=gate_id,
+                gate_doc_path=gate_doc_path,
+                failed_criteria=failed_criteria or [],
+                notes=notes,
+                escalation=escalation,
+            )
         if verdict.verdict == "bank":
             return Continue(verdict, self.record_goal, outcome=GOAL_BANKED, budget=spent)
         if verdict.verdict == "stop_negative":
@@ -1552,6 +1562,11 @@ class Research(Workflow):
         budget: Budget = Budget(),
         attempt: int = 0,
         resolvability_failure: str = "",
+        gate_id: str = "",
+        gate_doc_path: str = "",
+        failed_criteria: list[FailedCriterion] | None = None,
+        notes: str = "",
+        escalation: str = "",
     ) -> Continue | Await:
         """Apply a program-level verdict to the program folder, in place, then loop.
 
@@ -1562,6 +1577,16 @@ class Research(Workflow):
         numbers back and computes whether the required effect clears seed noise. A miss
         is handed back once with the exact statement; a second miss is an eval a person
         has to choose.
+
+        A recharter answers a *program*-scope question — can the frozen target be
+        resolved at all — which is orthogonal to the *gate*-scope question that may
+        have brought the review here: `escalation` is non-empty when this recharter
+        was ordered in response to a `design_blocked` or `build_blocked` refusal
+        (`_to_lead` -> `program_review` -> here). Fixing the target does not make the
+        scientist or engineer withdraw that refusal, so a rechartered program still
+        owes `lead_review` the gate-level question, or gate selection re-picks the same
+        gate, re-hits the same refusal, and burns another full program review to
+        re-discover it.
         """
         result = self.agent(
             "prompts/program-recharter.md",
@@ -1591,6 +1616,11 @@ class Research(Workflow):
                 budget=budget,
                 attempt=attempt + 1,
                 resolvability_failure=failure,
+                gate_id=gate_id,
+                gate_doc_path=gate_doc_path,
+                failed_criteria=failed_criteria or [],
+                notes=notes,
+                escalation=escalation,
             )
         if failure:
             self._history("recharter", note=f"unresolvable, parked: {failure}")
@@ -1616,6 +1646,17 @@ class Research(Workflow):
         )
         self._persist(spent)
         self._publish(f"record {event.replace('_', ' ')} decision")
+        if escalation:
+            return Continue(
+                result,
+                self.lead_review,
+                gate_id=gate_id,
+                gate_doc_path=gate_doc_path,
+                failed_criteria=failed_criteria or [],
+                notes=notes,
+                escalation=escalation,
+                budget=spent,
+            )
         return Continue(result, self.start, budget=spent)
 
     # --- self-extension -----------------------------------------------------

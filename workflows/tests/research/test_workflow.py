@@ -582,6 +582,55 @@ def test_a_blocked_design_goes_to_the_lead_and_never_reaches_the_engineer():
     assert outcome.checkpoints[-1]["params"]["budget"]["build_fixes"] == 0
 
 
+def test_a_recharter_ordered_for_a_blocked_design_still_reaches_the_lead():
+    """A design refusal and an unresolvable target are two different questions, and a
+    program review can be right about one while the other stands. Rewriting the target
+    used to send the loop straight back to `start`, which re-picked the same gate,
+    re-hit the same refusal, and needed a fresh program review just to rediscover what
+    this one already knew — the shape of the bug that parked a live run on its 9th
+    review after review 8 had already re-chartered the target and left the design
+    refusal that ordered the review standing untouched."""
+    outcome = _parking(
+        _script(
+            **{
+                "design-experiment": [
+                    {"status": "blocked", "notes": "amendments regress G1 and G2"}
+                ],
+                "program-review": [
+                    {"verdict": "recharter", "reason": "target unresolvable on this split"}
+                ],
+                "program-recharter": [
+                    {
+                        "status": "written",
+                        "new_target": {
+                            "metric": "resolved",
+                            "threshold": ">= 220/400",
+                            "threshold_count": 220,
+                            "n": 400,
+                            "baseline_count": 200,
+                            "seeds": [0, 1, 2],
+                            "why_resolvable": "2 SE",
+                        },
+                    }
+                ],
+                "research-lead-review": [{"verdict": "unknown"}],
+            }
+        )
+    )
+
+    counts = outcome.agent.counts()
+    # The target was fixed once...
+    assert counts["program-recharter"] == 1, counts
+    # ...but the design refusal that ordered the review is still standing, so it must
+    # reach the lead rather than send the loop straight back to gate selection.
+    assert counts["research-lead-review"] == 1, counts
+    review = outcome.agent.args_for("research-lead-review")[0]
+    assert review["escalation"] == "design_blocked", review
+    assert "regress" in review["notes"], review
+    # Gate selection must not have re-fired a second design on the same gate.
+    assert counts["design-experiment"] == 1, counts
+
+
 def test_a_revived_block_tells_the_reviser_what_the_gate_was_blocked_on():
     """A gate revived after a block is waiting on something, and only the block says what.
 
