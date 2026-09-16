@@ -19,6 +19,17 @@ would produce one. The finding's `message` names which of these it was:
   `ostler.qa`'s vocabulary has no compiled form for yet; read the note and either rewrite the
   `verify:` bullet to a supported check, or treat this as a harness gap and raise it rather than
   papering over it with a weaker assertion.
+- **"no addressable `### <component>` owns this `visible(...)` claim"** — a screen's `verify:`
+  bullet sits outside every `### <component>` heading, so the compiler has no subject to attach a
+  locator to. Move the bullet under the `### <component>` it actually describes, or add that
+  heading if the book never gave the claim one.
+- **"surface `<name>` has no `navigation` data to address this screen by"** — the screen's surface
+  is missing from the book's derived reachability map entirely, which usually means the surface
+  name on this node does not match any surface `ostler qa context` computed routes for. Check the
+  node's path under `docs/features/<surface>/` against the surfaces the book actually declares.
+- **"no route computed for this screen"** — reachability ran for this surface but produced no route
+  entry for this screen at all (distinct from an explicit unreachable listing) — usually a screen
+  the graph has no node for. Confirm the screen file exists and is typed `screen`.
 
 A `uncompilable-claim` gap never gets static credit for having "passed" — the compiled scaffold is
 a `TODO(arrange)` and nothing runs in its place until the book or the harness changes.

@@ -25,3 +25,17 @@ which of these it was:
 Read the node's source and its neighbours in the same scenario before guessing which — the
 compiler already did the mechanical half (walking the document in order, matching reference
 shapes); what is left is deciding what the book should have said.
+
+The same code also covers two screen-compilation gaps `ostler qa compile-plan` raises when a
+`### <component>` cannot be turned into a page scenario:
+
+- **"carries `states:` (...); no scenario compiled for a state-scoped arrangement"** — the
+  component is only present in a named arrangement (its `states:` bullet, quoted in the message),
+  and the compiler has no way to force the page into that arrangement from the book alone. Either
+  add a `fixture:`/`params:` bullet that puts the screen into that named state before the scenario
+  asserts against it, or leave the gap — a state-scoped claim with nothing to arrange it into is
+  honestly unresolved, not a bug in the compiler.
+- **"trigger ... could not be compiled to a page action"** (an `## Interactions` row) — the `on:`/
+  `trigger:` bullets name a component and an action, but the compiler emits a `TODO(arrange)` for
+  the actual interaction rather than guessing at a Playwright call. Fill in the real click/fill/
+  select call the `trigger:` prose describes.
