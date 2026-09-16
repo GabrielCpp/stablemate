@@ -13,14 +13,10 @@ To repair each one:
    constants that decide its box. If the values are literal there (a fixed sidebar width, a
    percentage column), the band can be derived from the code and written down, citing the
    file you read.
-2. If the layout is computed and the source does not settle it, check whether the book's
-   walkthrough screenshots (under the book's screenshots directory) show this screen — a
-   band can be measured off a real capture.
-3. Write the band with honest tolerances: `- placement: width 60-100%, x 0-20%` says the
+2. Write the band with honest tolerances: `- placement: width 60-100%, x 0-20%` says the
    control occupies the right ~half-to-full width starting near the left edge. Narrow
    enough to catch the control moving somewhere else, wide enough to survive a resize.
 
-If neither the source nor a capture settles where the control renders, **leave the bullet
-off and say so in `doc_status`** — the item comes back after a walkthrough has seen the
-screen, which is the correct order. Never write a `0-100%` band to make the finding go
-away: it satisfies the linter while asserting nothing.
+If the source does not settle where the control renders, **leave the bullet off and say
+so in `doc_status`**. Never write a `0-100%` band to make the finding go away: it
+satisfies the linter while asserting nothing.

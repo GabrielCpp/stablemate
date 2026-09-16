@@ -12,10 +12,7 @@ package's contents legible as "the build's own work":
 * `finalize` — the scoped commits that record each turn and the completed book
 
 The drain's own primitives (`worklist`), the convergence gate (`checkpoint`), the
-`blueprint` every node registers on and the stand-ins are in `shared/`, because the
-`walkthrough-web` flow runs the same two primitives against its own worklist. The walk's
-`walkthrough` and `stack` nodes live with the flow that calls them, in
-`walkthrough_web/nodes/`.
+`blueprint` every node registers on and the stand-ins are in `shared/`.
 
 Ported from `base-library/workflows/okf-builder/scripts/`. The same three things change as
 in `research` and `author`, and nothing else does: the JSON envelope on stdout becomes a

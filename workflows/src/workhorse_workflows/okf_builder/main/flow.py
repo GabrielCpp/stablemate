@@ -1,13 +1,12 @@
 """The okf-builder workflow: a service's code becomes an exhaustive OKF book.
 
-Ported from `base-library/workflows/okf-builder/workflow.yaml` — 29 nodes (plus the
-walk's 19, in `walkthrough_web/flow.py`) reduced to 13 states. Entry-point-first: seed
-the surfaces, then drain a typed worklist where each item's investigation spawns the
-deeper items it reveals (surface → elements → handler layer → callee layers → concepts
-and formats), descending the code layer by layer. When the drain is dry, a deterministic
-checkpoint (`ostler fmt` + `doctor`) and a computed coverage join queue whatever was
-missed and loop, until the book covers the inventory. A two-way semantic audit then
-checks the selected source evidence against the book. Runtime exploration is opt-in.
+Ported from `base-library/workflows/okf-builder/workflow.yaml` — 29 nodes reduced to
+13 states. Entry-point-first: seed the surfaces, then drain a typed worklist where each
+item's investigation spawns the deeper items it reveals (surface → elements → handler
+layer → callee layers → concepts and formats), descending the code layer by layer. When
+the drain is dry, a deterministic checkpoint (`ostler fmt` + `doctor`) and a computed
+coverage join queue whatever was missed and loop, until the book covers the inventory. A
+live semantic audit then checks the book's own QA plans against a live stack.
 
     workhorse-okf-builder run --params '{"service":"acme","source_path":"acme"}'
 
@@ -56,9 +55,6 @@ would — the checkpoint here is coarse and re-enters the state from the top, an
 dir is on disk either way. Parameters carry what a state *branches* on; this is what it
 merely quotes.
 
-**`select_item` is called with `done_baseline` here and without it in the walk.** That is
-the YAML's own asymmetry, preserved: the build's `max_items` bounds *this run*, the walk's
-bounds the worklist's lifetime. See `walkthrough_web/flow.py`.
 """
 from __future__ import annotations
 
@@ -94,7 +90,6 @@ from workhorse_workflows.okf_builder.shared.schemas import (
     Recheck,
     Recorded,
     SourceRequest,
-    WebApp,
 )
 from workhorse_workflows.okf_builder.shared.vocabulary import bullet_grammar, check_vocabulary
 from workhorse_workflows.okf_builder.shared.worklist import (
@@ -102,7 +97,6 @@ from workhorse_workflows.okf_builder.shared.worklist import (
     record,
     select_item,
 )
-from workhorse_workflows.okf_builder.walkthrough_web import WalkthroughWeb
 
 #: Coverage re-scans before the build gives up. Bounds the *dry-drain* loop only. The
 #: fixup loop is not capped by a round count — a big book's fixup rounds are productive
@@ -246,8 +240,6 @@ class OkfBuilder(Workflow):
     docs_path: str = ""
     #: Optional per-run investigation ceiling. 0 = run to convergence.
     max_items: int = 0
-    #: Live runtime exploration is opt-in; the live audit always runs.
-    runtime_walkthrough: bool = False
 
     #: Retired as selectors, kept declared for one release. They selected between two prepare
     #: functions and three ways of computing what was stale; one reconcile against the
@@ -312,7 +304,7 @@ class OkfBuilder(Workflow):
 
         `rescan` is a parameter threaded through every state that participates in
         the re-scan path, so `"rescan" in params` discriminates them from the
-        non-rescan states (`start`, `commit`, `walkthrough`) without naming each one.
+        non-rescan states (`start`, `commit`) without naming each one.
         On drain-path states the extra dimension is harmless: their `work_id`/
         `progress` keys still change per pick.
         """
@@ -1158,7 +1150,7 @@ class OkfBuilder(Workflow):
             refuels=refuels,
         ).because("real gaps queued")
 
-    def semantic_audit(self, walked: WebApp | None = None) -> Continue | Await:
+    def semantic_audit(self) -> Continue | Await:
         """Run the book's QA plans for real against a live stack, then gate on the result.
 
         This state is reachable only from a doctor-clean checkpoint (`coverage`'s own
@@ -1166,11 +1158,11 @@ class OkfBuilder(Workflow):
         stack runbook doctor accepted — `LiveAudit` blocking on a missing runbook would be
         a defensive backstop, not the real gate.
 
-        The ledger's fingerprinting means a second pass here — after `walkthrough` has
-        possibly edited the book — only re-executes the claims whose fixture text, cited
-        source, or claim content actually changed; everything else is carried from the
-        prior pass's recorded result. That is what makes looping post-walkthrough
-        verification back through this same state cheap rather than a full re-run.
+        The ledger's fingerprinting means a re-entry here — after an operator answers the
+        gate below — only re-executes the claims whose fixture text, cited source, or
+        claim content actually changed; everything else is carried from the prior pass's
+        recorded result. That is what makes looping back through this same state cheap
+        rather than a full re-run.
         """
         result = self.handoff(LiveAudit, docs_path=self.ctx.repo_root, repo_dir=self.ctx.source_root)
         reports = [LiveAuditReport.model_validate(r) for r in result["reports"]]
@@ -1192,45 +1184,13 @@ class OkfBuilder(Workflow):
                 paths.operator_context_path(Path(self.ctx.repo_root), self.service, self.ctx.scope_id),
                 _live_audit_gate_message(reports),
                 self.semantic_audit,
-                walked=walked,
             ).because("live audit blocked or failing: operator gate")
-        if walked is None and self.runtime_walkthrough:
-            return Continue(reports, self.walkthrough).because("live audit clear: runtime walkthrough requested")
-        if walked is None:
-            return Continue(reports, self.commit, walked=WebApp()).because(
-                "live audit clear: runtime walkthrough not requested"
-            )
-        return Continue(reports, self.commit, walked=walked).because(
-            "live audit re-verified after the walkthrough"
-        )
+        return Continue(reports, self.commit, reports).because("live audit clear: commit the book")
 
-    # --- the live-app walk (checkpoint-compatible) ---------------------------
-
-    def walkthrough(self) -> Continue:
-        """Hand the complete book to the walk, then re-verify it with the live audit.
-
-        A no-op for a service with no web surface — the sub-flow's own `detect_webapp`
-        decides that, and it decides it by reading the book rather than by being told,
-        which is what lets the same flow be invoked standalone.
-        """
-        if not self.runtime_walkthrough:
-            return Continue(None, self.semantic_audit).because("runtime walkthrough disabled: audit current evidence")
-        walked = self.handoff(
-            WalkthroughWeb,
-            service=self.service,
-            docs_path=self.docs_path,
-            source_path=self.source_path,
-            max_items=self.max_items,
-        )
-        return Continue(walked, self.semantic_audit, walked=walked).because(
-            "book complete: re-verify with the live audit before commit"
-        )
-
-    def commit(self, walked: WebApp) -> Done:
+    def commit(self, reports: list[LiveAuditReport]) -> Done:
         """Record the completed book without touching work outside its directory."""
         self.call(commit_book, self.ctx.repo_root, self.ctx.features_root, self.story)
-        return Done(walked).because("completed book committed")
-
+        return Done({"reports": [r.model_dump() for r in reports]}).because("completed book committed")
 
 
 __all__ = ["MAX_RESCAN_ROUNDS", "MAX_STALL_ROUNDS", "OkfBuilder"]

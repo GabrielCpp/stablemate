@@ -2,9 +2,7 @@
 
 The rule that puts a module here is a counting one, not a taste one: `workflow.py` and
 each `<flow>/flow.py` own the modules only they reach, and anything a *second* machine
-also reaches moves here. That is why the walk's `stack` and `walkthrough` nodes are not
-here (only `walkthrough_web/flow.py` calls them) while `worklist` and `checkpoint` are —
-the build drains a worklist and so does the walk, against their own.
+also reaches moves here.
 
 * `blueprint` — the one `Blueprint` every node in the distribution decorates against
 * `paths` — the pure derivations: where a book, a source tree and a worklist are

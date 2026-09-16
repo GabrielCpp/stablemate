@@ -17,14 +17,7 @@ returns for real.
 """
 from __future__ import annotations
 
-from workhorse_workflows.okf_builder.shared.schemas import (
-    AppBoot,
-    BrowserBoot,
-    Checkpoint,
-    Coverage,
-    Prepared,
-    WebApp,
-)
+from workhorse_workflows.okf_builder.shared.schemas import Checkpoint, Coverage, Prepared
 
 
 def prepared(*_args: object, **_kwargs: object) -> Prepared:
@@ -42,19 +35,4 @@ def covered(*_args: object, **_kwargs: object) -> Coverage:
     return Coverage(coverage_complete=True)
 
 
-def webapp(*_args: object, **_kwargs: object) -> WebApp:
-    """A service with a web surface, so the walk's own states get driven too."""
-    return WebApp(is_webapp=True)
-
-
-def app_up(*_args: object, **_kwargs: object) -> AppBoot:
-    """An app that answered its health path."""
-    return AppBoot(boot_ok=True)
-
-
-def browser_up(*_args: object, **_kwargs: object) -> BrowserBoot:
-    """A CDP endpoint that answered."""
-    return BrowserBoot(browser_ok=True)
-
-
-__all__ = ["app_up", "browser_up", "clean", "covered", "prepared", "webapp"]
+__all__ = ["clean", "covered", "prepared"]

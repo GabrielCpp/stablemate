@@ -1,10 +1,10 @@
 """End-to-end drives of the okf-builder workflow (`okf_builder/workflow.py`).
 
 Nothing is stubbed except the agent turn. `prepare`, `select_item`, `record`,
-`checkpoint_book`, `inventory_source`, `compute_coverage` and
-`detect_webapp` all run for real against the `booked` / `dirty` fixtures — so a drive
-here exercises ostler's real `fmt` and `doctor`, the real source walk, and the real
-coverage join. The verdicts under test are arithmetic and ostler's, not a script's.
+`checkpoint_book`, `inventory_source` and `compute_coverage` all run for real against the
+`booked` / `dirty` fixtures — so a drive here exercises ostler's real `fmt` and `doctor`,
+the real source walk, and the real coverage join. The verdicts under test are arithmetic
+and ostler's, not a script's.
 
 The agent seam is patched where the engine reads it
 (`RunEnv.agent_runner`) and dispatches on the prompt's stem,
@@ -33,8 +33,9 @@ What the port could get wrong, and what is therefore under test here:
 * the `max_items` valve, which is an **operator gate** and not a quiet success: a partial
   book must not read as a finished one, and a budget stop is not a defect, so the run
   blocks on an `Await` and a refuel answer grants another allowance.
-* `handoff` into `walkthrough-web`, whose own `detect_webapp` gates it — a service with no
-  documented screen surface is walked by a no-op, and the run's value is the sub-flow's.
+* `handoff` into `live-audit`, whose own `discover_compiled_targets` gates it — a service
+  with no documented screen surface has nothing to audit, and the run's terminal `reports`
+  come back empty.
 * resume, which is why the checkpoint lands before the agent turn: a run killed while
   investigating re-investigates that item and no earlier one.
 * `labels()`, which reads `self.output(select_item)` and must not crash before the first
@@ -56,7 +57,6 @@ import pytest
 from ostler import stamp as stamp_mod
 from git import Repo
 from _fakes import StubRunner
-from workhorse._vendor.stablemate_core.base_cache import cache_root
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import WorkflowFailed
@@ -71,7 +71,6 @@ from workhorse_workflows import okf_builder
 from workhorse_workflows.okf_builder.main.flow import investigation_power, repair_power
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared.worklist import MAX_TARGET_ATTEMPTS
-from workhorse_workflows.okf_builder.walkthrough_web.flow import WalkthroughWeb
 from workhorse_workflows.okf_builder.workflow import OkfBuilder
 
 SERVICE = "acme"
@@ -239,9 +238,6 @@ class _Agent:
         # turn used to mint.
         return {"needs_journeys": False, "discovered": list(self.surfaces)}
 
-    def _walkthrough_web(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        return {"walk_status": "confirmed", "discovered": []}
-
 
 # ------------------------------------------------------------------------- the harness
 
@@ -364,10 +360,9 @@ def test_an_empty_book_is_filled_top_down_from_the_code_s_surfaces(
     # loop converges without a second adjudication.
     assert agent.counts()["recheck-coverage"] == 1, agent.counts()
 
-    # The run's value is the sub-flow's: this service documents no screen, so the walk is
-    # a no-op that booted nothing.
-    assert result.is_webapp is False, result
-    assert result.entry_url == "", result
+    # The run's value is the live audit's: this service documents no screen, so there is
+    # nothing to audit and the terminal report list comes back empty.
+    assert result["reports"] == [], result
 
 
 def test_a_book_that_exists_is_reconciled_to_head_rather_than_re_enumerated(
@@ -389,7 +384,7 @@ def test_a_book_that_exists_is_reconciled_to_head_rather_than_re_enumerated(
     assert _worklist(booked) == [], _worklist(booked)
     coverage = read_json(booked / BOOK / "coverage.json")
     assert (coverage["covered"], coverage["total"]) == (2, 2), coverage
-    assert result.is_webapp is False, result
+    assert result["reports"] == [], result
 
 
 @pytest.mark.parametrize(
@@ -439,7 +434,7 @@ def test_a_completed_book_is_committed_with_optional_story_provenance(
         check=True,
     ).stdout
 
-    assert result.is_webapp is False, result
+    assert result["reports"] == [], result
     assert message == expected_message
     assert committed
     assert all(path.startswith(f"{BOOK}/") for path in committed), committed
@@ -468,31 +463,6 @@ def test_the_build_scratch_ignores_itself_so_a_commit_all_cannot_eat_it(
         ["git", "status", "--porcelain"], cwd=booked, capture_output=True, text=True, check=True
     ).stdout
     assert paths.BUILD_DIRNAME not in status, status
-
-
-def test_the_browser_profile_is_not_in_the_repo_at_all(
-    booked: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The stronger guarantee: the profile is machine scratch, so it is in the cache.
-
-    An ignore rule only protects a repo that has it — and it still leaves tens of thousands
-    of Chrome files inside a checkout that other processes crawl, diff and archive. The
-    profile is state no resume needs, which is precisely what the stablemate cache is for,
-    so the question "will something commit it" stops being askable.
-    """
-    # Sandboxed, so the suite never writes into the developer's real cache — and so the
-    # `$STABLEMATE_CACHE_DIR` override the resolver documents is exercised rather than
-    # assumed.
-    monkeypatch.setenv("STABLEMATE_CACHE_DIR", str(tmp_path / "cache"))
-    scratch = paths.walkthrough_scratch(booked)
-
-    assert not scratch.is_relative_to(booked), scratch
-    assert scratch.is_relative_to(cache_root()), scratch
-    # Two checkouts of the same repo must not share one profile: same basename, and a
-    # browser answers CDP for whichever bound the port first.
-    twin = booked.parent / "twin" / booked.name
-    twin.mkdir(parents=True)
-    assert paths.walkthrough_scratch(twin) != scratch
 
 
 def test_an_investigation_opens_the_items_it_reveals(unbooked: Path, tmp_path: Path) -> None:
@@ -569,7 +539,7 @@ def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
     assert (baseline / Path(REFUND).relative_to(BOOK)).is_file(), sorted(baseline.rglob("*"))
 
     assert not (dirty / REFUND).exists()
-    assert result.is_webapp is False, result
+    assert result["reports"] == [], result
 
 
 def test_a_turn_commits_its_book_edits_under_its_own_subject_past_a_rejecting_hook(
@@ -671,7 +641,7 @@ def test_answering_the_blocked_gate_returns_the_target_with_a_fresh_allowance(
     # Three spent attempts, the gate, then one more turn that repaired it.
     assert agent.counts()["repair"] == MAX_TARGET_ATTEMPTS + 1, agent.counts()
     assert not (dirty / REFUND).exists()
-    assert result.is_webapp is False, result
+    assert result["reports"] == [], result
 
     # The row was returned to the drain and closed, with its counter reset on the way.
     rows = [i for i in _worklist(dirty) if str(i["kind"]).startswith("fix:")]
@@ -871,7 +841,7 @@ def test_a_refuel_answer_grants_another_allowance_and_the_drain_finishes(
     assert len(seen) == 1, seen
     assert agent.counts()["investigate"] == 2, agent.counts()
     assert all(i["status"] == "done" for i in _worklist(unbooked)), _worklist(unbooked)
-    assert result.is_webapp is False, result
+    assert result["reports"] == [], result
 
 
 # -------------------------------------------------------------------------------- resume
@@ -926,7 +896,7 @@ def test_a_run_killed_mid_investigation_resumes_on_that_item_alone(
     assert second.counts() == {"investigate": 1}, second.counts()
     assert second.targets == ["acme/other.py"], second.targets
     assert all(i["status"] == "done" for i in _worklist(unbooked)), _worklist(unbooked)
-    assert result.is_webapp is False, result
+    assert result["reports"] == [], result
 
 
 # -------------------------------------------------------------------------------- labels
@@ -1018,7 +988,7 @@ def test_a_book_verdict_returns_the_row_to_the_drain_with_the_chain(
     assert agent.counts()["adjudicate"] == 1, agent.counts()
     assert agent.counts()["repair"] == MAX_TARGET_ATTEMPTS + 1, agent.counts()
     assert not (dirty / REFUND).exists()
-    assert result.is_webapp is False, result
+    assert result["reports"] == [], result
     rows = _blocked_rows(dirty)
     assert [(i["status"], i["attempts"], i["verdict"]) for i in rows] == [("done", 0, "book")]
     assert "side: book" in json.loads(rows[0]["context"])["adjudication"]
@@ -1132,14 +1102,13 @@ def test_an_adjudication_that_names_no_side_parks_instead_of_killing_the_run(
 def test_every_okf_builder_transition_says_why_it_is_taken() -> None:
     """The diagram's edge labels and the run log's `— why` come from `.because(...)` on
     each transition; a transition landed without one reads as bare plumbing on both."""
-    for flow in (OkfBuilder, WalkthroughWeb):
-        unlabelled = [
-            f"{flow.__name__}.{node.name} -> {edge.target or 'END'}"
-            for node in state_graph(flow).states
-            for edge in node.edges
-            if not edge.reason
-        ]
-        assert not unlabelled, f"transitions with no reason: {unlabelled}"
+    unlabelled = [
+        f"{OkfBuilder.__name__}.{node.name} -> {edge.target or 'END'}"
+        for node in state_graph(OkfBuilder).states
+        for edge in node.edges
+        if not edge.reason
+    ]
+    assert not unlabelled, f"transitions with no reason: {unlabelled}"
 
 
 

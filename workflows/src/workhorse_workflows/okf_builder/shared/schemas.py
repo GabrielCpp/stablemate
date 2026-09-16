@@ -24,9 +24,6 @@ Two divergences from the YAML's output keys, both mechanical and both applied th
   argument is text — hence `| tojson` at one callsite, a bare pass-through at another,
   and `record.py`'s `ast.literal_eval` fallback for when the round trip mangled one.
   They are typed containers here and the round trip is gone.
-
-`torn_down` stays a string: it is tri-state (`yes`/`no`/`skipped`), and `skipped` — a
-pgid that was never a number — is the value an operator most needs to see.
 """
 from __future__ import annotations
 
@@ -374,86 +371,10 @@ class Recheck(Discovery):
     needs_journeys: bool = False
 
 
-class WalkTurn(Discovery):
-    """One journey or screen walked against the running app."""
-
-    #: `confirmed` | `healed` | `skipped`.
-    walk_status: str = ""
-
-
-# ── the walk's runtime ──────────────────────────────────────────────────────
-
-
-class WebApp(OkfResult):
-    """Whether this service has a web surface, and the recipe for bringing it up.
-
-    Every field is read out of the book — the launch contract is documentation, not
-    configuration — which is what lets the walk run standalone.
-    """
-
-    is_webapp: bool = False
-    repo_root: str = ""
-    source_root: str = ""
-    features_root: str = ""
-    entry_url: str = ""
-    launch_cmd: str = ""
-    health_path: str = "/"
-    app_cwd: str = ""
-    app_identity: str = ""
-    stop_cmd: str = ""
-    boot_timeout: str = ""
-    wt_worklist_path: str = ""
-    screenshots_dir: str = ""
-    #: The shared browser's CDP endpoint — the agent's playwright MCP and `ostler vet`
-    #: both attach to this one Chromium.
-    cdp_url: str = ""
-
-
-class AppBoot(OkfResult):
-    """The app under walk, once it answers its health path."""
-
-    boot_ok: bool = False
-    #: Resolved/echoed, because a fallback port can change it.
-    entry_url: str = ""
-    app_pid: str = ""
-    #: The process *group*, which is what teardown reaps.
-    app_pgid: str = ""
-
-
-class BrowserBoot(OkfResult):
-    """The shared CDP browser, booted here so it outlives an agent turn."""
-
-    browser_ok: bool = False
-    cdp_url: str = ""
-    browser_pid: str = ""
-    #: Empty when an already-answering endpoint was adopted: we did not spawn it, so we
-    #: do not reap it.
-    browser_pgid: str = ""
-
-
-class TornDown(OkfResult):
-    """`yes`, `no`, or `skipped` — tri-state, so it stays a string."""
-
-    torn_down: str = "no"
-
-
-class WalkSeed(OkfResult):
-    """The walk worklist, seeded from the book's screens and flows."""
-
-    done_count: int = 0
-    pending_count: int = 0
-    added: int = 0
-    #: Screens carrying no `vet:` evidence — the walk's delta.
-    unconfirmed_count: int = 0
-    screen_count: int = 0
-
-
 __all__ = [
     "Adjudication",
-    "AppBoot",
     "Applied",
     "BlockedRows",
-    "BrowserBoot",
     "Checkpoint",
     "Committed",
     "Coverage",
@@ -469,8 +390,4 @@ __all__ = [
     "SourceInventory",
     "SourceRequest",
     "Stamped",
-    "TornDown",
-    "WalkSeed",
-    "WalkTurn",
-    "WebApp",
 ]

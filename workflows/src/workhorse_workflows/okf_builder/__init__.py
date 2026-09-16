@@ -5,9 +5,9 @@ Ported from `base-library/workflows/okf-builder/`. The package has the layout
 
 * `workflow.py` — the composition root, and nothing else: the registry, the flow table,
   the dry-run stubs, the console script
-* `main/` — the build machine a bare `run` starts, laid out like the walk beside it:
-  `flow.py`, the `nodes/` it sequences, and the `prompts/` it renders
-* `walkthrough_web/` — the sub-graph `self.handoff(...)` reaches: `flow.py` beside the
+* `main/` — the build machine a bare `run` starts: `flow.py`, the `nodes/` it
+  sequences, and the `prompts/` it renders
+* `live_audit/` — the sub-graph `self.handoff(...)` reaches: `flow.py` beside the
   `nodes/` and `prompts/` only it calls
 * `shared/` — what a second machine also reaches: the `blueprint`, `paths`, `schemas`,
   `stubs`, and the two nodes both drains run (`worklist`, `checkpoint`)
