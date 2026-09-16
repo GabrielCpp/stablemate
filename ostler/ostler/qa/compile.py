@@ -974,6 +974,21 @@ def _check_operand(
     return expr
 
 
+def _check_document(row: dict[str, Any], obligation: dict[str, Any]) -> str:
+    """The screen document a check observes — the one its `locator=` names, or its own.
+
+    What a `qa.vet` registers is a photograph against the placement the book records, so the
+    document has to be the one the assertion is looking at. A refusal claim authored on the
+    form and observed through a table on the next screen is evidence about *that* screen, and
+    vetting the screen the claim was written on would file the picture under the wrong book.
+    """
+    for param in sorted(row.get("locates") or {}):
+        node_id = str((row["locates"][param] or {}).get("node", ""))
+        if node_id:
+            return node_id.split("#", 1)[0]
+    return str(obligation.get("source", ""))
+
+
 def _arrival_scenario(
     root_path: str,
     source: str,
@@ -989,6 +1004,10 @@ def _arrival_scenario(
     ids = sorted(o["id"] for o in obligations)
     body: list[str] = [f"    qa.goto({_lit(root_path)})"]
     body.extend(_walk_hops(hops, node_index, gaps, ids))
+    # Presence is what a role locator proves and placement is what it cannot, so a scenario
+    # that renders a documented screen photographs it and hands ostler the screen it is
+    # supposed to be. Arrival reaches exactly one documented state: the one it arrived at.
+    body.append(f"    qa.vet({_lit(source)})")
     assertions: list[str] = []
     scenario_covered: set[str] = set()
     for _node_id, obs in sorted(by_node.items()):
@@ -1094,6 +1113,7 @@ def _interaction_scenario(
                 for oid in ids)
     assertions: list[str] = []
     scenario_covered: set[str] = set()
+    vetted: list[str] = []
     for obligation in obligations:
         for row in obligation.get("checksDeclared", []):
             if _observes(row.get("name")) != "page":
@@ -1107,6 +1127,9 @@ def _interaction_scenario(
             if operand is None:
                 assertions.append(f"    # TODO(arrange): no addressable subject for {obligation['id']}")
                 continue
+            document = _check_document(row, obligation)
+            if document and document not in vetted:
+                vetted.append(document)
             assertions.append(
                 f"    qa.verify({_lit(row['name'])}, {operand}"
                 f"{_kwargs(row.get('args', {}))}, "
@@ -1136,6 +1159,10 @@ def _interaction_scenario(
         f'    """{on_label or node_id}: {trigger_value}"""',
         "",
         *body,
+        # After the trigger, not before it: the state an interaction's claims are about is the
+        # one the trigger produced, and `does:` is not resolved to a target screen, so the
+        # documents its own checks name are the only evidence of where the run ended up.
+        *(f"    qa.vet({_lit(document)})" for document in vetted),
         *assertions,
     ]
     return lines

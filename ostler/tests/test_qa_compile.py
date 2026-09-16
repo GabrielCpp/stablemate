@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -1325,3 +1326,67 @@ def test_every_emitted_assertion_is_legal_against_the_checks_own_signature() -> 
     for name, args in emitted:
         bound = checks.bind(name, args)
         assert not isinstance(bound, str), f"qa.verify({name!r}, ...) is illegal: {bound}"
+
+
+def _vetted(source: str) -> list[str]:
+    """Every screen document the plan photographs, in the order it photographs them."""
+    found: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr != "vet" or not node.args:
+            continue
+        screen = node.args[0]
+        if isinstance(screen, ast.Constant) and isinstance(screen.value, str):
+            found.append(screen.value)
+    return found
+
+
+def test_an_arrival_photographs_the_screen_it_arrived_at() -> None:
+    """Presence is what a role locator proves; placement is what it cannot.
+
+    `ostler qa validate` refuses a UI scenario that vets no screen, so a plan compiled
+    without one is a plan that cannot run — and the refusal exists because every assertion
+    in the run that motivated it was true of a page crushed against one margin.
+    """
+    oid = "okf:new-policy:form:role:1"
+    context = _navigation_context(
+        _page_obligation(oid, f"{_SCREEN}#new-policy-form",
+                          locators={"role": ["form"], "name": ["New policy"]},
+                          checks=[_visible("form:New policy")]),
+        navigation=_arrival_navigation(),
+    )
+    source, _ = compile_plan_gaps(context, story="demo-story")
+    assert _vetted(source) == [_SCREEN]
+
+
+def test_an_interaction_photographs_the_screen_its_checks_name() -> None:
+    """The state an interaction's claims are about is the one the trigger produced.
+
+    `does:` is not resolved to a target screen, so the documents the checks themselves name
+    are the only evidence of where the run ended up — vetting the screen the claim was
+    *authored* on would file the photograph under the wrong book.
+    """
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_oid = f"okf:{interaction}:does:1"
+    elsewhere = "docs/features/demo/gui/screens/policy-list.md"
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:button:role:1", f"{_SCREEN}#create-policy-button",
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")]),
+        _page_obligation(interaction_oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["submit the new policy form"],
+                                    "does": ["adds a policy and shows it"]},
+                          checks=[_located("#policy-table", f"{elsewhere}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, _ = compile_plan_gaps(context, story="demo-story")
+    interactions = [s for s in source.split("@scenario(")[1:] if "submit_new_policy(" in s]
+    assert len(interactions) == 1
+    # Read off the fragment, not its tree: a scenario split from its decorator is not a
+    # parseable module, and what is being pinned is which screen this function photographs.
+    assert re.findall(r"qa\.vet\(\"(.+?)\"\)", interactions[0]) == [elsewhere]
+    # …and the click comes first: a photograph taken before the trigger is of the wrong state.
+    assert interactions[0].index(".click()") < interactions[0].index("qa.vet(")
