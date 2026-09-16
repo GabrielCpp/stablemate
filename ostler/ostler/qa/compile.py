@@ -1096,16 +1096,21 @@ def _interaction_scenario(
     assertions: list[str] = []
     scenario_covered: set[str] = set()
     for obligation in obligations:
-        operand = _assertion_operand(obligation.get("locators", {}), obligation["id"], gaps)
         for row in obligation.get("checksDeclared", []):
             if _observes(row.get("name")) != "page":
                 gaps.append(_unobservable_gap(obligation["id"], row.get("name"), PLAYWRIGHT))
                 continue
+            # Per row, not per obligation: an interaction's claims are observed by whatever
+            # component each check names — the refusal by an error span, the acceptance by the
+            # table on the next screen — and the interaction's own locator is only the fallback
+            # for a check that named nothing.
+            operand, spent = _check_operand(row, obligation, gaps)
             if operand is None:
                 assertions.append(f"    # TODO(arrange): no addressable subject for {obligation['id']}")
                 continue
             assertions.append(
-                f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, "
+                f"    qa.verify({_lit(row['name'])}, {operand}"
+                f"{_kwargs(row.get('args', {}), omit=spent)}, "
                 f"covers=[{_lit(obligation['id'])}])"
             )
             scenario_covered.add(str(obligation["id"]))

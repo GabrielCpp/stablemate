@@ -1237,3 +1237,37 @@ def test_an_undetermined_claim_combiner_emits_no_code_at_all() -> None:
     ast.parse(source)
     assert _covers(source) == set()
     assert _gap_kinds(gaps, oid) == ["unstated-claim-combiner"]
+
+
+def test_an_interactions_check_is_pointed_at_the_component_it_names() -> None:
+    """An interaction's claim is observed by whatever the check names, not by the interaction.
+
+    An interaction row declares `on`/`trigger`/`does` and nothing addressable of its own, so
+    before the `(locator)` argument every one of its `visible(...)` claims was uncompilable. The
+    claim was never unobservable — the book said which component shows the outcome, and the
+    compiler was pointing at the wrong node and passing the right one through as a string.
+    """
+    button = f"{_SCREEN}#create-policy-button"
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_oid = "okf:new-policy:submit-new-policy:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")]),
+        _page_obligation(interaction_oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["submit the new policy form"],
+                                    "does": ["adds a policy and shows it"]},
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    interactions = [s for s in source.split("@scenario(")[1:] if "submit_new_policy(" in s]
+    assert len(interactions) == 1
+    assert 'qa.by_role("table", name="Policies on file")' in interactions[0]
+    assert 'locator="#policy-table"' not in interactions[0]
+    # The claim is observed; the trigger is still a scaffold click, and that gap is unrelated.
+    assert _gap_kinds(gaps, interaction_oid) == ["unresolved-precondition"]
+    assert interaction_oid in _covers(source)
