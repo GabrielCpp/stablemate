@@ -195,8 +195,28 @@ def _secrets_of(meta: dict) -> dict[str, str]:
     return secrets
 
 
+def system_root(graph: Graph) -> Path:
+    """The root of the system this book describes, which is not always where it was read.
+
+    Every path in a runbook — `working-directory: .`, a step's own `working-directory:`,
+    a `code:` citation — is written relative to the root of the *subject*, so that one book
+    joins to its code whether it sits at a repo's top level or nested inside a host tree.
+    `graph.root` is where the book was loaded from. For a book at its own `docs/features`
+    those are the same directory and always have been; for a book read from elsewhere they
+    are not, and resolving against the checkout launches the stack from a directory that
+    has none of the subject's files in it. `path.book_prefix_in` carries the derivation.
+    """
+    features = path_mod.features_root(graph)
+    try:
+        relative = features.relative_to(graph.root).as_posix()
+    except ValueError:  # a features root outside the checkout names its own system
+        return features.parent.parent
+    prefix = path_mod.book_prefix_in(graph.root, relative)
+    return graph.root / prefix if prefix else graph.root
+
+
 def _from_runbook(graph: Graph, runbook: UINode) -> dict[str, Any]:
-    root = graph.root
+    root = system_root(graph)
     meta = runbook.meta
     manifest: dict[str, Any] = {}
     for bullet, key in _SCALARS.items():
@@ -240,7 +260,7 @@ def _from_runbook(graph: Graph, runbook: UINode) -> dict[str, Any]:
 
 def _from_server(graph: Graph, server: UINode) -> dict[str, Any]:
     """The thinner walkthrough contract, as the same manifest."""
-    root = graph.root
+    root = system_root(graph)
     meta = server.meta
     working = bullet_value(meta, "working-directory") or "."
     manifest: dict[str, Any] = {
@@ -526,7 +546,8 @@ def cmd_stack_up(root: Path, *, name: str = "", features_root: str = "",
         return refused
     results: list[dict[str, Any]] = []
     for manifest in manifests:
-        result = stack_mod.ensure_stack(manifest, repo_root=str(root), logger=log)
+        result = stack_mod.ensure_stack(
+            manifest, repo_root=manifest.get("repo_root", str(root)), logger=log)
         results.append({**result, "manifest": manifest, "source": manifest.get("source", "")})
         if result.get("ready") != "yes":
             return QaOutcome(
@@ -594,6 +615,7 @@ __all__ = [
     "load_stacks",
     "select_runbook",
     "select_stack",
+    "system_root",
     "select_server",
     "stack_runbooks",
     "steps_of",

@@ -323,6 +323,24 @@ def test_a_name_that_matches_nothing_is_distinct_from_a_bookless_book(tmp_path: 
     assert not outcome.ok and outcome.status == "unknown-runbook"
 
 
+def test_a_nested_book_resolves_paths_against_the_system_it_describes(tmp_path: Path) -> None:
+    # A book is a description, and a description is not located in its subject. `.` means
+    # the root of the system the book is about, not the checkout the book was read from —
+    # otherwise a fixture's stack launches from a directory holding none of its files.
+    (tmp_path / ".git").mkdir()
+    nested = tmp_path / "fixtures" / "globex"
+    write(nested / "docs" / "features" / "app" / "ops" / "qa-stack.md",
+          "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
+          "- entry-url: http://localhost:1111\n- working-directory: `.`\n\n"
+          "## Steps\n\n### serve\n\n- kind: service\n- run: docker compose up\n"
+          "- health: curl -fsS localhost\n")
+    graph = model.load(tmp_path, root_overrides={"features": "fixtures/globex/docs/features"})
+    assert rb.system_root(graph) == nested
+    manifest = rb.load_stack(graph=graph)
+    assert manifest["app_cwd"] == str(nested.resolve())
+    assert manifest["repo_root"] == str(nested.resolve())
+
+
 # --- the doctor half: the book saying nothing, or saying something unrunnable ---
 
 

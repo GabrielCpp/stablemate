@@ -196,25 +196,15 @@ def _ref_owns_change(value: str, change: ChangedUnit) -> bool:
 def _book_root(root: Path, features_root: str) -> str:
     """The book's own root, relative to *root*, when `--features-root` names a nested book.
 
-    A book's `code:` citations are written relative to the book's own root — a fixture
-    checked out under `paddock/data/apps/<name>/` cites `app/api/service.go`, never
-    `paddock/data/apps/<name>/app/api/service.go` — because the same book must join to its
-    code whether it is checked out at the repo's top level or nested inside a host tree.
-    The changed-file feed, however, is always relative to `root` (git's top level), since
-    `--source-root` names attribution prefixes for `_surface_owner`, not a rebase target
-    (deliberately not reused for that here).
+    The derivation lives in `path.book_prefix_in`, which carries the reasoning: the same
+    fact the runbook reader needs to resolve a `working-directory: .` against the system a
+    book describes rather than against the checkout it was read from.
 
-    The book's own root is recovered by stripping this repo's *default* features-root
-    suffix off the tail of the given `--features-root`: the default is what a book at
-    `root` itself would use, so what remains at the front is the directory it is nested
-    under. Empty when the book already sits at `root` — every existing, non-nested caller
-    is unaffected.
+    `--source-root` is deliberately kept out of this: its job is attribution for
+    `_surface_owner`, and bending it into a rebase target would make a book's portability
+    depend on the caller repeating a mapping the book already implies.
     """
-    default_suffix = path_mod.features_root_in(root).relative_to(root).as_posix()
-    if features_root == default_suffix:
-        return ""
-    suffix = f"/{default_suffix}"
-    return features_root[: -len(suffix)] if features_root.endswith(suffix) else ""
+    return path_mod.book_prefix_in(root, features_root)
 
 
 def _book_relative(path: str, book_root: str) -> str:

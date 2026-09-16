@@ -69,6 +69,36 @@ def features_root(graph: Graph, service: str = "") -> Path:
     return base / service if service else base
 
 
+def book_prefix_in(root: Path, features_root: str) -> str:
+    """Where a book is nested under *root*, relative to it — `""` when it is not nested.
+
+    **A book is a description, and a description is not located in its subject.** The two
+    facts are independent: `paddock/data/apps/globex/docs/features` is where the book
+    lives, and `paddock/data/apps/globex` is the root of the system it describes. Every
+    path a book writes about its subject — a `code:` citation, a runbook's
+    `working-directory: .` — is relative to the *subject's* root, because the same book has
+    to join to its code whether it is checked out at a repo's top level or nested inside a
+    host tree. Anything reading those paths against the checkout root works right up until
+    a book is read from somewhere else, and then silently addresses the wrong tree.
+
+    The subject's root is recovered by stripping this repo's *default* features-root suffix
+    off the tail of *features_root*: the default is what a book at *root* itself would use,
+    so what remains at the front is the directory it is nested under. `""` when the book
+    already sits at *root*, which is every non-nested caller.
+    """
+    default_suffix = features_root_in(root).relative_to(root).as_posix()
+    if not features_root or features_root == default_suffix:
+        return ""
+    suffix = f"/{default_suffix}"
+    return features_root[: -len(suffix)] if features_root.endswith(suffix) else ""
+
+
+def book_root_in(root: Path, features_root: str) -> Path:
+    """The root of the system the book at *features_root* describes. See `book_prefix_in`."""
+    prefix = book_prefix_in(root, features_root)
+    return root / prefix if prefix else root
+
+
 def specs_root_in(root: Path) -> Path:
     """Where story specs live under *root*."""
     return doc_root_in(root, "specs")
