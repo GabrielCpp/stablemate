@@ -651,7 +651,10 @@ def _arrival_navigation(source: str = _SCREEN, surface: str = "policy", *,
 def test_exclusive_with_pairing_never_shares_a_scenario() -> None:
     """`empty-register-notice`/`policy-table` (real policy-desk bullets) must never land in the
     same compiled scenario — the amendment reads `exclusive-with:` as symmetric even though only
-    one side of this real pair writes the bullet."""
+    one side of this real pair writes the bullet. `empty-register-notice`'s real `role: paragraph`
+    carries no `name:`, which after Finding 7 is no longer an addressable subject on its own, so
+    a `selector:` is added here to keep this test about partitioning rather than about locator
+    constructibility (covered separately)."""
     table = f"{_SCREEN}#policy-table"
     notice = f"{_SCREEN}#empty-register-notice"
     context = _navigation_context(
@@ -660,6 +663,7 @@ def test_exclusive_with_pairing_never_shares_a_scenario() -> None:
                           checks=[_visible("table:Policies on file")]),
         _page_obligation("okf:policy-list:empty-register-notice:visible:1", notice,
                           locators={"role": ["paragraph"],
+                                    "selector": ["p.empty-register-notice"],
                                     "exclusiveWith": ["[policy-table](#policy-table)"]},
                           checks=[_visible("text=No policies are on file yet")]),
         navigation=_arrival_navigation(),
@@ -691,9 +695,9 @@ def test_a_states_component_produces_a_gap_not_a_scenario() -> None:
     source, gaps = compile_plan_gaps(context, story="demo-story")
     ast.parse(source)
     assert "combobox:Coverage type" not in source
-    kinds = _gap_kinds(gaps, node)
+    kinds = _gap_kinds(gaps, oid)
     assert kinds == ["unresolved-precondition"]
-    [gap] = [g for g in gaps if g.obligation_id == node]
+    [gap] = [g for g in gaps if g.obligation_id == oid]
     assert "opens on `auto`." in gap.detail
 
 
@@ -704,8 +708,9 @@ def test_states_wins_over_exclusive_with_when_a_component_carries_both() -> None
     any scenario outright) and is checked first, so the component is gapped, never isolated into
     its own exclusive-with scenario."""
     node = f"{_SCREEN}#vehicle-vin-field"
+    oid = "okf:new-policy:vehicle-vin-field:visible:1"
     context = _navigation_context(
-        _page_obligation("okf:new-policy:vehicle-vin-field:visible:1", node,
+        _page_obligation(oid, node,
                           locators={"role": ["textbox"], "name": ["Vehicle VIN"],
                                     "exclusiveWith": ["[property-address-field](#property-address-field)"],
                                     "states": ["present only while the coverage type is `auto`."]},
@@ -716,19 +721,23 @@ def test_states_wins_over_exclusive_with_when_a_component_carries_both() -> None
     ast.parse(source)
     assert "textbox:Vehicle VIN" not in source
     assert "@scenario(" not in source
-    assert _gap_kinds(gaps, node) == ["unresolved-precondition"]
+    assert _gap_kinds(gaps, oid) == ["unresolved-precondition"]
 
 
 def test_an_interactions_assertion_never_lands_on_the_arrival_scenario() -> None:
     """A `## Interactions` row's `visible(...)` asserts state *after* the interaction — it must
-    never be emitted as an arrival assertion on the screen's own page-load scenario."""
+    never be emitted as an arrival assertion on the screen's own page-load scenario. The
+    interaction row itself carries no `role`/`name`/`selector` of its own (only `on`/`trigger`/
+    `does`), so per Finding 1 its `visible(...)` claim has no addressable subject and is gapped
+    as `uncompilable-claim` rather than silently asserting on `qa.page`/the document body."""
     button = f"{_SCREEN}#create-policy-button"
     interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_oid = "okf:new-policy:submit-new-policy:visible:1"
     context = _navigation_context(
         _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
                           locators={"role": ["button"], "name": ["Create policy"]},
                           checks=[_visible("button:Create policy")]),
-        _page_obligation("okf:new-policy:submit-new-policy:visible:1", interaction,
+        _page_obligation(interaction_oid, interaction,
                           locators={"on": ["[create-policy-button](#create-policy-button)"],
                                     "trigger": ["submit the new policy form"],
                                     "does": ["adds a policy... navigates to its detail screen"]},
@@ -743,9 +752,12 @@ def test_an_interactions_assertion_never_lands_on_the_arrival_scenario() -> None
     assert len(arrival) == 1
     assert "heading:Policy PN-1001" not in arrival[0]
     assert len(interactions) == 1
-    assert "heading:Policy PN-1001" in interactions[0]
+    # No addressable subject for the interaction's own `visible(...)` claim, so it is a TODO
+    # scaffold and a gap, never a compiled `qa.verify(...)` call against a guessed operand.
+    assert "heading:Policy PN-1001" not in interactions[0]
+    assert f"no addressable subject for {interaction_oid}" in interactions[0]
     assert "create-policy-button" in interactions[0] or "button:Create policy" not in interactions[0]
-    assert "unresolved-precondition" in _gap_kinds(gaps, interaction)
+    assert "uncompilable-claim" in _gap_kinds(gaps, interaction_oid)
 
 
 def test_a_reachable_screen_with_no_declared_preconditions_is_undeclared_not_silent() -> None:
@@ -766,7 +778,11 @@ def test_a_reachable_screen_with_no_declared_preconditions_is_undeclared_not_sil
     _source, gaps = compile_plan_gaps(context, story="demo-story")
     undeclared_gaps = [g for g in gaps if g.kind == "screen-preconditions-undeclared"]
     assert len(undeclared_gaps) == 1
-    assert undeclared_gaps[0].obligation_id == _SCREEN
+    # One gap per screen (documented exception to Amendment 1's per-obligation rule), but it
+    # must still carry a real, known obligation id — never the screen's source path — so the
+    # live-audit lane's `covers`/`gapped_ids` intersection can filter on it (Finding 2). The
+    # first (sorted) obligation id on the screen stands in for the screen-level fact.
+    assert undeclared_gaps[0].obligation_id == "okf:policy-list:policy-table:visible:1"
 
 
 def test_an_unreachable_screen_is_a_finding_not_a_compile_target() -> None:
@@ -774,8 +790,9 @@ def test_an_unreachable_screen_is_a_finding_not_a_compile_target() -> None:
     is doctor's own existing code for this fact (the same one its `reach`-based check mints),
     reused here rather than collapsing it into the generic `uncompilable-claim`."""
     node = f"{_SCREEN}#policy-table"
+    oid = "okf:policy-list:policy-table:visible:1"
     context = _navigation_context(
-        _page_obligation("okf:policy-list:policy-table:visible:1", node,
+        _page_obligation(oid, node,
                           locators={"role": ["table"], "name": ["Policies on file"]},
                           checks=[_visible("table:Policies on file")]),
         navigation=_arrival_navigation(unreachable=[_SCREEN]),
@@ -783,7 +800,7 @@ def test_an_unreachable_screen_is_a_finding_not_a_compile_target() -> None:
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert "@scenario(" not in source
     assert "web = target(" not in source or "table:Policies on file" not in source
-    kinds = _gap_kinds(gaps, _SCREEN)
+    kinds = _gap_kinds(gaps, oid)
     assert kinds == ["unreachable-screen"]
 
 
@@ -834,3 +851,141 @@ def test_navigation_is_keyed_by_surface_even_for_a_single_surface_book() -> None
     assert "table:Policies on file" in source
     assert "table:Claims on file" in source
     assert gaps == []
+
+
+# --- Locator constructibility (Findings 1, 4-7) ------------------------------------------------
+#
+# A compiled `qa.verify(...)`/`qa.by_role(...)`/`qa.by_css(...)` call is only as good as the
+# string arguments the book handed it — Playwright raises at *runtime*, not compile time, when
+# they are wrong, so these are read straight out of the compiled plan's own syntax tree rather
+# than by running a browser.
+
+try:
+    from playwright._impl._api_structures import AriaRole as _AriaRole
+    from typing import get_args as _get_args
+    _KNOWN_ARIA_ROLES = frozenset(_get_args(_AriaRole))
+except ImportError:  # pragma: no cover - exercised only when the `qa` extra is installed
+    _KNOWN_ARIA_ROLES = frozenset()
+
+_UNMATCHABLE_ROLES = frozenset({"generic", "none", "presentation"})
+
+
+def _call_kwargs(call: ast.Call) -> dict[str, str | None]:
+    """Every keyword argument of *call* whose value is a string literal, by name."""
+    out: dict[str, str | None] = {}
+    for kw in call.keywords:
+        if kw.arg is not None and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+            out[kw.arg] = kw.value.value
+    return out
+
+
+def _call_attr(call: ast.Call) -> str:
+    """The attribute name of *call*'s callee, e.g. `"by_role"` for `qa.by_role(...)`."""
+    assert isinstance(call.func, ast.Attribute), f"expected an attribute call, got {ast.dump(call.func)}"
+    return call.func.attr
+
+
+def _locator_calls(source: str) -> list[ast.Call]:
+    """Every `qa.by_role(...)` / `qa.by_css(...)` call in the compiled plan."""
+    calls = []
+    for node in ast.walk(ast.parse(source)):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("by_role", "by_css")):
+            calls.append(node)
+    return calls
+
+
+def _string_args(call: ast.Call) -> list[str]:
+    args = [a.value for a in call.args if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+    args += [v for v in _call_kwargs(call).values() if v is not None]
+    return args
+
+
+def test_a_compiled_plan_never_hands_playwright_an_unconstructible_locator() -> None:
+    """Five ways a compiled `by_role`/`by_css` call can be wrong and only fail at runtime, all
+    pinned against one plan compiled from bullets that provoke each of them:
+
+    1. a code-span-wrapped value (`` `button` ``) reaching Playwright with its backticks still
+       on, which raises `InvalidSelectorError` (Finding 6);
+    2. a `role=` value outside Playwright's matchable `AriaRole` set (Finding 5);
+    3. a `role=` value inside `{"generic","none","presentation"}` — real ARIA roles that never
+       match anything via `get_by_role` (Finding 5's correction);
+    4. a `name=` value equal to the literal string `"none"` — the book's sentinel for "no
+       accessible name," never a name to search for (Finding 4);
+    5. a bare `by_role(...)` call with no accompanying `name=` — ambiguous and, unlike a
+       boolean check, one Playwright's strict mode *raises* on rather than failing quietly
+       (Finding 7).
+    """
+    screen = "docs/features/policy/gui/screens/policy-list.md"
+    context = _navigation_context(
+        # (1) backtick-wrapped role and name.
+        _page_obligation("okf:policy-list:backticked:visible:1", f"{screen}#backticked",
+                          locators={"role": ["`button`"], "name": ["`Cancel policy`"]},
+                          checks=[_visible("button:Cancel policy")]),
+        # (2) an unrecognized role string, falling through to a backtick-wrapped selector.
+        _page_obligation("okf:policy-list:bad-role:visible:1", f"{screen}#bad-role",
+                          locators={"role": ["widget-nonexistent"], "name": ["Something"],
+                                    "selector": ["`.something`"]},
+                          checks=[_visible("something")]),
+        # (3) `role: generic` paired with the `name: none` sentinel and a selector fallback.
+        _page_obligation("okf:policy-list:generic-role:visible:1", f"{screen}#generic-role",
+                          locators={"role": ["generic"], "name": ["none"], "selector": ["dl"]},
+                          checks=[_visible("generic")]),
+        # (4)+(5) role-only, no name and no selector: no addressable subject at all -> gap,
+        # never a bare `by_role("table")` call.
+        _page_obligation("okf:policy-list:role-only:visible:1", f"{screen}#role-only",
+                          locators={"role": ["table"]},
+                          checks=[_visible("table")]),
+        navigation=_arrival_navigation(source=screen),
+    )
+    source, _gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+
+    calls = _locator_calls(source)
+    assert calls, "expected at least one by_role/by_css call to check"
+    for call in calls:
+        for value in _string_args(call):
+            assert "`" not in value, f"a code-span backtick reached a compiled locator argument: {value!r}"
+        kwargs = _call_kwargs(call)
+        attr = _call_attr(call)
+        role = kwargs.get("role") if attr == "by_role" else None
+        # A `by_role` call's first positional argument is the role.
+        if attr == "by_role" and call.args:
+            first = call.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                role = first.value
+        if role is not None:
+            assert not _KNOWN_ARIA_ROLES or role in _KNOWN_ARIA_ROLES, (
+                f"{role!r} is not a role Playwright's `get_by_role` can match"
+            )
+            assert role not in _UNMATCHABLE_ROLES, (
+                f"{role!r} is a real ARIA role that never matches anything via `get_by_role`"
+            )
+        name = kwargs.get("name")
+        if name is not None:
+            assert name.lower() != "none", "the book's `name: none` sentinel leaked in as a literal name"
+        if attr == "by_role":
+            assert "name" in kwargs, f"bare `by_role({role!r})` call with no `name=` is ambiguous " \
+                "under Playwright's strict mode"
+
+
+def test_an_unavailable_role_set_degrades_to_a_selector_never_to_skipped_validation(monkeypatch) -> None:
+    """Finding 9: when Playwright's `AriaRole` set cannot be derived (the `qa` extra missing, or
+    a future playwright release moving the private module), `_MATCHABLE_ROLES` is `None` — and
+    that must never be read as "validation is optional." `role: generic` must still not compile
+    to `by_role("generic")`; it must fall through to `selector:` exactly as when the role set is
+    known and `generic` is excluded from it."""
+    import ostler.qa.compile as compile_mod
+
+    monkeypatch.setattr(compile_mod, "_MATCHABLE_ROLES", None)
+    screen = "docs/features/policy/gui/screens/policy-list.md"
+    context = _navigation_context(
+        _page_obligation("okf:policy-list:generic-role:visible:1", f"{screen}#generic-role",
+                          locators={"role": ["generic"], "name": ["Summary"], "selector": ["dl"]},
+                          checks=[_visible("generic")]),
+        navigation=_arrival_navigation(source=screen),
+    )
+    source, _gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert 'by_role("generic"' not in source
+    assert 'by_css("dl")' in source

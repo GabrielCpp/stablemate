@@ -252,11 +252,13 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
     navigation: dict[str, dict[str, Any]] = {}
     for surface in surfaces:
         surface_dump = graph_mod.subset(dump, surface)
+        root_path, _server = reach.root_path(surface_dump)
         screens = reach.screens_of(surface_dump)
         if not screens:
             navigation[surface] = {
                 "start": "",
                 "surface": surface,
+                "rootPath": root_path,
                 "counts": {
                     "screens": 0, "reachable": 0, "unreachable": 0, "undeclared": 0, "nav_edges": 0,
                 },
@@ -267,10 +269,12 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
             continue
         try:
             navigation[surface] = reach.reachability(head_graph, surface=surface)
+            navigation[surface]["rootPath"] = root_path
         except reach.UnknownStart as exc:
             navigation[surface] = {
                 "start": "",
                 "surface": surface,
+                "rootPath": root_path,
                 "counts": {
                     "screens": len(screens), "reachable": 0,
                     "unreachable": len(screens), "undeclared": 0, "nav_edges": 0,

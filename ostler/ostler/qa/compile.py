@@ -24,6 +24,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from typing import get_args as _get_args
 
 from ostler.checks import _rooted
 from ostler.markdown import extract_refs
@@ -180,6 +181,61 @@ def _node_locator_index(context: dict[str, Any]) -> dict[str, dict[str, list[str
     return index
 
 
+#: The book writes a bullet value as ordinary markdown prose, which means a value can be
+#: wrapped in a code span (`` `button` ``) the same way `route:` values are (`_ROUTE` already
+#: strips this). `_page_locator_expr` reads the same grammar and has to strip it the same way —
+#: a backtick carried verbatim into `get_by_role("`button`")` is not a role, it is a spelling of
+#: one, and Playwright raises `InvalidSelectorError` on it at run time instead of failing an
+#: assertion, which is a worse outcome than either a pass or a gap.
+_CODE_SPAN = re.compile(r"^\s*`?\s*(.*?)\s*`?\s*$")
+
+#: The book's explicit sentinel for "this bullet has nothing to say" — `role: none` / `name: none`
+#: — is prose, not a value. Treating the literal string `"none"` as a real role or accessible
+#: name compiles to a locator that structurally cannot match anything real (`by_role("alert",
+#: name="none")` on an alert with no accessible name at all), which is the same "plausible but
+#: wrong" failure mode Finding 1 fixes for the assertion operand, just one layer further down —
+#: a false *failure* on a correct app instead of a false pass.
+_NONE_SENTINEL = "none"
+
+
+def _bullet_value(raw: str | None) -> str | None:
+    """*raw*, stripped of a wrapping code span, with the book's `none` sentinel read as absent."""
+    if raw is None:
+        return None
+    match = _CODE_SPAN.match(raw)
+    assert match is not None, "_CODE_SPAN matches any string (its inner group is `.*?`)"
+    value = match.group(1).strip()
+    if not value or value.lower() == _NONE_SENTINEL:
+        return None
+    return value
+
+
+#: Playwright does not validate a `get_by_role` role name — an unrecognized one is not an error,
+#: it is a query that matches nothing, exactly as silent as the vacuity Finding 1 fixes. The
+#: matchable set has to be carried as data rather than guessed at, and it is derived from the
+#: installed `playwright` package's own typed role literal rather than hand-copied, so it never
+#: drifts from the version this repo actually pins. Three of its 82 members are excluded on
+#: purpose, not by omission: `none` and `presentation` are the two real ARIA roles that both mean
+#: "this element has no semantic role" (so `role: none` in the book, even read as prose rather
+#: than as `_bullet_value`'s sentinel, names something Playwright's accessibility tree never
+#: surfaces), and `generic` is the role an element falls back to when it has no better one — all
+#: three are real, spellable roles that structurally never match a `get_by_role` query.
+#: `None` here means "the matchable set could not be derived," never "validation is optional."
+#: A tree missing the `qa` extra (so `playwright` is not importable) cannot correctly compile a
+#: Playwright-targeted plan in the first place; treating that as permission to skip role
+#: validation would silently restore Finding 5's exact defect (`role: generic` compiling to
+#: `by_role("generic")` again) with no signal that anything degraded. So `_page_locator_expr`
+#: treats "the role set is unknown" the same as "no role is in it" — every role falls through to
+#: `selector:` — which degrades toward a visible, blocking gap rather than a silent false locator.
+try:
+    from playwright._impl._api_structures import AriaRole as _AriaRole
+    _MATCHABLE_ROLES: frozenset[str] | None = frozenset(_get_args(_AriaRole)) - {
+        "generic", "none", "presentation",
+    }
+except ImportError:  # pragma: no cover - the `qa` extra is what installs playwright
+    _MATCHABLE_ROLES = None
+
+
 def _page_locator_expr(locators: dict[str, list[str]]) -> str | None:
     """A concrete Playwright locator expression built from a node's own book-declared locators.
 
@@ -190,14 +246,29 @@ def _page_locator_expr(locators: dict[str, list[str]]) -> str | None:
     this builds a real `Locator` instead, from `role`/`name` (preferred — the same identity a
     person clicking through the screen would use) or `selector` (the escape hatch a `role:`-less
     component's book entry gives it).
+
+    `role`/`name` are read through `_bullet_value`, so a code-span-wrapped value and the `none`
+    sentinel are both handled before a locator is built, not transcribed into one.
     """
-    role = next(iter(locators.get("role", [])), None)
-    name = next(iter(locators.get("name", [])), None)
-    selector = next(iter(locators.get("selector", [])), None)
+    role = _bullet_value(next(iter(locators.get("role", [])), None))
+    if role is not None and (_MATCHABLE_ROLES is None or role not in _MATCHABLE_ROLES):
+        # A role that is real prose but not a matchable ARIA role (`generic`, `presentation`), one
+        # that is not a recognized role at all (a book typo), or one this tree cannot even check
+        # (`_MATCHABLE_ROLES is None` — playwright not importable) has no `get_by_role` query that
+        # is known to match it — fall through to `selector:` exactly as if no role had been
+        # declared, rather than guess.
+        role = None
+    name = _bullet_value(next(iter(locators.get("name", [])), None))
+    selector = _bullet_value(next(iter(locators.get("selector", [])), None))
     if role and name:
         return f"qa.by_role({_lit(role)}, name={_lit(name)})"
-    if role:
-        return f"qa.by_role({_lit(role)})"
+    # A role with no name is not addressable on its own: Playwright's strict mode raises rather
+    # than returning a false result when `get_by_role(role)` resolves to more than one element on
+    # the page (the common case — `role: textbox`/`role: link` name real pages, not single
+    # elements), and the compiler has no runtime page to check that against statically. `role:`
+    # alone is therefore never emitted as a locator; a node that names a role but no accessible
+    # name falls through to `selector:` (which is what `name: none` is telling the book to use),
+    # or gaps if it has neither.
     if selector:
         return f"qa.by_css({_lit(selector)})"
     return None
@@ -323,6 +394,14 @@ def compile_plan_gaps(
             requirement = " ".join(str(obligation.get("requirement", "")).split())
             lines.append(f"#   {obligation['id']}")
             lines.append(f"#     {requirement[:100]}")
+
+    known_ids = {str(o.get("id")) for o in context.get("obligations", [])}
+    for gap in gaps:
+        assert gap.obligation_id in known_ids, (
+            f"compiled a {gap.kind!r} gap keyed by {gap.obligation_id!r}, which is not a known "
+            "obligation id — every Gap must be filterable by the live-audit's "
+            "`covers` intersection, which only ever holds real obligation ids"
+        )
 
     return "\n".join(lines).rstrip() + "\n", gaps
 
@@ -481,8 +560,6 @@ def _operand(check: str, observed: str) -> tuple[str, str]:
         return observed, ""
     if check in _BODY_CHECKS:
         return f"{observed}.json()", ""
-    if check in _PAGE_CHECKS:
-        return "qa.page", ""
     # A subject check compares observations the book never says how to take — `persists`
     # wants the record from before the process died and the one read after it came back.
     return observed, f"`{check}` observes a subject, not a response — hand it the pair"
@@ -529,7 +606,7 @@ def _compile_page_scenarios(
     guarantee than "not sharing with its named partner", so the "never share" requirement holds
     either way a screen writes the bullet (on one side only, or on both).
     """
-    lines: list[str] = ["", "", 'web = target("web", driver="playwright", base_url=' + _lit(base_url) + ")"]
+    scenario_lines: list[str] = []
     node_index = _node_locator_index(context)
     by_screen: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for obligation in page_declared:
@@ -538,10 +615,16 @@ def _compile_page_scenarios(
 
     navigation = context.get("navigation", {}) if isinstance(context.get("navigation"), dict) else {}
     for (surface, source), group in sorted(by_screen.items()):
+        ids = sorted(o["id"] for o in group)
         nav = navigation.get(surface) if surface else None
         if nav is None:
-            gaps.append(Gap(source, "uncompilable-claim",
-                             f"surface {surface!r} has no `navigation` data to address this screen by"))
+            # Amendment 1: one gap per obligation the group actually owes, not one per screen —
+            # a single representative id only defeats the live-audit's `covers` intersection by
+            # accident (it needs just one match), and would silently stop working the moment a
+            # screen's obligations split across more than one scenario.
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                             f"surface {surface!r} has no `navigation` data to address this screen by")
+                        for oid in ids)
             continue
         if source in set(nav.get("unreachable", [])):
             # Correction 5': an unreachable screen is a finding, not a compile target. Reusing
@@ -549,21 +632,25 @@ def _compile_page_scenarios(
             # `reach`-based check already mints) rather than collapsing it into
             # `uncompilable-claim` — a screen with no route in and a screen with no addressable
             # subject are different defects and should not read as the same finding.
-            gaps.append(Gap(source, "unreachable-screen",
-                             f"{surface}'s navigation cannot reach this screen; no scenario compiled"))
+            gaps.extend(Gap(oid, "unreachable-screen",
+                             f"{surface}'s navigation cannot reach this screen; no scenario compiled")
+                        for oid in ids)
             continue
         hops = nav.get("routes", {}).get(source)
         if hops is None:
-            gaps.append(Gap(source, "uncompilable-claim", "no route computed for this screen"))
+            gaps.extend(Gap(oid, "uncompilable-claim", "no route computed for this screen")
+                        for oid in ids)
             continue
+        root_path = str(nav.get("rootPath") or "/")
         if source in set(nav.get("undeclared", [])):
             # Amendment 2: reachable, but the screen's `requires:`/`params:` bullets are
-            # literally absent — not "none", absent. One gap per screen, not per obligation:
-            # every `visible(...)` bullet on the screen shares the same undeclared-precondition
-            # fact, and a live-audit gate already renders one line per gap (see the coordinator
-            # note this report answers) — multiplying this by obligation count would not add
-            # information.
-            gaps.append(Gap(source, "screen-preconditions-undeclared",
+            # literally absent — not "none", absent. One gap per screen (kept as designed,
+            # exception to Amendment 1's per-obligation rule): every `visible(...)` bullet on
+            # the screen shares the identical undeclared-precondition fact, and multiplying it
+            # by obligation count would not add information. It still needs a real obligation
+            # id, though — the first (sorted) obligation on this screen stands in for the
+            # screen-level fact, rather than the screen's own source path.
+            gaps.append(Gap(ids[0], "screen-preconditions-undeclared",
                              "reachable, but this screen declares no `requires:`/`params:` bullets"))
 
         by_node: dict[str, list[dict[str, Any]]] = {}
@@ -575,33 +662,42 @@ def _compile_page_scenarios(
         interactions: list[str] = []
         for node_id, obs in sorted(by_node.items()):
             locators = obs[0].get("locators", {})
+            node_ids = sorted(o["id"] for o in obs)
             if locators.get("on"):
                 interactions.append(node_id)
             elif locators.get("states"):
                 states_text = "; ".join(locators["states"])
-                gaps.append(Gap(node_id, "unresolved-precondition",
+                gaps.extend(Gap(oid, "unresolved-precondition",
                                  f"carries `states:` ({states_text!r}); no scenario compiled "
-                                 "for a state-scoped arrangement"))
-            elif "#" not in node_id and not _page_locator_expr(locators):
-                gaps.append(Gap(node_id, "uncompilable-claim",
-                                 "no addressable `### <component>` owns this `visible(...)` claim"))
+                                 "for a state-scoped arrangement")
+                            for oid in node_ids)
+            elif not _page_locator_expr(locators):
+                gaps.extend(Gap(oid, "uncompilable-claim",
+                                 "no addressable `### <component>` owns this `visible(...)` claim")
+                            for oid in node_ids)
             elif locators.get("exclusiveWith"):
                 exclusive.append(node_id)
             else:
                 plain[node_id] = obs
 
         if plain:
-            lines.extend(_arrival_scenario(surface, source, hops, node_index, plain, gaps,
-                                            name=f"{_slug(source)}_arrival"))
+            scenario_lines.extend(_arrival_scenario(root_path, source, hops, node_index, plain, gaps,
+                                                      name=f"{_slug(source)}_arrival"))
         for node_id in exclusive:
-            lines.extend(_arrival_scenario(surface, source, hops, node_index,
-                                            {node_id: by_node[node_id]}, gaps,
-                                            name=f"{_slug(source)}_{_node_slug(node_id)}"))
+            scenario_lines.extend(_arrival_scenario(root_path, source, hops, node_index,
+                                                      {node_id: by_node[node_id]}, gaps,
+                                                      name=f"{_slug(source)}_{_node_slug(node_id)}"))
         for node_id in interactions:
-            lines.extend(_interaction_scenario(surface, source, hops, node_index, node_id,
-                                                by_node[node_id], gaps,
-                                                name=f"{_slug(source)}_{_node_slug(node_id)}"))
-    return lines
+            scenario_lines.extend(_interaction_scenario(root_path, source, hops, node_index, node_id,
+                                                          by_node[node_id], gaps,
+                                                          name=f"{_slug(source)}_{_node_slug(node_id)}"))
+
+    if not scenario_lines:
+        # Minor correction: a `web` target with nothing compiled under it is an unused fixture
+        # in the plan — emit it only when at least one scenario actually landed.
+        return []
+    return ["", "", 'web = target("web", driver="playwright", base_url=' + _lit(base_url) + ")",
+            *scenario_lines]
 
 
 def _node_slug(node_id: str) -> str:
@@ -613,9 +709,14 @@ def _walk_hops(
     hops: list[dict[str, Any]],
     node_index: dict[str, dict[str, list[str]]],
     gaps: list[Gap],
-    oid: str,
+    oids: list[str],
 ) -> list[str]:
-    """One `.click()` per hop the book's own navigation-derivation logic found (Correction 2')."""
+    """One `.click()` per hop the book's own navigation-derivation logic found (Correction 2').
+
+    A failed hop gaps every obligation the scenario covers (Amendment 1), not one representative
+    id — every one of them is blocked by the same missing hop locator, and the live-audit's
+    `covers` filter has to be able to find each of them there.
+    """
     lines: list[str] = []
     for hop in hops:
         target_node = str(hop.get("node", ""))
@@ -623,15 +724,34 @@ def _walk_hops(
         if expr is None:
             lines.append(f"    # TODO(arrange): no locator declared for {target_node!r}"
                          f" ({hop.get('label', '')!r})")
-            gaps.append(Gap(oid, "unresolved-precondition",
-                             f"no locator declared for navigation hop {target_node!r}"))
+            gaps.extend(Gap(oid, "unresolved-precondition",
+                             f"no locator declared for navigation hop {target_node!r}")
+                        for oid in oids)
             continue
         lines.append(f"    {expr}.click()  # {hop.get('label', '')}")
     return lines
 
 
+def _assertion_operand(locators: dict[str, list[str]], oid: str, gaps: list[Gap]) -> str | None:
+    """The concrete operand a `visible(...)` assertion is handed — never a page/body fallback.
+
+    Finding 1: an obligation with no addressable subject of its own is not "close enough" to
+    `qa.page.locator('body')` — that locator is always visible, so the assertion it is handed to
+    would pass no matter what the app renders. `None` here means the same thing it means to
+    `_page_locator_expr`'s other callers: this obligation becomes an `uncompilable-claim` gap,
+    not a scenario line that only looks like a check.
+    """
+    expr = _page_locator_expr(locators)
+    if expr is None:
+        gaps.append(Gap(oid, "uncompilable-claim",
+                         "no addressable role/name or selector locator for this obligation's "
+                         "`visible(...)` assertion"))
+        return None
+    return expr
+
+
 def _arrival_scenario(
-    surface: str,
+    root_path: str,
     source: str,
     hops: list[dict[str, Any]],
     node_index: dict[str, dict[str, list[str]]],
@@ -658,14 +778,18 @@ def _arrival_scenario(
         f"def {name}(qa: Qa) -> None:",
         f'    """Arrive at {source} via the book\'s own navigation and check what it shows."""',
         "",
-        f"    qa.goto({_lit(surface)})  # TODO(arrange): the app's root URL for this surface",
+        f"    qa.goto({_lit(root_path)})",
     ]
-    lines.extend(_walk_hops(hops, node_index, gaps, ids[0] if ids else source))
-    for node_id, obs in sorted(by_node.items()):
-        operand = _page_locator_expr(obs[0].get("locators", {})) or "qa.page.locator('body')"
+    lines.extend(_walk_hops(hops, node_index, gaps, ids))
+    for _node_id, obs in sorted(by_node.items()):
         for obligation in obs:
+            operand = _assertion_operand(obligation.get("locators", {}), obligation["id"], gaps)
             for row in obligation.get("checksDeclared", []):
                 if row.get("name") not in _PAGE_CHECKS:
+                    continue
+                if operand is None:
+                    lines.append(f"    # TODO(arrange): no addressable subject for "
+                                 f"{obligation['id']}")
                     continue
                 lines.append(
                     f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, "
@@ -675,7 +799,7 @@ def _arrival_scenario(
 
 
 def _interaction_scenario(
-    surface: str,
+    root_path: str,
     source: str,
     hops: list[dict[str, Any]],
     node_index: dict[str, dict[str, list[str]]],
@@ -726,25 +850,33 @@ def _interaction_scenario(
         f"def {name}(qa: Qa) -> None:",
         f'    """{on_label or node_id}: {trigger_value}"""',
         "",
-        f"    qa.goto({_lit(surface)})  # TODO(arrange): the app's root URL for this surface",
+        f"    qa.goto({_lit(root_path)})",
     ]
-    lines.extend(_walk_hops(hops, node_index, gaps, ids[0] if ids else source))
+    lines.extend(_walk_hops(hops, node_index, gaps, ids))
     on_expr = _page_locator_expr(node_index.get(on_node_id, {}))
     if on_expr is None:
         lines.append(f"    # TODO(arrange): no locator declared for {on_label!r}")
-        gaps.append(Gap(node_id, "unresolved-precondition",
-                         f"no locator declared for `on:` component {on_label!r}"))
+        # Amendment 1: one gap per obligation this interaction scenario covers, not a single
+        # id keyed by the interaction's own node — every covered obligation is blocked by the
+        # same missing `on:` locator.
+        gaps.extend(Gap(oid, "unresolved-precondition",
+                         f"no locator declared for `on:` component {on_label!r}")
+                    for oid in ids)
         on_expr = "qa.page.locator('body')"
     lines.append(f"    {on_expr}.click()  # trigger: {trigger_value}")
     if does_value:
         lines.append(f"    # does: {does_value}")
-    gaps.append(Gap(node_id, "unresolved-precondition",
+    gaps.extend(Gap(oid, "unresolved-precondition",
                      f"trigger {trigger_value!r} compiles to a scaffold click on {on_label!r}, "
-                     "not a verified action, and `does:` is not resolved to a target screen"))
-    operand = "qa.page.locator('body')"
+                     "not a verified action, and `does:` is not resolved to a target screen")
+                for oid in ids)
     for obligation in obligations:
+        operand = _assertion_operand(obligation.get("locators", {}), obligation["id"], gaps)
         for row in obligation.get("checksDeclared", []):
             if row.get("name") not in _PAGE_CHECKS:
+                continue
+            if operand is None:
+                lines.append(f"    # TODO(arrange): no addressable subject for {obligation['id']}")
                 continue
             lines.append(
                 f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, "
