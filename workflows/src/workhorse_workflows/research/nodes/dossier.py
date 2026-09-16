@@ -670,10 +670,12 @@ def _ceiling(d: Dossier) -> float:
 
 
 def fingerprint(d: Dossier) -> str:
+    # Deliberately excludes `active_gate`: a gate advancing to the next one is
+    # progress, not evidence. A trigger set a review already dismissed must not
+    # re-fire just because the program moved on — see the apparatus_cycles>=2
+    # case, which is a lifetime count and so never clears on its own.
     last = d.series[-1] if d.series else MetricPoint()
-    raw = json.dumps(
-        [sorted(d.triggers), last.date, last.count, d.active_gate], sort_keys=True
-    )
+    raw = json.dumps([sorted(d.triggers), last.date, last.count], sort_keys=True)
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
 

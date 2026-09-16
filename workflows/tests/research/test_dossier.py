@@ -233,6 +233,31 @@ def test_a_review_s_own_recharter_does_not_trigger_the_next_review(program):
     assert next_day.review_due is True
 
 
+def test_fingerprint_ignores_which_gate_is_active():
+    """Seen on maskbus: G0's two revives leave `apparatus_cycles>=2` permanently
+    true (it is a lifetime count, never cleared). Every reviewer since has said, in
+    writing, that this is stale. But the gate advancing from G0 to G1 to G2 to G3
+    kept re-triggering a review anyway, burning the program's review cap on a
+    trigger set and metric evidence that never changed — only `active_gate` did."""
+    base = Dossier(triggers=["apparatus_cycles>=2"], series=[])
+    at_g1 = base.model_copy(update={"active_gate": "G1"})
+    at_g2 = base.model_copy(update={"active_gate": "G2"})
+    at_g3 = base.model_copy(update={"active_gate": "G3"})
+    assert D.fingerprint(at_g1) == D.fingerprint(at_g2) == D.fingerprint(at_g3)
+
+
+def test_stale_apparatus_cycles_does_not_force_a_review_at_every_gate(program):
+    repo, pdir = program
+    d = _build(repo, pdir, lead_reviews=6)
+    assert "apparatus_cycles>=2" in d.triggers
+    append_history(LOG, str(repo), pdir, "program_review", fingerprint=d.fingerprint, today=TODAY)
+    # The gate advances (new gate_cycles), but nothing about the trigger set or the
+    # metric evidence changed — this must not force another review.
+    next_gate = _build(repo, pdir, lead_reviews=6, gate_cycles=1)
+    assert next_gate.fingerprint == d.fingerprint
+    assert next_gate.review_due is False
+
+
 def test_fresh_program_has_no_triggers(tmp_path: Path):
     pdir = tmp_path / "p"
     pdir.mkdir()
