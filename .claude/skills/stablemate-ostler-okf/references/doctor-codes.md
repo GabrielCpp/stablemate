@@ -170,6 +170,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `runbook-incomplete` | error | A runbook declares a launch but has no `kind: service` step — nothing starts the system. |
 | `runbook-multi-service` | error | More than one `kind: service` step. A runbook brings up one stack; the rest are `kind: prepare`. |
 | `runbook-local-only` | error | A runbook boots a `local-only: true` environment that points at a non-local host. |
+| `check-expression-as-command` | error | A `run:`/`health:` bullet on a `step` (a runbook's or a fixture's) parses as a check expression (`checks.parse_check`), not a shell command — `ensure_stack`/the fixture harness shell this bullet verbatim, so this would fail with a bash syntax error at bring-up time rather than run. Write a shell command that exits non-zero on failure (`curl -fsS <url>`), or move the check onto the `verify:` of the claim it actually observes. |
 
 ## Claims and observations
 

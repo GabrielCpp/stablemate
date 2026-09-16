@@ -39,6 +39,19 @@ deterministic output — which is not an observation about the product and mints
 Same word, different job. Writing a check-vocabulary call here is a category error: put
 product observations on the node that makes the claim.
 
+**`run:` and `health:` take a shell command, never a check expression.** `ensure_stack` (and
+the fixture harness, for a `fixture`'s own steps) hands each one to `bash -c` verbatim; neither
+is parsed against the `verify:` grammar. Something in the shape of `http_status(200,
+path="/healthz")` reads like the checks written under `verify:` elsewhere in the book, but it
+is not a command bash can run — it is a check call, and writing one here only replaces a green
+`launch` phase with a bash syntax error one stage later, at bring-up time rather than at review
+time. Write a real command that exits non-zero on failure instead: a `curl -fsS <url>` for a
+health gate, or whatever program this step actually needs to run. If what you have in hand is
+a check on the *product* — "the widget list shows the seeded row" — it does not belong on a
+boot step at all; put it under the `verify:` of the claim (a `screen`'s `visible(...)`, an
+`http`'s `http_status(...)`) that the check actually observes. The doctor's
+`check-expression-as-command` catches the mistake before bring-up ever runs.
+
 A `step` declares **no normative keys of its own**. It mints nothing; the runbook it belongs
 to carries the contract. The
 [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type) still
@@ -70,7 +83,8 @@ timeout 30 ostler scaffold step serve --in docs/features/acme/ops/links-local.md
 
 ## Doctor codes it can trip
 
-`missing-required-bullet` on `kind:`, `runbook-bad-kind`, and — raised against the enclosing
+`missing-required-bullet` on `kind:`, `runbook-bad-kind`, `check-expression-as-command` (a
+`run:`/`health:` value that parses as a check call), and — raised against the enclosing
 runbook — `runbook-incomplete` (no `kind: service` step) and `runbook-multi-service` (more
 than one). See [../doctor-codes.md](../doctor-codes.md).
 
