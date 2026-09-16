@@ -9,7 +9,7 @@ Power resolution returns the three optional settings a backend may receive from 
 backend default. Missing or malformed tables produce an empty mapping rather than an error.
 
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::PowerMapping` @451a081294d0
-- detail: [home config](../home-config.md)
+- detail: [home config](../formats/home-config.md)
 
 ## Fields
 

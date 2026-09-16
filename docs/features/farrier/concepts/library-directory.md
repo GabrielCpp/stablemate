@@ -23,7 +23,7 @@ editable origin.
 
 1. `cli_library` — the `--library DIR` flag (`install`'s or `source`'s), if passed.
 2. `$FARRIER_LIBRARY_DIR` — the environment variable, if set to a non-empty value.
-3. `library_dir` — the `library_dir` key in the [shared home config file](../home-config.md), if
+3. `library_dir` — the `library_dir` key in the [shared home config file](../formats/home-config.md), if
    present (read by `read_config`).
 
 **None of the three yielding a candidate is not automatically an error.** If a base library is
@@ -203,7 +203,7 @@ So the paths the old globals named are now `parts` tuples passed to these helper
 `farrier config set-library <path>` (see [`config`](../farrier.md#config)) is how the home-config
 candidate (precedence 3) gets written: it validates the path with the same `is_library_dir` check,
 then calls `write_library_dir`, which persists the `library_dir` field of the
-[home config file](../home-config.md) alongside any other keys already there (e.g.
+[home config file](../formats/home-config.md) alongside any other keys already there (e.g.
 `stablemate_dir`, `base_dir`).
 
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::write_library_dir` @451a081294d0

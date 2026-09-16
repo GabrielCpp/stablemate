@@ -5,17 +5,17 @@ title: agents.yml (installer config)
 ---
 # agents.yml (installer config)
 
-The YAML mapping [`install`](farrier.md#install) reads to decide which skills, prompts and roots
-from the resolved [library directory](concepts/library-directory.md) get rendered
+The YAML mapping [`install`](../farrier.md#install) reads to decide which skills, prompts and roots
+from the resolved [library directory](../concepts/library-directory.md) get rendered
 into a target repo's Codex/Claude/Copilot adapters, and which scaffold ids
-[`farrier scaffold`](farrier.md#scaffold) may apply. Every top-level key is
+[`farrier scaffold`](../farrier.md#scaffold) may apply. Every top-level key is
 optional except `agents:`. `read_yaml` checks the path exists first (`SystemExit("Missing config:
 <path>")` if not), parses it with `yaml.safe_load` (an empty file yields `{}` rather than `None`,
 so an empty `agents.yml` fails the required-`agents:` check below rather than crashing on a `None`
 lookup), then raises `SystemExit("Config must be a YAML mapping: <path>")` if the parsed value
 isn't a `dict` (e.g. a bare YAML list or scalar); `render_expected` then walks every key below to
 compute the `{output path: content}` map `install`/`install --check` act on. Repository installs
-also emit the [generated agent launcher](concepts/generated-agent-launcher.md), whose workflow
+also emit the [generated agent launcher](../concepts/generated-agent-launcher.md), whose workflow
 run targets are resolved from installed workflow distributions when make parses the generated
 file; `agents.yml` itself does not list those workflows.
 
@@ -27,9 +27,9 @@ rendering; otherwise every pack contribution is unioned with this configuration'
 - file: `agents.yml` at the repo root (or `--config PATH`)
 - code: `farrier/farrier/outputs.py::render_expected` @3967ecfa24a2
 - code: `farrier/farrier/sources.py::selected_sources` @e4e058c012de
-- detail: [library source record](concepts/source-record.md)
-- detail: [layered source resolution](concepts/layered-source-resolution.md)
-- detail: [source naming and selection](concepts/source-naming-selection.md)
+- detail: [library source record](../concepts/source-record.md)
+- detail: [layered source resolution](../concepts/layered-source-resolution.md)
+- detail: [source naming and selection](../concepts/source-naming-selection.md)
 
 ## Fields
 
@@ -81,7 +81,7 @@ Each enabled name turns on a distinct output set in `Renderer.render`:
 ### packs
 - type: `list` of `string` (pack ids, `.yml` omitted) — required: no — default: `[]`
 - code: `farrier/farrier/sources.py::collect_selection` @e4e058c012de
-- detail: [selection aggregation](concepts/selection-aggregation.md)
+- detail: [selection aggregation](../concepts/selection-aggregation.md)
 
 ### skills / prompts / roots
 - type: `list` of `string` — required: no — default: `[]`
@@ -118,9 +118,9 @@ Python distribution that brings its own command — `pip`/`uv` installs it, and 
 - type: `list` of `string` (scaffold definition ids) — required: no — default: `[]`
 
 The catalog of scaffold ids this repo may apply with the
-[`farrier scaffold <id>` command](farrier.md#scaffold), unioned with the ids contributed by
+[`farrier scaffold <id>` command](../farrier.md#scaffold), unioned with the ids contributed by
 every selected pack's own `scaffolds:` list. Ids name definitions in the library's
-[scaffold definition loader](concepts/scaffold-definition-loader.md) and
+[scaffold definition loader](../concepts/scaffold-definition-loader.md) and
 `scaffolds/*.yml` files (parameterized file trees; see the command doc for the definition
 format). **`install` renders no scaffold files** — this key only gates which ids `scaffold`
 accepts. Each entry must be a plain string; the legacy `{source-prefix: dest-dir}` mapping form

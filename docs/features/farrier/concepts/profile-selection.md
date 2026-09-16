@@ -10,7 +10,7 @@ unspecified tiers from the top level, while harness environment settings remain 
 unselected config.
 
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::select_profile` @451a081294d0
-- detail: [home config](../home-config.md)
+- detail: [home config](../formats/home-config.md)
 
 ## Methods
 

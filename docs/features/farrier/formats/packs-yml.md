@@ -15,7 +15,7 @@ but it does not itself render files.
 - file: `packs/<id>.yml`
 - code: `farrier/farrier/sources.py::load_pack` @e4e058c012de
 - detail: [agents.yml pack selection](agents-yml-config.md#packs)
-- detail: [selection aggregation](concepts/selection-aggregation.md)
+- detail: [selection aggregation](../concepts/selection-aggregation.md)
 
 ## Fields
 
@@ -30,7 +30,7 @@ but it does not itself render files.
 - semantics: the installer reads the YAML mapping but does not use this value when collecting selections
 - verify: unchanged(subject="merged selection when pack description changes")
 - code: `farrier/farrier/sources.py::load_pack` @e4e058c012de
-- detail: [pack field selection](concepts/pack-field-selection.md)
+- detail: [pack field selection](../concepts/pack-field-selection.md)
 
 ### includes
 - type: `list[string]`
@@ -43,7 +43,7 @@ but it does not itself render files.
 - semantics: an include cycle terminates loading with `Pack include cycle detected at <id>`
 - verify: exit_status(code=1)
 - code: `farrier/farrier/sources.py::load_pack` @e4e058c012de
-- detail: [pack field selection](concepts/pack-field-selection.md)
+- detail: [pack field selection](../concepts/pack-field-selection.md)
 
 ### skills
 - type: `list[string]`
@@ -56,7 +56,7 @@ but it does not itself render files.
 - semantics: duplicate skill entries collapse when packs and the repository config are unioned
 - verify: count(subject="merged skill selection when pack and repository select one skill", equals=1)
 - code: `farrier/farrier/sources.py::load_pack` @e4e058c012de
-- detail: [pack field selection](concepts/pack-field-selection.md)
+- detail: [pack field selection](../concepts/pack-field-selection.md)
 
 ### prompts
 - type: `list[string]`
@@ -69,7 +69,7 @@ but it does not itself render files.
 - semantics: duplicate prompt entries collapse when packs and the repository config are unioned
 - verify: count(subject="merged prompt selection when pack and repository select one prompt", equals=1)
 - code: `farrier/farrier/sources.py::load_pack` @e4e058c012de
-- detail: [pack field selection](concepts/pack-field-selection.md)
+- detail: [pack field selection](../concepts/pack-field-selection.md)
 
 ### roots
 - type: `list[string]`
@@ -83,7 +83,7 @@ but it does not itself render files.
 - verify: absent(subject="non-Copilot root instruction output")
 - code: `farrier/farrier/sources.py::load_pack` @e4e058c012de
 - tests: `farrier/tests/test_selection_misses.py::test_unknown_root_fails_even_with_copilot_disabled`
-- detail: [pack field selection](concepts/pack-field-selection.md)
+- detail: [pack field selection](../concepts/pack-field-selection.md)
 
 ### scaffolds
 - type: `list[string]`

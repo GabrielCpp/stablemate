@@ -9,7 +9,7 @@ farrier renders an agent-neutral prompt library into a target repository's Codex
 adapters, driven by that repo's `agents.yml`. It ships no library content of its own — it renders
 from a [layer stack](concepts/library-directory.md#the-layer-stack): an optional *overlay* library,
 located by the `--library` flag, the `$FARRIER_LIBRARY_DIR` env var or `library_dir` in the
-[shared home config file](home-config.md) (set with `farrier config set-library`), stacked above the
+[shared home config file](formats/home-config.md) (set with `farrier config set-library`), stacked above the
 *base* library that ships with stablemate. Either alone is a working setup; with neither, farrier
 exits with a setup hint. `farrier [--repo DIR]` with a leading flag rather than a recognized
 subcommand is treated as `install`; a bare `farrier` with no arguments at all prints the top-level
@@ -84,7 +84,7 @@ already current.
   command that runs before a repo is configured, so it must work on a machine where
   `farrier config set-library` has never been run.
 - writes: `<repo>/agents.yml`, and nothing else.
-- produces: [`agents.yml`](agents-yml-config.md) with `agents: {claude: true}` and an empty
+- produces: [`agents.yml`](formats/agents-yml-config.md) with `agents: {claude: true}` and an empty
   `packs:` list live, and `skills`/`prompts`/`scaffolds`/`exclude`/`template`/`workflow` present
   as commented examples. No `repo:` block: the repo's name is derived from the directory.
 
@@ -100,7 +100,7 @@ the pruned starting point, and the two are kept consistent by hand.
 - flags:
   - `--repo <dir>` — repository root to render generated files into. Default: current working
     directory.
-  - `--config <path>` — path to the repo's [`agents.yml`](agents-yml-config.md) pack/skill
+  - `--config <path>` — path to the repo's [`agents.yml`](formats/agents-yml-config.md) pack/skill
     selection file. Default: `<repo>/agents.yml`.
   - `--check` — verify the repo's generated files are current without writing anything; exits `1`
     and prints which files would be rewritten if any are stale or missing, `0` otherwise.
@@ -136,7 +136,7 @@ the pruned starting point, and the two are kept consistent by hand.
   - verify: created(subject="expected generated output under the resolved --repo path")
   - run: resolve the config path to `--config` if given, else `<repo>/agents.yml`
   - verify: created(subject="generated output selected by the resolved config path")
-  - run: read [`agents.yml`](agents-yml-config.md) via `read_yaml` — `SystemExit("Missing config:
+  - run: read [`agents.yml`](formats/agents-yml-config.md) via `read_yaml` — `SystemExit("Missing config:
     <path>")` if `config_path` doesn't exist, else parse it with `yaml.safe_load` (an empty file
     yields `{}` rather than `None`), then `SystemExit("Config must be a YAML mapping: <path>")` if
     the parsed value isn't a `dict`
@@ -147,7 +147,7 @@ the pruned starting point, and the two are kept consistent by hand.
   - run: validate that `agents:` selects at least one of `codex`/`claude`/`copilot`
     (`normalize_agents`), else raise `SystemExit("No agents selected in config")`
   - verify: exit_status(code=1)
-  - run: resolve the [`agents.yml`](agents-yml-config.md) selection (packs ∪ top-level
+  - run: resolve the [`agents.yml`](formats/agents-yml-config.md) selection (packs ∪ top-level
     `skills`/`prompts`/`roots`, minus `exclude`) against the library's skill/prompt sources. The
     `scaffolds:` lists are collected but consumed only by the [`scaffold`](#scaffold) command, so
     install renders no scaffold files
@@ -168,7 +168,7 @@ the pruned starting point, and the two are kept consistent by hand.
   - verify: created(subject=".agents/agents-context*.json manifests")
   - run: render a thin root `Makefile` only when the repository has none
   - verify: created(subject="thin root Makefile in a repository that had none")
-  - run: render each [`localInstructions`](agents-yml-config.md#localinstructions) entry into its
+  - run: render each [`localInstructions`](formats/agents-yml-config.md#localinstructions) entry into its
     target directories' `AGENTS.md` as part of the full `{output path: content}` map
     (`render_expected`) that `--check` or install acts on
   - verify: created(subject="localInstructions AGENTS.md output")
@@ -272,7 +272,7 @@ Install deletes what farrier generated and nothing else. The
 ownership a property of the *file*, not of where it sits (`farrier/farrier/ownership.py`):
 
 - a generated skill, prompt or command says so in its front matter —
-  `metadata.generated_by: farrier`, see [generated-file metadata](generated-file-metadata.md);
+  `metadata.generated_by: farrier`, see [generated-file metadata](formats/generated-file-metadata.md);
 - a generated file with nowhere to put front matter — an aggregated `AGENTS.md`/`CLAUDE.md`, the
   Copilot root instructions, `.agents/agents.mk`, a hook runner — carries the phrase
   `generated by farrier` in a comment within its first 12 lines;
@@ -302,7 +302,7 @@ it — are the operator's to choose, not farrier's.
 - does:
   - run: read `[user_library.<harness>]` from the config — one table per harness that gets a
     personal library, holding the same `skills:`/`prompts:`/`exclude:` keys
-    [`agents.yml`](agents-yml-config.md) uses. A harness with no table installs nothing
+    [`agents.yml`](formats/agents-yml-config.md) uses. A harness with no table installs nothing
   - verify: count(subject="user-scope outputs for an unconfigured harness", equals=0)
   - run: no user-library table at all is an error naming the config path, since `--user` was
     asked for explicitly
@@ -378,19 +378,19 @@ it — are the operator's to choose, not farrier's.
 - does:
   - run (`set-library`): resolve `path` to an absolute path (`~` expansion), validate it as a
     [library directory](concepts/library-directory.md) with `is_library_dir`, persist it as
-    `library_dir` in the [home config file](home-config.md) via `write_library_dir`, and print
+    `library_dir` in the [home config file](formats/home-config.md) via `write_library_dir`, and print
     `library_dir=<path>`
   - run (`set-stablemate`): resolve `path` to an absolute path and persist it as `stablemate_dir`
-    in the [home config file](home-config.md) via `write_stablemate_dir` (no validation); print
+    in the [home config file](formats/home-config.md) via `write_stablemate_dir` (no validation); print
     `stablemate_dir=<path>`
   - run (`set-base`): resolve `path` to an absolute path, validate it with `is_library_dir`,
-    persist it as `base_dir` in the [home config file](home-config.md) via `write_base_dir`, and
+    persist it as `base_dir` in the [home config file](formats/home-config.md) via `write_base_dir`, and
     print `base_dir=<path>`
   - run (`set-worktree`): resolve `path` to an absolute path and persist it as `worktree_dir`
-    in the [home config file](home-config.md) via `write_worktree_dir` (no validation); print
+    in the [home config file](formats/home-config.md) via `write_worktree_dir` (no validation); print
     `worktree_dir=<path>`
   - run (any action): `--config`, if given, is written into `$STABLEMATE_CONFIG` before dispatch
-  - run (`show`): read the [home config file](home-config.md) via `read_config`
+  - run (`show`): read the [home config file](formats/home-config.md) via `read_config`
   - run (`show --profile`): narrow the config with `select_profile` and flatten it to dotted
     leaves first
   - run (`show <key>`): print the key's bare value
@@ -483,7 +483,7 @@ from a generated file back to the library.
   - run: resolve `<file>` to an absolute path
   - run: `SystemExit` if `<file>` is not a file
   - run: read `<file>`'s YAML front matter and parse its
-     [`metadata:` block](generated-file-metadata.md) via `frontmatter_metadata`, extracting the
+     [`metadata:` block](formats/generated-file-metadata.md) via `frontmatter_metadata`, extracting the
      `source` field (a library-anchored, machine-independent path stamped in by `install`'s
      generated-file provenance banner)
   - run: `SystemExit` if `source` is absent (`<file>` is not a farrier-generated skill/command)

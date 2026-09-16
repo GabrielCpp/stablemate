@@ -30,4 +30,4 @@ settings remain global to that CLI across profiles.
 - code: `farrier/farrier/_vendor/stablemate_core/discovery.py` @9298cfe7d7ec
 - code: `farrier/farrier/_vendor/stablemate_core/layout.py` @3e86f914ff77
 - detail: [library directory](library-directory.md)
-- detail: [home config](../home-config.md)
+- detail: [home config](../formats/home-config.md)

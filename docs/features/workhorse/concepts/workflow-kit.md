@@ -87,7 +87,7 @@ in each repo's own `agents.yml` `workspace:` section. This is the primary lookup
 
 The `agents.yml` `workspace:` section is this module's own reading of the file — a multi-repo
 extension distinct from farrier's field list for the same file (see
-[`agents.yml`](../../farrier/agents-yml-config.md), whose `repo`/`template` fields farrier itself
+[`agents.yml`](../../farrier/formats/agents-yml-config.md), whose `repo`/`template` fields farrier itself
 renders from). farrier does not read or validate `workspace:`.
 
 ### `checkout_workspace`

@@ -6,13 +6,13 @@ title: Home config file (config.toml)
 # Home config file (config.toml)
 
 The shared, machine-local settings file every stablemate tool reads and writes — holding the
-overlay [library directory](concepts/library-directory.md) candidate, the base-library path, the
+overlay [library directory](../concepts/library-directory.md) candidate, the base-library path, the
 local `stablemate` checkout path, and the `[profiles.*]` / `[cli.*]` tables workhorse resolves
 against. It lives in `stablemate_core`, not in farrier: the keys are shared, so workhorse
 inheriting a farrier-set `library_dir` is the point rather than a leak. Read by `load_config`
 (farrier spells the same function `read_config`; it is an alias, not a second implementation),
 written key-by-key by `write_config_key`, and surfaced to the user by
-[`farrier config show`](farrier.md#config). The schema is versioned: a config older than this
+[`farrier config show`](../farrier.md#config). The schema is versioned: a config older than this
 build's `CONFIG_VERSION` is carried forward in-memory on read, so resolvers always see the current
 shape; the file on disk is lifted to the current version only when a write touches it.
 
@@ -22,9 +22,9 @@ shape; the file on disk is lifted to the current version only when a write touch
   pre-unification `$WORKHORSE_CONFIG`) overrides the path outright.
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::load_config` @451a081294d0
 - code: `farrier/farrier/_vendor/stablemate_core/config.py` @451a081294d0
-- detail: [configuration version guard](concepts/config-version-guard.md)
-- detail: [power mapping](concepts/power-mapping.md)
-- detail: [profile selection](concepts/profile-selection.md)
+- detail: [configuration version guard](../concepts/config-version-guard.md)
+- detail: [power mapping](../concepts/power-mapping.md)
+- detail: [profile selection](../concepts/profile-selection.md)
 
 ## Fields
 
@@ -38,9 +38,9 @@ working until a write lifts it.)
 ### library_dir
 - type: `string` — required: no — default: unset
 
-The [library directory](concepts/library-directory.md) resolution's third-precedence *overlay*
+The [library directory](../concepts/library-directory.md) resolution's third-precedence *overlay*
 candidate (after `--library` and `$FARRIER_LIBRARY_DIR`). Written by
-[`farrier config set-library <path>`](farrier.md#config) via `write_library_dir`, after the path is
+[`farrier config set-library <path>`](../farrier.md#config) via `write_library_dir`, after the path is
 validated with `is_library_dir` (must contain `library/`).
 
 ### base_dir
@@ -95,7 +95,7 @@ schemas.
   to the default model with no error anywhere.
 
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::write_config_key` @451a081294d0
-- detail: [config write documentation contexts](concepts/config-write-context.md)
+- detail: [config write documentation contexts](../concepts/config-write-context.md)
 
 ## Methods
 
@@ -212,7 +212,7 @@ schemas.
 - returns: `None`
 - verify: persists(subject="library_dir")
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::write_library_dir` @451a081294d0
-- detail: [config write documentation contexts](concepts/config-write-context.md)
+- detail: [config write documentation contexts](../concepts/config-write-context.md)
 
 ### write_stablemate_dir
 - sig: `write_stablemate_dir(path: Path) -> None`

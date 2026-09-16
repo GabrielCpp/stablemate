@@ -10,7 +10,7 @@ the same file. Reads of a newer schema warn and continue, but writes refuse rath
 keys the current tool does not understand.
 
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::ConfigVersionError` @451a081294d0
-- detail: [home config](../home-config.md)
+- detail: [home config](../formats/home-config.md)
 
 ## Methods
 

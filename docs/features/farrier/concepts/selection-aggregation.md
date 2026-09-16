@@ -6,8 +6,8 @@ title: Selection aggregation
 # Selection aggregation
 
 The installer and scaffold command use this aggregation before they select library sources or
-gate a scaffold id. It expands each configured [pack](../packs-yml.md), then adds the repository's
-own [`agents.yml` selections](../agents-yml-config.md#packs). The four resulting sets keep skills,
+gate a scaffold id. It expands each configured [pack](../formats/packs-yml.md), then adds the repository's
+own [`agents.yml` selections](../formats/agents-yml-config.md#packs). The four resulting sets keep skills,
 prompts, roots, and scaffold ids separate so their later consumers can apply their distinct
 matching, rendering, and availability rules.
 

@@ -5,7 +5,7 @@ title: Renderer
 ---
 # Renderer
 
-Turns a resolved [`agents.yml`](../agents-yml-config.md) selection (skills, prompts, roots)
+Turns a resolved [`agents.yml`](../formats/agents-yml-config.md) selection (skills, prompts, roots)
 into the concrete `{output path: file content}` map that
 [`render_expected`](../farrier.md#install) writes (or, under `--check`, diffs against disk). One
 `Renderer` is constructed per `install` run; its methods each cover one class of generated output —
@@ -17,7 +17,7 @@ from the top-level source set.
 
 - code: `farrier/farrier/renderer.py::Renderer` @c90fc5d746a8
 - detail: [renderer naming and relative output paths](naming.md)
-- detail: [generated context manifest](../generated-context-manifest.md)
+- detail: [generated context manifest](../formats/generated-context-manifest.md)
 
 ## Construction
 
@@ -167,7 +167,7 @@ passes a literal from the fixed target set above).
 
 `render(agents, roots) -> {Path: str}` is the method `render_expected`
 calls to produce almost the whole output map, gated per enabled [`agents:`
-name](../agents-yml-config.md#agents):
+name](../formats/agents-yml-config.md#agents):
 
 - **`copilot`** — every selected skill via `generated_skill(source, "copilot", path)`; every
   selected prompt via a plain `render_templates` copy (no front matter rewrite, unlike Claude); and,
@@ -218,7 +218,7 @@ directory, repo-root-relative).
 
 Both read `source`'s front matter and body (`split_front_matter`), Jinja-render every header value
 and the body through `render_templates`, then re-emit front matter carrying the
-[generated-file metadata block](../generated-file-metadata.md) (`skill_metadata_block`) that lets
+[generated-file metadata block](../formats/generated-file-metadata.md) (`skill_metadata_block`) that lets
 [`farrier source`](../farrier.md#source) resolve the file back to its library origin:
 
 - `generated_skill` — front matter is exactly `name` (`public_name`), `description`
@@ -239,7 +239,7 @@ and the body through `render_templates`, then re-emit front matter carrying the
 
  - `render_local_instruction(skill_names, target, output_path, include_readme, prompt_names,
   policy_names)` — concatenates each named source's rendered body (`\n\n---\n\n`-joined) for a
-  [`localInstructions`](../agents-yml-config.md#localinstructions) entry, then folds in a sibling
+  [`localInstructions`](../formats/agents-yml-config.md#localinstructions) entry, then folds in a sibling
   `README.md` when `include_readme` is true, appending its rendered body under a `## Local README`
   heading. The separate `render_claude_pointer` method controls whether Claude imports the sibling
   README by `@README.md` instead of receiving it through `AGENTS.md`.

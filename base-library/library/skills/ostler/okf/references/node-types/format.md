@@ -9,8 +9,7 @@ format: an HTTP payload defined by a route, which belongs on the [`endpoint`](en
 
 ## Identity
 
-File type with **no context folder** (`context=""`), directly under
-`docs/features/<service>/`, `type: format` in frontmatter.
+File type under `docs/features/<service>/formats/`, `type: format` in frontmatter.
 
 ## Bullet keys
 
