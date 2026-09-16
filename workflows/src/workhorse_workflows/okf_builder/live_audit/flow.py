@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -148,6 +150,56 @@ def _covered_node_ids(covers: list[Any]) -> list[str]:
         if len(parts) >= 3:
             ids.append(":".join(parts[1:-1]))
     return ids
+
+
+#: Playwright's own wording (`playwright/_impl/_errors.py` via the JS driver's
+#: `strict mode violation: ${locator} resolved to ${matches.length} elements:...`) for a
+#: locator that matched more than the one element a `verify: visible` check needs. By the
+#: time this flow sees it, the exception itself is long gone — it was raised inside the
+#: scenario subprocess, caught by `ostler_qa.py`'s `_run` (`except BaseException:`), and
+#: folded into the scenario's terminal `error`/`message` as `traceback.format_exc()`. So
+#: this is matched as text, not as an exception type; the phrase is Playwright's own and
+#: is not used for anything else a scenario could raise.
+_STRICT_MODE_VIOLATION_RE = re.compile(r"strict mode violation:.*resolved to \d+ elements", re.DOTALL)
+
+
+def _strict_mode_violation_gaps(
+    covers: Sequence[Any], message: str
+) -> list[dict[str, Any]] | None:
+    """Finding 8: a Playwright strict-mode violation is a book gap, never a failed check.
+
+    `compile.py` already does the honest thing here — it emits the author's `selector:`
+    locator as-is and never guesses a `.first` on the caller's behalf, because `selector:`
+    is unique by the author's intent, not by construction, and intent is not a guarantee.
+    When the intent is wrong, Playwright's own strict mode raises with a message that names
+    exactly what happened: the subject the book pointed at resolved to more than one element
+    on the rendered page. That is ATTRIBUTABLE to the book in a way nothing else a scenario
+    can raise is — it can never mean the app answered wrong, only that the book named its
+    subject imprecisely — so it must never be scored as a failed assertion or land in the
+    ledger as one: `needs_rerun` would then carry a false failure forward on every pass whose
+    fingerprint does not move, exactly the way a genuine failure should.
+
+    Returns one gap per real obligation id (`okf:...`) the scenario's `covers=[...]` names,
+    same as `compile.py`'s own Amendment 1 (one gap per covered obligation, not a single
+    representative) — or `None` when the message does not match, or the scenario covers no
+    real obligation id to key a gap to (nothing to attribute it to; the caller falls back to
+    reporting it as an ordinary failure).
+    """
+    hit = _STRICT_MODE_VIOLATION_RE.search(message)
+    if hit is None:
+        return None
+    obligation_ids = [str(item) for item in covers if str(item).startswith("okf:")]
+    if not obligation_ids:
+        return None
+    detail = (
+        "a Playwright strict-mode violation: the compiled locator resolved to more than "
+        f"one element on the rendered page ({hit.group(0)}) — the book names this subject "
+        "imprecisely; this can never mean the app is wrong"
+    )
+    return [
+        {"obligation_id": obligation_id, "kind": "unresolved-precondition", "detail": detail}
+        for obligation_id in obligation_ids
+    ]
 
 
 def _book_context_or_note(
@@ -352,6 +404,7 @@ def audit_one_spec(
         run_notes = run.notes
 
     results: list[ScenarioResult] = []
+    extra_gaps: list[dict[str, Any]] = []
     for scenario in scenarios_data:
         scenario_id = str(scenario.get("id") or "")
         fingerprint = fingerprints[scenario_id]
@@ -363,6 +416,15 @@ def audit_one_spec(
             assertions = int(summary.get("assertions") or 0)
             failures = int(summary.get("failures") or 0)
             message = str(summary.get("message") or "")
+            strict_mode_gaps = _strict_mode_violation_gaps(scenario.get("covers") or [], message)
+            if strict_mode_gaps is not None:
+                # Finding 8: this scenario proved nothing about the obligations it covers —
+                # report it as blocked book debt, the same as a compile gap, never as a
+                # failed assertion. No `ScenarioResult`, no ledger row: `record_result` is
+                # skipped on purpose, so `needs_rerun` keeps re-attempting it every pass
+                # instead of carrying a false failure forward under an unmoved fingerprint.
+                extra_gaps.extend(strict_mode_gaps)
+                continue
             ledger = record_result(
                 ledger_path, ledger, scenario_id, fingerprint, status,
                 assertions=assertions, failures=failures, message=message,
@@ -380,6 +442,9 @@ def audit_one_spec(
             message=message, code_refs=tuple(refs), fingerprint=fingerprint,
             changed=changed_by_id[scenario_id], source=source,
         ))
+
+    if extra_gaps:
+        gaps = (*gaps, *extra_gaps)
 
     if not scenarios_data:
         # Nothing compiled clean enough to run at all — the whole-book equivalent of the

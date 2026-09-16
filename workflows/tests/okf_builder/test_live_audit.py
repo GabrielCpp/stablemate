@@ -540,6 +540,67 @@ def test_compiled_gaps_never_ledgered_and_re_report_every_pass(
     assert not any("create-thing" in claim_id for claim_id in ledger)
 
 
+def test_strict_mode_violation_is_a_book_gap_not_a_failed_scenario(
+    logger: logging.Logger, two_root_book: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Finding 8: a Playwright strict-mode violation is book debt, never a failed check.
+
+    `compile.py` emits an author's `selector:` locator as-is and never guesses a `.first`
+    on their behalf — `selector:` is unique by intent, not by construction. When that
+    intent is wrong, Playwright's own strict mode raises, and by the time it reaches this
+    flow it is folded into the scenario's `message` as a traceback
+    (`ostler_qa.py`'s `_run`: `except BaseException: ... traceback.format_exc()`). That is
+    attributable to the book, never to the app, so `audit_one_spec` must report it as a
+    `gaps` entry (kind `unresolved-precondition`, keyed to the scenario's own covered
+    obligation id) rather than as a failing `ScenarioResult` or a ledger row a later,
+    unchanged pass would carry forward as a false failure.
+    """
+    docs_root, repo_root = two_root_book
+    monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
+
+    traceback_text = (
+        "Traceback (most recent call last):\n"
+        '  File "qa_plan.py", line 12, in charge_is_covered\n'
+        '    qa.verify("visible", qa.page.locator("span.field-error"))\n'
+        "playwright._impl._errors.Error: strict mode violation: "
+        'locator("span.field-error") resolved to 6 elements:\n'
+        '    1) <span class="field-error">…</span>\n'
+    )
+    monkeypatch.setattr(
+        live_audit_flow, "run_qa_plan",
+        lambda *a, **k: QaPlanRun(
+            status="failed",
+            notes="Ostler QA run returned failed.",
+            ostler={
+                "scenarios": {
+                    "charge-is-covered": {
+                        "status": "failed", "assertions": 1, "failures": 1,
+                        "message": traceback_text,
+                    },
+                },
+            },
+        ),
+    )
+
+    report = audit_one_spec(
+        logger, "docs/specs/story-1", docs_path=str(docs_root), repo_dir=str(repo_root),
+    )
+
+    # No failing scenario — the strict-mode-violation outcome is reclassified entirely.
+    assert report.scenarios == ()
+    assert len(report.gaps) == 1
+    [gap] = report.gaps
+    assert gap["kind"] == "unresolved-precondition"
+    assert gap["obligation_id"] == "okf:docs/features/acme/concepts/charge.md:contract"
+    assert "strict mode violation" in gap["detail"]
+
+    # Never ledgered: a later pass with the same (unmoved) fingerprint must re-attempt it,
+    # not silently carry a failure forward the way a genuine failed assertion would.
+    ledger_path = docs_root / "docs/specs/story-1" / live_audit_flow.LEDGER_FILE
+    assert not ledger_path.exists() or not json.loads(ledger_path.read_text())["claims"]
+
+
 def test_authored_plan_takes_precedence_over_the_compiled_book(
     logger: logging.Logger, two_root_book: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
