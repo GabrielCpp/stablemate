@@ -88,25 +88,38 @@ def test_canonical_text_parses_back_to_the_same_call() -> None:
 def test_every_spec_declares_what_it_observes() -> None:
     """`observes` is what a compiler dispatches on to pick an operand and to know whether a
     given driver (HTTP, Playwright) can serve the check at all — every check names one, and
-    the four values are the whole vocabulary a compiler needs to handle."""
+    the five values are the whole vocabulary a compiler needs to handle. `subject` is read
+    once, after the action; `subject-pair` only means anything as a before-and-after."""
     expected = {
         "http_status": "response",
         "conflict_on_stale": "response",
         "json_path": "body",
         "visible": "page",
-        "unchanged": "subject",
-        "keys_unchanged": "subject",
+        "unchanged": "subject-pair",
+        "keys_unchanged": "subject-pair",
         "count": "subject",
         "absent": "subject",
-        "created": "subject",
-        "removed": "subject",
-        "persists": "subject",
+        "created": "subject-pair",
+        "removed": "subject-pair",
+        "persists": "subject-pair",
         "emitted": "subject",
         "omits": "response",
         "exit_status": "subject",
     }
     assert {spec.name: spec.observes for spec in checks.CHECKS} == expected
-    assert {spec.observes for spec in checks.CHECKS} == {"response", "body", "page", "subject"}
+    assert {spec.observes for spec in checks.CHECKS} == {
+        "response", "body", "page", "subject", "subject-pair",
+    }
+
+
+def test_out_of_band_is_declared_independently_of_shape() -> None:
+    """`out_of_band` and `observes` vary independently: `emitted` is single-observation and
+    out-of-band, `persists` is paired-observation and out-of-band — a compiler reading both
+    fields off the spec never needs to know either check by name."""
+    out_of_band = {spec.name for spec in checks.CHECKS if spec.out_of_band}
+    assert out_of_band == {"emitted", "persists"}
+    assert checks.CHECK_BY_NAME["emitted"].observes == "subject"
+    assert checks.CHECK_BY_NAME["persists"].observes == "subject-pair"
 
 
 def test_every_spec_names_the_defect_it_excludes() -> None:

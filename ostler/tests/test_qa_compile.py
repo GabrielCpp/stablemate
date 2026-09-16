@@ -12,6 +12,8 @@ import ast
 import json
 from pathlib import Path
 
+import pytest
+
 from ostler.qa.compile import Gap, cmd_compile_plan, compile_plan, compile_plan_gaps
 
 
@@ -354,7 +356,9 @@ def test_no_route_at_all_is_an_uncompilable_claim() -> None:
     assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
 
 
-def test_a_subject_check_wanting_a_before_after_pair_is_an_uncompilable_claim() -> None:
+def test_a_subject_pair_check_wanting_a_snapshot_is_a_named_gap() -> None:
+    """`unchanged` wants a before and an after this compiler has no snapshot mechanism to
+    take — a named `needs-snapshot` gap, not the generic `uncompilable-claim`."""
     oid = "okf:docs/features/demo/globex.md#post-things:persistence:1"
     context = _context(
         _obligation(
@@ -367,7 +371,67 @@ def test_a_subject_check_wanting_a_before_after_pair_is_an_uncompilable_claim() 
         )
     )
     _source, gaps = compile_plan_gaps(context, story="demo-story")
-    assert "uncompilable-claim" in _gap_kinds(gaps, oid)
+    assert "needs-snapshot" in _gap_kinds(gaps, oid)
+
+
+@pytest.mark.parametrize("verb", ["created", "removed", "keys_unchanged"])
+def test_every_snapshot_needing_verb_gets_the_named_gap(verb: str) -> None:
+    oid = "okf:docs/features/demo/globex.md#post-things:persistence:1"
+    context = _context(
+        _obligation(
+            oid,
+            checksDeclared=[
+                {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}},
+                {"call": "the ledger", "name": verb, "args": {"subject": "thing.version"}},
+            ],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+        )
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert "needs-snapshot" in _gap_kinds(gaps, oid)
+
+
+@pytest.mark.parametrize("verb", ["persists", "emitted"])
+def test_every_out_of_band_verb_gets_the_named_gap(verb: str) -> None:
+    oid = "okf:docs/features/demo/globex.md#post-things:persistence:1"
+    args = {"subject": "thing.version"} if verb == "persists" else {"event": "thing.updated"}
+    context = _context(
+        _obligation(
+            oid,
+            checksDeclared=[
+                {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}},
+                {"call": "the ledger", "name": verb, "args": args},
+            ],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+        )
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert "needs-out-of-band-observation" in _gap_kinds(gaps, oid)
+
+
+@pytest.mark.parametrize("verb,args", [
+    ("count", {"subject": "pages", "equals": 2}),
+    ("absent", {"subject": "the deleted thing"}),
+    ("exit_status", {"code": 0}),
+])
+def test_every_single_observation_verb_compiles_for_real(verb: str, args: dict) -> None:
+    """`count`/`absent`/`exit_status` are read once, after the action, from what the scenario
+    already holds — they compile to a real `qa.verify(...)` call, not a gap."""
+    oid = "okf:docs/features/demo/globex.md#get-things:persistence:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["GET /api/things"]},
+            checksDeclared=[
+                {"call": "ok", "name": "http_status", "args": {"code": 200}},
+                {"call": "the outcome", "name": verb, "args": args},
+            ],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+        )
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == []
+    assert f'qa.verify("{verb}"' in source
 
 
 def test_checkpoints_and_forbid_scaffolding_never_appear_in_the_gap_report() -> None:

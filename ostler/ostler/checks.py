@@ -65,10 +65,13 @@ class CheckParam:
 
 #: What a check's compiled call is handed: `response` for the HTTP response object,
 #: `body` for a decoded document (`.json()`), `page` for a Playwright locator on the
-#: rendered screen, or `subject` for a named thing the book points at but does not say how
-#: to arrange — a record read before and after, a key inventory, an event log. A compiler
-#: dispatches on this to decide what operand a check's call takes and whether a given
-#: driver (HTTP, Playwright) can observe it at all, rather than guessing from the name.
+#: rendered screen, `subject` for a named thing read once, after the action (a count, an
+#: absence, a process's exit code), or `subject-pair` for a named thing that only means
+#: anything as a before-and-after — a record re-read, a key inventory diffed, a write
+#: checked for outliving the session that made it. A compiler dispatches on this to decide
+#: what operand a check's call takes, whether a given driver (HTTP, Playwright) can observe
+#: it at all, and — for the two subject shapes — what a plan that cannot yet arrange the
+#: observation is missing, rather than guessing from the name.
 Observation = str
 
 
@@ -81,6 +84,14 @@ class CheckSpec:
     excludes: str
     #: See `Observation` above.
     observes: Observation
+    #: Whether the observation comes through a channel the compile-time driver (HTTP,
+    #: Playwright) has no handle on — a subscriber's event log (`emitted`), a re-read that
+    #: must come from somewhere other than the session that wrote (`persists`) — as opposed
+    #: to a value already in scope from the response or tool result the action produced.
+    #: This is independent of `observes`: shape (single vs. before-and-after) and channel
+    #: (in-band vs. out-of-band) vary separately, which is why both are fields here rather
+    #: than one inferred from the other or from the check's name.
+    out_of_band: bool = False
     #: Arguments of which the call must carry at least one. `required` cannot say this: each
     #: of these is optional on its own, and it is the *choice* that is mandatory. Without it
     #: a check can be spelled so that nothing it observes can come out false — `json_path`
@@ -136,14 +147,14 @@ CHECKS: tuple[CheckSpec, ...] = (
         ),
         excludes="collateral damage outside the field under test — the defect a diff that "
                  "masks the whole object before comparing cannot see",
-        observes="subject",
+        observes="subject-pair",
     ),
     CheckSpec(
         name="keys_unchanged",
         params=(CheckParam("subject", "str", required=True),),
         excludes="a move implemented as a copy: every object compared individually matches, "
                  "and only the key inventory shows the old one is still there",
-        observes="subject",
+        observes="subject-pair",
     ),
     CheckSpec(
         name="count",
@@ -167,7 +178,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a thing that was already there reported as created — a presence check run "
                  "only afterwards passes identically on a no-op, so the absence before the "
                  "action is part of the observation rather than an assumption about it",
-        observes="subject",
+        observes="subject-pair",
     ),
     CheckSpec(
         name="removed",
@@ -175,7 +186,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a delete asserted only by absence afterwards, which passes identically when "
                  "the subject was never there — the presence before the action is what makes "
                  "the disappearance attributable to it",
-        observes="subject",
+        observes="subject-pair",
     ),
     CheckSpec(
         name="visible",
@@ -192,7 +203,8 @@ CHECKS: tuple[CheckSpec, ...] = (
         params=(CheckParam("subject", "str", required=True),),
         excludes="a write observed only through the same session that made it, which cannot "
                  "tell a commit from a cache",
-        observes="subject",
+        observes="subject-pair",
+        out_of_band=True,
     ),
     CheckSpec(
         name="emitted",
@@ -203,6 +215,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="an effect asserted at its source instead of at its subscriber, and an "
                  "at-most-once effect fired twice",
         observes="subject",
+        out_of_band=True,
     ),
     CheckSpec(
         name="omits",

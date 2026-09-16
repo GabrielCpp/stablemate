@@ -164,7 +164,17 @@ TEST_SUBJECT = "test-subject"
 #: and on a book mid-migration that is thousands of rows. Excluding them here, rather than in
 #: `_repair_items` itself, keeps the exclusion in the one place seeding already decides which
 #: findings are actionable — `_repair_items`'s own body stays about grouping, not eligibility.
-NON_ACTIONABLE_CODES = frozenset({"unstamped-citation", "unreachable-citation"})
+#: `needs-snapshot` and `needs-out-of-band-observation` are compile.py declining a check
+#: the book wrote correctly — a before/after pair or an out-of-band read the compiler has
+#: no mechanism to take. No repair fragment applies: the fix is not a book edit an agent
+#: turn can make, it is building the snapshot/out-of-band capability itself, which is
+#: deliberately out of scope for this drain.
+NON_ACTIONABLE_CODES = frozenset({
+    "unstamped-citation",
+    "unreachable-citation",
+    "needs-snapshot",
+    "needs-out-of-band-observation",
+})
 
 #: `stale-citation` is a turn's to repair, but never through this path: `coverage.py`'s
 #: `_regrounding` join already reads doctor's raw `stale-citation` findings and files them

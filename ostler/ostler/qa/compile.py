@@ -50,22 +50,38 @@ class Gap:
     kind: str
     detail: str
 
-#: What each check is handed is declared on the check itself (`CheckSpec.observes`, in
-#: `ostler.checks`), not guessed here from its name. `http_status` and `conflict_on_stale`
-#: read a response — status line, headers, problem body — so the compiled call takes the
-#: response object (`observes="response"`). `json_path` walks a decoded document
-#: (`"body"`), `visible` addresses the page (`"page"`). Everything else observes a subject
-#: (`"subject"`) the scenario must already be holding: a record read before *and* after, a
-#: key inventory, an event log. The book names that subject and not where it came from,
-#: which is exactly the arrangement it does not carry, so those compile to a marker rather
-#: than to a call whose operand would have to be invented — or, on a driver that cannot
-#: observe a subject at all (the Playwright page path), to an `uncompilable-claim` gap.
+#: What each check is handed is declared on the check itself (`CheckSpec.observes` and
+#: `.out_of_band`, in `ostler.checks`), not guessed here from its name — `_operand` below
+#: never compares against a literal check name. A `"response"` check reads the HTTP
+#: response — status line, headers, problem body; `"body"` walks a decoded document;
+#: `"page"` addresses the rendered screen. Of the rest, `.out_of_band` and `.observes` vary
+#: independently: `.out_of_band` (a subscriber's event log, a re-read that cannot come
+#: through the writing session) compiles to a `needs-out-of-band-observation` gap
+#: regardless of shape. Otherwise a `"subject"` check is read once, after the action, from
+#: what the scenario is already holding, so it compiles for real; a `"subject-pair"` check
+#: wants a before-and-after this compiler has no snapshot mechanism to take, so it compiles
+#: to a `needs-snapshot` gap. On a driver that cannot observe a subject at all (the
+#: Playwright page path), every subject-shaped check compiles to the generic
+#: `uncompilable-claim` gap instead — a page driver cannot serve any of them, so there is
+#: no more specific reason to give.
 
 
 def _observes(name: str | None) -> str | None:
     """What check *name* is handed to look at, or `None` for an unknown/missing check."""
     spec = CHECK_BY_NAME.get(name) if name else None
     return spec.observes if spec is not None else None
+
+
+def _out_of_band(name: str | None) -> bool:
+    """Whether *name* observes through a channel this compiler has no handle on.
+
+    See `CheckSpec.out_of_band`: declared per-check, not inferred here from the name or
+    from `observes` — shape and channel vary independently, so a check compiles for real,
+    `needs-snapshot`, or `needs-out-of-band-observation` by reading two fields off the spec
+    it was handed, never a literal check name.
+    """
+    spec = CHECK_BY_NAME.get(name) if name else None
+    return spec.out_of_band if spec is not None else False
 
 
 def _unobservable_gap(oid: str, name: str | None) -> Gap:
@@ -560,31 +576,53 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap]) -> list[s
                 if not _resolved(ref, produced_facts, produced_captures):
                     gaps.append(Gap(oid, "unresolved-precondition",
                                      f"a verify argument references {ref!r}, not resolvable without running the plan"))
-            operand, note = _operand(row["name"], name)
+            operand, note, kind = _operand(row["name"], name)
             if note:
                 lines.append(f"    # TODO(arrange): {note}")
-                gaps.append(Gap(oid, "uncompilable-claim", note))
+                gaps.append(Gap(oid, kind, note))
             lines.append(
                 f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, covers=[{_lit(oid)}])"
             )
     return lines
 
 
-def _operand(check: str, observed: str) -> tuple[str, str]:
-    """What the compiled call is handed, and the arrangement note it still needs."""
+def _operand(check: str, observed: str) -> tuple[str, str, str]:
+    """What the compiled call is handed, the arrangement note it still needs, and why.
+
+    The third element is the `Gap.kind` the note becomes — empty when there is no note,
+    because the check compiled for real. `page` cannot reach here (`_is_page_obligation`
+    routes any obligation carrying a page-observed row to `_compile_page_scenarios`
+    instead), and an unknown check has already been refused by `checks.parse_check` before
+    compile.py ever sees it — neither needs a branch for a case this function is never
+    actually called with.
+
+    Every branch below reads `CheckSpec.observes`/`.out_of_band` off the check it was
+    handed — no check name is compared here, because shape and channel are declared on
+    the spec, not on this function.
+    """
     observes = _observes(check)
     if observes == "response":
-        return observed, ""
+        return observed, "", ""
     if observes == "body":
-        return f"{observed}.json()", ""
-    # A subject check compares observations the book never says how to take — `persists`
-    # wants the record from before the process died and the one read after it came back.
-    # `page` cannot reach here (`_is_page_obligation` routes any obligation carrying a
-    # page-observed row to `_compile_page_scenarios` instead), and an unknown check has
-    # already been refused by `checks.parse_check` before compile.py ever sees it — both
-    # fall through to the same subject-shaped note rather than a third branch for cases
-    # this function is never actually called with.
-    return observed, f"`{check}` observes a subject, not a response — hand it the pair"
+        return f"{observed}.json()", "", ""
+    if _out_of_band(check):
+        return (
+            observed,
+            f"`{check}` observes a subject read through a channel this compiler has no "
+            "handle on — arrange it out of band",
+            "needs-out-of-band-observation",
+        )
+    if observes == "subject":
+        # Read once, after the action, from what the scenario already holds — no
+        # arrangement this compiler cannot already make.
+        return observed, "", ""
+    # The remaining `subject-pair` checks want a before-and-after this compiler has no
+    # snapshot mechanism to take.
+    return (
+        observed,
+        f"`{check}` observes a subject before and after the action — hand it the pair",
+        "needs-snapshot",
+    )
 
 
 def _compile_page_scenarios(
