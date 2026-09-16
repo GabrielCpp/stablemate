@@ -20,8 +20,8 @@ from litestar.testing import TestClient
 
 from groom import app as groom_app
 from groom import discovery, sidecar_hub, state, store
-from groom.models import AnswerResult, GateInfo, WorkflowContainer, WorkflowState
-from workhorse import inbox
+from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
+from workhorse import control, inbox
 
 
 @pytest.fixture(autouse=True)
@@ -528,6 +528,62 @@ def test_live_loop_survives_a_failing_tick():
         still_running = asyncio.run(drive())
 
     assert still_running and len(calls) > 1  # kept ticking past the first failure
+
+
+# ---- the control-socket fallback for producers that never emit gate context ----
+def test_backfill_wait_gate_fills_path_and_question_from_the_socket(tmp_path):
+    run = RunTelemetry(run_id="r", native=True, run_dir=str(tmp_path), wait_kind="operator")
+    reply = {"ok": True, "questions": [
+        {"path": "docs/a.md", "question": "Which backend?", "kind": "operator", "since": 1.0},
+    ]}
+    with patch.object(control, "send", return_value=reply) as send:
+        asyncio.run(groom_app._backfill_wait_gate(run))
+    assert run.wait_gate_path == "docs/a.md"
+    assert run.wait_gate_question == "Which backend?"
+    assert send.call_args.args[0] == str(tmp_path)
+
+
+def test_backfill_wait_gate_leaves_the_row_blocked_when_nothing_is_listening(tmp_path):
+    # No listener on the socket is not an error here — the row is still BLOCKED
+    # from wait_kind alone (per _row_state/_sync_native_row), just without a
+    # question until some later tick's producer starts a listener.
+    run = RunTelemetry(run_id="r", native=True, run_dir=str(tmp_path), wait_kind="operator")
+
+    def _boom(*args, **kwargs):
+        raise FileNotFoundError("no such socket")
+
+    with patch.object(control, "send", _boom):
+        asyncio.run(groom_app._backfill_wait_gate(run))
+    assert run.wait_gate_path == ""
+    assert run.wait_gate_question == ""
+
+
+def test_live_loop_backfills_incomplete_gates_before_syncing_rows(tmp_path):
+    _reset()
+    run_dir = tmp_path / "r"
+    run_dir.mkdir()
+    tel = RunTelemetry(run_id="r", native=True, run_dir=str(run_dir),
+                       workspace=str(run_dir), wait_kind="operator")
+    state.RUNS["r"] = tel
+    reply = {"ok": True, "questions": [
+        {"path": "docs/a.md", "question": "Which backend?", "kind": "operator", "since": 1.0},
+    ]}
+
+    async def drive():
+        state.add_client(asyncio.Queue())
+        task = asyncio.create_task(groom_app._live_loop())
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    with patch.object(groom_app, "LIVE_TICK_S", 0.01), \
+         patch.object(control, "send", return_value=reply):
+        asyncio.run(drive())
+
+    assert tel.wait_gate_path == "docs/a.md"
+    assert tel.wait_gate_question == "Which backend?"
+    assert state.WORKFLOWS["r"].state == WorkflowState.BLOCKED
 
 
 # ---- Files/Diff panels: container+repo picker and per-checkout reads ----

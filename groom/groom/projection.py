@@ -241,10 +241,16 @@ def gates_of(wf: WorkflowContainer) -> list[GateInfo]:
 
 
 def reported_gates(wf: WorkflowContainer, tel: RunTelemetry | None) -> list[GateInfo]:
-    """Pending gates from telemetry, or a sidecar snapshot for an older producer."""
+    """Pending gates from telemetry, or a sidecar snapshot for an older producer.
+
+    ``wait_kind`` alone says a gate exists — a producer running code older than
+    the gate-context telemetry emits ``wait_kind`` with no ``wait_gate_path``,
+    and the run is still genuinely blocked, just without a path/question yet
+    (the live loop backfills those over the control socket).
+    """
     if tel is None:
         return gates_of(wf)
-    if tel.terminal or tel.wait_kind not in ("operator", "machine") or not tel.wait_gate_path:
+    if tel.terminal or tel.wait_kind not in ("operator", "machine"):
         return []
     return [GateInfo(workflow_id=wf.container_id, file_path=tel.wait_gate_path,
                      question=tel.wait_gate_question, kind=tel.wait_kind)]
@@ -311,8 +317,10 @@ def _row_state(wf: WorkflowContainer, tel: RunTelemetry | None) -> str:
     The four cases, in order of precedence:
 
       * Terminal landed on the root span (``tel.terminal`` is non-empty) → FINISHED.
-      * Wait gauge is operator or machine *and* the run told us a gate path →
-        BLOCKED. This is the one row-state condition that maps onto a human action.
+      * Wait gauge is operator or machine → BLOCKED. This is the one row-state
+        condition that maps onto a human action. It does not additionally
+        require a gate path: a producer older than the gate-context telemetry
+        emits the wait kind with no path, and the run is still blocked.
       * No telemetry and the workflow container is FINISHED → FINISHED (the legacy
         greeting-snapshot case, while docker hasn't migrated to OTLP).
       * Otherwise → RUNNING.
@@ -323,7 +331,7 @@ def _row_state(wf: WorkflowContainer, tel: RunTelemetry | None) -> str:
     if tel is not None:
         if tel.terminal:
             return WorkflowState.FINISHED.value
-        if tel.wait_kind in ("operator", "machine") and tel.wait_gate_path:
+        if tel.wait_kind in ("operator", "machine"):
             return WorkflowState.BLOCKED.value
         return WorkflowState.RUNNING.value
     # Fallback only: a docker row whose hello has not (yet) emitted to telemetry

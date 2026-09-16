@@ -62,6 +62,25 @@ def test_native_run_becomes_a_row(tmp_path):
     assert wf.workspace_volume == str(tmp_path)
 
 
+def test_wait_kind_alone_blocks_even_without_a_gate_path(tmp_path):
+    # A producer running code older than the gate-context telemetry emits wait_kind
+    # with no gate_path/gate_question at all. The run is still genuinely blocked —
+    # requiring wait_gate_path here used to read that omission as "not blocked".
+    _reset()
+    run_dir = tmp_path / "coder-run"
+    run_dir.mkdir()
+    alerts.ingest_metrics([
+        _metric("R1", "workhorse.wait.active", 1, run_dir=str(run_dir),
+                workspace=str(tmp_path), **{"wait_kind": "operator"}),
+    ])
+    run = state.RUNS["R1"]
+    assert groom_app._sync_native_row(run) is True
+    wf = state.WORKFLOWS["R1"]
+    assert wf.state == WorkflowState.BLOCKED
+    assert list(wf.gates.values()) == [GateInfo(workflow_id="R1", file_path="", question="",
+                                                 kind="operator")]
+
+
 def test_containerized_run_is_not_materialized():
     _reset()
     # run_dir/workspace are container paths that don't exist on this host.

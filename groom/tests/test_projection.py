@@ -78,6 +78,20 @@ class _scanning:
         state.SCANNING = self.prev
 
 
+def test_wait_kind_alone_reports_blocked_with_no_gate_path():
+    # A producer running code older than the gate-context telemetry emits wait_kind
+    # with no gate_path/gate_question. The run is still genuinely blocked, just
+    # without a path/question until the live loop backfills them.
+    wf = _wf("r")
+    tel = _tel("r", wait_kind="operator")
+    assert projection._row_state(wf, tel) == "blocked"
+    gates = projection.reported_gates(wf, tel)
+    assert len(gates) == 1
+    assert gates[0].file_path == ""
+    assert gates[0].question == ""
+    assert gates[0].kind == "operator"
+
+
 # ---- the fleet is every instance, not just the gated ones ----
 def test_fleet_rows_include_every_instance():
     # A run with no open gate is still a run, and a run nobody is watching is

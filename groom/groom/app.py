@@ -240,7 +240,14 @@ def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None)
     # checkpoints, and we do not retain a held state across ingests — a reload
     # leaves the row on the previous session's last-known state until a new
     # telemetry point from the new session swaps it on the same tick.
-    if not run.terminal and run.wait_kind in ("operator", "machine") and run.wait_gate_path:
+    #
+    # wait_kind alone is enough to say a gate exists: a producer running code
+    # older than the gate-context telemetry can emit wait_kind with no path or
+    # question at all, and that run is still genuinely blocked. Requiring
+    # wait_gate_path here read that omission as "not blocked" instead. The
+    # live loop backfills path/question over the control socket when they're
+    # missing; until then the gate simply renders with an empty file_path.
+    if not run.terminal and run.wait_kind in ("operator", "machine"):
         gate = GateInfo(
             workflow_id=run.run_id,
             file_path=run.wait_gate_path,
@@ -1683,6 +1690,39 @@ async def _rules_loop() -> None:
             pass
 
 
+async def _backfill_wait_gate(run: RunTelemetry) -> None:
+    """Fetch the live question over the control socket when telemetry's copy of
+    gate_path/gate_question is missing.
+
+    A producer running code older than the gate-context telemetry emits
+    ``wait_kind`` but never ``gate_path``/``gate_question`` — the run is still
+    genuinely blocked, but the row has nothing to show or route an attendant
+    to until this fills it in. Native runs only, best-effort: a run with no
+    listener, or one whose nativeness hasn't been determined yet, is left for
+    the next tick.
+    """
+    if not run.native or not run.run_dir:
+        return
+    try:
+        reply = await asyncio.to_thread(
+            control.send, run.run_dir, control.Request(action=control.QUESTIONS)
+        )
+    except FileNotFoundError:
+        return
+    except control.ControlProtocolError as exc:
+        logger.warning("gate backfill: %s answered unreadably: %s", run.run_id, exc)
+        return
+    if not reply.get("ok"):
+        return
+    raw_questions = reply.get("questions")
+    questions = [q for q in raw_questions if isinstance(q, dict)] if isinstance(raw_questions, list) else []
+    if not questions:
+        return
+    question = questions[0]
+    run.wait_gate_path = str(question.get("path", ""))
+    run.wait_gate_question = str(question.get("question", ""))
+
+
 async def _live_loop() -> None:
     """Re-render the run list on a clock and push it to every open dashboard.
 
@@ -1714,7 +1754,15 @@ async def _live_loop() -> None:
             # clock. Re-project every native row here so a stopped run's state
             # stops claiming it is up, for the same reason the tick exists at all.
             died: list[alerts.Alert] = []
-            for run in list(state.RUNS.values()):
+            runs = list(state.RUNS.values())
+            incomplete = [
+                run
+                for run in runs
+                if run.wait_kind in ("operator", "machine") and not run.wait_gate_path
+            ]
+            if incomplete:
+                await asyncio.gather(*(_backfill_wait_gate(run) for run in incomplete))
+            for run in runs:
                 _sync_native_row(run, died)
             await _dispatch_alerts(died)
             await _broadcast_shell()
