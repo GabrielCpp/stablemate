@@ -1,6 +1,6 @@
 ---
 name: okf
-description: "The OKF UI-profile format and the craft of authoring it — the typed node graph under docs/features/** (screen/cli/server, component/command/endpoint, interaction/invocation, method/field, flow, concept, format, runbook/environment/step), the three content rules (the book not a changelog, spec-complete, spec not implementation), the scaffold→author→fmt→doctor loop, the bullet grammar, the check vocabulary behind `verify:` and the bar a check clears to be an observation at all. Load whenever you are writing or repairing anything under docs/features/ — a one-story merge after finishing a story, a bulk build of a whole service's surface graph, a prose-only feature doc, or a doctor finding."
+description: "The OKF UI-profile format and the craft of authoring it — the typed node graph under docs/features/** (screen/cli/server, component/command/endpoint, interaction/invocation, method/field, flow, concept, format, runbook/environment/step), the three content rules (the book not a changelog, spec-complete, spec not implementation), the scaffold→author→fmt→doctor loop, the bullet grammar, the check vocabulary behind `verify:` and the bar a check clears to be an observation at all. The bar it holds you to: a book true and complete enough that running it tests the product, and an agent holding only the book can operate the app and say why it behaves as it does. Load whenever you are writing or repairing anything under docs/features/ — a one-story merge after finishing a story, a bulk build of a whole service's surface graph, a prose-only feature doc, or a doctor finding."
 tags: [standards, docs]
 ---
 
@@ -19,6 +19,42 @@ it, and they share this page:
 
 The tool that reads and writes the graph — every command, the Python API, the planning graph of
 epics and stories that sits beside it — is [[ostler-cli]]. This page is the *format* it enforces.
+
+## What the book is for
+
+**The book is the product, described so completely and so truthfully that running the
+description tests the product — and so that an agent holding nothing but the book can
+operate the app and explain why it behaves as it does.**
+
+That is the bar every rule on this page serves, and the thing to fall back on when no rule
+covers the case in front of you. Four properties, all at once:
+
+- **True.** Every claim the book makes is one the product can be asked to demonstrate. The
+  book earns its accuracy by being **executed**, not by having been written carefully — so
+  write each claim in the form something could run against, never in the form that reads
+  best.
+- **Complete.** There is nothing the product does that the book does not describe. Every
+  screen, command and endpoint sits on a journey somebody can run; a capability no `flow`
+  exercises is a **missing flow**, not an exception to the rule.
+- **Sufficient.** Reaching a screen, driving a control, bringing the stack up, pointing at
+  an environment — all answered from the book. It replaces the source as the operational
+  reference for everything except *how* the thing is implemented.
+- **Intelligible.** The book carries the business meaning behind the behaviour — derived
+  from the code wherever no story states it yet — and that meaning is reachable from
+  whatever the reader is standing on. A `concept` nothing links to is either missing its
+  link or not worth keeping.
+
+**The bar, stated as a test.** Hand an agent three things and nothing else — the book,
+these skills, and a driver (Playwright, Maestro, a shell) — no source tree, no prior
+knowledge of the product. It should be able to bring the stack up and reach any screen,
+drive any journey the book documents end to end, say what any part of the product is for,
+and, when the app and the book disagree, report **which of the two is wrong**.
+
+None of that is checkable by `doctor`; comprehension has no lint. It is the standard the
+checkable rules approximate — which is why a doctor-clean book can still be below bar. The
+failure mode to watch for in your own writing is a node that **records what somebody
+observed** instead of **asserting what the product must do**: the first cannot be run
+against anything, and a book full of it drifts silently.
 
 ## The golden rule
 
