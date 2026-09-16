@@ -34,7 +34,7 @@ from workhorse_workflows.okf_builder.shared.checkpoint import (
 REPAIR_DIR = Path(okf_builder_pkg.__file__).parent / "main" / "prompts" / "repair"
 
 #: Codes whose finding names its own remedy well enough for the generic fragment —
-#: mechanical rewrites (`unknown-bullet`, `bad-heading-type`), structural repairs whose
+#: mechanical rewrites (`bad-heading-type`), structural repairs whose
 #: target is in the message (`dangling-link`, `missing-anchor`), and the grounded codes
 #: whose fragment-worthy sibling already carries the pattern (`ambiguous-locator` rides
 #: the `grounded` flag the same way `missing-placement`'s fragment describes). The two
@@ -71,7 +71,6 @@ DEFAULT_PROMPT_CODES = frozenset({
     "stale-defect",
     "undecodable-code-symbol",
     "unknown-book-fixture",
-    "unknown-bullet",
     "unknown-type",
     "unnamed-interactive",
     "unreachable-screen",

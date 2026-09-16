@@ -87,7 +87,7 @@ def test_the_frame_carries_the_item_through() -> None:
 
     assert "r1:docs/features/acme/concepts/refund.md#refund#weak-check" in rendered
     assert '"grounded": false' in rendered
-    assert "Never make a finding go away by removing what it was about." in rendered
+    assert "Never make a finding go away by removing the claim it was about." in rendered
 
 
 def test_every_check_signature_reaches_the_prompt() -> None:

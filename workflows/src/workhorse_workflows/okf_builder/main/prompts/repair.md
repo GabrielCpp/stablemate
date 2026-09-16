@@ -146,11 +146,17 @@ hiding it.
 
 ## The one rule every repair shares
 
-**Never make a finding go away by removing what it was about.** Deleting a `verify:`, dropping a
-`does:` clause, vaguing a bullet down until the rule stops applying, or removing a `code:`/link
-reference all clear the finding and leave the book saying less than it did. Doctor cannot tell that
-apart from a real repair — the count falls either way — which is why it is the one thing you are
-asked not to do. If a claim is genuinely wrong, say so in `doc_status` and leave it standing.
+**Never make a finding go away by removing the claim it was about.** Deleting a `verify:` that
+binds an obligation, dropping a `does:` clause, vaguing a bullet down until the rule stops
+applying, or removing a `code:`/link reference all clear the finding and leave the book saying
+less than it did. Doctor cannot tell that apart from a real repair — the count falls either way —
+which is why it is the one thing you are asked not to do. If a claim is genuinely wrong, say so in
+`doc_status` and leave it standing.
+
+This rule is about the *claim*, not the bullet's spelling. A bullet can be inert — written under a
+key its node type mints nothing from, so it carries no claim at all — and removing an inert bullet
+removes nothing the book was asserting. `unknown-bullet` is exactly that case; its own fragment
+below says what to do instead of deleting on sight.
 
 Three ways that rule gets broken while looking like a repair, all seen in a real run:
 
