@@ -14,7 +14,17 @@ from pathlib import Path
 
 import pytest
 
-from ostler.qa.compile import Gap, cmd_compile_plan, compile_plan, compile_plan_gaps
+from ostler.qa.compile import (
+    Gap,
+    DriverSpec,
+    MAESTRO,
+    PLAYWRIGHT,
+    PYTHON,
+    _unobservable_gap,
+    cmd_compile_plan,
+    compile_plan,
+    compile_plan_gaps,
+)
 
 
 def _obligation(oid: str, **extra: object) -> dict:
@@ -845,7 +855,54 @@ def test_a_subject_only_verb_on_a_page_obligation_is_a_gap_not_a_silent_drop() -
     assert "uncompilable-claim" in kinds
     [gap] = [g for g in gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
     assert "unchanged" in gap.detail
-    assert "not observable from a Playwright driver" in gap.detail
+    assert "not observable from the playwright driver" in gap.detail
+
+
+def test_a_body_observing_verb_on_a_page_obligation_names_driver_and_channel_differently() -> None:
+    """`json_path` observes a `body` — a channel Playwright *can* see
+    (`page.expect_response`), unlike `unchanged`'s `subject`. The gap message must say so:
+    it names the driver and the channel, and distinguishes "this driver cannot see it" from
+    "this driver could, but this compiler has no page-scenario arrangement for it yet"."""
+    node = f"{_SCREEN}#policy-table"
+    oid = "okf:policy-list:policy-table:visible:1"
+    context = _navigation_context(
+        _page_obligation(oid, node,
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file"),
+                                  {"call": "the status field", "name": "json_path",
+                                   "args": {"path": "$.status", "equals": "active"}}]),
+        navigation=_arrival_navigation(),
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    [gap] = [g for g in gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
+    assert "json_path" in gap.detail
+    assert "a body" in gap.detail
+    assert "playwright driver can see" in gap.detail
+    assert "no page-scenario arrangement" in gap.detail
+
+
+def test_a_driver_with_no_declared_channels_gaps_every_claim_and_crashes_on_none() -> None:
+    """Acceptance criterion 3: a driver declaring no capability at all must turn every
+    claim shape routed through `_unobservable_gap` into a gap — never an exception, and
+    never a silently compiled (falsely passing) assertion."""
+    empty = DriverSpec("empty", frozenset())
+    for observes_shape in ("response", "body", "page", "subject", "subject-pair", None):
+        name = {
+            "response": "http_status", "body": "json_path", "page": "visible",
+            "subject": "count", "subject-pair": "unchanged", None: "not_a_real_check",
+        }[observes_shape]
+        gap = _unobservable_gap("okf:some:obligation:1", name, empty)
+        assert gap.kind == "uncompilable-claim"
+        assert "empty driver" in gap.detail
+
+
+def test_playwright_and_maestro_declare_disjoint_but_overlapping_capabilities() -> None:
+    """Maestro is nameable from the compiler via its own capability declaration — it
+    declares `page` and `subject`, not the HTTP channels Playwright can see, and not the
+    same page/HTTP mix Playwright declares either."""
+    assert PLAYWRIGHT.observes == frozenset({"page", "response", "body"})
+    assert MAESTRO.observes == frozenset({"page", "subject"})
+    assert PYTHON.observes == frozenset({"response", "body", "subject"})
 
 
 def test_a_reachable_screen_with_no_declared_preconditions_is_undeclared_not_silent() -> None:

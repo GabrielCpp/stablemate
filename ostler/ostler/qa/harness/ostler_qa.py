@@ -108,12 +108,33 @@ _CAPTURE_REF = re.compile(r"(?<![\w.])\$([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 
 #: See `ostler.qa.plan.MECHANISMS` for why `synthetic` is not here.
 MECHANISMS = ("live", "fixture")
-DRIVERS = ("python", "playwright", "maestro")
+
+
+@dataclass(frozen=True)
+class DriverSpec:
+    """A driver's declared observation channels — a capability, not a bare name.
+
+    Duplicated in `ostler.qa.compile`, which this file cannot import: this harness is
+    stdlib-only and runs under the *target project's* interpreter, where `ostler` is not
+    installed (see `DEFAULT_VIEWPORT` in `ostler.qa.drivers` for the same pattern). The two
+    declarations have to agree by hand.
+    """
+    name: str
+    observes: frozenset[str]
+
+
+DRIVERS = (
+    DriverSpec("python", frozenset({"response", "body", "subject"})),
+    DriverSpec("playwright", frozenset({"page", "response", "body"})),
+    DriverSpec("maestro", frozenset({"page", "subject"})),
+)
+DRIVER_NAMES = tuple(driver.name for driver in DRIVERS)
 
 #: The drivers that drive a user interface, and so the ones whose scenarios must vet. There
 #: is no exemption list on purpose: the single defect that motivated this passed a run whose
 #: every assertion was true, and an opt-out would have been taken by exactly that plan.
-UI_DRIVERS = ("playwright", "maestro")
+UI_DRIVERS = tuple(driver for driver in DRIVERS if driver.name in ("playwright", "maestro"))
+UI_DRIVER_NAMES = tuple(driver.name for driver in UI_DRIVERS)
 
 #: Stamped into the layout digest a *device* screenshot writes, so a reader can tell which
 #: source measured it: a phone has no laid-out document to overflow, and reporting the
@@ -290,8 +311,8 @@ def target(
     recording: dict[str, Any] | None = None,
     permissions: Sequence[str] | None = None,
 ) -> Target:
-    if driver not in DRIVERS:
-        raise ValueError(f"target {name!r} has unknown driver {driver!r}; one of {DRIVERS}")
+    if driver not in DRIVER_NAMES:
+        raise ValueError(f"target {name!r} has unknown driver {driver!r}; one of {DRIVER_NAMES}")
     if name in REGISTRY.targets:
         raise ValueError(f"duplicate target {name!r}")
     declared = Target(
@@ -3059,7 +3080,7 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
     # renders as a sliver against one margin. `validate` refuses a plan whose UI scenario
     # never vets; this is the half a plan cannot lie its way past, since it counts the calls
     # that actually ran.
-    if status == "passed" and target_decl.driver in UI_DRIVERS and qa.vets == 0:
+    if status == "passed" and target_decl.driver in UI_DRIVER_NAMES and qa.vets == 0:
         status = "failed"
         error = (
             f"scenario {declared.id!r} runs against a {target_decl.driver} target and vetted "

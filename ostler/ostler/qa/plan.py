@@ -27,8 +27,8 @@ from ostler.vet import placement
 #: the harness rejects at import, so the check below never once fired on it.
 _plan_harness = load_harness_module("ostler_qa")
 COMPUTED: str = _plan_harness.COMPUTED
-DRIVERS: frozenset[str] = frozenset(_plan_harness.DRIVERS)
-UI_DRIVERS: tuple[str, ...] = tuple(_plan_harness.UI_DRIVERS)
+DRIVERS: frozenset[str] = frozenset(_plan_harness.DRIVER_NAMES)
+UI_DRIVERS: tuple[str, ...] = tuple(_plan_harness.UI_DRIVER_NAMES)
 
 #: What a `qa-plan.yml` gets told now. The YAML plan's content was a shell heredoc, and every
 #: silent-failure mode it had — a field lookup reading a missing key as an empty stream, an

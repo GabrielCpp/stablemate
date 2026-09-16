@@ -60,10 +60,47 @@ class Gap:
 #: regardless of shape. Otherwise a `"subject"` check is read once, after the action, from
 #: what the scenario is already holding, so it compiles for real; a `"subject-pair"` check
 #: wants a before-and-after this compiler has no snapshot mechanism to take, so it compiles
-#: to a `needs-snapshot` gap. On a driver that cannot observe a subject at all (the
-#: Playwright page path), every subject-shaped check compiles to the generic
-#: `uncompilable-claim` gap instead — a page driver cannot serve any of them, so there is
-#: no more specific reason to give.
+#: to a `needs-snapshot` gap.
+#:
+#: Observability is a relation between what a claim needs and what a driver can supply — a
+#: property of neither one alone. A claim declares its channel (`CheckSpec.observes`); a
+#: driver declares which channels it can supply (`DriverSpec.observes` below); a gap fires
+#: only when the *relation* is empty for the driver actually chosen. Playwright, for
+#: instance, can see `"response"` and `"body"` too (`page.expect_response`), so a
+#: `"response"`-observed check reaching the page path is not inherently unobservable the way
+#: a `"subject"` one is — this compiler simply has no page-scenario arrangement for it yet.
+#: `_unobservable_gap` tells those two cases apart and names both the driver and the missing
+#: channel, rather than asserting a blanket "not observable from a Playwright driver" that
+#: was only ever true back when Playwright was assumed to see nothing but the page.
+
+
+@dataclass(frozen=True)
+class DriverSpec:
+    """A driver's declared observation channels — the other half of the observability relation.
+
+    Duplicated in `ostler.qa.harness.ostler_qa`, which cannot import from here: that harness
+    is stdlib-only and runs under the *target project's* interpreter, where `ostler` is not
+    installed (see `ostler.qa.drivers.DEFAULT_VIEWPORT` for the same pattern). The two
+    declarations have to agree by hand.
+    """
+    name: str
+    observes: frozenset[str]
+
+
+#: The python driver drives HTTP calls directly: it can read the response line/headers, a
+#: decoded body, and a subject already held by the scenario. It cannot hold a rendered page.
+PYTHON = DriverSpec("python", frozenset({"response", "body", "subject"}))
+
+#: The Playwright driver renders a real page and can also observe the response/body of any
+#: navigation or fetch it drives (`page.expect_response`) — but it never holds a bare
+#: in-process "subject" value the way the python driver does.
+PLAYWRIGHT = DriverSpec("playwright", frozenset({"page", "response", "body"}))
+
+#: Maestro drives a mobile UI: it can see the rendered screen and read back a subject value
+#: from it, but has no notion of an HTTP response or body. Named here so the compiler can
+#: refer to it; it has no compile path of its own yet (see `ostler.qa.harness.ostler_qa` for
+#: its runtime).
+MAESTRO = DriverSpec("maestro", frozenset({"page", "subject"}))
 
 
 def _observes(name: str | None) -> str | None:
@@ -84,12 +121,24 @@ def _out_of_band(name: str | None) -> bool:
     return spec.out_of_band if spec is not None else False
 
 
-def _unobservable_gap(oid: str, name: str | None) -> Gap:
-    """A page scenario cannot serve *name* — a real gap, not a silently dropped row."""
+def _unobservable_gap(oid: str, name: str | None, driver: DriverSpec) -> Gap:
+    """*driver* cannot serve *name* — a real gap, not a silently dropped row.
+
+    Two distinct reasons collapse to the same gap kind but get different wording: the
+    channel may be one *driver* genuinely has no way to supply (the relation is empty), or
+    it may be one the driver can supply in principle but this compiler has no page-scenario
+    arrangement for yet (true today of `"response"`/`"body"` under Playwright). Either way
+    the message names both the driver and the missing channel, so a reader is never left
+    needing to already know which driver was picked.
+    """
     observes = _observes(name)
     what = f"a {observes}" if observes else "an unknown check"
+    if observes is not None and observes in driver.observes:
+        return Gap(oid, "uncompilable-claim",
+                    f"`{name}` observes {what}, which the {driver.name} driver can see, but "
+                    f"this compiler has no page-scenario arrangement for it yet")
     return Gap(oid, "uncompilable-claim",
-               f"`{name}` observes {what}, not a page — not observable from a Playwright driver")
+               f"`{name}` observes {what}, not observable from the {driver.name} driver")
 
 
 _ROUTE = re.compile(r"^\s*`?\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(\S+?)\s*`?\s*$", re.I)
@@ -355,7 +404,7 @@ def compile_plan_gaps(
         "",
         f"plan(run_id={_lit(run_id or f'qa-{story}')}, story={_lit(story)})",
         "",
-        f'api = target("api", driver="python", base_url={_lit(base_url)})',
+        f'api = target("api", driver={_lit(PYTHON.name)}, base_url={_lit(base_url)})',
         "",
     ]
 
@@ -756,7 +805,7 @@ def _compile_page_scenarios(
         # Minor correction: a `web` target with nothing compiled under it is an unused fixture
         # in the plan — emit it only when at least one scenario actually landed.
         return []
-    return ["", "", 'web = target("web", driver="playwright", base_url=' + _lit(base_url) + ")",
+    return ["", "", 'web = target("web", driver=' + _lit(PLAYWRIGHT.name) + ", base_url=" + _lit(base_url) + ")",
             *scenario_lines]
 
 
@@ -846,7 +895,7 @@ def _arrival_scenario(
             operand = _assertion_operand(obligation.get("locators", {}), obligation["id"], gaps)
             for row in obligation.get("checksDeclared", []):
                 if _observes(row.get("name")) != "page":
-                    gaps.append(_unobservable_gap(obligation["id"], row.get("name")))
+                    gaps.append(_unobservable_gap(obligation["id"], row.get("name"), PLAYWRIGHT))
                     continue
                 if operand is None:
                     lines.append(f"    # TODO(arrange): no addressable subject for "
@@ -935,7 +984,7 @@ def _interaction_scenario(
         operand = _assertion_operand(obligation.get("locators", {}), obligation["id"], gaps)
         for row in obligation.get("checksDeclared", []):
             if _observes(row.get("name")) != "page":
-                gaps.append(_unobservable_gap(obligation["id"], row.get("name")))
+                gaps.append(_unobservable_gap(obligation["id"], row.get("name"), PLAYWRIGHT))
                 continue
             if operand is None:
                 lines.append(f"    # TODO(arrange): no addressable subject for {obligation['id']}")
