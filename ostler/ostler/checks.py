@@ -217,7 +217,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "other check in this vocabulary passes over, because they all assert what "
                  "the subject does hold and a book's clause about what it may *not* hold has "
                  "no positive form",
-        observes="subject",
+        observes="response",
     ),
     CheckSpec(
         name="exit_status",

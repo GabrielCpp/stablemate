@@ -102,7 +102,7 @@ def test_every_spec_declares_what_it_observes() -> None:
         "removed": "subject",
         "persists": "subject",
         "emitted": "subject",
-        "omits": "subject",
+        "omits": "response",
         "exit_status": "subject",
     }
     assert {spec.name: spec.observes for spec in checks.CHECKS} == expected
