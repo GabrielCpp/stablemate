@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from ostler import checks
 from ostler.qa.compile import (
     Gap,
     DriverSpec,
@@ -1154,9 +1155,10 @@ def _located(locator: str, node: str, locators: dict) -> dict:
 def test_a_check_is_pointed_at_the_component_its_locator_names() -> None:
     """The claim is the form's; the thing that shows the refusal is a span declared beside it.
 
-    Before `locates`, the operand came from the obligation's *own* node and the `locator=`
-    argument rode through as a keyword — so the assertion looked at the form and handed the
-    harness an anchor to resolve a second way. It is one reference, resolved once, in the book.
+    Before `locates`, the operand came from the obligation's *own* node — so the assertion
+    looked at the form rather than at the span the check names. The `locator=` argument still
+    rides along: resolving a reference into an operand does not repeat the claim, and the
+    claim is what `ostler qa validate` matches against the `verify:` bullet.
     """
     oid = "okf:new-policy:submit:does:1"
     error_span = f"{_SCREEN}#name-error"
@@ -1172,8 +1174,9 @@ def test_a_check_is_pointed_at_the_component_its_locator_names() -> None:
     ast.parse(source)
     assert "#name-error" in source
     assert 'name="New policy"' not in source
-    # The anchor is spent building the operand, not passed on to be resolved again at run time.
-    assert 'locator="#name-error"' not in source
+    # The declared argument still stands beside the operand: it is the claim's own statement
+    # of its subject, and `visible` marks `locator` required.
+    assert 'locator="#name-error"' in source
     assert _gap_kinds(gaps, oid) == []
 
 
@@ -1267,7 +1270,58 @@ def test_an_interactions_check_is_pointed_at_the_component_it_names() -> None:
     interactions = [s for s in source.split("@scenario(")[1:] if "submit_new_policy(" in s]
     assert len(interactions) == 1
     assert 'qa.by_role("table", name="Policies on file")' in interactions[0]
-    assert 'locator="#policy-table"' not in interactions[0]
+    assert 'locator="#policy-table"' in interactions[0]
     # The claim is observed; the trigger is still a scaffold click, and that gap is unrelated.
     assert _gap_kinds(gaps, interaction_oid) == ["unresolved-precondition"]
     assert interaction_oid in _covers(source)
+
+
+def _verify_calls(source: str) -> list[tuple[str, dict]]:
+    """Every `qa.verify(name, operand, **args)` the plan emits, as `checks.bind` reads it."""
+    calls: list[tuple[str, dict]] = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr != "verify" or not node.args:
+            continue
+        name = node.args[0]
+        if not isinstance(name, ast.Constant) or not isinstance(name.value, str):
+            continue
+        args = {}
+        for keyword in node.keywords:
+            if keyword.arg is None or keyword.arg == "covers":
+                continue
+            try:
+                args[keyword.arg] = ast.literal_eval(keyword.value)
+            except ValueError:
+                args[keyword.arg] = "<computed>"
+        calls.append((name.value, args))
+    return calls
+
+
+def test_every_emitted_assertion_is_legal_against_the_checks_own_signature() -> None:
+    """A compiled call the check vocabulary refuses is a plan `ostler qa validate` rejects.
+
+    The regression this pins was legal Python and illegal in the artifact: the compiler had
+    resolved `locator=` into an operand and then dropped the argument, so every emitted
+    `visible` call was missing a parameter its own `CheckSpec` marks required — and the
+    declared-versus-invoked matcher, which compares the book's call to the plan's, could no
+    longer see that the plan had made the observation at all. Neither the suite nor the
+    interpreter noticed; only a real run of `qa validate` did.
+    """
+    oid = "okf:new-policy:submit:does:1"
+    context = _navigation_context(
+        _page_obligation(
+            oid, f"{_SCREEN}#new-policy-form",
+            locators={"role": ["form"], "name": ["New policy"]},
+            checks=[_located("#name-error", f"{_SCREEN}#name-error",
+                             {"selector": ["`#name-error`"]})],
+        ),
+        navigation=_arrival_navigation(),
+    )
+    source, _ = compile_plan_gaps(context, story="demo-story")
+    emitted = _verify_calls(source)
+    assert emitted
+    for name, args in emitted:
+        bound = checks.bind(name, args)
+        assert not isinstance(bound, str), f"qa.verify({name!r}, ...) is illegal: {bound}"

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -202,13 +201,16 @@ def _lit(value: Any) -> str:
     return json.dumps(value)
 
 
-def _kwargs(args: dict[str, Any], *, omit: Iterable[str] = ()) -> str:
-    """Render check arguments, wrapping only the literals a reference was found in.
+def _kwargs(args: dict[str, Any]) -> str:
+    """Render a check's declared arguments verbatim, wrapping only literals holding a reference.
 
-    *omit* drops the arguments already spent building the call's operand — a `locator=` naming
-    a component is a *reference into the book*, resolved at compile time into the expression
-    the driver is pointed at, and passing the anchor through as well would hand the harness a
-    string it would have to resolve a second way, against the running app rather than the book.
+    Every declared argument is rendered, including one the operand was built from. A check call
+    states two things, read by two different readers: the operand is what the scenario went and
+    got, which `VERIFIERS` collapses to a verdict, and the arguments are the claim's own
+    statement of what it is about, which `ostler qa validate` matches against the `verify:`
+    bullet and which the evidence record carries as the expectation. The claim is not derivable
+    from the observation, so resolving `locator=` into an expression does not repeat it — and
+    dropping it emits a call the check's own signature refuses, since `locator` is `required`.
 
     `qa.resolve(...)` is the harness's one explicit substitution entry point (Fix 2) — a
     literal with no `@node.key`/`$name` embedded in it stays a plain literal, since wrapping
@@ -216,10 +218,7 @@ def _kwargs(args: dict[str, Any], *, omit: Iterable[str] = ()) -> str:
     reference it will never contain.
     """
     parts = []
-    omitted = set(omit)
     for name, value in args.items():
-        if name in omitted:
-            continue
         if isinstance(value, str) and references.find_references(value):
             parts.append(f", {name}=qa.resolve({_lit(value)})")
         else:
@@ -942,8 +941,8 @@ def _assertion_operand(locators: dict[str, list[str]], oid: str, gaps: list[Gap]
 
 def _check_operand(
     row: dict[str, Any], obligation: dict[str, Any], gaps: list[Gap]
-) -> tuple[str | None, list[str]]:
-    """Where the driver is pointed for one `verify:` row, and the arguments that were spent.
+) -> str | None:
+    """Where the driver is pointed for one `verify:` row.
 
     A check that names its own subject — `visible(locator="#name-error")` — is about *that*
     component, which is not in general the node the obligation was minted on: a refusal claim
@@ -954,7 +953,7 @@ def _check_operand(
     """
     located = row.get("locates") or {}
     if not located:
-        return _assertion_operand(obligation.get("locators", {}), obligation["id"], gaps), []
+        return _assertion_operand(obligation.get("locators", {}), obligation["id"], gaps)
     param = sorted(located)[0]
     target = located[param]
     node_id = str(target.get("node", ""))
@@ -964,15 +963,15 @@ def _check_operand(
             f"`{row.get('name')}` points `{param}=` at "
             f"`{row.get('args', {}).get(param)}`, which names no component or interaction this "
             f"book declares — there is nothing to point a driver at, so nothing is emitted"))
-        return None, []
+        return None
     expr = _page_locator_expr(target.get("locators", {}))
     if expr is None:
         gaps.append(Gap(
             obligation["id"], "uncompilable-claim",
             f"`{node_id}` is what `{param}=` names, and it declares no role/name pair and no "
             f"selector — so the book says what to look at and not how to address it"))
-        return None, []
-    return expr, [param]
+        return None
+    return expr
 
 
 def _arrival_scenario(
@@ -998,14 +997,14 @@ def _arrival_scenario(
                 if _observes(row.get("name")) != "page":
                     gaps.append(_unobservable_gap(obligation["id"], row.get("name"), PLAYWRIGHT))
                     continue
-                operand, spent = _check_operand(row, obligation, gaps)
+                operand = _check_operand(row, obligation, gaps)
                 if operand is None:
                     assertions.append(f"    # TODO(arrange): no addressable subject for "
                                        f"{obligation['id']}")
                     continue
                 assertions.append(
                     f"    qa.verify({_lit(row['name'])}, {operand}"
-                    f"{_kwargs(row.get('args', {}), omit=spent)}, "
+                    f"{_kwargs(row.get('args', {}))}, "
                     f"covers=[{_lit(obligation['id'])}])"
                 )
                 scenario_covered.add(str(obligation["id"]))
@@ -1104,13 +1103,13 @@ def _interaction_scenario(
             # component each check names — the refusal by an error span, the acceptance by the
             # table on the next screen — and the interaction's own locator is only the fallback
             # for a check that named nothing.
-            operand, spent = _check_operand(row, obligation, gaps)
+            operand = _check_operand(row, obligation, gaps)
             if operand is None:
                 assertions.append(f"    # TODO(arrange): no addressable subject for {obligation['id']}")
                 continue
             assertions.append(
                 f"    qa.verify({_lit(row['name'])}, {operand}"
-                f"{_kwargs(row.get('args', {}), omit=spent)}, "
+                f"{_kwargs(row.get('args', {}))}, "
                 f"covers=[{_lit(obligation['id'])}])"
             )
             scenario_covered.add(str(obligation["id"]))
