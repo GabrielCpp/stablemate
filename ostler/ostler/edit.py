@@ -65,12 +65,13 @@ class EditPlan:
             c.path.write_text(c.new, encoding="utf-8")
         for src, dst in self.moves:
             if src.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
                 src.rename(dst)
 
 
 def _doc_files(graph: Graph) -> list[Path]:
     files: list[Path] = []
-    for key in ("epics", "specs"):
+    for key in ("epics", "specs", "features"):
         root = graph.doc_roots[key]
         if root.is_dir():
             files.extend(p for p in root.rglob("*")
@@ -113,6 +114,117 @@ def rename(graph: Graph, old_slug: str, new_slug: str) -> EditPlan:
     if not changes and not moves:
         return EditPlan([], [], error=f"slug '{old_slug}' not found")
     return EditPlan(changes, moves)
+
+
+def _href_style_and_target(root: Path, href: str, origin: Path) -> tuple[str, str, str]:
+    """Classify *href* (cited from *origin*) the same way ``Graph.resolve_doc_ref`` does.
+
+    Returns ``(style, target_id, anchor)`` where ``style`` is ``"rooted"`` (leading ``/``),
+    ``"relative"`` (resolves against *origin*'s directory), or ``"bare"`` (a repo-relative
+    path used verbatim) — the three forms ``resolve_doc_ref`` accepts. ``target_id`` is the
+    repo-relative path (no anchor) the href currently names.
+    """
+    raw = href.split("?", 1)[0]
+    path_part, _, anchor = raw.partition("#")
+    if path_part.startswith("/"):
+        return "rooted", path_part.lstrip("/"), anchor
+    try:
+        rel_candidate = (origin.parent / path_part).resolve().relative_to(root).as_posix()
+    except ValueError:
+        rel_candidate = None
+    if rel_candidate is not None and (root / rel_candidate).is_file():
+        return "relative", rel_candidate, anchor
+    return "bare", path_part, anchor
+
+
+def migrate_context(graph: Graph, node_type: str, service: str) -> EditPlan:
+    """Move every ``node_type`` file for *service* into its registry ``context`` folder.
+
+    Compares each matching node's current path against where the registry says it belongs
+    today (``docs/features/<service>/<context>/<name>.md``) and, for anything not already
+    there, plans the physical move plus every link rewrite the move requires: inbound links
+    from other nodes that cited the old path, and outbound relative links from the moved
+    file itself (its directory changed, so a same-directory link to an unmoved sibling needs
+    an extra ``../``). Both directions reuse the exact relative/rooted/bare classification
+    ``Graph.resolve_doc_ref`` uses, so a link's original style is preserved.
+    """
+    from ostler.registry import UI_TYPES_BY_NAME
+
+    uitype = UI_TYPES_BY_NAME.get(node_type)
+    if uitype is None:
+        return EditPlan([], [], error=f"no UI node type named {node_type!r}")
+
+    root = graph.root.resolve()
+    features_root = graph.doc_roots["features"]
+    service_root = (features_root / service).resolve()
+    if not service_root.is_dir():
+        return EditPlan([], [], error=f"no service directory {service_root.as_posix()}")
+    expected_dir = (service_root / uitype.context) if uitype.context else service_root
+
+    moves_map: dict[Path, Path] = {}
+    for node in graph.ui_nodes_of_type(node_type):
+        if node.kind != "file":
+            continue
+        node_path = node.path.resolve()
+        try:
+            node_path.relative_to(service_root)
+        except ValueError:
+            continue
+        if node_path.parent == expected_dir:
+            continue
+        moves_map[node_path] = expected_dir / node_path.name
+
+    if not moves_map:
+        return EditPlan([], [], error=f"no {node_type} files to move for service '{service}'")
+
+    def repo_rel(p: Path) -> str:
+        return p.relative_to(root).as_posix()
+
+    old_to_new_id = {repo_rel(old): repo_rel(new) for old, new in moves_map.items()}
+
+    texts: dict[Path, str] = {}
+
+    def current_text(path: Path) -> str:
+        if path not in texts:
+            texts[path] = path.read_text(encoding="utf-8")
+        return texts[path]
+
+    for node in graph.ui_nodes:
+        if not node.links:
+            continue
+        citing_old = node.path.resolve()
+        citing_new = moves_map.get(citing_old, citing_old)
+        text = current_text(citing_old)
+        for _text, href in node.links:
+            style, target_id, anchor = _href_style_and_target(root, href, citing_old)
+            new_target_id = old_to_new_id.get(target_id, target_id)
+            if new_target_id == target_id and citing_new == citing_old:
+                continue
+            if style == "rooted":
+                new_href = "/" + new_target_id
+            elif style == "relative":
+                new_href = (root / new_target_id).relative_to(
+                    citing_new.parent, walk_up=True).as_posix()
+            else:
+                new_href = new_target_id
+            if anchor:
+                new_href = f"{new_href}#{anchor}"
+            if new_href == href:
+                continue
+            old_link = f"]({href})"
+            new_link = f"]({new_href})"
+            if old_link in text:
+                text = text.replace(old_link, new_link)
+        texts[citing_old] = text
+
+    file_changes = []
+    for path, new_text in texts.items():
+        old_text = path.read_text(encoding="utf-8")
+        if new_text != old_text:
+            file_changes.append(FileChange(path, old_text, new_text))
+
+    moves = sorted(moves_map.items())
+    return EditPlan(file_changes, moves)
 
 
 # ---------------------------------------------------------------------------

@@ -40,6 +40,12 @@ def test_fixture_node_type_is_registered_as_a_fixtures_file() -> None:
     assert provides.nested is True and provides.link is False
 
 
+def test_format_node_type_lives_in_a_formats_context_folder() -> None:
+    uitype = registry.UI_TYPES_BY_NAME["format"]
+    assert uitype.kind == "file"
+    assert uitype.context == "formats"
+
+
 def test_capture_is_declared_on_exactly_the_seven_fixture_and_verify_types() -> None:
     for node_type in CAPTURE_NODE_TYPES:
         assert "capture" in registry.capture_keys(node_type), node_type

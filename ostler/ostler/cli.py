@@ -536,6 +536,14 @@ def _build_parser() -> argparse.ArgumentParser:
     rn = esub.add_parser("rename", parents=[write_parent])
     rn.add_argument("old_slug")
     rn.add_argument("new_slug")
+    mc = esub.add_parser(
+        "migrate-context",
+        parents=[write_parent],
+        help="move a UI-profile node type's files for a service into its registry "
+        "context folder, rewriting every link the move touches",
+    )
+    mc.add_argument("node_type")
+    mc.add_argument("service")
     sr = esub.add_parser(
         "settle-review",
         parents=[write_parent],
@@ -1479,6 +1487,8 @@ def _cmd_edit(graph, args) -> int:
         plan = edit.relink(graph, args.old_path, args.new_path)
     elif args.op == "settle-review":
         plan = edit.settle_review(graph, args.slug)
+    elif args.op == "migrate-context":
+        plan = edit.migrate_context(graph, args.node_type, args.service)
     else:
         plan = edit.rename(graph, args.old_slug, args.new_slug)
     _out(plan.render())
