@@ -141,9 +141,14 @@ def test_a_check_needing_a_subject_the_book_never_gave_compiles_to_a_marker() ->
             ],
         )
     )
-    source = compile_plan(context, story="demo-story")
+    source, gaps = compile_plan_gaps(context, story="demo-story")
     ast.parse(source)
-    assert "TODO(arrange)" in source
+    # Nothing invented, and nothing half-claimed either: the sibling `http_status` row compiles,
+    # but the two bullets are one claim, so the obligation withdraws whole and stands as its gap.
+    oid = "okf:docs/features/demo/api.md#post-things:persistence:1"
+    assert "needs-snapshot" in _gap_kinds(gaps, oid)
+    assert oid not in _covers(source)
+    assert "qa.verify(" not in source
 
 
 def test_the_command_writes_the_plan_and_reports_the_debt(tmp_path: Path) -> None:

@@ -33,6 +33,19 @@ from ostler.qa import references
 from ostler.qa.outcome import QaOutcome
 
 
+#: Gap kinds that describe the *arrangement* a scenario stands on rather than the observation
+#: it makes. Two independent axes land on one obligation id: whether the claim was observed,
+#: and whether the state it was observed in was set up the way the book says. A precondition
+#: gap says the scenario reaches the claim through a scaffold — a fixture nobody arranged, a
+#: trigger compiled to a bare click, a screen whose preconditions the book never declared —
+#: while the assertion it ends on is real and does claim its id. So these stack with a
+#: `covers=[...]` on purpose, and the mirror assert in `compile_plan_gaps` reads past them;
+#: every other kind says nobody looked, and stacking *that* with a claim is a contradiction.
+#: A plan still carrying these is not a plan whose greens mean anything — `doctor` reports
+#: them to a human exactly like any other gap, which is the part that is not relaxed here.
+_ARRANGEMENT_GAPS = frozenset({"unresolved-precondition", "screen-preconditions-undeclared"})
+
+
 @dataclass(frozen=True)
 class Gap:
     """One obligation left uncompiled, and why — `compile_plan`'s structured gap report.
@@ -45,6 +58,9 @@ class Gap:
     unresolved reference, a template variable, a request body the book never wrote), and
     `uncompilable-claim` for a node with no action to observe at all — no fixture or
     capture could supply one, so it is not a precondition gap.
+
+    Which of those two a kind is decides whether it may stand beside a compiled claim for the
+    same id — see `_ARRANGEMENT_GAPS` above and the mirror assert in `compile_plan_gaps`.
     """
     obligation_id: str
     kind: str
@@ -554,6 +570,17 @@ def compile_plan_gaps(
         f"{len(dropped)} owed obligation(s) landed in neither `gaps` nor a compiled scenario: "
         f"{sorted(dropped)!r}"
     )
+    # The mirror: an obligation reported as unobserved and also claimed by a scenario is the
+    # same silent drop seen from the other side — the report says nobody looked and the plan
+    # says somebody did, and whichever a reader consults first is the one they believe. Read
+    # over the gaps that are claims about the observation; a scaffold-fidelity gap
+    # (`blocks_coverage=False`, see `Gap`) stacks on the same id on purpose and is not one.
+    unobserved = {gap.obligation_id for gap in gaps if gap.kind not in _ARRANGEMENT_GAPS}
+    contradicted = unobserved & covered_ids
+    assert not contradicted, (
+        f"{len(contradicted)} obligation(s) are both gapped as unobserved and claimed by a "
+        f"compiled scenario: {sorted(contradicted)!r}"
+    )
 
     return "\n".join(lines).rstrip() + "\n", gaps
 
@@ -698,6 +725,14 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap], covered: 
         if route is None:
             continue
 
+        # An obligation's `verify:` bullets are a conjunction: they all describe the same claim,
+        # so observing some of them is not observing it. A row this compiler cannot observe
+        # therefore withdraws the whole obligation rather than the one bullet — otherwise the
+        # plan claims the id on the strength of the half that compiled and the gap report says
+        # nobody looked, which is the same claim contradicted twice. Every row is walked first,
+        # so the gaps are complete, and only then is the obligation emitted or withdrawn.
+        assertions: list[str] = []
+        whole = True
         for row in rows:
             for ref in references.find_references(json.dumps(row.get("args", {}))):
                 if not _resolved(ref, produced_facts, produced_captures):
@@ -707,9 +742,13 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap], covered: 
             if note:
                 lines.append(f"    # TODO(arrange): {note}")
                 gaps.append(Gap(oid, kind, note))
-            lines.append(
+                whole = False
+                continue
+            assertions.append(
                 f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, covers=[{_lit(oid)}])"
             )
+        if whole:
+            lines.extend(assertions)
             covered.add(oid)
     return lines
 
