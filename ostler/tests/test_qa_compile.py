@@ -591,3 +591,246 @@ def test_a_checkless_obligation_never_reaches_the_scenario_body() -> None:
     assert _gap_kinds(gaps, oid) == []
     assert "# Book debt." in source
     assert f"#   {oid}" in source
+
+
+# --- Screen page-scenario compilation (slice 4) -----------------------------------------------
+#
+# A screen's `visible(...)` bullets are addressed by navigating there, not by parsing its
+# `route:` as an HTTP verb+path — see `compile.py`'s module-level comment above `_ROUTE` and
+# `_compile_page_scenarios`'s docstring for the full partitioning this drives (Amendment 3).
+# These fixtures mirror the shape `ostler.qa.context._navigation`/`_locators` actually produce
+# (confirmed against paddock's policy-desk fixture, `docs/features/policy/gui/screens/*.md`),
+# rather than reconstructing it from the ruling set alone.
+
+_SCREEN = "docs/features/policy/gui/screens/policy-list.md"
+
+
+def _page_obligation(oid: str, node: str, *, surface: str = "policy",
+                      source: str = _SCREEN, locators: dict | None = None,
+                      checks: list[dict] | None = None) -> dict:
+    return {
+        "id": oid,
+        "node": node,
+        "source": source,
+        "surface": surface,
+        "requirement": "shows what the screen promises",
+        "required": True,
+        "locators": locators or {},
+        "checksDeclared": checks if checks is not None else [
+            {"call": "it", "name": "visible", "args": {"locator": "irrelevant"}},
+        ],
+    }
+
+
+def _visible(locator: str) -> dict:
+    return {"call": "it", "name": "visible", "args": {"locator": locator}}
+
+
+def _navigation_context(*obligations: dict, navigation: dict) -> dict:
+    ctx = _context(*obligations)
+    ctx["navigation"] = navigation
+    return ctx
+
+
+def _arrival_navigation(source: str = _SCREEN, surface: str = "policy", *,
+                         unreachable: list[str] | None = None,
+                         undeclared: list[str] | None = None) -> dict:
+    """One surface, one screen, reachable with an empty hop list (it is the route's own root)."""
+    return {
+        surface: {
+            "start": source,
+            "surface": surface,
+            "counts": {"screens": 1, "reachable": 1, "unreachable": 0, "undeclared": 0, "nav_edges": 0},
+            "routes": {} if source in (unreachable or []) else {source: []},
+            "unreachable": unreachable or [],
+            "undeclared": undeclared or [],
+        }
+    }
+
+
+def test_exclusive_with_pairing_never_shares_a_scenario() -> None:
+    """`empty-register-notice`/`policy-table` (real policy-desk bullets) must never land in the
+    same compiled scenario — the amendment reads `exclusive-with:` as symmetric even though only
+    one side of this real pair writes the bullet."""
+    table = f"{_SCREEN}#policy-table"
+    notice = f"{_SCREEN}#empty-register-notice"
+    context = _navigation_context(
+        _page_obligation("okf:policy-list:policy-table:visible:1", table,
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file")]),
+        _page_obligation("okf:policy-list:empty-register-notice:visible:1", notice,
+                          locators={"role": ["paragraph"],
+                                    "exclusiveWith": ["[policy-table](#policy-table)"]},
+                          checks=[_visible("text=No policies are on file yet")]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    scenarios = source.split("@scenario(")[1:]
+    scenario_with = [s for s in scenarios if "text=No policies are on file yet" in s]
+    scenario_without = [s for s in scenarios if "table:Policies on file" in s and "verify" in s]
+    assert len(scenario_with) == 1
+    assert "table:Policies on file" not in scenario_with[0]
+    assert len(scenario_without) == 1
+    assert "No policies are on file yet" not in scenario_without[0]
+    assert _gap_kinds(gaps, "okf:policy-list:empty-register-notice:visible:1") == []
+
+
+def test_a_states_component_produces_a_gap_not_a_scenario() -> None:
+    """A component naming `states:` compiles to nothing — no scenario, arrival or otherwise —
+    only an `unresolved-precondition` gap quoting the `states:` text verbatim."""
+    node = f"{_SCREEN}#coverage-type-select"
+    oid = "okf:new-policy:coverage-type-select:visible:1"
+    context = _navigation_context(
+        _page_obligation(oid, node,
+                          locators={"role": ["combobox"], "name": ["Coverage type"],
+                                    "states": ["opens on `auto`."]},
+                          checks=[_visible("combobox:Coverage type")]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert "combobox:Coverage type" not in source
+    kinds = _gap_kinds(gaps, node)
+    assert kinds == ["unresolved-precondition"]
+    [gap] = [g for g in gaps if g.obligation_id == node]
+    assert "opens on `auto`." in gap.detail
+
+
+def test_states_wins_over_exclusive_with_when_a_component_carries_both() -> None:
+    """`vehicle-vin-field` in the real `new-policy.md` fixture carries *both* `states:` and
+    `exclusive-with:` — a shape the ruling set's partition list did not anticipate as
+    overlapping. This pins the resolution: `states:` is the stronger claim (it blocks compiling
+    any scenario outright) and is checked first, so the component is gapped, never isolated into
+    its own exclusive-with scenario."""
+    node = f"{_SCREEN}#vehicle-vin-field"
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:vehicle-vin-field:visible:1", node,
+                          locators={"role": ["textbox"], "name": ["Vehicle VIN"],
+                                    "exclusiveWith": ["[property-address-field](#property-address-field)"],
+                                    "states": ["present only while the coverage type is `auto`."]},
+                          checks=[_visible("textbox:Vehicle VIN")]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert "textbox:Vehicle VIN" not in source
+    assert "@scenario(" not in source
+    assert _gap_kinds(gaps, node) == ["unresolved-precondition"]
+
+
+def test_an_interactions_assertion_never_lands_on_the_arrival_scenario() -> None:
+    """A `## Interactions` row's `visible(...)` asserts state *after* the interaction — it must
+    never be emitted as an arrival assertion on the screen's own page-load scenario."""
+    button = f"{_SCREEN}#create-policy-button"
+    interaction = f"{_SCREEN}#submit-new-policy"
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")]),
+        _page_obligation("okf:new-policy:submit-new-policy:visible:1", interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["submit the new policy form"],
+                                    "does": ["adds a policy... navigates to its detail screen"]},
+                          checks=[_visible("heading:Policy PN-1001")]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    scenarios = source.split("@scenario(")[1:]
+    arrival = [s for s in scenarios if "_arrival(" in s]
+    interactions = [s for s in scenarios if "submit_new_policy(" in s]
+    assert len(arrival) == 1
+    assert "heading:Policy PN-1001" not in arrival[0]
+    assert len(interactions) == 1
+    assert "heading:Policy PN-1001" in interactions[0]
+    assert "create-policy-button" in interactions[0] or "button:Create policy" not in interactions[0]
+    assert "unresolved-precondition" in _gap_kinds(gaps, interaction)
+
+
+def test_a_reachable_screen_with_no_declared_preconditions_is_undeclared_not_silent() -> None:
+    """Amendment 2: reachable, but the screen's `requires:`/`params:` bullets are literally
+    absent — a third outcome, distinct from `unreachable`, with its own gap kind, and emitted
+    once per screen rather than once per obligation (a live-audit gate renders one line per
+    gap; multiplying this by obligation count would not add information)."""
+    node = f"{_SCREEN}#policy-table"
+    context = _navigation_context(
+        _page_obligation("okf:policy-list:policy-table:visible:1", node,
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file")]),
+        _page_obligation("okf:policy-list:policy-table:visible:2", node,
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file")]),
+        navigation=_arrival_navigation(undeclared=[_SCREEN]),
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    undeclared_gaps = [g for g in gaps if g.kind == "screen-preconditions-undeclared"]
+    assert len(undeclared_gaps) == 1
+    assert undeclared_gaps[0].obligation_id == _SCREEN
+
+
+def test_an_unreachable_screen_is_a_finding_not_a_compile_target() -> None:
+    """Correction 5': an unreachable screen is a finding, not a scenario. `unreachable-screen`
+    is doctor's own existing code for this fact (the same one its `reach`-based check mints),
+    reused here rather than collapsing it into the generic `uncompilable-claim`."""
+    node = f"{_SCREEN}#policy-table"
+    context = _navigation_context(
+        _page_obligation("okf:policy-list:policy-table:visible:1", node,
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file")]),
+        navigation=_arrival_navigation(unreachable=[_SCREEN]),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert "@scenario(" not in source
+    assert "web = target(" not in source or "table:Policies on file" not in source
+    kinds = _gap_kinds(gaps, _SCREEN)
+    assert kinds == ["unreachable-screen"]
+
+
+def test_a_zero_screen_book_grows_no_playwright_target() -> None:
+    """Condition 1: a book with no screen nodes on any surface never grows a `web` target, even
+    if a stray page-checked obligation somehow reached the compiler."""
+    node = "docs/features/policy/http/policy-desk-api.md#note"
+    context = _navigation_context(
+        _page_obligation("okf:note:visible:1", node, surface="policy",
+                          source="docs/features/policy/http/policy-desk-api.md",
+                          checks=[_visible("text=irrelevant")]),
+        navigation={
+            "policy": {
+                "start": "", "surface": "policy",
+                "counts": {"screens": 0, "reachable": 0, "unreachable": 0, "undeclared": 0, "nav_edges": 0},
+                "routes": {}, "unreachable": [], "undeclared": [],
+            }
+        },
+    )
+    source, _gaps = compile_plan_gaps(context, story="demo-story")
+    assert 'target("web"' not in source
+    assert "@scenario(" not in source
+
+
+def test_navigation_is_keyed_by_surface_even_for_a_single_surface_book() -> None:
+    """Amendment 1: `navigation` is keyed by surface, no special-casing a one-surface book —
+    pinned here with two surfaces so a screen on one never resolves against the other's route."""
+    policy_screen = "docs/features/policy/gui/screens/policy-list.md"
+    claims_screen = "docs/features/claims/gui/screens/claims-list.md"
+    policy_node = f"{policy_screen}#policy-table"
+    claims_node = f"{claims_screen}#claims-table"
+    context = _navigation_context(
+        _page_obligation("okf:policy-list:policy-table:visible:1", policy_node,
+                          surface="policy", source=policy_screen,
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file")]),
+        _page_obligation("okf:claims-list:claims-table:visible:1", claims_node,
+                          surface="claims", source=claims_screen,
+                          locators={"role": ["table"], "name": ["Claims on file"]},
+                          checks=[_visible("table:Claims on file")]),
+        navigation={
+            **_arrival_navigation(source=policy_screen, surface="policy"),
+            **_arrival_navigation(source=claims_screen, surface="claims"),
+        },
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert "table:Policies on file" in source
+    assert "table:Claims on file" in source
+    assert gaps == []

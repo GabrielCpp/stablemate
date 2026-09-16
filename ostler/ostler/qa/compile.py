@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler.checks import _rooted
+from ostler.markdown import extract_refs
 from ostler.qa import references
 from ostler.qa.outcome import QaOutcome
 
@@ -60,6 +61,14 @@ _PAGE_CHECKS = frozenset({"visible"})
 
 _ROUTE = re.compile(r"^\s*`?\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(\S+?)\s*`?\s*$", re.I)
 _IDENT = re.compile(r"[^0-9a-zA-Z]+")
+
+#: A screen's `visible(...)` bullets are never addressed by parsing its `route:` bullet as an
+#: HTTP verb+path (that is what `_ROUTE` is for, and it is deliberately never extended to
+#: accept a bare path as an implicit GET). They are addressed by *navigating there* — walking
+#: the click-path `context["navigation"][surface]["routes"][screen]` already carries (derived
+#: by `ostler.reach`, at context-build time, per `ostler.qa.context._navigation` — compile.py
+#: never imports `reach` or touches a live `Graph`, it only ever reads the packet). See
+#: `_compile_page_scenarios` below for the partitioning this drives.
 
 
 def _route(obligation: dict[str, Any]) -> tuple[str, str] | None:
@@ -137,6 +146,63 @@ def _owed(context: dict[str, Any]) -> list[dict[str, Any]]:
     return [o for o in context.get("obligations", []) if o.get("required", True)]
 
 
+def _is_page_obligation(obligation: dict[str, Any]) -> bool:
+    return any(row.get("name") in _PAGE_CHECKS for row in obligation.get("checksDeclared", []))
+
+
+def _has_screens(navigation: dict[str, Any]) -> bool:
+    """Condition 1: a book with zero screen nodes on every surface grows no Playwright target.
+
+    `navigation[surface]["counts"]["screens"]` is `_navigation`'s own tally (0 for the zeroed
+    stub it emits when `reach.screens_of` finds nothing on that surface) — reading it here is
+    exactly the "book has screen nodes" test, without compile.py re-deriving it from a graph
+    it never touches.
+    """
+    return any(
+        int(surface_nav.get("counts", {}).get("screens", 0)) > 0
+        for surface_nav in navigation.values()
+    )
+
+
+def _node_locator_index(context: dict[str, Any]) -> dict[str, dict[str, list[str]]]:
+    """Every node's own `locators`, keyed by node id — including ones with no *required* claim.
+
+    A navigation hop can walk through an interaction the diff itself did not reach (an
+    intermediate screen unrelated to the change), so this reads every obligation the packet
+    carries, not just `_owed`'s required subset — a hop with nothing to look up here is a gap,
+    not a `KeyError`.
+    """
+    index: dict[str, dict[str, list[str]]] = {}
+    for obligation in context.get("obligations", []):
+        node_id = obligation.get("node")
+        if node_id and node_id not in index:
+            index[node_id] = obligation.get("locators", {})
+    return index
+
+
+def _page_locator_expr(locators: dict[str, list[str]]) -> str | None:
+    """A concrete Playwright locator expression built from a node's own book-declared locators.
+
+    `_verify_visible` (the harness's `visible` check implementation) calls `observed.is_visible()`
+    when `observed` has that method, and otherwise falls back to `bool(observed)` — which is
+    always `True` for a Playwright `Page`. Handing it the bare `page` object (as the older,
+    HTTP-oriented `_operand` does for every `_PAGE_CHECKS` row) is a check that can never fail;
+    this builds a real `Locator` instead, from `role`/`name` (preferred — the same identity a
+    person clicking through the screen would use) or `selector` (the escape hatch a `role:`-less
+    component's book entry gives it).
+    """
+    role = next(iter(locators.get("role", [])), None)
+    name = next(iter(locators.get("name", [])), None)
+    selector = next(iter(locators.get("selector", [])), None)
+    if role and name:
+        return f"qa.by_role({_lit(role)}, name={_lit(name)})"
+    if role:
+        return f"qa.by_role({_lit(role)})"
+    if selector:
+        return f"qa.by_css({_lit(selector)})"
+    return None
+
+
 def compile_plan(
     context: dict[str, Any],
     *,
@@ -170,6 +236,11 @@ def compile_plan_gaps(
     """
     gaps: list[Gap] = []
     owed = _owed(context)
+    # Page-checked obligations (a screen's `visible(...)` bullets) are compiled by navigating
+    # there, not by the HTTP-verb-and-path machinery below (`_route`/`_ROUTE`) — split them out
+    # up front so the `by_source` grouping and its `target=api` scenarios never see them.
+    http_owed = [o for o in owed if not _is_page_obligation(o)]
+    page_owed = [o for o in owed if _is_page_obligation(o)]
     lines: list[str] = [
         "# Compiled from the book by `ostler qa compile-plan`. Every `covers=` below is the",
         "# obligation the book itself attributed the check to. Fill the TODO markers from the",
@@ -186,7 +257,7 @@ def compile_plan_gaps(
     ]
 
     by_source: dict[str, list[dict[str, Any]]] = {}
-    for obligation in owed:
+    for obligation in http_owed:
         by_source.setdefault(str(obligation.get("source", "book")), []).append(obligation)
 
     debt: list[dict[str, Any]] = []
@@ -235,6 +306,12 @@ def compile_plan_gaps(
                 for row in arranged
             )
         lines.extend(_scenario_body(declared, gaps))
+
+    page_declared = [o for o in page_owed if o.get("checksDeclared")]
+    debt.extend(o for o in page_owed if not o.get("checksDeclared"))
+    navigation = context.get("navigation", {}) if isinstance(context.get("navigation"), dict) else {}
+    if page_declared and _has_screens(navigation):
+        lines.extend(_compile_page_scenarios(context, page_declared, gaps, base_url))
 
     if debt:
         lines.append("")
@@ -409,6 +486,271 @@ def _operand(check: str, observed: str) -> tuple[str, str]:
     # A subject check compares observations the book never says how to take — `persists`
     # wants the record from before the process died and the one read after it came back.
     return observed, f"`{check}` observes a subject, not a response — hand it the pair"
+
+
+def _compile_page_scenarios(
+    context: dict[str, Any],
+    page_declared: list[dict[str, Any]],
+    gaps: list[Gap],
+    base_url: str,
+) -> list[str]:
+    """Compile every screen's `visible(...)` bullets, partitioned per Amendment 3.
+
+    One screen is not one scenario. Its page-checked obligations are grouped by the node that
+    owns each `verify:` row (a `### <component>` or a `## Interactions` entry), then split:
+
+    - a component with neither `states:` nor `exclusive-with:` joins the screen's one *arrival*
+      scenario — the navigation hop list from `context["navigation"][surface]["routes"][screen]`
+      compiled into one click per hop (Correction 2'), ending on the screen's own assertions;
+    - a component carrying `exclusive-with:` gets its own scenario (still an arrival scenario,
+      just not sharing with anything else on the screen — see the module docstring below for why
+      this is looser than a full symmetric partition);
+    - a component carrying `states:` compiles to nothing — a `states:`-scoped arrangement is not
+      the plain "screen just loaded" state the arrival route puts the page in, and inventing one
+      would be arranging behind the book's back, so it is an `unresolved-precondition` gap
+      instead, quoting the `states:` text verbatim;
+    - a `## Interactions` entry (identified by carrying `on:`) reuses the arrival hops, then
+      performs a best-effort click on the `on:` component before asserting — see
+      `_interaction_scenario` for what "best-effort" means here and why it is always also gapped;
+    - a `visible(...)` row with no owning `### <component>` (a screen-level node id, no `#`, and
+      no `role`/`name`/`selector` of its own) has no addressable subject at all: `uncompilable-claim`.
+
+    A component carrying *both* `states:` and `exclusive-with:` (real in this fixture —
+    `vehicle-vin-field`/`property-address-field` in `new-policy.md`) is treated as `states:`
+    first: `states:` blocks compiling any scenario outright, which is the stronger claim, so it
+    wins over `exclusive-with:`'s weaker "just don't share a scenario". The ruling set lists the
+    two as if they were mutually exclusive categories; this fixture shows they are not, and this
+    is the explicit precedence decision for that case.
+
+    `exclusive-with:` is read as symmetric *for whether a pair may ever end up sharing a
+    scenario* (never), but this compiler does not compute the full symmetric closure across a
+    screen's components to decide who else must therefore be isolated: every `exclusive-with:`-
+    carrying component gets its own scenario, singleton, on its own — a strictly stronger
+    guarantee than "not sharing with its named partner", so the "never share" requirement holds
+    either way a screen writes the bullet (on one side only, or on both).
+    """
+    lines: list[str] = ["", "", 'web = target("web", driver="playwright", base_url=' + _lit(base_url) + ")"]
+    node_index = _node_locator_index(context)
+    by_screen: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for obligation in page_declared:
+        key = (str(obligation.get("surface", "")), str(obligation.get("source", "")))
+        by_screen.setdefault(key, []).append(obligation)
+
+    navigation = context.get("navigation", {}) if isinstance(context.get("navigation"), dict) else {}
+    for (surface, source), group in sorted(by_screen.items()):
+        nav = navigation.get(surface) if surface else None
+        if nav is None:
+            gaps.append(Gap(source, "uncompilable-claim",
+                             f"surface {surface!r} has no `navigation` data to address this screen by"))
+            continue
+        if source in set(nav.get("unreachable", [])):
+            # Correction 5': an unreachable screen is a finding, not a compile target. Reusing
+            # the doctor-recognized `unreachable-screen` code (the same one `doctor.py`'s own
+            # `reach`-based check already mints) rather than collapsing it into
+            # `uncompilable-claim` — a screen with no route in and a screen with no addressable
+            # subject are different defects and should not read as the same finding.
+            gaps.append(Gap(source, "unreachable-screen",
+                             f"{surface}'s navigation cannot reach this screen; no scenario compiled"))
+            continue
+        hops = nav.get("routes", {}).get(source)
+        if hops is None:
+            gaps.append(Gap(source, "uncompilable-claim", "no route computed for this screen"))
+            continue
+        if source in set(nav.get("undeclared", [])):
+            # Amendment 2: reachable, but the screen's `requires:`/`params:` bullets are
+            # literally absent — not "none", absent. One gap per screen, not per obligation:
+            # every `visible(...)` bullet on the screen shares the same undeclared-precondition
+            # fact, and a live-audit gate already renders one line per gap (see the coordinator
+            # note this report answers) — multiplying this by obligation count would not add
+            # information.
+            gaps.append(Gap(source, "screen-preconditions-undeclared",
+                             "reachable, but this screen declares no `requires:`/`params:` bullets"))
+
+        by_node: dict[str, list[dict[str, Any]]] = {}
+        for obligation in group:
+            by_node.setdefault(str(obligation["node"]), []).append(obligation)
+
+        plain: dict[str, list[dict[str, Any]]] = {}
+        exclusive: list[str] = []
+        interactions: list[str] = []
+        for node_id, obs in sorted(by_node.items()):
+            locators = obs[0].get("locators", {})
+            if locators.get("on"):
+                interactions.append(node_id)
+            elif locators.get("states"):
+                states_text = "; ".join(locators["states"])
+                gaps.append(Gap(node_id, "unresolved-precondition",
+                                 f"carries `states:` ({states_text!r}); no scenario compiled "
+                                 "for a state-scoped arrangement"))
+            elif "#" not in node_id and not _page_locator_expr(locators):
+                gaps.append(Gap(node_id, "uncompilable-claim",
+                                 "no addressable `### <component>` owns this `visible(...)` claim"))
+            elif locators.get("exclusiveWith"):
+                exclusive.append(node_id)
+            else:
+                plain[node_id] = obs
+
+        if plain:
+            lines.extend(_arrival_scenario(surface, source, hops, node_index, plain, gaps,
+                                            name=f"{_slug(source)}_arrival"))
+        for node_id in exclusive:
+            lines.extend(_arrival_scenario(surface, source, hops, node_index,
+                                            {node_id: by_node[node_id]}, gaps,
+                                            name=f"{_slug(source)}_{_node_slug(node_id)}"))
+        for node_id in interactions:
+            lines.extend(_interaction_scenario(surface, source, hops, node_index, node_id,
+                                                by_node[node_id], gaps,
+                                                name=f"{_slug(source)}_{_node_slug(node_id)}"))
+    return lines
+
+
+def _node_slug(node_id: str) -> str:
+    fragment = node_id.rsplit("#", 1)[-1]
+    return _slug(fragment)
+
+
+def _walk_hops(
+    hops: list[dict[str, Any]],
+    node_index: dict[str, dict[str, list[str]]],
+    gaps: list[Gap],
+    oid: str,
+) -> list[str]:
+    """One `.click()` per hop the book's own navigation-derivation logic found (Correction 2')."""
+    lines: list[str] = []
+    for hop in hops:
+        target_node = str(hop.get("node", ""))
+        expr = _page_locator_expr(node_index.get(target_node, {}))
+        if expr is None:
+            lines.append(f"    # TODO(arrange): no locator declared for {target_node!r}"
+                         f" ({hop.get('label', '')!r})")
+            gaps.append(Gap(oid, "unresolved-precondition",
+                             f"no locator declared for navigation hop {target_node!r}"))
+            continue
+        lines.append(f"    {expr}.click()  # {hop.get('label', '')}")
+    return lines
+
+
+def _arrival_scenario(
+    surface: str,
+    source: str,
+    hops: list[dict[str, Any]],
+    node_index: dict[str, dict[str, list[str]]],
+    by_node: dict[str, list[dict[str, Any]]],
+    gaps: list[Gap],
+    *,
+    name: str,
+) -> list[str]:
+    obligations = [o for obs in by_node.values() for o in obs]
+    ids = sorted(o["id"] for o in obligations)
+    lines = [
+        "",
+        "",
+        "@scenario(",
+        "    target=web,",
+        '    mechanism="live",',
+        "    covers=[",
+        *(f"        {_lit(oid)}," for oid in ids),
+        "    ],",
+        "    preconditions=[],  # TODO(arrange): what must hold before this scenario runs",
+        "    checkpoints=[],  # TODO(arrange): what an observer should see it prove",
+        "    forbid=[],  # TODO: the weaker observations this scenario must not settle for",
+        ")",
+        f"def {name}(qa: Qa) -> None:",
+        f'    """Arrive at {source} via the book\'s own navigation and check what it shows."""',
+        "",
+        f"    qa.goto({_lit(surface)})  # TODO(arrange): the app's root URL for this surface",
+    ]
+    lines.extend(_walk_hops(hops, node_index, gaps, ids[0] if ids else source))
+    for node_id, obs in sorted(by_node.items()):
+        operand = _page_locator_expr(obs[0].get("locators", {})) or "qa.page.locator('body')"
+        for obligation in obs:
+            for row in obligation.get("checksDeclared", []):
+                if row.get("name") not in _PAGE_CHECKS:
+                    continue
+                lines.append(
+                    f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, "
+                    f"covers=[{_lit(obligation['id'])}])"
+                )
+    return lines
+
+
+def _interaction_scenario(
+    surface: str,
+    source: str,
+    hops: list[dict[str, Any]],
+    node_index: dict[str, dict[str, list[str]]],
+    node_id: str,
+    obligations: list[dict[str, Any]],
+    gaps: list[Gap],
+    *,
+    name: str,
+) -> list[str]:
+    """Arrive, trigger the interaction, then assert what the book says holds afterward.
+
+    `on:`/`trigger:`/`does:` are carried onto the packet verbatim (Amendment 3) and read here
+    exactly as free prose — `on:` names the component to act on (resolved against this screen's
+    own nodes), `trigger:` is quoted as a comment rather than parsed into a specific keyboard or
+    pointer action (compiling English into an action is not this commit's scope), and `does:`
+    is likewise quoted rather than resolved into a cross-screen navigation: several real `does:`
+    values in this fixture are prose ("navigates to its detail screen at /policies/{id}"), not a
+    bare screen reference, and guessing which words name a screen is not a parse. Both choices
+    are why every interaction scenario also gets an `unresolved-precondition` gap alongside the
+    scaffold — this compiles a starting point for a human or a model to finish, not a passing
+    scenario.
+    """
+    locators = obligations[0].get("locators", {})
+    on_value = next(iter(locators.get("on", [])), None)
+    trigger_value = next(iter(locators.get("trigger", [])), "")
+    does_value = next(iter(locators.get("does", [])), "")
+    # `on:` is carried verbatim (Amendment 3) — a markdown link (`[create-policy-button]
+    # (#create-policy-button)`), not a bare id, so it is resolved the same way `reach.py`
+    # resolves a `requires:`/`parent:` link: pull the href out, and a same-file anchor (the
+    # only shape this bullet is ever written in) is joined onto this screen's own node id.
+    on_href = next(iter(extract_refs(on_value or "").links), (None, None))[1]
+    on_label = (on_href or on_value or "").lstrip("#") or on_value
+    on_node_id = f"{source}#{on_href.lstrip('#')}" if on_href else (f"{source}#{on_value}" if on_value else "")
+    ids = sorted(o["id"] for o in obligations)
+    lines = [
+        "",
+        "",
+        "@scenario(",
+        "    target=web,",
+        '    mechanism="live",',
+        "    covers=[",
+        *(f"        {_lit(oid)}," for oid in ids),
+        "    ],",
+        "    preconditions=[],  # TODO(arrange): what must hold before this scenario runs",
+        "    checkpoints=[],  # TODO(arrange): what an observer should see it prove",
+        "    forbid=[],  # TODO: the weaker observations this scenario must not settle for",
+        ")",
+        f"def {name}(qa: Qa) -> None:",
+        f'    """{on_label or node_id}: {trigger_value}"""',
+        "",
+        f"    qa.goto({_lit(surface)})  # TODO(arrange): the app's root URL for this surface",
+    ]
+    lines.extend(_walk_hops(hops, node_index, gaps, ids[0] if ids else source))
+    on_expr = _page_locator_expr(node_index.get(on_node_id, {}))
+    if on_expr is None:
+        lines.append(f"    # TODO(arrange): no locator declared for {on_label!r}")
+        gaps.append(Gap(node_id, "unresolved-precondition",
+                         f"no locator declared for `on:` component {on_label!r}"))
+        on_expr = "qa.page.locator('body')"
+    lines.append(f"    {on_expr}.click()  # trigger: {trigger_value}")
+    if does_value:
+        lines.append(f"    # does: {does_value}")
+    gaps.append(Gap(node_id, "unresolved-precondition",
+                     f"trigger {trigger_value!r} compiles to a scaffold click on {on_label!r}, "
+                     "not a verified action, and `does:` is not resolved to a target screen"))
+    operand = "qa.page.locator('body')"
+    for obligation in obligations:
+        for row in obligation.get("checksDeclared", []):
+            if row.get("name") not in _PAGE_CHECKS:
+                continue
+            lines.append(
+                f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, "
+                f"covers=[{_lit(obligation['id'])}])"
+            )
+    return lines
 
 
 def cmd_compile_plan(
