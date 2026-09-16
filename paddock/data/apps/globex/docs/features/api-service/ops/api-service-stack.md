@@ -34,7 +34,7 @@ same compose project.
 - working-directory: `.`
 - timeout: 30s
 - env:
-- health: http_status(200, path="/healthz")
+- health: curl -fsS http://localhost:18101/healthz
 - produces: api-service listening on :18101
 - verify: http_status(200, path="/healthz")
 - optional: false

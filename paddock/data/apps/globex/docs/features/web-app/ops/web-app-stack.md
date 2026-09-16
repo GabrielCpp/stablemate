@@ -37,7 +37,7 @@ runbook's own job is only to bring web-app up.
 - working-directory: `.`
 - timeout: 30s
 - env:
-- health: http_status(200, path="/healthz")
+- health: curl -fsS http://localhost:18102/healthz
 - produces: web-app listening on :18102
 - verify: http_status(200, path="/healthz")
 - optional: false
