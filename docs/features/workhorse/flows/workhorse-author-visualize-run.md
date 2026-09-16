@@ -6,7 +6,7 @@ title: Author, visualize, and run a workflow
 # Author, visualize, and run a workflow
 
 The design-time path from an empty package to a live run: write the state machine per the
-[workflow format](../workflow-format.md), read its shape back with
+[workflow format](../formats/workflow-format.md), read its shape back with
 [`workhorse-<name> dot`](../workhorse.md#dot), rehearse it with
 [`workhorse-<name> run --dry-run`](../workhorse.md#run), and only then commit to a real,
 unattended [`workhorse-<name> run`](../workhorse.md#run). The two checks are deliberately different
@@ -16,13 +16,13 @@ rehearsal walks **one** — the path a machine of stand-in values happens to tak
 - start: a Python package that is installed (`pip install -e .`) and declares its
   `workhorse-<name>` console script in `[project.scripts]`, but has never been executed.
 - steps:
-  1. **Author the machine** — a [`Registry`](../workflow-format.md#registry) under the
-     workflow's name, one or more [`Workflow`](../workflow-format.md#workflow-subclass)
-     subclasses whose methods are its [states](../workflow-format.md#state), the
-     [`@blueprint.node`](../workflow-format.md#node) functions those states call, and the
-     `prompts/` each [agent turn](../workflow-format.md#the-agent-turn) renders. Nothing
+  1. **Author the machine** — a [`Registry`](../formats/workflow-format.md#registry) under the
+     workflow's name, one or more [`Workflow`](../formats/workflow-format.md#workflow-subclass)
+     subclasses whose methods are its [states](../formats/workflow-format.md#state), the
+     [`@blueprint.node`](../formats/workflow-format.md#node) functions those states call, and the
+     `prompts/` each [agent turn](../formats/workflow-format.md#the-agent-turn) renders. Nothing
      declares the graph: an edge *is* a
-     [`Continue`/`Await`](../workflow-format.md#transition) a state returns, so there is no
+     [`Continue`/`Await`](../formats/workflow-format.md#transition) a state returns, so there is no
      separate document to keep in sync and nothing to validate before the package imports.
   2. **Read the shape back** with [`workhorse-<name> dot`](../workhorse.md#dot) — the command
      carries the same registry `run` does, and
@@ -54,7 +54,7 @@ rehearsal walks **one** — the path a machine of stand-in values happens to tak
      every transition.
 - end: the process exits `0` (the entry flow returned `Done`) or `1` (a `PyflowError`, or a
   dry run whose declared stand-ins still walked into a failure). On a genuine run the
-  [run artifacts](../run-artifacts.md) under `<runs_dir>/<name>-<run_id>` record the outcome
+  [run artifacts](../formats/run-artifacts.md) under `<runs_dir>/<name>-<run_id>` record the outcome
   and make it resumable, continuing the [crash-and-resume](workhorse-crash-resume.md)
   journey if it dies mid-machine.
 - verify: exit_status(code=0)

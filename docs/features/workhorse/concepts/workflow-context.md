@@ -6,8 +6,8 @@ title: WorkflowContext — the prompt render bag
 # WorkflowContext — the prompt render bag
 
 The key→value bag one agent turn's Jinja prompt renders against. The engine builds a fresh one
-per [`self.agent(...)`](../workflow-format.md#the-agent-turn) call — the repo's
-[context manifest](../context-manifest.md) underneath, that call's arguments on top — and
+per [`self.agent(...)`](../formats/workflow-format.md#the-agent-turn) call — the repo's
+[context manifest](../formats/context-manifest.md) underneath, that call's arguments on top — and
 [`AgentRunner.run`](run-agent.md) unwraps it with `as_dict()` to get the render base. It is deliberately
 a thin wrapper (a plain `dict` plus dotted-path traversal) that knows nothing about states, nodes,
 outputs or checkpoints.

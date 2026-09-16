@@ -5,18 +5,18 @@ title: Run artifacts
 ---
 # Run artifacts
 
-The on-disk record of one [`workhorse-<name> run`](workhorse.md#run) execution: a directory tree written
-incrementally by an `ArtifactWriter` as [`drive`](concepts/pyflow-driver.md) walks the workflow's
+The on-disk record of one [`workhorse-<name> run`](../workhorse.md#run) execution: a directory tree written
+incrementally by an `ArtifactWriter` as [`drive`](../concepts/pyflow-driver.md) walks the workflow's
 state machine. It serves two purposes at once — **checkpointing** (so a killed run resumes in the
 state it stopped in) and **history** (every prompt, output and event survives the run, read back by
 a workflow's own tests and by a cost/spend scorecard). A child workflow entered via `self.handoff`
 gets its own nested instance of this same layout, rooted under the calling node's directory.
-Run directories follow [run identity](concepts/run-identity.md); their validated persisted shapes
-are the [run record models](concepts/run-records.md), and agent visits are named by the [visit key](concepts/visit-key.md).
+Run directories follow [run identity](../concepts/run-identity.md); their validated persisted shapes
+are the [run record models](../concepts/run-records.md), and agent visits are named by the [visit key](../concepts/visit-key.md).
 
 - file: `<runs-dir>/<workflow-name>-<run-id>/` (a directory tree, not a single file; `<runs-dir>`
   defaults to `<cwd>/.agents/runs`; `<run-id>` is the explicit `--run-id`, else a digest of
-  `--params` (`p<sha1[:8]>`), else `default` — see [`run`](workhorse.md#run))
+  `--params` (`p<sha1[:8]>`), else `default` — see [`run`](../workhorse.md#run))
 - code: `workhorse/workhorse/artifacts.py::ArtifactWriter` @db240823dab7
 
 The checkpoint, resume, await, and sequence behavior is covered by
@@ -65,7 +65,7 @@ visit (see below).
 Because pyflow re-enters a checkpointed state **from the top**, a resumed run re-runs whatever that
 state had already done inside itself, rewriting those node directories. That is the coarse-resume
 bargain: what a state owes is idempotency, not determinism — see
-[crash and resume](flows/workhorse-crash-resume.md).
+[crash and resume](../flows/workhorse-crash-resume.md).
 
 ## Fields
 
@@ -93,7 +93,7 @@ state changes:
   off by the clock decided nothing and remains resumable.
 - verify: json_path(path="$.terminal", equals="null")
 - `interrupted_at` — type `string | null` (ISO-8601 UTC) — default `null`; set by
-  [`record_interrupt`](concepts/artifact-writer.md#record_interrupt) when the run **stopped
+  [`record_interrupt`](../concepts/artifact-writer.md#record_interrupt) when the run **stopped
   without deciding** — an operator Ctrl-C, or `WORKHORSE_MAX_RUNTIME_S` running out between
   states. `terminal` stays `null` (such a run must remain auto-resumable), so this field is what
   separates *stopped* from *still in flight, or wedged in a node* — which are otherwise the same
@@ -114,9 +114,9 @@ state changes:
   reached a terminal. Cleared by a resume, exactly as `ended_at` is. Only written at a terminal:
   every other write of this file happens while the run is still going, where an "end" would be
   overwritten by the next one anyway.
-- `profile` — type `string` — default `""`; the [config profile](concepts/config.md#profiles) this
+- `profile` — type `string` — default `""`; the [config profile](../concepts/config.md#profiles) this
   run resolves its models through (`run --profile`), empty for the config's top-level tables.
-  **Load-bearing**, unlike the copy below: a [resume](workhorse.md#run) that names no `--profile`
+  **Load-bearing**, unlike the copy below: a [resume](../workhorse.md#run) that names no `--profile`
   re-applies this one, so a run started on a cheap model set does not silently continue on the
   machine's default one — and that is also what carries a run's models across a `switch-cli`,
   whose re-exec is exactly a flagless resume.
@@ -151,7 +151,7 @@ is tri-state: `null` is "did not look, or could not tell", never "clean".
 
 The resume point: **which state is about to be entered, and the arguments bound for it**.
 Overwritten atomically (write to `checkpoint.json.tmp`, then rename) by
-[`write_state_checkpoint`](concepts/artifact-writer.md#write_state_checkpoint)
+[`write_state_checkpoint`](../concepts/artifact-writer.md#write_state_checkpoint)
 immediately before that state runs — so a crash mid-state still leaves a valid, complete prior
 checkpoint. Dropped (unlinked) at the start of any *fresh* run (not a resume) so a reused stable
 dir never resurrects a finished run's state.
@@ -159,7 +159,7 @@ dir never resurrects a finished run's state.
   YAML front-end shared this runs directory and wrote a checkpoint with no `engine` key, and one of
   its node ids that happened to match a state name would otherwise resume the wrong thing. A
   checkpoint that does not carry `"pyflow"` is
-  [refused by name](concepts/pyflow-driver.md#a-checkpoint-from-the-retired-engine-is-refused-not-misread).
+  [refused by name](../concepts/pyflow-driver.md#a-checkpoint-from-the-retired-engine-is-refused-not-misread).
 - `workflow` — type `string`, required.
 - `run_id` — type `string`, required.
 - `flow` — type `string | null`, required — the `Workflow` **class** name, so a bare
@@ -203,7 +203,7 @@ plus a stand-in marker under `--dry-run`; a `done` event carries `next` (type `s
 `null` under pyflow); the run-level `terminal` event carries `terminal` (type
 `enum{terminal,fail}`); and an `error` event carries `error` (type `string`) and closes the
 in-flight node's `enter` window when a Ctrl-C stops the run (see
-[`record_interrupt`](concepts/artifact-writer.md#record_interrupt)).
+[`record_interrupt`](../concepts/artifact-writer.md#record_interrupt)).
 
 ### context.json
 - type: `object` — required: no — default: `{}` (present only after the run reaches a terminal
@@ -222,18 +222,18 @@ A Python workflow has no such bag: state lives in the state's parameters and in 
 - type: `string` (plain text, not JSON) — required: no — default: absent
 
 The active agent backend's session id for **the current node**, written/overwritten by
-[`AgentRunner.run`](concepts/run-agent.md) after each successful turn. Deleted before a node's first
+[`AgentRunner.run`](../concepts/run-agent.md) after each successful turn. Deleted before a node's first
 attempt unless that node is a genuine resume-after-kill (`resume_session=True`), so every node
 other than a resumed one starts its agent CLI with a clean session — see
-[`AgentRunner.run`'s session model](concepts/run-agent.md#sessions) and
-[workhorse's session model](../../../workhorse/docs/DEVELOPMENT.md#sessions-per-turn-clean-context). Not
+[`AgentRunner.run`'s session model](../concepts/run-agent.md#sessions) and
+[workhorse's session model](../../../../workhorse/docs/DEVELOPMENT.md#sessions-per-turn-clean-context). Not
 managed by `ArtifactWriter`; lives at the run dir root, one file shared (and overwritten) across all
 agent turns in the run.
 
 ### sessions.jsonl
 - type: `list<object>` (JSON Lines) — required: no — default: absent
 
-The durable node → backend-session map, appended by [`AgentRunner.run`](concepts/run-agent.md) after each
+The durable node → backend-session map, appended by [`AgentRunner.run`](../concepts/run-agent.md) after each
 successful turn. `.session_id` only ever holds the *current* node's session, so this manifest is
 what maps a **past** node back to the session transcript carrying its reasoning and tool trace —
 the detail `prompt.md`/`output.json` do not keep. The same mapping is advertised on the agent-turn
@@ -353,7 +353,7 @@ Completion marker for the node, written by `_write_done` after its step files.
   absent (`self.handoff` only)
 
 The child run tree for one handoff, rooted at `<node-id>/_flow/` instead of a fresh
-`<runs-dir>/<name>-<id>/` — via [`subscope`](concepts/artifact-writer.md#subscope).
+`<runs-dir>/<name>-<id>/` — via [`subscope`](../concepts/artifact-writer.md#subscope).
 A handoff nested inside a handed-off workflow nests one `_flow/` deeper. The engine always enters
 this scope **fresh**: pyflow checkpoints the *parent* state, so a resume re-enters that state and
 re-runs the handoff from the top rather than resuming into the child's own checkpoint.
@@ -365,21 +365,21 @@ resume hygiene (dropping a stale `checkpoint.json`/`events.jsonl`), and every wr
 constructors (`__init__`, `resume`, `at`, `subscope`) and methods (`write_state_checkpoint`,
 `record_node`, `write_step`, `record_interrupt`, `finish`, `write_final_context`, `read_checkpoint`,
 `read_output`, `read_events`) are documented in full as their own concept:
-[`ArtifactWriter`](concepts/artifact-writer.md), which also lists the four methods that survived the
+[`ArtifactWriter`](../concepts/artifact-writer.md), which also lists the four methods that survived the
 YAML engine's retirement without a production caller.
 
 - code: `workhorse/workhorse/artifacts.py::ArtifactWriter` @db240823dab7
 
 ## Consumers
 
-- [`drive`](concepts/pyflow-driver.md) — writes `checkpoint.json` before every transition and again
+- [`drive`](../concepts/pyflow-driver.md) — writes `checkpoint.json` before every transition and again
   before an `Await` waits, then `context.json` and `run.json`'s terminal stamp when the entry flow
   returns `Done`.
 - `run_pyflow` — seeds or resumes the run dir, reads `checkpoint.json` back to name the in-flight
   state on a Ctrl-C, and marks `run.json` `fail` when a `PyflowError` ends the run.
 - A workflow's own tests — a test hands `drive` a `RunEnv` whose writer points at pytest's
   `tmp_path`, then asserts on `checkpoint.json`, `run.json` and the per-node `output.json`; see
-  [authoring a test suite](flows/workhorse-author-test.md).
+  [authoring a test suite](../flows/workhorse-author-test.md).
 - A cost/spend scorecard (external to workhorse) — joins `events.jsonl`'s timestamped node windows
   against provider spend and git commit history, and `sessions.jsonl` to reach each turn's
   transcript.

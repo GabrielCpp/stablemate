@@ -10,7 +10,7 @@ title: Run record models
 resumed. Workflow-specific values in `params`, `inputs`, and `ctx` remain opaque.
 
 - code: `workhorse/workhorse/records.py` @9277b8111856
-- detail: [run artifacts](../run-artifacts.md)
+- detail: [run artifacts](../formats/run-artifacts.md)
 
 The public record models are `PyflowCheckpoint`, `NodeGraphCheckpoint`, `RepoObservation`,
 `RunRecord`, `LaunchRecord`, and `NodeEvent`. `Checkpoint` is their checkpoint union,

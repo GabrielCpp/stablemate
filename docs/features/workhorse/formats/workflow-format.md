@@ -8,22 +8,22 @@ title: The workflow format (a Python package)
 A workflow is a **Python package**, not a file. It declares a `Registry` under a name, the
 `Workflow` subclasses whose methods are its states, and the `@blueprint.node` functions
 that do its work; its distribution binds that registry to a command in
-`[project.scripts]`, which is how [`workhorse-<name> run`](workhorse.md#run) reaches it.
+`[project.scripts]`, which is how [`workhorse-<name> run`](../workhorse.md#run) reaches it.
 There is no file to hand the CLI and no schema to validate — the package *is* the format, and
 Python's own import and signature machinery is what checks it. Why it is a package rather
 than a declarative file is argued once, in
-[workhorse/README.md](../../../workhorse/README.md#python-workflows).
+[workhorse/README.md](../../../../workhorse/README.md#python-workflows).
 
 This page is the **structural reference**: what a workflow package contains and what each
 piece must be. The narrative guide to writing one — worked examples, the three tiers of
 state, the substitution seam, telemetry labels — is
-[workhorse/docs/AUTHORING.md](../../../workhorse/docs/AUTHORING.md). Holding a
+[workhorse/docs/AUTHORING.md](../../../../workhorse/docs/AUTHORING.md). Holding a
 `workflow.yaml` from the retired YAML front-end? Every construct in that schema is mapped
 to its replacement in
-[workhorse/docs/WORKFLOW.md](../../../workhorse/docs/WORKFLOW.md); the schema itself is
+[workhorse/docs/WORKFLOW.md](../../../../workhorse/docs/WORKFLOW.md); the schema itself is
 gone, along with its loader, its node model and its `script`/`branch`/`call` runners.
-The runtime pieces behind this shape are [blueprint registration](concepts/pyflow-blueprints.md),
-[registry composition](concepts/pyflow-registry.md), and [transitions](concepts/pyflow-transitions.md).
+The runtime pieces behind this shape are [blueprint registration](../concepts/pyflow-blueprints.md),
+[registry composition](../concepts/pyflow-registry.md), and [transitions](../concepts/pyflow-transitions.md).
 
 ## Package layout
 
@@ -47,7 +47,7 @@ module and every sibling flow's prompts fall outside the loader.
 Nothing enforces those filenames — the console script names whatever module holds the
 `main` it points at, and prompt paths are resolved relative to the package directory. What
 *is* load-bearing is that the package be importable from a real directory on disk:
-`Registry.directory()` refuses a zip-imported package, and [`run`](workhorse.md#run) calls
+`Registry.directory()` refuses a zip-imported package, and [`run`](../workhorse.md#run) calls
 it eagerly so that failure arrives at startup rather than at the first prompt render.
 
 ## Fields
@@ -204,7 +204,7 @@ template strings, and so stringified everything on the way past).
 
 ## The agent turn
 
-One LLM turn, in its own session, driven by the [agent backend](concepts/agent-backend.md)
+One LLM turn, in its own session, driven by the [agent backend](../concepts/agent-backend.md)
 `--cli` selected. The state calls it, gets a typed value back, and decides what to do — the
 turn itself is not a graph node and has no `next:`:
 
@@ -224,9 +224,9 @@ Every keyword past `returns=` is optional and defaults to whatever the engine de
 so a state that says nothing behaves as before. These are **real Python values, not
 template strings** — the state computes them and passes them.
 
-Underneath, the turn goes through [`render`](concepts/render-prompt.md), the
-[resilience ladder](concepts/run-agent.md), and [output
-extraction](concepts/extract-outputs.md), all unchanged by the port.
+Underneath, the turn goes through [`render`](../concepts/render-prompt.md), the
+[resilience ladder](../concepts/run-agent.md), and [output
+extraction](../concepts/extract-outputs.md), all unchanged by the port.
 
 ### returns
 - type: a pydantic `BaseModel` subclass — required: yes
@@ -243,7 +243,7 @@ agent actually gave.
 An abstract tier, resolved per backend through `~/.config/stablemate/config.toml` at
 `power.<tier>.<backend>` into a concrete model and reasoning effort. A workflow names the
 tier it needs; the operator's config decides what that costs. See
-[BACKENDS.md](../../../workhorse/docs/BACKENDS.md).
+[BACKENDS.md](../../../../workhorse/docs/BACKENDS.md).
 
 **The tier is an opaque string, not an enum.** The names are the operator's vocabulary:
 whatever `[power.<tier>.<backend>]` tables a config declares are the tiers that exist, and
@@ -281,7 +281,7 @@ the turn may read; the runner de-dupes them against `cwd` and turns the rest int
 
 The retired schema had three constructs with no Python spelling. Each is a consequence of
 what the port bought rather than an oversight, and each is spelled out with its reasoning
-in [WORKFLOW.md](../../../workhorse/docs/WORKFLOW.md#what-has-no-counterpart):
+in [WORKFLOW.md](../../../../workhorse/docs/WORKFLOW.md#what-has-no-counterpart):
 
 - **`requires:`**, the tool preflight — a workflow is an installed distribution now, so its
   dependencies are `[project.dependencies]` and are resolved at install time.
@@ -295,7 +295,7 @@ in [WORKFLOW.md](../../../workhorse/docs/WORKFLOW.md#what-has-no-counterpart):
 
 ## Related
 
-- [workhorse CLI](workhorse.md) — the commands that resolve and run a workflow
-- [drive](concepts/pyflow-driver.md) — the state loop that walks the machine
-- [state graph](concepts/pyflow-state-graph.md) — what `dot` and `--dry-run` derive from it
+- [workhorse CLI](../workhorse.md) — the commands that resolve and run a workflow
+- [drive](../concepts/pyflow-driver.md) — the state loop that walks the machine
+- [state graph](../concepts/pyflow-state-graph.md) — what `dot` and `--dry-run` derive from it
 - [run artifacts](run-artifacts.md) — what a run writes as it goes

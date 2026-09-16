@@ -7,7 +7,7 @@ title: Author and run a workflow's test suite
 
 The path a workflow author follows to gain confidence in a state machine without touching a
 real agent CLI or a real repo. A workflow is ordinary Python now, so its tests are ordinary
-pytest: **construct the [`Workflow`](../workflow-format.md#workflow-subclass), hand
+pytest: **construct the [`Workflow`](../formats/workflow-format.md#workflow-subclass), hand
 [`drive`](../concepts/pyflow-driver.md) a `RunEnv` whose dependencies are substituted, and
 assert on what came back and what was written.** Nothing is monkeypatched and no subprocess
 is spawned — the seam is the run's own node index, so a test replaces a dependency rather
@@ -27,9 +27,9 @@ The narrative version of the seam, with a worked example, is
      `ArtifactWriter` (point it at pytest's `tmp_path`), the workflow directory prompts
      resolve against, a `RunConfig`, and the seams below. Anything the test does not
      substitute behaves exactly as it would in production, which is the point: the driver,
-     the checkpoint writer and the [artifact](../run-artifacts.md) layout are the real ones.
+     the checkpoint writer and the [artifact](../formats/run-artifacts.md) layout are the real ones.
   3. **Substitute the dependencies the test wants to control**, all through the run's
-     [node index](../workflow-format.md#registry):
+     [node index](../formats/workflow-format.md#registry):
      - `RunEnv(nodes=registry.override(clone_repo=lambda logger: RepoSetup(...)))` — a
        **copy** of the index with those names rebound, so a substitution cannot outlive the
        run that asked for it and a typo names the registered nodes instead of silently
@@ -42,7 +42,7 @@ The narrative version of the seam, with a worked example, is
      - `Registry.stub_agents({stem: reply})` and `@blueprint.node(stub=…)` — declared
        stand-ins, shared with [`--dry-run`](../workhorse.md#run) rather than written twice.
   4. **Drive it: `result = drive(MyWorkflow(subject="login"), env)`.** The return value is
-     whatever the entry flow's [`Done`](../workflow-format.md#transition) carried. A
+     whatever the entry flow's [`Done`](../formats/workflow-format.md#transition) carried. A
      deliberate failure raises `WorkflowFailed` (or another `PyflowError`) — assert on the
      exception, and on the checkpoint the driver wrote before it.
   5. **Assert.** On the returned result, on the run dir's `checkpoint.json` / `run.json` /

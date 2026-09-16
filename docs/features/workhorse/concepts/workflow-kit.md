@@ -5,7 +5,7 @@ title: workhorse_workflows.kit — the helpers a node imports
 ---
 # workhorse_workflows.kit — the helpers a node imports
 
-Everything a **[node function](../workflow-format.md#node)** reuses. All of it used to be
+Everything a **[node function](../formats/workflow-format.md#node)** reuses. All of it used to be
 `workhorse.scriptutil`, in the engine distribution. Six modules — `git`, `github`, `workspace`,
 `paths`, `jsonio`, `tools` — behind one flat import surface:
 
@@ -46,7 +46,7 @@ monkeypatching a single module used to give for free.
 ## Workspace resolution
 
 Which repos a run spans, where they are, and getting them onto disk. The manifest is the
-[`.code-workspace` file](../code-workspace-file.md), parsed with
+[`.code-workspace` file](../formats/code-workspace-file.md), parsed with
 [`load_jsonc`](#load_jsonc) by a shared `_read_workspace_file(workspace_file)`
 helper: it parses the path it is handed and returns `(folders, ws_dir)`, or `None` when that path is
 empty or does not exist. The path is an **argument** — the run's `workspace_file` input, never an
@@ -326,7 +326,7 @@ runs the real binary — the "real passthrough" contract.
 
 ## Consumers
 
-- Workflow **[node functions](../workflow-format.md#node)** across `author`, `coder` and
+- Workflow **[node functions](../formats/workflow-format.md#node)** across `author`, `coder` and
   `okf_builder`.
 - `workhorse/supervisor.py`, which calls [`checkout_workspace`](#checkout_workspace) once, in
   process, before the engine starts.

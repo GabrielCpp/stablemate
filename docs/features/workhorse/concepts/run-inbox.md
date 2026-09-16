@@ -13,7 +13,7 @@ their own classification and diagnostic data without changing the shared store.
 
 - code: `workhorse/workhorse/inbox.py::Message` @ff8e86205c5b
 - tests: `workhorse/tests/test_inbox.py::test_outstanding_excludes_replied_messages`
-- detail: [run inbox JSONL](../inbox-jsonl.md)
+- detail: [run inbox JSONL](../formats/inbox-jsonl.md)
 - detail: [message documentation](message-documentation.md)
 
 The same store carries failure-handoff entries from the driver. The inbox primitive does not

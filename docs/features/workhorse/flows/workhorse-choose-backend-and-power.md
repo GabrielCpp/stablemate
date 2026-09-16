@@ -9,7 +9,7 @@ How an operator points a run at a different agent harness and gives its nodes a 
 performance tier instead of a hardcoded model name: hand-edit the `[power.<tier>.<backend>]` table
 in the [shared config file](../concepts/config.md), pick the harness for the run with
 [`workhorse-<name> run`](../workhorse.md#run)'s `--cli`, and let each [agent
-node](../workflow-format.md#the-agent-turn)'s `power:` resolve through that table for whichever
+node](../formats/workflow-format.md#the-agent-turn)'s `power:` resolve through that table for whichever
 [AgentBackend](../concepts/agent-backend.md) got selected via
 [`get_backend`](../concepts/get-backend.md). The same workflow — same `power="high"` on a turn —
 thus runs against `opus` under `--cli claude` or `@gpt-5.5` under `--cli codex` with no edit to the
@@ -20,8 +20,8 @@ so pointing one run at cheaper models no longer means editing the file every oth
 
 - start: an installed workflow whose `workhorse-<name>` command is on `PATH`, a config file
   (possibly empty — no `library_dir`/`power`
-  table yet required) and a workflow whose [agent turns](../workflow-format.md#the-agent-turn)
-  carry an optional [`power`](../workflow-format.md#power) tier — an opaque string, whose
+  table yet required) and a workflow whose [agent turns](../formats/workflow-format.md#the-agent-turn)
+  carry an optional [`power`](../formats/workflow-format.md#power) tier — an opaque string, whose
   meaning is whatever the operator's config maps it to (the shipped workflows use
   `low`/`medium`/`high`/`max`/`ultra`, cheapest first; default unset).
 - steps:
@@ -98,12 +98,12 @@ so pointing one run at cheaper models no longer means editing the file every oth
      ([`profile_has_backend`](../concepts/config.md#profiles), the two-axes misuse) each
      print and exit `1` before node one, and the profile check runs under `--dry-run` too, that
      being its point. The chosen name is recorded in
-     [`run.json`](../run-artifacts.md#runjson)'s `profile` (alongside an informational
+     [`run.json`](../formats/run-artifacts.md#runjson)'s `profile` (alongside an informational
      `profile_config` snapshot) and stamped on the run's root span as `workhorse.profile`, so a
      flagless `--resume-run` — and the re-exec behind `control switch-cli` — re-applies the same
      set rather than silently falling back to the top level.
   6. **Run the machine.** [`drive`](../concepts/pyflow-driver.md) walks the states; each
-     [agent turn](../workflow-format.md#the-agent-turn) a state reaches is driven by
+     [agent turn](../formats/workflow-format.md#the-agent-turn) a state reaches is driven by
      [`AgentRunner.run`](../concepts/run-agent.md).
   7. **Resolve this turn's power to a concrete model/effort/clock scale.** Inside `AgentRunner.run`'s setup
      (before the resilience ladder), `_resolve_power_settings(node.power, backend.name,

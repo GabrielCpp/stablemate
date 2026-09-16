@@ -9,7 +9,7 @@ Drives a workflow written as a **Python state machine** — states are methods o
 `Workflow` subclass, and each returns the transition to the next one — checkpointing
 before every state so a run resumes exactly where it stopped, built to run unattended for
 days. The walk itself is [drive](concepts/pyflow-driver.md); the shape an author writes is
-the [workflow format](workflow-format.md). The agent harness a run drives is an
+the [workflow format](formats/workflow-format.md). The agent harness a run drives is an
 [AgentBackend](concepts/agent-backend.md), chosen per run via
 [get_backend](concepts/get-backend.md) from the `--cli` flag.
 The vendored shared runtime supplies the [clock](concepts/clock.md), [base-library
@@ -24,7 +24,7 @@ The operator-facing live process channel is the [control channel](concepts/contr
 operator notes use the [run inbox](concepts/run-inbox.md), and both commands share [run target
 resolution](concepts/run-target-resolution.md).
 Reload decisions follow the [reload policy](concepts/reload-policy.md); gate files use the
-[operator gate file](operator-gate-file.md) format and inbox persistence uses [run inbox JSONL]
+[operator gate file](formats/operator-gate-file.md) format and inbox persistence uses [run inbox JSONL]
 (inbox-jsonl.md).
 [Detached jobs](concepts/job-supervisor.md) measure long-running commands outside agent turns;
 [generic worklists](concepts/worklist.md) provide workflow-agnostic selection and progress
@@ -93,7 +93,7 @@ still shows the subcommand listing.
 ### run
 - usage: `workhorse-<name> run [<flow>] [--params JSON]` (the default command)
 - flags:
-  - `--context-file <path>` — the per-repo [context manifest](context-manifest.md) (JSON)
+  - `--context-file <path>` — the per-repo [context manifest](formats/context-manifest.md) (JSON)
     that library prompts render against (template values, instruction/prompt path maps,
     selected-skills set). When omitted, auto-detected as
     `$AGENT_REPO_DIR/.agents/agents-context.$AGENT_CLI.json` then
@@ -114,7 +114,7 @@ still shows the subcommand listing.
     profile **replaces** them — nothing outside it is inherited — and declares its own `cli`
     field naming the CLI it runs under, so passing `--profile` together with `--cli` rejects
     the run with exit `2` rather than letting the two flags disagree about which CLI runs.
-    Per run, not per state; recorded in [`run.json`](run-artifacts.md#runjson) so a flagless
+    Per run, not per state; recorded in [`run.json`](formats/run-artifacts.md#runjson) so a flagless
     `--resume-run` re-applies it.
   - `--config <path>` — read the [shared config file](concepts/config.md) from this path instead
     of the discovered one. Means what `$STABLEMATE_CONFIG` means — *this* file, entirely, with no
@@ -160,7 +160,7 @@ still shows the subcommand listing.
     legacy per-tool merge instead of treating a discovered path as explicit
   - verify: exit_status(code=0)
   - run: select the [profile](concepts/config.md#profiles) from `--profile`, or from the resumed
-    run's [`run.json`](run-artifacts.md#runjson) after resolving its directory
+    run's [`run.json`](formats/run-artifacts.md#runjson) after resolving its directory
   - verify: exit_status(code=0)
   - run: a resumed run re-applies its recorded profile unless `--profile` overrides it, so its
     nodes do not silently resolve against the machine's global model set
@@ -217,10 +217,10 @@ still shows the subcommand listing.
     - a `runs_dir` that doesn't exist on disk yields no candidates
     - otherwise scans `runs_dir`'s immediate children
     - a child is a candidate only when it is a directory with a
-      [checkpoint file](run-artifacts.md#checkpointjson) (`ArtifactWriter.CHECKPOINT_FILE`, or
+      [checkpoint file](formats/run-artifacts.md#checkpointjson) (`ArtifactWriter.CHECKPOINT_FILE`, or
       `checkpoint.json`)
     - a directory that has not reached its first state is never resumable
-    - reads and parses each candidate's [`run.json`](run-artifacts.md#runjson)
+    - reads and parses each candidate's [`run.json`](formats/run-artifacts.md#runjson)
     - silently drops a candidate whose `run.json` is missing or invalid JSON instead of failing
       the whole scan
     - a candidate survives only if its `run.json` `terminal` key is `null`/absent — a

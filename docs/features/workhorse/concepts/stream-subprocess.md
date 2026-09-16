@@ -259,7 +259,7 @@ effect.
   watchdog-triggered (`stream_subprocess` passes `fired.set`).
 - **Output:** the armed `threading.Timer` (daemon thread, so it can't block interpreter exit), or
   `None` when `timeout == float("inf")` (the node opted out of a deadline via
-  [`timeout: infinity`](../workflow-format.md#timeout)).
+  [`timeout: infinity`](../formats/workflow-format.md#timeout)).
 - **Behavior:** starts a `threading.Timer(timeout + resilience.watchdog_grace_s, _fire)`. `_fire`
   is a no-op if the process already exited (`proc.poll() is not None`); otherwise it prints a
   `⏱ watchdog: turn exceeded {timeout}s + {grace}s grace — SIGKILLing process group` diagnostic,

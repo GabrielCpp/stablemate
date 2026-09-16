@@ -5,7 +5,7 @@ title: ArtifactWriter — the run-directory writer
 ---
 # ArtifactWriter — the run-directory writer
 
-The class that owns the [run artifacts](../run-artifacts.md) layout end to end: locating/creating
+The class that owns the [run artifacts](../formats/run-artifacts.md) layout end to end: locating/creating
 a run directory, the fresh-start vs. resume hygiene (dropping a stale `checkpoint.json`/
 `events.jsonl`), and every read/write of the files under it.
 
@@ -14,7 +14,7 @@ writer per top-level run — fresh, or via [`resume`](#resume) — and hands it
 to the run's `RunEnv`. From there [`drive`](pyflow-driver.md) writes the
 [`(state, params)` checkpoint](#write_state_checkpoint)
 before every transition, and the engine behind
-[`self.call` / `self.agent` / `self.handoff`](../workflow-format.md#workflow-subclass) records each
+[`self.call` / `self.agent` / `self.handoff`](../formats/workflow-format.md#workflow-subclass) records each
 node visit. A `handoff` gets a **nested** writer rooted under the
 calling node's directory (via [`subscope`](#subscope)).
 
@@ -31,7 +31,7 @@ or an old run directory can tell what it was for.
 - `CHECKPOINT_FILE` — `"checkpoint.json"`.
 - `EVENTS_FILE` — `"events.jsonl"` — append-only, per-node event log; kept separate from
   `checkpoint.json` (which is overwritten every step) because it must preserve full node-visit
-  history for spend/output attribution — see [`events.jsonl`](../run-artifacts.md#eventsjsonl).
+  history for spend/output attribution — see [`events.jsonl`](../formats/run-artifacts.md#eventsjsonl).
 - `TURNS_DIR` — `"turns"` — the per-visit archive whose child names come from
   [`VisitKey`](visit-key.md).
 
@@ -399,7 +399,7 @@ catches there because it is already on a failure path.
 `read_output(node_id) -> dict | None`
 Returns `<node_id>/output.json` parsed, `None` when the file is absent or unparseable, and
 `{"value": data}` when the recorded payload was not a JSON object. Backs
-[`self.output(node)`](../workflow-format.md#workflow-subclass) — a state reading back what an
+[`self.output(node)`](../formats/workflow-format.md#workflow-subclass) — a state reading back what an
 earlier node in the same run
 recorded, rather than threading the value through every transition in between. Distinguishing
 "absent" from "empty" is deliberate and is the caller's to act on: `self.output` raises

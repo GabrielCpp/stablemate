@@ -5,12 +5,12 @@ title: render — file-based prompt rendering
 ---
 # render — file-based prompt rendering
 
-Renders the prompt file an [agent turn](../workflow-format.md#the-agent-turn) names (a Jinja2
+Renders the prompt file an [agent turn](../formats/workflow-format.md#the-agent-turn) names (a Jinja2
 template on disk) against the turn's render context, first splicing in a repo-authored **flavor
 override** ([`_flavor_override`](#_flavor_override)) if one exists for that prompt.
 [`AgentRunner.run`](run-agent.md) calls it once per turn
 (`render(node.prompt, prompt_ctx, workflow_dir)`, `runner/ladder.py`) to produce the text persisted
-to the run's [`prompt.md`](../run-artifacts.md#node-idpromptmd) and sent to the agent CLI. Every
+to the run's [`prompt.md`](../formats/run-artifacts.md#node-idpromptmd) and sent to the agent CLI. Every
 Jinja global a rendered prompt can call — [`instruction_ref`, `prompt_ref`, `skill_dir`,
 `isUsingInstruction`, `agent_cli`, `skill_load_ref`, `workhorse_var`,
 `get_node_output`](farrier-globals.md) — is installed into the `Environment` here via
@@ -86,9 +86,9 @@ The lookup proceeds as follows:
 
 1. It derives `repo_root` from `context.get("_node_cwd")` or
    `ManifestContext.from_context(context).repo_root`. An agent turn with a declared
-   [`cwd`](../workflow-format.md#cwd-and-add_dirs) therefore looks its flavor up **relative to that
+   [`cwd`](../formats/workflow-format.md#cwd-and-add_dirs) therefore looks its flavor up **relative to that
    per-turn working directory** instead of the run's
-   [`_repo_root`](../context-manifest.md#runtime-mapping), so each repo in a multi-repo workflow can
+   [`_repo_root`](../formats/context-manifest.md#runtime-mapping), so each repo in a multi-repo workflow can
    carry its own flavor independent of the orchestrating repo. With neither value available, the
    lookup yields `None` (there is no repo against which to look up an override, as in a
    manifest-free run).

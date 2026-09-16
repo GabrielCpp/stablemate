@@ -29,7 +29,7 @@ Regression coverage includes `workhorse/tests/test_backends.py::test_claude_effo
   - `node_id: str` — used for log-line prefixes (`[{node_id}] …`) and passed through to
     `_stream_events`/`classify_turn` for their own logging and error messages.
   - `session_id_path: Path | None` — the node's persisted
-    [`.session_id`](../run-artifacts.md#session_id) file. When it exists and holds a non-blank id,
+    [`.session_id`](../formats/run-artifacts.md#session_id) file. When it exists and holds a non-blank id,
     the turn resumes that session (`--resume`); the file itself is read here inline (not via
     [`read_session_id`](read-session-id.md), which the four JSONL backends share instead) and
     later (re)written by [`classify_turn`](classify-turn.md) on a successful or overflow turn.
@@ -45,7 +45,7 @@ Regression coverage includes `workhorse/tests/test_backends.py::test_claude_effo
     forwarded to `_stream_events` (and on to `stream_subprocess`'s watchdog) and to `classify_turn`
     (to decide whether a timeout is treated as transient). The default lives on the node, or on
     `AgentResilience.result_timeout_s`, not here — see
-    [`timeout`](../workflow-format.md#timeout).
+    [`timeout`](../formats/workflow-format.md#timeout).
   - `cwd: str | None` (default `None`) — working directory for the `claude` subprocess (controls
     `CLAUDE.md` discovery); forwarded to `_stream_events` as `cwd or None`.
   - `add_dirs: list[str] | None` (default `None`) — extra directories to grant the agent access to;

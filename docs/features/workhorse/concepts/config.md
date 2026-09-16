@@ -13,7 +13,7 @@ named [`[profiles.<name>]`](#profiles) tables carrying a whole alternative set o
 ones. Read and
 written by [farrier config](../../farrier/farrier.md#config) — workhorse is a library and ships no
 command of its own; the `power` table is consumed at run time by
-`resolve_power` to satisfy a node's [`power`](../workflow-format.md#power) tier, and the `default`
+`resolve_power` to satisfy a node's [`power`](../formats/workflow-format.md#power) tier, and the `default`
 table by `resolve_backend_default` to fill whatever that left unset.
 
 It lives in `stablemate-core`, not in workhorse. It used to be one file *per tool*, which meant
@@ -282,7 +282,7 @@ reads one back.
 
 ## resolve_power
 
-Resolves a node's abstract [`power`](../workflow-format.md#power) tier (`high`/`medium`/`low`) plus
+Resolves a node's abstract [`power`](../formats/workflow-format.md#power) tier (`high`/`medium`/`low`) plus
 the active backend name to a concrete `PowerMapping`. A `power` of `None`/`""` short-circuits to an
 empty mapping (no override). Otherwise reads `cfg.powers.<power>` — a flat mapping of
 `model`/`effort`/`timeout_scale`, with no per-backend nesting, because `cfg` is the per-CLI

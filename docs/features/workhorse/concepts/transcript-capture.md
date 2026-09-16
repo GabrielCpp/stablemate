@@ -14,7 +14,7 @@ capture failure is deliberately best-effort and never fails the turn.
 - code: `workhorse/workhorse/runner/transcript.py::bind` @d9061fde5052
 - code: `workhorse/workhorse/runner/transcript.py::export_session` @d9061fde5052
 - tests: `workhorse/tests/test_transcript.py::test_the_store_is_preferred_and_the_tee_it_beats_is_dropped`, `workhorse/tests/test_transcript.py::test_a_backend_with_no_store_is_captured_from_the_tee`, `workhorse/tests/test_transcript.py::test_a_backend_export_is_preferred_over_the_stream_tee`, `workhorse/tests/test_transcript.py::test_a_failed_backend_export_preserves_the_stream_tee`, `workhorse/tests/test_transcript.py::test_the_next_turn_promotes_a_provisional_tee_after_the_session_settles`, `workhorse/tests/test_transcript.py::test_opencode_export_uses_the_public_full_session_command`, `workhorse/tests/test_transcript.py::test_opencode_export_rereads_a_partial_successful_snapshot`, `workhorse/tests/test_transcript.py::test_the_tee_stops_at_the_cap_and_says_so`, `workhorse/tests/test_transcript.py::test_the_store_capture_is_also_capped`, `workhorse/tests/test_transcript.py::test_capture_is_off_when_the_run_asked_for_it_to_be`, `workhorse/tests/test_transcript.py::test_a_turn_outside_a_visit_is_not_filed_under_somebody_elses`, `workhorse/tests/test_transcript.py::test_each_lap_of_a_looping_node_is_captured_separately`, `workhorse/tests/test_transcript.py::test_capture_never_faults_the_turn`, `workhorse/tests/test_transcript.py::test_a_session_with_no_recorded_backend_is_found_by_probing_the_stores`
-- detail: [run artifacts](../run-artifacts.md)
+- detail: [run artifacts](../formats/run-artifacts.md)
 - detail: [agent visit key](visit-key.md)
 
 ## Fields

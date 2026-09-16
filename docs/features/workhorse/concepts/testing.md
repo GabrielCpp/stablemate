@@ -8,7 +8,7 @@ title: workhorse.testing — what a callable flow cannot do for itself
 A small library workflow authors import from their workflow's `tests/*.py` pytest files — the
 suite plain `pytest` runs. It is **not a harness**, and that is the
 whole point of it: a workflow is a Python state machine, so testing one needs no harness at
-all. A test constructs the [`Workflow`](../workflow-format.md#workflow-subclass), hands
+all. A test constructs the [`Workflow`](../formats/workflow-format.md#workflow-subclass), hands
 [`drive`](pyflow-driver.md) a `RunEnv` whose dependencies are substituted, and asserts on what
 came back. The walkthrough is
 [Author and run a workflow's test suite](../flows/workhorse-author-test.md).
@@ -157,9 +157,9 @@ world around it. A Python workflow is a class, so the seams moved inside:
 
 | Was | Is |
 |---|---|
-| `mock_agent(node_id, response)` | `RunEnv(agent_runner=…)` for a scripted turn, or [`Registry.stub_agents({stem: reply})`](../workflow-format.md#registry) for a declared one |
+| `mock_agent(node_id, response)` | `RunEnv(agent_runner=…)` for a scripted turn, or [`Registry.stub_agents({stem: reply})`](../formats/workflow-format.md#registry) for a declared one |
 | `mock_agent_sequence(node_id, [...])` | an `agent_runner` that is a closure over a list — ordinary Python |
-| `mock_command("git", …)` | `make_git_repo` (real git), or [`Registry.override(**by_name)`](../workflow-format.md#registry) to rebind the node that shells out |
+| `mock_command("git", …)` | `make_git_repo` (real git), or [`Registry.override(**by_name)`](../formats/workflow-format.md#registry) to rebind the node that shells out |
 | `WorkflowRun.run(params=…, flow=…)` | `drive(MyWorkflow(**params), env)`, or the flow class directly |
 | `RunResult.context()` / `.step_outputs(id)` | the value `drive` returned, and `self.output(node)` / the run dir's `output.json` |
 | `RunResult.prompt(id)` | the run dir's `<node>/prompt.md`, written by the real writer |

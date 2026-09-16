@@ -12,7 +12,7 @@ answers are appended after the existing content.
 
 - file: `<run_dir>/<await path>`
 - code: `workhorse/workhorse/gates.py::format_operator_gate` @3aa082d71dce
-- detail: [control channel](concepts/control-channel.md)
+- detail: [control channel](../concepts/control-channel.md)
 - tests: `workhorse/tests/test_gates.py::test_structured_operator_gate_is_rearmed_without_double_wrapping`
 
 ## Fields

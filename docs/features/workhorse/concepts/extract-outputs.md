@@ -6,7 +6,7 @@ title: extract_outputs — parse an agent's answer into the declared returns
 # extract_outputs — parse an agent's answer into the declared returns
 
 Turns one agent-CLI turn's raw text into the dict of keys the state
-[declared](../workflow-format.md#returns) on `self.agent(..., returns=…)`. Called once per attempt by
+[declared](../formats/workflow-format.md#returns) on `self.agent(..., returns=…)`. Called once per attempt by
 [`_invoke_and_parse`](invoke-and-parse.md#algorithm) (step 2), which treats a raised
 `OutputParseError` as a same-session-retry signal, and ultimately by
 [`AgentRunner.run`](run-agent.md)'s ladder, which treats an escaped `OutputParseError` as a reframe
@@ -219,7 +219,7 @@ return candidates[-1]
 - [`AgentRunner.run`](run-agent.md) — the outer ladder; treats an `OutputParseError` that survives
   all of `_invoke_and_parse`'s same-session retries as [the reframe layer's](run-agent.md#the-ladder)
   trigger.
-- [the declared returns](../workflow-format.md#returns) — where `node.outputs` comes from:
+- [the declared returns](../formats/workflow-format.md#returns) — where `node.outputs` comes from:
   `pyflow/engine.py::_outputs_for` derives one `OutputSpec` per field of the model a state passed to
   `self.agent(..., returns=…)`, or a single `OutputSpec(key="value")` when `returns` is a plain
   scalar type with no `model_fields` (the engine unwraps that lone `value` back to a bare scalar

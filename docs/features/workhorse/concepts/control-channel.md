@@ -13,7 +13,7 @@ oversized requests are ignored by the run, and a missing listener is reported to
 
 - code: `workhorse/workhorse/control.py::ControlChannel` @180ac129b0ca
 - tests: `workhorse/tests/test_control_channel.py::test_a_message_sent_to_a_live_run_arrives_with_its_reply`
-- detail: [operator gate file](../operator-gate-file.md)
+- detail: [operator gate file](../formats/operator-gate-file.md)
 
 The CLI uses `Request` actions `reload`, `stop`, `status`, `questions`, `answer`, and the switch
 actions. `path` identifies an operator gate and `body` carries its answer; `core`,

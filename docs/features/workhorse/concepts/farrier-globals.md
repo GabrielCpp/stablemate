@@ -22,7 +22,7 @@ node `args:`, `cwd:`, and `command:` strings alike.
 ## Contract
 
 - **Input:** `context: dict[str, Any]` — the node's render context, expected to carry the reserved
-  keys a [context manifest](../context-manifest.md) sets (`_instructions`, `_prompts`,
+  keys a [context manifest](../formats/context-manifest.md) sets (`_instructions`, `_prompts`,
   `_instruction_tags`, `_used_skills`, `_skill_dir`, `_run_dir`) — all optional, each missing/falsy
   key degrades to its empty default (`{}` / `set()` / `""`) rather than erroring; an older manifest
   with no `_instruction_tags` simply matches no tag query; `workflow_dir: Path` — the running
@@ -48,7 +48,7 @@ Reads a key from a **previously-run node's** `output.json` on disk, letting a pr
 the graph-walk loop hasn't (yet) merged into the live context. Algorithm:
 1. If `context["_run_dir"]` is falsy, return `default` (no run directory to read from — e.g. a
    `render_string` call made outside a checkpointed run).
-2. Build `<run_dir>/<node_id>/output.json` (the [`output.json` run artifact](../run-artifacts.md)
+2. Build `<run_dir>/<node_id>/output.json` (the [`output.json` run artifact](../formats/run-artifacts.md)
    a prior node's step wrote) and return `default` if it doesn't exist.
 3. Parse the file as JSON and return `data.get(key, default)`.
 4. On `JSONDecodeError` or `OSError` (partially-written or unreadable file), return `default`
@@ -56,12 +56,12 @@ the graph-walk loop hasn't (yet) merged into the live context. Algorithm:
 
 ### `skill_dir()`
 Returns `context["_skill_dir"]` if set (the repo-root-relative skills directory recorded in the
-[context manifest](../context-manifest.md#field-skill_dir)), else `str(workflow_dir)` — the running
+[context manifest](../formats/context-manifest.md#field-skill_dir)), else `str(workflow_dir)` — the running
 workflow's own directory, used as a sane default for a manifest-free run (e.g. `hello-world`).
 
 ### `instruction_ref(name="")` (aliased as `instruction_file`, `skill_file`)
 Resolves `name` against `context["_instructions"]`, the selected-skill-id → installed-path map from
-the [context manifest](../context-manifest.md#field-instructions), via the shared
+the [context manifest](../formats/context-manifest.md#field-instructions), via the shared
 `references.resolve_instruction` (exact match, then a unique suffix match so a pack's namespaced
 `process-story-docs` still answers a prompt asking for `story-docs` — see [reference
 preflight](reference-preflight.md#resolution-rule)). A name that resolves to nothing degrades to
@@ -75,7 +75,7 @@ context (nothing was ever expected to resolve) and under `quiet=True`. All three
 ### `prompt_ref(name="")` (aliased as `prompt_file`)
 Same shape as [`instruction_ref`](#instruction_refname-aliased-as-instruction_file-skill_file),
 including the unresolved-reference warning, but reads `context["_prompts"]` (the [context
-manifest](../context-manifest.md#field-prompts) prompt-id → path map) with a plain exact-match lookup,
+manifest](../formats/context-manifest.md#field-prompts) prompt-id → path map) with a plain exact-match lookup,
 and its placeholder reads `f"generated {name} prompt when installed"`.
 
 ### `instruction_refs(*names)` (aliased as `instruction_files`, `skill_files`) and `prompt_refs(*names)` (aliased as `prompt_files`)
@@ -90,7 +90,7 @@ preflight](reference-preflight.md).
 ### `find_by_tags(*tags)`
 The same rendering, asked for by **capability rather than by name**: returns the installed skills
 carrying **all** of `tags`, from `context["_instruction_tags"]` (the [context
-manifest](../context-manifest.md#field-instruction_tags) name → tags map farrier writes from each library
+manifest](../formats/context-manifest.md#field-instruction_tags) name → tags map farrier writes from each library
 skill's `tags:` front matter). Algorithm:
 1. Lowercase and flatten the arguments into a `wanted` set; return `""` for an empty query, so
    asking for nothing renders nothing rather than the whole library.
@@ -111,7 +111,7 @@ findings](reference-preflight.md#what-is-not-reported).
 
 ### `is_using_instruction(name="", *_args, **_kwargs)` (Jinja name `isUsingInstruction`)
 Returns `name in used_skills`, `used_skills` being `set(context["_used_skills"] or [])` — the
-[context manifest](../context-manifest.md#field-used_skills) selected-skill-id set. Lets a prompt
+[context manifest](../formats/context-manifest.md#field-used_skills) selected-skill-id set. Lets a prompt
 conditionally include a section only when that skill was actually installed for the repo. Accepts
 and ignores extra positional/keyword arguments so a call site that also passes gating context (e.g.
 a per-story layer list) doesn't raise a `TypeError`.
@@ -133,7 +133,7 @@ backends:
    invocation, since Claude Code loads skills that way.
 2. Otherwise resolve a path in priority order — `instructions.get(skill_name)` (the manifest's
    real installed path, already backend-rewritten — see [context manifest's runtime
-   mapping](../context-manifest.md#runtime-mapping)), else the caller-supplied `skill_path`, else
+   mapping](../formats/context-manifest.md#runtime-mapping)), else the caller-supplied `skill_path`, else
    the computed fallback `f"{skill_dir()}/{skill_name}/SKILL.md"` — and return `f"Read \`{path}\`
    and follow its instructions"`, a plain-text instruction every non-Claude backend can follow
    verbatim.
@@ -141,7 +141,7 @@ backends:
 ## Consuming context keys
 
 All manifest-sourced values are read once at the top of `_farrier_globals` (not per-call), from the
-reserved keys a [context manifest](../context-manifest.md) sets: `_instructions`, `_prompts`,
+reserved keys a [context manifest](../formats/context-manifest.md) sets: `_instructions`, `_prompts`,
 `_instruction_tags`, `_used_skills`, `_skill_dir`; `_run_dir` is read separately by
 [`get_node_output`](#get_node_outputnode_id-key-default) since it names a run artifact, not a
 manifest field.

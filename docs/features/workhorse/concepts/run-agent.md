@@ -5,7 +5,7 @@ title: AgentRunner.run — the agent-node resilience ladder
 ---
 # AgentRunner.run — the agent-node resilience ladder
 
-Runs one [`agent` turn](../workflow-format.md#the-agent-turn): renders its Jinja2 prompt, drives the
+Runs one [`agent` turn](../formats/workflow-format.md#the-agent-turn): renders its Jinja2 prompt, drives the
 run's [AgentBackend](agent-backend.md) through a turn, and extracts the node's declared
 `returns` — escalating through a four-layer resilience ladder instead of raising, because
 [`drive`](pyflow-driver.md) reaches it once per agent turn of a run built to survive unattended
@@ -139,11 +139,11 @@ once rather than moving silently to the machine's top-level models.
 ## Contract
 
 - **Input:**
-  - `node: AgentNode` — the [agent turn](../workflow-format.md#the-agent-turn) to run.
+  - `node: AgentNode` — the [agent turn](../formats/workflow-format.md#the-agent-turn) to run.
   - `context: WorkflowContext` — the run's live [context](workflow-context.md); rendered to a
     dict once (`context.as_dict()`) as the Jinja base for the prompt/args.
   - `workflow_dir: Path` — base dir the prompt template path is resolved against.
-  - `session_id_path: Path | None` — the run's [`.session_id`](../run-artifacts.md#session_id)
+  - `session_id_path: Path | None` — the run's [`.session_id`](../formats/run-artifacts.md#session_id)
     file; `None` disables session persistence/resume entirely.
   - `resume_session: bool` (keyword-only, default `False`) — set by the driver when re-entering
     a node that was killed mid-turn (not fast-forwarded), and for a named session chain; see
@@ -158,7 +158,7 @@ once rather than moving silently to the machine's top-level models.
     parse failure in the same session before it can reach the reframe layer.
 - **Output:** `tuple[str, dict[str, Any]]` — `(rendered_prompt, outputs)`, the fully-rendered
   prompt text and the node's extracted output dict (for `output.json` and the context
-  merge) — see [run artifacts](../run-artifacts.md#node-idpromptmd).
+  merge) — see [run artifacts](../formats/run-artifacts.md#node-idpromptmd).
 - consistency: backend-invocation-error — A non-recoverable backend failure is re-raised immediately as its
   `BackendInvocationError`, without spending the reframe budget.
 - consistency: backend-invocation-error — When every recovery layer is exhausted, the ladder re-raises the final
@@ -187,7 +187,7 @@ own `retries` and `invoke_retries` declarations.
    base_timeout * timeout_scale`. The node's number states the *shape* of the work and the scale
    states how fast this model executes a unit of it, so a slow-model config pins both at once.
    `node.timeout == float("inf")` (from
-   [`timeout: infinity`](../workflow-format.md#timeout)) short-circuits to `unbounded = True` —
+   [`timeout: infinity`](../formats/workflow-format.md#timeout)) short-circuits to `unbounded = True` —
    `inf * scale` is still `inf` — which the stream loops honor natively (`elapsed > inf` never
    trips) and which is surfaced to the prompt as the literal string `"unbounded"` rather than
    `int(inf)`. When the scale is anything but `1.0` the turn publishes a `budget_scaled` span event
@@ -213,7 +213,7 @@ own `retries` and `invoke_retries` declarations.
 6. **Resolve the model, effort and clock scale.** `model, node_effort, timeout_scale =
    _resolve_power_settings(node.power, self.backend.name, self.model_override, self.profile.name)`
    maps the node's abstract
-   [`power:`](../workflow-format.md#power) tier through
+   [`power:`](../formats/workflow-format.md#power) tier through
    [config](config.md#resolve_power), falling back per field to the run-level `model_override`
    then the config's `[default.<backend>]` table, and finally to `backend.default_model`. The
    backend itself is **not** resolved here: it was injected at construction.
@@ -293,7 +293,7 @@ the reframe layer, so it overrides it regardless of how many attempts remain.
 
 Each node runs its agent CLI with a **clean context** by default — node *N* never inherits node
 *N − 1*'s conversation. `session_id_path` (the run's
-[`.session_id`](../run-artifacts.md#session_id)) is:
+[`.session_id`](../formats/run-artifacts.md#session_id)) is:
 
 - **dropped** before a node's first attempt, unless `resume_session=True` — the driver sets this
   to continue *this same node* after a crash mid-node (a checkpointed-but-unfinished node

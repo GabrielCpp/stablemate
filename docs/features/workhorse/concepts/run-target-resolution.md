@@ -10,7 +10,7 @@ The accepted local spellings are a run id, its `<workflow>-<run-id>` directory n
 With no `--run`, the newest directory with a checkpoint and no terminal record is selected.
 Groom lookup is restricted to the command's workflow and only accepts a returned directory that
 exists on the current machine; failures become an actionable stderr message rather than a new
-directory. The fallback returns a [live lookup result](../live-lookup.md) so the caller can
+directory. The fallback returns a [live lookup result](../formats/live-lookup.md) so the caller can
 distinguish a local miss, an unavailable groom service, and a directory that cannot be opened here.
 
 - code: `workhorse/workhorse/cli/target.py::resolve_target` @9590de02546a
@@ -29,7 +29,7 @@ distinguish a local miss, an unavailable groom service, and a directory that can
 - does: requests live-run rows from `<url>/api/live?run=<url-encoded run_id>`
 - does: accepts exactly one returned directory when its workflow matches and the directory exists locally
 - does: rejects rows for another workflow, malformed top-level responses, unavailable groom, and ambiguous or non-local directories as misses with explanatory notes
-- returns: a [live lookup result](../live-lookup.md) containing the usable directory or no directory and the reason
+- returns: a [live lookup result](../formats/live-lookup.md) containing the usable directory or no directory and the reason
 - verify: json_path(path="$.run_dir", matches=".+")
 - code: `workhorse/workhorse/cli/target.py::groom_live_run` @9590de02546a
 

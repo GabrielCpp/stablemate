@@ -37,7 +37,7 @@ Compaction receives the operator-configured Claude harness environment used by n
 keeps the `/compact` call under the same CLI configuration as the conversation it compacts.
 
 - **Input:**
-  - `session_id_path: Path | None` — the run's [`.session_id`](../run-artifacts.md#session_id)
+  - `session_id_path: Path | None` — the run's [`.session_id`](../formats/run-artifacts.md#session_id)
     file for this node; the session to compact.
   - `node_id: str` — used only in log lines (`[{node_id}] ...`) and forwarded to
     [`stream_subprocess`](stream-subprocess.md#contract).

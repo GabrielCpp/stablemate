@@ -9,7 +9,7 @@ The headline resilience path. [`drive`](../concepts/pyflow-driver.md) checkpoint
 `(state, params)` **before** entering every state, so an unattended run that dies
 mid-machine — process killed, machine reboot, an unrecovered `BackendInvocationError`, an
 operator Ctrl-C — is never relaunched from scratch: re-issuing the **identical command
-line** finds the stable run dir's [`checkpoint.json`](../run-artifacts.md#checkpointjson)
+line** finds the stable run dir's [`checkpoint.json`](../formats/run-artifacts.md#checkpointjson)
 and re-enters the state it stopped in.
 
 Resume is deliberately **coarse**: the checkpointed state is re-entered *from the top*, and
@@ -22,8 +22,8 @@ afford to repeat.
 - start: an in-progress `workhorse-<name> run [<flow>]` dies after at least one checkpoint
   write
 - verify: persists(subject="the in-progress run's checkpoint")
-- start: the run dies before any state returned [`Done`](../workflow-format.md#transition), so
-  [`run.json`](../run-artifacts.md#runjson)'s `terminal` is still `null`
+- start: the run dies before any state returned [`Done`](../formats/workflow-format.md#transition), so
+  [`run.json`](../formats/run-artifacts.md#runjson)'s `terminal` is still `null`
 - verify: json_path(path="$.terminal", equals="null")
 - start: an operator Ctrl-C terminates the active agent turn, records the stop via
   [`record_interrupt`](../concepts/artifact-writer.md#record_interrupt), prints the pause, and
@@ -49,7 +49,7 @@ afford to repeat.
      `find_latest_resumable`; `--no-cache` forces a fresh dir.
   3. **Read the checkpoint back** (`read_resume`) — the state name, the `params` bound for
      it, the run's frozen `inputs`, `ctx`, the flow class name, and `waiting_on` for a run
-     paused in an [`Await`](../workflow-format.md#transition). A checkpoint whose `engine`
+     paused in an [`Await`](../formats/workflow-format.md#transition). A checkpoint whose `engine`
      key is not `"pyflow"` is
      [refused by name](../concepts/pyflow-driver.md#a-checkpoint-from-the-retired-engine-is-refused-not-misread)
      rather than misread — the YAML front-end shared this runs directory, and one of its
@@ -68,7 +68,7 @@ afford to repeat.
   5. **Walk on** — one state method per transition, checkpointing before each, until a state
      returns `Done`.
 - end: the entry flow returns `Done`, `finish(terminal="terminal")` stamps
-  [`run.json`](../run-artifacts.md#runjson)'s `ended_at`/`terminal`, and the process exits `0`.
+  [`run.json`](../formats/run-artifacts.md#runjson)'s `ended_at`/`terminal`, and the process exits `0`.
 - verify: exit_status(code=0)
 - end: dying again leaves the same stable dir resumable for another retry of this same journey.
 - verify: persists(subject="the unfinished run's stable directory and checkpoint")

@@ -45,10 +45,10 @@ resolves any of them.
 - **Input:**
   - `prompt: str` — the text to send.
   - `node_id: str` — used only for the console prefix and the otel events.
-  - `session_id_path: Path | None` — the run's [`.session_id`](../run-artifacts.md#session_id);
+  - `session_id_path: Path | None` — the run's [`.session_id`](../formats/run-artifacts.md#session_id);
     passed through to the backend, which persists the resulting id so the next call can `--resume`.
   - `model: str | None` (default `None`) — the concrete model, already resolved from the node's
-    [`power:`](../workflow-format.md#power) tier by the caller.
+    [`power:`](../formats/workflow-format.md#power) tier by the caller.
     - `timeout: float` (keyword-only) — the per-turn wall-clock budget in seconds.
     - `prompt_path: Path | None` (keyword-only) — the already-persisted rendered prompt, passed to
       the backend for invocation diagnostics.
@@ -57,7 +57,7 @@ resolves any of them.
     - `invoke_retries: int | None` (keyword-only) — when set, replaces
       `resilience.max_invoke_retries` for this turn's short-transient retry budget.
     - `budget_scale: float` (keyword-only, default `1.0`) — the active power tier's
-      [`timeout_scale`](../workflow-format.md#power), already folded into `timeout` by the caller.
+      [`timeout_scale`](../formats/workflow-format.md#power), already folded into `timeout` by the caller.
       Carried here only so a scaled turn can be told apart from one whose `timeout` was hand-edited
       in the workflow, a distinction `timeout` alone cannot make.
     - `base_timeout_s: float | None` (keyword-only, default `None`) — the unscaled node timeout

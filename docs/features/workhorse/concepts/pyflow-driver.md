@@ -228,7 +228,7 @@ resumes the wrong thing. Such a run cannot be resumed; start it over.
 
 ## Related
 
-- [the workflow format](../workflow-format.md) — the package shape this walks
+- [the workflow format](../formats/workflow-format.md) — the package shape this walks
 - [state graph](pyflow-state-graph.md) — what `dot` and `--dry-run` derive from the same classes
 - [ArtifactWriter](artifact-writer.md) — the run directory and checkpoint files it writes
 - [`AgentRunner.run`](run-agent.md) — the resilience ladder `self.agent` goes through unchanged

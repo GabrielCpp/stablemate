@@ -6,7 +6,7 @@ title: Reference preflight — naming unresolvable skill/prompt references befor
 ---
 # Reference preflight — naming unresolvable skill/prompt references before the run
 
-`instruction_ref("story-docs")` resolves against the [context manifest](../context-manifest.md).
+`instruction_ref("story-docs")` resolves against the [context manifest](../formats/context-manifest.md).
 When it does *not* resolve, the [helper](farrier-globals.md#instruction_refname-aliased-as-instruction_file-skill_file)
 returns the placeholder `generated story-docs instruction file when installed`, and that sentence
 is rendered straight into a live agent prompt where a path belonged. Nothing fails; the agent is
