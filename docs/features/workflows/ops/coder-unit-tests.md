@@ -34,7 +34,6 @@ invokes `$(MAKE) -C workflows test`; this tier blocks that aggregate CI gate.
 - working-directory: .
 - timeout: 120
 - health: `uv run pytest --version` exits 0 after the workspace environment is available
-- provenance: derived
 
 ### run-coder-tests
 
@@ -44,7 +43,6 @@ invokes `$(MAKE) -C workflows test`; this tier blocks that aggregate CI gate.
 - timeout: 120
 - produces: pytest's terminal result for `tests/coder`
 - verify: [workflow test target](../../../../workflows/Makefile)
-- provenance: derived
 
 ### confirm-coder-tests-pass
 
@@ -52,4 +50,3 @@ invokes `$(MAKE) -C workflows test`; this tier blocks that aggregate CI gate.
 - run: uv run pytest tests/coder -q -n auto --dist worksteal
 - working-directory: workflows
 - timeout: 120
-- provenance: derived

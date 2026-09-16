@@ -23,7 +23,6 @@ surface is the [workhorse-author CLI](../workhorse-author.md).
 - run: `uv sync --all-packages`
 - working-directory: .
 - timeout: 120
-- provenance: derived
 
 ### check-driver
 
@@ -31,7 +30,6 @@ surface is the [workhorse-author CLI](../workhorse-author.md).
 - run: `uv run workhorse-author version`
 - timeout: 30
 - health: `uv run workhorse-author version` exits 0 and prints the installed Workhorse engine version
-- provenance: derived
 
 ### run-driver
 
@@ -40,4 +38,3 @@ surface is the [workhorse-author CLI](../workhorse-author.md).
 - timeout: 120
 - produces: the Workhorse run result for the selected authoring flow
 - verify: [workhorse-author run command](../workhorse-author.md#run)
-- provenance: derived

@@ -23,7 +23,6 @@ exposed surface is the [workhorse-okf-builder CLI](../workhorse-okf-builder.md).
 - run: `uv sync --all-packages`
 - working-directory: .
 - timeout: 120
-- provenance: derived
 
 ### check-driver
 
@@ -31,7 +30,6 @@ exposed surface is the [workhorse-okf-builder CLI](../workhorse-okf-builder.md).
 - run: `uv run workhorse-okf-builder version`
 - timeout: 30
 - health: `uv run workhorse-okf-builder version` exits 0 and prints the installed Workhorse engine version
-- provenance: derived
 
 ### run-driver
 
@@ -40,4 +38,3 @@ exposed surface is the [workhorse-okf-builder CLI](../workhorse-okf-builder.md).
 - timeout: 120
 - produces: the Workhorse run result for the OKF-builder flow
 - verify: [workhorse-okf-builder run command](../workhorse-okf-builder.md#run)
-- provenance: derived

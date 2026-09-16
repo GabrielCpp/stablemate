@@ -33,7 +33,6 @@ browser controls, so it does not use book-derived UI locators. The repository `t
 - working-directory: .
 - timeout: 120
 - health: `uv run pytest --version` exits 0 after the workspace environment is available
-- provenance: derived
 
 ### run-author-tests
 
@@ -43,7 +42,6 @@ browser controls, so it does not use book-derived UI locators. The repository `t
 - timeout: 120
 - produces: pytest's terminal result for `tests/author`
 - verify: [workflow test target](../../../../workflows/Makefile)
-- provenance: derived
 
 ### confirm-author-tests-pass
 
@@ -51,4 +49,3 @@ browser controls, so it does not use book-derived UI locators. The repository `t
 - run: uv run pytest tests/author -q -n auto --dist worksteal
 - working-directory: workflows
 - timeout: 120
-- provenance: derived

@@ -28,7 +28,6 @@ and version reporting to uv, pytest, and the package metadata. It does not start
 - timeout: 30
 - produces: the available package-local Make targets and their descriptions
 - verify: [workhorse Makefile](../../../../workhorse/Makefile)
-- provenance: derived
 
 ### install
 
@@ -37,7 +36,6 @@ and version reporting to uv, pytest, and the package metadata. It does not start
 - working-directory: workhorse
 - timeout: 120
 - health: `uv run python -c "import workhorse"` exits 0 after the local package environment is available
-- provenance: derived
 
 ### test
 
@@ -47,7 +45,6 @@ and version reporting to uv, pytest, and the package metadata. It does not start
 - timeout: 120
 - produces: pytest results for `workhorse/tests`
 - verify: [workhorse Makefile](../../../../workhorse/Makefile)
-- provenance: derived
 
 ### build
 
@@ -57,7 +54,6 @@ and version reporting to uv, pytest, and the package metadata. It does not start
 - timeout: 120
 - produces: the `workhorse-agent` source distribution and wheel in `workhorse/dist/`
 - verify: [workhorse Makefile](../../../../workhorse/Makefile)
-- provenance: derived
 
 ### check
 
@@ -66,7 +62,6 @@ and version reporting to uv, pytest, and the package metadata. It does not start
 - working-directory: workhorse
 - produces: the built wheel's file listing
 - verify: [workhorse Makefile](../../../../workhorse/Makefile)
-- provenance: derived
 
 ### verify-install
 
@@ -76,7 +71,6 @@ and version reporting to uv, pytest, and the package metadata. It does not start
 - timeout: 120
 - produces: the imported `workhorse.console_script` public API from the refreshed published package
 - verify: [workhorse Makefile](../../../../workhorse/Makefile)
-- provenance: derived
 
 ### clean
 
@@ -86,7 +80,6 @@ and version reporting to uv, pytest, and the package metadata. It does not start
 - timeout: 30
 - produces: removal of `workhorse/dist/`, `workhorse/build/`, and `workhorse/*.egg-info`
 - verify: [workhorse Makefile](../../../../workhorse/Makefile)
-- provenance: derived
 
 ### version
 
@@ -95,4 +88,3 @@ and version reporting to uv, pytest, and the package metadata. It does not start
 - working-directory: workhorse
 - produces: the `workhorse-agent` distribution name and declared version
 - verify: [workhorse Makefile](../../../../workhorse/Makefile)
-- provenance: derived

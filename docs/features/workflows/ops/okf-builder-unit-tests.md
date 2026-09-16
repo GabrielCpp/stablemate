@@ -40,7 +40,6 @@ test`; this tier blocks that aggregate CI gate.
 - working-directory: .
 - timeout: 120
 - health: `uv run pytest --version` exits 0 after the workspace environment is available
-- provenance: derived
 
 ### run-okf-builder-tests
 
@@ -50,7 +49,6 @@ test`; this tier blocks that aggregate CI gate.
 - timeout: 120
 - produces: pytest's terminal result for `tests/okf_builder`
 - verify: [workflow test target](../../../../workflows/Makefile)
-- provenance: derived
 
 ### confirm-okf-builder-tests-pass
 
@@ -58,4 +56,3 @@ test`; this tier blocks that aggregate CI gate.
 - run: uv run pytest tests/okf_builder -q -n auto --dist worksteal
 - working-directory: workflows
 - timeout: 120
-- provenance: derived

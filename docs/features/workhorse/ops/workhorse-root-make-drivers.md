@@ -33,7 +33,6 @@ root target; it is not a separate phony target.
 - timeout: 30
 - produces: the root Make target inventory and descriptions
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### install
 
@@ -42,7 +41,6 @@ root target; it is not a separate phony target.
 - working-directory: .
 - timeout: 300
 - health: `uv run python -c "import workhorse"` exits 0 after the workspace environment, Chromium, and git hooks are installed
-- provenance: derived
 
 ### sync
 
@@ -52,7 +50,6 @@ root target; it is not a separate phony target.
 - timeout: 300
 - produces: the uv workspace environment resolved for all members from `uv.lock`
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### browsers
 
@@ -62,7 +59,6 @@ root target; it is not a separate phony target.
 - timeout: 300
 - produces: the Chromium browser binary used by Playwright
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### hooks
 
@@ -72,7 +68,6 @@ root target; it is not a separate phony target.
 - timeout: 120
 - produces: the repository git hooks for private-name, commit-message, and generated-file guards
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### lint
 
@@ -82,7 +77,6 @@ root target; it is not a separate phony target.
 - timeout: 600
 - produces: ruff, ty, and basedpyright results for the complete workspace
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### test
 
@@ -92,7 +86,6 @@ root target; it is not a separate phony target.
 - timeout: 1200
 - produces: package test results and every repository guard result
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### bench-doctor
 
@@ -102,7 +95,6 @@ root target; it is not a separate phony target.
 - timeout: 600
 - produces: timing measurements for `ostler doctor` over the book at `DOCS`, optionally as JSON
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### okf-verify
 
@@ -112,7 +104,6 @@ root target; it is not a separate phony target.
 - timeout: 600
 - produces: the OKF coverage result for every documented book and source inventory
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### test-scripts
 
@@ -122,7 +113,6 @@ root target; it is not a separate phony target.
 - timeout: 600
 - produces: pytest results for repository guard scripts
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### check-public
 
@@ -132,7 +122,6 @@ root target; it is not a separate phony target.
 - timeout: 300
 - produces: the public/private-name and base-stands-alone guard result
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### check-no-env
 
@@ -142,7 +131,6 @@ root target; it is not a separate phony target.
 - timeout: 120
 - produces: the guard result for workflow input access through parameters instead of environment variables
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### check-no-giveup
 
@@ -152,7 +140,6 @@ root target; it is not a separate phony target.
 - timeout: 120
 - produces: the guard result that budget exhaustion remains blocked rather than failed
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### check-no-shell
 
@@ -162,7 +149,6 @@ root target; it is not a separate phony target.
 - timeout: 120
 - produces: the guard result for ad-hoc shell scripts outside the unified CLI
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### check-fixtures
 
@@ -172,7 +158,6 @@ root target; it is not a separate phony target.
 - timeout: 300
 - produces: the declared-fixture consistency result for the benchmark corpus
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### check-prompt-agnostic
 
@@ -182,7 +167,6 @@ root target; it is not a separate phony target.
 - timeout: 120
 - produces: the guard result that coder prompts do not name a specific application stack
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### check-parsers
 
@@ -192,7 +176,6 @@ root target; it is not a separate phony target.
 - timeout: 120
 - produces: the guard result that structured formats use parsers rather than regex matching
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### check-portability
 
@@ -202,7 +185,6 @@ root target; it is not a separate phony target.
 - timeout: 120
 - produces: the portability-tier guard result for shipped packages
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### check-library
 
@@ -212,7 +194,6 @@ root target; it is not a separate phony target.
 - timeout: 300
 - produces: the strict base-library front-matter validation result
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### check-agent-outputs
 
@@ -222,7 +203,6 @@ root target; it is not a separate phony target.
 - timeout: 300
 - produces: the generated agent-adapter freshness result
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### check-skills
 
@@ -232,7 +212,6 @@ root target; it is not a separate phony target.
 - timeout: 120
 - produces: the base-library skill writing-doctrine guard result
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### vendor
 
@@ -242,7 +221,6 @@ root target; it is not a separate phony target.
 - timeout: 120
 - produces: refreshed copies of `core/stablemate_core` in the vendoring destinations
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### check-vendor
 
@@ -252,7 +230,6 @@ root target; it is not a separate phony target.
 - timeout: 120
 - produces: the byte-for-byte vendored-copy consistency result
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### build
 
@@ -262,7 +239,6 @@ root target; it is not a separate phony target.
 - timeout: 600
 - produces: source distributions and wheels in the published package `dist/` directories
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### version
 
@@ -272,7 +248,6 @@ root target; it is not a separate phony target.
 - timeout: 60
 - produces: the declared versions of every published package
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### release
 
@@ -282,7 +257,6 @@ root target; it is not a separate phony target.
 - timeout: 120
 - produces: a dispatched release workflow and the command used to find its pending release PR
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived
 
 ### include
 
@@ -292,4 +266,3 @@ root target; it is not a separate phony target.
 - timeout: 30
 - produces: the dry-run expansion after GNU Make loads `.agents/agents.mk` when that generated include exists
 - verify: [root Makefile](../../../../Makefile)
-- provenance: derived

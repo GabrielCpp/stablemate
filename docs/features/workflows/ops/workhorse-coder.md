@@ -23,7 +23,6 @@ exposed surface is the [workhorse-coder CLI](../workhorse-coder.md).
 - run: `uv sync --all-packages`
 - working-directory: .
 - timeout: 120
-- provenance: derived
 
 ### check-driver
 
@@ -31,7 +30,6 @@ exposed surface is the [workhorse-coder CLI](../workhorse-coder.md).
 - run: `uv run workhorse-coder version`
 - timeout: 30
 - health: `uv run workhorse-coder version` exits 0 and prints the installed Workhorse engine version
-- provenance: derived
 
 ### run-driver
 
@@ -40,4 +38,3 @@ exposed surface is the [workhorse-coder CLI](../workhorse-coder.md).
 - timeout: 120
 - produces: the Workhorse run result for the selected coder flow
 - verify: [workhorse-coder run command](../workhorse-coder.md#run)
-- provenance: derived

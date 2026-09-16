@@ -24,7 +24,6 @@ driver without requiring an agent CLI or repository context. The exposed surface
 - run: `uv sync --all-packages`
 - working-directory: .
 - timeout: 120
-- provenance: derived
 
 ### check-driver
 
@@ -32,7 +31,6 @@ driver without requiring an agent CLI or repository context. The exposed surface
 - run: `uv run workhorse-hello-world version`
 - timeout: 30
 - health: `uv run workhorse-hello-world version` exits 0 and prints the installed Workhorse engine version
-- provenance: derived
 
 ### run-driver
 
@@ -41,4 +39,3 @@ driver without requiring an agent CLI or repository context. The exposed surface
 - timeout: 120
 - produces: the Workhorse run result for the deterministic greeting
 - verify: [workhorse-hello-world run command](../workhorse-hello-world.md#run)
-- provenance: derived

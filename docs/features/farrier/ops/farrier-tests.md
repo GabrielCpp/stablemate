@@ -43,7 +43,6 @@ CI gate.
 - run: uv sync --all-packages
 - working-directory: .
 - timeout: 120
-- provenance: derived
 
 ### run-farrier-tests
 
@@ -53,7 +52,6 @@ CI gate.
 - timeout: 120
 - produces: pytest terminal result for `farrier/tests`
 - verify: [Farrier test target](../../../../farrier/Makefile)
-- provenance: derived
 
 ### confirm-farrier-tests-pass
 
@@ -61,4 +59,3 @@ CI gate.
 - run: uv run pytest tests -q -n auto --dist worksteal
 - working-directory: farrier
 - timeout: 120
-- provenance: derived

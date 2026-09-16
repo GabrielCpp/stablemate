@@ -44,7 +44,6 @@ current dashboard state as JSON; its presence and structure are the readiness ch
 - health: `http: GET /api/state returns 200 with "workflows" in the JSON response body` confirms the server is accepting HTTP requests and serving the dashboard state
 - produces: a running Litestar server listening on `127.0.0.1:8787`, accepting HTTP requests and WebSocket connections from the browser dashboard and container sidecars
 - verify: [groom server](../http/groom.md)
-- provenance: derived
 
 ### stop
 
@@ -54,5 +53,4 @@ current dashboard state as JSON; its presence and structure are the readiness ch
 - timeout: 5
 - verify: [groom CLI serve command](../groom-cli.md#serve)
 - optional: true
-- provenance: derived
 

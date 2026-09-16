@@ -59,7 +59,6 @@ discarding that run's persistent state.
 - timeout: 120
 - produces: the `agent` image containing the workspace members and installed workflow commands
 - verify: [workhorse Dockerfile](../../../../workhorse/Dockerfile)
-- provenance: derived
 
 ### serve
 
@@ -70,7 +69,6 @@ discarding that run's persistent state.
 - health: `log:[supervisor] workflow exited with 0` confirms successful observable completion for this non-network job
 - produces: the `hello-world` workflow's run artifacts in the `runs` volume and its container exit status
 - verify: [supervisor](../../../../workhorse/supervisor.py)
-- provenance: derived
 
 ### stop
 
@@ -79,4 +77,3 @@ discarding that run's persistent state.
 - working-directory: .
 - timeout: 30
 - verify: [Compose stack](../../../../workhorse/compose.yaml)
-- provenance: derived

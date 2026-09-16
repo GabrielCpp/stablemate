@@ -23,7 +23,6 @@ mode. A real research run receives its program and repository selection through 
 - run: `uv sync --all-packages`
 - working-directory: .
 - timeout: 120
-- provenance: derived
 
 ### check-driver
 
@@ -31,7 +30,6 @@ mode. A real research run receives its program and repository selection through 
 - run: `uv run workhorse-research version`
 - timeout: 30
 - health: `uv run workhorse-research version` exits 0 and prints the installed Workhorse engine version
-- provenance: derived
 
 ### run-driver
 
@@ -40,4 +38,3 @@ mode. A real research run receives its program and repository selection through 
 - timeout: 120
 - produces: the Workhorse run result for the configured research program
 - verify: [workhorse-research run command](../workhorse-research.md#run)
-- provenance: derived

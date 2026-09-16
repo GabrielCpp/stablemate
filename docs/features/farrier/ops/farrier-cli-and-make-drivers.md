@@ -32,7 +32,6 @@ the published-install check and final cleanup.
 - timeout: 120
 - produces: the Farrier package and its dependencies in the repository uv environment
 - verify: [Farrier Makefile](../../../../farrier/Makefile)
-- provenance: derived
 
 ### check-console
 
@@ -43,7 +42,6 @@ the published-install check and final cleanup.
 - health: `farrier --help` exits 0 and prints the top-level command listing
 - produces: the installed `farrier` console script is callable from the workspace environment
 - verify: [farrier CLI](../farrier.md)
-- provenance: derived
 
 ### show-help
 
@@ -52,7 +50,6 @@ the published-install check and final cleanup.
 - working-directory: farrier
 - produces: the Makefile target listing for `help`, `install`, `test`, `build`, `check`, `verify-install`, `clean`, and `version`
 - verify: [Farrier Makefile](../../../../farrier/Makefile)
-- provenance: derived
 
 ### run-tests
 
@@ -62,7 +59,6 @@ the published-install check and final cleanup.
 - timeout: 120
 - produces: the standalone Farrier pytest result
 - verify: [Farrier test suite](farrier-tests.md)
-- provenance: derived
 
 ### build-package
 
@@ -72,7 +68,6 @@ the published-install check and final cleanup.
 - timeout: 120
 - produces: the Farrier source distribution and wheel in `farrier/dist/`
 - verify: [Farrier Makefile](../../../../farrier/Makefile)
-- provenance: derived
 
 ### check-wheel-contents
 
@@ -82,7 +77,6 @@ the published-install check and final cleanup.
 - timeout: 120
 - produces: the wheel-content listing for the freshly built Farrier wheel
 - verify: [Farrier Makefile](../../../../farrier/Makefile)
-- provenance: derived
 
 ### verify-published-install
 
@@ -92,7 +86,6 @@ the published-install check and final cleanup.
 - timeout: 120
 - produces: the published Farrier package's top-level `--help` output
 - verify: [farrier CLI](../farrier.md)
-- provenance: derived
 
 ### clean-artifacts
 
@@ -101,7 +94,6 @@ the published-install check and final cleanup.
 - working-directory: farrier
 - produces: removal of `farrier/dist/`, `farrier/build/`, and `farrier/*.egg-info`
 - verify: [Farrier Makefile](../../../../farrier/Makefile)
-- provenance: derived
 
 ### show-version
 
@@ -110,4 +102,3 @@ the published-install check and final cleanup.
 - working-directory: farrier
 - produces: the Farrier distribution name and declared version
 - verify: [Farrier Makefile](../../../../farrier/Makefile)
-- provenance: derived

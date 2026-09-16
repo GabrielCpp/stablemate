@@ -36,7 +36,6 @@ workflows test`, so this tier blocks that aggregate CI gate.
 - working-directory: .
 - timeout: 120
 - health: `uv run pytest --version` exits 0 after the workspace environment is available
-- provenance: derived
 
 ### run-research-tests
 
@@ -46,7 +45,6 @@ workflows test`, so this tier blocks that aggregate CI gate.
 - timeout: 120
 - produces: pytest's terminal result for `tests/research`
 - verify: [workflow test target](../../../../workflows/Makefile)
-- provenance: derived
 
 ### confirm-research-tests-pass
 
@@ -54,4 +52,3 @@ workflows test`, so this tier blocks that aggregate CI gate.
 - run: uv run pytest tests/research -q -n auto --dist worksteal
 - working-directory: workflows
 - timeout: 120
-- provenance: derived

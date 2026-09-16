@@ -36,7 +36,6 @@ and blocks the aggregate CI gate.
 - working-directory: .
 - timeout: 120
 - health: `uv run pytest --version` exits 0 after the workspace environment is available
-- provenance: derived
 
 ### run-shared-workflow-tests
 
@@ -46,7 +45,6 @@ and blocks the aggregate CI gate.
 - timeout: 120
 - produces: pytest terminal result for `tests/test_*.py`
 - verify: [workflow test target](../../../../workflows/Makefile)
-- provenance: derived
 
 ### confirm-shared-workflow-tests-pass
 
@@ -54,4 +52,3 @@ and blocks the aggregate CI gate.
 - run: uv run pytest tests/test_*.py -q -n auto --dist worksteal
 - working-directory: workflows
 - timeout: 120
-- provenance: derived
