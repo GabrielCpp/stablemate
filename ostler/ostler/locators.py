@@ -26,9 +26,10 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 from ostler import graph as graph_mod
-from ostler.model import Graph
+from ostler.model import Graph, UINode
 from ostler.reach import NONE_TOKENS, _screen_of
 
 # Roles a user operates. An interactive control with no accessible name is unusable by assistive
@@ -40,7 +41,43 @@ INTERACTIVE_ROLES = frozenset({
     "switch", "tab", "treeitem",
 })
 
+#: The node types a check locator may name. A locator is what the driver is pointed at, and
+#: only these describe something on a screen the driver can point at — a screen is the page,
+#: not an element on it, and everything else is not rendered at all.
 LOCATABLE_TYPES = ("component", "interaction")
+
+
+def locator_target(graph: Graph, value: str, origin: Path) -> str:
+    """The node identity a check locator names, or ``""`` when it names no node at all.
+
+    Two spellings, and deliberately no third: ``#anchor`` for a component declared in the same
+    document, ``path/to/doc.md#anchor`` for one declared elsewhere. A value with no ``#`` is not
+    a reference — it is the CSS selector or ``role:name`` string this rule exists to retire, and
+    returning ``""`` for it is what lets the caller say so.
+    """
+    if "#" not in value:
+        return ""
+    if value.startswith("#"):
+        try:
+            rel = origin.relative_to(graph.root).as_posix()
+        except ValueError:
+            return ""
+        return f"{rel}#{value[1:]}"
+    return graph.resolve_doc_ref(value, origin=origin)
+
+
+def located_node(graph: Graph, value: str, origin: Path) -> UINode | None:
+    """The component or interaction a check locator names, or None when it names none.
+
+    `doctor` reports the None as `undeclared-check-locator`; `qa context` stamps the resolved
+    node onto the check row so `compile_plan` can point a driver at what the *check* names
+    rather than at the node the obligation happens to be minted on. One resolution, two
+    readers: a compiler that resolved this itself would be free to disagree with the rule that
+    passed the book, and a check that located nothing would compile into an assertion anyway.
+    """
+    target = locator_target(graph, value, origin)
+    node = graph.find_ui_node(target) if target else None
+    return node if node is not None and node.type in LOCATABLE_TYPES else None
 
 # The ARIA roles Playwright's `getByRole` accepts. The list is finite and stable, which is what
 # makes `role:` checkable at all: anything outside it is not a role the app can have computed, so a

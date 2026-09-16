@@ -2304,31 +2304,6 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
             **_at(item["node"])))
 
 
-#: The node types a check locator may name. A locator is what the driver is pointed at, and
-#: only these two describe something on a screen the driver can point at — a screen is the
-#: page, not an element on it, and everything else is not rendered at all.
-_LOCATABLE_TYPES = frozenset({"component", "interaction"})
-
-
-def locator_target(graph: Graph, value: str, origin: Path) -> str:
-    """The node identity a check locator names, or ``""`` when it names no node at all.
-
-    Two spellings, and deliberately no third: ``#anchor`` for a component declared in the same
-    document, ``path/to/doc.md#anchor`` for one declared elsewhere. A value with no ``#`` is not
-    a reference — it is the CSS selector or ``role:name`` string this rule exists to retire, and
-    returning ``""`` for it is what lets the caller say so.
-    """
-    if "#" not in value:
-        return ""
-    if value.startswith("#"):
-        try:
-            rel = origin.relative_to(graph.root).as_posix()
-        except ValueError:
-            return ""
-        return f"{rel}#{value[1:]}"
-    return graph.resolve_doc_ref(value, origin=origin)
-
-
 def _check_placement(node, rel: str, f: list[Finding]) -> None:
     """A structural component says where it sits, and says it in a form QA can check.
 
@@ -2563,9 +2538,8 @@ def _check_ui(graph: Graph, f: list[Finding],
                     if not param.locator or param.name not in parsed.args:
                         continue
                     named = str(parsed.args[param.name])
-                    target = locator_target(graph, named, node.path)
-                    resolved = graph.find_ui_node(target) if target else None
-                    if resolved is not None and resolved.type in _LOCATABLE_TYPES:
+                    target = loc_mod.locator_target(graph, named, node.path)
+                    if loc_mod.located_node(graph, named, node.path) is not None:
                         continue
                     why = ("names no component this book declares" if target
                            else "is a raw selector, not a reference into the book")
@@ -2599,27 +2573,29 @@ def _check_ui(graph: Graph, f: list[Finding],
         # would read as `all`, and guessing wrong in that direction is the whole defect.
         # Required only where it changes an outcome — more than one child, and a check bound to
         # them — so a book is not asked to annotate lists nobody observes.
-        groups = registry.claim_groups(node.type, node.bullet_order)
-        _, fanned = registry.attributed_checks(node.type, node.bullet_order, {})
-        for position, group in groups.items():
-            if len(group) < 2 or not any(fanned.get(claim) for claim in group):
-                continue
+        undetermined = registry.undetermined_claims(
+            node.type, node.bullet_order, node.combiners)
+        for position, group in undetermined.items():
             key, index = group[0]
+            f.append(Finding(
+                "error", "unstated-claim-combiner",
+                f"{node.id}: `{key}:` nests {len(group)} claims with a `{verify_key}:` "
+                f"written under them, and does not say whether they are parts of one "
+                f"effect or alternative outcomes — so nothing can tell a check that "
+                f"observes all of them from one that refutes all but one",
+                path=rel, line=node.bullet_lines.get(position, node.line),
+                ref=refs_mod.bullet_ref(node.id, key, index),
+                suggestion=f"- {key}: all   # or: branches"))
+        # The same two conditions `undetermined_claims` applies, against the stated word: a
+        # `branches` list nobody wrote a check under has no check to have been misfiled, so
+        # there is nothing here to report.
+        _, fanned = registry.attributed_checks(node.type, node.bullet_order, {})
+        for position, group in registry.claim_groups(node.type, node.bullet_order).items():
+            if node.combiners.get(position, "") != "branches" or len(group) < 2:
+                continue
+            if not any(fanned.get(claim) for claim in group):
+                continue
             line = node.bullet_lines.get(position, node.line)
-            word = node.combiners.get(position, "")
-            if not word:
-                f.append(Finding(
-                    "error", "unstated-claim-combiner",
-                    f"{node.id}: `{key}:` nests {len(group)} claims with a `{verify_key}:` "
-                    f"written under them, and does not say whether they are parts of one "
-                    f"effect or alternative outcomes — so nothing can tell a check that "
-                    f"observes all of them from one that refutes all but one",
-                    path=rel, line=line,
-                    ref=refs_mod.bullet_ref(node.id, key, index),
-                    suggestion=f"- {key}: all   # or: branches"))
-                continue
-            if word != "branches":
-                continue
             # Stated, and now the debt is visible: under `branches` the check above binds to no
             # child, so each one is an obligation nothing observes. The remedy is not a word —
             # it is splitting the alternatives into sibling authored bullets, each carrying the

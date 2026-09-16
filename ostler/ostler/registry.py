@@ -514,6 +514,34 @@ def claim_groups(
     return groups
 
 
+def undetermined_claims(
+    node_type: str,
+    bullet_order: Iterable[Sequence[Any]],
+    combiners: Mapping[int, str],
+) -> dict[int, list[tuple[str, int]]]:
+    """The nested claim lists whose children a check observes and whose combiner is unstated.
+
+    Three readers ask this exact question and must not answer it differently: `doctor` reports
+    it as `unstated-claim-combiner`, `qa context` stamps the claims so the packet says which
+    ones are undetermined, and `compile_plan` gaps them rather than emitting an assertion. A
+    compiler that decided for itself would decide `all` — the fan-out the grammar happens to
+    have — which is the one direction that fails open.
+
+    Narrow on purpose: a list with a single child mints one claim and has nothing to combine,
+    and a list nobody observes has no check whose meaning the word would change, so neither is
+    asked to annotate itself.
+    """
+    groups = claim_groups(node_type, bullet_order)
+    _, fanned = _attributed(node_type, bullet_order, {}, check_keys(node_type))
+    return {
+        position: group
+        for position, group in groups.items()
+        if len(group) > 1
+        and not combiners.get(position)
+        and any(fanned.get(claim) for claim in group)
+    }
+
+
 def _attributed(
     node_type: str,
     bullet_order: Iterable[Sequence[Any]],
