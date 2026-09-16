@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -832,6 +832,7 @@ def build_context(
             scope=node_scopes.get(node_id, ()),
             judgment=judgment_by_node.get(node_id),
             fixture_provides=fixture_provides,
+            resolve_locator=_locator_resolver(head_graph, nodes_by_id, nodes_by_id[node_id]),
         )
     ] + [
         obligation
@@ -846,6 +847,7 @@ def build_context(
             scope=node_scopes.get(node_id, ()),
             judgment=judgment_by_node.get(node_id),
             fixture_provides=fixture_provides,
+            resolve_locator=_locator_resolver(head_graph, nodes_by_id, nodes_by_id[node_id]),
         )
     ]
     obligations.sort(key=lambda item: _sort_key(str(item["id"])))
@@ -1928,13 +1930,59 @@ def _declared_checks(node: dict[str, Any]) -> list[dict[str, Any]]:
     return _dedup_checks(declared)
 
 
-def _parse_checks(values: list[str]) -> list[dict[str, Any]]:
+#: What a check row carries about a `(locator)` argument, resolved against the book at packet
+#: time. `node` is the `component`/`interaction` the argument names and `""` when it names
+#: none; `locators` is that node's own `role:`/`name:`/`selector:`, so a compiler can point a
+#: driver at what the *check* names without re-walking the graph — and without being free to
+#: resolve the reference differently from the doctor rule that passed the book.
+LocatorTarget = dict[str, Any]
+
+
+def _parse_checks(
+    values: list[str],
+    resolve: Callable[[str], LocatorTarget] | None = None,
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for value in values:
         parsed = checks_mod.parse_check(value)
-        if isinstance(parsed, checks_mod.CheckCall):
-            rows.append({"call": parsed.text(), "name": parsed.name, "args": parsed.args})
+        if not isinstance(parsed, checks_mod.CheckCall):
+            continue
+        row: dict[str, Any] = {"call": parsed.text(), "name": parsed.name, "args": parsed.args}
+        if resolve is not None:
+            located = {
+                param.name: resolve(str(parsed.args[param.name]))
+                for param in checks_mod.CHECK_BY_NAME[parsed.name].params
+                if param.locator and param.name in parsed.args
+            }
+            if located:
+                row["locates"] = located
+        rows.append(row)
     return rows
+
+
+def _locator_resolver(
+    graph: Graph, nodes_by_id: dict[str, dict[str, Any]], node: dict[str, Any]
+) -> Callable[[str], LocatorTarget]:
+    """Resolve this node's check locators against the book, the way `doctor` resolves them.
+
+    Bound to one node because a `#anchor` is relative to the document it was written in. The
+    empty `node` for an argument that names nothing is deliberate and is not a filtered-out
+    row: `compile_plan` owes a gap for it, and a check row that simply omitted the field would
+    be indistinguishable from one whose check takes no locator at all.
+    """
+    origin = graph.root / str(node.get("path", ""))
+
+    def resolve(value: str) -> LocatorTarget:
+        located = locators_mod.located_node(graph, value, origin)
+        if located is None:
+            return {"node": "", "locators": {}}
+        serialized = nodes_by_id.get(located.id)
+        return {
+            "node": located.id,
+            "locators": _locators(serialized) if serialized is not None else {},
+        }
+
+    return resolve
 
 
 def _dedup_checks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -2079,6 +2127,7 @@ def _obligations(
     scope: tuple[str, ...] = (),
     judgment: list[dict[str, Any]] | None = None,
     fixture_provides: dict[str, list[str]] | None = None,
+    resolve_locator: Callable[[str], LocatorTarget] | None = None,
 ) -> list[dict[str, Any]]:
     """Mint one obligation per normative bullet, plus the node-level contract.
 
@@ -2120,7 +2169,19 @@ def _obligations(
     contract, per_bullet = registry.attributed_checks(
         str(node.get("type", "")), node.get("bulletOrder") or [], combiners
     )
-    contract_rows = _dedup_checks(_parse_checks(contract))
+    # The claims whose nested list never said how its children combine. Stamped rather than
+    # dropped: the obligation is real and a planner still has to read it, but nothing may emit
+    # an assertion against it, because the check written above it observes either all of these
+    # children or exactly one of them and the book does not say which. `compile_plan` turns the
+    # stamp into a gap; the predicate lives in `registry` so it cannot drift from the rule
+    # `doctor` refuses the book with.
+    undetermined = {
+        claim
+        for group in registry.undetermined_claims(
+            str(node.get("type", "")), node.get("bulletOrder") or [], combiners).values()
+        for claim in group
+    }
+    contract_rows = _dedup_checks(_parse_checks(contract, resolve_locator))
     if contract_rows:
         base["checksDeclared"] = contract_rows
     # A fixture written above every claim arranges the state the node as a whole is documented
@@ -2176,10 +2237,13 @@ def _obligations(
                 obligation["requirement"] = prose
                 if subject is not None:
                     obligation["subject"] = subject
+            if (key, index) in undetermined:
+                obligation["claimCombiner"] = "unstated"
             if required and owed_keys is not None and key not in owed_keys:
                 obligation["required"] = False
                 obligation["evidenceRequired"] = "context"
-            rows = _dedup_checks(_parse_checks(per_bullet.get((key, index), [])))
+            rows = _dedup_checks(
+                _parse_checks(per_bullet.get((key, index), []), resolve_locator))
             if rows:
                 obligation["checksDeclared"] = rows
             else:

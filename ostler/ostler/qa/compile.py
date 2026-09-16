@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -201,8 +202,13 @@ def _lit(value: Any) -> str:
     return json.dumps(value)
 
 
-def _kwargs(args: dict[str, Any]) -> str:
+def _kwargs(args: dict[str, Any], *, omit: Iterable[str] = ()) -> str:
     """Render check arguments, wrapping only the literals a reference was found in.
+
+    *omit* drops the arguments already spent building the call's operand — a `locator=` naming
+    a component is a *reference into the book*, resolved at compile time into the expression
+    the driver is pointed at, and passing the anchor through as well would hand the harness a
+    string it would have to resolve a second way, against the running app rather than the book.
 
     `qa.resolve(...)` is the harness's one explicit substitution entry point (Fix 2) — a
     literal with no `@node.key`/`$name` embedded in it stays a plain literal, since wrapping
@@ -210,7 +216,10 @@ def _kwargs(args: dict[str, Any]) -> str:
     reference it will never contain.
     """
     parts = []
+    omitted = set(omit)
     for name, value in args.items():
+        if name in omitted:
+            continue
         if isinstance(value, str) and references.find_references(value):
             parts.append(f", {name}=qa.resolve({_lit(value)})")
         else:
@@ -392,6 +401,22 @@ def compile_plan_gaps(
     # after the fact. The totality assert (below) and its mirror both read off this and `gaps`.
     covered_ids: set[str] = set()
     owed = _owed(context)
+    # A claim whose nested list never said how its children combine is *undetermined*, and the
+    # rule about undetermined form is that nothing executable comes out of it: the check above
+    # the list observes either every child or exactly one of them, and emitting it against this
+    # child picks the reading that fails open — a refutation filed as a proof. Partitioned out
+    # here, before any scenario sees it, so no later stage has to remember not to. The packet
+    # stamped it (`qa context` reads `registry.undetermined_claims`); this only obeys the stamp.
+    undetermined = [o for o in owed if o.get("claimCombiner") == "unstated"]
+    gaps.extend(
+        Gap(o["id"], "unstated-claim-combiner",
+            "the claim list this belongs to does not say whether its children are parts of one "
+            "effect or alternative outcomes, so the check written above them proves this claim "
+            "or refutes it and the book does not say which")
+        for o in undetermined
+    )
+    undetermined_ids = {o["id"] for o in undetermined}
+    owed = [o for o in owed if o["id"] not in undetermined_ids]
     # Page-checked obligations (a screen's `visible(...)` bullets) are compiled by navigating
     # there, not by the HTTP-verb-and-path machinery below (`_route`/`_ROUTE`) — split them out
     # up front so the `by_source` grouping and its `target=api` scenarios never see them.
@@ -915,6 +940,41 @@ def _assertion_operand(locators: dict[str, list[str]], oid: str, gaps: list[Gap]
     return expr
 
 
+def _check_operand(
+    row: dict[str, Any], obligation: dict[str, Any], gaps: list[Gap]
+) -> tuple[str | None, list[str]]:
+    """Where the driver is pointed for one `verify:` row, and the arguments that were spent.
+
+    A check that names its own subject — `visible(locator="#name-error")` — is about *that*
+    component, which is not in general the node the obligation was minted on: a refusal claim
+    on a form is observed by an error span declared beside it. The packet already resolved the
+    reference (`qa context`'s `locates`), so this reads the answer rather than re-deriving it;
+    a check that names no subject falls back to the node's own locators, which is what every
+    check did before the argument existed.
+    """
+    located = row.get("locates") or {}
+    if not located:
+        return _assertion_operand(obligation.get("locators", {}), obligation["id"], gaps), []
+    param = sorted(located)[0]
+    target = located[param]
+    node_id = str(target.get("node", ""))
+    if not node_id:
+        gaps.append(Gap(
+            obligation["id"], "undeclared-check-locator",
+            f"`{row.get('name')}` points `{param}=` at "
+            f"`{row.get('args', {}).get(param)}`, which names no component or interaction this "
+            f"book declares — there is nothing to point a driver at, so nothing is emitted"))
+        return None, []
+    expr = _page_locator_expr(target.get("locators", {}))
+    if expr is None:
+        gaps.append(Gap(
+            obligation["id"], "uncompilable-claim",
+            f"`{node_id}` is what `{param}=` names, and it declares no role/name pair and no "
+            f"selector — so the book says what to look at and not how to address it"))
+        return None, []
+    return expr, [param]
+
+
 def _arrival_scenario(
     root_path: str,
     source: str,
@@ -934,17 +994,18 @@ def _arrival_scenario(
     scenario_covered: set[str] = set()
     for _node_id, obs in sorted(by_node.items()):
         for obligation in obs:
-            operand = _assertion_operand(obligation.get("locators", {}), obligation["id"], gaps)
             for row in obligation.get("checksDeclared", []):
                 if _observes(row.get("name")) != "page":
                     gaps.append(_unobservable_gap(obligation["id"], row.get("name"), PLAYWRIGHT))
                     continue
+                operand, spent = _check_operand(row, obligation, gaps)
                 if operand is None:
                     assertions.append(f"    # TODO(arrange): no addressable subject for "
                                        f"{obligation['id']}")
                     continue
                 assertions.append(
-                    f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, "
+                    f"    qa.verify({_lit(row['name'])}, {operand}"
+                    f"{_kwargs(row.get('args', {}), omit=spent)}, "
                     f"covers=[{_lit(obligation['id'])}])"
                 )
                 scenario_covered.add(str(obligation["id"]))

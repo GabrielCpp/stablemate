@@ -1660,3 +1660,167 @@ title: Widget
     kinds = {finding["kind"] for finding in packet["healthFindings"]}
     assert "unmapped-change" not in kinds
     assert "dangling-grounding" not in kinds
+
+
+def test_a_check_locator_is_resolved_into_the_packet(tmp_path: Path):
+    """The packet says which component a `verify:` points at, and what that component is.
+
+    Resolution happens here and only here. `Graph.resolve_doc_ref` consults the filesystem to
+    prefer an origin-relative reading, so a compiler that never opens a graph could not repeat
+    it — and one that re-implemented it would be free to disagree with the `doctor` rule that
+    passed the book. One resolution, stamped; two readers, agreeing by construction.
+    """
+    (tmp_path / "docs/features/acme/screens").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/screens/items.md").write_text(
+        """---
+type: screen
+slug: items
+title: Items
+---
+# Items
+
+## Components
+
+### item-form
+
+- selector: `form`
+- role: form
+- name: New item
+
+### save-error
+
+- selector: `#save-error`
+
+## Interactions
+
+### save-item
+- on: [item-form](#item-form)
+- trigger: click
+- does:
+  - error: expose an alert
+- code: app/items.py::save_item
+- verify: visible(locator="#save-error", text="could not save")
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/items.py").write_text("def save_item():\n    return 1\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/items.py").write_text("def save_item():\n    return 2\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    obligation = next(item for item in packet["obligations"]
+                      if item["id"].endswith("#save-item:does:1"))
+    located = obligation["checksDeclared"][0]["locates"]["locator"]
+    assert located["node"] == "docs/features/acme/screens/items.md#save-error"
+    # The named component's own addressing travels too, so the compiler points a driver at what
+    # the check named without re-walking the graph. Verbatim as authored, code span and all —
+    # unwrapping it is the compiler's job, and a packet that pre-cooked it would be deciding for
+    # a driver it does not know the identity of.
+    assert located["locators"]["selector"] == ["`#save-error`"]
+
+
+def test_a_check_locator_that_resolves_to_nothing_is_stamped_empty(tmp_path: Path):
+    """An empty target, not an absent field. A check row that simply omitted `locates` would be
+    indistinguishable from one whose check takes no locator at all — and the compiler owes a gap
+    for this one, which it can only owe if the packet says the reference went nowhere."""
+    (tmp_path / "docs/features/acme/screens").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/screens/items.md").write_text(
+        """---
+type: screen
+slug: items
+title: Items
+---
+# Items
+
+## Components
+
+### item-form
+
+- selector: `form`
+
+## Interactions
+
+### save-item
+- on: [item-form](#item-form)
+- trigger: click
+- does:
+  - error: expose an alert
+- code: app/items.py::save_item
+- verify: visible(locator="#no-such-component")
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/items.py").write_text("def save_item():\n    return 1\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/items.py").write_text("def save_item():\n    return 2\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    obligation = next(item for item in packet["obligations"]
+                      if item["id"].endswith("#save-item:does:1"))
+    assert obligation["checksDeclared"][0]["locates"]["locator"] == {"node": "", "locators": {}}
+
+
+def test_an_unstated_claim_combiner_is_stamped_on_every_child(tmp_path: Path):
+    """The obligation is real and a planner still reads it; nothing may compile it.
+
+    `doctor` refuses this book, but `qa context` is not downstream of `doctor` and still has to
+    hand the packet a truthful account: the check above the list observes all of these children
+    or exactly one of them, and the book does not say which.
+    """
+    (tmp_path / "docs/features/acme/screens").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/screens/items.md").write_text(
+        """---
+type: screen
+slug: items
+title: Items
+---
+# Items
+
+## Components
+
+### item-form
+
+- selector: `form`
+
+## Interactions
+
+### save-item
+- on: [item-form](#item-form)
+- trigger: click
+- does:
+  - request: persist the item
+  - error: expose an alert
+- code: app/items.py::save_item
+- verify: visible(locator="#item-form")
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/items.py").write_text("def save_item():\n    return 1\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/items.py").write_text("def save_item():\n    return 2\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    stamped = {item["id"].rsplit("#", 1)[-1]: item.get("claimCombiner")
+               for item in packet["obligations"]}
+    assert stamped["save-item:does:1"] == "unstated"
+    assert stamped["save-item:does:2"] == "unstated"
+    # The node's own contract nests nothing, so there is no word it could be missing.
+    assert stamped["save-item:contract"] is None

@@ -1142,3 +1142,98 @@ def test_an_unavailable_role_set_degrades_to_a_selector_never_to_skipped_validat
     ast.parse(source)
     assert 'by_role("generic"' not in source
     assert 'by_css("dl")' in source
+
+
+def _located(locator: str, node: str, locators: dict) -> dict:
+    """A `visible(locator=...)` row the packet already resolved to a declared component."""
+    row = _visible(locator)
+    row["locates"] = {"locator": {"node": node, "locators": locators}}
+    return row
+
+
+def test_a_check_is_pointed_at_the_component_its_locator_names() -> None:
+    """The claim is the form's; the thing that shows the refusal is a span declared beside it.
+
+    Before `locates`, the operand came from the obligation's *own* node and the `locator=`
+    argument rode through as a keyword — so the assertion looked at the form and handed the
+    harness an anchor to resolve a second way. It is one reference, resolved once, in the book.
+    """
+    oid = "okf:new-policy:submit:does:1"
+    error_span = f"{_SCREEN}#name-error"
+    context = _navigation_context(
+        _page_obligation(
+            oid, f"{_SCREEN}#new-policy-form",
+            locators={"role": ["form"], "name": ["New policy"]},
+            checks=[_located("#name-error", error_span, {"selector": ["`#name-error`"]})],
+        ),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert "#name-error" in source
+    assert 'name="New policy"' not in source
+    # The anchor is spent building the operand, not passed on to be resolved again at run time.
+    assert 'locator="#name-error"' not in source
+    assert _gap_kinds(gaps, oid) == []
+
+
+def test_a_check_locator_that_names_no_component_compiles_to_nothing() -> None:
+    """`doctor` refuses this book; `compile_plan` is not `doctor`'s downstream and still sees it.
+
+    The failure to avoid is an assertion emitted against the obligation's own node, which would
+    pass on a screen that never renders the thing the check was written about.
+    """
+    oid = "okf:new-policy:submit:does:1"
+    row = _visible("#no-such-thing")
+    row["locates"] = {"locator": {"node": "", "locators": {}}}
+    context = _navigation_context(
+        _page_obligation(
+            oid, f"{_SCREEN}#new-policy-form",
+            locators={"role": ["form"], "name": ["New policy"]},
+            checks=[row],
+        ),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert "@scenario(" not in source
+    assert _gap_kinds(gaps, oid) == ["undeclared-check-locator"]
+
+
+def test_a_named_component_with_no_addressable_locator_is_an_uncompilable_claim() -> None:
+    """The book says what to look at and not how to address it — a gap, not a body fallback."""
+    oid = "okf:new-policy:submit:does:1"
+    context = _navigation_context(
+        _page_obligation(
+            oid, f"{_SCREEN}#new-policy-form",
+            locators={"role": ["form"], "name": ["New policy"]},
+            checks=[_located("#name-error", f"{_SCREEN}#name-error", {"role": ["paragraph"]})],
+        ),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+
+
+def test_an_undetermined_claim_combiner_emits_no_code_at_all() -> None:
+    """A claim whose siblings may be alternatives is undetermined, and undetermined never runs.
+
+    The check above the list either observes this child or refutes it, and the book does not
+    say which — so the compiler gaps it rather than picking the reading (`all`) that the flat
+    grammar happens to produce, which is the one that files a refutation as a proof.
+    """
+    oid = "okf:docs/features/demo/api.md#post-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            claimCombiner="unstated",
+            checksDeclared=[
+                {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/x"}},
+            ],
+        )
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert _covers(source) == set()
+    assert _gap_kinds(gaps, oid) == ["unstated-claim-combiner"]
