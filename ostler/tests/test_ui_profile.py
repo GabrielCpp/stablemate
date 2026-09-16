@@ -556,13 +556,11 @@ title: Web runbook
 ### prepare-deps
 - kind: prepare
 - run: `uv sync`
-- provenance: derived
 
 ### serve
 - kind: service
 - run: `groom serve`
 - health: port-bound
-- provenance: derived
 """
 
 DASHBOARD = ("---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"

@@ -955,7 +955,6 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("verify", link=True),     # run/verify steps: golden/deterministic output
             BulletKey("optional"),              # `true` for best-effort steps
             BulletKey("depends-on"),            # ordering hint (default: document order)
-            BulletKey("provenance"),            # derived (build pass) | verified (walkthrough)
         ),
     ),
     # A named, static-checkable arrangement of state a scenario reaches for with `fixture:`/
