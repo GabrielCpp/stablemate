@@ -18,6 +18,7 @@ from ostler import locators as locators_mod
 from ostler import checks as checks_mod
 from ostler import inventory, markdown, path as path_mod, refs as refs_mod, registry, syntax
 from ostler.model import Graph, _parse_ui_nodes, load
+from ostler import reach
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.source_context import SourceRepository
@@ -134,7 +135,19 @@ _CONTEXT_ONLY_REASON_KINDS = _CLOSURE_REASON_KINDS | _COBINDING_REASON_KINDS
 #: Bullets that name how to address a node in a running UI. Lifted onto the obligation so a
 #: planner writing a browser locator reads them there rather than re-deriving them from the
 #: sibling `role:`/`name:` obligations it happens to have been handed.
-_LOCATOR_KEYS = ("selector", "role", "name", "keyboard", "route", "entry", "params")
+#:
+#: `states`, `exclusive-with`, `on`, `trigger` and `does` are carried verbatim and uninterpreted
+#: alongside the original set — the book's grammar for partitioning a screen's `visible(...)`
+#: bullets into more than one compiled scenario (a component present only in a named
+#: arrangement, a pair that can never share a scenario, and an `## Interactions` row's subject/
+#: action/destination). `compile.py` reads these to partition; nothing here interprets them.
+_LOCATOR_KEYS = (
+    "selector", "role", "name", "keyboard", "route", "entry", "params",
+    "states", "exclusive-with", "on", "trigger", "does",
+)
+#: Bullet key to packet key, for the few whose bullet spelling (a markdown-hyphen convention)
+#: is not a legal identifier a compiled plan would want to spell as a dict key.
+_LOCATOR_KEY_RENAME = {"exclusive-with": "exclusiveWith"}
 
 
 def _sort_key(obligation_id: str) -> list[tuple[int, int | str]]:
@@ -216,6 +229,58 @@ def book_context(
         features_root=features_root,
         repositories=repositories,
     )
+
+
+def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
+    """Every surface's derived screen reachability, keyed by surface (Option C, Amendment 1).
+
+    Computed once at context-build time from `reach.py`'s existing navigation-derivation
+    logic — `compile.py` reads this section rather than calling `reach` or touching a live
+    `Graph` itself. Surface-keyed even for a single-surface book: `{surface: reachability(...)}`
+    with exactly one key is not a special case, it is the general shape with one entry.
+
+    A surface with no screen nodes gets a zeroed-out stub instead of a `reach.reachability`
+    call, because that call requires a root screen to start from and a screen-less surface
+    (a pure HTTP/CLI surface) has none — that is not a finding, it is a surface this compiler
+    does not address by navigation at all (Condition 1). A surface *with* screens but no
+    resolvable root (`reach.UnknownStart` — no screen's `route:` is the root path) is a real
+    book gap, reported as every one of that surface's screens being unreachable rather than
+    raised as an exception that would take context-building down with it.
+    """
+    dump = graph_mod.build(head_graph)
+    surfaces = sorted({n["surface"] for n in dump["nodes"] if n.get("surface")})
+    navigation: dict[str, dict[str, Any]] = {}
+    for surface in surfaces:
+        surface_dump = graph_mod.subset(dump, surface)
+        screens = reach.screens_of(surface_dump)
+        if not screens:
+            navigation[surface] = {
+                "start": "",
+                "surface": surface,
+                "counts": {
+                    "screens": 0, "reachable": 0, "unreachable": 0, "undeclared": 0, "nav_edges": 0,
+                },
+                "routes": {},
+                "unreachable": [],
+                "undeclared": [],
+            }
+            continue
+        try:
+            navigation[surface] = reach.reachability(head_graph, surface=surface)
+        except reach.UnknownStart as exc:
+            navigation[surface] = {
+                "start": "",
+                "surface": surface,
+                "counts": {
+                    "screens": len(screens), "reachable": 0,
+                    "unreachable": len(screens), "undeclared": 0, "nav_edges": 0,
+                },
+                "routes": {},
+                "unreachable": sorted(screens),
+                "undeclared": [],
+                "error": str(exc),
+            }
+    return navigation
 
 
 def build_context(
@@ -718,6 +783,7 @@ def build_context(
         )
     ]
     obligations.sort(key=lambda item: _sort_key(str(item["id"])))
+    navigation = _navigation(head_graph)
     return {
         "version": 2 if repositories else 1,
         "available": bool(nodes_by_id),
@@ -734,6 +800,7 @@ def build_context(
         "journeyNodes": sorted(journeys),
         "verificationRefs": verification_refs,
         "verificationIndex": verification_index,
+        "navigation": navigation,
         "healthFindings": health,
         "story": _story_identity(story_file),
         "acceptanceCriteria": _acceptance_criteria(story_file),
@@ -898,6 +965,8 @@ def validate_context(packet: Any) -> list[str]:
                 problems.append(f"context.{field} must be a list")
     if "verificationIndex" in packet and not isinstance(packet["verificationIndex"], list):
         problems.append("context.verificationIndex must be a list")
+    if "navigation" in packet and not isinstance(packet["navigation"], dict):
+        problems.append("context.navigation must be an object")
     seen: set[str] = set()
     for item in packet.get("obligations", []):
         if not isinstance(item, dict) or not item.get("id"):
@@ -1879,7 +1948,11 @@ def _parse_fixtures(
 
 def _locators(node: dict[str, Any]) -> dict[str, list[str]]:
     bullets = node.get("bullets", {})
-    return {key: _values(bullets.get(key)) for key in _LOCATOR_KEYS if _values(bullets.get(key))}
+    return {
+        _LOCATOR_KEY_RENAME.get(key, key): _values(bullets.get(key))
+        for key in _LOCATOR_KEYS
+        if _values(bullets.get(key))
+    }
 
 
 def _repeat(node: dict[str, Any], scope: tuple[str, ...]) -> dict[str, Any] | None:
@@ -1939,6 +2012,11 @@ def _obligations(
         "kind": "journey" if journey else "contract",
         "node": node["id"],
         "source": node["path"],
+        # The key into `packet["navigation"]` this node's screen route lives under (Option C /
+        # Amendment 1) — a screen-addressed obligation is compiled by looking up
+        # `navigation[surface].routes[source]`, and this is how compile.py finds that surface
+        # without re-deriving it from the path the way `graph.py`'s own surface inference does.
+        "surface": node.get("surface") or "",
         "requirement": node.get("title") or node["id"],
         "required": required,
         "evidenceRequired": "live" if required else "context",
