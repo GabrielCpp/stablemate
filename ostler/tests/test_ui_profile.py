@@ -88,7 +88,7 @@ The pane the selected file's diff is rendered into.
 - name: the file's repo-relative path
 - keyboard: `enter`
 - when: `mode == changes`
-- does:
+- does: all
   - state: mark row `.active`, clear siblings
   - dom: render single-file diff
 - code: `groom/groom/templates/dashboard.html::wireChanges`

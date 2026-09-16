@@ -88,6 +88,10 @@ def _node_dict(node: UINode, resolver: LinkResolver, graph: Graph, features_root
         # …and the same bullets in document order, which the dict above cannot express. A book
         # writes a claim and then the `verify:` observing it; that adjacency is the binding.
         "bulletOrder": [list(pair) for pair in node.bullet_order],
+        # Which of those bullets are one authored nested list, and what that list said about how
+        # its children combine. Keyed by the same ordinal `bulletOrder`'s third element carries,
+        # as a string because a consumer reads this back out of JSON.
+        "combiners": {str(pos): word for pos, word in node.combiners.items()},
         "edges": edges,  # resolved out-edges (parent:/extends:/on:/steps:/prose links)
     }
 

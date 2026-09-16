@@ -88,7 +88,11 @@ INDEX_DIR_NAME = "ostler-index"
 #: the version in the epoch never moves.
 #: 6: an entry carries its file's ``links`` (:func:`ostler.model.read_links`), a field added to
 #: the stored ``_DocProducts``.
-SCHEMA_VERSION = 6
+#: 7: a stored ``UINode`` carries ``combiners`` — the word each nested claim list stated about
+#: how its children combine. A field added to a pickled class, and the case this note warns
+#: about: the class name did not change, so the shape check on the way back in still passes and
+#: an older entry hands back a node the reader then asks for an attribute it has never had.
+SCHEMA_VERSION = 7
 
 #: How long an entry may go unwritten before a prune removes it. Two weeks: long enough
 #: that an occasional book survives a quiet fortnight, short enough that an unattended

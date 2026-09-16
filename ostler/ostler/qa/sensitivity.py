@@ -499,7 +499,7 @@ def report(graph: Graph) -> list[ClaimReport]:
         if registry.ui_type(node.type) is None:
             continue
         rel = _rel(node.path, graph.root)
-        contract, per_claim = registry.attributed_checks(node.type, node.bullet_order)
+        contract, per_claim = registry.attributed_checks(node.type, node.bullet_order, node.combiners)
         claims = [(f"{node.id}:contract", contract)]
         claims += [(f"{node.id}:{key.replace(' ', '-')}:{index}", per_claim.get((key, index), []))
                    for key, index in _minted(node)]

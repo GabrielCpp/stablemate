@@ -2113,8 +2113,12 @@ def _obligations(
     # every check the node declares, so one discriminating call covers a sibling claim that
     # nothing observes — the claim rides on an assertion that was never about it. The book
     # already writes each check under the claim it observes; `registry.attributed_checks` reads it.
+    # A nested claim list that said its children are alternatives binds a check to none of them:
+    # a check written for one branch refutes the others, so fanning it out would file a
+    # refutation as a proof. `registry._attributed` applies it; this is where the word reaches it.
+    combiners = {int(pos): str(word) for pos, word in (node.get("combiners") or {}).items()}
     contract, per_bullet = registry.attributed_checks(
-        str(node.get("type", "")), node.get("bulletOrder") or []
+        str(node.get("type", "")), node.get("bulletOrder") or [], combiners
     )
     contract_rows = _dedup_checks(_parse_checks(contract))
     if contract_rows:
@@ -2123,7 +2127,7 @@ def _obligations(
     # in, so it rides on `base` and reaches every obligation minted below — see
     # `registry.attributed_fixtures` for why that differs from how a leading check is filed.
     node_fixtures, fixtures_per_bullet = registry.attributed_fixtures(
-        str(node.get("type", "")), node.get("bulletOrder") or []
+        str(node.get("type", "")), node.get("bulletOrder") or [], combiners
     )
     ambient = _parse_fixtures(node_fixtures, fixture_provides)
     if ambient:
@@ -2132,7 +2136,7 @@ def _obligations(
     # not ride ambient on every obligation the node mints, so this reads `attributed_captures`'
     # per-bullet half only, the same shape `attributed_checks` yields.
     _captures_contract, captures_per_bullet = registry.attributed_captures(
-        str(node.get("type", "")), node.get("bulletOrder") or []
+        str(node.get("type", "")), node.get("bulletOrder") or [], combiners
     )
     # Where each normative bullet actually sits on the page. `obligations` is later sorted by
     # `_sort_key`, which orders by id — alphabetical on the key name, not by where the author

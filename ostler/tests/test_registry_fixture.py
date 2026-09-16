@@ -82,13 +82,13 @@ def test_attributed_captures_mirrors_attributed_fixtures_via_the_shared_engine(
           "- does:\n  - lists every account on file\n"
           "- capture: account_id from $.accounts[0].id\n")
     inv = load(repo).ui_nodes_of_type("invocation")[0]
-    _, per_bullet = registry.attributed_captures(inv.type, inv.bullet_order)
+    _, per_bullet = registry.attributed_captures(inv.type, inv.bullet_order, inv.combiners)
     assert per_bullet == {("does", 1): ["account_id from $.accounts[0].id"]}
 
     # Same shape `attributed_fixtures`/`attributed_checks` return — same engine, different key.
-    fixtures_shape = registry.attributed_fixtures(inv.type, inv.bullet_order)
-    checks_shape = registry.attributed_checks(inv.type, inv.bullet_order)
-    captures_shape = registry.attributed_captures(inv.type, inv.bullet_order)
+    fixtures_shape = registry.attributed_fixtures(inv.type, inv.bullet_order, inv.combiners)
+    checks_shape = registry.attributed_checks(inv.type, inv.bullet_order, inv.combiners)
+    captures_shape = registry.attributed_captures(inv.type, inv.bullet_order, inv.combiners)
     assert type(fixtures_shape) is type(checks_shape) is type(captures_shape)
 
 

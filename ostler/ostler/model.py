@@ -185,6 +185,11 @@ class UINode:
     bullet_order: list[tuple[str, str, int]] = field(default_factory=list)
     # Top-level bullet ordinal -> file-absolute line (nested values cite their owning bullet).
     bullet_lines: dict[int, int] = field(default_factory=dict)
+    # Top-level bullet ordinal -> the word a nested claim list stated about its own children
+    # (`registry.CLAIM_COMBINERS`). Beside `bullet_order` rather than in it because it is not a
+    # value of that bullet: it is a fact about how the values combine, and a row in the flat
+    # list is a claim by definition — see `_combiner`.
+    combiners: dict[int, str] = field(default_factory=dict)
     links: list = field(default_factory=list)                # (text, href) inside the node's region
     data: dict = field(default_factory=dict)                 # frontmatter (file nodes)
 
@@ -443,6 +448,30 @@ def story_dependency_strays(doc: markdown.MarkdownDoc) -> list[str]:
     return _labelled_strays(doc, registry.STORY_DEPS_HEADING, registry.STORY_DEPS_LABEL)
 
 
+def _combiner(bullet: markdown.Bullet) -> str:
+    """The claim combiner a nested bullet states in its own value, or ``""`` if it states none.
+
+    A nested claim list writes the combiner where its own value would otherwise be empty
+    (`- does: branches`), which is the only place on the bullet that is reliably free: the label
+    before the colon on each *child* is free prose the author picked, and deriving the combiner
+    from it would fail open — a list whose labels the vocabulary did not anticipate would read
+    as `all`, the unsound direction.
+
+    Recognised only on a bullet that *has* children, because a list of one thing has nothing to
+    combine and `- does: all` on a childless bullet is somebody's prose, not a declaration.
+    """
+    if not bullet.children:
+        return ""
+    text = bullet.text.strip()
+    value = text.partition(":")[2].strip().lower() if ":" in text else ""
+    return value if value in registry.CLAIM_COMBINERS else ""
+
+
+def _bullet_combiners(section: markdown.Section) -> dict[int, str]:
+    """Every stated claim combiner of a section, by the bullet ordinal `_bullet_pairs` counts in."""
+    return {i: word for i, bullet in enumerate(section.bullets) if (word := _combiner(bullet))}
+
+
 def _bullet_pairs(section: markdown.Section) -> list[tuple[str, str, int]]:
     """Every `- key: value` of a section as ``(key, value, bullet)`` in document order.
 
@@ -463,8 +492,9 @@ def _bullet_pairs(section: markdown.Section) -> list[tuple[str, str, int]]:
             continue
         key, _, value = text.partition(":")
         nested = [item.text.strip() for child in bullet.children for item in child.walk()]
+        own = "" if _combiner(bullet) else value.strip()
         pairs.extend((key.strip().lower(), item, position)
-                     for item in (value.strip(), *nested) if item)
+                     for item in (own, *nested) if item)
     return pairs
 
 
@@ -481,7 +511,7 @@ def _meta_from_bullets(section: markdown.Section) -> dict[str, str | list[str]]:
             continue
         key, _, value = text.partition(":")
         key = key.strip().lower()
-        value = value.strip()
+        value = "" if _combiner(bullet) else value.strip()
         nested = [item.text.strip() for child in bullet.children for item in child.walk()]
         values = [item for item in (value, *nested) if item]
         parsed: str | list[str] = "" if not values else values[0] if len(values) == 1 else values
@@ -1137,6 +1167,7 @@ def _promote_section(section: markdown.Section, rel: str, path: Path, offset: in
         title=ntitle, level=section.level, parent=parent_id,
         line=offset + section.line_start + 1,
         meta=_meta_from_bullets(section), bullet_order=_bullet_pairs(section),
+        combiners=_bullet_combiners(section),
         bullet_lines={i: offset + bullet.line_start + 1 for i, bullet in enumerate(section.bullets)},
         links=section.refs.links,
     ))
@@ -1161,6 +1192,7 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
     if ftype is not None and ftype.kind == "file":
         meta = _meta_from_bullets(main) if main else {}
         order = _bullet_pairs(main) if main else []
+        combiners = _bullet_combiners(main) if main else {}
         # The file node's own region = its H1 content up to the first `## Heading` child, so its
         # links don't overlap the section nodes' links (keeps the linter from double-reporting).
         if main is not None:
@@ -1173,7 +1205,7 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
         nodes.append(UINode(
             type=ftype.name, kind="file", id=rel, path=path, level=1, parent="",
             title=str(fm.get("title") or (main.title if main else rel)),
-            line=line, meta=meta, bullet_order=order,
+            line=line, meta=meta, bullet_order=order, combiners=combiners,
             bullet_lines={i: offset + bullet.line_start + 1 for i, bullet in enumerate(main.bullets)} if main else {},
             links=markdown.extract_refs(text).links, data=fm,
         ))

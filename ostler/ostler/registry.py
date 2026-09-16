@@ -9,7 +9,7 @@ place.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -393,7 +393,7 @@ def arrange_keys(node_type: str) -> tuple[str, ...]:
 
 
 def attributed_fixtures(
-    node_type: str, bullet_order: Iterable[Sequence[Any]]
+    node_type: str, bullet_order: Iterable[Sequence[Any]], combiners: Mapping[int, str]
 ) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
     """Split a node's fixture bullets between the node and the claims they arrange for.
 
@@ -407,7 +407,7 @@ def attributed_fixtures(
     settles the one claim it was written under. An arrangement is ambient by nature: state
     reached once is the state every later claim is read in.
     """
-    return _attributed(node_type, bullet_order, arrange_keys(node_type))
+    return _attributed(node_type, bullet_order, combiners, arrange_keys(node_type))
 
 
 def capture_keys(node_type: str) -> tuple[str, ...]:
@@ -423,18 +423,18 @@ def capture_keys(node_type: str) -> tuple[str, ...]:
 
 
 def attributed_captures(
-    node_type: str, bullet_order: Iterable[Sequence[Any]]
+    node_type: str, bullet_order: Iterable[Sequence[Any]], combiners: Mapping[int, str]
 ) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
     """Split a node's capture bullets between the node and the claims they were captured under.
 
     Mirrors `attributed_fixtures` exactly, over `capture_keys` instead of `arrange_keys` —
     document order binds a `capture:` to the nearest normative bullet above it the same way.
     """
-    return _attributed(node_type, bullet_order, capture_keys(node_type))
+    return _attributed(node_type, bullet_order, combiners, capture_keys(node_type))
 
 
 def attributed_checks(
-    node_type: str, bullet_order: Iterable[Sequence[Any]]
+    node_type: str, bullet_order: Iterable[Sequence[Any]], combiners: Mapping[int, str]
 ) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
     """Split a node's check bullets between the contract and the claims they observe.
 
@@ -457,7 +457,7 @@ def attributed_checks(
     Returned as raw bullet values, so each caller parses once. The keys of the second half are
     `(bullet key, 1-based index)`, counted the way obligation ids are minted.
     """
-    return _attributed(node_type, bullet_order, check_keys(node_type))
+    return _attributed(node_type, bullet_order, combiners, check_keys(node_type))
 
 
 def normative_claims(
@@ -482,10 +482,55 @@ def normative_claims(
     return claims
 
 
+#: The two words a nested claim list may state in its parent's own value to say how its
+#: children combine: `all` — they are parts of one effect and all hold together — or
+#: `branches` — they are alternatives and one holds per run. There is no third answer,
+#: because fan-out is sound over a conjunction and unsound over a disjunction and nothing
+#: else is being asked. They are not claims: `model._bullet_pairs` keeps a stated combiner
+#: out of the flat value list, so a list that states one mints exactly the obligations it
+#: would have minted while it said nothing.
+CLAIM_COMBINERS: frozenset[str] = frozenset({"all", "branches"})
+
+
+def claim_groups(
+    node_type: str, bullet_order: Iterable[Sequence[Any]]
+) -> dict[int, list[tuple[str, int]]]:
+    """The claims each *authored* bullet mints, keyed by its position in the section.
+
+    `normative_claims` says what each claim said; this says which of them the author wrote as
+    one bullet. The distinction is invisible in the flat list and decides the fan-out: two
+    sibling `- errors:` bullets and one `- errors:` with two children mint the same two
+    obligations, and a following `verify:` belongs to one of the first pair and to both of the
+    second. Counted here rather than beside the rule that needs it, for `_attributed`'s reason.
+    """
+    normative = set(normative_keys(node_type))
+    counts: dict[str, int] = {}
+    groups: dict[int, list[tuple[str, int]]] = {}
+    for row in bullet_order:
+        key, bullet = str(row[0]), int(row[2])
+        if key in normative:
+            counts[key] = counts.get(key, 0) + 1
+            groups.setdefault(bullet, []).append((key, counts[key]))
+    return groups
+
+
 def _attributed(
-    node_type: str, bullet_order: Iterable[Sequence[Any]], keys: Sequence[str]
+    node_type: str,
+    bullet_order: Iterable[Sequence[Any]],
+    combiners: Mapping[int, str],
+    keys: Sequence[str],
 ) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
-    """Bind each bullet in *keys* to the nearest normative bullet above it, in document order."""
+    """Bind each bullet in *keys* to the nearest normative bullet above it, in document order.
+
+    *combiners* is `model.UINode.combiners` — the word each nested claim list stated about its
+    own children. Fan-out across a list is sound only where that word is `all`: over a list of
+    alternatives a check written for one branch is not merely uninformative about the others,
+    it is a *refutation* of them, and filing it as a proof is the one way a green run can be
+    evidence for a claim the run disproved. So a `branches` group binds nothing, and each of
+    its children is a gap `doctor` reports as `unobserved-branch`. A group that states no word
+    is `unstated-claim-combiner` — undetermined, and it keeps the historical fan-out only so
+    the finding is the thing the author reads rather than a silent change of meaning.
+    """
     normative = set(normative_keys(node_type))
     observing = set(keys)
     contract: list[str] = []
@@ -503,6 +548,8 @@ def _attributed(
         elif key in observing:
             if not owner:
                 contract.append(value)
+            if combiners.get(authored) == "branches":
+                continue
             for target in owner:
                 per_bullet.setdefault(target, []).append(value)
     return contract, per_bullet

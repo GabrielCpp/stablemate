@@ -2587,7 +2587,55 @@ def _check_ui(graph: Graph, f: list[Finding],
         # An `error`, unlike the prose heuristics around it, because the remedy is mechanical:
         # the check names the value, the route or the title the claim turns on, or it does not.
         verify_key = check_keys[0] if check_keys else "verify"
-        contract_checks, claim_checks = registry.attributed_checks(node.type, node.bullet_order)
+        contract_checks, claim_checks = registry.attributed_checks(
+            node.type, node.bullet_order, node.combiners)
+
+        # Fan-out is sound over a list of parts and unsound over a list of alternatives, and the
+        # grammar records neither unless the author says so. Against "page stays put", a check
+        # written for the success branch is not uninformative — it is a *refutation*, and an
+        # unqualified fan-out files it as a proof. That is the one way a green run can be
+        # evidence for a claim the run disproved, which is why this is an `error` and why the
+        # word is stated rather than derived: a child label the vocabulary did not anticipate
+        # would read as `all`, and guessing wrong in that direction is the whole defect.
+        # Required only where it changes an outcome — more than one child, and a check bound to
+        # them — so a book is not asked to annotate lists nobody observes.
+        groups = registry.claim_groups(node.type, node.bullet_order)
+        _, fanned = registry.attributed_checks(node.type, node.bullet_order, {})
+        for position, group in groups.items():
+            if len(group) < 2 or not any(fanned.get(claim) for claim in group):
+                continue
+            key, index = group[0]
+            line = node.bullet_lines.get(position, node.line)
+            word = node.combiners.get(position, "")
+            if not word:
+                f.append(Finding(
+                    "error", "unstated-claim-combiner",
+                    f"{node.id}: `{key}:` nests {len(group)} claims with a `{verify_key}:` "
+                    f"written under them, and does not say whether they are parts of one "
+                    f"effect or alternative outcomes — so nothing can tell a check that "
+                    f"observes all of them from one that refutes all but one",
+                    path=rel, line=line,
+                    ref=refs_mod.bullet_ref(node.id, key, index),
+                    suggestion=f"- {key}: all   # or: branches"))
+                continue
+            if word != "branches":
+                continue
+            # Stated, and now the debt is visible: under `branches` the check above binds to no
+            # child, so each one is an obligation nothing observes. The remedy is not a word —
+            # it is splitting the alternatives into sibling authored bullets, each carrying the
+            # `verify:` that is true of it, which is the shape a branch's own check can exist in.
+            for claim_key, claim_index in group:
+                if claim_checks.get((claim_key, claim_index)):
+                    continue
+                f.append(Finding(
+                    "warn", "unobserved-branch",
+                    f"{node.id}: `{claim_key}:{claim_index}` is one branch of a list declared "
+                    f"`branches`, and nothing observes it — the `{verify_key}:` under the list "
+                    f"was written for a sibling outcome and would refute this one. Split the "
+                    f"branches into sibling bullets, each with the check that is true of it",
+                    path=rel, line=line,
+                    ref=refs_mod.bullet_ref(node.id, claim_key, claim_index),
+                    suggestion=f"- {claim_key}: <this outcome>\n- {verify_key}: …"))
 
         def _calls(values: list[str]) -> list[checks.CheckCall]:
             return [c for c in (checks.parse_check(v) for v in values)

@@ -414,6 +414,80 @@ def test_a_locator_may_name_a_component_in_another_document(repo: Path):
     assert "undeclared-check-locator" not in all_codes(_run(repo))
 
 
+def _branching_interaction(combiner: str = "", *, check: bool = True) -> str:
+    """An interaction whose `does:` nests two outcomes, and the check that observes one of them."""
+    return ("---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+            "## Components\n\n### widget-table\n- selector: table[aria-label=\"Widgets\"]\n"
+            "- role: table\n- name: Widgets\n\n"
+            "## Interactions\n\n### click\n- on: [S](#s)\n- trigger: click\n"
+            f"- does:{' ' + combiner if combiner else ''}\n"
+            "  - success: the table appears\n"
+            "  - failure: the page stays put\n"
+            + ('- verify: visible(locator="#widget-table")\n' if check else ""))
+
+
+def _claim_bindings(repo: Path) -> dict[tuple[str, int], list[str]]:
+    node = load(repo).ui_nodes_of_type("interaction")[0]
+    return registry.attributed_checks(node.type, node.bullet_order, node.combiners)[1]
+
+
+def test_a_nested_claim_list_with_a_check_must_say_how_its_children_combine(repo: Path):
+    # Nothing in the grammar tells a check that observes both children from one that refutes
+    # all but one, and the two readings disagree about whether a green run is evidence.
+    write(repo / "docs/features/groom/gui/screens/s.md", _branching_interaction())
+    finding = next(f for f in _run(repo).findings if f.code == "unstated-claim-combiner")
+    assert finding.severity == "error"
+    assert finding.ref == "docs/features/groom/gui/screens/s.md#click#does:1"
+    assert "branches" in (finding.suggestion or "")
+
+
+def test_a_nested_claim_list_nobody_observes_needs_no_combiner(repo: Path):
+    # The word is required only where it changes an outcome, so a book is not asked to
+    # annotate every list it happens to write.
+    write(repo / "docs/features/groom/gui/screens/s.md", _branching_interaction(check=False))
+    assert "unstated-claim-combiner" not in all_codes(_run(repo))
+
+
+def test_a_conjunction_fans_the_check_out_to_every_child(repo: Path):
+    write(repo / "docs/features/groom/gui/screens/s.md", _branching_interaction("all"))
+    assert "unstated-claim-combiner" not in all_codes(_run(repo))
+    assert _claim_bindings(repo) == {
+        ("does", 1): ['visible(locator="#widget-table")'],
+        ("does", 2): ['visible(locator="#widget-table")'],
+    }
+
+
+def test_a_disjunction_binds_the_check_to_no_child(repo: Path):
+    # Over alternatives the check is a refutation of every branch but one, and filing it as a
+    # proof is the one way a green run can be evidence for a claim the run disproved.
+    write(repo / "docs/features/groom/gui/screens/s.md", _branching_interaction("branches"))
+    assert _claim_bindings(repo) == {}
+    branches = [f for f in _run(repo).findings if f.code == "unobserved-branch"]
+    assert [f.severity for f in branches] == ["warn", "warn"]
+    assert "Split the branches into sibling bullets" in branches[0].message
+
+
+def test_a_stated_combiner_is_not_itself_a_claim(repo: Path):
+    # It is written where the parent's own value would go, so the list has to mint exactly the
+    # obligations it minted while it said nothing.
+    write(repo / "docs/features/groom/gui/screens/s.md", _branching_interaction("all"))
+    node = load(repo).ui_nodes_of_type("interaction")[0]
+    assert [v for k, v, _ in node.bullet_order if k == "does"] == [
+        "success: the table appears", "failure: the page stays put"]
+    assert node.combiners == {2: "all"}
+
+
+def test_a_combiner_word_on_a_childless_bullet_stays_prose(repo: Path):
+    # A list of one thing has nothing to combine, so `- does: all` there is somebody's prose.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          ("---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+           "## Interactions\n\n### click\n- on: [S](#s)\n- trigger: click\n"
+           "- does: all\n"))
+    node = load(repo).ui_nodes_of_type("interaction")[0]
+    assert node.combiners == {}
+    assert [v for k, v, _ in node.bullet_order if k == "does"] == ["all"]
+
+
 def test_a_node_that_declares_nothing_is_reported(repo: Path):
     # The gap `unparsed-check` cannot see: no value to reject. `verify:` is required on no
     # type, so this node is otherwise green while every obligation it mints reaches QA with
@@ -821,7 +895,7 @@ def test_a_status_bullet_on_an_invocation_is_declared_and_formatted(repo: Path):
     text = (repo / "docs/features/groom/cli/wh.md").read_text()
     assert text.index("- status:") < text.index("- verify:") < text.index("- code:")
     inv = load(repo).ui_nodes_of_type("invocation")[0]
-    _, per_bullet = registry.attributed_checks(inv.type, inv.bullet_order)
+    _, per_bullet = registry.attributed_checks(inv.type, inv.bullet_order, inv.combiners)
     assert per_bullet == {("status", 1): ["exit_status(code=0)"]}
 
 
