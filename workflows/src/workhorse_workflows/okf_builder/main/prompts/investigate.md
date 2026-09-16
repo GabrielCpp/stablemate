@@ -88,8 +88,10 @@ missing rather than re-reading the whole tree.
     top-level bullets: `launch:` (a non-interactive command that starts from source without assuming
     an already-built artifact), `working-directory:` (repo-relative), `entry-url:` (loopback URL),
     `health-path:`, and `identity:` (a response-body literal unique to this app at the health URL).
-    These are consumed by the live walkthrough; derive them from package scripts/server defaults and
-    the rendered shell, never invent them.
+    `ostler qa stack up` reads these to boot the surface, and the compiled plan reads `entry-url:`
+    to aim its target at *this* service — a plan spanning two services has no single address, so a
+    wrong or missing one here is a plan that cannot run. Derive them from package scripts/server
+    defaults and the rendered shell, never invent them.
 - **surface-slice** — author every element and behavior in the supplied family spec-complete in one
   pass. A `screens:<family>` discovery slice contains several routes: write one complete `screen`
   node per listed route, including its controls and interactions. A slice of an existing CLI/server
@@ -156,9 +158,10 @@ missing rather than re-reading the whole tree.
     `health:` must be a genuine probe (an API endpoint that exercises the backend, `port-bound`,
     `log:<pattern>`, `ws:<frame>`), **never a UI shell served with the backend down**; a `run` step's
     `produces:` names its output files and `verify:` how success is confirmed (golden/deterministic/
-    assertion/test-id). Mark **every step you author `provenance: derived`** — the live walkthrough
-    promotes them to `verified` later. Order the steps so a reader can stand the system up from the
-    doc alone. Emit any surface/concept the runbook references but that isn't documented yet.
+    assertion/test-id). Do **not** mark steps with a `provenance:` bullet — the key is gone. A step
+    is not verified by a field that says so; it is verified by `qa stack up` running it, and that
+    verdict is re-derived every run rather than transcribed into the book. Order the steps so a
+    reader can stand the system up from the doc alone. Emit any surface/concept the runbook references but that isn't documented yet.
 - **harness** — document **one test tier**: how it is run, where its specs live, and how a
   contributor adds one. A `tests:` bullet elsewhere in the book cites a test; this is the node that
   says what running it takes, so the citation points into something executable, not a bare string.
@@ -178,7 +181,7 @@ missing rather than re-reading the whole tree.
     and the doc it verifies cannot drift apart silently.
   - **What CI gates** — the job name and whether it blocks merge. A tier CI does not run is
     documentation of an intention, and should say so plainly rather than imply enforcement.
-  Mark every step `provenance: derived`; the live walkthrough promotes them. If a tier's config
+  Write no `provenance:` bullet on a step; running the tier is what says it works. If a tier's config
   exists but has no spec files, document it and **say the suite is empty** — an empty suite that
   looks configured is precisely the gap worth recording. Emit nothing.
 - **journey** — trace a user path across surfaces by following the **leads-to** edges (start
