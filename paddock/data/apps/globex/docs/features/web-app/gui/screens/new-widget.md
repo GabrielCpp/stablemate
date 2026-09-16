@@ -59,6 +59,27 @@ request carried, but never substitute an HTTP client for the click.
 - fixture:
 - tests:
 
+### name-error
+- selector: #name-error
+- role:
+- one-per:
+- variants:
+- name:
+- unique-by:
+- placement:
+- keyboard:
+- extends:
+- parent: [name-field](#name-field)
+- exclusive-with:
+- states:
+- verify: visible(locator="#name-error")
+- code: `app/web-app/static/new.html` @bf0832921aaf
+- detail: the span `name-field`'s `invalid` state names. Declared because the refusal branch
+  of `submit-new-widget` is observed through it, and a check's locator names a component this
+  book declares rather than a CSS id nothing here has heard of.
+- fixture:
+- tests:
+
 ### new-widget-form
 - selector: #new-widget-form
 - role: none
@@ -93,12 +114,14 @@ request carried, but never substitute an HTTP client for the click.
 - keyboard: Enter (while a field has focus), or click
 - when: `name` non-empty and `quantity` a non-negative number
 - exclusive-with:
-- does:
-  - success: browser navigates to [widget-list](widget-list.md)
-  - failure: field error spans are populated from the response body
-  - failure: page stays put (no navigation)
+- does: on acceptance, the browser navigates to [widget-list](widget-list.md)
 - verify: visible(locator="widget-list.md#widget-table")
 - verify: http_status(201, path="/api/widgets")
+- does: on refusal, the field error spans are populated from the response body
+- verify: visible(locator="#name-error")
+- verify: http_status(400, path="/api/widgets")
+- does: on refusal, the page stays put — the form is still the thing on screen
+- verify: visible(locator="#new-widget-form")
 - code: `app/web-app/static/new.js::submitNewWidget` @6f983e4202a9
 - detail:
 - fixture:

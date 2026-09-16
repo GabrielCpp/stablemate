@@ -33,12 +33,12 @@ driven directly.
 - parent:
 - exclusive-with: [empty notice](#widget-table) hidden state is exclusive with the alert
   and the populated table
-- states:
+- states: populated — visible, one row per widget, `name` and `quantity` in each row
+- verify: visible(locator="#widget-table")
+- states: branches
   - loading: neither table nor empty notice nor alert is shown while the fetch is pending
-  - populated: visible, one row per widget, `name` and `quantity` in each row
   - empty: hidden; `p.empty-notice` shown instead
   - error: hidden; `p[role="alert"]` shown instead
-- verify: visible(locator="#widget-table")
 - code: `app/web-app/static/app.js::renderWidgetTable` @a9a308e1d664
 - detail:
 - fixture:
