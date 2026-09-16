@@ -9,6 +9,8 @@ from ostler.qa.context import (
     OWED_HEADING,
     ChangedUnit,
     _acceptance_criteria,
+    _book_relative,
+    _book_root,
     _is_generated_unit,
     _sort_key,
     _verification_refs,
@@ -1583,3 +1585,78 @@ def test_rendering_shows_judgment_and_unspecified_beside_the_obligation():
     )
     # The prose context is not a locator detail — a caller stripping locators keeps it.
     assert any("judgment" in line for line in render_obligations([obligation], locators=False))
+
+
+def test_book_root_derives_from_features_root_nesting():
+    """A book nested under `<prefix>/docs/features` reports `<prefix>` as its own root; a
+    book at the repo's default `docs/features` reports no root at all — it already sits
+    where the host repo's paths are spelled."""
+    root = Path("/repo")
+    assert _book_root(root, "docs/features") == ""
+    assert _book_root(root, "nested/docs/features") == "nested"
+    assert _book_root(root, "a/b/docs/features") == "a/b"
+
+
+def test_book_relative_rebases_onto_the_book_root():
+    assert _book_relative("nested/app/service.py", "nested") == "app/service.py"
+    assert _book_relative("other/app/service.py", "nested") == "other/app/service.py"
+    assert _book_relative("app/service.py", "") == "app/service.py"
+
+
+def test_nested_book_joins_its_own_root_relative_citations_to_host_relative_changes(tmp_path: Path):
+    """A book need not live at the repo's default `docs/features` to join to its code: the
+    same book joins whether the repo is checked out at the book's own root or nested inside
+    a larger tree. Regression test for a book that cites paths relative to its own root
+    while the changed-file feed is always relative to the git top-level.
+
+    Also exercises the Go pointer-receiver spelling: the book cites `Widget.Create`, the
+    extractor reports `(*Widget).Create` for the same method — a tolerated grammar
+    variant, not a mismatch.
+    """
+    service = tmp_path / "service"
+    (service / "docs/features/demo").mkdir(parents=True)
+    (service / "app").mkdir(parents=True)
+    (tmp_path / "unrelated").mkdir()
+    feature = service / "docs/features/demo/widget.md"
+    feature.write_text(
+        """---
+type: concept
+title: Widget
+---
+# Widget
+
+- code: app/widget.go::Widget.Create
+""",
+        encoding="utf-8",
+    )
+    source = service / "app/widget.go"
+    source.write_text(
+        "package app\n\ntype Widget struct{}\n\nfunc (w *Widget) Create() string {\n"
+        '\treturn "old"\n}\n',
+        encoding="utf-8",
+    )
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+
+    source.write_text(
+        source.read_text(encoding="utf-8").replace('"old"', '"created"'), encoding="utf-8"
+    )
+
+    packet = build_context(
+        tmp_path,
+        base=base,
+        features_root="service/docs/features",
+        source_roots={"demo": ["service/app"]},
+    )
+
+    assert validate_context(packet) == []
+    assert [c["headSymbols"] for c in packet["changedCode"]] == [["(*Widget).Create"]]
+    assert packet["directNodes"]
+    assert packet["obligations"]
+    kinds = {finding["kind"] for finding in packet["healthFindings"]}
+    assert "unmapped-change" not in kinds
+    assert "dangling-grounding" not in kinds

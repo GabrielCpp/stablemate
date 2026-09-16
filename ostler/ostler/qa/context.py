@@ -193,6 +193,69 @@ def _ref_owns_change(value: str, change: ChangedUnit) -> bool:
     )
 
 
+def _book_root(root: Path, features_root: str) -> str:
+    """The book's own root, relative to *root*, when `--features-root` names a nested book.
+
+    A book's `code:` citations are written relative to the book's own root — a fixture
+    checked out under `paddock/data/apps/<name>/` cites `app/api/service.go`, never
+    `paddock/data/apps/<name>/app/api/service.go` — because the same book must join to its
+    code whether it is checked out at the repo's top level or nested inside a host tree.
+    The changed-file feed, however, is always relative to `root` (git's top level), since
+    `--source-root` names attribution prefixes for `_surface_owner`, not a rebase target
+    (deliberately not reused for that here).
+
+    The book's own root is recovered by stripping this repo's *default* features-root
+    suffix off the tail of the given `--features-root`: the default is what a book at
+    `root` itself would use, so what remains at the front is the directory it is nested
+    under. Empty when the book already sits at `root` — every existing, non-nested caller
+    is unaffected.
+    """
+    default_suffix = path_mod.features_root_in(root).relative_to(root).as_posix()
+    if features_root == default_suffix:
+        return ""
+    suffix = f"/{default_suffix}"
+    return features_root[: -len(suffix)] if features_root.endswith(suffix) else ""
+
+
+def _book_relative(path: str, book_root: str) -> str:
+    """*path* (relative to `root`) rebased onto `book_root`; unchanged outside it."""
+    if not book_root or not path:
+        return path
+    prefix = f"{book_root}/"
+    return path[len(prefix):] if path.startswith(prefix) else path
+
+
+def _matching_refs(refs: set[str], cited: list[str]) -> list[str]:
+    """Citations in *cited* that name something in *refs*, tolerant of symbol spelling.
+
+    A citation and an extracted symbol may spell a qualified method differently — Go's
+    `(*Server).handleCreate` next to a book's `Server.handleCreate` — so the symbol halves
+    are compared part-wise via :func:`ostler.inventory.symbol_parts`, the same tolerance
+    grounding already applies. The citation's own spelling is reported: the book's grammar
+    wins over whatever the front end happens to emit.
+    """
+    parsed_refs = []
+    for value in refs:
+        try:
+            parsed_refs.append(refs_mod.parse_code_ref(value))
+        except ValueError:
+            continue
+    matches: list[str] = []
+    for value in cited:
+        try:
+            citation = refs_mod.parse_code_ref(value)
+        except ValueError:
+            continue
+        if any(
+            citation.repository == ref.repository
+            and citation.path == ref.path
+            and inventory.symbol_parts(citation.symbol) == inventory.symbol_parts(ref.symbol)
+            for ref in parsed_refs
+        ):
+            matches.append(value)
+    return sorted(dict.fromkeys(matches))
+
+
 #: The git empty-tree object, present in every repository without needing a commit —
 #: diffing against it is how `book_context` reads every currently-grounded node as
 #: directly reached, with no real revision required on either side.
@@ -313,7 +376,8 @@ def build_context(
     # that moved it.
     features_root = features_root or path_mod.features_root_in(root).relative_to(root).as_posix()
     source_roots = source_roots or {}
-    current = load(root)
+    book_root = _book_root(root, features_root)
+    current = load(root, root_overrides={"features": features_root})
     base_graph = _graph_at_revision(root, base, features_root)
     head_graph = current if head == "WORKTREE" else _graph_at_revision(root, head, features_root)
     excluded_doc_roots = {
@@ -397,18 +461,26 @@ def build_context(
     health: list[dict[str, Any]] = []
     changed_code: list[dict[str, Any]] = []
     for change in changes:
+        # `--source-root` and `_surface_owner` stay in `root`'s frame (its whole job is
+        # attribution against those CLI-declared prefixes) — only the book-facing paths
+        # below are rebased onto the book's own root.
+        change_book_root = "" if change.repository else book_root
+        book_path = _book_relative(change.path, change_book_root)
+        book_base_path = _book_relative(change.base_path, change_book_root)
+        book_head_path = _book_relative(change.head_path, change_book_root)
         refs = {
             *(
-                _source_ref(change.repository, change.base_path, symbol)
+                _source_ref(change.repository, book_base_path, symbol)
                 for symbol in change.base_symbols
                 if change.base_path
             ),
             *(
-                _source_ref(change.repository, change.head_path, symbol)
+                _source_ref(change.repository, book_head_path, symbol)
                 for symbol in change.head_symbols
                 if change.head_path
             ),
         }
+        book_change = replace(change, path=book_path, base_path=book_base_path, head_path=book_head_path)
         changed_code.append(
             {
                 "path": change.path,
@@ -435,7 +507,7 @@ def build_context(
             owned_file = False
             for key in registry.owning_keys(str(node.get("type", ""))):
                 cited = refs_mod.code_refs(bullets.get(key))
-                exact = sorted(refs.intersection(cited))
+                exact = _matching_refs(refs, cited)
                 if exact:
                     mapped = True
                     for ref in exact:
@@ -443,7 +515,7 @@ def build_context(
                             {"kind": "changed-code", "ref": ref, "key": key}
                         )
                 elif not owned_file and any(
-                    _ref_owns_change(item, change)
+                    _ref_owns_change(item, book_change)
                     for item in cited
                 ):
                     # One file-owner reason per node and change, whichever key cited it
@@ -453,7 +525,7 @@ def build_context(
                     direct_reasons.setdefault(node_id, []).append(
                         {
                             "kind": "file-owner",
-                            "ref": _source_ref(change.repository, change.path),
+                            "ref": _source_ref(change.repository, book_path),
                             "key": key,
                         }
                     )
@@ -470,7 +542,7 @@ def build_context(
                     direct_reasons.setdefault(node_id, []).append(
                         {
                             "kind": "surface-owner",
-                            "ref": f"{surface}:{_source_ref(change.repository, change.path)}",
+                            "ref": f"{surface}:{_source_ref(change.repository, book_path)}",
                         }
                     )
             else:
@@ -478,7 +550,7 @@ def build_context(
                     {
                         "kind": "unmapped-change",
                         "severity": "error",
-                        "path": _source_ref(change.repository, change.path),
+                        "path": _source_ref(change.repository, book_path),
                         "message": "changed production unit has no exact symbol, file, or surface owner",
                     }
                 )
@@ -638,7 +710,7 @@ def build_context(
         node = nodes_by_id[node_id]
         for normalized in refs_mod.code_refs(node.get("bullets", {}).get("code")):
             if not _grounding_for_ref(
-                root, base, head, normalized, repositories_by_id
+                root, base, head, normalized, repositories_by_id, book_root
             ):
                 health.append(
                     {
@@ -1353,13 +1425,23 @@ def _grounding_for_ref(
     head: str,
     ref: str,
     repositories: dict[str, SourceRepository],
+    book_root: str = "",
 ) -> bool:
-    """Ground one citation in the docs repository or its named source repository."""
+    """Ground one citation in the docs repository or its named source repository.
+
+    A book-relative citation (no `repository:`) is grounded against `root`'s own git
+    tree, which is rooted above the book whenever `--features-root` names a nested book —
+    so its path is rebased onto `root` first, the same rebase the changed-code join
+    applies. A repository-scoped citation already names a path inside that repository's
+    own checkout, which has no book nested inside it, so it is left alone.
+    """
     try:
         parsed = refs_mod.parse_code_ref(ref)
     except ValueError:
         return False
     if not parsed.repository:
+        if book_root:
+            parsed = replace(parsed, path=f"{book_root}/{parsed.path}")
         return _grounding_exists(root, base, head, parsed)
     repository = repositories.get(parsed.repository)
     if repository is None:
