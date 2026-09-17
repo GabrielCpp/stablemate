@@ -38,11 +38,11 @@ never talk to each other server-to-server.
 - errors:
 - auth: none
 - verify: http_status(200, path="/healthz")
+- fixture:
+- capture:
 - code: `app/api-service/service.go::Server.handleHealth` @0344dec13901
 - openapi:
 - detail:
-- fixture:
-- capture:
 - tests: `app/api-service/service_test.go::TestHandleHealth`
 
 ### get-widgets
@@ -58,11 +58,11 @@ never talk to each other server-to-server.
 - errors:
 - auth: none
 - verify: http_status(200, path="/api/widgets")
+- fixture:
+- capture:
 - code: `app/api-service/service.go::Server.handleList` @0344dec13901
 - openapi:
 - detail:
-- fixture:
-- capture:
 - tests: `app/api-service/service_test.go::TestHandleList`
 
 ### post-widgets
@@ -81,9 +81,9 @@ never talk to each other server-to-server.
   `quantity` is refused rather than coerced
 - verify: http_status(422, path="/api/widgets")
 - auth: none
+- fixture:
+- capture:
 - code: `app/api-service/service.go::Server.handleCreate` @0344dec13901
 - openapi:
 - detail:
-- fixture:
-- capture:
 - tests: `app/api-service/service_test.go::TestHandleCreate`

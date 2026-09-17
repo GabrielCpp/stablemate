@@ -17,6 +17,9 @@ verifiable with api-service running alone and web-app not running at all.
   - [get-widgets](../http/api-service.md#get-widgets)
 - end: [api-service](../http/api-service.md)
 - verify: http_status(200, path="/api/widgets")
+- fixture: none, because the journey arranges itself — its first step creates the widget
+  its last step reads back, so there is no state to establish before it starts. The stack it
+  runs against is api-service's own property, not this journey's arrangement.
 - detail: the claim above is about the directory read this journey *ends* on, not about the
   create in the middle of it — that 201 is [post-widgets](../http/api-service.md#post-widgets)'s
   own claim, and restating it here would file one observation against two obligations and, worse,
@@ -24,7 +27,4 @@ verifiable with api-service running alone and web-app not running at all.
   journey wants — that the created widget is present in the listing, by id — is not expressible
   yet: it names a value from the request body, and `steps:` has no bullet for the data a step
   carries, so the compiler cannot ground it.
-- fixture: none, because the journey arranges itself — its first step creates the widget
-  its last step reads back, so there is no state to establish before it starts. The stack it
-  runs against is api-service's own property, not this journey's arrangement.
 - tests:

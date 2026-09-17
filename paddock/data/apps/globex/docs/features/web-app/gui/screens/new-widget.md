@@ -34,9 +34,9 @@ request carried, but never substitute an HTTP client for the click.
 - states:
   - invalid: `#name-error` carries the field's error message
 - verify: visible(locator="#name-field")
+- fixture:
 - code: `app/web-app/static/new.html` @18dfea321e64
 - detail:
-- fixture:
 - tests:
 
 ### quantity-field
@@ -54,9 +54,9 @@ request carried, but never substitute an HTTP client for the click.
 - states:
   - invalid: `#quantity-error` carries the field's error message
 - verify: visible(locator="#quantity-field")
+- fixture:
 - code: `app/web-app/static/new.html` @18dfea321e64
 - detail:
-- fixture:
 - tests:
 
 ### name-error
@@ -74,6 +74,7 @@ request carried, but never substitute an HTTP client for the click.
 - states:
   - invalid: populated from the refusal branch of `submit-new-widget`
 - verify: visible(locator="#name-error")
+- fixture:
 - code: `app/web-app/static/new.html` @18dfea321e64
 - detail: the span `name-field`'s `invalid` state names. Declared because the refusal branch
   of `submit-new-widget` is observed through it, and a check's locator names a component this
@@ -82,7 +83,6 @@ request carried, but never substitute an HTTP client for the click.
   vocabulary observes an element being absent from the screen, so it was a claim nothing could
   ever discharge sitting in the same bullet as one that can — and whichever scenario read the
   bullet would have been credited with both.
-- fixture:
 - tests:
 
 ### new-widget-form
@@ -99,11 +99,11 @@ request carried, but never substitute an HTTP client for the click.
 - exclusive-with:
 - states:
 - verify: visible(locator="#new-widget-form")
+- fixture:
 - code: `app/web-app/static/new.html` @18dfea321e64
 - detail: the form element the two fields sit in. Declared because it is what
   `widget-list`'s `open-new-widget` observes on arrival — the screen is reached when the form
   is on it, and an interaction that lands here needs something in this book to point at.
-- fixture:
 - tests:
 
 ### submit-widget-button
@@ -120,9 +120,9 @@ request carried, but never substitute an HTTP client for the click.
 - exclusive-with:
 - states:
 - verify: visible(locator="#submit-widget-button")
+- fixture:
 - code: `app/web-app/static/new.html` @18dfea321e64
 - detail:
-- fixture:
 - tests:
 
 ## Interactions
@@ -139,15 +139,16 @@ request carried, but never substitute an HTTP client for the click.
 - verify: focusable(locator="#submit-widget-button", activates="Enter")
 - when: `name` non-empty and `quantity` a non-negative number
 - exclusive-with:
-- does: the browser navigates to [widget-list](widget-list.md)
+- does:
+  - the browser navigates to [widget-list](widget-list.md)
 - verify: visible(locator="widget-list.md#widget-table")
 - verify: http_status(201, path="/api/widgets")
+- fixture:
+- capture:
 - code: `app/web-app/static/new.js::submitNewWidget` @6f983e4202a9
 - detail: the base case — the form's `name`/`quantity` both satisfy `when:`, so the service
   accepts the widget. [refuse-new-widget](#refuse-new-widget) extends this arm for the case it
   does not.
-- fixture:
-- capture:
 - tests:
 
 ### refuse-new-widget
@@ -162,14 +163,14 @@ request carried, but never substitute an HTTP client for the click.
 - when: `name` empty, or `quantity` missing or negative
 - exclusive-with:
 - extends: [submit-new-widget](#submit-new-widget)
-- does: the field error spans are populated from the response body, and the page stays put —
-  the form is still the thing on screen
+- does:
+  - the field error spans are populated from the response body, and the page stays put — the form is still the thing on screen
 - verify: visible(locator="#name-error")
 - verify: visible(locator="#new-widget-form")
 - verify: http_status(422, path="/api/widgets")
+- fixture:
+- capture:
 - code: `app/web-app/static/new.js::submitNewWidget` @6f983e4202a9
 - detail: the refusal arm — same button, same trigger, same control identity as
   [submit-new-widget](#submit-new-widget), inherited through `extends:` rather than repeated.
-- fixture:
-- capture:
 - tests:

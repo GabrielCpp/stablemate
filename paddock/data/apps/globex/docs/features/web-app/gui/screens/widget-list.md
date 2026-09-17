@@ -36,6 +36,7 @@ driven directly.
 - verify: visible(locator="#widget-table")
 - fixture: widgets-on-hand — the directory holds at least one widget
 - states: loading — not yet drawn while the fetch is pending
+- fixture:
 - code: `app/web-app/static/app.js::renderWidgetTable` @81b0f35cee96
 - detail: which of the three the page shows is recorded once, as `exclusive-with:`, and each
   of the three states what it looks like when it is the one shown. Saying it a second time
@@ -43,7 +44,6 @@ driven directly.
   places, and the vocabulary has no check that observes an element being absent from the
   screen in any case. The loading state carries no arrangement because none exists: it holds
   only while the fetch is in flight, and nothing outside the page can hold it there.
-- fixture:
 - tests:
 
 ### empty-notice
@@ -99,9 +99,9 @@ driven directly.
 - exclusive-with:
 - states:
 - verify: visible(locator="#new-widget-link")
+- fixture:
 - code: `app/web-app/static/index.html` @ebed722d64ce
 - detail:
-- fixture:
 - tests:
 
 ## Interactions
@@ -120,8 +120,8 @@ driven directly.
 - does:
   - navigation: browser navigates to [new-widget](new-widget.md)
 - verify: visible(locator="new-widget.md#new-widget-form")
-- code: `app/web-app/static/index.html` @ebed722d64ce
-- detail:
 - fixture:
 - capture:
+- code: `app/web-app/static/index.html` @ebed722d64ce
+- detail:
 - tests:

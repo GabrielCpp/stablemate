@@ -23,9 +23,9 @@ rather than left as unlinked prose.
 - config: `STABLEMATE_API_BASE` is not read by either service; web-app's browser client
   reads its API origin from `app/web-app/static/config.js`, not from process environment,
   because the fetch is made by the page, not by the web-app process.
+- tests:
 - fixture: `docker compose up --build`
 - capture:
-- tests:
 - persistence: widget — a widget created before a restart of this environment does not
   survive it (the store is in-process and reinitializes empty on the next `docker compose up`)
 - verify: absent(subject="a widget created before `docker compose restart api-service`, read back after")

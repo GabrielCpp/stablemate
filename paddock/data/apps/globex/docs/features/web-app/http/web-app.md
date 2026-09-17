@@ -46,9 +46,9 @@ this node documents the files that get served to produce them.
 - errors:
 - auth: none
 - verify: http_status(200, path="/healthz")
+- fixture:
+- capture:
 - code: `app/web-app/main.go::handleHealth` @a84a667463fc
 - openapi:
 - detail:
-- fixture:
-- capture:
 - tests:

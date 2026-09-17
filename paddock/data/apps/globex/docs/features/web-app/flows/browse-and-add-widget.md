@@ -22,8 +22,8 @@ stack crossing into api-service and not part of this journey at all.
   - [submit-new-widget](../gui/screens/new-widget.md#submit-new-widget)
 - end: [widget-list](../gui/screens/widget-list.md)
 - verify: visible(locator="../gui/screens/widget-list.md#widget-table")
-- detail: seed one widget via `POST /api/widgets` before the journey starts so the table is
-  non-empty on arrival; the journey itself never calls the API directly.
 - fixture: widgets-on-hand — the directory holds one widget, so the table has a row to
   render on arrival
+- detail: seed one widget via `POST /api/widgets` before the journey starts so the table is
+  non-empty on arrival; the journey itself never calls the API directly.
 - tests:
