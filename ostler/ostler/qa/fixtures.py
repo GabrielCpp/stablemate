@@ -177,6 +177,15 @@ def migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) -> Q
     prose` list the node grammar wants, and the old `args:` are literal invocation tokens, not
     named parameters a `fixture:` caller would bind. The original prose survives as a comment
     for a human to turn into real `provides:` keys.
+
+    **Which is why this does not report plain success.** `declared()` above refuses a
+    `qa: {fixtures:}` entry with no `provides:` in its own words — it is what a scenario's
+    `preconditions:` are checked against, and a fixture that cannot say what state it leaves
+    behind cannot be held to leaving it — so a migration that converts that checked claim into
+    an HTML comment and prints `migrated 1 qa fixture(s)` says the thing it just dropped came
+    across. Splitting one sentence into named keys is an authoring decision, not a transform,
+    so the fix is not a smarter parser: the outcome carries `status="incomplete"`, names every
+    node whose `provides:` did not survive, and says what is owed on each.
     """
     specs, errors = declared(root)
     if errors:
@@ -223,6 +232,11 @@ def migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) -> Q
             f"— original provides: {spec.provides!r} -->\n\n"
             "## Steps\n\n"
             "### run-it\n\n"
+            # `run`, not `seed`, and not omitted: `kind:` is required on a step node
+            # (`registry.py`'s `step` type), so "nobody said" has no spelling here — and of
+            # the two legal readings, `run` is the one that claims nothing. An `agents.yml`
+            # entry has no field saying whether the command leaves state behind, which is
+            # the same silence that keeps `provides:` from surviving below.
             "- kind: run\n"
             f"- run: {run}\n"
         )
@@ -230,10 +244,23 @@ def migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) -> Q
         path.write_text(body, encoding="utf-8")
         written.append(str(path.relative_to(root)))
 
+    owed = "\n".join(
+        f"  {path}: `provides:` did not survive — the original sentence is parked in an HTML "
+        f"comment at the top of the file; write it out as one child per fact "
+        f"(`<key> \u2014 <what it means>`), which is what a scenario's `preconditions:` are "
+        f"checked against. Its step is written `kind: run` for the same reason — nothing in "
+        f"an `agents.yml` entry says whether the command seeds state, so the migration "
+        f"writes the reading that claims nothing"
+        for path in written
+    )
     return QaOutcome(
         ok=True,
-        message=f"migrated {len(written)} qa fixture(s) into {dest.relative_to(root)}",
-        data={"paths": written},
+        status="incomplete",
+        message=(
+            f"migrated {len(written)} qa fixture(s) into {dest.relative_to(root)}, none of them "
+            f"complete:\n{owed}"
+        ),
+        data={"paths": written, "provides_not_migrated": list(written)},
     )
 
 

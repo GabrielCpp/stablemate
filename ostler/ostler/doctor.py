@@ -651,6 +651,7 @@ def _check_book_fixtures(graph: Graph, known: set[str], f: list[Finding]) -> Non
     bar is the story bullet's, for the same reason: a name nothing declares arranges nothing,
     and a compiler reading the book would emit a call the harness refuses at run time.
     """
+    by_name = {Path(n.id).stem: n for n in graph.ui_nodes_of_type("fixture")}
     for node in graph.ui_nodes:
         arrange = registry.arrange_keys(node.type)
         if not arrange:
@@ -674,6 +675,42 @@ def _check_book_fixtures(graph: Graph, known: set[str], f: list[Finding]) -> Non
                     f"{parsed.name}.md`, or a hand-written `qa: {{fixtures:}}` entry in "
                     f"agents.yml. Declared here: {', '.join(sorted(known)) or '(none)'}",
                     path=rel, line=node.line, ref=parsed.name))
+                continue
+            _check_unbacked_precondition(node, rel, key, value, parsed,
+                                         by_name.get(parsed.name), f)
+
+
+def _check_unbacked_precondition(node: UINode, rel: str, key: str, value: str,
+                                 parsed: fixtures_mod.FixtureRef, target: UINode | None,
+                                 f: list[Finding]) -> None:
+    """The state a `fixture:` bullet says it is arranged in, against what the fixture declares.
+
+    The tail after the em dash is the *consumer's* precondition, and `compile_plan` copies it
+    verbatim into the scenario's `preconditions=[...]` — so a scenario states what must hold
+    before it runs in words written by the node that uses the arrangement, about work the node
+    that performs it may never have claimed to do. A book fixture node with no `provides:` at
+    all is exactly that case: the precondition reads as settled, nothing on the producing side
+    says the arrangement leaves that state behind, and no run can tell the difference, because
+    a precondition is a sentence the harness carries rather than a thing it observes.
+
+    Only a *book* fixture node can reach this. The hand-written `qa: {fixtures:}` tier refuses
+    an entry with no `provides:` in `fixtures.declared()`, so a name that resolves only there
+    has already been held to it — `target is None` is that case, not a missing check.
+    """
+    if not parsed.provides or target is None:
+        return
+    if _fixture_declared_provides(target):
+        return
+    f.append(Finding(
+        "warn", "unbacked-precondition",
+        f"{node.id}: `{key}: {value}` says fixture '{parsed.name}' leaves this state behind, "
+        f"and '{target.id}' declares no `provides:` at all — the precondition is written by "
+        f"the node that uses the arrangement about work the node that performs it never "
+        f"claimed, and a compiled plan copies it into `preconditions=[...]` where nothing "
+        f"can hold the fixture to it",
+        path=rel, line=node.line, ref=parsed.name,
+        suggestion=f"declare it on {target.id}: `- provides:` with a child per fact, "
+                   f"`<key> — <what it means>`"))
 
 
 #: A `fixture` node's own `## Steps` are restricted to this narrower set, not the runbook's

@@ -51,12 +51,48 @@ def test_a_well_formed_fixture_is_written_as_a_run_step(tmp_path: Path) -> None:
     assert written.is_file()
     body = written.read_text(encoding="utf-8")
     assert "title: Three identities" in body
-    assert "- kind: run" in body
     assert "- run: node auth/seed.mjs --holders=2" in body
     # Neither old vocabulary carries over mechanically — the prose survives as a comment.
     assert "provides:" not in body.split("## Steps")[1]
     assert "the adjuster, holder A and holder B exist in the auth emulator" in body
     assert result.data["paths"] == ["docs/features/acme/fixtures/three-identities.md"]
+
+
+def test_kind_run_is_the_reading_that_claims_nothing(tmp_path: Path) -> None:
+    """`seed` and `run` are different claims and an `agents.yml` entry states neither.
+
+    `kind:` is required on a step node (`registry`'s `step` type), so "nobody said" has no
+    spelling here — omitting it makes the migrated node trip `missing-required-bullet`. Of the
+    two legal readings, `run` is the one that asserts nothing about state, which is the same
+    silence that keeps `provides:` from surviving; the outcome says so rather than the file.
+    """
+    _agents_yml(tmp_path, ONE_FIXTURE)
+
+    result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures", cfg=_CFG)
+
+    body = (tmp_path / "docs/features/acme/fixtures/three-identities.md").read_text("utf-8")
+    assert "- kind: run" in body
+    assert "claims nothing" in result.message
+
+
+def test_the_outcome_says_the_provides_did_not_survive(tmp_path: Path) -> None:
+    """A migration that drops the field its own loader calls load-bearing must say so.
+
+    `declared()` refuses a `qa: {fixtures:}` entry with no `provides:` — it is what a
+    scenario's `preconditions:` are checked against. Converting that checked claim into an
+    HTML comment and printing `migrated 1 qa fixture(s)` reports a translation that did not
+    happen, so the outcome carries a status of its own and names what is owed.
+    """
+    _agents_yml(tmp_path, ONE_FIXTURE)
+
+    result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures", cfg=_CFG)
+
+    assert result.ok, result.message
+    assert result.status == "incomplete"
+    assert "provides:` did not survive" in result.message
+    assert "three-identities.md" in result.message
+    assert result.data["provides_not_migrated"] == [
+        "docs/features/acme/fixtures/three-identities.md"]
 
 
 def test_no_fixtures_declared_is_a_no_op(tmp_path: Path) -> None:

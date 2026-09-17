@@ -326,3 +326,36 @@ def test_fixture_checks_are_skipped_with_no_stack_runbook(repo: Path) -> None:
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id", step_kind="prepare"))
     assert _findings(repo, "fixture-step-kind") == []
+
+
+def test_unbacked_precondition_when_the_target_declares_no_provides(repo: Path) -> None:
+    """The consumer states the state; the producer never claimed to leave it.
+
+    The prose after the em dash is copied verbatim into a compiled plan's `preconditions=[...]`,
+    where nothing holds the fixture to it. The node that performs the arrangement is the only
+    one that can say what it leaves behind, and here it says nothing at all.
+    """
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_book(args="id"))
+    write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme id=globex — an account exists"))
+    found = _findings(repo, "unbacked-precondition")
+    assert [(f.severity, f.ref) for f in found] == [("warn", "seeded-acme")]
+    assert "an account exists" in found[0].message
+
+
+def test_unbacked_precondition_is_clean_when_the_target_declares_provides(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+          _fixture_book(args="id", provides="id — the seeded account's id"))
+    write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme id=globex — an account exists"))
+    assert _findings(repo, "unbacked-precondition") == []
+
+
+def test_unbacked_precondition_is_silent_when_the_bullet_states_no_precondition(
+    repo: Path,
+) -> None:
+    """No em-dash prose is no claim about state, so there is nothing for a `provides:` to back."""
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_book(args="id"))
+    write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme id=globex"))
+    assert _findings(repo, "unbacked-precondition") == []
