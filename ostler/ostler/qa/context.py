@@ -2033,9 +2033,10 @@ def _reaches_a_required_contract(ref: str, required_contracts: set[str]) -> bool
 def _declared_checks(node: dict[str, Any]) -> list[dict[str, Any]]:
     """The observations a node declares, one row per parsed `verify:` bullet.
 
-    Silent on a bullet that does not parse: `doctor` already refuses that one by name, and
-    duplicating the refusal here would make a book with one malformed bullet look like a book
-    with none — the opposite of what the packet is for. `call` is `CheckCall.text()`, the
+    Silent on a bullet that does not parse — and that silence is what makes a book with one
+    malformed bullet look like a book with none, which is the opposite of what the packet is
+    for. `_unparsed_checks` below carries the refusal for the readers that have to tell those
+    two books apart; this list stays the parsed rows alone. `call` is `CheckCall.text()`, the
     canonical spelling, because it is the string `qa validate` compares a scenario's
     invocation against; the split `name`/`args` are there so the harness does not re-parse.
     """
@@ -2073,6 +2074,31 @@ def _parse_checks(
                 row["locates"] = located
         rows.append(row)
     return rows
+
+
+def _unparsed_checks(values: list[str]) -> list[dict[str, Any]]:
+    """The `verify:` bullets among *values* the parser read and refused, with its own account.
+
+    Carried, not dropped, for the reason `_unparsed_fixtures` above is: `_parse_checks` builds a
+    row only from a value that parsed, so downstream a node that declared no observation and a
+    node whose observation nobody could read arrive identically — with no `checksDeclared` — and
+    `compile_plan` gaps the second `no-verify-declared`, *"the book declares no check for this
+    obligation to prove"*, at an author who declared one. `ostler doctor` does refuse the bullet
+    by name (`unparsed-check`), which makes this worse rather than better: the two readers then
+    disagree in writing about the same bullet, and the one that decides whether to emit code is
+    the one holding the wrong account.
+
+    The refusal's own `kind` rides along with its sentence because a refusal *classifies* — a
+    test reference written under `verify:` is not a typo in an argument — and `parse_check` is
+    the only thing that looked. Re-deriving either here is how the message and the suggestion
+    came to contradict each other in `doctor` once already.
+    """
+    rows: list[dict[str, Any]] = []
+    for value in values:
+        parsed = checks_mod.parse_check(value)
+        if isinstance(parsed, checks_mod.Refusal):
+            rows.append({"value": value, "kind": parsed.kind, "problem": parsed.message})
+    return list({row["value"]: row for row in rows}.values())
 
 
 def _locator_resolver(
@@ -2503,6 +2529,9 @@ def _obligations(
     contract_rows = _dedup_checks(_parse_checks(contract, resolve_locator))
     if contract_rows:
         base["checksDeclared"] = contract_rows
+    contract_unparsed = _unparsed_checks(contract)
+    if contract_unparsed:
+        base["checksUnparsed"] = contract_unparsed
     # A fixture written above every claim arranges the state the node as a whole is documented
     # in, so it rides on `base` and reaches every obligation minted below — see
     # `registry.attributed_fixtures` for why that differs from how a leading check is filed.
@@ -2580,6 +2609,11 @@ def _obligations(
                 obligation["checksDeclared"] = rows
             else:
                 obligation.pop("checksDeclared", None)
+            refused = _unparsed_checks(per_bullet.get((key, index), []))
+            if refused:
+                obligation["checksUnparsed"] = refused
+            else:
+                obligation.pop("checksUnparsed", None)
             arranged = _parse_fixtures(fixtures_per_bullet.get((key, index), []), fixture_provides)
             combined = list({(row["name"], tuple(row["args"])): row
                              for row in [*ambient, *arranged]}.values())

@@ -553,6 +553,24 @@ def test_an_unparsed_fixture_gap_keeps_the_code_doctor_already_raises_for_that_b
     assert finding.ref == oid
 
 
+def test_an_unparsed_check_gap_keeps_the_code_doctor_already_raises_for_that_bullet():
+    """`_check_ui` raises `unparsed-check` on this bullet from the book alone.
+
+    Same bridge as the fixture kind above, for the same reason: the compiler's kind names which
+    obligations went unproven because the bullet could not be read, which is the consequence of
+    one defect and not a second one. Left unbridged it would be a second code for a rule doctor
+    already states — and before the bridge existed at all, the obligation fell through to
+    `no-verify-declared`, which contradicted doctor about the same bullet.
+    """
+    oid = "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:contract"
+    gap = compile_mod.Gap(oid, "unparsed-check-bullet", "this claim's check could not be read")
+
+    [finding] = doctor.gap_findings([gap])
+
+    assert (finding.severity, finding.code) == ("error", "unparsed-check")
+    assert finding.ref == oid
+
+
 def test_gap_findings_reports_a_compile_plan_gap_as_a_doctor_finding():
     oid = "okf:docs/features/demo/api.md#post-things:does:1"
     gap = compile_mod.Gap(oid, "unresolved-precondition", "the book carries no request body")

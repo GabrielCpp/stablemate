@@ -2137,3 +2137,51 @@ title: Claims
     assert "is not a fixture name" in rejected["problem"]
     # Ambient, the same way a parsed arrangement written in that place would be.
     assert by_id["list-claims:authorization:1"]["fixturesUnparsed"] == [rejected]
+
+
+def test_a_verify_bullet_the_parser_refuses_is_carried_not_dropped(tmp_path: Path):
+    """`checksDeclared` absent meant two different books: one that declared no observation, and
+    one whose observation nobody could read. `compile_plan` gapped both `no-verify-declared` —
+    *"the book declares no check for this obligation to prove"* — so an author who wrote a check
+    and got its spelling wrong was told to write one. `ostler doctor` refuses this bullet by name
+    already, so the two readers of one bullet disagreed in writing, and the reader deciding
+    whether to emit code held the wrong account. The refusal now rides in the packet, with the
+    class the parser assigned it, because a refusal classifies and only the parser looked.
+    """
+    (tmp_path / "docs/features/acme/http").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/http/claims.md").write_text(
+        """---
+type: server
+title: Claims
+---
+# Claims
+
+## Endpoints
+
+### list-claims
+- method: GET
+- path: /api/claims
+- code: app/list.py::list_claims
+- verify: htp_status 200 for /api/claims
+- authorization: a holder reads only their own claims.
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/list.py").write_text("def list_claims():\n    return []\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/list.py").write_text("def list_claims():\n    return [1]\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    by_id = {item["id"].rsplit("#", 1)[-1]: item for item in packet["obligations"]}
+
+    # Nothing parsed, so no row — and the rejected value is here to say there was one.
+    assert "checksDeclared" not in by_id["list-claims:contract"]
+    [refused] = by_id["list-claims:contract"]["checksUnparsed"]
+    assert refused["value"] == "htp_status 200 for /api/claims"
+    assert refused["kind"] and refused["problem"]

@@ -2441,3 +2441,36 @@ def test_a_fixture_bullet_that_did_not_parse_is_not_the_journey_that_arranges_no
     # Not the undecided case's code, and nothing compiled against a state nobody established.
     assert "unarranged-journey" not in {g.kind for g in gaps}
     assert oid not in _covers(source)
+
+
+def test_a_verify_bullet_the_parser_refused_is_not_a_node_that_declared_no_check() -> None:
+    """The gap said the book declares no check, to an author who declared one and misspelled it.
+
+    `_parse_checks` kept the rows that parsed and dropped the rest, so downstream an obligation
+    whose `verify:` bullet nobody could read and one with no `verify:` at all arrived the same
+    way — with no `checksDeclared` — and fell through to `no-verify-declared`. `ostler doctor`
+    refuses that bullet by name, which is what makes the fall-through a disagreement in writing
+    rather than a gap: two readers of one bullet, and the one deciding whether to emit code held
+    the wrong account of it. The packet now carries the refusal, and the obligation is
+    partitioned out before any builder sees it — an observation nobody could read is not one.
+    """
+    oid = f"okf:{_SCREEN}#policy-table:contract"
+    obligation = _page_obligation(oid, f"{_SCREEN}#policy-table",
+                                  locators={"role": ["table"], "name": ["Policies on file"]},
+                                  checks=[])
+    obligation["checksUnparsed"] = [
+        {"value": "visble(table:Policies on file)", "kind": "unknown-check",
+         "problem": "names no check in the vocabulary"},
+    ]
+    context = _navigation_context(obligation, navigation=_arrival_navigation())
+
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == ["unparsed-check-bullet"]
+    [gap] = [g for g in gaps if g.obligation_id == oid]
+    assert "visble(table:Policies on file)" in gap.detail
+    assert "names no check in the vocabulary" in gap.detail
+    # Not the advice to declare what is already declared, and nothing asserted on its behalf.
+    assert "no-verify-declared" not in {g.kind for g in gaps}
+    assert oid not in _covers(source)

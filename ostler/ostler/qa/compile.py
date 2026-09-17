@@ -83,6 +83,7 @@ GAP_KINDS = frozenset({
     "unarranged-interaction-precondition",
     "unidentifiable-screen",
     "unparsed-fixture",
+    "unparsed-check-bullet",
 })
 
 
@@ -712,6 +713,24 @@ def compile_plan_gaps(
     )
     unparsed_ids = {o["id"] for o in unparsed}
     owed = [o for o in owed if o["id"] not in unparsed_ids]
+    # And the third side of the same rule. An observation nobody could read is not an
+    # observation, so there is nothing to emit; what is wrong without this partition is not the
+    # missing code but the reason given for it — the obligation falls through to
+    # `no-verify-declared`, "the book declares no check for this obligation to prove", at an
+    # author who declared one and got the spelling wrong. `ostler doctor` refuses that bullet by
+    # name, which is what makes the fall-through a disagreement in writing rather than a gap:
+    # two readers of one bullet, and the one that decides whether to emit code held the wrong
+    # account of it. The refusal's own sentence is quoted rather than re-derived here, for the
+    # reason it was made a value in the first place.
+    refused = [o for o in owed if o.get("checksUnparsed")]
+    gaps.extend(
+        Gap(o["id"], "unparsed-check-bullet",
+            "this claim's check could not be read: "
+            + "; ".join(f"`{row['value']}` {row['problem']}" for row in o["checksUnparsed"]))
+        for o in refused
+    )
+    refused_ids = {o["id"] for o in refused}
+    owed = [o for o in owed if o["id"] not in refused_ids]
     # D1: the driver of a step is `(the obligation's own node type) x (owning surface's
     # runbook driver:)`, not (as this used to read) whether any declared check happens to observe
     # "page" — that bit is per-check, not per-node, and let two `does:` bullets on the same

@@ -1148,6 +1148,12 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             # the compiler adds is not a new defect but the consequence — which obligations
             # went uncompiled because of it — and that belongs in the message, not in the code.
             findings.append(Finding("error", "qa-fixture-bullet", message, ref=gap.obligation_id))
+        elif gap.kind == "unparsed-check-bullet":
+            # Same reasoning as the kind above, and the same existing code: doctor
+            # already refuses this bullet as `unparsed-check` from the book alone (`_check_ui`),
+            # and what the compiler adds is the consequence — which obligations went unproven
+            # because of it — which belongs in the message, not in a second code.
+            findings.append(Finding("error", "unparsed-check", message, ref=gap.obligation_id))
         elif gap.kind == "no-verify-declared":
             # The other kind whose compiler spelling is not a doctor code: "the book declares no
             # check for this obligation to prove" is `undeclared-obligation`, which doctor
