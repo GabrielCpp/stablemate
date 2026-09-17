@@ -102,6 +102,13 @@ the `component` or `interaction` that declares the control — and a raw selecto
 [../check-vocabulary.md](../check-vocabulary.md) for the vocabulary this repo renders into
 every builder prompt.
 
+An arm that `extends:` another inherits the base case's **control identity** — `on:`,
+`trigger:`, `role:`, `name:`, `keyboard:` — and inherits **none of its arrangements**. An
+arrangement exists to make a `when:` true, and an extending arm restates `when:` precisely
+because its condition differs; inheriting the base arm's acts would arrange the exact state
+this arm says is false. So a refusal arm extending a success arm writes its own `arrange:`
+bullets, filling the form with the values its own `when:` describes.
+
 ## Doctor codes it can trip
 
 `missing-required-bullet` (five keys), `undeclared-obligation`, `weak-check`,
