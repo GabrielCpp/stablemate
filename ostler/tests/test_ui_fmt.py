@@ -194,6 +194,30 @@ def test_a_check_written_above_every_claim_stays_above_them():
     assert i_contract < i_raises < body.index("- verify: http_status(409)")
 
 
+def test_every_bullet_that_binds_by_document_order_moves_with_its_claim():
+    """`verify:` is not the only key `registry._attributed` binds to the claim above it.
+
+    `fixture:` and the capture keys bind exactly the same way, so a formatter that groups only
+    the checks re-files an arrangement onto whichever claim sorts last — here, the store the
+    *creation* needs would end up describing the refusal.
+    """
+    text = (
+        "---\ntype: api\nslug: s\ntitle: T\n---\n# T\n\n"
+        "## Endpoints\n\n### submit\n"
+        "- route: `POST /x`\n"
+        "- does:\n  - files it.\n"
+        "- fixture: an_empty_store\n"
+        "- capture: the created id\n"
+        '- verify: http_status(201, path="/x")\n'
+        "- errors: `409` when it is already on file.\n"
+        '- verify: http_status(409, title="Duplicate")\n'
+    )
+    body = fmt.format_text(text).splitlines()
+    i_errors = body.index("- errors: `409` when it is already on file.")
+    assert body.index("- fixture: an_empty_store") < i_errors
+    assert body.index("- capture: the created id") < i_errors
+
+
 def test_repeat_bullets_have_a_canonical_slot():
     """`one-per`/`variants` sit between role and name; `unique-by` right after the name."""
     text = (

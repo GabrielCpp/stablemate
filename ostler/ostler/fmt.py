@@ -124,18 +124,21 @@ def _bullet_edit(section: markdown.Section, uitype: registry.UINodeType,
         return None
     order = {b.key: i for i, b in enumerate(uitype.bullet_keys)}
     normative = set(registry.normative_keys(uitype.name))
-    observing = set(registry.check_keys(uitype.name))
+    attached = set(registry.attached_keys(uitype.name))
 
     # A check observes the nearest normative bullet above it (`registry.attributed_checks`), so
     # sorting the keys independently would re-attribute it: hoisting every `verify:` into one
     # block credits the observation of a refusal to whichever claim ends up last. Group each
-    # check with the claim it was written under, and move the group.
+    # such bullet with the claim it was written under, and move the group. Which keys bind that
+    # way is the grammar's to say, not this function's — `registry.attached_keys` names all
+    # three families (`verify:`, `fixture:`, the capture keys), so a family added there travels
+    # with its claim here without anyone remembering to come back.
     contract: list[markdown.Bullet] = []
     groups: list[tuple[markdown.Bullet, list[markdown.Bullet]]] = []
     anchor: int | None = None
     for bullet in run:
         key = _bullet_key(bullet.text)
-        if key in observing:
+        if key in attached:
             # Above every claim, it is the node's own contract; otherwise it belongs to the
             # nearest claim above, whatever non-normative bullets were written between them.
             (contract if anchor is None else groups[anchor][1]).append(bullet)
@@ -144,20 +147,33 @@ def _bullet_edit(section: markdown.Section, uitype: registry.UINodeType,
             anchor = len(groups)
         groups.append((bullet, []))
 
+    # With no normative bullet in the run there is no claim to bind to, so nothing is at stake
+    # in keeping these together: rank them like any other key, which is where their own type
+    # declares them and where `ostler scaffold` writes its stubs.
+    if not any(_bullet_key(claim.text) in normative for claim, _ in groups):
+        groups.extend((bullet, []) for bullet in contract)
+        contract = []
+
     def rank(group: tuple[markdown.Bullet, list[markdown.Bullet]]) -> tuple[int, int]:
         key = _bullet_key(group[0].text)
         return (0, order[key]) if key in order else (1, 0)
 
+    def attached_rank(bullet: markdown.Bullet) -> tuple[int, int]:
+        key = _bullet_key(bullet.text)
+        return (0, order[key]) if key in order else (1, 0)
+
     ordered = sorted(groups, key=rank)  # stable: unknown keys keep their relative order, after known
     flat: list[markdown.Bullet] = []
-    for claim, attached in ordered:
+    for claim, bound in ordered:
         # The contract's own checks stay above every claim, or nothing distinguishes them.
         if contract and _bullet_key(claim.text) in normative:
-            flat.extend(contract)
+            flat.extend(sorted(contract, key=attached_rank))
             contract = []
         flat.append(claim)
-        flat.extend(attached)
-    flat.extend(contract)
+        # Canonicalising the order *within* a group is safe — every bullet here already binds to
+        # the same claim — so the spelling settles without the binding moving.
+        flat.extend(sorted(bound, key=attached_rank))
+    flat.extend(sorted(contract, key=attached_rank))
     start, end = run[0].line_start, run[-1].line_end
     new_lines: list[str] = []
     for bullet in flat:

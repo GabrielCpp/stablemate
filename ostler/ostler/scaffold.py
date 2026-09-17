@@ -26,20 +26,28 @@ from ostler.model import Graph
 
 
 def _bullet_stubs(uitype: registry.UINodeType) -> list[str]:
-    """The type's keys in canonical order, with the check stubs under the last claim.
+    """The type's keys in canonical order, with the document-order-bound stubs under the last claim.
 
-    A check observes the nearest claim above it, so `ostler fmt` keeps it there — and a stub
-    written anywhere else is one the formatter moves the first time the file is touched.
+    A `verify:`, a `fixture:` and a capture key each bind to the nearest claim above them, so
+    `ostler fmt` keeps them there — and a stub written anywhere else is one the formatter moves
+    the first time the file is touched. Which keys bind that way is `registry.attached_keys`'s
+    to say: this function asked for the checks alone for as long as they were the only family,
+    and went on doing so after the other two were added, which is how these stubs came to be
+    written in a shape `fmt` disagreed with.
     """
     normative = set(registry.normative_keys(uitype.name))
+    attached = set(registry.attached_keys(uitype.name))
     # An alias is a second spelling of the key above it; stubbing both would ask the author
     # to fill one and delete the other.
     keys = [bk for bk in uitype.bullet_keys if not bk.alias]
-    checks = [f"- {bk.key}:" for bk in keys if bk.check]
-    rest = [f"- {bk.key}:" for bk in keys if not bk.check]
-    claims = [i for i, stub in enumerate(rest) if stub[2:-1] in normative]
-    at = claims[-1] + 1 if claims else len(rest)
-    return rest[:at] + checks + rest[at:]
+    claims = [bk.key for bk in keys if bk.key in normative]
+    if not claims:
+        # Nothing to bind to, so nothing to hoist: declared order is the canonical order.
+        return [f"- {bk.key}:" for bk in keys]
+    bound = [f"- {bk.key}:" for bk in keys if bk.key in attached]
+    rest = [f"- {bk.key}:" for bk in keys if bk.key not in attached]
+    at = max(i for i, stub in enumerate(rest) if stub[2:-1] in normative) + 1
+    return rest[:at] + bound + rest[at:]
 
 
 def _file_body(uitype: registry.UINodeType, title: str) -> str:

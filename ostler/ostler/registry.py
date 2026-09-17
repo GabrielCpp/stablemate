@@ -446,6 +446,23 @@ def capture_keys(node_type: str) -> tuple[str, ...]:
     return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.capture)
 
 
+def attached_keys(node_type: str) -> tuple[str, ...]:
+    """Every bullet key on `node_type` that document order binds to a normative bullet above it.
+
+    Three families bind that way, and `_attributed` treats all three identically: `check_keys`
+    (what observing the claim looks like), `arrange_keys` (how to reach the state it is observed
+    in) and `capture_keys` (what observing it pulled back out). Anything that *reorders* a node's
+    bullets therefore has to move each of them with the claim it binds to — and which families
+    bind is a property of the grammar, not of what the reorderer happens to remember. `fmt`
+    grouped `verify:` alone for as long as `verify:` was the only one and went on doing so after
+    the other two were added, so a `fixture:` written under the first of two claims sorted to its
+    declared rank and silently re-bound to the last. The set is stated once, here, beside the
+    binder that defines it, rather than a second time in whatever reorders bullets next.
+    """
+    return tuple(dict.fromkeys(
+        check_keys(node_type) + arrange_keys(node_type) + capture_keys(node_type)))
+
+
 def attributed_captures(
     node_type: str, bullet_order: Iterable[Sequence[Any]], combiners: Mapping[int, str]
 ) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
