@@ -160,7 +160,7 @@ request carried, but never substitute an HTTP client for the click.
   the form is still the thing on screen
 - verify: visible(locator="#name-error")
 - verify: visible(locator="#new-widget-form")
-- verify: http_status(400, path="/api/widgets")
+- verify: http_status(422, path="/api/widgets")
 - code: `app/web-app/static/new.js::submitNewWidget` @6f983e4202a9
 - detail: the refusal arm — same button, same trigger, same control identity as
   [submit-new-widget](#submit-new-widget), inherited through `extends:` rather than repeated.
