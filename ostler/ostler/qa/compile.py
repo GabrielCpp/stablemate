@@ -269,6 +269,32 @@ def _kwargs(args: dict[str, Any]) -> str:
     return "".join(parts)
 
 
+def _trailing_comment(text: str) -> str:
+    """*text*, flattened onto one line, safe to follow real code on the same line.
+
+    A wrapped book bullet carries an embedded newline; appended raw after a statement
+    (`expr.click()  # trigger: {text}`), that newline ends the statement mid-line and
+    turns the rest of the sentence into code. A trailing comment can never itself hold
+    a newline without breaking the line it trails, so — unlike a standalone comment —
+    there is no multi-line form to fall back to: the prose is collapsed instead.
+    """
+    return " ".join(text.split())
+
+
+def _prose_comment(text: str, *, label: str = "") -> list[str]:
+    """*text* rendered as one or more `#`-prefixed lines, each four-space indented.
+
+    Book prose wraps across lines; a bare `f"    # {text}"` embeds that newline
+    unescaped, which ends the comment token and turns the wrapped remainder into
+    code. Every line of the wrap gets its own `#` so the emitted source parses
+    regardless of how the source bullet wrapped.
+    """
+    first, *rest = text.splitlines() or [""]
+    lines = [f"    # {label}{first}"]
+    lines.extend(f"    #   {line}" for line in rest)
+    return lines
+
+
 def _slug(path: str) -> str:
     stem = path.rsplit("/", 1)[-1].removesuffix(".md")
     ident = _IDENT.sub("_", stem).strip("_").lower()
@@ -1061,7 +1087,7 @@ def _walk_hops(
                              f"no locator declared for navigation hop {target_node!r}")
                         for oid in oids)
             continue
-        lines.append(f"    {expr}.click()  # {hop.get('label', '')}")
+        lines.append(f"    {expr}.click()  # {_trailing_comment(str(hop.get('label', '')))}")
     return lines
 
 
@@ -1378,9 +1404,9 @@ def _interaction_scenario(
     # before the action, so what it holds afterward is evidence about *this* interaction and
     # not about whatever the page requested while arriving.
     action_index = len(body)
-    body.append(f"    {on_expr}.click()  # trigger: {trigger_value}")
+    body.append(f"    {on_expr}.click()  # trigger: {_trailing_comment(trigger_value)}")
     if does_value:
-        body.append(f"    # does: {does_value}")
+        body.extend(_prose_comment(does_value, label="does: "))
     gaps.extend(Gap(oid, "unresolved-precondition",
                      f"trigger {trigger_value!r} compiles to a scaffold click on {on_label!r}, "
                      "not a verified action, and `does:` is not resolved to a target screen")
@@ -1419,7 +1445,7 @@ def _interaction_scenario(
         "    forbid=[],  # TODO: the weaker observations this scenario must not settle for",
         ")",
         f"def {name}(qa: Qa) -> None:",
-        f'    """{on_label or node_id}: {trigger_value}"""',
+        f"    {_lit(f'{on_label or node_id}: {trigger_value}')}",
         "",
         *body,
         # After the trigger, not before it: the state an interaction's claims are about is the

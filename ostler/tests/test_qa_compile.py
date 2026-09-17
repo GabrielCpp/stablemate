@@ -1329,6 +1329,38 @@ def test_an_interactions_check_is_pointed_at_the_component_it_names() -> None:
     assert interaction_oid in _covers(source)
 
 
+def test_a_wrapped_book_bullet_still_compiles_to_valid_python() -> None:
+    """A `does:`/`trigger:` value that wrapped across lines in the book source is still just one
+    string by the time `qa context` hands it here — nothing marks where the line broke. Embedding
+    that embedded newline raw, as a `#`-comment or inside a `\"\"\"`-docstring, ends the comment or
+    (for a stray `\"\"\"`-free case) the line mid-token and turns the wrapped remainder into code;
+    `py_compile`-worthy output is the property under test, not the comment text.
+    """
+    button = f"{_SCREEN}#create-policy-button"
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_oid = "okf:new-policy:submit-new-policy:does:1"
+    wrapped_trigger = "submit the new policy form\nwith every required field filled in"
+    wrapped_does = "adds a policy and\nnavigates to its detail screen"
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")]),
+        _page_obligation(interaction_oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": [wrapped_trigger],
+                                    "does": [wrapped_does]},
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, _gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    interactions = [s for s in source.split("@scenario(")[1:] if "submit_new_policy(" in s]
+    assert len(interactions) == 1
+    assert "with every required field filled in" in interactions[0]
+    assert "navigates to its detail screen" in interactions[0]
+
+
 def _verify_calls(source: str) -> list[tuple[str, dict]]:
     """Every `qa.verify(name, operand, **args)` the plan emits, as `checks.bind` reads it."""
     calls: list[tuple[str, dict]] = []
