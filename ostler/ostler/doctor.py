@@ -1140,6 +1140,12 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             findings.append(Finding("error", "screen-preconditions-undeclared", message, ref=gap.obligation_id))
         elif gap.kind == "needs-snapshot":
             findings.append(Finding("error", "needs-snapshot", message, ref=gap.obligation_id))
+        elif gap.kind == "needs-target-backend":
+            findings.append(Finding("error", "needs-target-backend", message, ref=gap.obligation_id))
+        elif gap.kind == "needs-multi-target-runtime":
+            findings.append(
+                Finding("error", "needs-multi-target-runtime", message, ref=gap.obligation_id)
+            )
         elif gap.kind == "needs-out-of-band-observation":
             findings.append(
                 Finding("error", "needs-out-of-band-observation", message, ref=gap.obligation_id)

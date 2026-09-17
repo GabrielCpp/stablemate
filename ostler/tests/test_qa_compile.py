@@ -2233,7 +2233,9 @@ def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> N
 def test_a_journey_across_two_targets_has_no_scenario_shape_to_fit_into() -> None:
     """A target is the pairing of a driver with a service, and `@scenario(target=...)` binds
     exactly one. The reason says that — a fact about the harness — rather than claiming no
-    builder exists, because after this row one does."""
+    builder exists, because after this row one does. The *kind* says it too: a journey the
+    harness cannot shape is not a claim an author can go and fix, so it does not share
+    `uncompilable-claim` with the books that really are underspecified."""
     oid = f"okf:{_FLOW}:end-state"
     navigation = _api_navigation()
     navigation.update(_arrival_navigation())
@@ -2249,10 +2251,69 @@ def test_a_journey_across_two_targets_has_no_scenario_shape_to_fit_into() -> Non
     )
     source, gaps = _compile_plan_gaps(context, story="demo-story")
     ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+    assert _gap_kinds(gaps, oid) == ["needs-multi-target-runtime"]
     [gap] = [g for g in gaps if g.obligation_id == oid]
     assert "binds one driver to one service" in gap.detail
     assert "http on 'api'" in gap.detail and "playwright on 'policy'" in gap.detail
+    assert oid not in _covers(source)
+
+
+def test_a_mobile_step_is_a_backend_nobody_built_not_a_book_nobody_finished() -> None:
+    """D1's table names `maestro` for an interaction on a mobile surface, and this compiler
+    builds no maestro path. The book that wrote that step is finished and correct — nothing in
+    it would change if someone repaired it — so the gap says the harness ran out, not the
+    author. `uncompilable-claim` would have aimed an okf-builder repair turn at a good page."""
+    oid = f"okf:{_SCREEN}#open-thing:does:1"
+    navigation = _arrival_navigation()
+    navigation["policy"]["driver"] = "mobile"
+    context = _navigation_context(
+        _obligation(oid, nodeType="interaction", source=_SCREEN, surface="policy",
+                    checksDeclared=[_visible("table:Things on file")]),
+        navigation=navigation,
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == ["needs-target-backend"]
+    [gap] = [g for g in gaps if g.obligation_id == oid]
+    assert "builds no maestro path yet" in gap.detail
+    assert oid not in _covers(source)
+
+
+def test_a_step_whose_driver_the_book_never_states_is_still_the_books_to_fix() -> None:
+    """The other side of the same branch, and the reason the two need different kinds: with no
+    `driver:` on the surface the table cannot be read at all, and that *is* something an author
+    goes and writes. It keeps `uncompilable-claim`, and a repair turn is the right destination
+    for it."""
+    oid = f"okf:{_SCREEN}#open-thing:does:1"
+    navigation = _arrival_navigation()
+    del navigation["policy"]["driver"]
+    context = _navigation_context(
+        _obligation(oid, nodeType="interaction", source=_SCREEN, surface="policy",
+                    checksDeclared=[_visible("table:Things on file")]),
+        navigation=navigation,
+    )
+    _source, gaps = _compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+
+
+def test_a_journey_walked_entirely_on_an_unbuilt_target_says_so() -> None:
+    """Every step dispatches to one target, so there is no crossing to report — the single
+    target is one this compiler has no backend for. The journey reports the backend, not the
+    crossing, because the two are fixed by building different things."""
+    oid = f"okf:{_FLOW}:end-state"
+    navigation = _arrival_navigation()
+    navigation["policy"]["driver"] = "mobile"
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="policy",
+            steps=[_step(f"{_SCREEN}#open-thing", "interaction", "policy")],
+            checks=[_visible("table:Things on file")],
+        ),
+        navigation=navigation,
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == ["needs-target-backend"]
     assert oid not in _covers(source)
 
 

@@ -96,6 +96,20 @@ GAP_KINDS = frozenset({
     "unparsed-capture-bullet",
     "unparsed-check-bullet",
     "uncaptured-declaration",
+    "needs-target-backend",
+    "needs-multi-target-runtime",
+})
+
+#: The kinds that say *this compiler* ran out, not that the book did. Every other kind names
+#: something an author can go and write; these two name a path nobody has built here, so a
+#: book that mints one is already correct and has nothing to repair. `doctor` reports them
+#: like any other gap — the difference is on the okf-builder side, where they are classified
+#: `NON_ACTIONABLE_CODES` and never drain into a repair turn (see
+#: `workflows/src/workhorse_workflows/okf_builder/shared/checkpoint.py`), the same treatment
+#: `needs-snapshot` and `needs-out-of-band-observation` already get for a harness limit.
+HARNESS_LIMIT_GAPS = frozenset({
+    "needs-target-backend",
+    "needs-multi-target-runtime",
 })
 
 
@@ -846,7 +860,12 @@ def compile_plan_gaps(
         elif target == "cli":
             cli_owed.append(obligation)
         else:
-            gaps.append(Gap(str(obligation["id"]), "uncompilable-claim", detail))
+            # `_dispatch_target` already told these two apart and the kind has to keep them
+            # apart: a `None` target means the book left the step's dispatch undetermined —
+            # something an author fixes — while a named target this compiler builds no path
+            # for is a correct book waiting on a backend nobody has written.
+            kind = "needs-target-backend" if target is not None else "uncompilable-claim"
+            gaps.append(Gap(str(obligation["id"]), kind, detail))
     http_owed, api_urls = _split_by_entry_url(http_owed, navigation, base_url, gaps)
     page_owed, web_urls = _split_by_entry_url(page_owed, navigation, base_url, gaps)
     lines: list[str] = [
@@ -2102,20 +2121,22 @@ def _journey_scenarios(
             continue
         pairs: list[tuple[str, str]] = []
         detail = ""
+        step_kind = "uncompilable-claim"
         for step in steps:
             step_surface = str(step.get("surface") or "")
             driver = navigation.get(step_surface, {}).get("driver")
             step_target, why = _dispatch_target(str(step.get("nodeType") or ""), driver)
             if step_target is None or step_target not in _BUILT_TARGETS:
                 detail = why
+                step_kind = "needs-target-backend" if step_target is not None else "uncompilable-claim"
                 pairs = []
                 break
             pairs.append((step_target, step_surface))
         if not pairs:
-            gaps.extend(Gap(oid, "uncompilable-claim", detail) for oid in ids)
+            gaps.extend(Gap(oid, step_kind, detail) for oid in ids)
             continue
         if len(set(pairs)) > 1:
-            gaps.extend(Gap(oid, "uncompilable-claim",
+            gaps.extend(Gap(oid, "needs-multi-target-runtime",
                             "this journey's steps are performed by "
                             + ", ".join(f"{name} on {surf!r}" for name, surf in sorted(set(pairs)))
                             + " — `@scenario(target=...)` binds one driver to one service, so "
@@ -2131,7 +2152,7 @@ def _journey_scenarios(
             kind, driver_name = "web", PLAYWRIGHT.name
             url = web_urls.get(surface) or nav.get("entryUrl")
         else:
-            gaps.extend(Gap(oid, "uncompilable-claim",
+            gaps.extend(Gap(oid, "needs-target-backend",
                             f"D1's table names {journey_target!r} for every step of this "
                             "journey, and this compiler builds no journey path for it")
                         for oid in ids)

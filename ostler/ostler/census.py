@@ -63,8 +63,10 @@ _NO_MILESTONES = "no book in the corpus declares a milestone, so the dependency 
 #: exercises does not belong, and `merge` is what makes that distinction observable.
 DORMANT_UNREACHABLE: dict[str, str] = {
     "milestone-cycle": _NO_MILESTONES,
+    "needs-multi-target-runtime": _BRIDGE,
     "needs-out-of-band-observation": _BRIDGE,
     "needs-snapshot": _BRIDGE,
+    "needs-target-backend": _BRIDGE,
     "screen-preconditions-undeclared": _BRIDGE,
     "unarranged-interaction-precondition": _BRIDGE,
     "unarranged-journey": _BRIDGE,
