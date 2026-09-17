@@ -89,3 +89,35 @@ def test_checks_lists_the_vocabulary_without_a_book(tmp_path: Path, capsys):
     assert spec[0]["excludes"]
 
     assert run(tmp_path, "checks", "manifest_unchanged") == 1
+
+
+def _minimal_packet() -> dict:
+    return {"story": "demo-story", "obligations": [], "navigation": {"": {"driver": "http"}}}
+
+
+def test_a_relative_out_is_read_against_the_root_not_the_working_directory(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """`--spec` and `--out` are arguments to one command and name one tree.
+
+    The regression this pins: `--spec` was rebased onto `-C` and `--out` was not, so a
+    generated plan landed under whatever directory the process started in — silently, with
+    its parent directories created there — and the next run refused with "already exists"
+    naming a path absent from the book's tree.
+    """
+    root = tmp_path / "book"
+    spec = root / "docs/specs/demo"
+    spec.mkdir(parents=True)
+    (spec / "qa-okf-context.json").write_text(json.dumps(_minimal_packet()), encoding="utf-8")
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    assert main(["-C", str(root), "qa", "compile-plan",
+                 "--spec", "docs/specs/demo",
+                 "--out", "docs/specs/demo/qa_plan.py"]) == 0
+    capsys.readouterr()
+
+    assert (spec / "qa_plan.py").is_file()
+    assert not (elsewhere / "docs").exists()

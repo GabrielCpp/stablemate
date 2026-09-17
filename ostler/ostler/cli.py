@@ -1620,6 +1620,21 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             sys.exit(2)
         return spec_arg if spec_arg.is_absolute() else root / spec_arg
 
+    def _resolve_out(out_arg: Path | None) -> Path | None:
+        """A path-valued option against the same root `--spec` is read against.
+
+        `-C` names the tree the command operates on, and argparse hands back a bare relative
+        `Path` that carries no base at all. A command that rebases one of its path arguments
+        and not the other reads two different trees from one invocation: `--spec` finds the
+        book, and `--out` writes the generated plan into whatever directory the process
+        happened to start in — creating the intermediate directories there on the way, and
+        then refusing the next run with "already exists" about a path that does not exist in
+        the book's tree. Same base or the two are not arguments to the same command.
+        """
+        if out_arg is None:
+            return None
+        return out_arg if out_arg.is_absolute() else root / out_arg
+
     if op == "start":
         spec_dir = _resolve_spec(args.spec)
         env = dict(kv.split("=", 1) for kv in args.env if "=" in kv)
@@ -1857,7 +1872,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         spec_dir = _resolve_spec(args.spec)
         result = qa_mod.cmd_compile_plan(
             spec_dir,
-            out=args.out,
+            out=_resolve_out(args.out),
             story=args.story,
             run_id=args.run_id,
             base_url=args.base_url,
@@ -1882,8 +1897,9 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             _out(json.dumps({"status": "invalid", "message": str(exc)}, indent=2)
                  if args.json else f"error: {exc}")
             return 1
-        if args.out:
-            args.out.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        out_path = _resolve_out(args.out)
+        if out_path is not None:
+            out_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         if args.json:
             _out(json.dumps(data, indent=2))
         else:
