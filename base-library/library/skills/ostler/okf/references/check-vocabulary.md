@@ -1,6 +1,6 @@
 # The check vocabulary
 
-The fourteen named checks a `verify:` bullet may call, their signatures, and — the part that
+The sixteen named checks a `verify:` bullet may call, their signatures, and — the part that
 matters when judging whether a check earns its bullet — **the defect each one excludes**. A check
 that excludes no plausible defect is a rubber stamp, and `doctor` refuses it as `weak-check`.
 Companion to [`../SKILL.md`](../SKILL.md) and to [bullet-grammar.md](bullet-grammar.md), which
@@ -64,6 +64,19 @@ it.
 ### `visible(locator: str* (locator), text: str)`
 Excludes an element present in the tree but not on the screen, and the right widget showing the
 wrong content.
+
+### `actionable(locator: str* (locator))`
+Excludes a control the book says the user can use and the product has disabled — which
+`visible` passes, because a greyed-out button is on the screen and reads the right label.
+
+### `inert(locator: str* (locator))`
+Excludes a control the product leaves usable after the state that should have closed it, which
+no assertion about what is on the screen can see: the defect is that the element still accepts
+the action, not that it is still drawn. This is the positive form of a `- states: disabled …`
+bullet — write the claim about what the user can do, not about the attribute one rendering
+happens to spell it with. `disabled` is HTML's word for it; a mobile surface says
+`enabled=false` and an API says nothing at all, so a check named after the attribute would be
+compilable by one driver and meaningless to the rest.
 
 ### `persists(subject: str*)`
 Excludes a write observed only through the same session that made it, which cannot tell a commit

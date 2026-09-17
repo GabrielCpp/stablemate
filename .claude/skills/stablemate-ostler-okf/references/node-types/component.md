@@ -63,9 +63,15 @@ check's `locator=` is a reference into the book, not a live selector — it must
 `undeclared-check-locator` enforces this unconditionally, with no exception for a raw string that
 happens to match a real element). A state distinguishable by rendered text (`booked` vs. `held`)
 still gets a `verify:` bullet, pointed at the one real component's own anchor and filtered by
-`text=`. A state with no rendered counterpart to check against — a boolean attribute like
-`disabled` — has no mechanical check in this book's vocabulary at all; it stays a documented,
-unverified fact on `states:` rather than a `verify:` bullet that cannot actually be satisfied.
+`text=`. A state with no rendered counterpart — a control the product will not let the user act on —
+is checked by `inert(locator="#this-component")`, and its opposite by `actionable(...)`. Both
+ask what the user can do rather than what one rendering spells it with, which is why the
+vocabulary has them and not an `attribute(...)`: `disabled` is HTML's word, a mobile surface
+says `enabled=false`, and a check named after either would be compilable by one driver and
+meaningless to the rest. A `states:` bullet that says the control cannot be used and has no
+such check anywhere in the book is `ostler doctor`'s `unchecked-availability-state` — leaving
+it as a documented, unverified fact is no longer the remedy, because `visible(...)` passes on
+a greyed-out button and reports that pass as coverage.
 
 `exclusive-with:` is a *claim* grounded in source (mutually-exclusive states, a variant switch),
 not a way to silence a real same-screen collision. It is a DOM co-render assertion and nothing
