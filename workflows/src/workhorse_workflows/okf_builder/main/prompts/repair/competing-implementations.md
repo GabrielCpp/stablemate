@@ -4,8 +4,20 @@ Two or more nodes of the same type ground themselves in one `path::symbol`, are 
 by containment or `extends:`, and share no `detail:` concept. Each node can be entirely true
 and the book still strands a reader on the one question that bites: *which one do I use?*
 
-The answer is judgment, and judgment lives in a concept — never in a new flag on the
-competitors. Repair from what the **source** already says about the preference:
+**First ask whether these are alternatives at all, or states of one thing.** A renderer that
+draws a table when the read returns rows and a notice when it returns none is cited by both
+components, and the choice between them is not judgment — it is a condition the code already
+decides. Where that is the case the repair is to *declare* it, not to write a concept: give
+every member `- exclusive-with:` links naming every other member, and give each one a
+condition saying when it is the one that holds (`states:` on a component, `when:` on an
+interaction). That is the selection rule written distributively, the checker accepts it, and
+it is the better book — a concept restating an exclusion the members already declare is the
+same claim in two places with nothing keeping them in step. Both halves are required: a bare
+`exclusive-with:` says *not both* and never says *which*, so it clears nothing on its own.
+
+For a genuine competition — two implementations a caller chooses between — the answer is
+judgment, and judgment lives in a concept, never in a new flag on the competitors. Repair
+from what the **source** already says about the preference:
 
 - Read the cited code for evidence that the competition is settled: a deprecation
   annotation or comment, a migrated call site, one path only reachable behind a legacy
