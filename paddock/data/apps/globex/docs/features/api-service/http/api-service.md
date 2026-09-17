@@ -69,16 +69,15 @@ never talk to each other server-to-server.
 - path: /api/widgets
 - channel:
 - message:
-- does:
-  - success: create a widget from `name` and `quantity` and assign it the next generated id
-  - success: return the created widget in the response body
-  - validation: a blank `name` is refused rather than coerced
-  - validation: a negative `quantity` is refused rather than coerced
+- does: all
+  - create a widget from `name` and `quantity` and assign it the next generated id
+  - return the created widget in the response body
 - verify: http_status(201, path="/api/widgets")
 - emits:
 - consumes: `{name: string, quantity: integer}`
 - status: 201
-- errors: 422 with a `{errors: {field: message}}` body when validation fails
+- errors: 422 with a `{errors: {field: message}}` body when a blank `name` or a negative
+  `quantity` is refused rather than coerced
 - verify: http_status(422, path="/api/widgets")
 - auth: none
 - code: `app/api-service/service.go::Server.handleCreate` @0344dec13901
