@@ -710,6 +710,7 @@ def _fake_playwright(contexts: list[dict[str, Any]]) -> Any:
         return SimpleNamespace(
             new_page=lambda: SimpleNamespace(on=lambda *_: None),
             tracing=SimpleNamespace(start=lambda **_: None),
+            new_cdp_session=lambda _page: SimpleNamespace(send=lambda *_a, **_k: None),
         )
 
     chromium = SimpleNamespace(

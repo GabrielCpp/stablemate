@@ -256,6 +256,15 @@ class Browser:
         self._context = self._browser.new_context(**options)
         self.start_offset_ms = self.clock()
         self.page = self._context.new_page()
+        if name == "chromium":
+            # A fixture can rebuild or redeploy a served file and a scenario then navigates to
+            # observe it — the request must reach the app, not the browser's own HTTP cache
+            # holding the response from before the fixture ran (plan row 3aq: a navigation is
+            # a request, and a request answered from a cache is not necessarily an observation
+            # of what the fixture just changed). `Network.setCacheDisabled` is unconditional and
+            # CDP-only, so it is chromium's own no-op for every other engine.
+            self._context.new_cdp_session(self.page).send(
+                "Network.setCacheDisabled", {"cacheDisabled": True})
         self._listen(self.page)
         self._context.tracing.start(screenshots=True, snapshots=True, sources=True)
         return self.page
