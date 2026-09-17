@@ -147,6 +147,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - code: tally/ledger.py::merge@8b75d4cbb1e0
 - consistency: ledger-file — importing the same file twice leaves the ledger holding what importing it once
   left it holding.
+- verify: unchanged(subject="tally.json")
 
 ### import-a-malformed-row
 - on: [import](#import)

@@ -187,14 +187,17 @@ The journeys that stitch these routes together are
 - verify: json_path("policy.status", equals="Cancelled")
 - does:
   - keeps the cancelled policy on the books rather than dropping it: `GET /api/policies` still lists it, with status `Cancelled`, so the register keeps its shape as policies are cancelled.
+- verify: persists(subject="policy pn-1001")
 - errors: `422` with `errors.confirm` when the body's `confirm` is not the policy's own number, so a
   cancellation is typed out rather than clicked through.
 - verify: http_status(422, path="/api/policies/pn-1001/cancel")
 - verify: json_path("errors.confirm", absent=false)
 - errors: `400 Version Required` when the body carries no integer `version`.
+- verify: http_status(400, title="Version Required", path="/api/policies/pn-1001/cancel")
 - errors: `409 Stale Policy` when the quoted version is not the policy's current one.
 - verify: http_status(409, title="Stale Policy", path="/api/policies/pn-1001/cancel")
 - errors: `404 Unknown Policy` for an id that is not on the books.
+- verify: http_status(404, title="Unknown Policy", path="/api/policies/missing/cancel")
 - code: app/api/cancel.go@f5ad39316749
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
