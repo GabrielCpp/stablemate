@@ -19,6 +19,17 @@ checker family that stops being called must be a decision somebody made, not a t
 happened. `DORMANT_UNREACHABLE` below is that record, and it is checked in both
 directions, so a family that gets wired back up fails here too rather than leaving a stale
 excuse behind.
+
+**The verdict is quantified over runs; one run cannot carry it.** "The rule is not enforced
+anywhere" is a statement about a set, and `take_census` observes one book — so for years the
+gap between the two was paid for in prose. Half of `doctor` is gated on the `full` profile,
+so a census of the tree's one `exploration` book indicted twenty-nine planning-graph codes,
+and each was bought off with a recorded reason; run the same registry against any `full`
+book and all twenty-nine came back as dead excuses to delete, advice which, followed, broke
+the other book. Same registry, same tree, opposite answers. `merge` closes it: a `Census` of
+one run stays exactly what it is, an observation, and `undeclared` and `stale` are asked of
+the merge over a corpus that covers every profile. All twenty-nine entries then went away,
+because those checkers do run — elsewhere.
 """
 
 from __future__ import annotations
@@ -26,115 +37,108 @@ from __future__ import annotations
 import ast
 import inspect
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
 from ostler import doctor
 
-#: The planning graph — milestones, epics, seeds, stories — is checked only under the `full`
-#: profile: `doctor.run` returns early for any other one (`doctor.py:192`). On an
-#: `exploration` book those checkers are never entered, so every code they own is
-#: unreachable *by design and by profile*, not by neglect. This is one decision, and it is
-#: written once so a reader can see that it is one — twenty-nine separate excuses would read
-#: as twenty-nine separate holes.
-#:
-#: The story-side fixture codes belong here for the same reason and not a second one: their
-#: checker reads a story's `## Fixtures` section, and a book with no stories has nowhere for
-#: that section to be. The *grammar* codes used to be here too, on no better ground than
-#: sitting in the same function call — see the comment below.
-_PROFILE_GATED = "planning-graph and story-fixture checks run only under the `full` profile (doctor.py:192)"
+#: `gap_findings` maps a compiler `Gap` to a `Finding`, and its only caller in the repo is
+#: its own unit test. `doctor` never runs the compiler, so every kind it maps is dead *to
+#: doctor* on every book and every profile — the gaps themselves are still reported by `qa
+#: compile-plan`. The builders read doctor, so this is the bridge that decides whether a
+#: named gap cause ever reaches a repair turn, and that it is dead is the standing debt.
+_BRIDGE = "gap_findings has no product caller; gaps surface via qa compile-plan only"
 
-# The fixture grammar tier is a different gate, and telling the two apart is the whole
-# point of this file. `_check_fixture_grammar` reads fixture nodes and `arrange`-key
-# bullets — both present on either profile — and self-gates on the book declaring stack
-# runbooks. It nevertheless sat below the profile early-return for years, which meant the
-# one app the QA harness actually drives a browser against, the tree's only `exploration`
-# book, never had these rules applied to it: two genuine `fixture:` defects were authored,
-# measured and repaired there while `doctor` reported zero errors throughout.
-#
-# So these codes are no longer listed as unreachable. Where they *are* silent it is because
-# the book declares no stack runbooks, and that is a fact about one book, which a registry
-# keyed by code cannot record — it surfaces as an unreasoned entry in the census report,
-# which is the honest rendering of "this book had nothing for the checker to read".
+#: `_check_milestone_cycles` calls its walk once per milestone, and no app in the corpus
+#: declares one, so the walk is never entered. A fact about the corpus, not about the rule
+#: — and the corpus is the thing this registry is judged against, so it is recorded here
+#: rather than treated as a hole in `doctor`.
+_NO_MILESTONES = "no book in the corpus declares a milestone, so the dependency walk has nothing to walk"
 
-#: `_check_fixture_needs_cycles` is entered on any book with stack runbooks, but the code
-#: below lives in the recursive `visit` inside it, and that walk has a body to run only when
-#: one fixture links to another. No book in this tree declares a fixture that needs a second
-#: one, so the cycle case has never been reachable — and it was invisible until the census
-#: started telling that `visit` apart from the two others `doctor` spells the same way.
-_NO_FIXTURE_CHAIN = "no book declares a fixture that needs another, so the cycle walk has nothing to walk"
-
-#: Codes whose checker is not called on any real book today, each with the reason it is
-#: not. A reason is a decision or a missing piece of work — never "nobody noticed", which
-#: is what this registry exists to make impossible to write silently.
+#: Codes whose checker is not called on **any** book of the corpus, each with the reason it
+#: is not. A reason is a decision or a missing piece of work — never "nobody noticed", which
+#: is what this registry exists to make impossible to write silently. An entry here is a
+#: claim about every run in the corpus at once; a code that one profile skips and another
+#: exercises does not belong, and `merge` is what makes that distinction observable.
 DORMANT_UNREACHABLE: dict[str, str] = {
-    'backlog-item-in-multiple-milestones': _PROFILE_GATED,
-    'cross-epic-dependency': _PROFILE_GATED,
-    'cross-epic-seed': _PROFILE_GATED,
-    'dangling-dependency': _PROFILE_GATED,
-    'dangling-milestone-dependency': _PROFILE_GATED,
-    'dangling-milestone-epic': _PROFILE_GATED,
-    'dangling-seed': _PROFILE_GATED,
-    'epic-in-multiple-milestones': _PROFILE_GATED,
-    'fixture-needs-cycle': _NO_FIXTURE_CHAIN,
-    'epic-without-milestone': _PROFILE_GATED,
-    'malformed-dependency-bullet': _PROFILE_GATED,
-    'milestone-cycle': _PROFILE_GATED,
-    'missing-story-file': _PROFILE_GATED,
-    'orphan-seed': _PROFILE_GATED,
-    'qa-fixture-bullet': _PROFILE_GATED,
-    'qa-fixture-declaration': _PROFILE_GATED,
-    'story-conflict': _PROFILE_GATED,
-    'story-covers-no-seed': _PROFILE_GATED,
-    'story-fixture-stray': _PROFILE_GATED,
-    'story-id-mismatch': _PROFILE_GATED,
-    'story-key-collision': _PROFILE_GATED,
-    'story-section-order': _PROFILE_GATED,
-    'story-status-mismatch': _PROFILE_GATED,
-    'unclassified-seed': _PROFILE_GATED,
-    'undeclared-story-fixture': _PROFILE_GATED,
-    'unknown-book-fixture': _PROFILE_GATED,
-    'unknown-story-fixture': _PROFILE_GATED,
-    'unmigrated-fixture-declaration': _PROFILE_GATED,
-    'unused-story-fixture': _PROFILE_GATED,
-    'unwritten-story': _PROFILE_GATED,
-
-    # `gap_findings` maps a compiler `Gap` to a `Finding`, and its only caller in the repo
-    # is its own unit test. `doctor` never runs the compiler, so every kind it maps is
-    # dead *to doctor* — the gaps themselves are still reported by `qa compile-plan`.
-    # The builders read doctor, so this is the bridge that decides whether a named gap
-    # cause ever reaches a repair turn.
-    "uncompilable-claim": "gap_findings has no product caller; gaps surface via qa compile-plan only",
-    "unresolved-precondition": "gap_findings has no product caller; gaps surface via qa compile-plan only",
-    "screen-preconditions-undeclared": "gap_findings has no product caller; gaps surface via qa compile-plan only",
-    "needs-snapshot": "gap_findings has no product caller; gaps surface via qa compile-plan only",
-    "needs-out-of-band-observation": "gap_findings has no product caller; gaps surface via qa compile-plan only",
+    "milestone-cycle": _NO_MILESTONES,
+    "needs-out-of-band-observation": _BRIDGE,
+    "needs-snapshot": _BRIDGE,
+    "screen-preconditions-undeclared": _BRIDGE,
+    "unarranged-interaction-precondition": _BRIDGE,
+    "unarranged-journey": _BRIDGE,
+    "unarranged-request-body": _BRIDGE,
+    "unarranged-state": _BRIDGE,
+    "uncompilable-claim": _BRIDGE,
+    "undeclared-entry-url": _BRIDGE,
+    "unidentifiable-screen": _BRIDGE,
+    "unresolved-extends": _BRIDGE,
+    "unresolved-precondition": _BRIDGE,
 }
 
 
 @dataclass(frozen=True)
 class Census:
-    """One traced `doctor` run, classified."""
+    """Traced `doctor` run(s), classified — one from `take_census`, several from `merge`."""
 
     fired: frozenset[str]
     dormant_clean: frozenset[str]
     dormant_unreachable: frozenset[str]
     #: The profile the traced run used. Load-bearing, not decoration: half of doctor is
     #: gated on `full`, so a census taken under any other profile reports those codes
-    #: unreachable and is right to — about that profile, and about no other.
+    #: unreachable and is right to — about that profile, and about no other. A merge
+    #: carries the profiles it covers, joined, because that is what makes its verdict sound.
     profile: str = ""
     sites: dict[str, frozenset[str]] = field(default_factory=dict)
+    #: How many runs this census observed. One is an observation; the verdict below is a
+    #: claim about a set, so a reader has to be able to tell which they are holding.
+    runs: int = 1
 
     @property
     def undeclared(self) -> frozenset[str]:
-        """Unreachable codes with no recorded reason — the finding."""
+        """Unreachable codes with no recorded reason — the finding.
+
+        Sound only on a census that covers the corpus: on a single book it names every code
+        some *other* profile exercises, which is how twenty-nine planning-graph rules came
+        to be written down as excused.
+        """
         return self.dormant_unreachable - DORMANT_UNREACHABLE.keys()
 
     @property
     def stale(self) -> frozenset[str]:
         """Recorded reasons for codes that are no longer unreachable — a dead excuse."""
         return frozenset(DORMANT_UNREACHABLE) - self.dormant_unreachable
+
+
+def merge(censuses: Iterable[Census]) -> Census:
+    """One census over a set of runs: entered anywhere counts as entered.
+
+    The registry's question is whether a rule is enforced *anywhere*, and that quantifier is
+    the whole reason this exists rather than each caller intersecting sets by hand — a
+    reader who does it by hand does it per code, and the per-code version is the bug.
+
+    `fired` and `dormant_clean` union; `dormant_unreachable` is what is left of the defined
+    sites after both, which is the only definition that cannot report a code twice. `sites`
+    is taken from the runs rather than re-read, and they agree: every run reads the same
+    module.
+    """
+    runs = list(censuses)
+    if not runs:
+        raise ValueError("a census of no runs observes nothing and cannot carry a verdict")
+    sites: dict[str, frozenset[str]] = {}
+    for run in runs:
+        sites.update(run.sites)
+    fired = frozenset().union(*(run.fired for run in runs))
+    clean = frozenset().union(*(run.dormant_clean for run in runs)) - fired
+    return Census(
+        fired=fired,
+        dormant_clean=clean,
+        dormant_unreachable=frozenset(sites) - fired - clean,
+        profile="+".join(sorted({run.profile for run in runs if run.profile})),
+        sites=sites,
+        runs=len(runs),
+    )
 
 
 def code_sites(module: Any = doctor) -> dict[str, frozenset[str]]:
@@ -233,7 +237,8 @@ def take_census(run: Callable[[], object], module: Any = doctor) -> Census:
 def render(census: Census) -> str:
     """The census as a report, ordered so the finding is not buried under the health."""
     lines = [
-        f"{len(census.sites)} codes defined   profile: {census.profile or '?'}",
+        f"{len(census.sites)} codes defined   profile: {census.profile or '?'}   "
+        f"runs: {census.runs}",
         f"  {len(census.fired):3} fired",
         f"  {len(census.dormant_clean):3} dormant-clean        the checker ran, the tree has no violation",
         f"  {len(census.dormant_unreachable):3} dormant-unreachable  the checker was never entered",
@@ -251,12 +256,16 @@ def render(census: Census) -> str:
         lines.append("RECORDED AS UNREACHABLE BUT NOW REACHABLE (delete the entry):")
         lines += [f"   {code}" for code in sorted(census.stale)]
         lines.append("")
-    if census.profile and census.profile != "full":
+    if census.runs < 2:
+        # Said even when the single run is `full`, because the profile is not the only way
+        # one book fails to exercise a checker — `_check_unbacked_precondition` is entered
+        # by exactly one app of six, and a census of either of the other five would have
+        # named it a hole. The verdict needs the corpus; this run is an observation.
         lines.append(
-            f"note: this run used the `{census.profile}` profile, so the planning-graph "
-            "checkers were skipped wholesale — their codes are unreachable here and say "
-            "nothing about a `full`-profile book. The fixture *grammar* tier is not among "
-            "them: it runs on either profile, and its silence here is a real clean result.",
+            f"note: this census observed one book, under the `{census.profile or '?'}` "
+            "profile. A code unreachable here may be exercised by another book or another "
+            "profile — the two sections above are sound only over the whole corpus, which "
+            "is what `test_census_corpus.py` takes them over.",
         )
         lines.append("")
     lines.append("unreachable, by recorded reason:")

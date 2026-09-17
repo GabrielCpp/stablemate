@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import types
 
+import pytest
+
 from ostler import census
 
 
@@ -151,3 +153,59 @@ def test_two_helpers_sharing_a_name_are_two_functions(monkeypatch):
     result = census.take_census(module.run, module)
     assert result.dormant_clean == frozenset({"fixture-cycle"})
     assert result.dormant_unreachable == frozenset({"milestone-cycle"})
+
+
+def test_a_checker_one_run_skipped_and_another_entered_is_not_unreachable():
+    """The defect `merge` exists for, in the smallest shape that can hold it.
+
+    Half of `doctor` is gated on the `full` profile, so the tree's one `exploration` book
+    reported twenty-nine planning-graph codes unentered and every one of them was written
+    down as excused — then the same registry, run against any `full` book, reported all
+    twenty-nine as dead excuses to delete. Whichever half a maintainer believed, following
+    it broke the other. Entered anywhere is entered.
+    """
+    exploration = census.Census(
+        fired=frozenset(), dormant_clean=frozenset({"observed"}),
+        dormant_unreachable=frozenset({"gated"}), profile="exploration",
+        sites={"observed": frozenset({"_a"}), "gated": frozenset({"_b"})},
+    )
+    full = census.Census(
+        fired=frozenset(), dormant_clean=frozenset({"observed", "gated"}),
+        dormant_unreachable=frozenset(), profile="full",
+        sites={"observed": frozenset({"_a"}), "gated": frozenset({"_b"})},
+    )
+
+    merged = census.merge([exploration, full])
+
+    assert merged.dormant_unreachable == frozenset()
+    assert merged.dormant_clean == frozenset({"observed", "gated"})
+    assert merged.profile == "exploration+full"
+    assert merged.runs == 2
+
+
+def test_a_code_that_fired_in_any_run_fired():
+    """`fired` wins over `clean` in the merge, so a code is never counted in two buckets."""
+    merged = census.merge([
+        census.Census(fired=frozenset({"x"}), dormant_clean=frozenset(),
+                      dormant_unreachable=frozenset(), sites={"x": frozenset({"_a"})}),
+        census.Census(fired=frozenset(), dormant_clean=frozenset({"x"}),
+                      dormant_unreachable=frozenset(), sites={"x": frozenset({"_a"})}),
+    ])
+    assert merged.fired == frozenset({"x"})
+    assert merged.dormant_clean == frozenset()
+    assert merged.dormant_unreachable == frozenset()
+
+
+def test_a_census_of_no_runs_refuses_rather_than_reporting_everything_unreachable():
+    """An empty merge would report every defined code unreachable — a verdict from no evidence."""
+    with pytest.raises(ValueError, match="observes nothing"):
+        census.merge([])
+
+
+def test_a_single_run_census_says_its_verdict_is_not_the_corpus():
+    """The render carries the limit, because the sections above it read as verdicts."""
+    text = census.render(census.Census(
+        fired=frozenset(), dormant_clean=frozenset(),
+        dormant_unreachable=frozenset(), profile="full",
+    ))
+    assert "observed one book" in text

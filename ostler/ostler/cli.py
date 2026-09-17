@@ -1364,7 +1364,11 @@ def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
         # tell them apart.
         result = census.take_census(_run_doctor)
         _out(census.render(result))
-        return 1 if (result.undeclared or result.stale) else 0
+        # Reports, does not judge. "This rule is enforced nowhere" is a claim about a set of
+        # runs, and this is one — gating on it here made a code another book exercises into
+        # a failure of whichever book the operator happened to point at. The verdict is taken
+        # over the corpus by `ostler/tests/test_census_corpus.py`, which is where the set is.
+        return 0
 
     report = _run_doctor()
     if wanted:
