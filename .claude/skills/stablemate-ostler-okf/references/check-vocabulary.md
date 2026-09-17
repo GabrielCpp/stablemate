@@ -174,3 +174,34 @@ needs splitting — see [bullet-grammar.md](bullet-grammar.md).
 (`LIFECYCLE_CHECKS`, `doctor.py:856`). When a normative bullet states a lifecycle change and the
 declared checks read only the state *afterwards*, that is `unstated-precondition` (warn): the
 after-state is the same state a no-op leaves when the subject was already there.
+
+## The act vocabulary — the other closed list
+
+`verify:` says what observing a claim looks like. `arrange:` says how to reach the state where
+observing it is possible, by an act the **performer of the step** carries out on the node's own
+surface. It is a separate, smaller vocabulary in `ostler/ostler/acts.py`, parsed by the same
+call grammar as a check and refused against its own names:
+
+| Act | Establishes | Drivers |
+| --- | --- | --- |
+| `fill(locator*, value*)` | a text control holds a stated value | web, mobile |
+| `click(locator*)` | a control has been operated once — an expander opened, a row selected | web, mobile |
+| `press(locator*, key*)` | a real keypress has reached a control (focus order, a key-handled shortcut) | web, mobile |
+| `select(locator*, option*)` | a chooser holds a stated option | web |
+
+Every argument is a `str`: an act's arguments are what the performer types or points at, so
+`fill(locator="#quantity-field", value="3")` and never `value=3`. `locator=` is a reference into
+the book, the same rule and the same reason as a check's — a raw selector is
+`undeclared-act-locator`.
+
+**`arrange:` is not `fixture:`.** A fixture arranges the world *beside* the surface — a seeded
+row, a signed-in session — and is right whenever something other than the performer can
+establish the state. An act is for the state only the performer can reach: a `when:` over what
+the user typed is true only once someone has typed. A bare name under `arrange:` is a fixture
+written under the wrong key, and `unparsed-act` relocates it rather than asking for a
+performance that does not exist.
+
+**`select` is web-only on purpose.** A `<select>` is a control the platform renders; a mobile
+chooser is a screen of its own, and arranging one there is the steps that reach it, not one act.
+A `mobile` target facing `arrange: select(…)` gaps rather than emitting — which is the driver
+list doing its job, not a hole in the vocabulary.

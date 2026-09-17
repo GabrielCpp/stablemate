@@ -32,6 +32,7 @@ Section type. A `### <id>` under a `## Interactions` heading, normally in a
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
+| `arrange` | no | an act performed on this node's own surface |
 | `tests` | no | link — the test files covering it |
 
 An interaction is by definition operable, so five keys are required. `role:`/`name:` give
@@ -70,14 +71,34 @@ timeout 30 ostler scaffold interaction save-link --in docs/features/acme/gui/scr
 - does: persists the link and returns to the list
 - code: web/src/LinkEditor.tsx::onSave
 - fixture: signed_in_editor
+- arrange: fill(locator="#url-field", value="https://example.com/a")
 - verify: created(subject="a link row for the submitted URL")
 ```
+
+## Arranging a precondition: `fixture:` or `arrange:`
+
+A `when:` states the condition the interaction applies under, and a scenario that performs the
+step in a world where that condition is false proves nothing about the claim. Which key
+arranges it is decided by **who can establish the state**:
+
+- **`fixture:`** — something run *beside* the surface: a seeded row, a signed-in session, a
+  stopped dependency. The performer arrives and the state is already there.
+- **`arrange:`** — an act the **performer of the step** carries out on this node's own surface:
+  `fill`, `click`, `press`, `select`. A `when:` over what the user typed is true only once
+  someone has typed, and no out-of-process command can type into a form.
+
+Both bind by document order, exactly as `verify:` does, so an arrangement written under a
+`when:` arranges *that* arm. An act's `locator=` is a reference into this book — the anchor of
+the `component` or `interaction` that declares the control — and a raw selector is
+`undeclared-act-locator`. The act names are a closed list; see
+[../check-vocabulary.md](../check-vocabulary.md) for the vocabulary this repo renders into
+every builder prompt.
 
 ## Doctor codes it can trip
 
 `missing-required-bullet` (five keys), `undeclared-obligation`, `weak-check`,
 `unstated-precondition`, `compound-normative-bullet`, `unresolved-relation` on `on:`,
-`ambiguous-locator`, `stale-defect`, `malformed-defect`; with the repeat keys also `static-template`, `unproven-unique-name`,
+`ambiguous-locator`, `unparsed-act`, `undeclared-act-locator`, `stale-defect`, `malformed-defect`; with the repeat keys also `static-template`, `unproven-unique-name`,
 `malformed-template`, `malformed-variants`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
