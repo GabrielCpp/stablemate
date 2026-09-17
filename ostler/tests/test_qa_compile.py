@@ -80,6 +80,7 @@ def _obligation(oid: str, **extra: object) -> dict:
     base = {
         "id": oid,
         "source": "docs/features/demo/api.md",
+        "nodeType": "endpoint",
         "requirement": "writes the record and answers with it",
         "required": True,
         "locators": {"route": ["POST /api/things"]},
@@ -90,7 +91,13 @@ def _obligation(oid: str, **extra: object) -> dict:
 
 
 def _context(*obligations: dict) -> dict:
-    return {"story": "demo-story", "obligations": list(obligations)}
+    # D1's dispatch table keys on `(nodeType, driver)` — every obligation these tests build
+    # defaults to `nodeType: "endpoint"` (`_obligation`) or `"interaction"` (`_page_obligation`),
+    # and each surface those obligations name (the default "" surface here, others via
+    # `navigation=`) needs its own `driver:` for the table to resolve at all, the same as a
+    # real book's `runbook` node states one. Tests about the dispatch table itself, or that
+    # replace `navigation` outright, override this.
+    return {"story": "demo-story", "obligations": list(obligations), "navigation": {"": {"driver": "http"}}}
 
 
 def _covers(source: str) -> set[str]:
@@ -772,6 +779,7 @@ def _page_obligation(oid: str, node: str, *, surface: str = "policy",
     return {
         "id": oid,
         "node": node,
+        "nodeType": "interaction",
         "source": source,
         "surface": surface,
         "requirement": "shows what the screen promises",
@@ -801,6 +809,7 @@ def _arrival_navigation(source: str = _SCREEN, surface: str = "policy", *,
         surface: {
             "start": source,
             "surface": surface,
+            "driver": "web",
             "entryUrl": _BASE_URL,
             "counts": {"screens": 1, "reachable": 1, "unreachable": 0, "undeclared": 0, "nav_edges": 0},
             "routes": {} if source in (unreachable or []) else {source: []},
@@ -1056,7 +1065,7 @@ def test_a_zero_screen_book_grows_no_playwright_target() -> None:
                           checks=[_visible("text=irrelevant")]),
         navigation={
             "policy": {
-                "start": "", "surface": "policy", "entryUrl": _BASE_URL,
+                "start": "", "surface": "policy", "driver": "web", "entryUrl": _BASE_URL,
                 "counts": {"screens": 0, "reachable": 0, "unreachable": 0, "undeclared": 0, "nav_edges": 0},
                 "routes": {}, "unreachable": [], "undeclared": [],
             }
@@ -1752,7 +1761,7 @@ def test_a_two_surface_book_compiles_two_different_base_urls() -> None:
                           locators={"role": ["button"], "name": ["Create policy"]},
                           checks=[_visible("button:Create policy")]),
         navigation={
-            "api-service": {"entryUrl": "http://localhost:18101"},
+            "api-service": {"driver": "http", "entryUrl": "http://localhost:18101"},
             "web-app": {**_arrival_navigation(surface="web-app")["web-app"],
                         "entryUrl": "http://localhost:18102"},
         },
@@ -1795,8 +1804,8 @@ def test_two_surfaces_sharing_one_driver_kind_each_keep_their_own_address() -> N
             fixturesDeclared=[{"name": "seeded-zulu-thing", "args": [], "provides": "a thing exists"}],
         ),
         navigation={
-            "alpha-service": {"entryUrl": "http://localhost:18201"},
-            "zulu-service": {"entryUrl": "http://localhost:18202"},
+            "alpha-service": {"driver": "http", "entryUrl": "http://localhost:18201"},
+            "zulu-service": {"driver": "http", "entryUrl": "http://localhost:18202"},
         },
     )
     source, gaps = _compile_plan_gaps(context, story="demo-story")
@@ -1826,7 +1835,11 @@ def test_a_surface_with_no_entry_url_and_no_fallback_gaps_instead_of_guessing() 
             ],
         ),
     )
-    context["navigation"] = {}
+    # `driver:` (D1's dispatch table) and `entry-url:` are two separate facts a runbook states —
+    # this test is about the second one being absent, so the surface still states a driver
+    # (otherwise the dispatch table itself gaps the obligation first, as `uncompilable-claim`,
+    # before ever reaching the entry-url check this test targets).
+    context["navigation"] = {"api-service": {"driver": "http"}}
     source, gaps = _compile_plan_gaps(context, story="demo-story")
     ast.parse(source)
     assert oid not in _covers(source)

@@ -333,8 +333,76 @@ def book_digest(context: dict[str, Any]) -> str:
     return hashlib.sha256("\n".join(ids).encode("utf-8")).hexdigest()
 
 
-def _is_page_obligation(obligation: dict[str, Any]) -> bool:
-    return any(_observes(row.get("name")) == "page" for row in obligation.get("checksDeclared", []))
+#: D1's dispatch table (§4.1): `(link-target node type) x (owning surface's runbook driver:)`.
+#: A cell this table has no row for, or names no target in — the `—` cells, `endpoint`x`cli`,
+#: `interaction`x`http` — is a gap, never a default (`_dispatch_target` below), the same as a
+#: `driver:` the book never states.
+_DISPATCH_TABLE: dict[str, dict[str, str]] = {
+    "interaction": {"web": "playwright", "mobile": "maestro"},
+    "endpoint": {"web": "http", "mobile": "http", "http": "http"},
+    "command": {"web": "cli", "mobile": "cli", "http": "cli", "cli": "cli"},
+    "invocation": {"web": "in-process", "mobile": "in-process", "http": "in-process", "cli": "in-process"},
+    "method": {"web": "in-process", "mobile": "in-process", "http": "in-process", "cli": "in-process"},
+}
+#: Targets this compiler actually builds a compile path for. `maestro` and `in-process` are
+#: correct cells in D1's table (D9: mobile is a row in the table, not a backend to build) that
+#: this compiler leaves inert until a book exercises them — `_dispatch_target` still names the
+#: target so the gap it returns says exactly what the table says, not "no row for this."
+_BUILT_TARGETS = frozenset({"playwright", "http", "cli"})
+
+
+def _dispatch_target(node_type: str, driver: str | None) -> tuple[str | None, str]:
+    """D1's table, read once per obligation. `(target, "")` when it names a target this
+
+    compiler builds; `(None, detail)` when the table has no row, no cell, or no `driver:`
+    to key on — a gap, per D1's "a step whose driver the book does not determine is not
+    emitted," never a default; `(target, detail)` when the table names a real target this
+    compiler does not build yet (`maestro`, `in-process`), so the caller can still gap it
+    honestly rather than mistake it for "no row for this type."
+    """
+    row = _DISPATCH_TABLE.get(node_type)
+    if row is None:
+        return None, (
+            f"the book links this step to a {node_type or 'untyped'!r} node, which D1's "
+            "dispatch table (§4.1) names no row for"
+        )
+    if driver is None:
+        return None, (
+            "the surface this step's node lives on states no `driver:` on any `runbook`, so "
+            "D1's dispatch table (§4.1) cannot determine what performs this step"
+        )
+    target = row.get(driver)
+    if target is None:
+        return None, (
+            f"D1's dispatch table (§4.1) names no target for a {node_type} step on a "
+            f"{driver!r}-driven surface"
+        )
+    if target not in _BUILT_TARGETS:
+        return target, (
+            f"D1's dispatch table (§4.1) names {target!r} for a {node_type} step on a "
+            f"{driver!r}-driven surface, but this compiler builds no {target} path yet"
+        )
+    return target, ""
+
+
+def _gap_cli_obligations(obligations: list[dict[str, Any]], gaps: list[Gap]) -> None:
+    """Command-linked obligations the CLI path owes evidence for, gapped rather than compiled.
+
+    `ostler_qa.py`'s `Qa.tool(name).run(*argv)` and its `exit_status` verifier already fully
+    support this at runtime — the gap is not there. It is that a `command` node's
+    `usage:`/`flags:`/`args:` bullets are prose ("tally import <file> [--dry-run]"), not a
+    structured argv, and no book in this repo declares a `command` node to check a derivation
+    against. Inventing a parse for untested prose here is the "rewrite the compiler from
+    scratch and it still holds" mistake D1 warns against, so this names the real reason
+    precisely — a CLI-dispatched obligation reaching here is not route-less the way an HTTP
+    one is, and saying so beats routing it through the unrelated "no `route:`" message.
+    """
+    for obligation in obligations:
+        gaps.append(Gap(
+            str(obligation["id"]), "uncompilable-claim",
+            "the book states this command's `usage:`/`flags:`/`args:` as prose, not a "
+            "structured invocation this compiler can turn into `qa.tool(...).run(...)`",
+        ))
 
 
 def _has_screens(navigation: dict[str, Any]) -> bool:
@@ -575,15 +643,34 @@ def compile_plan_gaps(
     )
     undetermined_ids = {o["id"] for o in undetermined}
     owed = [o for o in owed if o["id"] not in undetermined_ids]
-    # Page-checked obligations (a screen's `visible(...)` bullets) are compiled by navigating
-    # there, not by the HTTP-verb-and-path machinery below (`_route`/`_ROUTE`) — split them out
-    # up front so the `by_source` grouping and its `target=api` scenarios never see them.
-    http_owed = [o for o in owed if not _is_page_obligation(o)]
-    page_owed = [o for o in owed if _is_page_obligation(o)]
-    # Read once here (rather than where the old single `base_url` used to be handed to
-    # `_compile_page_scenarios`, further down) because the `api` target line above needs its
-    # own resolved address before `lines` is even started.
+    # D1: the driver of a step is `(link-target node type) x (owning surface's runbook
+    # driver:)`, not (as this used to read) whether any declared check happens to observe
+    # "page" — that bit is per-check, not per-node, and let two `does:` bullets on the same
+    # node compile under two different drivers. Read `navigation` first: each obligation's
+    # target is looked up per surface, keyed on the `driver` `_navigation` now stamps there.
     navigation = context.get("navigation", {}) if isinstance(context.get("navigation"), dict) else {}
+    http_owed: list[dict[str, Any]] = []
+    page_owed: list[dict[str, Any]] = []
+    cli_owed: list[dict[str, Any]] = []
+    for obligation in owed:
+        if not obligation.get("checksDeclared"):
+            # No claim to dispatch — falls through to the existing `no-verify-declared`
+            # handling below, same as before D1's table existed, regardless of what node
+            # type or driver it names.
+            http_owed.append(obligation)
+            continue
+        surface = str(obligation.get("surface") or "")
+        driver = navigation.get(surface, {}).get("driver")
+        node_type = str(obligation.get("nodeType") or "")
+        target, detail = _dispatch_target(node_type, driver)
+        if target == "playwright":
+            page_owed.append(obligation)
+        elif target == "http":
+            http_owed.append(obligation)
+        elif target == "cli":
+            cli_owed.append(obligation)
+        else:
+            gaps.append(Gap(str(obligation["id"]), "uncompilable-claim", detail))
     http_owed, api_urls = _split_by_entry_url(http_owed, navigation, base_url, gaps)
     page_owed, web_urls = _split_by_entry_url(page_owed, navigation, base_url, gaps)
     lines: list[str] = [
@@ -673,6 +760,15 @@ def compile_plan_gaps(
                 for row in arranged
             )
         lines.extend(body_lines)
+
+    cli_declared = [o for o in cli_owed if o.get("checksDeclared")]
+    cli_undeclared = [o for o in cli_owed if not o.get("checksDeclared")]
+    debt.extend(cli_undeclared)
+    gaps.extend(
+        Gap(o["id"], "no-verify-declared", "the book declares no check for this obligation to prove")
+        for o in cli_undeclared
+    )
+    _gap_cli_obligations(cli_declared, gaps)
 
     page_declared = [o for o in page_owed if o.get("checksDeclared")]
     page_undeclared = [o for o in page_owed if not o.get("checksDeclared")]
@@ -951,11 +1047,11 @@ def _operand(check: str, observed: str) -> tuple[str, str, str]:
     """What the compiled call is handed, the arrangement note it still needs, and why.
 
     The third element is the `Gap.kind` the note becomes — empty when there is no note,
-    because the check compiled for real. `page` cannot reach here (`_is_page_obligation`
-    routes any obligation carrying a page-observed row to `_compile_page_scenarios`
-    instead), and an unknown check has already been refused by `checks.parse_check` before
-    compile.py ever sees it — neither needs a branch for a case this function is never
-    actually called with.
+    because the check compiled for real. `page` cannot reach here (D1's dispatch table
+    routes any `interaction`-node obligation on a `web`-driven surface to
+    `_compile_page_scenarios` instead), and an unknown check has already been refused by
+    `checks.parse_check` before compile.py ever sees it — neither needs a branch for a case
+    this function is never actually called with.
 
     Every branch below reads `CheckSpec.observes`/`.out_of_band` off the check it was
     handed — no check name is compared here, because shape and channel are declared on

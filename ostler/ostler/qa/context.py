@@ -308,6 +308,14 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
     sources disagree (`reach.ConflictingEntryOrigin`) does not fail context-building either: `entryUrl`
     stays `None` and the conflict is recorded under `entryUrlError`, the same shape `UnknownStart`
     already gets.
+
+    Every entry also carries `driver` — the surface's `driver:` (§4.1's D1), read off its
+    `runbook` node(s) by `reach.surface_driver` — for `compile.py`'s dispatch table to key on
+    "who performs this step" instead of inferring it from which check a `does:` bullet happens
+    to declare. A book with no runbook covering the surface, or whose runbooks disagree
+    (`reach.ConflictingSurfaceDriver`), leaves `driver` `None` and records why under
+    `driverError`, the same shape `entryUrlError` already gets — a step whose driver the book
+    does not determine is not defaulted, it becomes a gap.
     """
     dump = graph_mod.build(head_graph)
     surfaces = sorted({n["surface"] for n in dump["nodes"] if n.get("surface")})
@@ -322,12 +330,19 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
         except reach.ConflictingEntryOrigin as exc:
             entry_url = None
             entry_url_error = str(exc)
+        try:
+            driver = reach.surface_driver(dump, surface)
+            driver_error = None
+        except reach.ConflictingSurfaceDriver as exc:
+            driver = None
+            driver_error = str(exc)
         if not screens:
             navigation[surface] = {
                 "start": "",
                 "surface": surface,
                 "rootPath": root_path,
                 "entryUrl": entry_url,
+                "driver": driver,
                 "counts": {
                     "screens": 0, "reachable": 0, "unreachable": 0, "undeclared": 0, "nav_edges": 0,
                 },
@@ -337,17 +352,21 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
             }
             if entry_url_error is not None:
                 navigation[surface]["entryUrlError"] = entry_url_error
+            if driver_error is not None:
+                navigation[surface]["driverError"] = driver_error
             continue
         try:
             navigation[surface] = reach.reachability(head_graph, surface=surface)
             navigation[surface]["rootPath"] = root_path
             navigation[surface]["entryUrl"] = entry_url
+            navigation[surface]["driver"] = driver
         except reach.UnknownStart as exc:
             navigation[surface] = {
                 "start": "",
                 "surface": surface,
                 "rootPath": root_path,
                 "entryUrl": entry_url,
+                "driver": driver,
                 "counts": {
                     "screens": len(screens), "reachable": 0,
                     "unreachable": len(screens), "undeclared": 0, "nav_edges": 0,
@@ -359,6 +378,8 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
             }
         if entry_url_error is not None:
             navigation[surface]["entryUrlError"] = entry_url_error
+        if driver_error is not None:
+            navigation[surface]["driverError"] = driver_error
     return navigation
 
 
@@ -2243,6 +2264,11 @@ def _obligations(
         "id": f"okf:{node['id']}:{suffix}",
         "kind": "journey" if journey else "contract",
         "node": node["id"],
+        # D1's dispatch table keys on the link-target node's *type* (interaction, endpoint,
+        # command, invocation/method, screen) crossed with the owning surface's `driver:` —
+        # compile.py reads this rather than re-deriving it from `checksDeclared`, which is
+        # what let two `does:` bullets on the same node compile under two different drivers.
+        "nodeType": node.get("type", ""),
         "source": node["path"],
         # The key into `packet["navigation"]` this node's screen route lives under (Option C /
         # Amendment 1) — a screen-addressed obligation is compiled by looking up

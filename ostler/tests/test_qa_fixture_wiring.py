@@ -29,8 +29,9 @@ title: QA stack
 
 # QA stack
 
-- driver: web
-- entry-url: http://localhost:18099
+- driver: http
+- surfaces: [Acme projects](../../acme/server.md)
+- entry-url: http://localhost:18101
 - health-path: /healthz
 - stop: docker compose down -v
 - working-directory: app

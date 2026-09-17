@@ -292,6 +292,47 @@ def entry_origin(dump: dict, surface: str) -> str | None:
     return origins[0] if origins else None
 
 
+DRIVER_BULLET = "driver"
+
+
+class ConflictingSurfaceDriver(ValueError):
+    """More than one runbook states a different `driver:` for the same surface."""
+
+    def __init__(self, surface: str, drivers: list[tuple[str, str]]) -> None:
+        self.surface = surface
+        self.drivers = drivers  # [(node_id, driver), ...], in the order each source was found
+        named = "; ".join(f"{node} says {driver}" for node, driver in drivers)
+        super().__init__(f"surface {surface!r} has conflicting drivers: {named}")
+
+
+def surface_driver(dump: dict, surface: str) -> str | None:
+    """The `driver:` a `runbook` node states for *surface*; ``None`` if no runbook covers it.
+
+    Read the same way `entry_origin` reads a runbook's `entry-url:`: any `runbook` node whose
+    `surfaces:` bullet links into this surface states it, at full-book scope, so a runbook
+    filed under a different surface than the one it stands up still counts. Two runbooks
+    naming this surface with different drivers is `ConflictingSurfaceDriver`, not an
+    arbitrary pick — a silently wrong dispatch is worse than a compile-time gap.
+    """
+    by_id = {n["id"]: n for n in dump["nodes"]}
+    candidates: list[tuple[str, str]] = []
+
+    for node in dump["nodes"]:
+        if node["type"] != RUNBOOK_TYPE or node["kind"] != "file":
+            continue
+        targets = {edge["to"] for edge in node["edges"] if edge["via"] == SURFACES_BULLET}
+        if not any(by_id.get(target, {}).get("surface") == surface for target in targets):
+            continue
+        driver = bullet_value(node["bullets"], DRIVER_BULLET).strip().lower()
+        if driver:
+            candidates.append((node["id"], driver))
+
+    drivers = sorted({driver for _node, driver in candidates})
+    if len(drivers) > 1:
+        raise ConflictingSurfaceDriver(surface, candidates)
+    return drivers[0] if drivers else None
+
+
 def root_screen(data: dict) -> str | None:
     """The screen whose ``route:`` is the surface's root path — the one node a walk starts on."""
     path, _ = root_path(data)
