@@ -174,6 +174,48 @@ def test_unspelled_alternation_not_tripped_by_an_extends_split(repo: Path):
     assert "unspelled-alternation" not in all_codes(_run(repo))
 
 
+_ARM_BOOK = (
+    "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+    "## Components\n\n### btn\n- selector: #btn\n- role: button\n- name: Go\n\n"
+    "### field\n- selector: #field\n- role: textbox\n- name: Name\n\n"
+    "## Interactions\n\n### act\n- on: [btn](#btn)\n- trigger: click\n- role: button\n"
+    "- name: Go\n- keyboard: Enter\n- when: `name` non-empty\n"
+    '- arrange: fill(locator="#field", value="Widget A")\n'
+    "- does:\n  - state: go\n"
+    '- verify: http_status(201, path="/api/widgets")\n\n'
+)
+
+
+def test_an_extending_arm_that_arranges_nothing_while_its_base_does_is_a_finding(repo: Path):
+    # An arrangement exists to make *this* arm's `when:` true, so it is not inherited — and an
+    # arm whose base arranges and which arranges nothing has no reachable precondition. The
+    # compiler already withholds it, but only once a plan is compiled; this says it off the
+    # book alone, while the author is still writing the arm.
+    write(repo / "docs/features/groom/gui/screens/s.md", _ARM_BOOK
+          + "### refuse-act\n- extends: [act](#act)\n- when: `name` empty\n- does:\n"
+          '  - state: refuse\n- verify: http_status(400, path="/api/widgets")\n')
+    assert "unarranged-extending-arm" in all_codes(_run(repo))
+
+
+def test_an_extending_arm_with_its_own_arrangement_is_not_a_finding(repo: Path):
+    write(repo / "docs/features/groom/gui/screens/s.md", _ARM_BOOK
+          + "### refuse-act\n- extends: [act](#act)\n- when: `name` empty\n"
+          '- arrange: fill(locator="#field", value="")\n- does:\n'
+          '  - state: refuse\n- verify: http_status(400, path="/api/widgets")\n')
+    assert "unarranged-extending-arm" not in all_codes(_run(repo))
+
+
+def test_a_scaffolded_empty_arrange_bullet_does_not_count_as_an_arrangement(repo: Path):
+    # Every authorable key is scaffolded onto a node as an empty bullet, so reading key
+    # *presence* would make this book — which arranges nothing — indistinguishable from one
+    # that does. The predicate reads values.
+    write(repo / "docs/features/groom/gui/screens/s.md", _ARM_BOOK
+          + "### refuse-act\n- extends: [act](#act)\n- when: `name` empty\n- arrange:\n"
+          '- fixture:\n- does:\n  - state: refuse\n'
+          '- verify: http_status(400, path="/api/widgets")\n')
+    assert "unarranged-extending-arm" in all_codes(_run(repo))
+
+
 def _screen_with(repo: Path, bullets: str) -> None:
     write(repo / "docs/features/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"

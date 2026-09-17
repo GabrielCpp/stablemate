@@ -1683,6 +1683,17 @@ def _resolved_targets(node, key: str, resolver: links_mod.LinkResolver) -> set[s
     return out
 
 
+def _arranges_anything(node) -> bool:
+    """Whether *node* declares an arrangement at all, by value rather than by key.
+
+    Every authorable key is scaffolded onto a node as an empty bullet, so `"arrange" in
+    node.meta` is true of a node that arranges nothing — the presence of the key says the
+    template ran, not that the author wrote one.
+    """
+    return any(_bullet_values(node.meta.get(key, ""))
+               for key in registry.arrange_keys(node.type))
+
+
 def _alternation_conflict(a: checks.CheckCall, b: checks.CheckCall) -> bool:
     """Whether *a* and *b* are the same check, on the same subject, claiming two different
     expected values — `unspelled-alternation`'s predicate.
@@ -2878,6 +2889,38 @@ def _check_ui(graph: Graph, f: list[Finding],
                         f"another {node.type} — an arm can only extend its own node type",
                         path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, "extends"),
                         suggestion=f"- extends: [{node.type} base case](#anchor)"))
+            # An arm inherits the base case's *identity* and none of its arrangements — an
+            # arrangement exists to make a `when:` true, and an extending arm either restates
+            # `when:` (a different condition, so the base's acts would arrange the state this
+            # arm says is false) or inherits it (the same condition, but `qa/context.py` reads
+            # acts from the arm's own `bulletOrder`, so nothing carries them over). Either way
+            # an arm whose base arranges and which arranges nothing itself has no reachable
+            # precondition, and the compiler withholds it as `unarranged-interaction-
+            # precondition` — a refusal only a compiled plan surfaces. Say it here, off the
+            # book alone, where the author is still writing the arm.
+            arrange = registry.arrange_keys(node.type)
+            if extends_ok and arrange and not _arranges_anything(node):
+                for target_id in sorted(targets):
+                    target = by_id.get(target_id)
+                    if target is None or target.type != node.type:
+                        continue
+                    if not _arranges_anything(target):
+                        continue
+                    f.append(Finding(
+                        "error", "unarranged-extending-arm",
+                        f"{node.id}: `extends:` {target_id}, which arranges its own "
+                        f"precondition, and this arm arranges nothing — arrangements are not "
+                        f"inherited, because an arrangement exists to make this arm's `when:` "
+                        f"true and the base's makes the base's true",
+                        path=rel, line=node.line,
+                        ref=refs_mod.bullet_ref(node.id, "extends"),
+                        suggestion=(
+                            "- arrange: an act that puts this arm's own `when:` state on the "
+                            "surface, or `- fixture:` when the state lives beside it"
+                            if "arrange" in arrange else
+                            "- fixture: the state this arm's own `when:` describes")))
+                    break
+
             # The mechanical, cross-validated signal that a node claims two outcomes at once:
             # two `verify:` bullets calling the same check with the same identifying argument
             # (a `path=`, a `locator=`, a `subject=`) but a different value for whichever
