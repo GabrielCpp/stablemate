@@ -278,20 +278,20 @@ def _split_by_entry_url(
     navigation: dict[str, Any],
     base_url: str | None,
     gaps: list[Gap],
-) -> tuple[list[dict[str, Any]], str | None]:
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
     """Partition *obligations* on whether their surface's target `base_url` is known.
 
-    One target ("api", "web") is shared across however many surfaces feed it obligations, and
-    each surface may state its own address — `navigation[surface]["entryUrl"]`, Phase 2h's
-    per-surface resolution in `reach.entry_origin`. A surface with nothing stated falls back to
-    the CLI `--base-url` only when one was actually passed (`base_url is not None`); with
-    neither, every obligation on that surface is gapped `undeclared-entry-url` and dropped from
-    the returned list rather than silently compiled against a fixed, unrelated address.
+    A target is the pairing of a driver with a service, and naming it after only one of the
+    two leaves the other undetermined — so one target is emitted **per surface**, not one
+    shared across however many surfaces happen to feed this driver kind. Each surface may
+    state its own address — `navigation[surface]["entryUrl"]`, Phase 2h's per-surface
+    resolution in `reach.entry_origin`. A surface with nothing stated falls back to the CLI
+    `--base-url` only when one was actually passed (`base_url is not None`); with neither,
+    every obligation on that surface is gapped `undeclared-entry-url` and dropped from the
+    returned list rather than silently compiled against a fixed, unrelated address.
 
-    Several surfaces feeding one target is a pre-existing shape this compiler does not split
-    into several `target(...)` calls — when more than one surface resolves and they disagree,
-    the alphabetically-first surface's address wins, pragmatically, for the one `target(...)`
-    line this compiler emits.
+    The second return value is every surface's resolved address, keyed by surface — the
+    caller emits one `target(...)` per entry, never a single one picked among several.
     """
     resolved_by_surface: dict[str, str | None] = {}
     for obligation in obligations:
@@ -314,9 +314,13 @@ def _split_by_entry_url(
             continue
         kept.append(obligation)
 
-    known = sorted(surface for surface, url in resolved_by_surface.items() if url is not None)
-    target_url = resolved_by_surface[known[0]] if known else None
-    return kept, target_url
+    resolved = {surface: url for surface, url in resolved_by_surface.items() if url is not None}
+    return kept, resolved
+
+
+def _target_var(surface: str, kind: str) -> str:
+    """The variable (and literal target `name`) one surface's `kind` ("api"/"web") target gets."""
+    return f"{_slug(surface)}_{kind}"
 
 
 def _node_locator_index(context: dict[str, Any]) -> dict[str, dict[str, list[str]]]:
@@ -496,9 +500,8 @@ def compile_plan_gaps(
     # `_compile_page_scenarios`, further down) because the `api` target line above needs its
     # own resolved address before `lines` is even started.
     navigation = context.get("navigation", {}) if isinstance(context.get("navigation"), dict) else {}
-    http_owed, api_base_url = _split_by_entry_url(http_owed, navigation, base_url, gaps)
-    page_owed, web_base_url = _split_by_entry_url(page_owed, navigation, base_url, gaps)
-    api_target = f'api = target("api", driver={_lit(PYTHON.name)}, base_url={_lit(api_base_url)})'
+    http_owed, api_urls = _split_by_entry_url(http_owed, navigation, base_url, gaps)
+    page_owed, web_urls = _split_by_entry_url(page_owed, navigation, base_url, gaps)
     lines: list[str] = [
         "# Compiled from the book by `ostler qa compile-plan`. Every `covers=` below is the",
         "# obligation the book itself attributed the check to. Fill the TODO markers from the",
@@ -509,15 +512,13 @@ def compile_plan_gaps(
         "",
         "",
         f"plan(run_id={_lit(run_id or f'qa-{story}')}, story={_lit(story)})",
-        "",
-        api_target,
-        "",
     ]
 
     by_source: dict[str, list[dict[str, Any]]] = {}
     for obligation in http_owed:
         by_source.setdefault(str(obligation.get("source", "book")), []).append(obligation)
 
+    emitted_api_targets: set[str] = set()
     debt: list[dict[str, Any]] = []
     for source, obligations in by_source.items():
         declared = [o for o in obligations if o.get("checksDeclared")]
@@ -543,10 +544,17 @@ def compile_plan_gaps(
             # `covers=[]`; it is not emitted at all.
             continue
         covered_ids.update(scenario_covered)
+        surface = str(obligations[0].get("surface") or "")
+        target_var = _target_var(surface, "api")
+        if target_var not in emitted_api_targets:
+            lines.append("")
+            lines.append(f"{target_var} = target({_lit(target_var)}, driver={_lit(PYTHON.name)}, "
+                          f"base_url={_lit(api_urls.get(surface))})")
+            emitted_api_targets.add(target_var)
         lines.append("")
         lines.append("")
         lines.append("@scenario(")
-        lines.append("    target=api,")
+        lines.append(f"    target={target_var},")
         lines.append('    mechanism="live",')
         lines.append("    covers=[")
         lines.extend(f"        {_lit(o['id'])}," for o in declared if o["id"] in scenario_covered)
@@ -591,7 +599,7 @@ def compile_plan_gaps(
     if page_declared:
         if _has_screens(navigation):
             lines.extend(
-                _compile_page_scenarios(context, page_declared, gaps, covered_ids, web_base_url))
+                _compile_page_scenarios(context, page_declared, gaps, covered_ids, web_urls))
         else:
             # The book declares page checks but its navigation graph has no screen nodes on any
             # surface — there is nothing here to walk to, the same dead end `unreachable-screen`
@@ -859,7 +867,7 @@ def _compile_page_scenarios(
     page_declared: list[dict[str, Any]],
     gaps: list[Gap],
     covered: set[str],
-    base_url: str | None,
+    web_urls: dict[str, str],
 ) -> list[str]:
     """Compile every screen's `visible(...)` bullets, partitioned per Amendment 3.
 
@@ -896,7 +904,7 @@ def _compile_page_scenarios(
     guarantee than "not sharing with its named partner", so the "never share" requirement holds
     either way a screen writes the bullet (on one side only, or on both).
     """
-    scenario_lines: list[str] = []
+    scenario_lines_by_surface: dict[str, list[str]] = {}
     node_index = _node_locator_index(context)
     by_screen: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for obligation in page_declared:
@@ -970,24 +978,35 @@ def _compile_page_scenarios(
             else:
                 plain[node_id] = obs
 
+        target_var = _target_var(surface, "web")
+        bucket = scenario_lines_by_surface.setdefault(surface, [])
         if plain:
-            scenario_lines.extend(_arrival_scenario(root_path, source, hops, node_index, plain, gaps,
-                                                      covered, name=f"{_slug(source)}_arrival"))
+            bucket.extend(_arrival_scenario(root_path, source, hops, node_index, plain, gaps,
+                                             covered, name=f"{_slug(source)}_arrival",
+                                             target_var=target_var))
         for node_id in exclusive:
-            scenario_lines.extend(_arrival_scenario(root_path, source, hops, node_index,
-                                                      {node_id: by_node[node_id]}, gaps, covered,
-                                                      name=f"{_slug(source)}_{_node_slug(node_id)}"))
+            bucket.extend(_arrival_scenario(root_path, source, hops, node_index,
+                                             {node_id: by_node[node_id]}, gaps, covered,
+                                             name=f"{_slug(source)}_{_node_slug(node_id)}",
+                                             target_var=target_var))
         for node_id in interactions:
-            scenario_lines.extend(_interaction_scenario(root_path, source, hops, node_index, node_id,
-                                                          by_node[node_id], gaps, covered,
-                                                          name=f"{_slug(source)}_{_node_slug(node_id)}"))
+            bucket.extend(_interaction_scenario(root_path, source, hops, node_index, node_id,
+                                                 by_node[node_id], gaps, covered,
+                                                 name=f"{_slug(source)}_{_node_slug(node_id)}",
+                                                 target_var=target_var))
 
-    if not scenario_lines:
-        # Minor correction: a `web` target with nothing compiled under it is an unused fixture
-        # in the plan — emit it only when at least one scenario actually landed.
-        return []
-    web_target = f'web = target("web", driver={_lit(PLAYWRIGHT.name)}, base_url={_lit(base_url)})'
-    return ["", "", web_target, *scenario_lines]
+    lines: list[str] = []
+    for surface in sorted(scenario_lines_by_surface):
+        scenario_lines = scenario_lines_by_surface[surface]
+        if not scenario_lines:
+            # Minor correction: a `web` target with nothing compiled under it is an unused
+            # fixture in the plan — emit it only when at least one scenario actually landed.
+            continue
+        target_var = _target_var(surface, "web")
+        web_target = (f'{target_var} = target({_lit(target_var)}, driver={_lit(PLAYWRIGHT.name)}, '
+                      f'base_url={_lit(web_urls.get(surface))})')
+        lines.extend(["", "", web_target, *scenario_lines])
+    return lines
 
 
 def _node_slug(node_id: str) -> str:
@@ -1141,6 +1160,7 @@ def _arrival_scenario(
     covered: set[str],
     *,
     name: str,
+    target_var: str,
 ) -> list[str]:
     obligations = [o for obs in by_node.values() for o in obs]
     ids = sorted(o["id"] for o in obligations)
@@ -1171,7 +1191,7 @@ def _arrival_scenario(
         "",
         "",
         "@scenario(",
-        "    target=web,",
+        f"    target={target_var},",
         '    mechanism="live",',
         "    covers=[",
         *(f"        {_lit(oid)}," for oid in ids if oid in scenario_covered),
@@ -1200,6 +1220,7 @@ def _interaction_scenario(
     covered: set[str],
     *,
     name: str,
+    target_var: str,
 ) -> list[str]:
     """Arrive, trigger the interaction, then assert what the book says holds afterward.
 
@@ -1267,7 +1288,7 @@ def _interaction_scenario(
         "",
         "",
         "@scenario(",
-        "    target=web,",
+        f"    target={target_var},",
         '    mechanism="live",',
         "    covers=[",
         *(f"        {_lit(oid)}," for oid in ids if oid in scenario_covered),

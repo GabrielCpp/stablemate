@@ -1516,8 +1516,55 @@ def test_a_two_surface_book_compiles_two_different_base_urls() -> None:
     source, gaps = _compile_plan_gaps(context, story="demo-story")
     ast.parse(source)
     assert gaps == []
-    assert 'api = target("api", driver="python", base_url="http://localhost:18101")' in source
-    assert 'web = target("web", driver="playwright", base_url="http://localhost:18102")' in source
+    assert 'api_service_api = target("api_service_api", driver="python", ' \
+        'base_url="http://localhost:18101")' in source
+    assert 'web_app_web = target("web_app_web", driver="playwright", ' \
+        'base_url="http://localhost:18102")' in source
+
+
+def test_two_surfaces_sharing_one_driver_kind_each_keep_their_own_address() -> None:
+    """Two http surfaces — not one http surface and one page surface — land in the *same*
+    `http_owed` partition (both are `_is_page_obligation` false), which is exactly the case
+    the old `known[0]` alphabetic-first fallback used to collapse onto one address. Each
+    surface's own scenario must reference its own target, not a neighbour's."""
+    alpha_oid = "okf:docs/features/acme/alpha.md#post-things:does:1"
+    zulu_oid = "okf:docs/features/acme/zulu.md#post-things:does:1"
+    context = _navigation_context(
+        _obligation(
+            alpha_oid,
+            source="docs/features/acme/alpha.md",
+            surface="alpha-service",
+            locators={"route": ["GET /api/things"]},
+            checksDeclared=[
+                {"call": "the response", "name": "http_status", "args": {"code": 200, "path": "/api/things"}},
+            ],
+            fixturesDeclared=[{"name": "seeded-alpha-thing", "args": [], "provides": "a thing exists"}],
+        ),
+        _obligation(
+            zulu_oid,
+            source="docs/features/acme/zulu.md",
+            surface="zulu-service",
+            locators={"route": ["GET /api/things"]},
+            checksDeclared=[
+                {"call": "the response", "name": "http_status", "args": {"code": 200, "path": "/api/things"}},
+            ],
+            fixturesDeclared=[{"name": "seeded-zulu-thing", "args": [], "provides": "a thing exists"}],
+        ),
+        navigation={
+            "alpha-service": {"entryUrl": "http://localhost:18201"},
+            "zulu-service": {"entryUrl": "http://localhost:18202"},
+        },
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert gaps == []
+    assert 'alpha_service_api = target("alpha_service_api", driver="python", ' \
+        'base_url="http://localhost:18201")' in source
+    assert 'zulu_service_api = target("zulu_service_api", driver="python", ' \
+        'base_url="http://localhost:18202")' in source
+    # Each surface's own scenario references its own target, not the other surface's.
+    assert "    target=alpha_service_api,\n" in source
+    assert "    target=zulu_service_api,\n" in source
 
 
 def test_a_surface_with_no_entry_url_and_no_fallback_gaps_instead_of_guessing() -> None:
@@ -1541,4 +1588,5 @@ def test_a_surface_with_no_entry_url_and_no_fallback_gaps_instead_of_guessing() 
     assert oid not in _covers(source)
     assert "qa.http.post" not in source
     assert _gap_kinds(gaps, oid) == ["undeclared-entry-url"]
-    assert "base_url=None" in source
+    # The obligation was dropped before target emission, so nothing compiles a target for it.
+    assert "target(" not in source
