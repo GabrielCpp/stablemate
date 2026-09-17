@@ -78,13 +78,18 @@ def cmd_compile_plan(
 
 
 def _obligation(oid: str, **extra: object) -> dict:
+    # GET, not POST: most tests here are about check compilation, gap kinds, digests, and
+    # coverage bookkeeping — none of it about request bodies. A POST default would make every
+    # one of them arrange a body it has no reason to care about, since there is still no book
+    # grammar to arrange one with (`unarranged-request-body`, compile.py's `_scenario_body`).
+    # The handful of tests actually about POST/body behavior override this explicitly.
     base = {
         "id": oid,
         "source": "docs/features/demo/api.md",
         "nodeType": "endpoint",
         "requirement": "writes the record and answers with it",
         "required": True,
-        "locators": {"route": ["POST /api/things"]},
+        "locators": {"route": ["GET /api/things"]},
         "checksDeclared": [],
     }
     base.update(extra)
@@ -129,7 +134,7 @@ def test_a_compiled_plan_is_valid_python() -> None:
     )
     source = compile_plan(context, story="demo-story")
     ast.parse(source)
-    assert "qa.http.post" in source
+    assert "qa.http.get" in source
     assert "expect_status=201" in source
 
 
@@ -271,6 +276,7 @@ def test_the_command_reports_gaps_in_doctors_own_finding_shape(tmp_path: Path) -
     oid = "okf:docs/features/demo/api.md#post-things:does:1"
     context = _context(_obligation(
         oid,
+        locators={"route": ["POST /api/things"]},
         checksDeclared=[{"call": "created", "name": "http_status", "args": {"code": 201}}],
         fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
     ))
@@ -282,7 +288,7 @@ def test_the_command_reports_gaps_in_doctors_own_finding_shape(tmp_path: Path) -
     [gap] = result.data["gaps"]
     assert gap == {
         "severity": "error",
-        "code": "unresolved-precondition",
+        "code": "unarranged-request-body",
         "message": "the book carries no request body",
         "ref": oid,
     }
@@ -386,17 +392,24 @@ def test_no_fixture_arranged_is_an_unresolved_precondition() -> None:
     assert _gap_kinds(gaps, oid) == ["unresolved-precondition"]
 
 
-def test_a_missing_request_body_is_an_unresolved_precondition() -> None:
+def test_a_missing_request_body_is_an_unarranged_request_body() -> None:
+    """`json_body={}` against an endpoint that needs a real one gets refused by the app (422) —
+    a false failure against code that did nothing wrong. Unlike an unresolved path reference or
+    template variable, there is no partial request to send, so the call is withheld entirely and
+    the obligation is never covered, not just annotated with a TODO on a call that still runs.
+    """
     oid = "okf:docs/features/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
             oid,
+            locators={"route": ["POST /api/things"]},
             checksDeclared=[_check()],
             fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
         )
     )
-    _source, gaps = compile_plan_gaps(context, story="demo-story")
-    assert "unresolved-precondition" in _gap_kinds(gaps, oid)
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["unarranged-request-body"]
+    assert oid not in _covers(source)
 
 
 def test_an_unresolved_path_template_variable_is_an_unresolved_precondition() -> None:
@@ -1560,8 +1573,8 @@ def test_interaction_arms_with_an_unarranged_when_emit_no_assertion() -> None:
     obligation marked discharged by a scenario that never established its `when:` — 2t's
     failure mode arriving through 2q's door. A condition under which a claim holds is part of
     the claim, so both arms — each carrying its own `when:` — withhold their assertion and
-    surface as `unresolved-precondition` alike; which one would have passed by accident is not
-    the property being tested for.
+    surface as `unarranged-interaction-precondition` alike; which one would have passed by
+    accident is not the property being tested for.
     """
     button = f"{_SCREEN}#submit-widget-button"
     submit_oid = "okf:new-widget:submit-new-widget:does:1"
@@ -1594,8 +1607,8 @@ def test_interaction_arms_with_an_unarranged_when_emit_no_assertion() -> None:
     assert "#name-error" not in source
     assert submit_oid not in _covers(source)
     assert refuse_oid not in _covers(source)
-    assert _gap_kinds(gaps, submit_oid) == ["unresolved-precondition"]
-    assert _gap_kinds(gaps, refuse_oid) == ["unresolved-precondition"]
+    assert _gap_kinds(gaps, submit_oid) == ["unarranged-interaction-precondition"]
+    assert _gap_kinds(gaps, refuse_oid) == ["unarranged-interaction-precondition"]
 
 
 def test_a_wrapped_book_bullet_still_compiles_to_valid_python() -> None:
@@ -2137,21 +2150,24 @@ def test_a_journeys_claim_is_observed_where_its_last_step_left_the_world() -> No
             checks=[{"call": "it", "name": "http_status", "args": {"status": 200,
                                                                    "path": "/api/things"}}],
         ),
-        _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]}),
+        # DELETE, not POST: a journey step whose route needs a request body gets withheld
+        # entirely (`unarranged-request-body`, compile.py's `_http_journey`) — no grammar exists
+        # yet to arrange one. This test is about step ordering across two distinct methods, not
+        # about bodies, so both steps use body-exempt verbs.
+        _step_node(f"{_API}#post-things", {"route": ["DELETE /api/things"]}),
         _step_node(f"{_API}#get-things", {"route": ["GET /api/things"]}),
         navigation=_api_navigation(),
     )
     source, gaps = _compile_plan_gaps(context, story="demo-story")
     ast.parse(source)
     assert oid in _covers(source)
-    post = source.index('observed_1 = qa.http.post("/api/things"')
+    post = source.index('observed_1 = qa.http.delete("/api/things"')
     get = source.index('observed_2 = qa.http.get("/api/things")')
     assert post < get
     # Asserted on the response the walk ended on, not on the one the first step produced.
     assert 'qa.verify("http_status", observed_2' in source
     assert 'qa.verify("http_status", observed_1' not in source
-    # The POST carries no body the book stated, and that is said rather than invented.
-    assert _gap_kinds(gaps, oid) == ["unresolved-precondition"]
+    assert _gap_kinds(gaps, oid) == []
 
 
 def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> None:
@@ -2167,7 +2183,9 @@ def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> N
             checks=[{"call": "it", "name": "http_status", "args": {"status": 201,
                                                                    "path": "/api/things"}}],
         ),
-        _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]}),
+        # DELETE, not POST: see the comment on the sibling test above — this one is about a
+        # check naming a route other than the journey's last step, not about bodies.
+        _step_node(f"{_API}#post-things", {"route": ["DELETE /api/things"]}),
         _step_node(f"{_API}#get-health", {"route": ["GET /healthz"]}),
         navigation=_api_navigation(),
     )

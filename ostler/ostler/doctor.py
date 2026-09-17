@@ -1108,6 +1108,16 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             )
         elif gap.kind == "unarranged-state":
             findings.append(Finding("error", "unarranged-state", message, ref=gap.obligation_id))
+        elif gap.kind == "unarranged-request-body":
+            findings.append(
+                Finding("error", "unarranged-request-body", message, ref=gap.obligation_id)
+            )
+        elif gap.kind == "unarranged-interaction-precondition":
+            findings.append(
+                Finding(
+                    "error", "unarranged-interaction-precondition", message, ref=gap.obligation_id
+                )
+            )
         elif gap.kind == "no-verify-declared":
             # The one kind whose compiler spelling is not a doctor code: "the book declares no
             # check for this obligation to prove" is `undeclared-obligation`, which doctor

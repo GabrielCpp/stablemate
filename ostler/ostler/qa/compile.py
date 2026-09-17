@@ -44,7 +44,11 @@ from ostler.qa.outcome import QaOutcome
 #: every other kind says nobody looked, and stacking *that* with a claim is a contradiction.
 #: A plan still carrying these is not a plan whose greens mean anything — `doctor` reports
 #: them to a human exactly like any other gap, which is the part that is not relaxed here.
-_ARRANGEMENT_GAPS = frozenset({"unresolved-precondition", "screen-preconditions-undeclared"})
+_ARRANGEMENT_GAPS = frozenset({
+    "unresolved-precondition",
+    "screen-preconditions-undeclared",
+    "unarranged-interaction-precondition",
+})
 
 #: Every kind `compile_plan` can mint. Declared rather than discovered, because the set is
 #: read from two directions and neither direction can see the other: the minting sites are
@@ -69,6 +73,8 @@ GAP_KINDS = frozenset({
     "unstated-claim-combiner",
     "no-verify-declared",
     "unarranged-state",
+    "unarranged-request-body",
+    "unarranged-interaction-precondition",
 })
 
 
@@ -1009,6 +1015,7 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap], covered: 
         route = _route(obligation)
         index += 1
         name = f"observed_{index}"
+        action_emitted = False
         if route is not None:
             method, template = route
             path = _concrete_path(rows) or template
@@ -1018,21 +1025,32 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap], covered: 
                 if not _resolved(ref, produced_facts, produced_captures):
                     gaps.append(Gap(oid, "unresolved-precondition",
                                      f"the path references {ref!r}, not resolvable without running the plan"))
-            # A route path is almost never a whole reference — `/orgs/@seeded-acme.id/projects`
-            # embeds one mid-string. `Http` takes plain literals now (Fix 2), so a path that
-            # found a reference is wrapped in the harness's one explicit substitution call;
-            # every other path is left a bare literal `Http` never touches for resolution.
-            path_expr = f"qa.resolve({_lit(path)})" if path_refs else _lit(path)
             body = "" if method in {"GET", "DELETE", "HEAD", "OPTIONS"} else ", json_body={}"
-            todo = ""
             if body != "":
-                todo = "  # TODO(arrange): the book carries no request body"
-                gaps.append(Gap(oid, "unresolved-precondition", "the book carries no request body"))
-            expect = f", expect_status={status}" if status is not None else ""
-            lines.append(f"    {name} = qa.http.{method.lower()}({path_expr}{body}{expect}){todo}")
-            if "{" in path:
-                lines.append("    # TODO(arrange): the path above still carries a template variable")
-                gaps.append(Gap(oid, "unresolved-precondition", "the path still carries a template variable"))
+                # A request the compiler cannot construct is not a weaker version of the real
+                # one — `json_body={}` against an endpoint that requires a body gets refused
+                # by the app (422), and that refusal would land in the ledger as a behavioural
+                # failure against code that did nothing wrong. Unlike an unresolved path
+                # reference or template variable (left as an executed call with a caveat,
+                # `_ARRANGEMENT_GAPS`), there is no partial request to send, so the call is
+                # withheld entirely — the same "undetermined precondition, no executable code"
+                # rule `on_resolved` already applies to a UI trigger it cannot resolve.
+                lines.append("    # TODO(arrange): the book carries no request body")
+                lines.append(f"    {name} = None  # TODO(arrange): what this scenario observes")
+                gaps.append(Gap(oid, "unarranged-request-body", "the book carries no request body"))
+            else:
+                # A route path is almost never a whole reference —
+                # `/orgs/@seeded-acme.id/projects` embeds one mid-string. `Http` takes plain
+                # literals now (Fix 2), so a path that found a reference is wrapped in the
+                # harness's one explicit substitution call; every other path is left a bare
+                # literal `Http` never touches for resolution.
+                path_expr = f"qa.resolve({_lit(path)})" if path_refs else _lit(path)
+                expect = f", expect_status={status}" if status is not None else ""
+                lines.append(f"    {name} = qa.http.{method.lower()}({path_expr}{expect})")
+                action_emitted = True
+                if "{" in path:
+                    lines.append("    # TODO(arrange): the path above still carries a template variable")
+                    gaps.append(Gap(oid, "unresolved-precondition", "the path still carries a template variable"))
         else:
             lines.append("    # TODO(arrange): the book gives this node no `route:` to act on")
             lines.append(f"    {name} = None  # TODO(arrange): what this scenario observes")
@@ -1043,7 +1061,7 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap], covered: 
             source_path = str(capture.get("from", ""))
             if not cname:
                 continue
-            if source_path.startswith("$") and route is not None:
+            if source_path.startswith("$") and action_emitted:
                 # A `$.`-rooted capture reads out of the response this obligation just bound —
                 # emitting the call here, not just crediting `produced_captures`, is the fix:
                 # a credit with nothing behind it at runtime means `$name` resolves against a
@@ -1069,11 +1087,12 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap], covered: 
                 lines.append(f"    # TODO(arrange): {note}")
                 gaps.append(Gap(oid, "uncompilable-claim", note))
 
-        # A gap already fired above for a route-less obligation — `name` is bound to `None`
-        # there, and a `qa.verify` call built from it would read as a real assertion, one that
-        # crashes the moment anyone runs the plan. The gap already minted is the whole story;
-        # nothing here would add to it, only stand a broken call up alongside it.
-        if route is None:
+        # A gap already fired above for a route-less obligation, or one whose request body the
+        # book never wrote — `name` is bound to `None` in both cases, and a `qa.verify` call
+        # built from it would read as a real assertion, one that crashes the moment anyone runs
+        # the plan. The gap already minted is the whole story; nothing here would add to it,
+        # only stand a broken call up alongside it.
+        if not action_emitted:
             continue
 
         # An obligation's `verify:` bullets are a conjunction: they all describe the same claim,
@@ -1730,7 +1749,7 @@ def _interaction_scenario(
     # the case `_ARRANGEMENT_GAPS` actually describes — a real assertion compiled and stands
     # beside it on purpose.
     if on_resolved and when_value:
-        gaps.extend(Gap(oid, "unresolved-precondition",
+        gaps.extend(Gap(oid, "unarranged-interaction-precondition",
                          f"`when:` states a precondition ({when_value!r}) this scenario does "
                          "not arrange, so its assertions would observe an unestablished state")
                     for oid in ids)
@@ -2000,14 +2019,18 @@ def _http_journey(
             return []
         method, path = route
         body_kw = "" if method in {"GET", "DELETE", "HEAD", "OPTIONS"} else ", json_body={}"
-        todo = ""
         if body_kw:
-            todo = "  # TODO(arrange): the book carries no request body for this step"
-            gaps.extend(Gap(oid, "unresolved-precondition",
+            # Same rule as the single-scenario emitter (`_scenario_body`): a step this journey
+            # cannot build a body for is withheld entirely rather than sent with
+            # `json_body={}` — a journey's own claim is about the world its *last* step left,
+            # so one unbuildable step anywhere in the chain leaves nothing honest for the
+            # final assertions to observe.
+            gaps.extend(Gap(oid, "unarranged-request-body",
                             f"step {index} is a {method} and the book carries no request body")
                         for oid in ids)
+            return []
         observed = f"observed_{index}"
-        lines.append(f"    {observed} = qa.http.{method.lower()}({_lit(path)}{body_kw}){todo}")
+        lines.append(f"    {observed} = qa.http.{method.lower()}({_lit(path)})")
         if "{" in path:
             lines.append("    # TODO(arrange): the path above still carries a template variable")
             gaps.extend(Gap(oid, "unresolved-precondition",
