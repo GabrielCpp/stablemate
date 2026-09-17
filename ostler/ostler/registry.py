@@ -1212,7 +1212,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # `fixture-undeclared-provides` holds an `@node.key` reference to. `entries=True`:
             # each child is one fact, and its own `from:`/`read:` children are that fact's
             # properties, not further facts.
-            BulletKey("provides", nested=True, entries=True),
+            BulletKey("provides", nested=True, entries=True, properties=("from", "read")),
             # Another fixture this one composes on top of, before its own steps run.
             BulletKey("needs", nested=True, link=True),
             # Environment variable NAMES this fixture's steps read — never values or mint

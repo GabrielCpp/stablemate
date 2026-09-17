@@ -65,7 +65,7 @@ def test_resolved_carries_steps_args_provides_and_secret_names(repo: Path) -> No
 
     acme = fixtures["seeded-acme"]
     assert acme["args"] == ["id"]
-    assert acme["provides"] == ["id"]
+    assert acme["provides"] == [{"key": "id", "from": "", "read": ""}]
     assert acme["secrets"] == ["API_TOKEN"]
     assert acme["needs"] == []
     [step] = acme["steps"]
@@ -73,6 +73,44 @@ def test_resolved_carries_steps_args_provides_and_secret_names(repo: Path) -> No
     assert step["command"] == "./scripts/seed-acme.sh"
     assert step["timeout"] == 45.0
     assert step["cwd"] == str(repo.resolve())
+
+
+SEEDED_ACME_WITH_FROM_READ = """---
+type: fixture
+title: Seeded acme
+---
+# Seeded acme
+
+- provides:
+  - count — the number of widgets the directory holds
+    - from: [seed-it](#seed-it)
+    - read: json `.widgets | length`
+
+## Steps
+
+### prepare-it
+
+- kind: prepare
+- run: ./scripts/prepare-acme.sh
+
+### seed-it
+
+- kind: seed
+- run: ./scripts/seed-acme.sh
+"""
+
+
+def test_resolved_carries_a_provides_entrys_from_and_read_properties(repo: Path) -> None:
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md", SEEDED_ACME_WITH_FROM_READ)
+    graph = load(repo)
+
+    fixtures = book_fixtures.resolved(graph)
+
+    assert fixtures["seeded-acme"]["provides"] == [
+        {"key": "count", "from": "seed-it", "read": ".widgets | length"}
+    ]
+    ids = [step["id"] for step in fixtures["seeded-acme"]["steps"]]
+    assert ids == ["prepare-it", "seed-it"]
 
 
 def test_resolved_defaults_a_step_with_no_timeout_bullet_to_step_timeout_s(repo: Path) -> None:

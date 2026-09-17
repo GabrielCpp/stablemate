@@ -1721,31 +1721,46 @@ class Qa:
         return result
 
     def _extract_provides(
-        self, fixture: str, declared: Sequence[str], result: "ToolResult | None", last_index: int,
+        self,
+        fixture: str,
+        declared: Sequence[Mapping[str, str]],
+        step_results: Mapping[str, "ToolResult"],
+        last_result: "ToolResult | None",
+        last_index: int,
     ) -> dict[str, str]:
-        if not declared:
-            return {}
-        stdout = result.stdout if result is not None else ""
-        try:
-            payload = json.loads(stdout)
-        except json.JSONDecodeError as exc:
-            self._fault(fixture, last_index, "provides", "defect",
-                        "the last step's stdout is not JSON, so declared provides could not be read")
-            raise RuntimeError(
-                f"qa fixture {fixture!r} declares provides {list(declared)!r} but its last "
-                "step's stdout is not JSON"
-            ) from exc
-        if not isinstance(payload, dict):
-            self._fault(fixture, last_index, "provides", "defect", "the last step's stdout is not a JSON object")
-            raise RuntimeError(
-                f"qa fixture {fixture!r}: the last step's stdout must be a JSON object to "
-                f"provide {list(declared)!r}"
-            )
-        missing = [key for key in declared if key not in payload]
-        if missing:
-            self._fault(fixture, last_index, "provides", "defect", f"declared provides {missing!r} absent")
-            raise RuntimeError(f"qa fixture {fixture!r} does not provide {missing!r} in its last step's output")
-        return {key: str(payload[key]) for key in declared}
+        """Bind each declared `provides:` fact from the step and path its `from:`/`read:`
+
+        properties name — defaulting to the fixture's last step and the fact's own key when
+        either is absent, which is exactly the old behaviour a fixture written before this
+        vocabulary existed already relied on. No fact is read positionally by matching every
+        declared key against one shared payload any more; each is its own lookup.
+        """
+        facts: dict[str, str] = {}
+        for entry in declared:
+            key = entry["key"]
+            step_id = entry.get("from") or ""
+            if step_id:
+                if step_id not in step_results:
+                    detail = f"declares provides {key!r} from step {step_id!r}, which is not one of its own steps"
+                    self._fault(fixture, last_index, "provides", "defect", detail)
+                    raise RuntimeError(f"qa fixture {fixture!r} {detail}")
+                result = step_results[step_id]
+            else:
+                result = last_result
+            stdout = result.stdout if result is not None else ""
+            try:
+                payload = json.loads(stdout)
+            except json.JSONDecodeError as exc:
+                detail = f"declares provides {key!r} but its source step's stdout is not JSON"
+                self._fault(fixture, last_index, "provides", "defect", detail)
+                raise RuntimeError(f"qa fixture {fixture!r} {detail}") from exc
+            path = entry.get("read") or key
+            resolved, value = resolve_path(payload, path)
+            if not resolved:
+                self._fault(fixture, last_index, "provides", "defect", f"declared provides {key!r} absent")
+                raise RuntimeError(f"qa fixture {fixture!r} does not provide {key!r} at {path!r}")
+            facts[key] = str(value)
+        return facts
 
     def _exec_book_fixture(self, name: str, args: Mapping[str, str]) -> "ToolResult":
         """Run one book `fixture` node's steps, memoized on `(name, frozen args)` per scenario.
@@ -1793,13 +1808,19 @@ class Qa:
                 env[arg_name] = args[arg_name]
         steps = spec.get("steps", [])
         result: ToolResult | None = None
+        step_results: dict[str, ToolResult] = {}
         for index, step in enumerate(steps):
             if step.get("missing_run"):
                 detail = "step has no `run:` command"
                 self._fault(name, index, str(step.get("kind", "")), "defect", detail)
                 raise RuntimeError(f"qa fixture {name!r} step {index}: {detail}")
             result = self._run_book_step(name, index, step, env)
-        self._node_facts[name] = self._extract_provides(name, spec.get("provides", []), result, len(steps) - 1)
+            step_id = step.get("id")
+            if step_id:
+                step_results[step_id] = result
+        self._node_facts[name] = self._extract_provides(
+            name, spec.get("provides", []), step_results, result, len(steps) - 1
+        )
         if result is None:
             result = ToolResult(command=[], stdout="", stderr="", exit_code=0)
         self._book_fixture_memo[memo_key] = result
@@ -1808,7 +1829,7 @@ class Qa:
                 "kind": "fixture",
                 "scenario": self.scenario_id,
                 "name": name,
-                "provides": ",".join(spec.get("provides", [])),
+                "provides": ",".join(entry["key"] for entry in spec.get("provides", [])),
                 "command": result.command,
                 "exit_code": result.exit_code,
                 "ok": result.ok,

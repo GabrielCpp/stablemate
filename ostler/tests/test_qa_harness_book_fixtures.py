@@ -102,7 +102,7 @@ def test_fixture_dispatches_book_fixtures_before_the_agentsyml_tier(tmp_path: Pa
     book_fixtures = {
         "seeded-acme": {
             "steps": [{"kind": "seed", "command": str(script), "cwd": str(tmp_path)}],
-            "args": [], "provides": ["id"], "needs": [], "secrets": [],
+            "args": [], "provides": [{"key": "id", "from": "", "read": ""}], "needs": [], "secrets": [],
         }
     }
     code, stdout, records = _run(module, "uses-the-seeded-account", tmp_path, book_fixtures=book_fixtures)
@@ -241,13 +241,88 @@ def test_malformed_provides_is_a_defect(tmp_path: Path) -> None:
     book_fixtures = {
         "seeded-acme": {
             "steps": [{"kind": "seed", "command": str(script), "cwd": str(tmp_path)}],
-            "args": [], "provides": ["id"], "needs": [], "secrets": [],
+            "args": [], "provides": [{"key": "id", "from": "", "read": ""}], "needs": [], "secrets": [],
         }
     }
     code, stdout, records = _run(module, "needs-a-secret", tmp_path, book_fixtures=book_fixtures)
     assert code != 0
     [fault] = [r for r in records if r.get("type") == "fixture_fault"]
     assert fault["fault_class"] == "defect"
+
+
+FROM_READ_NEEDS_SCENARIO = '''\
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def a_project_needs_a_widget_count(qa: Qa) -> None:
+    """Runs the dependent fixture, whose arg is bound to an earlier step's own value."""
+    qa.fixture("seeded-globex")
+    qa.check("fixture ran", True)
+'''
+
+
+def test_provides_from_names_an_earlier_step_and_read_names_its_path(tmp_path: Path) -> None:
+    prepare_script = tmp_path / "prepare-acme.sh"
+    _seed_step(prepare_script, "#!/bin/sh\necho '{\"widgets\": [7, 8, 9]}'\n")
+    seed_script = tmp_path / "seed-acme.sh"
+    _seed_step(seed_script, "#!/bin/sh\necho '{}'\n")
+    globex_out = tmp_path / "globex-seen-count.txt"
+    globex_script = tmp_path / "seed-globex.sh"
+    _seed_step(globex_script, f'#!/bin/sh\nprintf "%s" "$count" > {globex_out}\necho \'{{}}\'\n')
+    module = _write(tmp_path, FROM_READ_NEEDS_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [
+                {"kind": "prepare", "id": "prepare-it", "command": str(prepare_script), "cwd": str(tmp_path)},
+                {"kind": "seed", "id": "seed-it", "command": str(seed_script), "cwd": str(tmp_path)},
+            ],
+            "args": [], "needs": [], "secrets": [],
+            "provides": [{"key": "count", "from": "prepare-it", "read": ".widgets[0]"}],
+        },
+        "seeded-globex": {
+            "steps": [{"kind": "seed", "command": str(globex_script), "cwd": str(tmp_path)}],
+            "args": ["count"], "provides": [],
+            "needs": [{"fixture": "seeded-acme", "args": {"count": "@seeded-acme.count"}}],
+            "secrets": [],
+        },
+    }
+    code, stdout, _records = _run(module, "a-project-needs-a-widget-count", tmp_path, book_fixtures=book_fixtures)
+    assert code == 0, stdout
+    assert globex_out.read_text(encoding="utf-8") == "7"
+
+
+def test_provides_from_naming_an_unknown_step_is_a_defect(tmp_path: Path) -> None:
+    script = tmp_path / "seed.sh"
+    _seed_step(script, "#!/bin/sh\necho '{}'\n")
+    module = _write(tmp_path, SECRET_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd": str(tmp_path)}],
+            "args": [], "needs": [], "secrets": [],
+            "provides": [{"key": "id", "from": "no-such-step", "read": "id"}],
+        }
+    }
+    code, stdout, records = _run(module, "needs-a-secret", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "defect"
+    assert "no-such-step" in fault["detail"]
+
+
+def test_provides_read_naming_an_unresolvable_path_is_a_defect(tmp_path: Path) -> None:
+    script = tmp_path / "seed.sh"
+    _seed_step(script, "#!/bin/sh\necho '{}'\n")
+    module = _write(tmp_path, SECRET_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd": str(tmp_path)}],
+            "args": [], "needs": [], "secrets": [],
+            "provides": [{"key": "id", "from": "", "read": "no_such_key"}],
+        }
+    }
+    code, stdout, records = _run(module, "needs-a-secret", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "defect"
+    assert "id" in fault["detail"] and "absent" in fault["detail"]
 
 
 NEEDS_SCENARIO = '''\
@@ -271,7 +346,7 @@ def test_a_shared_need_runs_exactly_once_per_scenario(tmp_path: Path) -> None:
     book_fixtures = {
         "seeded-acme": {
             "steps": [{"kind": "seed", "command": str(acme_script), "cwd": str(tmp_path)}],
-            "args": [], "provides": ["id"], "needs": [], "secrets": [],
+            "args": [], "provides": [{"key": "id", "from": "", "read": ""}], "needs": [], "secrets": [],
         },
         "seeded-globex": {
             "steps": [{"kind": "seed", "command": str(globex_script), "cwd": str(tmp_path)}],
@@ -295,7 +370,7 @@ def test_a_needs_binding_naming_an_unresolvable_node_key_is_a_defect(tmp_path: P
     book_fixtures = {
         "seeded-acme": {
             "steps": [{"kind": "seed", "command": str(acme_script), "cwd": str(tmp_path)}],
-            "args": [], "provides": ["id"], "needs": [], "secrets": [],
+            "args": [], "provides": [{"key": "id", "from": "", "read": ""}], "needs": [], "secrets": [],
         },
         "seeded-globex": {
             "steps": [{"kind": "seed", "command": str(globex_script), "cwd": str(tmp_path)}],
@@ -322,7 +397,7 @@ def test_a_needs_binding_naming_an_uncaptured_dollar_name_is_a_defect(tmp_path: 
     book_fixtures = {
         "seeded-acme": {
             "steps": [{"kind": "seed", "command": str(acme_script), "cwd": str(tmp_path)}],
-            "args": [], "provides": ["id"], "needs": [], "secrets": [],
+            "args": [], "provides": [{"key": "id", "from": "", "read": ""}], "needs": [], "secrets": [],
         },
         "seeded-globex": {
             "steps": [{"kind": "seed", "command": str(globex_script), "cwd": str(tmp_path)}],
@@ -412,7 +487,7 @@ def test_node_provides_and_dollar_captures_are_namespaced_apart(tmp_path: Path) 
     book_fixtures = {
         "seeded-acme": {
             "steps": [{"kind": "seed", "command": str(script), "cwd": str(tmp_path)}],
-            "args": [], "provides": ["id"], "needs": [], "secrets": [],
+            "args": [], "provides": [{"key": "id", "from": "", "read": ""}], "needs": [], "secrets": [],
         }
     }
     code, stdout, _records = _run(
