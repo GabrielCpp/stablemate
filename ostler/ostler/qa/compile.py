@@ -676,6 +676,7 @@ def compile_plan_gaps(
     http_owed: list[dict[str, Any]] = []
     page_owed: list[dict[str, Any]] = []
     cli_owed: list[dict[str, Any]] = []
+    flow_owed: list[dict[str, Any]] = []
     for obligation in owed:
         if not obligation.get("checksDeclared") and obligation.get("kind") != "states":
             # No claim to dispatch — falls through to the existing `no-verify-declared`
@@ -691,18 +692,15 @@ def compile_plan_gaps(
         driver = navigation.get(surface, {}).get("driver")
         node_type = str(obligation.get("nodeType") or "")
         if node_type == "flow":
-            # A flow's own `start:`/`end:` is a claim about what its `steps:` did, and nothing
-            # here walks a `steps:` list — the builders below compile one scenario per *screen*
-            # (arrival, or one interaction) and one per *route*, never one per journey. So an
-            # end-state handed to them is addressed at the node it names and asserted on
-            # arrival there, with the steps that were supposed to produce it never run: a check
-            # that passes in a world where the journey did not happen. Gapped here, above the
-            # builders, so the reason says that rather than whichever addressing error the
-            # flow file trips on its way through a path built for screens.
-            gaps.append(Gap(str(obligation["id"]), "uncompilable-claim",
-                            "a flow's own claim is about what its `steps:` did, and this "
-                            "compiler builds no journey scenario to walk them; asserting it on "
-                            "arrival would observe a world the journey never ran in"))
+            # A flow's own `start:`/`end:` is a claim about what its `steps:` did, and the
+            # builders below compile one scenario per *place* — an arrival, one interaction, one
+            # route — never one per journey. Handing an end-state to them addresses it at the
+            # node it names and asserts it on arrival, with the steps that were supposed to
+            # produce it never run: a check that passes in a world where the journey did not
+            # happen. So flows are routed to their own builder, which walks the ordered `steps:`
+            # the packet now carries and observes the claim where the walk actually left the
+            # world (`_journey_scenarios`).
+            flow_owed.append(obligation)
             continue
         target, detail = _dispatch_target(node_type, driver)
         if target == "playwright":
@@ -732,7 +730,12 @@ def compile_plan_gaps(
     for obligation in http_owed:
         by_source.setdefault(str(obligation.get("source", "book")), []).append(obligation)
 
-    emitted_api_targets: set[str] = set()
+    # Every `target(...)` already assigned in this plan. A target is the pairing of a
+    # driver with a service, so the same pairing is the same variable no matter which
+    # builder reached it first — shared across the http, page and journey builders so
+    # a journey over a surface that already has scenarios reuses its target rather
+    # than assigning a second, identical one under the same name.
+    emitted_targets: set[str] = set()
     debt: list[dict[str, Any]] = []
     for source, obligations in by_source.items():
         declared = [o for o in obligations if o.get("checksDeclared")]
@@ -760,11 +763,11 @@ def compile_plan_gaps(
         covered_ids.update(scenario_covered)
         surface = str(obligations[0].get("surface") or "")
         target_var = _target_var(surface, "api")
-        if target_var not in emitted_api_targets:
+        if target_var not in emitted_targets:
             lines.append("")
             lines.append(f"{target_var} = target({_lit(target_var)}, driver={_lit(PYTHON.name)}, "
                           f"base_url={_lit(api_urls.get(surface))})")
-            emitted_api_targets.add(target_var)
+            emitted_targets.add(target_var)
         lines.append("")
         lines.append("")
         lines.append("@scenario(")
@@ -831,7 +834,8 @@ def compile_plan_gaps(
     if page_declared:
         if _has_screens(navigation):
             lines.extend(
-                _compile_page_scenarios(context, page_declared, gaps, covered_ids, web_urls))
+                _compile_page_scenarios(context, page_declared, gaps, covered_ids, web_urls,
+                                        emitted_targets))
         else:
             # The book declares page checks but its navigation graph has no screen nodes on any
             # surface — there is nothing here to walk to, the same dead end `unreachable-screen`
@@ -841,6 +845,12 @@ def compile_plan_gaps(
                     "the book's navigation graph has no screen nodes on any surface to walk to")
                 for o in page_declared
             )
+
+    # Journeys last: a flow's scenario names the same `target(...)` its steps' own surfaces
+    # already assigned, and reading that off `emitted_targets` rather than re-assigning it is
+    # only correct once every place-scoped builder above has run.
+    lines.extend(_journey_scenarios(context, flow_owed, gaps, covered_ids, navigation,
+                                    web_urls, api_urls, emitted_targets))
 
     if debt:
         lines.append("")
@@ -1139,6 +1149,7 @@ def _compile_page_scenarios(
     gaps: list[Gap],
     covered: set[str],
     web_urls: dict[str, str],
+    emitted_targets: set[str],
 ) -> list[str]:
     """Compile every screen's `visible(...)` bullets, partitioned per Amendment 3.
 
@@ -1300,8 +1311,12 @@ def _compile_page_scenarios(
             # fixture in the plan — emit it only when at least one scenario actually landed.
             continue
         target_var = _target_var(surface, "web")
+        if target_var in emitted_targets:
+            lines.extend(scenario_lines)
+            continue
         web_target = (f'{target_var} = target({_lit(target_var)}, driver={_lit(PLAYWRIGHT.name)}, '
                       f'base_url={_lit(web_urls.get(surface))})')
+        emitted_targets.add(target_var)
         lines.extend(["", "", web_target, *scenario_lines])
     return lines
 
@@ -1796,6 +1811,315 @@ def _interaction_scenario(
     ]
     return lines
 
+
+def _journey_scenarios(
+    context: dict[str, Any],
+    flow_owed: list[dict[str, Any]],
+    gaps: list[Gap],
+    covered: set[str],
+    navigation: dict[str, Any],
+    web_urls: dict[str, str],
+    api_urls: dict[str, str],
+    emitted_targets: set[str],
+) -> list[str]:
+    """One scenario per flow: walk its `steps:` in order, then observe what the walk left.
+
+    An ordered sequence is the claim. Until `qa context` carried a flow's `steps:` as a walk
+    (`context._journey_steps`), the packet said only that a flow *linked* those nodes, and a
+    compiler handed a set of links can assert a journey's end state only on arrival somewhere —
+    in a world the steps never ran in. With the sequence available, the journey is what gets
+    emitted: arrive where it starts, perform every step in the order the book wrote them, and
+    assert the flow's own `verify:` at the end, where the walk actually put the world.
+
+    Every step is dispatched through D1's table on its **own** `(nodeType, surface)` — the
+    driver is a property of who performs the step, not of where the flow happens to end. A
+    journey whose steps land on more than one `(target, surface)` pairing is not compiled:
+    `@scenario(target=...)` binds exactly one target, so a two-target journey has no scenario
+    shape to be emitted into. That is a statement about the harness rather than about the book,
+    and it is said as such — the old `uncompilable-claim` reason ("this compiler builds no
+    journey scenario") is retired here, because now one exists.
+
+    A step this builder cannot perform stops the whole journey rather than being skipped. Every
+    step after it would run in a world the journey never reached, so its claims would be
+    observations of the app's accidental state under the journey's name — the same rule
+    `_interaction_scenario` applies to an unresolved `on:`, applied to a sequence.
+    """
+    by_source: dict[str, list[dict[str, Any]]] = {}
+    for obligation in flow_owed:
+        by_source.setdefault(str(obligation.get("source", "book")), []).append(obligation)
+    node_index = _node_locator_index(context)
+    lines: list[str] = []
+    for source, obligations in sorted(by_source.items()):
+        ids = sorted(str(o["id"]) for o in obligations)
+        # Every obligation a flow mints rides on the same walk (`context._obligations` stamps it
+        # on the shared base), so reading it off the first is reading the flow's own `steps:`.
+        steps = obligations[0].get("steps") or []
+        if not steps:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            "this flow's claim is about what its `steps:` did, and it names no "
+                            "steps to walk")
+                        for oid in ids)
+            continue
+        unresolved = [str(step.get("href", "")) for step in steps if not step.get("ref")]
+        if unresolved:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            "a `steps:` entry names "
+                            + ", ".join(repr(href) for href in unresolved)
+                            + ", which resolves to no node this book declares; a journey walked "
+                              "one step short observes a world it did not reach")
+                        for oid in ids)
+            continue
+        pairs: list[tuple[str, str]] = []
+        detail = ""
+        for step in steps:
+            step_surface = str(step.get("surface") or "")
+            driver = navigation.get(step_surface, {}).get("driver")
+            step_target, why = _dispatch_target(str(step.get("nodeType") or ""), driver)
+            if step_target is None or step_target not in _BUILT_TARGETS:
+                detail = why
+                pairs = []
+                break
+            pairs.append((step_target, step_surface))
+        if not pairs:
+            gaps.extend(Gap(oid, "uncompilable-claim", detail) for oid in ids)
+            continue
+        if len(set(pairs)) > 1:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            "this journey's steps are performed by "
+                            + ", ".join(f"{name} on {surf!r}" for name, surf in sorted(set(pairs)))
+                            + " — `@scenario(target=...)` binds one driver to one service, so "
+                              "there is no scenario shape a journey across two of them fits into")
+                        for oid in ids)
+            continue
+        journey_target, surface = pairs[0]
+        nav = navigation.get(surface, {}) if surface else {}
+        if journey_target == "http":
+            kind, driver_name = "api", PYTHON.name
+            url = api_urls.get(surface) or nav.get("entryUrl")
+        elif journey_target == "playwright":
+            kind, driver_name = "web", PLAYWRIGHT.name
+            url = web_urls.get(surface) or nav.get("entryUrl")
+        else:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"D1's table names {journey_target!r} for every step of this "
+                            "journey, and this compiler builds no journey path for it")
+                        for oid in ids)
+            continue
+        if url is None:
+            gaps.extend(Gap(oid, "undeclared-entry-url",
+                            f"surface {surface!r} states no `entry-url:` on a `server` or "
+                            "`runbook` node, and no --base-url was passed to fall back on")
+                        for oid in ids)
+            continue
+        scenario_covered: set[str] = set()
+        if journey_target == "http":
+            body = _http_journey(steps, node_index, obligations, ids, gaps, scenario_covered)
+        else:
+            body = _web_journey(steps, node_index, obligations, ids, gaps, scenario_covered, nav)
+        if not scenario_covered:
+            # Every claim this journey would have made was gapped above. A scenario that walks a
+            # journey and asserts nothing is a hole in the plan wearing a function signature.
+            continue
+        covered.update(scenario_covered)
+        arranged = _arrangements(obligations)
+        if arranged:
+            precondition_lines = [
+                "    preconditions=[",
+                *(f"        {_lit(row['provides'] or row['name'])}," for row in arranged),
+                "    ],",
+            ]
+        else:
+            precondition_lines = [
+                "    preconditions=[],  # TODO(arrange): what must hold before this journey runs",
+            ]
+        target_var = _target_var(surface, kind)
+        if target_var not in emitted_targets:
+            lines.extend([
+                "",
+                f"{target_var} = target({_lit(target_var)}, driver={_lit(driver_name)}, "
+                f"base_url={_lit(url)})",
+            ])
+            emitted_targets.add(target_var)
+        lines.extend([
+            "",
+            "",
+            "@scenario(",
+            f"    target={target_var},",
+            '    mechanism="live",',
+            "    covers=[",
+            *(f"        {_lit(oid)}," for oid in ids if oid in scenario_covered),
+            "    ],",
+            *precondition_lines,
+            "    checkpoints=[],  # TODO(arrange): what an observer should see it prove",
+            "    forbid=[],  # TODO: the weaker observations this scenario must not settle for",
+            ")",
+            f"def {_slug(source)}_journey(qa: Qa) -> None:",
+            f'    """Walk {source}\'s steps in order, then observe what the walk left."""',
+            "",
+            # The flow arranges once, before its first step: a `fixture:` on the flow node is a
+            # statement about the world the journey starts in, not about any one step in it.
+            *(f"    qa.fixture({_lit(row['name'])}"
+              + "".join(f", {_lit(arg)}" for arg in row.get("args", []))
+              + ")"
+              for row in arranged),
+            *body,
+        ])
+    return lines
+
+
+def _http_journey(
+    steps: list[dict[str, Any]],
+    node_index: dict[str, dict[str, list[str]]],
+    obligations: list[dict[str, Any]],
+    ids: list[str],
+    gaps: list[Gap],
+    covered: set[str],
+) -> list[str]:
+    """Perform each `endpoint` step as a request, then assert the flow's claims on the last one.
+
+    The steps are performed, not asserted. A step's own `verify:` is its own obligation and is
+    compiled where that obligation lives — restating it here would file one observation against
+    two claims. What this asserts is the *flow's* own `verify:`, against the response the last
+    step produced, because a journey's claim is about the world its last step left and that
+    response is the only thing this scenario honestly holds at the end.
+
+    Which makes a check naming some other `path=` a finding rather than a target: it is a claim
+    about a request this journey did not end on, and pointing the driver at the response it does
+    hold would answer a question nobody asked. Gapped, not re-aimed.
+    """
+    lines: list[str] = []
+    observed = ""
+    last_path = ""
+    for index, step in enumerate(steps, start=1):
+        route = _route({"locators": node_index.get(str(step.get("ref", "")), {})})
+        if route is None:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"step {index} ({step.get('href')!r}) states no `method:`/`path:` "
+                            "for this journey to perform")
+                        for oid in ids)
+            return []
+        method, path = route
+        body_kw = "" if method in {"GET", "DELETE", "HEAD", "OPTIONS"} else ", json_body={}"
+        todo = ""
+        if body_kw:
+            todo = "  # TODO(arrange): the book carries no request body for this step"
+            gaps.extend(Gap(oid, "unresolved-precondition",
+                            f"step {index} is a {method} and the book carries no request body")
+                        for oid in ids)
+        observed = f"observed_{index}"
+        lines.append(f"    {observed} = qa.http.{method.lower()}({_lit(path)}{body_kw}){todo}")
+        if "{" in path:
+            lines.append("    # TODO(arrange): the path above still carries a template variable")
+            gaps.extend(Gap(oid, "unresolved-precondition",
+                            f"step {index}'s path still carries a template variable")
+                        for oid in ids)
+        last_path = path
+    for obligation in obligations:
+        oid = str(obligation["id"])
+        assertions: list[str] = []
+        whole = True
+        for row in obligation.get("checksDeclared", []):
+            named = row.get("args", {}).get("path")
+            if isinstance(named, str) and named != last_path:
+                note = (f"`{row.get('name')}` names `path={named}`, and this journey ended on "
+                        f"`{last_path}` — a journey's claim is about the world its last step "
+                        "left, so there is no response here this check is about")
+                lines.append(f"    # TODO(arrange): {note}")
+                gaps.append(Gap(oid, "uncompilable-claim", note))
+                whole = False
+                continue
+            operand, note, gap_kind = _operand(str(row.get("name")), observed)
+            if note:
+                lines.append(f"    # TODO(arrange): {note}")
+                gaps.append(Gap(oid, gap_kind, note))
+                whole = False
+                continue
+            assertions.append(
+                f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, "
+                f"covers=[{_lit(oid)}])"
+            )
+        if whole and assertions:
+            lines.append("")
+            lines.append(f"    # {oid}")
+            lines.extend(assertions)
+            covered.add(oid)
+    return lines
+
+
+def _web_journey(
+    steps: list[dict[str, Any]],
+    node_index: dict[str, dict[str, list[str]]],
+    obligations: list[dict[str, Any]],
+    ids: list[str],
+    gaps: list[Gap],
+    covered: set[str],
+    nav: dict[str, Any],
+) -> list[str]:
+    """Arrive where the journey starts, click every step in order, then observe the end.
+
+    The arrival is the book's own navigation walk to the screen the *first step* lives on, not
+    to whatever the flow's `start:` bullet names: `start:` and the first step are two spellings
+    of where the journey begins, and only one of them is the node a step is performed on. Where
+    they disagree the steps are the sequence, and the sequence is the claim.
+
+    Only `interaction` steps are performed. A `screen` named as a step is a place rather than an
+    action — there is nothing to do to it, and navigating there directly would abandon the walk
+    that was supposed to arrive there, which is the whole defect this builder exists to remove.
+    """
+    first_source = str(steps[0].get("ref", "")).split("#")[0]
+    hops = (nav.get("routes") or {}).get(first_source)
+    if hops is None:
+        gaps.extend(Gap(oid, "uncompilable-claim",
+                        f"no route computed to {first_source!r}, where this journey's first "
+                        "step lives")
+                    for oid in ids)
+        return []
+    lines: list[str] = [f"    qa.goto({_lit(str(nav.get('rootPath') or '/'))})"]
+    lines.extend(_walk_hops(hops, node_index, gaps, ids))
+    # Recorded before the first step: an observation window opened here holds what the whole
+    # journey requested, which is what a flow's claim about the journey needs.
+    action_index = len(lines)
+    for index, step in enumerate(steps, start=1):
+        node_type = str(step.get("nodeType") or "")
+        if node_type != "interaction":
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"step {index} names a {node_type or 'untyped'} node, which is a "
+                            "place rather than an action; this builder performs only "
+                            "`interaction` steps")
+                        for oid in ids)
+            return []
+        ref = str(step.get("ref", ""))
+        locators = node_index.get(ref, {})
+        on_value = next(iter(locators.get("on", [])), None)
+        trigger_value = next(iter(locators.get("trigger", [])), "")
+        on_href = next(iter(extract_refs(on_value or "").links), (None, None))[1]
+        on_label = (on_href or on_value or "").lstrip("#") or on_value
+        on_node_id = f"{ref.split('#')[0]}#{on_href.lstrip('#')}" if on_href else ""
+        expr = _page_locator_expr(node_index.get(on_node_id, {}))
+        if expr is None:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"step {index} acts on {on_label!r}, which declares no role/name "
+                            "pair and no selector to address it by; every step after it would "
+                            "run in a world this journey never reached")
+                        for oid in ids)
+            return []
+        lines.append(f"    {expr}.click()  # step {index}: {_trailing_comment(trigger_value)}")
+    assertions: list[str] = []
+    vetted: list[str] = []
+    for obligation in obligations:
+        compiled = _page_assertions(obligation, gaps)
+        if compiled is None:
+            assertions.append(f"    # TODO(arrange): {obligation['id']} declares an observation "
+                              "this journey cannot make")
+            continue
+        assertions.extend(compiled[0])
+        vetted.extend(document for document in compiled[1] if document not in vetted)
+        covered.add(str(obligation["id"]))
+    if not covered:
+        return []
+    if _needs_window(assertions):
+        lines.insert(action_index, f"    {_WINDOW_VAR} = qa.window()")
+    return [*lines, *(f"    qa.vet({_lit(document)})" for document in vetted), *assertions]
 
 def cmd_compile_plan(
     spec_dir: Path,

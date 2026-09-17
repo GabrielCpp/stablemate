@@ -2058,13 +2058,55 @@ def test_a_node_nobody_performs_is_observed_by_the_driver_of_its_own_surface() -
     assert target is None and "names no target" in detail
 
 
-def test_a_flows_own_claim_is_gapped_rather_than_asserted_on_arrival() -> None:
-    """A flow's `start:`/`end:` is a claim about what its `steps:` did, and this compiler builds
-    one scenario per *screen* (arrival, or one interaction) and one per *route* — never one per
-    journey. Handing an end-state to those builders would address it at the node it names and
-    assert it on arrival there, with the steps that were supposed to produce it never run: a
-    check that passes in a world where the journey did not happen. So it gaps, above the
-    builders, with the reason that says so."""
+def _located_visible(node: str, locators: dict) -> dict:
+    """A `visible(locator=…)` whose reference the packet already resolved to *node*."""
+    row = _visible(node)
+    row["locates"] = {"locator": {"node": node, "locators": locators}}
+    return row
+
+
+def _step(ref: str, node_type: str, surface: str) -> dict:
+    return {"ref": ref, "href": ref.split("#")[-1], "nodeType": node_type, "surface": surface}
+
+
+def _flow_obligation(oid: str, *, source: str, surface: str, steps: list[dict],
+                     checks: list[dict]) -> dict:
+    return {
+        "id": oid,
+        "node": f"{source}#flow",
+        "nodeType": "flow",
+        "source": source,
+        "surface": surface,
+        "requirement": "the journey leaves the world it promises",
+        "required": True,
+        "locators": {},
+        "checksDeclared": checks,
+        "steps": steps,
+    }
+
+
+def _step_node(node: str, locators: dict) -> dict:
+    """A step's own node, carried by the packet for its locators and owing nothing itself."""
+    return {"id": f"{node}:carrier", "node": node, "nodeType": "endpoint",
+            "source": node.split("#")[0], "surface": "api", "required": False,
+            "locators": locators, "checksDeclared": []}
+
+
+_API = "docs/features/demo/http/api.md"
+_FLOW = "docs/features/demo/flows/add-a-thing.md"
+
+
+def _api_navigation(surface: str = "api") -> dict:
+    return {surface: {"start": _API, "surface": surface, "driver": "http",
+                      "entryUrl": _BASE_URL, "counts": {}, "routes": {}, "unreachable": [],
+                      "undeclared": []}}
+
+
+def test_a_flow_that_names_no_steps_has_no_walk_to_compile() -> None:
+    """A flow's claim is about what its `steps:` did, so a flow that names none states a claim
+    about a journey nobody wrote down. It gaps rather than being handed to the place-scoped
+    builders, which would address the end-state at the node it names and assert it on arrival —
+    a check that passes in a world where the journey did not happen."""
     oid = "okf:docs/features/policy/flows/file-a-policy.md:end-state"
     context = _navigation_context(
         _obligation(oid, nodeType="flow", surface="policy",
@@ -2076,7 +2118,126 @@ def test_a_flows_own_claim_is_gapped_rather_than_asserted_on_arrival() -> None:
     ast.parse(source)
     assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
     [gap] = [g for g in gaps if g.obligation_id == oid]
-    assert "`steps:`" in gap.detail and "never ran in" in gap.detail
+    assert "`steps:`" in gap.detail and "names no steps to walk" in gap.detail
     # Nothing executable, and in particular no arrival scenario standing in for the journey.
     assert oid not in _covers(source)
     assert "qa.goto(" not in source
+
+
+def test_a_journeys_claim_is_observed_where_its_last_step_left_the_world() -> None:
+    """The steps are performed in the order the book wrote them, and the flow's own `verify:`
+    is asserted against the *last* step's response — the only world this scenario actually
+    produced. The steps' own claims are not restated here; they are compiled where they live."""
+    oid = f"okf:{_FLOW}:end-state"
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api"),
+                   _step(f"{_API}#get-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 200,
+                                                                   "path": "/api/things"}}],
+        ),
+        _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]}),
+        _step_node(f"{_API}#get-things", {"route": ["GET /api/things"]}),
+        navigation=_api_navigation(),
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert oid in _covers(source)
+    post = source.index('observed_1 = qa.http.post("/api/things"')
+    get = source.index('observed_2 = qa.http.get("/api/things")')
+    assert post < get
+    # Asserted on the response the walk ended on, not on the one the first step produced.
+    assert 'qa.verify("http_status", observed_2' in source
+    assert 'qa.verify("http_status", observed_1' not in source
+    # The POST carries no body the book stated, and that is said rather than invented.
+    assert _gap_kinds(gaps, oid) == ["unresolved-precondition"]
+
+
+def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> None:
+    """A journey's claim is about the world its last step left. A check naming some other route
+    is a claim about a request this journey did not end on — pointing the driver at the response
+    it does hold would answer a question nobody asked, so it gaps instead."""
+    oid = f"okf:{_FLOW}:end-state"
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api"),
+                   _step(f"{_API}#get-health", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 201,
+                                                                   "path": "/api/things"}}],
+        ),
+        _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]}),
+        _step_node(f"{_API}#get-health", {"route": ["GET /healthz"]}),
+        navigation=_api_navigation(),
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert oid not in _covers(source)
+    assert "uncompilable-claim" in _gap_kinds(gaps, oid)
+    [gap] = [g for g in gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
+    assert "/healthz" in gap.detail and "its last step left" in gap.detail
+
+
+def test_a_journey_across_two_targets_has_no_scenario_shape_to_fit_into() -> None:
+    """A target is the pairing of a driver with a service, and `@scenario(target=...)` binds
+    exactly one. The reason says that — a fact about the harness — rather than claiming no
+    builder exists, because after this row one does."""
+    oid = f"okf:{_FLOW}:end-state"
+    navigation = _api_navigation()
+    navigation.update(_arrival_navigation())
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api"),
+                   _step(f"{_SCREEN}#open-thing", "interaction", "policy")],
+            checks=[_visible("table:Things on file")],
+        ),
+        _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]}),
+        navigation=navigation,
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+    [gap] = [g for g in gaps if g.obligation_id == oid]
+    assert "binds one driver to one service" in gap.detail
+    assert "http on 'api'" in gap.detail and "playwright on 'policy'" in gap.detail
+    assert oid not in _covers(source)
+
+
+def test_a_web_journey_arrives_then_clicks_every_step_in_order() -> None:
+    """The journey walks to the screen its first step lives on and performs each `interaction`
+    in document order; the flow's own `verify:` is observed after the last click, where the walk
+    left the page."""
+    oid = f"okf:{_FLOW}:end-state"
+    open_thing = f"{_SCREEN}#open-thing"
+    save_thing = f"{_SCREEN}#save-thing"
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="policy",
+            steps=[_step(open_thing, "interaction", "policy"),
+                   _step(save_thing, "interaction", "policy")],
+            checks=[_located_visible(f"{_SCREEN}#things-table",
+                                     {"selector": ["#things-table"]})],
+        ),
+        _page_obligation(f"{open_thing}:carrier", open_thing,
+                         locators={"on": ["[open-link](#open-link)"], "trigger": ["click"]},
+                         checks=[]) | {"required": False},
+        _page_obligation(f"{save_thing}:carrier", save_thing,
+                         locators={"on": ["[save-button](#save-button)"], "trigger": ["click"]},
+                         checks=[]) | {"required": False},
+        _page_obligation(f"{_SCREEN}#open-link:carrier", f"{_SCREEN}#open-link",
+                         locators={"selector": ["#open-link"]}, checks=[]) | {"required": False},
+        _page_obligation(f"{_SCREEN}#save-button:carrier", f"{_SCREEN}#save-button",
+                         locators={"selector": ["#save-button"]}, checks=[]) | {"required": False},
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert oid in _covers(source), [g for g in gaps if g.obligation_id == oid]
+    goto = source.index("qa.goto(")
+    first = source.index('"#open-link"')
+    second = source.index('"#save-button"')
+    assert goto < first < second
+    # The claim is observed after the walk, never before it.
+    assert second < source.rindex("#things-table")
