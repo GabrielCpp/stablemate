@@ -122,6 +122,44 @@ def test_unspelled_alternation_ignores_a_single_argument_check(repo: Path):
     assert "unspelled-alternation" not in all_codes(_run(repo))
 
 
+def test_two_counts_of_two_collections_are_not_one_count_claimed_twice(repo: Path):
+    # `count` has two arguments, so the arity test lets this through, and the two calls differ
+    # on exactly one — which under a pure difference count is indistinguishable from the
+    # `http_status` case above. It is the opposite claim: `subject` names *which* collection is
+    # counted, so two values are two collections. Reporting it tells the author to split a node
+    # that was right, or to merge two counts into one, and either way a distinction the book
+    # made correctly is gone.
+    _interaction_with_verifies(repo, [
+        'count(subject="open widgets", equals=1)',
+        'count(subject="archived widgets", equals=1)',
+    ])
+    assert "unspelled-alternation" not in all_codes(_run(repo))
+
+
+def test_the_role_is_read_from_the_signature_not_from_whether_it_is_required(repo: Path):
+    # The negative control for the fix. `http_status` is the one check where the required
+    # argument is the expectation and the optional one is the identifier, so any rule deriving
+    # roles from `required` silences precisely the case the finding exists for. Two `code=`
+    # values on one `path=` must still be a conflict.
+    _interaction_with_verifies(repo, [
+        'http_status(201, path="/api/widgets")',
+        'http_status(409, path="/api/widgets")',
+    ])
+    assert "unspelled-alternation" in all_codes(_run(repo))
+
+
+def test_a_differing_identifier_is_not_a_conflict_even_where_a_flag_agrees(repo: Path):
+    # `json_path.path` is both an identifier and the only identifier carrying `path=True`,
+    # while `http_status.path` is an identifier carrying `path=False`. The flags are about
+    # document paths, not roles, so the role had to be stated on its own — this is the case
+    # that would pass under either flag being reused as a shortcut, and fail under the other.
+    _interaction_with_verifies(repo, [
+        'json_path(path="$.state", equals="open")',
+        'json_path(path="$.owner", equals="open")',
+    ])
+    assert "unspelled-alternation" not in all_codes(_run(repo))
+
+
 def test_unspelled_alternation_not_tripped_by_an_extends_split(repo: Path):
     # the repair: split the contradiction into a base case and an arm that `extends:` it —
     # each interaction's own `verify:` bullets no longer contradict each other.

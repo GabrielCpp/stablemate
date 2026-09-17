@@ -69,6 +69,19 @@ class CheckParam:
     #: reports one resolving to no declared component as `undeclared-check-locator`, and
     #: `compile_plan` gaps rather than emitting against it.
     locator: bool = False
+    #: Whether this argument names *which* thing is observed, rather than what is expected of
+    #: it. Two calls that differ on an identifying argument are two claims about two different
+    #: things; two that differ on an expectation are one subject claimed two ways, which is
+    #: what `unspelled-alternation` reports. Counting how many arguments differ cannot tell
+    #: those apart, because the count reads neither role.
+    #:
+    #: It is declared per parameter and not derived, because every shortcut is wrong on some
+    #: check. `required` is wrong on `http_status`, whose required `code` is the expectation
+    #: and whose optional `path` is the identifier. `path` is wrong because `json_path.path`
+    #: (an identifier) and `http_status.path` (also an identifier) carry opposite values of
+    #: that flag — it marks a document path, not a role. `locator` is right where it appears
+    #: and silent everywhere else.
+    identifies: bool = False
 
 
 #: What a check's compiled call is handed: `response` for the HTTP response object,
@@ -138,7 +151,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         params=(
             CheckParam("code", "int", required=True),
             CheckParam("title", "str"),
-            CheckParam("path", "str"),
+            CheckParam("path", "str", identifies=True),
         ),
         excludes="a branch that returns the right shape under the wrong status, and an error "
                  "response distinguished from its siblings only by a body nobody read",
@@ -147,7 +160,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec(
         name="json_path",
         params=(
-            CheckParam("path", "str", required=True, path=True),
+            CheckParam("path", "str", required=True, path=True, identifies=True),
             CheckParam("equals", "scalar"),
             CheckParam("matches", "str"),
             CheckParam("absent", "bool"),
@@ -160,7 +173,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec(
         name="unchanged",
         params=(
-            CheckParam("subject", "str", required=True),
+            CheckParam("subject", "str", required=True, identifies=True),
             CheckParam("except_fields", "str[]"),
         ),
         excludes="collateral damage outside the field under test — the defect a diff that "
@@ -169,7 +182,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     ),
     CheckSpec(
         name="keys_unchanged",
-        params=(CheckParam("subject", "str", required=True),),
+        params=(CheckParam("subject", "str", required=True, identifies=True),),
         excludes="a move implemented as a copy: every object compared individually matches, "
                  "and only the key inventory shows the old one is still there",
         observes="subject-pair",
@@ -177,7 +190,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec(
         name="count",
         params=(
-            CheckParam("subject", "str", required=True),
+            CheckParam("subject", "str", required=True, identifies=True),
             CheckParam("equals", "int", required=True),
         ),
         excludes="an operation that produced the expected item *and* extras nobody counted",
@@ -185,14 +198,14 @@ CHECKS: tuple[CheckSpec, ...] = (
     ),
     CheckSpec(
         name="absent",
-        params=(CheckParam("subject", "str", required=True),),
+        params=(CheckParam("subject", "str", required=True, identifies=True),),
         excludes="a delete that hid the thing from one surface and left it readable on "
                  "another",
         observes="subject",
     ),
     CheckSpec(
         name="created",
-        params=(CheckParam("subject", "str", required=True),),
+        params=(CheckParam("subject", "str", required=True, identifies=True),),
         excludes="a thing that was already there reported as created — a presence check run "
                  "only afterwards passes identically on a no-op, so the absence before the "
                  "action is part of the observation rather than an assumption about it",
@@ -200,7 +213,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     ),
     CheckSpec(
         name="removed",
-        params=(CheckParam("subject", "str", required=True),),
+        params=(CheckParam("subject", "str", required=True, identifies=True),),
         excludes="a delete asserted only by absence afterwards, which passes identically when "
                  "the subject was never there — the presence before the action is what makes "
                  "the disappearance attributable to it",
@@ -209,7 +222,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec(
         name="visible",
         params=(
-            CheckParam("locator", "str", required=True, locator=True),
+            CheckParam("locator", "str", required=True, locator=True, identifies=True),
             CheckParam("text", "str"),
         ),
         excludes="an element present in the tree but not on the screen, and the right widget "
@@ -218,7 +231,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     ),
     CheckSpec(
         name="actionable",
-        params=(CheckParam("locator", "str", required=True, locator=True),),
+        params=(CheckParam("locator", "str", required=True, locator=True, identifies=True),),
         excludes="a control the book says the user can use and the product has disabled — "
                  "which `visible` passes, because a greyed-out button is on the screen and "
                  "reads the right label",
@@ -226,7 +239,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     ),
     CheckSpec(
         name="inert",
-        params=(CheckParam("locator", "str", required=True, locator=True),),
+        params=(CheckParam("locator", "str", required=True, locator=True, identifies=True),),
         excludes="a control the product leaves usable after the state that should have closed "
                  "it, which no assertion about what is on the screen can see: the defect is "
                  "that the element still accepts the action, not that it is still drawn",
@@ -234,7 +247,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     ),
     CheckSpec(
         name="persists",
-        params=(CheckParam("subject", "str", required=True),),
+        params=(CheckParam("subject", "str", required=True, identifies=True),),
         excludes="a write observed only through the same session that made it, which cannot "
                  "tell a commit from a cache",
         observes="subject-pair",
@@ -243,7 +256,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec(
         name="emitted",
         params=(
-            CheckParam("event", "str", required=True),
+            CheckParam("event", "str", required=True, identifies=True),
             CheckParam("count", "int"),
         ),
         excludes="an effect asserted at its source instead of at its subscriber, and an "
@@ -254,7 +267,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec(
         name="omits",
         params=(
-            CheckParam("subject", "str", required=True, path=True),
+            CheckParam("subject", "str", required=True, path=True, identifies=True),
             CheckParam("text", "str"),
             CheckParam("matches", "str"),
         ),
@@ -277,7 +290,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec(
         name="conflict_on_stale",
         params=(
-            CheckParam("subject", "str", required=True),
+            CheckParam("subject", "str", required=True, identifies=True),
             CheckParam("token", "str"),
         ),
         excludes="an unconditional overwrite standing in for compare-and-swap — a write "

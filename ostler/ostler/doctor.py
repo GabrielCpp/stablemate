@@ -1551,18 +1551,31 @@ def _alternation_conflict(a: checks.CheckCall, b: checks.CheckCall) -> bool:
     """Whether *a* and *b* are the same check, on the same subject, claiming two different
     expected values — `unspelled-alternation`'s predicate.
 
-    "Same subject" is read structurally rather than per check name: the two calls must share
-    every argument but one (so a single-argument check like `absent(subject=…)` never
-    qualifies — there is nothing left to call the subject once the one argument differs), and
-    that one argument must actually differ. `http_status(201, path="/api/widgets")` against
-    `http_status(400, path="/api/widgets")` shares `path` and differs only on `code`; two
-    `removed(subject="a")` / `removed(subject="b")` calls differ on the only argument they
-    have, which is two claims about two different things, not one claim contradicting itself.
+    "Same subject" is read from the check's signature, not from how many arguments happen to
+    differ. The two calls must share every argument but one, and that one must be a parameter
+    the signature marks as an *expectation* — `CheckParam.identifies` is false. An argument
+    that names which thing is observed cannot be the difference: two calls differing on it are
+    two claims about two different things.
+
+    `http_status(201, path="/api/widgets")` against `http_status(400, path="/api/widgets")`
+    differs on `code`, an expectation, and is one route claimed two ways. `count(subject="a",
+    equals=1)` against `count(subject="b", equals=1)` differs on `subject`, an identifier, and
+    is two counts of two collections — reading it as a conflict tells the author to delete a
+    distinction the book made correctly. `removed(subject="a")` / `removed(subject="b")` is
+    the same case, and is also excluded by the arity test: a single-argument check has nothing
+    left to call the subject once its one argument differs.
+
+    The lookup is a direct index, not a `.get`: `parse_check` returns a `CheckCall` only for a
+    name in the vocabulary, so a call reaching here always has a signature, and a default arm
+    would be a guess at the two roles standing in for the one fact that decides them.
     """
     if a.name != b.name or len(a.args) < 2 or a.args.keys() != b.args.keys():
         return False
     diffs = [key for key in a.args if a.args[key] != b.args[key]]
-    return len(diffs) == 1
+    if len(diffs) != 1:
+        return False
+    spec = checks.CHECK_BY_NAME[a.name]
+    return not any(param.name == diffs[0] and param.identifies for param in spec.params)
 
 
 def _one_parent_tree(nodes: list, group_ids: set[str],
