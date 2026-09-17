@@ -101,8 +101,8 @@ def test_fixture_dispatches_book_fixtures_before_the_agentsyml_tier(tmp_path: Pa
     module = _write(tmp_path, PROVIDES_SCENARIO)
     book_fixtures = {
         "seeded-acme": {
-            "steps": [{"kind": "seed", "command": str(script), "cwd": str(tmp_path)}],
-            "args": [], "provides": [{"key": "id", "from": "", "read": ""}], "needs": [], "secrets": [],
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd": str(tmp_path)}],
+            "args": [], "provides": [{"key": "id", "from": "seed-it", "read": ""}], "needs": [], "secrets": [],
         }
     }
     code, stdout, records = _run(module, "uses-the-seeded-account", tmp_path, book_fixtures=book_fixtures)
@@ -127,7 +127,7 @@ def test_args_reach_the_step_via_env_never_interpolated_into_shell_text(tmp_path
     module = _write(tmp_path, ENV_SCENARIO)
     book_fixtures = {
         "seeded-acme": {
-            "steps": [{"kind": "seed", "command": str(script), "cwd": str(tmp_path)}],
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd": str(tmp_path)}],
             "args": ["id"], "provides": [], "needs": [], "secrets": [],
         }
     }
@@ -154,7 +154,7 @@ def test_a_missing_secret_is_an_environment_fault(tmp_path: Path) -> None:
     module = _write(tmp_path, SECRET_SCENARIO)
     book_fixtures = {
         "seeded-acme": {
-            "steps": [{"kind": "seed", "command": str(script), "cwd": str(tmp_path)}],
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd": str(tmp_path)}],
             "args": [], "provides": [], "needs": [], "secrets": ["MISSING_API_TOKEN"],
         }
     }
@@ -188,7 +188,7 @@ def test_a_nonzero_exit_is_a_defect(tmp_path: Path) -> None:
     module = _write(tmp_path, SECRET_SCENARIO)
     book_fixtures = {
         "seeded-acme": {
-            "steps": [{"kind": "seed", "command": str(script), "cwd": str(tmp_path)}],
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd": str(tmp_path)}],
             "args": [], "provides": [], "needs": [], "secrets": [],
         }
     }
@@ -240,8 +240,8 @@ def test_malformed_provides_is_a_defect(tmp_path: Path) -> None:
     module = _write(tmp_path, SECRET_SCENARIO)
     book_fixtures = {
         "seeded-acme": {
-            "steps": [{"kind": "seed", "command": str(script), "cwd": str(tmp_path)}],
-            "args": [], "provides": [{"key": "id", "from": "", "read": ""}], "needs": [], "secrets": [],
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd": str(tmp_path)}],
+            "args": [], "provides": [{"key": "id", "from": "seed-it", "read": ""}], "needs": [], "secrets": [],
         }
     }
     code, stdout, records = _run(module, "needs-a-secret", tmp_path, book_fixtures=book_fixtures)
@@ -315,7 +315,7 @@ def test_provides_read_naming_an_unresolvable_path_is_a_defect(tmp_path: Path) -
         "seeded-acme": {
             "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd": str(tmp_path)}],
             "args": [], "needs": [], "secrets": [],
-            "provides": [{"key": "id", "from": "", "read": "no_such_key"}],
+            "provides": [{"key": "id", "from": "seed-it", "read": "no_such_key"}],
         }
     }
     code, stdout, records = _run(module, "needs-a-secret", tmp_path, book_fixtures=book_fixtures)
@@ -345,8 +345,8 @@ def test_a_shared_need_runs_exactly_once_per_scenario(tmp_path: Path) -> None:
     module = _write(tmp_path, NEEDS_SCENARIO)
     book_fixtures = {
         "seeded-acme": {
-            "steps": [{"kind": "seed", "command": str(acme_script), "cwd": str(tmp_path)}],
-            "args": [], "provides": [{"key": "id", "from": "", "read": ""}], "needs": [], "secrets": [],
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(acme_script), "cwd": str(tmp_path)}],
+            "args": [], "provides": [{"key": "id", "from": "seed-it", "read": ""}], "needs": [], "secrets": [],
         },
         "seeded-globex": {
             "steps": [{"kind": "seed", "command": str(globex_script), "cwd": str(tmp_path)}],
@@ -369,8 +369,8 @@ def test_a_needs_binding_naming_an_unresolvable_node_key_is_a_defect(tmp_path: P
     module = _write(tmp_path, NEEDS_SCENARIO)
     book_fixtures = {
         "seeded-acme": {
-            "steps": [{"kind": "seed", "command": str(acme_script), "cwd": str(tmp_path)}],
-            "args": [], "provides": [{"key": "id", "from": "", "read": ""}], "needs": [], "secrets": [],
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(acme_script), "cwd": str(tmp_path)}],
+            "args": [], "provides": [{"key": "id", "from": "seed-it", "read": ""}], "needs": [], "secrets": [],
         },
         "seeded-globex": {
             "steps": [{"kind": "seed", "command": str(globex_script), "cwd": str(tmp_path)}],
@@ -396,8 +396,8 @@ def test_a_needs_binding_naming_an_uncaptured_dollar_name_is_a_defect(tmp_path: 
     module = _write(tmp_path, NEEDS_SCENARIO)
     book_fixtures = {
         "seeded-acme": {
-            "steps": [{"kind": "seed", "command": str(acme_script), "cwd": str(tmp_path)}],
-            "args": [], "provides": [{"key": "id", "from": "", "read": ""}], "needs": [], "secrets": [],
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(acme_script), "cwd": str(tmp_path)}],
+            "args": [], "provides": [{"key": "id", "from": "seed-it", "read": ""}], "needs": [], "secrets": [],
         },
         "seeded-globex": {
             "steps": [{"kind": "seed", "command": str(globex_script), "cwd": str(tmp_path)}],
@@ -455,7 +455,7 @@ def test_an_arg_colliding_with_a_secret_name_is_a_defect(tmp_path: Path) -> None
     module = _write(tmp_path, ENV_SCENARIO)
     book_fixtures = {
         "seeded-acme": {
-            "steps": [{"kind": "seed", "command": str(script), "cwd": str(tmp_path)}],
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd": str(tmp_path)}],
             "args": ["id"], "provides": [], "needs": [], "secrets": ["id"],
         }
     }
@@ -486,8 +486,8 @@ def test_node_provides_and_dollar_captures_are_namespaced_apart(tmp_path: Path) 
     module = _write(tmp_path, NAMESPACE_SCENARIO)
     book_fixtures = {
         "seeded-acme": {
-            "steps": [{"kind": "seed", "command": str(script), "cwd": str(tmp_path)}],
-            "args": [], "provides": [{"key": "id", "from": "", "read": ""}], "needs": [], "secrets": [],
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd": str(tmp_path)}],
+            "args": [], "provides": [{"key": "id", "from": "seed-it", "read": ""}], "needs": [], "secrets": [],
         }
     }
     code, stdout, _records = _run(

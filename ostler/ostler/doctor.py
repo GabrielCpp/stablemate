@@ -845,7 +845,58 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
     _check_needs_binding_args(graph, by_name, f)
     _check_fixture_call_args(graph, by_name, f)
     _check_fixture_undeclared_provides(graph, by_name, f)
+    _check_provided_facts(graph, fixtures, f)
     _check_fixture_secret_names(graph, fixtures, f)
+
+
+def _check_provided_facts(graph: Graph, fixtures: dict[str, UINode], f: list[Finding]) -> None:
+    """Each `provides:` entry says where its fact comes from: observed, or asserted.
+
+    A fact a fixture provides is either **observed** from a step's output — `from:` the step
+    whose stdout holds it, `read:` the path within that stdout — or **asserted** by the
+    fixture's own construction, and then `is:` states the value the construction makes true.
+    Only the book can say which. The two are byte-identical downstream, and the difference is
+    not cosmetic: a fixture that empties a directory by restarting the service holding it is
+    not reading the zero out of anything, and a fixture that seeds a widget and reports its
+    name is not asserting it.
+
+    An entry declaring neither leaves the source undetermined, and the harness used to guess —
+    the fixture's last step, its whole stdout parsed as JSON. That is right only for a fixture
+    whose last step happens to print JSON; every other one aborted its scenario in `json.loads`,
+    naming a step the author had never pointed at. An entry declaring both is the same defect
+    seen from the other side: two answers is not one answer.
+
+    Raised by walking the book alone, so the author hears it while writing the fixture rather
+    than from a scenario that aborted three services later.
+    """
+    for node in fixtures.values():
+        rel = _rel_path(graph, node)
+        for entry in node.entries.get("provides", []):
+            head = entry.headline.partition("\u2014")[0].split()
+            if not head:
+                continue
+            key = head[0]
+            observed = bool(entry.property_text("from"))
+            asserted = bool(entry.property_text("is"))
+            if observed != asserted:
+                continue
+            both = observed and asserted
+            f.append(Finding(
+                "error", "undetermined-provided-fact",
+                f"{node.id}: `provides:` {key} declares "
+                + ("both `from:` and `is:` — a fact is observed from a step's output or "
+                   "asserted by the fixture's own construction, not both"
+                   if both else
+                   "neither `from:` nor `is:` — the book does not say whether this fact is "
+                   "observed from a step's output or asserted by the fixture's own construction"),
+                path=rel, line=node.line,
+                ref=refs_mod.bullet_ref(node.id, "provides"),
+                suggestion=(
+                    "keep one: `- from:`/`- read:` for a fact a step printed, `- is:` for one "
+                    "the fixture's own construction makes true"
+                    if both else
+                    "  - from: [<step>](#<step>)\n  - read: <json path>   # observed\n"
+                    "  - is: <value>                              # or asserted")))
 
 
 #: A `secrets:` child must be a bare environment-variable name — no value, no mint recipe.
@@ -1222,6 +1273,14 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             # the compiler adds is not a new defect but the consequence — which obligations
             # went uncompiled because of it — and that belongs in the message, not in the code.
             findings.append(Finding("error", "qa-fixture-bullet", message, ref=gap.obligation_id))
+        elif gap.kind == "undetermined-provided-fact":
+            # Unlike the two kinds around it, this one keeps its own spelling: `_check_provided_facts`
+            # raises exactly this code from the book alone, so the identity mapping grades one defect
+            # one way. What the compiler adds is which obligations the entry withheld — the message —
+            # and the finding it produces points at the same `provides:` bullet the book check does.
+            findings.append(
+                Finding("error", "undetermined-provided-fact", message, ref=gap.obligation_id)
+            )
         elif gap.kind == "unparsed-check-bullet":
             # Same reasoning as the kind above, and the same existing code: doctor
             # already refuses this bullet as `unparsed-check` from the book alone (`_check_ui`),

@@ -1208,11 +1208,20 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # node-type-independently for `relation-without-subject`, and a fixture's own
             # declared-parameter list is not a relation.
             BulletKey("args"),
-            # What the fixture's last step leaves behind, one child per fact — the vocabulary
+            # What the fixture leaves behind, one child per fact — the vocabulary
             # `fixture-undeclared-provides` holds an `@node.key` reference to. `entries=True`:
-            # each child is one fact, and its own `from:`/`read:` children are that fact's
+            # each child is one fact, and its own `from:`/`read:`/`is:` children are that fact's
             # properties, not further facts.
-            BulletKey("provides", nested=True, entries=True, properties=("from", "read")),
+            #
+            # A fact a fixture provides is either **observed** from a step's output — `from:` the
+            # step, `read:` a path within its stdout — or **asserted** by the fixture's own
+            # construction, and then `is:` states the value the construction makes true. Only the
+            # book can say which: the two are byte-identical downstream, and a fixture that
+            # restarts a service to empty it is not reading the zero from anywhere. Exactly one
+            # of the two spellings, never both and never neither — see
+            # `undetermined-provided-fact`.
+            BulletKey("provides", nested=True, entries=True,
+                      properties=("from", "read", "is")),
             # Another fixture this one composes on top of, before its own steps run.
             BulletKey("needs", nested=True, link=True),
             # Environment variable NAMES this fixture's steps read — never values or mint

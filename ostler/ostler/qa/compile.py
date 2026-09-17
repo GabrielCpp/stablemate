@@ -94,6 +94,7 @@ GAP_KINDS = frozenset({
     "unarranged-interaction-precondition",
     "unidentifiable-screen",
     "unparsed-fixture",
+    "undetermined-provided-fact",
     "unparsed-capture-bullet",
     "unparsed-check-bullet",
     "uncaptured-declaration",
@@ -784,6 +785,32 @@ def compile_plan_gaps(
     )
     unparsed_ids = {o["id"] for o in unparsed}
     owed = [o for o in owed if o["id"] not in unparsed_ids]
+    # The same rule once more, a level inside the arrangement. A fixture's `provides:` entry is
+    # a fact *observed* from one of its own steps (`from:`/`read:`) or *asserted* by its
+    # construction (`is:`); an entry stating neither, or both, leaves the source undetermined,
+    # and the harness cannot invent one — it aborts the whole scenario when extraction reaches
+    # that key. So the arrangement is undetermined even though its bullet parsed, and nothing
+    # executable comes out of it. Partitioned on *any* undetermined key the arrangement reaches
+    # rather than only the ones a check cites: extraction is eager, so a key nobody reads kills
+    # the scenario exactly as hard as one that is read, and a gap naming the fixture is the
+    # reason an author can act on. `ostler doctor` reports the same books as
+    # `undetermined-provided-fact`, where it is the author's news; here it is the compiler's
+    # refusal, which is a different statement about a different artifact.
+    undetermined_facts = [
+        o for o in owed
+        if any(row.get("providesUndetermined") for row in o.get("fixturesDeclared") or [])
+    ]
+    gaps.extend(
+        Gap(o["id"], "undetermined-provided-fact",
+            "this claim's arrangement provides facts whose source the book does not state: "
+            + "; ".join(
+                f"`{row['name']}` provides {', '.join(row['providesUndetermined'])} with neither "
+                "`from:`/`read:` nor `is:`, or with both"
+                for row in o.get("fixturesDeclared") or [] if row.get("providesUndetermined")))
+        for o in undetermined_facts
+    )
+    undetermined_fact_ids = {o["id"] for o in undetermined_facts}
+    owed = [o for o in owed if o["id"] not in undetermined_fact_ids]
     # And the third side of the same rule. An observation nobody could read is not an
     # observation, so there is nothing to emit; what is wrong without this partition is not the
     # missing code but the reason given for it — the obligation falls through to

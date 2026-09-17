@@ -25,6 +25,8 @@ title: Seeded acme
 - args: id
 - provides:
   - id — the seeded account's id
+    - from: [seed-it](#seed-it)
+    - read: account.id
 - secrets:
   - API_TOKEN
 
@@ -45,6 +47,8 @@ title: Seeded globex
 
 - provides:
   - project_id — the seeded project's id
+    - from: [seed-it](#seed-it)
+    - read: project.id
 - needs:
   - [seeded-acme](seeded-acme.md) id=@seeded-acme.id
 
@@ -65,7 +69,9 @@ def test_resolved_carries_steps_args_provides_and_secret_names(repo: Path) -> No
 
     acme = fixtures["seeded-acme"]
     assert acme["args"] == ["id"]
-    assert acme["provides"] == [{"key": "id", "from": "", "read": ""}]
+    assert acme["provides"] == [
+        {"key": "id", "from": "seed-it", "read": "account.id", "is": ""}
+    ]
     assert acme["secrets"] == ["API_TOKEN"]
     assert acme["needs"] == []
     [step] = acme["steps"]
@@ -107,7 +113,7 @@ def test_resolved_carries_a_provides_entrys_from_and_read_properties(repo: Path)
     fixtures = book_fixtures.resolved(graph)
 
     assert fixtures["seeded-acme"]["provides"] == [
-        {"key": "count", "from": "seed-it", "read": ".widgets | length"}
+        {"key": "count", "from": "seed-it", "read": ".widgets | length", "is": ""}
     ]
     ids = [step["id"] for step in fixtures["seeded-acme"]["steps"]]
     assert ids == ["prepare-it", "seed-it"]

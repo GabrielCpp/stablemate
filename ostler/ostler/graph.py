@@ -92,6 +92,16 @@ def _node_dict(node: UINode, resolver: LinkResolver, graph: Graph, features_root
         # its children combine. Keyed by the same ordinal `bulletOrder`'s third element carries,
         # as a string because a consumer reads this back out of JSON.
         "combiners": {str(pos): word for pos, word in node.combiners.items()},
+        # The `entries=True` keys' items with the properties `bullets` above has nowhere to put:
+        # `bullets[key]` is the headlines alone, and a reader asking what an item *said about
+        # itself* — `from:`/`read:`/`is:` on a `provides:` fact, `type:`/`required:` on a `flags:`
+        # option — found only the headline here and had to re-open the markdown or guess. A
+        # compiler that guesses emits code for a claim the book never made.
+        "entries": {
+            key: [{"headline": entry.headline, "properties": dict(entry.properties)}
+                  for entry in items]
+            for key, items in node.entries.items() if items
+        },
         "edges": edges,  # resolved out-edges (parent:/extends:/on:/steps:/prose links)
     }
 

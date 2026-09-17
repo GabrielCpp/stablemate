@@ -494,6 +494,21 @@ class Entry:
     #: The entry's own ``- key: value`` children, folded the way section bullets are.
     properties: dict[str, str | list[str]] = field(default_factory=dict)
 
+    def property_text(self, name: str) -> str:
+        """One property as the single string the book wrote, or ``""`` when it stated none.
+
+        A property's folded value is a scalar or a flat list — the same two shapes
+        :attr:`UINode.meta` carries — because a bullet with children folds to a list and one
+        without folds to a string. Every reader wants the text, so the flattening lives here
+        rather than beside each reader: two copies of it are two chances for one of them to
+        decide an empty list is a stated value, and "the book stated this property" is exactly
+        the distinction a checker asks about.
+        """
+        value = self.properties.get(name)
+        if isinstance(value, list):
+            return " ".join(str(v).strip() for v in value if str(v).strip())
+        return str(value).strip() if value is not None else ""
+
 
 def _fold_bullets(bullets: "list[markdown.Bullet]") -> dict[str, str | list[str]]:
     """``- key: value`` children folded into a dict, deeper descendants flattened into the value.

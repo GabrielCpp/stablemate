@@ -56,12 +56,6 @@ def _declared_args(node: UINode) -> list[str]:
     return names
 
 
-def _property_text(value: object) -> str:
-    if isinstance(value, list):
-        return " ".join(str(v).strip() for v in value if str(v).strip())
-    return str(value).strip() if value is not None else ""
-
-
 def _provides_from_step(raw: str) -> str:
     """The step `### id` a `from:` property names, read from its markdown link href."""
     links = extract_refs(raw).links
@@ -83,12 +77,20 @@ def _provides_read_path(raw: str) -> str:
 
 
 def _declared_provides(node: UINode) -> list[dict[str, str]]:
-    """Every fact a fixture's `provides:` declares, with its `from:`/`read:` extraction properties.
+    """Every fact a fixture's `provides:` declares, with the property that says where it comes from.
 
-    `from:` names the step (by its `### id` anchor) whose stdout the fact is read from,
-    defaulting to the fixture's last step when absent. `read:` names a JSON path within that
-    step's stdout, defaulting to the fact's own key when absent — the shape a fixture written
-    before this vocabulary existed already has, so an old book keeps behaving exactly as it did.
+    A fact is **observed** or **asserted**, and the entry says which. `from:` names the step
+    (by its `### id` anchor) whose stdout the fact is read from and `read:` names a JSON path
+    within that stdout, defaulting to the fact's own key when absent. `is:` instead states the
+    value the fixture's own construction makes true — nothing is read, because there is nothing
+    to read it from: a fixture that empties a directory by restarting the service that holds it
+    knows the count is zero from what it did, not from any step's output.
+
+    An entry that declares neither leaves the source undetermined, and `undetermined` is carried
+    here as an empty `from`/`read`/`is` triple rather than resolved to a default. It never
+    reaches the harness: `ostler doctor` refuses the book and `compile_plan` withholds every
+    obligation arranged through the fixture. An entry that declares both is refused the same
+    way, for the same reason — two answers is not one answer.
     """
     declared: list[dict[str, str]] = []
     for entry in node.entries.get("provides", []):
@@ -96,12 +98,14 @@ def _declared_provides(node: UINode) -> list[dict[str, str]]:
         if not head:
             continue
         key = head[0]
-        from_raw = _property_text(entry.properties.get("from"))
-        read_raw = _property_text(entry.properties.get("read"))
+        from_raw = entry.property_text("from")
+        read_raw = entry.property_text("read")
+        is_raw = entry.property_text("is")
         declared.append({
             "key": key,
             "from": _provides_from_step(from_raw) if from_raw else "",
             "read": _provides_read_path(read_raw) if read_raw else "",
+            "is": is_raw.strip() if is_raw else "",
         })
     return declared
 

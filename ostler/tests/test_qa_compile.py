@@ -2712,6 +2712,63 @@ def test_a_fixture_bullet_that_did_not_parse_is_not_the_journey_that_arranges_no
     assert oid not in _covers(source)
 
 
+def test_a_fixture_providing_a_fact_of_undetermined_source_compiles_nothing() -> None:
+    """A `provides:` entry stating neither `from:`/`read:` nor `is:` is an undetermined arrangement.
+
+    The harness extracts every declared fact eagerly, before any check asks for one, so an entry
+    whose source the book left open aborts the whole scenario — not the one assertion that cites
+    it, and not only when something cites it at all. Left in `owed`, this obligation compiles
+    into a scenario that dies at run time with a message about JSON parsing, three services away
+    from the book that is actually wrong. So the gap is raised here, against the fixture, where
+    the author can act on it.
+    """
+    oid = f"okf:{_FLOW}:end-state"
+    obligation = _flow_obligation(
+        oid, source=_FLOW, surface="api",
+        steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+        checks=[{"call": "it", "name": "http_status", "args": {"status": 200,
+                                                               "path": "/api/things"}}],
+        fixtures=[],
+    )
+    obligation["fixturesDeclared"] = [
+        {"name": "seeded-ledger", "args": [], "provides": "a ledger exists",
+         "providesKeys": ["seeded-ledger.id", "seeded-ledger.total"],
+         "providesUndetermined": ["seeded-ledger.total"]},
+    ]
+    context = _navigation_context(obligation, _step_node(f"{_API}#post-things", {}),
+                                  navigation=_api_navigation())
+
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == ["undetermined-provided-fact"]
+    [gap] = [g for g in gaps if g.obligation_id == oid]
+    assert "seeded-ledger" in gap.detail and "seeded-ledger.total" in gap.detail
+    assert oid not in _covers(source)
+
+
+def test_a_fixture_whose_provided_facts_all_state_a_source_compiles() -> None:
+    """The same arrangement with every source stated is not gapped — the key is undetermined-ness."""
+    oid = f"okf:{_FLOW}:end-state"
+    obligation = _flow_obligation(
+        oid, source=_FLOW, surface="api",
+        steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+        checks=[{"call": "it", "name": "http_status", "args": {"status": 200,
+                                                               "path": "/api/things"}}],
+        fixtures=[],
+    )
+    obligation["fixturesDeclared"] = [
+        {"name": "seeded-ledger", "args": [], "provides": "a ledger exists",
+         "providesKeys": ["seeded-ledger.id", "seeded-ledger.total"]},
+    ]
+    context = _navigation_context(obligation, _step_node(f"{_API}#post-things", {}),
+                                  navigation=_api_navigation())
+
+    _, gaps = _compile_plan_gaps(context, story="demo-story")
+
+    assert "undetermined-provided-fact" not in {g.kind for g in gaps}
+
+
 def test_a_verify_bullet_the_parser_refused_is_not_a_node_that_declared_no_check() -> None:
     """The gap said the book declares no check, to an author who declared one and misspelled it.
 

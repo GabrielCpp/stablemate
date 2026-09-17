@@ -66,7 +66,13 @@ def _fixture_book(*, args: str = "", provides: str = "", needs: str = "",
     if args:
         lines.append(f"- args: {args}")
     if provides:
-        lines += ["- provides:"] + [f"  - {p}" for p in provides.split(";")]
+        # One entry per `;`, and a `|` inside one splits its headline from its own
+        # `from:`/`read:`/`is:` children — the properties that say where its fact comes from.
+        lines.append("- provides:")
+        for item in provides.split(";"):
+            headline, _, props = item.partition("|")
+            lines.append(f"  - {headline}")
+            lines += [f"    - {prop}" for prop in props.split("|") if prop]
     if needs:
         lines += ["- needs:"] + [f"  - {n}" for n in needs.split(";")]
     if secrets:
@@ -433,3 +439,37 @@ def test_a_key_that_declares_no_property_vocabulary_admits_anything(repo: Path, 
     _stack(repo)
     write(repo / "docs/features/acme/fixtures/seeded-acme.md", _PROVIDES_BOOK)
     assert _findings(repo, "unknown-entry-property") == []
+
+
+def test_undetermined_provided_fact_when_an_entry_states_neither_from_nor_is(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+          _fixture_book(provides="id — the seeded account's id"))
+    found = _findings(repo, "undetermined-provided-fact")
+    assert [f.severity for f in found] == ["error"]
+    assert "neither `from:` nor `is:`" in found[0].message
+
+
+def test_undetermined_provided_fact_when_an_entry_states_both(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+          _fixture_book(provides="id — the seeded account's id"
+                                 "|from: [seed-it](#seed-it)|read: account.id|is: 7"))
+    found = _findings(repo, "undetermined-provided-fact")
+    assert [f.severity for f in found] == ["error"]
+    assert "both `from:` and `is:`" in found[0].message
+
+
+def test_an_observed_fact_is_clean(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+          _fixture_book(provides="id — the seeded account's id"
+                                 "|from: [seed-it](#seed-it)|read: account.id"))
+    assert _findings(repo, "undetermined-provided-fact") == []
+
+
+def test_a_fact_asserted_by_construction_is_clean(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+          _fixture_book(provides="id — the seeded account's id|is: 7"))
+    assert _findings(repo, "undetermined-provided-fact") == []

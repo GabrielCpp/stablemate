@@ -1725,29 +1725,47 @@ class Qa:
         fixture: str,
         declared: Sequence[Mapping[str, str]],
         step_results: Mapping[str, "ToolResult"],
-        last_result: "ToolResult | None",
         last_index: int,
     ) -> dict[str, str]:
-        """Bind each declared `provides:` fact from the step and path its `from:`/`read:`
+        """Bind each declared `provides:` fact the way its own entry says the fact comes to be.
 
-        properties name — defaulting to the fixture's last step and the fact's own key when
-        either is absent, which is exactly the old behaviour a fixture written before this
-        vocabulary existed already relied on. No fact is read positionally by matching every
-        declared key against one shared payload any more; each is its own lookup.
+        A fact is **observed** — `from:` the step whose stdout holds it, `read:` the path within
+        that stdout, defaulting to the fact's own key — or **asserted** by the fixture's own
+        construction, and then `is:` carries the value and nothing is read. Which of the two is
+        the book's to say, and there is no third branch here: an entry that declares neither
+        never reaches this method, because `ostler doctor` refuses the book and `compile_plan`
+        withholds every obligation arranged through the fixture. The fault below is the floor
+        under that, not a fallback — it names the undetermined entry instead of guessing.
+
+        What it replaced was a guess: an entry with no `from:` fell back to the fixture's last
+        step and its whole stdout parsed as JSON. That is right only for a fixture whose last
+        step happens to print JSON, and every other one died in `json.loads` with a message
+        about a step the author never pointed at.
         """
         facts: dict[str, str] = {}
         for entry in declared:
             key = entry["key"]
             step_id = entry.get("from") or ""
-            if step_id:
-                if step_id not in step_results:
-                    detail = f"declares provides {key!r} from step {step_id!r}, which is not one of its own steps"
-                    self._fault(fixture, last_index, "provides", "defect", detail)
-                    raise RuntimeError(f"qa fixture {fixture!r} {detail}")
-                result = step_results[step_id]
-            else:
-                result = last_result
-            stdout = result.stdout if result is not None else ""
+            asserted = entry.get("is") or ""
+            if asserted and step_id:
+                detail = (f"declares provides {key!r} both `from:` step {step_id!r} and `is:` "
+                          f"{asserted!r} — a fact is observed or asserted, not both")
+                self._fault(fixture, last_index, "provides", "defect", detail)
+                raise RuntimeError(f"qa fixture {fixture!r} {detail}")
+            if asserted:
+                facts[key] = asserted
+                continue
+            if not step_id:
+                detail = (f"declares provides {key!r} with neither `from:` nor `is:` — the book "
+                          f"does not say whether this fact is observed from a step or asserted "
+                          f"by the fixture's own construction")
+                self._fault(fixture, last_index, "provides", "defect", detail)
+                raise RuntimeError(f"qa fixture {fixture!r} {detail}")
+            if step_id not in step_results:
+                detail = f"declares provides {key!r} from step {step_id!r}, which is not one of its own steps"
+                self._fault(fixture, last_index, "provides", "defect", detail)
+                raise RuntimeError(f"qa fixture {fixture!r} {detail}")
+            stdout = step_results[step_id].stdout
             try:
                 payload = json.loads(stdout)
             except json.JSONDecodeError as exc:
@@ -1819,7 +1837,7 @@ class Qa:
             if step_id:
                 step_results[step_id] = result
         self._node_facts[name] = self._extract_provides(
-            name, spec.get("provides", []), step_results, result, len(steps) - 1
+            name, spec.get("provides", []), step_results, len(steps) - 1
         )
         if result is None:
             result = ToolResult(command=[], stdout="", stderr="", exit_code=0)

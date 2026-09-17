@@ -55,6 +55,8 @@ title: Seeded acme
 
 - provides:
   - id — the seeded account's id
+    - from: [seed-it](#seed-it)
+    - read: account.id
 
 ## Steps
 
@@ -74,6 +76,8 @@ title: Seeded globex
 
 - provides:
   - project_id — the seeded project's id
+    - from: [seed-it](#seed-it)
+    - read: project.id
 - needs:
   - [seeded-acme](seeded-acme.md)
 
@@ -197,6 +201,8 @@ title: Seeded globex
 - args: acme_id
 - provides:
   - project_id — the seeded project's id
+    - from: [seed-it](#seed-it)
+    - read: project.id
 - needs:
   - [seeded-acme](seeded-acme.md) acme_id=@seeded-acme.id
 
@@ -224,3 +230,27 @@ def test_fixture_wiring_needs_binding_checks_against_consumers_own_args(tmp_path
 
     findings = [f for f in doctor.run(load(tmp_path)).findings if f.code.startswith("fixture-")]
     assert findings == []
+
+
+def test_fixture_wiring_gaps_a_provided_fact_whose_source_the_book_leaves_open(
+    tmp_path: Path,
+) -> None:
+    """End to end: strip one `from:`/`read:` pair and the obligations arranging it stop compiling.
+
+    The hand-built packets elsewhere in this suite assert the partition; this asserts the wiring
+    that gets `providesUndetermined` onto an obligation at all — `provides:` entries survive
+    graph serialization with their own properties, the `needs:` closure carries an undetermined
+    key from the fixture that declared it to the one that composes it, and `_parse_fixtures`
+    files it on every arrangement that reaches it.
+    """
+    _packet, base = _build(tmp_path, capture=True)
+    write(tmp_path / SEEDED_ACME_PATH,
+          SEEDED_ACME.replace("    - from: [seed-it](#seed-it)\n    - read: account.id\n", ""))
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+
+    _source, gaps = compile_plan_gaps(packet, story="demo-story")
+
+    undetermined = [g for g in gaps if g.kind == "undetermined-provided-fact"]
+    assert undetermined, [g.kind for g in gaps]
+    # Reached through `needs:`: the endpoint arranges `seeded-globex`, which needs `seeded-acme`.
+    assert all("seeded-acme.id" in g.detail for g in undetermined)

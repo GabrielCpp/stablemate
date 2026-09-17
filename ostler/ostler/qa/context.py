@@ -894,6 +894,7 @@ def build_context(
                     }
                 )
     fixture_provides = _fixture_provides_index(nodes_by_id)
+    fixture_undetermined = _fixture_undetermined_index(nodes_by_id)
     obligations = [
         obligation
         for node_id in sorted(contracts)
@@ -906,6 +907,7 @@ def build_context(
             scope=node_scopes.get(node_id, ()),
             judgment=judgment_by_node.get(node_id),
             fixture_provides=fixture_provides,
+            fixture_undetermined=fixture_undetermined,
             resolve_locator=_locator_resolver(head_graph, nodes_by_id, nodes_by_id[node_id]),
             nodes_by_id=nodes_by_id,
         )
@@ -922,6 +924,7 @@ def build_context(
             scope=node_scopes.get(node_id, ()),
             judgment=judgment_by_node.get(node_id),
             fixture_provides=fixture_provides,
+            fixture_undetermined=fixture_undetermined,
             resolve_locator=_locator_resolver(head_graph, nodes_by_id, nodes_by_id[node_id]),
             nodes_by_id=nodes_by_id,
         )
@@ -2145,39 +2148,83 @@ def _fixture_provides_index(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str,
     caller: it needs to know every reference a scenario's arranged fixtures resolve, including
     one supplied only by a fixture *that* fixture `needs:`.
     """
+    resolved = _fixture_provides_closure(nodes_by_id)
+    return {name: sorted(ref for ref, _ in pairs) for name, pairs in resolved.items()}
+
+
+def _fixture_undetermined_index(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
+    """Every reachable `provides:` key whose *source* the book left undetermined, by fixture stem.
+
+    A fact is observed — `from:` a step, `read:` a path in its stdout — or asserted by the
+    fixture's own construction with `is:`. An entry declaring neither, or declaring both, says
+    nothing a harness can act on, and the harness aborts the whole scenario when it reaches one.
+    So this is what `compile_plan` gaps on: *undetermined ⇒ do not emit executable code*. It
+    rides the same `needs:` closure as the keys themselves, because arranging a fixture runs the
+    fixtures it needs, and their extraction aborts just as hard.
+
+    `ostler doctor` reports the same condition per entry as `undetermined-provided-fact`. The two
+    are not redundant: the doctor tells an author their book is under-specified, and this tells a
+    compiler which obligations it must refuse rather than compile into a scenario that dies.
+    """
+    resolved = _fixture_provides_closure(nodes_by_id)
+    return {name: sorted(ref for ref, bad in pairs if bad) for name, pairs in resolved.items()}
+
+
+def _fixture_provides_closure(
+    nodes_by_id: dict[str, dict[str, Any]],
+) -> dict[str, set[tuple[str, bool]]]:
+    """`{fixture stem: {(`<owner>.<key>`, source-undetermined), ...}}` over the `needs:` closure."""
     fixtures = {node_id: node for node_id, node in nodes_by_id.items() if node.get("type") == "fixture"}
-    provides: dict[str, set[str]] = {}
+    provides: dict[str, set[tuple[str, bool]]] = {}
     needs: dict[str, set[str]] = {}
     for node_id, node in fixtures.items():
-        keys: set[str] = set()
+        keys: set[tuple[str, bool]] = set()
+        entries = node.get("entries", {}).get("provides") or []
+        stated = {}
+        for entry in entries:
+            head = str(entry.get("headline", "")).partition("—")[0].split()
+            if head:
+                stated[head[0]] = entry.get("properties") or {}
         for value in _values(node.get("bullets", {}).get("provides")):
             head = value.partition("—")[0].split()
-            if head:
-                keys.add(head[0])
+            if not head:
+                continue
+            properties = stated.get(head[0], {})
+            observed = bool(_property_text(properties.get("from")))
+            asserted = bool(_property_text(properties.get("is")))
+            keys.add((head[0], observed == asserted))
         provides[node_id] = keys
         needs[node_id] = {
             edge["to"] for edge in node.get("edges", [])
             if edge.get("via") == "needs" and edge.get("to") in fixtures
         }
 
-    closure: dict[str, set[tuple[str, str]]] = {}
+    closure: dict[str, set[tuple[str, bool]]] = {}
 
-    def resolve(node_id: str, seen: frozenset[str]) -> set[tuple[str, str]]:
+    def resolve(node_id: str, seen: frozenset[str]) -> set[tuple[str, bool]]:
         if node_id in closure:
             return closure[node_id]
         if node_id in seen:
             return set()
         owner = Path(node_id).stem
-        pairs = {(owner, key) for key in provides.get(node_id, ())}
+        pairs = {(f"{owner}.{key}", bad) for key, bad in provides.get(node_id, ())}
         for dep in needs.get(node_id, ()):
             pairs |= resolve(dep, seen | {node_id})
         closure[node_id] = pairs
         return pairs
 
-    return {
-        Path(node_id).stem: sorted(f"{owner}.{key}" for owner, key in resolve(node_id, frozenset()))
-        for node_id in fixtures
-    }
+    return {Path(node_id).stem: resolve(node_id, frozenset()) for node_id in fixtures}
+
+
+def _property_text(value: object) -> str:
+    """One serialized entry property as its text — the JSON-side twin of `Entry.property_text`.
+
+    The graph node dict is JSON, so the `Entry` that knows how to flatten its own property is
+    gone by the time a packet reader sees it; only the `str | list[str]` it carried survives.
+    """
+    if isinstance(value, list):
+        return " ".join(str(v).strip() for v in value if str(v).strip())
+    return str(value).strip() if value is not None else ""
 
 
 def _parse_captures(values: list[str]) -> list[dict[str, Any]]:
@@ -2266,7 +2313,9 @@ def _unparsed_acts(values: list[str]) -> list[dict[str, Any]]:
 
 
 def _parse_fixtures(
-    values: list[str], fixture_provides: dict[str, list[str]] | None = None
+    values: list[str],
+    fixture_provides: dict[str, list[str]] | None = None,
+    fixture_undetermined: dict[str, list[str]] | None = None,
 ) -> list[dict[str, Any]]:
     """The declared arrangements among *values*, in order, deduped on name and arguments.
 
@@ -2284,6 +2333,13 @@ def _parse_fixtures(
             keys = (fixture_provides or {}).get(parsed.name)
             if keys:
                 row["providesKeys"] = keys
+            # …and of those, the ones whose source the book left undetermined. Carried
+            # separately rather than dropped from `providesKeys`, because the two answer
+            # different questions: what this arrangement makes available, and what about it
+            # `compile_plan` must refuse to emit code for.
+            undetermined = (fixture_undetermined or {}).get(parsed.name)
+            if undetermined:
+                row["providesUndetermined"] = undetermined
             rows.append(row)
     return list({(row["name"], tuple(row["args"])): row for row in rows}.values())
 
@@ -2531,6 +2587,7 @@ def _obligations(
     scope: tuple[str, ...] = (),
     judgment: list[dict[str, Any]] | None = None,
     fixture_provides: dict[str, list[str]] | None = None,
+    fixture_undetermined: dict[str, list[str]] | None = None,
     resolve_locator: Callable[[str], LocatorTarget] | None = None,
     nodes_by_id: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
@@ -2624,7 +2681,7 @@ def _obligations(
     node_fixtures, fixtures_per_bullet = registry.attributed_fixtures(
         str(node.get("type", "")), node.get("bulletOrder") or [], combiners
     )
-    ambient = _parse_fixtures(node_fixtures, fixture_provides)
+    ambient = _parse_fixtures(node_fixtures, fixture_provides, fixture_undetermined)
     if ambient:
         base["fixturesDeclared"] = ambient
     ambient_unparsed = _unparsed_fixtures(node_fixtures)
@@ -2722,7 +2779,8 @@ def _obligations(
                 obligation["checksUnparsed"] = refused
             else:
                 obligation.pop("checksUnparsed", None)
-            arranged = _parse_fixtures(fixtures_per_bullet.get((key, index), []), fixture_provides)
+            arranged = _parse_fixtures(
+                fixtures_per_bullet.get((key, index), []), fixture_provides, fixture_undetermined)
             combined = list({(row["name"], tuple(row["args"])): row
                              for row in [*ambient, *arranged]}.values())
             if combined:
