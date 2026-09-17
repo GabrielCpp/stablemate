@@ -64,8 +64,9 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - when: `tally.json` may or may not already be there.
 - does:
   - Writes an empty ledger when there is none, and exits `0`.
-  - Refuses when there is one already, and leaves that file byte-for-byte unchanged.
 - verify: created(subject="tally.json")
+- does:
+  - Refuses when there is one already, and leaves that file byte-for-byte unchanged.
 - verify: unchanged(subject="tally.json")
 - status: `0` when the ledger was created.
 - verify: exit_status(code=0)
