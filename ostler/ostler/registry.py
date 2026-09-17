@@ -295,6 +295,18 @@ class BulletKey:
                              # rather than a hand-maintained tuple beside this table, for the same
                              # reason as ``locator``: a second copy drifts the moment a type adds
                              # one and the copy is not updated alongside it.
+    address: bool = False   # value names where to reach the node, not something observed about
+                             # it (``start:``/``end:`` on a flow, ``role:``/``name:`` on a
+                             # component) — still ``normative=True`` (each is required, and
+                             # stating it is still an obligation a scaffold has to fill), but it
+                             # is not a claim a `verify:` binds *to*: reaching the node named by
+                             # an address is the observation that the address holds, so no check
+                             # in the vocabulary names one alone. A reader asking "what must this
+                             # node prove that some sibling `verify:` could be missing" needs
+                             # these apart from `does:`/`does:`-shaped claims for the same reason
+                             # `condition` needs `when:`/`states:` apart: an evenness comparison
+                             # that does not partition them asks a book to bind a check to a
+                             # bullet nothing in the vocabulary can observe on its own.
 
 
 @dataclass(frozen=True)
@@ -439,6 +451,21 @@ def condition_keys(node_type: str) -> tuple[str, ...]:
     return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.condition)
 
 
+def address_keys(node_type: str) -> tuple[str, ...]:
+    """Every bullet key on `node_type` that names where to reach the node, not a claim about it.
+
+    `start:`/`end:` on a flow and `role:`/`name:` on a component are each required and still
+    normative — stating them is still an obligation — but reaching the node they address *is*
+    the observation that the address holds, so no check in the vocabulary names one alone
+    (`compile.py`'s `_page_locator_expr` folds `role:`+`name:` into the one locator a check
+    resolves against, never a check on `role:` by itself). The canonical source a hand-maintained
+    tuple beside a check should read instead of duplicating, for the same reason as
+    `condition_keys`.
+    """
+    uitype = UI_TYPES_BY_NAME.get(node_type)
+    return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.address)
+
+
 def attributed_fixtures(
     node_type: str, bullet_order: Iterable[Sequence[Any]], combiners: Mapping[int, str]
 ) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
@@ -534,8 +561,18 @@ def normative_claims(
     normative bullets itself is one edit away from the two disagreeing, and a disagreement
     here is silent — the finding quotes a verb from one bullet and judges the checks of
     another. So the counting is written once, here, beside `_attributed`'s copy of it.
+
+    Excludes `condition`- and `address`-flagged keys. Both are still normative — each mints its
+    own obligation, `_attributed` still binds checks against them as the nearest bullet above a
+    `verify:` — but neither is a claim this function's callers compare a check *against*: a
+    condition mints and gaps on its own id (`doctor.py`'s `_declared_alternatives`), and no check
+    in the vocabulary names an address alone (reaching the node it addresses is what proves it
+    holds). A caller that folded them in here was asking a book to bind a `verify:` to a bullet
+    nothing can observe on its own — that is `uneven-claim-coverage` and
+    `unstated-precondition`'s reason for calling this rather than `normative_keys` directly.
     """
-    normative = set(normative_keys(node_type))
+    excluded = set(condition_keys(node_type)) | set(address_keys(node_type))
+    normative = set(normative_keys(node_type)) - excluded
     counts: dict[str, int] = {}
     claims: dict[tuple[str, int], str] = {}
     for row in bullet_order:
@@ -735,9 +772,9 @@ UI_TYPES: tuple[UINodeType, ...] = (
     UINodeType(
         name="flow", kind="file", context="flows",
         bullet_keys=(
-            BulletKey("start", normative=True),
+            BulletKey("start", normative=True, address=True),
             BulletKey("steps", nested=True, link=True),
-            BulletKey("end", normative=True),
+            BulletKey("end", normative=True, address=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
@@ -817,7 +854,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # reader announces, and the `getByRole(role, {name})` a test locates by. `none` is a
             # legitimate value — a decorative or purely presentational element has no accessible
             # name — but it has to be *stated*, so "no name" and "nobody looked" stay distinguishable.
-            BulletKey("role", required=True, normative=True, locator=True),
+            BulletKey("role", required=True, normative=True, locator=True, address=True),
             # A generated class of controls: `one-per:` names the iteration variable (machine
             # value = one identifier in backticks; where the data comes from stays prose, grounded
             # via `code:`), `variants:` enumerates the "one of each type" axis
@@ -827,7 +864,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # evaluated. See locators.py.
             BulletKey("one-per"),
             BulletKey("variants"),
-            BulletKey("name", required=True, normative=True, locator=True),
+            BulletKey("name", required=True, normative=True, locator=True, address=True),
             BulletKey("unique-by"),
             # Where the component lands on the screen, as bands of the viewport
             # (`width 60-100%, x 0-20%`). Screen-relative on purpose: no `sidebar`/`main-column`
@@ -1090,6 +1127,11 @@ LOCATOR_KEYS: frozenset[str] = frozenset(b.key for t in UI_TYPES for b in t.bull
 # to hand-maintain beside this table.
 CONDITION_KEYS: frozenset[str] = frozenset(
     b.key for t in UI_TYPES for b in t.bullet_keys if b.condition)
+# Every key flagged `address=True` on some type — `start:`/`end:`, `role:`/`name:` — the flat
+# form a reader partitioning "what must this node prove" from "where this node is reached" needs,
+# mirroring `CONDITION_KEYS`.
+ADDRESS_KEYS: frozenset[str] = frozenset(
+    b.key for t in UI_TYPES for b in t.bullet_keys if b.address)
 LOAD_BEARING_KEYS: frozenset[str] = frozenset(
     b.key for t in UI_TYPES for b in t.bullet_keys
     if b.normative or b.check or b.link or b.arrange or b.locator
