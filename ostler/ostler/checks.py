@@ -384,6 +384,74 @@ def parse_expression(text: str) -> ast.Expression:
 
 
 @dataclass(frozen=True, slots=True)
+class Call:
+    """One call expression's name and literal arguments, before any vocabulary reads it.
+
+    The *grammar* of a declared call — a bare name, parentheses, literal arguments — is one
+    thing; what the name means is another. `verify:` resolves a name against `CHECKS`, and an
+    `arrange:` bullet resolves one against the acts a driver can perform (`ostler.acts`).
+    Sharing the parse and not the vocabulary is what keeps the two keys spelling a call the
+    same way while refusing different names for different reasons: a second parser would be
+    free to accept `f(a=1,)` on one key and refuse it on the other, and nothing would notice.
+    """
+
+    name: str
+    positional: tuple[Any, ...]
+    keywords: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class Malformed:
+    """A call whose name is recoverable and whose arguments are not literals.
+
+    Kept apart from "not a call at all": the name is what decides which form to suggest, and
+    it is recoverable here, so a vocabulary can answer with *that* name's signature instead
+    of handing back the whole vocabulary to an author who has already chosen from it.
+    """
+
+    name: str
+    problem: str
+
+
+def parse_call(value: str) -> "Call | Malformed | None":
+    """*value* as a call with literal arguments, a `Malformed`, or `None` for neither.
+
+    `None` means *this is not a call at all* — empty, unparseable, or an expression of some
+    other shape. Each vocabulary classifies that case for itself, because the likeliest
+    mistake differs per key: a test reference under `verify:`, a component's bare name under
+    `arrange:`. What a non-literal argument means does *not* differ per key, so it is worded
+    once, here.
+    """
+    text = _unwrap(value)
+    if not text:
+        return None
+    try:
+        expression = parse_expression(text).body
+    except SyntaxError:
+        return None
+    if not isinstance(expression, ast.Call) or not isinstance(expression.func, ast.Name):
+        return None
+    name = expression.func.id
+    positional: list[Any] = []
+    for node in expression.args:
+        bound = _value(node)
+        if isinstance(bound, str) and bound.startswith("\0"):
+            return Malformed(name, bound[1:])
+        positional.append(bound)
+    keywords: dict[str, Any] = {}
+    for keyword in expression.keywords:
+        if keyword.arg is None:
+            return Malformed(name, "`**` is not an argument")
+        if keyword.arg in keywords:
+            return Malformed(name, f"`{keyword.arg}` given twice")
+        bound = _value(keyword.value)
+        if isinstance(bound, str) and bound.startswith("\0"):
+            return Malformed(name, bound[1:])
+        keywords[keyword.arg] = bound
+    return Call(name=name, positional=tuple(positional), keywords=keywords)
+
+
+@dataclass(frozen=True, slots=True)
 class Refusal:
     """Why one `verify:` value is not a check, as a value rather than a sentence.
 
@@ -417,6 +485,14 @@ class Refusal:
         return f"- {self.relocates_to or key}: {self.form}"
 
 
+def _unknown_check(name: str) -> Refusal:
+    """The refusal for a name no `CHECKS` entry declares — one spelling for both callers."""
+    known = ", ".join(sorted(CHECK_BY_NAME))
+    return Refusal("unknown-check",
+                   f"`{name}` is not a known check — the vocabulary is: {known}",
+                   _vocabulary())
+
+
 def parse_check(value: str) -> CheckCall | Refusal:
     """Parse one `verify:` value, or return the `Refusal` saying what was written instead.
 
@@ -424,23 +500,18 @@ def parse_check(value: str) -> CheckCall | Refusal:
     that accepts `f(a="x, y")` also accepts things that are not calls, and the failure mode
     of a permissive grammar here is a declaration nobody can execute reaching the harness.
     Only literals are admitted — there is nothing to evaluate, and nothing that could be.
+    The grammar itself is `parse_call`, shared with the other declared-call key; what this
+    function adds is the one vocabulary that gives a name meaning.
     """
     text = _unwrap(value)
     if not text:
         return Refusal("empty", "empty", _vocabulary())
-    try:
-        expression = parse_expression(text).body
-    except SyntaxError:
+    parsed = parse_call(text)
+    if parsed is None:
         return _not_a_call(text)
-    if not isinstance(expression, ast.Call) or not isinstance(expression.func, ast.Name):
-        return _not_a_call(text)
-    name = expression.func.id
-    spec = CHECK_BY_NAME.get(name)
+    spec = CHECK_BY_NAME.get(parsed.name)
     if spec is None:
-        known = ", ".join(sorted(CHECK_BY_NAME))
-        return Refusal("unknown-check",
-                       f"`{name}` is not a known check — the vocabulary is: {known}",
-                       _vocabulary())
+        return _unknown_check(parsed.name)
 
     # Past this point the name is known, so the form that would have been accepted is *this*
     # check's signature and never the vocabulary: an author shown `http_status(code=…)` after
@@ -448,26 +519,21 @@ def parse_check(value: str) -> CheckCall | Refusal:
     def wrong(message: str) -> Refusal:
         return Refusal("bad-arguments", message, spec.signature())
 
+    if isinstance(parsed, Malformed):
+        return wrong(f"`{parsed.name}`: {parsed.problem}")
+    name = parsed.name
     args: dict[str, CheckValue] = {}
-    if len(expression.args) > len(spec.params):
+    if len(parsed.positional) > len(spec.params):
         return wrong(f"`{name}` takes at most {len(spec.params)} arguments")
-    for param, node in zip(spec.params, expression.args, strict=False):
-        bound = _value(node)
-        if isinstance(bound, str) and bound.startswith("\0"):
-            return wrong(f"`{name}`: {bound[1:]}")
+    for param, bound in zip(spec.params, parsed.positional, strict=False):
         args[param.name] = bound
-    for keyword in expression.keywords:
-        if keyword.arg is None:
-            return wrong(f"`{name}`: `**` is not an argument")
-        param = spec.param_by_name.get(keyword.arg)
+    for key, bound in parsed.keywords.items():
+        param = spec.param_by_name.get(key)
         if param is None:
             allowed = ", ".join(p.name for p in spec.params)
-            return wrong(f"`{name}` has no argument `{keyword.arg}` — it takes: {allowed}")
+            return wrong(f"`{name}` has no argument `{key}` — it takes: {allowed}")
         if param.name in args:
             return wrong(f"`{name}`: `{param.name}` given twice")
-        bound = _value(keyword.value)
-        if isinstance(bound, str) and bound.startswith("\0"):
-            return wrong(f"`{name}`: {bound[1:]}")
         args[param.name] = bound
 
     return bind(name, args)
@@ -596,10 +662,7 @@ def bind(name: str, args: Mapping[str, Any]) -> CheckCall | Refusal:
     """
     spec = CHECK_BY_NAME.get(name)
     if spec is None:
-        known = ", ".join(sorted(CHECK_BY_NAME))
-        return Refusal("unknown-check",
-                       f"`{name}` is not a known check — the vocabulary is: {known}",
-                       _vocabulary())
+        return _unknown_check(name)
 
     # Every refusal below names a check that exists, so the form to suggest is that check's
     # signature. The name is what makes the difference recoverable, and it is recoverable
