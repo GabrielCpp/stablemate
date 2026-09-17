@@ -636,6 +636,60 @@ def _browser_spec(tmp_path: Path, locator: str) -> Path:
     return spec
 
 
+def _browser_spec_with_locators(tmp_path: Path, locators: dict[str, str], locator: str) -> Path:
+    spec = _spec(tmp_path)
+    context = json.loads((spec / "qa-okf-context.json").read_text(encoding="utf-8"))
+    context["obligations"][0]["locators"] = locators
+    (spec / "qa-okf-context.json").write_text(json.dumps(context), encoding="utf-8")
+    (spec / "qa_plan.py").write_text(
+        BROWSER_PLAN.format(obligation=OBLIGATION, locator=locator), encoding="utf-8"
+    )
+    return spec
+
+
+def test_a_role_with_a_truthful_empty_name_validates_by_selector(tmp_path: Path) -> None:
+    # A role paired with a book-truthful `name: none` (the element's accessible name really is
+    # empty — no `aria-label` gives it one) has no `get_by_role` query `_page_locator_expr` will
+    # ever emit for it, so the validator must accept the `selector:` the compiler falls through
+    # to as the whole address, rather than demand a role locator that can never exist.
+    spec = _browser_spec_with_locators(
+        tmp_path,
+        {"role": "generic", "name": "none", "selector": "#empty-notice", "route": "/items"},
+        'qa.by_css("#empty-notice")',
+    )
+    document, problems = load_plan(spec / "qa_plan.py", spec, tmp_path)
+    assert not problems and document is not None
+    assert validate_v2(document) == []
+
+
+def test_a_role_with_a_real_name_still_rejects_text_addressing(tmp_path: Path) -> None:
+    # The relaxation must not widen into a general escape hatch: a node with a genuine
+    # accessible name is still held to `get_by_role`, not to text.
+    spec = _browser_spec_with_locators(
+        tmp_path,
+        {"role": "listitem", "name": "Widget", "selector": "#widget", "route": "/items"},
+        'qa.by_text("Widget")',
+    )
+    document, problems = load_plan(spec / "qa_plan.py", spec, tmp_path)
+    assert not problems and document is not None
+    reported = validate_v2(document)
+    assert any("uses a text locator" in item for item in reported)
+    assert any("no Playwright locator addresses by role" in item for item in reported)
+
+
+def test_a_role_with_a_real_name_still_rejects_a_bare_selector(tmp_path: Path) -> None:
+    # Nor to a bare selector: a documented name is a `by_role` query the compiler can build, so
+    # settling for `selector:` instead is still the gap the rule exists to catch.
+    spec = _browser_spec_with_locators(
+        tmp_path,
+        {"role": "listitem", "name": "Widget", "selector": "#widget", "route": "/items"},
+        'qa.by_css("#widget")',
+    )
+    document, problems = load_plan(spec / "qa_plan.py", spec, tmp_path)
+    assert not problems and document is not None
+    assert any("no Playwright locator addresses by role" in item for item in validate_v2(document))
+
+
 def test_a_browser_scenario_is_held_to_the_role_the_book_documents(tmp_path: Path) -> None:
     # The check that survives the format change: `describe` recovers the locators from the
     # parsed body, so validation reads the same structure it read off a YAML action list.

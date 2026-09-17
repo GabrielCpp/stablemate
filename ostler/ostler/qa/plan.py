@@ -1178,8 +1178,23 @@ def _validate_book_locators(
     and a screen node documenting `role: main` should not force a `get_by_role("main")` next
     to the assertion that matters, so one role locator satisfies the addressing rule. A gate
     that demands the impossible is a gate the planner burns its turns against.
+
+    A role and its accessible name are one address, not two claims because they sit on two
+    bullets: `_page_locator_expr` never emits `get_by_role(role)` without a `name=` — Playwright's
+    strict mode raises when a bare role resolves to more than one element, and the compiler has no
+    runtime page to check that against statically — so a role paired with a truthful `name: none`
+    (the element's accessible name genuinely is empty; no `aria-label` gives it one) compiles to
+    `selector:` instead, exactly as `_page_locator_expr`'s own docstring says it will. Demanding a
+    `get_by_role` locator for that node anyway is the same dead end the paragraph above already
+    guards against, just reached from the name side instead of the coverage side: the role is only
+    held to the "must be addressed by role" rule when the node also states a name a `by_role` query
+    could use. Without that name, `selector:` is not a lesser address the scenario settled for — it
+    is the whole address the book has, and a `by_css` locator built from it satisfies the addressing
+    rule. The text-locator rejection is unaffected: a role stated with no name still says "this is
+    not free text," so a text locator on that node is still rejected in favor of the selector.
     """
     roles: set[str] = set()
+    named_roles: set[str] = set()
     routes: set[str] = set()
     addressable = bool(covers)
     for cover in covers:
@@ -1187,6 +1202,14 @@ def _validate_book_locators(
         node_roles = _bullet_tokens(locators.get("role"))
         addressable = addressable and bool(node_roles or _bullet_tokens(locators.get("selector")))
         roles |= node_roles
+        # `name` genuinely undocumented (the key is absent — a locators dict this thin never
+        # comes off a real packet, where `name:` is required on every role-bearing node type) is
+        # not the same claim as `name` documented and truthfully empty (`name: none`): the first
+        # says nothing about whether a `by_role` query could work, so the old, stricter default
+        # holds; only the second is the book's own word that no accessible name exists, which is
+        # what relaxes the rule below.
+        if node_roles and (("name" not in locators) or _bullet_tokens(locators.get("name"))):
+            named_roles |= node_roles
         routes |= {route for route in _bullet_tokens(locators.get("route")) if route.startswith("/")}
 
     used_roles: set[str] = set()
@@ -1211,9 +1234,9 @@ def _validate_book_locators(
                 f"scenario '{scenario_id}' {where} uses a text locator while the covered "
                 f"OKF node documents role(s) {sorted(roles)} — address it by role and name"
             )
-    if roles and not used_roles:
+    if named_roles and not used_roles:
         problems.append(
-            f"scenario '{scenario_id}' covers OKF node(s) documenting role(s) {sorted(roles)} "
+            f"scenario '{scenario_id}' covers OKF node(s) documenting role(s) {sorted(named_roles)} "
             "that no Playwright locator addresses by role"
         )
     for url in goto_urls:
