@@ -133,7 +133,7 @@ def _call_text(name: str, args: Any) -> str | None:
     check on an obligation that was in fact observed.
     """
     bound = checks.bind(name, args if is_mapping(args) else {})
-    return None if isinstance(bound, str) else bound.text()
+    return bound.text() if isinstance(bound, checks.CheckCall) else None
 
 
 def build_evidence_map(spec_dir: Path, *, label: str | None = None) -> dict[str, Any]:

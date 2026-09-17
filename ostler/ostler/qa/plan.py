@@ -274,11 +274,12 @@ def _invoked_checks(document: PlanDocument) -> tuple[dict[str, dict[str, checks.
             if not is_mapping(call):
                 continue
             bound = checks.bind(str(call.get("check", "")), call.get("args") or {})
-            if isinstance(bound, str):
+            if isinstance(bound, checks.Refusal):
                 # An invocation the vocabulary does not admit is worth its own refusal: it
                 # would otherwise fail only as an obligation nobody bound, which sends the
                 # author looking at the book instead of at the call they mistyped.
-                problems.append(f"scenario '{scenario_id}' calls qa.verify with {bound}")
+                problems.append(
+                    f"scenario '{scenario_id}' calls qa.verify with {bound.message}")
                 continue
             for obligation_id in call.get("covers") or []:
                 invoked.setdefault(str(obligation_id), {})[bound.text()] = bound
@@ -323,7 +324,7 @@ def _near_miss(
             f"— widen that call's covers= instead of writing a second one."
         )
     declared = checks.parse_check(call)
-    if isinstance(declared, str):
+    if isinstance(declared, checks.Refusal):
         return ""
     # Closest first, and only when an argument already agrees: the same check name with
     # nothing in common is a different assertion, and pointing at it would send the repair to

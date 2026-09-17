@@ -362,8 +362,42 @@ def parse_expression(text: str) -> ast.Expression:
         return ast.parse(text, mode="eval")
 
 
-def parse_check(value: str) -> CheckCall | str:
-    """Parse one `verify:` value, or return the sentence explaining why it is not a check.
+@dataclass(frozen=True, slots=True)
+class Refusal:
+    """Why one `verify:` value is not a check, as a value rather than a sentence.
+
+    A refusal *classifies* — a test reference written under the wrong key is a different
+    finding from a typo in an argument, and it is `parse_check` that can tell them apart,
+    because it is the thing that looked. Returning only prose threw that away: the one
+    consumer that needed the class had to re-derive it, and did so by re-running the parse
+    that had just failed, which can never recover a name from a value that is not a call.
+    The two then disagreed — for 317 bullets in one real book the message said *put this on
+    `tests:`* while the suggestion beside it listed all sixteen checks.
+
+    The suggested bullet is composed here rather than by the caller because the class is what
+    decides *which key* the value belongs under, and only a refusal that relocates a value
+    knows that it moves.
+    """
+
+    #: What kind of thing was written. Not free text: callers branch on it, so a new kind is a
+    #: new case at every branch, which is the point — a kind nobody handles is visible.
+    kind: str
+    #: The sentence that goes in the finding's message, explaining what was wrong.
+    message: str
+    #: The form that would have been accepted — one check's signature, the whole vocabulary,
+    #: or the value itself where the value is fine and only the key under it is wrong.
+    form: str
+    #: The key this value belongs under, when that is a *different* key from the one it was
+    #: found on. Empty when the value stays put and only its spelling was wrong.
+    relocates_to: str = ""
+
+    def bullet(self, key: str) -> str:
+        """The suggested replacement bullet for a value found under *key*."""
+        return f"- {self.relocates_to or key}: {self.form}"
+
+
+def parse_check(value: str) -> CheckCall | Refusal:
+    """Parse one `verify:` value, or return the `Refusal` saying what was written instead.
 
     Parsing goes through `ast` rather than a regex because the grammar *is* a call: a regex
     that accepts `f(a="x, y")` also accepts things that are not calls, and the failure mode
@@ -372,7 +406,7 @@ def parse_check(value: str) -> CheckCall | str:
     """
     text = _unwrap(value)
     if not text:
-        return "empty"
+        return Refusal("empty", "empty", _vocabulary())
     try:
         expression = parse_expression(text).body
     except SyntaxError:
@@ -383,28 +417,36 @@ def parse_check(value: str) -> CheckCall | str:
     spec = CHECK_BY_NAME.get(name)
     if spec is None:
         known = ", ".join(sorted(CHECK_BY_NAME))
-        return f"`{name}` is not a known check — the vocabulary is: {known}"
+        return Refusal("unknown-check",
+                       f"`{name}` is not a known check — the vocabulary is: {known}",
+                       _vocabulary())
+
+    # Past this point the name is known, so the form that would have been accepted is *this*
+    # check's signature and never the vocabulary: an author shown `http_status(code=…)` after
+    # mis-calling `absent` learns nothing about `absent`, and guesses again on the next lap.
+    def wrong(message: str) -> Refusal:
+        return Refusal("bad-arguments", message, spec.signature())
 
     args: dict[str, CheckValue] = {}
     if len(expression.args) > len(spec.params):
-        return f"`{name}` takes at most {len(spec.params)} arguments"
+        return wrong(f"`{name}` takes at most {len(spec.params)} arguments")
     for param, node in zip(spec.params, expression.args, strict=False):
         bound = _value(node)
         if isinstance(bound, str) and bound.startswith("\0"):
-            return f"`{name}`: {bound[1:]}"
+            return wrong(f"`{name}`: {bound[1:]}")
         args[param.name] = bound
     for keyword in expression.keywords:
         if keyword.arg is None:
-            return f"`{name}`: `**` is not an argument"
+            return wrong(f"`{name}`: `**` is not an argument")
         param = spec.param_by_name.get(keyword.arg)
         if param is None:
             allowed = ", ".join(p.name for p in spec.params)
-            return f"`{name}` has no argument `{keyword.arg}` — it takes: {allowed}"
+            return wrong(f"`{name}` has no argument `{keyword.arg}` — it takes: {allowed}")
         if param.name in args:
-            return f"`{name}`: `{param.name}` given twice"
+            return wrong(f"`{name}`: `{param.name}` given twice")
         bound = _value(keyword.value)
         if isinstance(bound, str) and bound.startswith("\0"):
-            return f"`{name}`: {bound[1:]}"
+            return wrong(f"`{name}`: {bound[1:]}")
         args[param.name] = bound
 
     return bind(name, args)
@@ -425,21 +467,34 @@ def is_check_expression(value: str) -> bool:
 
 
 def _unwrap(value: str) -> str:
-    """The bullet's value as markdown reads it: every soft line break is one space.
+    """The bullet's value as markdown reads it: soft line breaks folded, a code span opened.
 
     A bullet is prose first, and books wrap prose at a column — `ostler fmt` keeps the break,
     so a long `subject="…"` arrives here split across lines. CommonMark renders that break
     as a space; Python's grammar rejects it inside a string literal. Parsing the rendered
     value rather than the raw bytes is what keeps a legal wrap from reading as a malformed
     check that an author then unwraps by hand, one node at a time.
+
+    A code span is the other thing markdown does to a bullet value, and for the same reason:
+    a book writing ``- verify: `visible(locator=…)` `` has written a check, and the backticks
+    are how it is *rendered*, not part of what it says. Reading them as content refuses a
+    correct call and — worse, because it is silent — hands the test-reference test a value
+    ending in ``ts` `` rather than `ts`, so a misfiled path is reported as an unrecognisable
+    one. `refs.normalize_ref` already states this rule for the sibling `code:` key; a value
+    is decorated the same way under either.
     """
-    return _SOFT_BREAK.sub(" ", value).strip()
+    return _CODE_SPAN.sub(r"\2", _SOFT_BREAK.sub(" ", value).strip()).strip()
 
 
 _SOFT_BREAK = re.compile(r"[ \t]*\n[ \t]*")
 
+#: A value that *is* one code span, not a value that merely contains one. The closing run must
+#: match the opening run and nothing may sit outside it, so ``\`a\` and \`b\`` is left alone
+#: rather than unwrapped to ``a\` and \`b``, inventing a value the book never wrote.
+_CODE_SPAN = re.compile(r"^(`+)((?:(?!\1).)*)\1$", re.DOTALL)
 
-def _not_a_call(text: str) -> str:
+
+def _not_a_call(text: str) -> Refusal:
     """Why this value is not a check — naming the likeliest mistake when it is recognisable.
 
     Overwhelmingly the thing written in `verify:` that is not a call is a *test reference*,
@@ -447,13 +502,24 @@ def _not_a_call(text: str) -> str:
     "expected `name(arg=…)`" leaves the author to invent a call for an observation they were
     never asked to name here, and the invented call is what fails on the next lap; saying
     where the reference belongs ends the loop in one.
+
+    The relocation is the whole finding in that case, so it travels on the refusal: the value
+    is not malformed, it is well-formed under `tests:`, and the suggestion is the value itself
+    under that key. Handing back the vocabulary instead — which is what the caller did while
+    this classification stopped at this function — contradicts the sentence beside it.
     """
     if "::" in text or text.rsplit(".", 1)[-1] in _TEST_REF_SUFFIXES:
-        return (f"`{text}` is a code/test reference, not a check — a test id says which code "
-                f"ran, not what was observed. Put it on `tests:` and declare the observation "
-                f"here as a call, e.g. `visible(locator=…)`; `ostler checks` lists the "
-                f"vocabulary")
-    return f"`{text}` is not a check call — expected `name(arg=…)`; see `ostler checks`"
+        return Refusal(
+            "misfiled-test-ref",
+            f"`{text}` is a code/test reference, not a check — a test id says which code "
+            f"ran, not what was observed. Put it on `tests:` and declare the observation "
+            f"here as a call, e.g. `visible(locator=…)`; `ostler checks` lists the "
+            f"vocabulary",
+            text, relocates_to="tests")
+    return Refusal("not-a-call",
+                   f"`{text}` is not a check call — expected `name(arg=…)`; see "
+                   f"`ostler checks`",
+                   _vocabulary())
 
 
 #: Enough to recognise a path written where a call belongs. Not a filesystem probe: the value
@@ -461,29 +527,24 @@ def _not_a_call(text: str) -> str:
 _TEST_REF_SUFFIXES = {"py", "ts", "tsx", "js", "jsx", "go", "rs", "php", "dart", "java", "kt"}
 
 
-def expected_form(value: str) -> str:
-    """The form the author was reaching for, for a `verify:` value that did not parse.
+def _vocabulary() -> str:
+    """Every check's signature — the form to suggest when the author has not yet chosen one.
 
-    A refusal is only actionable if it shows the shape that would have been accepted, and the
-    shape depends on *which* check was attempted — a fixed example teaches the wrong signature
-    to every author whose check is not that one, which is exactly how `absent(locator=…)` and
-    `emitted(subject=…)` get written. When the name is recoverable and known, that check's own
-    signature is the answer; when it is not, the whole vocabulary is, because the author has
-    not yet chosen from it.
+    This is the fallback and not the default. A refusal that recovered a name suggests *that*
+    check's signature, because a fixed example teaches the wrong signature to every author
+    whose check is not that one, which is exactly how `absent(locator=…)` and
+    `emitted(subject=…)` get written. The whole vocabulary is right only where the name is
+    genuinely unknown, because there the author has not chosen from it yet.
+
+    It replaced `expected_form`, which took the *value* and re-derived the class by re-running
+    `parse_expression` — the parse that had just failed — so it could never reach a per-check
+    signature for any value that failed to parse, and never learned about the `tests:` case at
+    all. The class now arrives on the `Refusal`, which is the thing that made it.
     """
-    text = _unwrap(value)
-    try:
-        expression = parse_expression(text).body
-    except SyntaxError:
-        expression = None
-    if isinstance(expression, ast.Call) and isinstance(expression.func, ast.Name):
-        spec = CHECK_BY_NAME.get(expression.func.id)
-        if spec is not None:
-            return spec.signature()
     return " | ".join(spec.signature() for spec in CHECKS)
 
 
-def bind(name: str, args: Mapping[str, Any]) -> CheckCall | str:
+def bind(name: str, args: Mapping[str, Any]) -> CheckCall | Refusal:
     """A call assembled from an already-separated name and arguments, or why it is not one.
 
     The tail of `parse_check`, shared with the other direction: a `verify:` bullet arrives as
@@ -495,22 +556,31 @@ def bind(name: str, args: Mapping[str, Any]) -> CheckCall | str:
     spec = CHECK_BY_NAME.get(name)
     if spec is None:
         known = ", ".join(sorted(CHECK_BY_NAME))
-        return f"`{name}` is not a known check — the vocabulary is: {known}"
+        return Refusal("unknown-check",
+                       f"`{name}` is not a known check — the vocabulary is: {known}",
+                       _vocabulary())
+
+    # Every refusal below names a check that exists, so the form to suggest is that check's
+    # signature. The name is what makes the difference recoverable, and it is recoverable
+    # here and nowhere downstream.
+    def wrong(message: str) -> Refusal:
+        return Refusal("bad-arguments", message, spec.signature())
+
     bound: dict[str, CheckValue] = {}
     for key, value in args.items():
         param = spec.param_by_name.get(key)
         if param is None:
             allowed = ", ".join(p.name for p in spec.params)
-            return f"`{name}` has no argument `{key}` — it takes: {allowed}"
+            return wrong(f"`{name}` has no argument `{key}` — it takes: {allowed}")
         if not _typed(value, param.type):
-            return f"`{name}`: `{key}` is {param.type}, got {type(value).__name__}"
+            return wrong(f"`{name}`: `{key}` is {param.type}, got {type(value).__name__}")
         bound[key] = _rooted(value) if param.path else value
     for param in spec.params:
         if param.required and param.name not in bound:
-            return f"`{name}` requires `{param.name}: {param.type}`"
+            return wrong(f"`{name}` requires `{param.name}: {param.type}`")
     if spec.one_of and not any(key in bound for key in spec.one_of):
         choices = ", ".join(f"`{key}`" for key in spec.one_of)
-        return (
+        return wrong(
             f"`{name}` needs one of {choices} — without a comparison it asserts only that "
             f"the path resolved, and {spec.excludes}"
         )

@@ -2375,7 +2375,8 @@ def _availability_observed(graph: Graph) -> set[str]:
         for key in registry.check_keys(node.type):
             for value in _bullet_values(node.meta.get(key, "")):
                 parsed = checks.parse_check(value)
-                if isinstance(parsed, str) or parsed.name not in _AVAILABILITY_CHECKS:
+                if (not isinstance(parsed, checks.CheckCall)
+                        or parsed.name not in _AVAILABILITY_CHECKS):
                     continue
                 target = loc_mod.located_node(graph, str(parsed.args.get("locator", "")),
                                               node.path)
@@ -2837,16 +2838,18 @@ def _check_ui(graph: Graph, f: list[Finding],
                 # nothing and costs a second thing to waive.
                 declared += 1
                 parsed = checks.parse_check(value)
-                if isinstance(parsed, str):
+                if isinstance(parsed, checks.Refusal):
                     f.append(Finding(
                         "error", "unparsed-check",
-                        f"{node.id}: `{key}:{index}` ({value}) {parsed}",
+                        f"{node.id}: `{key}:{index}` ({value}) {parsed.message}",
                         path=rel, line=node.line,
                         ref=refs_mod.bullet_ref(node.id, key, index),
-                        # The failing check's own signature, never a canned example: an author
-                        # shown `http_status(code=…)` after mis-calling `absent` learns nothing
-                        # about `absent`, and guesses again on the next lap.
-                        suggestion=f"- {key}: {checks.expected_form(value)}"))
+                        # Composed by the refusal, because the refusal is what classified the
+                        # value: a test reference is suggested under `tests:`, a mis-called
+                        # check under its own signature, and only a value whose check nobody
+                        # can name gets the whole vocabulary. Re-deriving any of that here is
+                        # how the message and the suggestion came to contradict each other.
+                        suggestion=parsed.bullet(key)))
                     continue
                 # A locator argument is a reference into the book, not a string the driver
                 # happens to accept: written as free text it type-checks, runs, and goes green
