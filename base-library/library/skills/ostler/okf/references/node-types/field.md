@@ -46,11 +46,11 @@ timeout 30 ostler scaffold field expiresAt --in docs/features/acme/link-export.m
 
 - type: string, RFC 3339 timestamp
 - default: absent — a link with no expiry
+- verify: json_path(path="$.expiresAt", absent=true)
 - required: false
 - semantics: after this instant the link stops resolving and is omitted from the export
-- code: internal/export/link.go::LinkRecord
-- verify: json_path(path="$.expiresAt", absent=true)
 - verify: absent(subject="the expired link in a later export")
+- code: internal/export/link.go::LinkRecord
 ```
 
 ## Doctor codes it can trip

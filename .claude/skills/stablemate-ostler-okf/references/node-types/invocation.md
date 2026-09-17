@@ -66,11 +66,11 @@ timeout 30 ostler scaffold invocation expire-stale-links --in docs/features/acme
 - trigger: the nightly scheduler, at 03:00 UTC
 - when: a link has not been followed for 90 days
 - does: marks the link expired and stops resolving it
+- verify: removed(subject="the stale link from the active index")
 - emits: link.expired, one per expired link
+- verify: emitted(event="link.expired", count=1)
 - code: internal/jobs/expire.go::ExpireStale
 - fixture: link_last_followed_91_days_ago
-- verify: removed(subject="the stale link from the active index")
-- verify: emitted(event="link.expired", count=1)
 ```
 
 ## Doctor codes it can trip

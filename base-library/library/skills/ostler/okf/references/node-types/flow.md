@@ -57,11 +57,11 @@ type: flow
 # Shorten and Follow
 
 - start: a signed-in editor with no links
+- verify: count(subject="links owned by the signed-in editor", equals=0)
 - steps:
   - [create-link](../http/links-api.md#create-link)
   - [follow-link](../http/links-api.md#follow-link)
 - end: the browser lands on the original URL
-- verify: created(subject="a link row for the submitted URL")
 - verify: http_status(code=302, path="/{slug}")
 - tests: tests/e2e/shorten_test.go
 ```

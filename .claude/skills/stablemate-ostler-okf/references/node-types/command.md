@@ -56,10 +56,11 @@ timeout 30 ostler scaffold command create --in docs/features/acme/shortener-cli.
 - does: mints a short link for the given URL
 - does: prints the resulting short URL on stdout
 - errors: prints "slug already in use" when --slug is taken
-- exits: 0 on success, 2 on a taken slug
-- code: cmd/shortener/create.go::runCreate
+- exits: 0 on success
 - verify: exit_status(code=0)
+- exits: 2 on a taken slug
 - verify: exit_status(code=2)
+- code: cmd/shortener/create.go::runCreate
 ```
 
 ## Doctor codes it can trip

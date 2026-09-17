@@ -66,14 +66,14 @@ timeout 30 ostler scaffold endpoint create-link --in docs/features/acme/http/lin
 - method: POST
 - path: /links
 - does: stores the submitted URL under a generated slug
+- verify: created(subject="a link row for the submitted URL")
 - status: 201 with the slug in the body
+- verify: http_status(code=201, path="/links")
 - errors: 409 when the requested slug is already in use
+- verify: http_status(code=409, path="/links")
 - auth: any signed-in editor
 - code: internal/api/links.go::CreateLink
 - fixture: signed_in_editor
-- verify: http_status(code=201, path="/links")
-- verify: created(subject="a link row for the submitted URL")
-- verify: http_status(code=409, path="/links")
 ```
 
 ## Doctor codes it can trip
