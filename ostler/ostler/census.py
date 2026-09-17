@@ -127,20 +127,38 @@ def code_sites(module: Any = doctor) -> dict[str, frozenset[str]]:
     code a decision somebody takes on purpose.
     """
     tree = ast.parse(inspect.getsource(module))
-    funcs: list[ast.FunctionDef | ast.AsyncFunctionDef] = [
-        node for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-    ]
+
+    #: Every function in the module by qualified name, which is what makes the join sound.
+    #: A bare `__name__` is not an identity: `doctor` has three nested helpers all called
+    #: `visit`, so keying on the name made entering any one of them mark all three entered
+    #: — and `milestone-cycle`, which only the milestone `visit` can emit, was reported
+    #: reachable on a book with no milestones in it because the *fixture* `visit` had run.
+    #: `co_qualname` carries the enclosing scope, so the two sides agree on which function
+    #: they mean rather than only on what it is called.
+    funcs: list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, str]] = []
+
+    def collect(node: ast.AST, prefix: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+                qualname = f"{prefix}{child.name}"
+                funcs.append((child, qualname))
+                collect(child, f"{qualname}.<locals>.")
+            elif isinstance(child, ast.ClassDef):
+                collect(child, f"{prefix}{child.name}.")
+            else:
+                collect(child, prefix)
+
+    collect(tree, "")
 
     def enclosing(line: int) -> str:
         # Innermost wins: a nested `visit` inside a checker is the frame the tracer sees,
         # not its parent, so the join has to agree with what `sys.settrace` reports.
-        best: ast.FunctionDef | ast.AsyncFunctionDef | None = None
-        for func in funcs:
+        best: tuple[ast.FunctionDef | ast.AsyncFunctionDef, str] | None = None
+        for func, qualname in funcs:
             if func.lineno <= line <= (func.end_lineno or func.lineno):
-                if best is None or func.lineno > best.lineno:
-                    best = func
-        return best.name if best is not None else "<module>"
+                if best is None or func.lineno > best[0].lineno:
+                    best = (func, qualname)
+        return best[1] if best is not None else "<module>"
 
     sites: dict[str, set[str]] = {}
     for node in ast.walk(tree):
@@ -167,7 +185,7 @@ def take_census(run: Callable[[], object], module: Any = doctor) -> Census:
 
     def tracer(frame: Any, event: str, _arg: Any) -> None:
         if event == "call" and frame.f_code.co_filename == filename:
-            entered.add(frame.f_code.co_name)
+            entered.add(frame.f_code.co_qualname)
         return None
 
     previous = sys.gettrace()
