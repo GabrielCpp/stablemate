@@ -360,6 +360,21 @@ def declared_keys(node_type: str) -> frozenset[str]:
     )
 
 
+def unknown_bullet_keys(node_type: str, keys: Iterable[str]) -> list[str]:
+    """Which of `keys` `doctor`'s `unknown-bullet` would flag on a node typed `node_type`.
+
+    The filter `doctor.py` applies inline, lifted here so a second hand-copy of it (the ostler
+    test suite's own gate that every inline book it builds is legal OKF) cannot drift from the
+    one `doctor` actually enforces: `untyped` is never asked, and a key outside
+    `LOAD_BEARING_KEYS` is inert enough that nothing polices it. Order-preserving over `keys`,
+    not a set, so a caller that cares about occurrence order (`doctor`'s findings) gets it.
+    """
+    if node_type == "untyped":
+        return []
+    declared = declared_keys(node_type)
+    return [key for key in keys if key not in declared and key in LOAD_BEARING_KEYS]
+
+
 def owning_keys(node_type: str) -> tuple[str, ...]:
     """Every bullet key on `node_type` whose value names a file the node is documented against.
 

@@ -2718,21 +2718,17 @@ def _check_ui(graph: Graph, f: list[Finding],
         # wanted to be prose. A key no type declares is left alone — it is the author's own
         # vocabulary (`meaning:`, `constraints:`), and a claim hiding under one is
         # `unminted-claim`'s to find, not a spelling to police.
-        if node.type != "untyped":
-            known = registry.declared_keys(node.type)
-            for key in node.meta:
-                if key in known or key not in registry.LOAD_BEARING_KEYS:
-                    continue
-                minted = ", ".join(f"`{k}:`" for k in registry.NORMATIVE_KEYS_BY_TYPE.get(
-                    node.type, ()))
-                f.append(Finding(
-                    "warn", "unknown-bullet",
-                    f"{node.id}: `{key}:` is not a bullet {node.type} declares, so here it is "
-                    f"inert — nothing orders it, grades it, grounds it or binds a `verify:` "
-                    f"to it; move the claim under a key {node.type} mints from "
-                    f"({minted or 'none — this type states no claims'}) or into prose",
-                    # No index: an unknown key is inert in every one of its occurrences.
-                    path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, key)))
+        for key in registry.unknown_bullet_keys(node.type, node.meta):
+            minted = ", ".join(f"`{k}:`" for k in registry.NORMATIVE_KEYS_BY_TYPE.get(
+                node.type, ()))
+            f.append(Finding(
+                "warn", "unknown-bullet",
+                f"{node.id}: `{key}:` is not a bullet {node.type} declares, so here it is "
+                f"inert — nothing orders it, grades it, grounds it or binds a `verify:` "
+                f"to it; move the claim under a key {node.type} mints from "
+                f"({minted or 'none — this type states no claims'}) or into prose",
+                # No index: an unknown key is inert in every one of its occurrences.
+                path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, key)))
 
         normative = 0
         for key in registry.normative_keys(node.type):
