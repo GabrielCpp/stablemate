@@ -551,6 +551,30 @@ def attributed_checks(
     return _attributed(node_type, bullet_order, combiners, check_keys(node_type))
 
 
+#: `raises:`/`keyboard:` bullets whose own value can say there is nothing here — no error
+#: leaves this method, no key operates this control — and, unlike every other normative key,
+#: that answer is itself a complete claim with nothing behind it left to check: there is no
+#: exception to provoke, no keystroke to send. Scoped to these two rather than written as a
+#: blanket rule over any bullet that starts with `none` — `states:` and `does:` also accept
+#: `none`-shaped values, but there the absence is a fact about the *subject*, still provable
+#: by reading it, not a fact about the check vocabulary's reach.
+_SELF_DECLARABLE_EMPTY_KEYS: frozenset[str] = frozenset({"raises", "keyboard"})
+
+
+def _self_declared_empty(value: str) -> bool:
+    """True when a claim's own value states its absence and the reason for it.
+
+    `none` or `nothing` alone is a blank left blank — forgotten, not decided, and still a claim
+    a check could bind to once written. Paired with `because`, the author has turned the blank
+    into a fact: `keyboard: none, because it is read rather than operated` says the control has
+    no operable role, which is what `role:`/`verify:` already prove; a Playwright run has no
+    keystroke to send and nothing to send it to. Requiring the reason is what keeps a bare
+    `none` — still an open claim — from being swept in by the same rule.
+    """
+    first_word = value.strip().split(",", 1)[0].strip().split(" ", 1)[0].lower()
+    return first_word in {"none", "nothing"} and "because" in value.lower()
+
+
 def normative_claims(
     node_type: str, bullet_order: Iterable[Sequence[Any]]
 ) -> dict[tuple[str, int], str]:
@@ -570,6 +594,15 @@ def normative_claims(
     holds). A caller that folded them in here was asking a book to bind a `verify:` to a bullet
     nothing can observe on its own — that is `uneven-claim-coverage` and
     `unstated-precondition`'s reason for calling this rather than `normative_keys` directly.
+
+    Also excludes a `raises:`/`keyboard:` bullet whose value self-declares empty
+    (`_self_declared_empty`) for the same reason: `uneven-claim-coverage` asks whether every
+    claim on a node has a check bound to it, and a claim that there is nothing to raise or
+    operate has no behavior left for a check to bind to. Left in, the rule demanded a `verify:`
+    the book cannot write and the two already-bound checks on the node's other claim — proving
+    the actual behavior — satisfy nothing about it; the node reads as broken when it is
+    complete. `counts[key]` still increments for an excluded bullet, so a second, real
+    `raises:`/`keyboard:` on the same node keeps the index `attributed_checks` gave it.
     """
     excluded = set(condition_keys(node_type)) | set(address_keys(node_type))
     normative = set(normative_keys(node_type)) - excluded
@@ -579,6 +612,8 @@ def normative_claims(
         key, value = str(row[0]), str(row[1])
         if key in normative:
             counts[key] = counts.get(key, 0) + 1
+            if key in _SELF_DECLARABLE_EMPTY_KEYS and _self_declared_empty(value):
+                continue
             claims[(key, counts[key])] = value
     return claims
 

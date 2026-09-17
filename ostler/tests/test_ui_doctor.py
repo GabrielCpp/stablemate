@@ -180,6 +180,20 @@ def _screen_with(repo: Path, bullets: str) -> None:
           f"## Components\n\n### body\n{bullets}")
 
 
+def test_a_self_declared_empty_keyboard_is_not_the_light_sibling(repo: Path):
+    # Same shape as `raises:` on a method: a display-only component's `keyboard: none,
+    # because …` states there is no operable role, which `role:`/`verify:` already cover —
+    # no keystroke exists for a check to bind to.
+    _screen_with(
+        repo,
+        "- role: generic\n- name: none\n"
+        "- states: a policy still open reads `Draft`\n"
+        '- verify: visible(locator="#body", text="Draft")\n'
+        '- verify: visible(locator="#body", text="VIN")\n'
+        "- keyboard: none, because it is read rather than operated.\n")
+    assert "uneven-claim-coverage" not in all_codes(_run(repo))
+
+
 def test_a_component_that_carries_the_page_says_where_it_sits(repo: Path):
     """`role:` and `name:` are the accessibility contract, and a scenario asserting on them
     passes on a component crushed into a column against one margin — which is a defect that
@@ -649,6 +663,35 @@ def test_a_claim_that_merely_under_verifies_is_not_reported(repo: Path):
           '- verify: http_status(200, title="OK")\n'
           "- raises: `ManifestConflict` when the revision moved\n")
     assert "uneven-claim-coverage" not in all_codes(_run(repo))
+
+
+def test_a_self_declared_empty_raises_is_not_the_light_sibling(repo: Path):
+    # `raises: nothing at all, because …` is a complete claim with no behavior left for a
+    # check to bind to — no exception to provoke. Left counted, this node reads as broken
+    # (the two checks on `returns` prove the actual behavior) when it is complete.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- returns: the published revision\n"
+          '- verify: http_status(200, title="OK")\n'
+          '- verify: http_status(201, title="Created")\n'
+          "- raises: nothing at all, because a refusal is a returned message rather than "
+          "an error.\n")
+    assert "uneven-claim-coverage" not in all_codes(_run(repo))
+
+
+def test_a_bare_none_on_raises_is_still_the_light_sibling(repo: Path):
+    # `none` alone, with no `because`, is a blank left blank — still an open claim a check
+    # could bind to once written, not the same shape as a value that states the reason.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- returns: the published revision\n"
+          '- verify: http_status(200, title="OK")\n'
+          '- verify: http_status(201, title="Created")\n'
+          "- raises: none\n")
+    finding = next(f for f in _run(repo).findings if f.code == "uneven-claim-coverage")
+    assert "raises:1" in finding.message
 
 
 def test_a_check_that_cannot_go_red_is_reported(repo: Path):
