@@ -96,7 +96,10 @@ class Gap:
 #: `.out_of_band`, in `ostler.checks`), not guessed here from its name — `_operand` below
 #: never compares against a literal check name. A `"response"` check reads the HTTP
 #: response — status line, headers, problem body; `"body"` walks a decoded document;
-#: `"page"` addresses the rendered screen. Of the rest, `.out_of_band` and `.observes` vary
+#: `"page"` addresses the rendered screen; `"keyboard"` addresses it through a real keypress
+#: dispatched at it, not a read, which is why it is a channel of its own rather than folded
+#: into `"page"` — a driver can render a screen without being able to drive a key through it.
+#: Of the rest, `.out_of_band` and `.observes` vary
 #: independently: `.out_of_band` (a subscriber's event log, a re-read that cannot come
 #: through the writing session) compiles to a `needs-out-of-band-observation` gap
 #: regardless of shape. Otherwise a `"subject"` check is read once, after the action, from
@@ -135,13 +138,15 @@ PYTHON = DriverSpec("python", frozenset({"response", "body", "subject"}))
 
 #: The Playwright driver renders a real page and can also observe the response/body of any
 #: navigation or fetch it drives (`page.expect_response`) — but it never holds a bare
-#: in-process "subject" value the way the python driver does.
-PLAYWRIGHT = DriverSpec("playwright", frozenset({"page", "response", "body"}))
+#: in-process "subject" value the way the python driver does. `"keyboard"` is here and
+#: nowhere else: it is not a read of the page but a real keypress dispatched at it
+#: (`page.keyboard.press`), and only this driver can fire one.
+PLAYWRIGHT = DriverSpec("playwright", frozenset({"page", "response", "body", "keyboard"}))
 
 #: Maestro drives a mobile UI: it can see the rendered screen and read back a subject value
-#: from it, but has no notion of an HTTP response or body. Named here so the compiler can
-#: refer to it; it has no compile path of its own yet (see `ostler.qa.harness.ostler_qa` for
-#: its runtime).
+#: from it, but has no notion of an HTTP response or body, and no keyboard to dispatch a
+#: press through — touch has no Tab order. Named here so the compiler can refer to it; it
+#: has no compile path of its own yet (see `ostler.qa.harness.ostler_qa` for its runtime).
 MAESTRO = DriverSpec("maestro", frozenset({"page", "subject"}))
 
 

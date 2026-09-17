@@ -78,6 +78,12 @@ happens to spell it with. `disabled` is HTML's word for it; a mobile surface say
 `enabled=false` and an API says nothing at all, so a check named after the attribute would be
 compilable by one driver and meaningless to the rest.
 
+### `focusable(locator*=<str> (locator), activates=<str>)`
+Excludes a control reachable only by pointer, which `visible`/`actionable` both pass because
+it is on the screen and enabled — and, when `activates` is given, a control that receives
+focus but does not fire on the key the book names, which no assertion about what is drawn can
+see: the defect is in what the keypress does, not in what is on the screen.
+
 ### `persists(subject*=<str>)`
 Excludes a write observed only through the same session that made it, which cannot tell a commit
 from a cache.

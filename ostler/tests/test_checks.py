@@ -103,8 +103,9 @@ def test_canonical_text_parses_back_to_the_same_call() -> None:
 def test_every_spec_declares_what_it_observes() -> None:
     """`observes` is what a compiler dispatches on to pick an operand and to know whether a
     given driver (HTTP, Playwright) can serve the check at all — every check names one, and
-    the five values are the whole vocabulary a compiler needs to handle. `subject` is read
-    once, after the action; `subject-pair` only means anything as a before-and-after."""
+    the six values are the whole vocabulary a compiler needs to handle. `subject` is read
+    once, after the action; `subject-pair` only means anything as a before-and-after;
+    `keyboard` is a real keypress dispatched at the page, not a read of it."""
     expected = {
         "http_status": "response",
         "conflict_on_stale": "response",
@@ -112,6 +113,7 @@ def test_every_spec_declares_what_it_observes() -> None:
         "visible": "page",
         "actionable": "page",
         "inert": "page",
+        "focusable": "keyboard",
         "unchanged": "subject-pair",
         "keys_unchanged": "subject-pair",
         "count": "subject",
@@ -125,7 +127,7 @@ def test_every_spec_declares_what_it_observes() -> None:
     }
     assert {spec.name: spec.observes for spec in checks.CHECKS} == expected
     assert {spec.observes for spec in checks.CHECKS} == {
-        "response", "body", "page", "subject", "subject-pair",
+        "response", "body", "page", "subject", "subject-pair", "keyboard",
     }
 
 

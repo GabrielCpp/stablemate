@@ -125,7 +125,7 @@ class DriverSpec:
 
 DRIVERS = (
     DriverSpec("python", frozenset({"response", "body", "subject"})),
-    DriverSpec("playwright", frozenset({"page", "response", "body"})),
+    DriverSpec("playwright", frozenset({"page", "response", "body", "keyboard"})),
     DriverSpec("maestro", frozenset({"page", "subject"})),
 )
 DRIVER_NAMES = tuple(driver.name for driver in DRIVERS)
@@ -1171,6 +1171,41 @@ def _verify_inert(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, An
     return not usable, {"actionable": usable}, {"actionable": False}
 
 
+def _verify_focusable(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    """Reachable by a real keypress, and — when `activates` names one — responsive to it.
+
+    `observed` is the locator itself, the way `visible`/`actionable` take it. `.focus()` is
+    the dispatch; reading `document.activeElement` back is the only way to know the browser
+    agreed, the same insistence `_enabled` makes for `actionable`/`inert`. When `activates`
+    is given, a click listener armed before the keypress catches whether the browser's own
+    Enter/Space-activates-a-focused-control behavior actually fired — a custom widget built
+    without it leaves focus working and the keypress silently doing nothing, which no read of
+    what is on the screen can see.
+    """
+    if not hasattr(observed, "focus"):
+        raise TypeError(
+            f"focusable observes a control through real keyboard focus — pass the element "
+            f"itself, not {type(observed).__name__}"
+        )
+    observed.focus()
+    focused = bool(observed.evaluate("el => el === document.activeElement"))
+    if "activates" not in args:
+        return focused, {"focused": focused}, {"focused": True}
+    if not focused:
+        return False, {"focused": False, "activated": False}, {"focused": True, "activated": True}
+    observed.evaluate(
+        "el => { el.__ostlerActivated = false; "
+        "el.addEventListener('click', () => { el.__ostlerActivated = true; }, {once: true}); }"
+    )
+    observed.page.keyboard.press(args["activates"])
+    activated = bool(observed.evaluate("el => el.__ostlerActivated === true"))
+    return (
+        activated,
+        {"focused": True, "activated": activated},
+        {"focused": True, "activated": True},
+    )
+
+
 def _verify_persists(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     written, reread = _pair(observed, "persists")
     return reread is not None and reread == written, reread, written
@@ -1271,6 +1306,7 @@ VERIFIERS: dict[str, Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]] 
     "visible": _verify_visible,
     "actionable": _verify_actionable,
     "inert": _verify_inert,
+    "focusable": _verify_focusable,
     "persists": _verify_persists,
     "emitted": _verify_emitted,
     "omits": _verify_omits,

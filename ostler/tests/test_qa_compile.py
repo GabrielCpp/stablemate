@@ -1052,8 +1052,10 @@ def test_a_driver_with_no_declared_channels_gaps_every_claim_and_crashes_on_none
 def test_playwright_and_maestro_declare_disjoint_but_overlapping_capabilities() -> None:
     """Maestro is nameable from the compiler via its own capability declaration — it
     declares `page` and `subject`, not the HTTP channels Playwright can see, and not the
-    same page/HTTP mix Playwright declares either."""
-    assert PLAYWRIGHT.observes == frozenset({"page", "response", "body"})
+    same page/HTTP mix Playwright declares either. Playwright alone also declares
+    `keyboard`: a real keypress it can dispatch at the page, which Maestro's touch UI has
+    no notion of."""
+    assert PLAYWRIGHT.observes == frozenset({"page", "response", "body", "keyboard"})
     assert MAESTRO.observes == frozenset({"page", "subject"})
     assert PYTHON.observes == frozenset({"response", "body", "subject"})
 

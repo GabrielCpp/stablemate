@@ -254,6 +254,19 @@ CHECKS: tuple[CheckSpec, ...] = (
         observes="page",
     ),
     CheckSpec(
+        name="focusable",
+        params=(
+            CheckParam("locator", "str", required=True, locator=True, identifies=True),
+            CheckParam("activates", "str"),
+        ),
+        excludes="a control reachable only by pointer, which `visible`/`actionable` both pass "
+                 "because it is on the screen and enabled — and, when `activates` is given, a "
+                 "control that receives focus but does not fire on the key the book names, "
+                 "which no assertion about what is drawn can see: the defect is in what the "
+                 "keypress does, not in what is on the screen",
+        observes="keyboard",
+    ),
+    CheckSpec(
         name="persists",
         params=(CheckParam("subject", "str", required=True, identifies=True),),
         excludes="a write observed only through the same session that made it, which cannot "
