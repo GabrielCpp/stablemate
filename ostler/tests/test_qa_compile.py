@@ -2503,3 +2503,68 @@ def test_a_capture_bullet_the_parser_refused_gaps_where_it_was_written() -> None
     assert "names no source" in gap.detail
     # The claim itself is still proven — the refusal is about the capture, not about the check.
     assert oid in _covers(source)
+
+
+def test_a_capture_no_builder_can_emit_stands_beside_the_claim_rather_than_against_it() -> None:
+    """A UI-locator capture on a routed obligation: the assertion compiles, the binding does not.
+
+    Both halves are true at once, and before `uncaptured-declaration` existed the compiler said
+    so in a vocabulary that made them contradict — an `uncompilable-claim` gap ("nobody looked")
+    minted against an id the same run compiled a real `covers=[...]` for. It survived only
+    because no book in the corpus declares a non-empty `capture:`; the mirror assert in
+    `compile_plan_gaps` would have caught it the day one did.
+    """
+    oid = "okf:docs/features/acme/api.md#get-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            checksDeclared=[_check(path="/api/things")],
+            capturesDeclared=[{"name": "widget_id", "from": "#widget-id"}],
+            fixturesDeclared=[{"name": "seeded-acme", "args": [], "provides": "an account exists"}],
+        )
+    )
+    covered: set[str] = set()
+    source, gaps = _compile_plan_gaps(
+        context, story="demo-story", base_url=_BASE_URL, covered_ids=covered)
+
+    assert _gap_kinds(gaps, oid) == ["uncaptured-declaration"]
+    assert oid in covered
+    assert "qa.capture_field(" not in source
+    assert "widget_id" in source  # the TODO says what went unbound, so it is not silent
+
+
+def test_a_declared_capture_that_no_builder_accounts_for_is_refused() -> None:
+    """The guard, exercised by removing the thing it guards.
+
+    The defect is not that one builder cannot bind a page value — it is that a builder which
+    cannot has nothing forcing it to *say so*, and a declaration read by nobody is
+    indistinguishable from one the book never wrote. So the assert is aimed at the silence, and
+    the only honest way to test it is to put the silence back.
+    """
+    oid = "okf:docs/features/acme/api.md#get-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            checksDeclared=[_check(path="/api/things")],
+            capturesDeclared=[{"name": "widget_id", "from": "#widget-id"}],
+            fixturesDeclared=[{"name": "seeded-acme", "args": [], "provides": "an account exists"}],
+        )
+    )
+    import ostler.qa.compile as compile_mod
+
+    with pytest.raises(AssertionError, match="neither emitted nor gapped"):
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(compile_mod, "_decline_captures", lambda *a, **k: None)
+            compile_plan_gaps(context, story="demo-story")
+
+
+def test_a_capture_on_an_obligation_nobody_observed_goes_with_its_obligation() -> None:
+    """One silence, reported once. A checkless obligation is already gapped as book debt — a
+    second gap saying its capture went unbound grades the same nothing twice, and would send a
+    repair agent after a `capture:` bullet when the missing thing is the `verify:`."""
+    oid = "okf:docs/features/acme/api.md#get-things:does:1"
+    context = _context(
+        _obligation(oid, capturesDeclared=[{"name": "widget_id", "from": "#widget-id"}])
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["no-verify-declared"]

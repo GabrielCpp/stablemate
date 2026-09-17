@@ -45,7 +45,13 @@ from ostler.qa.outcome import QaOutcome
 #: observed, and what was withheld is the placement grading of a screen nothing could
 #: establish as the subject. `unparsed-capture-bullet` is a fourth: the claim is observed and
 #: does claim its id, and what the unreadable bullet cost is a fact the *rest* of the scenario
-#: stands on. So these stack with a
+#: stands on. `uncaptured-declaration` is a fifth and the same shape once more: the claim is
+#: observed and claims its id, and what went unbound is a value some *other* obligation would
+#: have read. It is here for a reason the other four make obvious only in hindsight — before
+#: this kind existed, a UI-locator capture on a routed obligation minted an `uncompilable-claim`
+#: beside that obligation's own compiled `covers=[...]`, which is exactly the contradiction the
+#: mirror assert exists to catch, and it went unseen only because no book in the corpus declares
+#: a non-empty `capture:`. So these stack with a
 #: `covers=[...]` on purpose, and the mirror assert in `compile_plan_gaps` reads past them;
 #: every other kind says nobody looked, and stacking *that* with a claim is a contradiction.
 #: A plan still carrying these is not a plan whose greens mean anything — `doctor` reports
@@ -56,6 +62,7 @@ _ARRANGEMENT_GAPS = frozenset({
     "unarranged-interaction-precondition",
     "unidentifiable-screen",
     "unparsed-capture-bullet",
+    "uncaptured-declaration",
 })
 
 #: Every kind `compile_plan` can mint. Declared rather than discovered, because the set is
@@ -88,6 +95,7 @@ GAP_KINDS = frozenset({
     "unparsed-fixture",
     "unparsed-capture-bullet",
     "unparsed-check-bullet",
+    "uncaptured-declaration",
 })
 
 
@@ -446,6 +454,50 @@ def _gap_cli_obligations(obligations: list[dict[str, Any]], gaps: list[Gap]) -> 
             "the book states this command's `usage:`/`flags:`/`args:` as prose, not a "
             "structured invocation this compiler can turn into `qa.tool(...).run(...)`",
         ))
+
+
+def _declared_captures(obligations: list[dict[str, Any]]) -> set[tuple[str, str]]:
+    """Every `(obligation id, capture name)` the packet declares — the set to account for."""
+    return {
+        (str(obligation["id"]), str(capture["name"]))
+        for obligation in obligations
+        for capture in obligation.get("capturesDeclared") or []
+        if capture.get("name")
+    }
+
+
+def _decline_captures(
+    obligations: list[dict[str, Any]],
+    gaps: list[Gap],
+    captured: set[tuple[str, str]],
+    *,
+    because: str,
+) -> None:
+    """Gap the captures this builder will not emit, from inside the builder that declined.
+
+    A declared capture reaches exactly one builder that can act on it, and every other builder
+    used to drop it by not looking — no emitted call, no gap, nothing in the plan or the report
+    that says the book asked for something. An unconsumed declaration is indistinguishable from
+    an absent one, and the reader who would notice is the author who wrote the bullet.
+
+    So the decline is minted here rather than reconstructed by the caller: the stage that defers
+    is the only stage that can say *why* it deferred, and "the Playwright builder has no way to
+    bind a value out of the page" and "a journey compiles its steps' captures where those steps
+    live" are different facts that a diff of declared-against-emitted would flatten into one.
+    Both halves land in `captured`, which the totality assert in `compile_plan_gaps` reads: a
+    pair in neither the emitted nor the declined half is the silent drop this exists to prevent.
+    """
+    for obligation in obligations:
+        for capture in obligation.get("capturesDeclared") or []:
+            name = capture.get("name")
+            if not name:
+                continue
+            captured.add((str(obligation["id"]), str(name)))
+            gaps.append(Gap(
+                str(obligation["id"]), "uncaptured-declaration",
+                f"capture {str(name)!r} from {str(capture.get('from', ''))!r} is declared on "
+                f"this node and {because}",
+            ))
 
 
 def _has_screens(navigation: dict[str, Any]) -> bool:
@@ -820,6 +872,12 @@ def compile_plan_gaps(
     # a journey over a surface that already has scenarios reuses its target rather
     # than assigning a second, identical one under the same name.
     emitted_targets: set[str] = set()
+    # Every `(obligation id, capture name)` some builder has accounted for — emitted as a real
+    # `qa.capture_field(...)` call, or declined with a gap saying why. Shared across the builders
+    # the way `emitted_targets` is, because a declaration is stamped on the obligation and the
+    # obligation reaches whichever builder its `(nodeType, surface)` dispatches to. The closing
+    # assert reads it.
+    captured: set[tuple[str, str]] = set()
     debt: list[dict[str, Any]] = []
     for source, obligations in by_source.items():
         declared = [o for o in obligations if o.get("checksDeclared")]
@@ -837,7 +895,7 @@ def compile_plan_gaps(
         if not declared:
             continue
         scenario_covered: set[str] = set()
-        body_lines = _scenario_body(declared, gaps, scenario_covered)
+        body_lines = _scenario_body(declared, gaps, scenario_covered, captured)
         if not scenario_covered:
             # Every declared obligation here turned out route-less — `_scenario_body` already
             # gapped each one as `uncompilable-claim` and emitted no `qa.verify` for any of
@@ -919,7 +977,7 @@ def compile_plan_gaps(
         if _has_screens(navigation):
             lines.extend(
                 _compile_page_scenarios(context, page_declared, gaps, covered_ids, web_urls,
-                                        emitted_targets))
+                                        emitted_targets, captured))
         else:
             # The book declares page checks but its navigation graph has no screen nodes on any
             # surface — there is nothing here to walk to, the same dead end `unreachable-screen`
@@ -934,7 +992,7 @@ def compile_plan_gaps(
     # already assigned, and reading that off `emitted_targets` rather than re-assigning it is
     # only correct once every place-scoped builder above has run.
     lines.extend(_journey_scenarios(context, flow_owed, gaps, covered_ids, navigation,
-                                    web_urls, api_urls, emitted_targets))
+                                    web_urls, api_urls, emitted_targets, captured))
 
     if debt:
         lines.append("")
@@ -972,6 +1030,19 @@ def compile_plan_gaps(
     # over the gaps that are claims about the observation; an arrangement gap
     # (`kind` in `_ARRANGEMENT_GAPS`, see `Gap`) stacks on the same id on purpose and is not one.
     unobserved = {gap.obligation_id for gap in gaps if gap.kind not in _ARRANGEMENT_GAPS}
+    # Declaration totality, the mirror of the obligation totality above. A `capture:` bullet is
+    # a thing the book said, and until this assert existed exactly one builder read it: an
+    # interaction's capture parsed, grounded, rode into the packet and was dropped by a builder
+    # that never looked — no emitted call, no gap, nothing distinguishing it from a bullet
+    # nobody wrote. A capture on an obligation nobody observed at all goes with its obligation:
+    # the gap already says nothing here was looked at, and a second one would report the same
+    # silence twice.
+    unaccounted = _declared_captures(owed) - captured
+    unaccounted -= {pair for pair in unaccounted if pair[0] in unobserved}
+    assert not unaccounted, (
+        f"{len(unaccounted)} declared capture(s) were neither emitted nor gapped by the builder "
+        f"that declined them: {sorted(unaccounted)!r}"
+    )
     contradicted = unobserved & covered_ids
     assert not contradicted, (
         f"{len(contradicted)} obligation(s) are both gapped as unobserved and claimed by a "
@@ -1053,7 +1124,8 @@ def _resolved(
     return ref.name in produced_captures
 
 
-def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap], covered: set[str]) -> list[str]:
+def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap], covered: set[str],
+                   captured: set[tuple[str, str]]) -> list[str]:
     """Compile every obligation's assertion half. Called only with `checksDeclared` obligations.
 
     `compile_plan` filters to `declared = [o for o in obligations if o.get("checksDeclared")]`
@@ -1152,18 +1224,20 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap], covered: 
                     f'    qa.capture_field({_lit(cname)}, {name}.json(), {_lit(str(_rooted(source_path)))})'
                 )
                 produced_captures.add(cname)
+                captured.add((oid, cname))
             else:
                 # A UI-locator capture has no response here to read — the book says what to
                 # capture and not where the page action that would produce it lives. A `$.`-
                 # rooted capture with no route is the same shape: nothing was observed to read
                 # a field off of. Both get the same scaffolding as an arrangement gap: a TODO
                 # and a gap, no credit.
+                because = ("names a UI locator, not a response field, and this builder holds a "
+                           "response")
                 if source_path.startswith("$"):
-                    note = f"capture {cname!r} from {source_path!r} has no observed response to read"
-                else:
-                    note = f"capture {cname!r} from {source_path!r} names a UI locator, not a response field"
-                lines.append(f"    # TODO(arrange): {note}")
-                gaps.append(Gap(oid, "uncompilable-claim", note))
+                    because = "has no observed response here to read the field off of"
+                lines.append(
+                    f"    # TODO(arrange): capture {cname!r} from {source_path!r} {because}")
+                _decline_captures([obligation], gaps, captured, because=because)
 
         # A gap already fired above for a route-less obligation, or one whose request body the
         # book never wrote — `name` is bound to `None` in both cases, and a `qa.verify` call
@@ -1247,6 +1321,7 @@ def _compile_page_scenarios(
     covered: set[str],
     web_urls: dict[str, str],
     emitted_targets: set[str],
+    captured: set[tuple[str, str]],
 ) -> list[str]:
     """Compile every screen's `visible(...)` bullets, partitioned per Amendment 3.
 
@@ -1360,7 +1435,7 @@ def _compile_page_scenarios(
                     state_name = f"{_slug(source)}_{_node_slug(node_id)}_{obligation['id'].rsplit(':', 1)[-1]}"
                     bucket.extend(_arrival_scenario(root_path, source, hops, node_index,
                                                      {node_id: [obligation]}, gaps, covered,
-                                                     name=state_name, target_var=target_var,
+                                                     captured, name=state_name, target_var=target_var,
                                                      screen_routes=screen_routes))
                 else:
                     missing = []
@@ -1389,18 +1464,20 @@ def _compile_page_scenarios(
 
         if plain:
             bucket.extend(_arrival_scenario(root_path, source, hops, node_index, plain, gaps,
-                                             covered, name=f"{_slug(source)}_arrival",
+                                             covered, captured,
+                                             name=f"{_slug(source)}_arrival",
                                              target_var=target_var,
                                              screen_routes=screen_routes))
         for node_id in exclusive:
             bucket.extend(_arrival_scenario(root_path, source, hops, node_index,
                                              {node_id: rest_by_node[node_id]}, gaps, covered,
+                                             captured,
                                              name=f"{_slug(source)}_{_node_slug(node_id)}",
                                              target_var=target_var,
                                              screen_routes=screen_routes))
         for node_id in interactions:
             bucket.extend(_interaction_scenario(root_path, source, hops, node_index, node_id,
-                                                 rest_by_node[node_id], gaps, covered,
+                                                 rest_by_node[node_id], gaps, covered, captured,
                                                  name=f"{_slug(source)}_{_node_slug(node_id)}",
                                                  target_var=target_var,
                                                  screen_routes=screen_routes))
@@ -1687,12 +1764,16 @@ def _arrival_scenario(
     by_node: dict[str, list[dict[str, Any]]],
     gaps: list[Gap],
     covered: set[str],
+    captured: set[tuple[str, str]],
     *,
     name: str,
     target_var: str,
     screen_routes: dict[str, str],
 ) -> list[str]:
     obligations = [o for obs in by_node.values() for o in obs]
+    _decline_captures(obligations, gaps, captured, because=(
+        "this scenario arrives at the screen and observes what is on it — nothing here performs "
+        "an action that would produce a value to bind"))
     ids = sorted(o["id"] for o in obligations)
     arranged = _arrangements(obligations)
     body: list[str] = []
@@ -1779,6 +1860,7 @@ def _interaction_scenario(
     obligations: list[dict[str, Any]],
     gaps: list[Gap],
     covered: set[str],
+    captured: set[tuple[str, str]],
     *,
     name: str,
     target_var: str,
@@ -1797,6 +1879,9 @@ def _interaction_scenario(
     scaffold — this compiles a starting point for a human or a model to finish, not a passing
     scenario.
     """
+    _decline_captures(obligations, gaps, captured, because=(
+        "the trigger is performed here, but this builder has no declared way to read a value "
+        "back out of the page and bind it under that name"))
     locators = obligations[0].get("locators", {})
     on_value = next(iter(locators.get("on", [])), None)
     trigger_value = next(iter(locators.get("trigger", [])), "")
@@ -1965,6 +2050,7 @@ def _journey_scenarios(
     web_urls: dict[str, str],
     api_urls: dict[str, str],
     emitted_targets: set[str],
+    captured: set[tuple[str, str]],
 ) -> list[str]:
     """One scenario per flow: walk its `steps:` in order, then observe what the walk left.
 
@@ -2073,10 +2159,11 @@ def _journey_scenarios(
             continue
         scenario_covered: set[str] = set()
         if journey_target == "http":
-            body = _http_journey(steps, node_index, obligations, ids, gaps, scenario_covered)
+            body = _http_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
+                                 captured)
         else:
             body = _web_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
-                                nav, screen_routes)
+                                captured, nav, screen_routes)
         if not scenario_covered:
             # Every claim this journey would have made was gapped above. A scenario that walks a
             # journey and asserts nothing is a hole in the plan wearing a function signature.
@@ -2129,6 +2216,7 @@ def _http_journey(
     ids: list[str],
     gaps: list[Gap],
     covered: set[str],
+    captured: set[tuple[str, str]],
 ) -> list[str]:
     """Perform each `endpoint` step as a request, then assert the flow's claims on the last one.
 
@@ -2142,6 +2230,9 @@ def _http_journey(
     about a request this journey did not end on, and pointing the driver at the response it does
     hold would answer a question nobody asked. Gapped, not re-aimed.
     """
+    _decline_captures(obligations, gaps, captured, because=(
+        "a journey performs its steps and asserts the flow's own claim; a step's capture is "
+        "emitted where that step's own obligation is compiled, not restated here"))
     lines: list[str] = []
     observed = ""
     last_path = ""
@@ -2212,6 +2303,7 @@ def _web_journey(
     ids: list[str],
     gaps: list[Gap],
     covered: set[str],
+    captured: set[tuple[str, str]],
     nav: dict[str, Any],
     screen_routes: dict[str, str],
 ) -> list[str]:
@@ -2226,6 +2318,9 @@ def _web_journey(
     action — there is nothing to do to it, and navigating there directly would abandon the walk
     that was supposed to arrive there, which is the whole defect this builder exists to remove.
     """
+    _decline_captures(obligations, gaps, captured, because=(
+        "a journey performs its steps and asserts the flow's own claim; a step's capture is "
+        "emitted where that step's own obligation is compiled, not restated here"))
     first_source = str(steps[0].get("ref", "")).split("#")[0]
     hops = (nav.get("routes") or {}).get(first_source)
     if hops is None:

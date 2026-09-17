@@ -1192,6 +1192,16 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             # And the same again for `capture:`: `_check_book_captures` refuses the bullet from
             # the book alone, and the compiler adds which fact went unminted because of it.
             findings.append(Finding("error", "unparsed-capture", message, ref=gap.obligation_id))
+        elif gap.kind == "uncaptured-declaration":
+            # A declared `capture:` no builder emitted. Not a new code: the book is not wrong —
+            # it named a fact and where to read it, which is exactly what the grammar asks for —
+            # and what went missing is an *action*, which is what `uncompilable-claim` already
+            # names. A second code would grade "this compiler has no way to bind that value" as
+            # a different defect depending on whether the thing unbound was a check's subject or
+            # a capture's, and an author reading either one has the same nothing to rewrite. The
+            # branch is explicit rather than left to the catch-all below because a kind that
+            # falls through there is indistinguishable from one nobody decided about.
+            findings.append(Finding("error", "uncompilable-claim", message, ref=gap.obligation_id))
         elif gap.kind == "no-verify-declared":
             # The other kind whose compiler spelling is not a doctor code: "the book declares no
             # check for this obligation to prove" is `undeclared-obligation`, which doctor
