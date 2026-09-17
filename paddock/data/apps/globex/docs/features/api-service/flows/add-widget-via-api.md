@@ -16,9 +16,14 @@ verifiable with api-service running alone and web-app not running at all.
   - [post-widgets](../http/api-service.md#post-widgets)
   - [get-widgets](../http/api-service.md#get-widgets)
 - end: [api-service](../http/api-service.md)
-- verify: http_status(201, path="/api/widgets")
-- detail: the created widget is asserted present in the subsequent `GET /api/widgets`
-  listing by id.
+- verify: http_status(200, path="/api/widgets")
+- detail: the claim above is about the directory read this journey *ends* on, not about the
+  create in the middle of it — that 201 is [post-widgets](../http/api-service.md#post-widgets)'s
+  own claim, and restating it here would file one observation against two obligations and, worse,
+  assert 201 against the response the last step actually produced. The stronger claim this
+  journey wants — that the created widget is present in the listing, by id — is not expressible
+  yet: it names a value from the request body, and `steps:` has no bullet for the data a step
+  carries, so the compiler cannot ground it.
 - fixture: [api-service (local)](../ops/api-service-stack.md) running against
   [local](../ops/local.md)
 - tests:
