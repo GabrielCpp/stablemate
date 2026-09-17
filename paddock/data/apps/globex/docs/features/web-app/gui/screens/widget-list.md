@@ -31,17 +31,58 @@ driven directly.
 - keyboard:
 - extends:
 - parent:
-- exclusive-with: [empty notice](#widget-table) hidden state is exclusive with the alert
-  and the populated table
+- exclusive-with: [empty-notice](#empty-notice), [load-alert](#load-alert)
 - states: populated — visible, one row per widget, `name` and `quantity` in each row
 - verify: visible(locator="#widget-table")
-- states: branches
-  - loading: neither table nor empty notice nor alert is shown while the fetch is pending
-  - empty: hidden; `p.empty-notice` shown instead
-  - error: hidden; `p[role="alert"]` shown instead
+- fixture: widgets-on-hand — the directory holds at least one widget
+- states: loading — not yet drawn while the fetch is pending
+- code: `app/web-app/static/app.js::renderWidgetTable` @a9a308e1d664
+- detail: which of the three the page shows is recorded once, as `exclusive-with:`, and each
+  of the three states what it looks like when it is the one shown. Saying it a second time
+  here — that the table is hidden when the notice is up — would be the same claim in two
+  places, and the vocabulary has no check that observes an element being absent from the
+  screen in any case. The loading state carries no arrangement because none exists: it holds
+  only while the fetch is in flight, and nothing outside the page can hold it there.
+- fixture:
+- tests:
+
+### empty-notice
+- selector: p.empty-notice
+- role: status
+- one-per:
+- variants:
+- name: No widgets are on file yet.
+- unique-by:
+- placement:
+- keyboard:
+- extends:
+- parent:
+- exclusive-with: [widget-table](#widget-table), [load-alert](#load-alert)
+- states: shown — visible whenever the directory read succeeds and returns no widgets
+- verify: visible(locator="#empty-notice")
+- fixture: empty-directory — the directory holds no widgets
 - code: `app/web-app/static/app.js::renderWidgetTable` @a9a308e1d664
 - detail:
-- fixture:
+- tests:
+
+### load-alert
+- selector: p[role="alert"]
+- role: alert
+- one-per:
+- variants:
+- name: Could not read the widget directory.
+- unique-by:
+- placement:
+- keyboard:
+- extends:
+- parent:
+- exclusive-with: [widget-table](#widget-table), [empty-notice](#empty-notice)
+- states: shown — visible whenever the directory read itself fails, carrying the reason rather
+  than an empty table that would read as a directory with nothing in it
+- verify: visible(locator="#load-alert")
+- fixture: api-service-unavailable — the directory read fails
+- code: `app/web-app/static/app.js::loadWidgets` @a9a308e1d664
+- detail:
 - tests:
 
 ### new-widget-link
