@@ -37,6 +37,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from ostler.refs import CodeRef, parse_code_ref, render_code_ref
 from paddock.registry import REGISTRY
 import yaml
 
@@ -133,19 +134,24 @@ def test_the_book_grounds_at_symbol_level() -> None:
     here through the opposite door. Every citation of a module that holds behaviour has to
     name the function.
     """
-    cited: dict[str, list[str]] = {}
+    # `parse_code_ref` rather than `split("::")`: a stamped citation ends in `@<digest>`, and on
+    # a *bare file* citation that suffix lands inside the path half — `tally/__init__.py@9e0f…`
+    # matched no exemption below and the two files the exemption exists for were reported as
+    # defects. A canonical string is not a parsed value; ostler owns the parse.
+    cited: dict[str, list[CodeRef]] = {}
     for page in (APP / "docs" / "features").rglob("*.md"):
         for target in code_bullets(page):
-            cited.setdefault(target.split("::")[0], []).append(target)
+            ref = parse_code_ref(target)
+            cited.setdefault(ref.path, []).append(ref)
 
-    behavioural = {path: targets for path, targets in cited.items() if path.startswith("tally/")}
+    behavioural = {path: refs for path, refs in cited.items() if path.startswith("tally/")}
     unqualified = {
-        path: targets
-        for path, targets in behavioural.items()
+        path: [render_code_ref(ref) for ref in refs]
+        for path, refs in behavioural.items()
         # `__init__.py` and `__main__.py` hold no behaviour to name: the first is the package
         # marker, the second two lines of entry point. Everything else must be symbol-cited.
         if path not in {"tally/__init__.py", "tally/__main__.py"}
-        and any("::" not in target for target in targets)
+        and any(not ref.symbol for ref in refs)
     }
     assert not unqualified, unqualified
     assert len(cited[SHARED_SOURCE]) >= 3, cited[SHARED_SOURCE]
