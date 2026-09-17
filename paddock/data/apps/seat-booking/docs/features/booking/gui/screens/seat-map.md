@@ -55,6 +55,7 @@ Holds every seat button for the showing and nothing else.
 - verify: visible(locator="#seat-button", text="held")
 - verify: visible(locator="#seat-button", text="booked")
 - states: a seat that is not free is rendered `disabled`, so a sold seat cannot be clicked at all.
+- verify: inert(locator="#seat-button")
 - code: app/page.py::_seat_button@0a3567061b49
 - refs: [seat](../../concepts/seat.md)
 
