@@ -29,7 +29,7 @@ same shape as a boot step.
 | key | required | what it does |
 | --- | --- | --- |
 | `args:` | no | The parameters this fixture takes, space-separated names. A `fixture:` bullet elsewhere passes them as `name=value` pairs; passing a name not in this list is `fixture-arg-mismatch`. An arg this fixture's own `needs:` bindings already supply need not also be passed by a `fixture:` caller — and if a caller passes it anyway, that is `fixture-arg-mismatch` too (two sources for one arg). |
-| `provides:` | no | Nested. What the fixture's last step leaves behind — the keys a `@<this-fixture>.<key>` reference on another node may read. A reference naming a key not listed here is `fixture-undeclared-provides`. |
+| `provides:` | no | Nested, one child per fact — the keys a `@<this-fixture>.<key>` reference on another node may read. Each child states where its fact comes from with its own `from:`/`read:` or `is:` children (below); an entry stating neither, or both, is `undetermined-provided-fact`. A reference naming a key not listed here is `fixture-undeclared-provides`. |
 | `needs:` | no | Nested, `link`. Another fixture this one composes on top of, referenced as a markdown link to that fixture's file. Runtime runs the needs target once per scenario with no args, then binds the binding's own `name=value` tokens into *this* fixture's env — so a binding's names must be names *this* fixture declares under its own `args:`, not the target's, and are `fixture-arg-mismatch` otherwise. A `needs:` chain that cycles is `fixture-needs-cycle`. A needs target that itself declares `args:` is `fixture-needs-target-args`, because runtime can never pass it anything. |
 | `secrets:` | no | Nested. Environment-variable NAMES this fixture's steps read — never a value or a mint recipe. The harness resolves each from its own environment at run time; a name that is not a valid environment-variable identifier is `fixture-secret-name`, and a name absent from the harness's environment at run time is an environment fault, not a book/code defect, because the step never got to run. |
 
@@ -41,6 +41,33 @@ work the node that *performs* it did. If the fixture declares no `provides:` at 
 the repo can hold it to leaving that state behind, and the compiled plan carries a precondition
 no check backs: `ostler doctor`'s `unbacked-precondition`. The remedy is on the producer — one
 `provides:` child per fact, `<key> — <what it means>` — not a reworded sentence on the consumer.
+
+### Where a provided fact comes from
+
+A fact a fixture provides is either **observed** or **asserted**, and the entry says which with
+its own children:
+
+| spelling | means |
+| --- | --- |
+| `- from: [<step>](#<step>)` plus `- read: <path>` | **Observed.** The named step is one of this fixture's own `## Steps`; the harness parses that step's stdout as JSON and reads `<path>` out of it. `read:` defaults to the key's own name. |
+| `- is: <value>` | **Asserted.** The fixture's construction makes this value true, and no step prints it. |
+
+Exactly one of the two, never both and never neither — `undetermined-provided-fact` otherwise,
+and `ostler qa compile-plan` refuses to compile any obligation whose arrangement reaches such a
+key (gap kind `undetermined-provided-fact`), because undetermined means there is no executable
+form to emit.
+
+The distinction is not cosmetic and only the book can make it: the two are byte-identical
+downstream. A fixture that empties a directory by restarting the service holding it is not
+reading the zero out of anything — its `count` is `is: 0` — while a fixture that seeds a widget
+and reports the name the API assigned it must point at the step that printed it. The harness
+used to guess (the fixture's last step, its whole stdout parsed as JSON), which was right for
+the fixtures whose last step happened to print JSON and aborted every other scenario inside
+`json.loads`, naming a step its author had never pointed at.
+
+A fact that no check could ever reference as a *value* — a sentence explaining why the
+arrangement matters — is not a provided fact at all. Put it in the book's prose and let the
+fixture provide nothing.
 
 The same rule already governs the older, hand-written `qa: {fixtures:}` tier, which refuses an
 entry with no `provides:` outright, and it is why `ostler qa fixtures migrate` reports
@@ -86,6 +113,8 @@ title: Seeded acme
 - args: id
 - provides:
   - id — the seeded account's id
+    - from: [seed-it](#seed-it)
+    - read: account.id
 
 ## Steps
 
@@ -99,8 +128,8 @@ title: Seeded acme
 
 See [`../doctor-codes.md`](../doctor-codes.md): `unknown-book-fixture`, `fixture-step-kind`,
 `fixture-step-no-run`, `fixture-arg-mismatch`, `fixture-needs-target-args`,
-`fixture-needs-cycle`, `fixture-undeclared-provides`, `fixture-secret-name`,
-`unbacked-precondition`.
+`fixture-needs-cycle`, `fixture-undeclared-provides`, `undetermined-provided-fact`,
+`fixture-secret-name`, `unbacked-precondition`.
 
 ## When bullets are not enough
 

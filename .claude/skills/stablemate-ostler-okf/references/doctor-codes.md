@@ -8,7 +8,7 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-ostler-
 
 # Doctor codes
 
-Every finding `ostler doctor` can raise: **100 codes, 80 error and 20 warn**. An error is a
+Every finding `ostler doctor` can raise: **121 codes, 97 error and 24 warn**. An error is a
 mechanical defect with a mechanical remedy — the exit code counts errors, so a story can be gated
 on it. A warn is a finding whose remedy is authoring judgment, which is why `doctor` cannot
 converge on it the way it converges on `fmt`. Companion to [`../SKILL.md`](../SKILL.md); the
@@ -105,6 +105,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `fixture-needs-target-args` | error | A `needs:` link's target itself declares `args:` — runtime always runs a needs target with no args (it is a shared, once-per-scenario dependency), so a needs target's own `args:` can never be satisfied. |
 | `fixture-needs-cycle` | error | A fixture's `needs:` chain cycles back to itself. |
 | `fixture-undeclared-provides` | error | An `@<fixture>.<key>` reference names a key the target fixture's `provides:` does not declare at all. (A key it declares but has not yet arranged earlier in the scenario is `unresolved-precondition`, not this — order is `compile_plan`'s concern, not doctor's.) |
+| `undetermined-provided-fact` | error | A fixture's `provides:` entry states neither `from:`/`read:` nor `is:` — or states both — so the book does not say whether the fact is observed from one of the fixture's own steps or asserted by its construction. The harness extracts every declared fact eagerly, so an undetermined one aborts the whole scenario; `qa compile-plan` raises the gap kind of the same name rather than emit code for it. |
 | `unbacked-precondition` | warn | A `fixture:` bullet states prose after an em dash — the state the arrangement leaves behind — and the book fixture node it names declares no `provides:` at all. The precondition is written by the node that *uses* the arrangement about work the node that *performs* it never claimed, and `qa compile-plan` copies it into `preconditions=[...]` where nothing can hold the fixture to it. Fix it on the producer: one `provides:` child per fact, `<key> — <what it means>`. |
 | `unknown-entry-property` | error | An entry of an `entries:`-shaped key (`provides:`, `flags:`) carries a nested `key:` its own key does not admit. An entries key's children are *things that have claims*: each direct child is one value, and that child's children are that value's properties. A key declares which properties it admits; a key that declares none is not checked, so this fires only where the vocabulary was written down. Fix it on the entry — spell the property the key names, or move the fact to the key that owns it. |
 | `fixture-secret-name` | error | A fixture's `secrets:` child is not a valid environment-variable name — it declares NAMES only, resolved from the harness's own environment at run time, never a value or a mint recipe. |
