@@ -1106,6 +1106,8 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             findings.append(
                 Finding("error", "unstated-claim-combiner", message, ref=gap.obligation_id)
             )
+        elif gap.kind == "unarranged-state":
+            findings.append(Finding("error", "unarranged-state", message, ref=gap.obligation_id))
         elif gap.kind == "no-verify-declared":
             # The one kind whose compiler spelling is not a doctor code: "the book declares no
             # check for this obligation to prove" is `undeclared-obligation`, which doctor
