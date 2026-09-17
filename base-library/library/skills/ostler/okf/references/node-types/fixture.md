@@ -25,6 +25,21 @@ same shape as a boot step.
 | `needs:` | no | Nested, `link`. Another fixture this one composes on top of, referenced as a markdown link to that fixture's file. Runtime runs the needs target once per scenario with no args, then binds the binding's own `name=value` tokens into *this* fixture's env — so a binding's names must be names *this* fixture declares under its own `args:`, not the target's, and are `fixture-arg-mismatch` otherwise. A `needs:` chain that cycles is `fixture-needs-cycle`. A needs target that itself declares `args:` is `fixture-needs-target-args`, because runtime can never pass it anything. |
 | `secrets:` | no | Nested. Environment-variable NAMES this fixture's steps read — never a value or a mint recipe. The harness resolves each from its own environment at run time; a name that is not a valid environment-variable identifier is `fixture-secret-name`, and a name absent from the harness's environment at run time is an environment fault, not a book/code defect, because the step never got to run. |
 
+`provides:` is optional in the grammar and load-bearing in practice. A `fixture:` bullet on a
+consuming node may carry prose after an em dash — `- fixture: seeded-acme — an account exists` —
+and `ostler qa compile-plan` copies that sentence verbatim into the compiled scenario's
+`preconditions=[...]`. The sentence is written by the node that *uses* the arrangement, about
+work the node that *performs* it did. If the fixture declares no `provides:` at all, nothing in
+the repo can hold it to leaving that state behind, and the compiled plan carries a precondition
+no check backs: `ostler doctor`'s `unbacked-precondition`. The remedy is on the producer — one
+`provides:` child per fact, `<key> — <what it means>` — not a reworded sentence on the consumer.
+
+The same rule already governs the older, hand-written `qa: {fixtures:}` tier, which refuses an
+entry with no `provides:` outright, and it is why `ostler qa fixtures migrate` reports
+`status="incomplete"` rather than success: one free-text sentence is not the itemized key list
+the node grammar wants, splitting it is an authoring decision rather than a transform, and a
+migration that printed plain success would be claiming the checked thing came across.
+
 `args:` is spelled `args`, not `params` — `params` is a global relation key
 (`registry.RELATION_KEYS`) already checked by `relation-without-subject`, and a fixture's own
 parameter list is not a relation.
@@ -76,7 +91,8 @@ title: Seeded acme
 
 See [`../doctor-codes.md`](../doctor-codes.md): `unknown-book-fixture`, `fixture-step-kind`,
 `fixture-step-no-run`, `fixture-arg-mismatch`, `fixture-needs-target-args`,
-`fixture-needs-cycle`, `fixture-undeclared-provides`, `fixture-secret-name`.
+`fixture-needs-cycle`, `fixture-undeclared-provides`, `fixture-secret-name`,
+`unbacked-precondition`.
 
 ## When bullets are not enough
 
