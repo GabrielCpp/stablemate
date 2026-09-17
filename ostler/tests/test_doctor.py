@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import pytest
@@ -480,6 +481,58 @@ def test_path_outside_the_book_is_refused_rather_than_reported_clean(repo: Path,
         assert main(["-C", str(repo), "doctor", "--no-index", "--path", path]) == 2
         captured = capsys.readouterr()
         assert "not a file of this book" in captured.err and not captured.out
+
+
+def test_every_gap_kind_has_its_own_branch_in_the_doctor_bridge():
+    """`gap_findings` names every kind `compile_plan` mints — no kind reaches the catch-all.
+
+    The catch-all `else` is a runtime safety net, not the thing that decides whether a kind is
+    handled: it turns a missing case into a `Finding` carrying `uncompilable-claim`, which is a
+    valid finding with the wrong code, and a wrong answer is not observable as a missing case.
+    That is how `undeclared-check-locator` and `unstated-claim-combiner` — both real doctor
+    codes, both with their own repair fragment under `okf_builder/main/prompts/repair/` — came
+    to be reported to the builders under a third code whose fragment says something else.
+
+    Two relations, because each catches a different drift: a kind minted in `compile.py` and
+    never declared, and a kind declared and never translated.
+    """
+    tree = ast.parse((Path(compile_mod.__file__)).read_text())
+    minted = {
+        node.args[1].value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "Gap"
+        and len(node.args) >= 2
+        and isinstance(node.args[1], ast.Constant)
+    }
+    assert minted <= compile_mod.GAP_KINDS, minted - compile_mod.GAP_KINDS
+
+    bridge = next(
+        node for node in ast.walk(ast.parse(Path(doctor.__file__).read_text()))
+        if isinstance(node, ast.FunctionDef) and node.name == "gap_findings"
+    )
+    branched = {
+        node.comparators[0].value
+        for node in ast.walk(bridge)
+        if isinstance(node, ast.Compare) and isinstance(node.comparators[0], ast.Constant)
+    }
+    assert compile_mod.GAP_KINDS - branched == {"uncompilable-claim"}, (
+        compile_mod.GAP_KINDS - branched
+    )
+
+
+def test_a_gap_kind_that_is_not_a_doctor_code_is_translated_not_passed_through():
+    """`no-verify-declared` is the compiler's spelling; doctor's is `undeclared-obligation`."""
+    oid = "okf:docs/features/demo/api.md#post-things:does:1"
+    gap = compile_mod.Gap(oid, "no-verify-declared", "the book declares no check")
+
+    [finding] = doctor.gap_findings([gap])
+
+    # `warn`, the severity doctor already grades `undeclared-obligation` at when it raises the
+    # same fact from the book alone. One rule graded two ways by which component noticed it is
+    # the drift this bridge exists to avoid.
+    assert (finding.severity, finding.code) == ("warn", "undeclared-obligation")
 
 
 def test_gap_findings_reports_a_compile_plan_gap_as_a_doctor_finding():

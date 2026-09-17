@@ -1014,6 +1014,25 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             )
         elif gap.kind == "undeclared-entry-url":
             findings.append(Finding("error", "undeclared-entry-url", message, ref=gap.obligation_id))
+        elif gap.kind == "unresolved-extends":
+            findings.append(Finding("error", "unresolved-extends", message, ref=gap.obligation_id))
+        elif gap.kind == "undeclared-check-locator":
+            findings.append(
+                Finding("error", "undeclared-check-locator", message, ref=gap.obligation_id)
+            )
+        elif gap.kind == "unstated-claim-combiner":
+            findings.append(
+                Finding("error", "unstated-claim-combiner", message, ref=gap.obligation_id)
+            )
+        elif gap.kind == "no-verify-declared":
+            # The one kind whose compiler spelling is not a doctor code: "the book declares no
+            # check for this obligation to prove" is `undeclared-obligation`, which doctor
+            # already raises from the book alone. It keeps that code's own severity — a `warn`
+            # here and an `error` there would be one rule graded two ways depending on which
+            # component noticed it.
+            findings.append(
+                Finding("warn", "undeclared-obligation", message, ref=gap.obligation_id)
+            )
         else:
             findings.append(Finding("error", "uncompilable-claim", message, ref=gap.obligation_id))
     return findings

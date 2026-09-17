@@ -45,6 +45,30 @@ from ostler.qa.outcome import QaOutcome
 #: them to a human exactly like any other gap, which is the part that is not relaxed here.
 _ARRANGEMENT_GAPS = frozenset({"unresolved-precondition", "screen-preconditions-undeclared"})
 
+#: Every kind `compile_plan` can mint. Declared rather than discovered, because the set is
+#: read from two directions and neither direction can see the other: the minting sites are
+#: scattered across this file (some passing a kind through a variable, so no reader can
+#: recover them from the literals), and `doctor.gap_findings` translates the kind into a
+#: doctor code through an if/elif chain that ends in a catch-all. A catch-all is what makes
+#: the drift invisible — an unenumerated kind does not fail there, it produces a valid
+#: `Finding` carrying the wrong code, and a wrong answer is not observable as a missing case.
+#: So the vocabulary is stated once here, and
+#: `test_every_gap_kind_has_its_own_branch_in_the_doctor_bridge` asserts the two sides
+#: against it. A new kind fails that test until someone decides what doctor should call it.
+GAP_KINDS = frozenset({
+    "uncompilable-claim",
+    "unresolved-precondition",
+    "unreachable-screen",
+    "screen-preconditions-undeclared",
+    "needs-snapshot",
+    "needs-out-of-band-observation",
+    "undeclared-entry-url",
+    "unresolved-extends",
+    "undeclared-check-locator",
+    "unstated-claim-combiner",
+    "no-verify-declared",
+})
+
 
 @dataclass(frozen=True)
 class Gap:
