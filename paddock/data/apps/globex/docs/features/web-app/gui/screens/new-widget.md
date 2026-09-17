@@ -72,6 +72,7 @@ request carried, but never substitute an HTTP client for the click.
 - parent: [name-field](#name-field)
 - exclusive-with:
 - states:
+  - invalid: populated from the refusal branch of `submit-new-widget`; absent on arrival
 - verify: visible(locator="#name-error")
 - code: `app/web-app/static/new.html` @18dfea321e64
 - detail: the span `name-field`'s `invalid` state names. Declared because the refusal branch
