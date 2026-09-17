@@ -12,8 +12,7 @@ status: Not started
 
 ## Fixtures
 
-- Fixture: claims
-- Fixture: identity
+(none)
 
 ## Context
 

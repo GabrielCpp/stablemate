@@ -13,7 +13,7 @@ status: Not started
 
 ## Fixtures
 
-- Fixture: identity
+(none)
 
 ## Context
 

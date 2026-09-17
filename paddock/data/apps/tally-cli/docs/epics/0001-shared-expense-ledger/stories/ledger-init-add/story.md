@@ -12,7 +12,7 @@ status: Not started
 
 ## Fixtures
 
-- Fixture: disk
+(none)
 
 ## Context
 
