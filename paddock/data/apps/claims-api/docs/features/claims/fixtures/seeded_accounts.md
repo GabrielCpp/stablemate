@@ -10,9 +10,12 @@ seeded. There is no second copy of the arrangement to drift from the first. Re-r
 safe: the seeder treats an account that already exists as done.
 
 - provides:
-  - holder-a — a claim holder, `holder-a@example.com`
-  - holder-b — a second claim holder, `holder-b@example.com`
-  - adjuster — `adjuster@example.com`, carrying the adjuster role claim
+  - holder-a — a claim holder
+    - is: holder-a@example.com
+  - holder-b — a second claim holder
+    - is: holder-b@example.com
+  - adjuster — carries the adjuster role claim
+    - is: adjuster@example.com
 
 ## Steps
 

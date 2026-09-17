@@ -14,8 +14,9 @@ This fixture leaves the stack altered on purpose and does not put it back. That 
 only because every other fixture in this directory starts by bringing `api-service` up itself
 rather than trusting a teardown to have run.
 
-- provides:
-  - reason — why the directory read fails, which is that `api-service` is not listening
+It `provides:` nothing. What it arranges is a *state* — a service that is not listening — and
+the only fact anyone wanted from it was a sentence saying so, which is this paragraph's job and
+not a value any check could reference.
 
 ## Steps
 

@@ -13,7 +13,8 @@ the arrangement itself, not a workaround for a missing one — and it is idempot
 what lets this fixture run after [widgets-on-hand](widgets-on-hand.md) in either order.
 
 - provides:
-  - count — the number of widgets the directory holds, which is zero
+  - count — the number of widgets the directory holds
+    - is: 0
 
 ## Steps
 
