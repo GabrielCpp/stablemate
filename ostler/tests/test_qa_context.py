@@ -631,15 +631,16 @@ def test_a_check_binds_to_the_claim_it_was_written_under(tmp_path: Path):
     (tmp_path / "app").mkdir()
     (tmp_path / "docs/features/acme/http/claims.md").write_text(
         """---
-type: endpoint
+type: server
 title: Claims
 ---
 # Claims
 
-## Invocations
+## Endpoints
 
 ### list-claims
-- route: `GET /api/claims`
+- method: GET
+- path: /api/claims
 - code: app/list.py::list_claims
 - verify: http_status(200, path="/api/claims")
 - authorization: a holder reads only their own claims.
@@ -1364,15 +1365,16 @@ def test_a_leading_fixture_is_ambient_while_a_nested_one_binds_to_its_claim(tmp_
     (tmp_path / "app").mkdir()
     (tmp_path / "docs/features/acme/http/claims.md").write_text(
         """---
-type: endpoint
+type: server
 title: Claims
 ---
 # Claims
 
-## Invocations
+## Endpoints
 
 ### list-claims
-- route: `GET /api/claims`
+- method: GET
+- path: /api/claims
 - code: app/list.py::list_claims
 - fixture: three-identities — the adjuster and both holders exist
 - authorization: a holder reads only their own claims.

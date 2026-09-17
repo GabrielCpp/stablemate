@@ -19,7 +19,7 @@ def endpoint_doc(verify_value: str) -> str:
     return (
         "---\ntype: api\nslug: s\ntitle: T\n---\n# T\n\n"
         "## Endpoints\n\n### submit\n"
-        "- route: `POST /x`\n"
+        "- method: POST\n- path: /x\n"
         f"- verify: {verify_value}\n"
     )
 
@@ -159,7 +159,7 @@ def test_clean_book_is_a_noop():
     text = (
         "---\ntype: api\nslug: s\ntitle: T\n---\n# T\n\n"
         "## Endpoints\n\n### submit\n"
-        "- route: `POST /x`\n"
+        "- method: POST\n- path: /x\n"
         '- verify: http_status(201, path="/x")\n'
         "- tests: `api-service/internal/account/account_service_test.go::Test_Create`\n"
     )

@@ -76,12 +76,12 @@ def test_attributed_captures_mirrors_attributed_fixtures_via_the_shared_engine(
     repo: Path,
 ) -> None:
     write(repo / "docs/features/acme/server.md",
-          "---\ntype: endpoint\ntitle: Acme accounts\n---\n# Acme accounts\n\n"
-          "## Invocations\n\n### list-accounts\n"
-          "- route: `GET /api/accounts`\n"
+          "---\ntype: server\ntitle: Acme accounts\n---\n# Acme accounts\n\n"
+          "## Endpoints\n\n### list-accounts\n"
+          "- method: GET\n- path: /api/accounts\n"
           "- does:\n  - lists every account on file\n"
           "- capture: account_id from $.accounts[0].id\n")
-    inv = load(repo).ui_nodes_of_type("invocation")[0]
+    inv = load(repo).ui_nodes_of_type("endpoint")[0]
     _, per_bullet = registry.attributed_captures(inv.type, inv.bullet_order, inv.combiners)
     assert per_bullet == {("does", 1): ["account_id from $.accounts[0].id"]}
 

@@ -157,15 +157,16 @@ def test_a_story_missing_the_section_entirely_reads_as_unwritten(repo: Path) -> 
 
 BOOK = """\
 ---
-type: endpoint
+type: server
 title: Claims
 ---
 # Claims
 
-## Invocations
+## Endpoints
 
 ### list-claims
-- route: `GET /api/claims`
+- method: GET
+- path: /api/claims
 - fixture: {bullet}
 - authorization: an adjuster reads every claim on file.
 """

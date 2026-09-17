@@ -45,15 +45,16 @@ ENDPOINT_PATH = "docs/features/acme/server.md"
 
 def _endpoint_book(fixture_bullet: str, extra: str = "") -> str:
     return f"""---
-type: endpoint
+type: server
 title: Acme accounts
 ---
 # Acme accounts
 
-## Invocations
+## Endpoints
 
 ### list-accounts
-- route: `GET /api/accounts`
+- method: GET
+- path: /api/accounts
 - fixture: {fixture_bullet}
 - authorization: an adjuster reads every account on file.
 {extra}"""
