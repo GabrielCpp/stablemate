@@ -8,9 +8,6 @@ which of these it was:
   bullet, so the compiler has nothing to call before the scenario's action. Add one, naming a
   fixture node under `docs/features/<surface>/fixtures/<name>.md` (or an existing one that already
   provides the state this obligation needs).
-- **"the book carries no request body"** — the route is a body-bearing method (`POST`/`PUT`/
-  `PATCH`) and no bullet on the node states what the request sends. Add the body's shape to the
-  node's prose or a `body:` bullet, whichever this surface's other nodes use.
 - **"the path still carries a template variable"** — the route path has an unfilled `{token}` the
   compiler could not bind to a produced fact. Either an earlier obligation in this scenario needs
   to arrange/produce the value the token names, or the node's `params:` needs to say which prior
