@@ -34,7 +34,7 @@ request carried, but never substitute an HTTP client for the click.
 - states:
   - invalid: `#name-error` carries the field's error message
 - verify: visible(locator="#name-field")
-- code: `app/web-app/static/new.html` @bf0832921aaf
+- code: `app/web-app/static/new.html` @18dfea321e64
 - detail:
 - fixture:
 - tests:
@@ -54,7 +54,7 @@ request carried, but never substitute an HTTP client for the click.
 - states:
   - invalid: `#quantity-error` carries the field's error message
 - verify: visible(locator="#quantity-field")
-- code: `app/web-app/static/new.html` @bf0832921aaf
+- code: `app/web-app/static/new.html` @18dfea321e64
 - detail:
 - fixture:
 - tests:
@@ -73,7 +73,7 @@ request carried, but never substitute an HTTP client for the click.
 - exclusive-with:
 - states:
 - verify: visible(locator="#name-error")
-- code: `app/web-app/static/new.html` @bf0832921aaf
+- code: `app/web-app/static/new.html` @18dfea321e64
 - detail: the span `name-field`'s `invalid` state names. Declared because the refusal branch
   of `submit-new-widget` is observed through it, and a check's locator names a component this
   book declares rather than a CSS id nothing here has heard of.
@@ -94,17 +94,36 @@ request carried, but never substitute an HTTP client for the click.
 - exclusive-with:
 - states:
 - verify: visible(locator="#new-widget-form")
-- code: `app/web-app/static/new.html` @bf0832921aaf
+- code: `app/web-app/static/new.html` @18dfea321e64
 - detail: the form element the two fields sit in. Declared because it is what
   `widget-list`'s `open-new-widget` observes on arrival — the screen is reached when the form
   is on it, and an interaction that lands here needs something in this book to point at.
 - fixture:
 - tests:
 
+### submit-widget-button
+- selector: #submit-widget
+- role: button
+- one-per:
+- variants:
+- name: Add widget
+- unique-by:
+- placement:
+- keyboard: reachable by Tab
+- extends:
+- parent: [new-widget-form](#new-widget-form)
+- exclusive-with:
+- states:
+- verify: visible(locator="#submit-widget-button")
+- code: `app/web-app/static/new.html` @18dfea321e64
+- detail:
+- fixture:
+- tests:
+
 ## Interactions
 
 ### submit-new-widget
-- on: [name-field](#name-field), [quantity-field](#quantity-field)
+- on: [submit-widget-button](#submit-widget-button)
 - trigger: click
 - role: button
 - one-per:
@@ -114,16 +133,37 @@ request carried, but never substitute an HTTP client for the click.
 - keyboard: Enter (while a field has focus), or click
 - when: `name` non-empty and `quantity` a non-negative number
 - exclusive-with:
-- does: on acceptance, the browser navigates to [widget-list](widget-list.md)
+- does: the browser navigates to [widget-list](widget-list.md)
 - verify: visible(locator="widget-list.md#widget-table")
 - verify: http_status(201, path="/api/widgets")
-- does: on refusal, the field error spans are populated from the response body
-- verify: visible(locator="#name-error")
-- verify: http_status(400, path="/api/widgets")
-- does: on refusal, the page stays put — the form is still the thing on screen
-- verify: visible(locator="#new-widget-form")
 - code: `app/web-app/static/new.js::submitNewWidget` @6f983e4202a9
-- detail:
+- detail: the base case — the form's `name`/`quantity` both satisfy `when:`, so the service
+  accepts the widget. [refuse-new-widget](#refuse-new-widget) extends this arm for the case it
+  does not.
+- fixture:
+- capture:
+- tests:
+
+### refuse-new-widget
+- on:
+- trigger:
+- role:
+- one-per:
+- variants:
+- name:
+- unique-by:
+- keyboard:
+- when: `name` empty, or `quantity` missing or negative
+- exclusive-with:
+- extends: [submit-new-widget](#submit-new-widget)
+- does: the field error spans are populated from the response body, and the page stays put —
+  the form is still the thing on screen
+- verify: visible(locator="#name-error")
+- verify: visible(locator="#new-widget-form")
+- verify: http_status(400, path="/api/widgets")
+- code: `app/web-app/static/new.js::submitNewWidget` @6f983e4202a9
+- detail: the refusal arm — same button, same trigger, same control identity as
+  [submit-new-widget](#submit-new-widget), inherited through `extends:` rather than repeated.
 - fixture:
 - capture:
 - tests:
