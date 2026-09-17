@@ -1538,12 +1538,20 @@ def _check_ui_file(graph: Graph, path, f: list[Finding]) -> None:
     ftype = registry.ui_type(declared)
     if ftype is not None and ftype.kind == "file":
         for spec, problem in required_section_problems(doc, ftype.required_sections):
-            code = "missing-required-section" if problem == "missing" else "empty-required-section"
-            state = "is missing" if problem == "missing" else "leaves empty"
-            f.append(Finding("error", code,
-                             f"{rel}: {ftype.name} {state} its required `## {spec.heading}` "
-                             f"section", path=rel, line=1,
-                             suggestion=f"## {spec.heading}", fixable=(problem == "missing")))
+            # Both codes are spelled as literals rather than selected into one `code` variable:
+            # the code list is enumerated statically — by `doctor-codes.md`'s join test and by
+            # okf-builder's drift tripwire — and a code a reader has to execute a ternary to
+            # learn is a code neither of them can see.
+            if problem == "missing":
+                f.append(Finding("error", "missing-required-section",
+                                 f"{rel}: {ftype.name} is missing its required "
+                                 f"`## {spec.heading}` section", path=rel, line=1,
+                                 suggestion=f"## {spec.heading}", fixable=True))
+            else:
+                f.append(Finding("error", "empty-required-section",
+                                 f"{rel}: {ftype.name} leaves empty its required "
+                                 f"`## {spec.heading}` section", path=rel, line=1,
+                                 suggestion=f"## {spec.heading}", fixable=False))
 
 
 def _declares(path: Path, symbol: str) -> bool:

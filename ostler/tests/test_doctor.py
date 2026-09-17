@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -597,3 +598,79 @@ def test_an_unparsed_capture_gap_keeps_the_code_doctor_already_raises_for_that_b
 
     assert (finding.severity, finding.code) == ("error", "unparsed-capture")
     assert finding.ref == oid
+
+
+def _emitted_codes() -> dict[str, str]:
+    """Every `(code, severity)` pair `doctor.py` can construct, read out of its source.
+
+    A `Finding(...)` whose severity or code is not a literal is unreadable here, so the
+    extraction asserts there are none rather than skipping them — a code a static reader has to
+    execute a ternary to learn is a code no enumeration can see, and an enumeration with a hole
+    in it reports "documented" about a code nobody looked at.
+    """
+    tree = ast.parse(Path(doctor.__file__).read_text())
+    calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "Finding"
+    ]
+    computed = [
+        node.lineno for node in calls
+        if len(node.args) < 2
+        or not isinstance(node.args[0], ast.Constant)
+        or not isinstance(node.args[1], ast.Constant)
+    ]
+    assert not computed, f"Finding(...) with a computed severity or code at lines {computed}"
+    emitted: dict[str, set[str]] = {}
+    for node in calls:
+        severity, code = node.args[0], node.args[1]
+        if isinstance(severity, ast.Constant) and isinstance(code, ast.Constant):
+            if isinstance(severity.value, str) and isinstance(code.value, str):
+                emitted.setdefault(code.value, set()).add(severity.value)
+    split = {code: sorted(sevs) for code, sevs in emitted.items() if len(sevs) > 1}
+    assert not split, f"one code raised at two severities, so no row can state one: {split}"
+    return {code: next(iter(sevs)) for code, sevs in emitted.items()}
+
+
+def _documented_codes() -> dict[str, str]:
+    page = Path(__file__).resolve().parents[2] / (
+        "base-library/library/skills/ostler/okf/references/doctor-codes.md")
+    rows = re.findall(r"^\| `([a-z0-9-]+)` \| (error|warn) \|", page.read_text(), re.M)
+    documented = dict(rows)
+    assert len(rows) == len(documented), "doctor-codes.md documents one code twice"
+    return documented
+
+
+def test_the_reference_page_lists_every_code_doctor_can_raise():
+    """`doctor-codes.md` calls itself the list of every finding, and until now nothing joined it
+    to the findings.
+
+    The drift is silent in both directions and it had already happened twice. Five codes —
+    `unarranged-journey`, `unarranged-state`, `uneven-claim-coverage`, `unidentifiable-screen`,
+    `unparsed-capture` — were raised with no row at all, so a builder handed one of them had
+    nowhere to look, which is the same defect as a missing repair fragment seen one artifact
+    over. And the page's own header claimed a code count twenty-one short of its own table,
+    which is why there is no count here to keep in step: the table is the list.
+
+    okf-builder's `test_drift_tripwire.py` is this test's sibling and covers the other Gate A
+    artifact — that every code has a repair fragment or a reasoned exemption. Neither implies
+    the other: a code can have a fragment the builders read and no row a person can.
+    """
+    emitted, documented = _emitted_codes(), _documented_codes()
+    assert set(emitted) == set(documented), {
+        "raised with no row": sorted(set(emitted) - set(documented)),
+        "documented and never raised": sorted(set(documented) - set(emitted)),
+    }
+
+
+def test_the_reference_page_states_the_severity_each_code_is_raised_at():
+    """The severity is the half of a row a reader acts on — an error gates a story and a warn
+    does not — and it was wrong for `malformed-variants` and `runbook-missing` in opposite
+    directions, each for as long as nobody re-read the code beside the row.
+    """
+    emitted, documented = _emitted_codes(), _documented_codes()
+    mismatched = {
+        code: {"doctor.py": emitted[code], "doctor-codes.md": documented[code]}
+        for code in set(emitted) & set(documented) if emitted[code] != documented[code]
+    }
+    assert not mismatched, mismatched
