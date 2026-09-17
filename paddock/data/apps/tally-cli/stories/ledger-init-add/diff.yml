@@ -25,3 +25,4 @@ changed:
 pinned:
   - docs/features/tally/tally.md
   - docs/features/tally/flows/track-a-trip.md
+  - docs/features/tally/concepts/ledger-file.md
