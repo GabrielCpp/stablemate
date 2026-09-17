@@ -35,6 +35,15 @@ contract a screen reader announces, and the `getByRole(role, {name})` a test loc
 is a legitimate value on `name:` — a decorative element has no accessible name — but it must be
 *stated*, so "no name" and "nobody looked" stay distinguishable.
 
+**The pair is one address, not two claims.** `getByRole(role, {name})` is a single query built
+from both bullets, and the compiler never emits a role without a name — a role on its own
+resolves to more than one element and Playwright's strict mode raises. So no check in the
+vocabulary can observe `role:` apart from `name:`, and a `verify:` under a component discharges
+the pair together. Do not add a second check to "cover" the role: the two bullets are an address,
+nothing counts them as claims to be evenly covered, and a check written to satisfy that intuition
+asserts the same query twice. When `name:` is `none` the address falls through to `selector:`,
+and the by-role requirement relaxes with it.
+
 **`name:` is an observation of the accessibility tree, not a transcription of the text on the
 screen** — and for most roles those are different strings. An accessible name comes from an
 author label (`aria-label`, `aria-labelledby`, a `<label for>`, and for a `table` its
