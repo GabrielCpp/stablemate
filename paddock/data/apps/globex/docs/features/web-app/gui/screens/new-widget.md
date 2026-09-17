@@ -138,6 +138,8 @@ request carried, but never substitute an HTTP client for the click.
 - keyboard: Enter (while a field has focus), or click
 - verify: focusable(locator="#submit-widget-button", activates="Enter")
 - when: `name` non-empty and `quantity` a non-negative number
+- arrange: fill(locator="#name-field", value="Widget A")
+- arrange: fill(locator="#quantity-field", value="3")
 - exclusive-with:
 - does:
   - the browser navigates to [widget-list](widget-list.md)
