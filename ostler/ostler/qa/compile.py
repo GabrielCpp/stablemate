@@ -195,11 +195,24 @@ _IDENT = re.compile(r"[^0-9a-zA-Z]+")
 
 
 def _route(obligation: dict[str, Any]) -> tuple[str, str] | None:
-    """The HTTP method and path template this obligation's node is addressed by."""
-    for value in obligation.get("locators", {}).get("route", []):
+    """The HTTP method and path template this obligation's node is addressed by.
+
+    Two declared spellings reach here. A `screen` states its address as one `route:` bullet,
+    `` `VERB /path` `` (matched by `_ROUTE` above, kept for that spelling). An `endpoint` states
+    it as two bullets, `method:` and `path:` (`registry.py`'s `endpoint` profile — it declares no
+    `route:` at all), and those are read directly rather than joined into one string for `_ROUTE`
+    to re-parse: the path the book wrote is the exact template it wrote, not what a regex would
+    recover from a string built for the other node type's spelling.
+    """
+    locators = obligation.get("locators", {})
+    for value in locators.get("route", []):
         matched = _ROUTE.match(value)
         if matched:
             return matched.group(1).upper(), matched.group(2)
+    method = _bullet_value(next(iter(locators.get("method", [])), None))
+    path = _bullet_value(next(iter(locators.get("path", [])), None))
+    if method and path:
+        return method.upper(), path
     return None
 
 

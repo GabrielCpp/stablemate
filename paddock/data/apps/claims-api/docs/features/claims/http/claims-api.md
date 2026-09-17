@@ -40,12 +40,13 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### get-health
 
+- method: GET
+- path: /healthz
 - does:
   - answers `200` with `{"status": "ok"}` as soon as the process is serving, reading no ledger and asking for no identity.
 - verify: http_status(200, path="/healthz")
 - verify: json_path("status", equals="ok")
 - code: app/api/service.go@dc8c26a0c022
-- route: `GET /healthz`
 - parent: [Claims API](#claims-api)
 - request:
   - method: `GET`
@@ -58,6 +59,8 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### submit-claim
 
+- method: POST
+- path: /api/claims
 - does:
   - writes an acceptable claim to the ledger at version `1` with status `Submitted`, attributes it to the calling holder, and answers `201` with the stored record.
 - verify: http_status(201, path="/api/claims")
@@ -95,7 +98,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - persistence: claim-record — an accepted claim is written through the ledger before the response that announces
   it, and is still on file after the service restarts.
 - verify: persists(subject="claim cl-1001")
-- route: `POST /api/claims`
 - parent: [Claims API](#claims-api)
 - refs: [claim ledger](../concepts/claim-ledger.md)
 - request:
@@ -110,6 +112,8 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### list-claims
 
+- method: GET
+- path: /api/claims
 - does:
   - returns the claims the caller is entitled to read, each with its `id`, `status` and `version`, so a register can be rendered and a decision prepared without a second request.
 - verify: http_status(200, path="/api/claims")
@@ -124,7 +128,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - verify: count(subject="claims", equals=2)
 - code: app/api/list.go@cf07a3255915
 - fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
-- route: `GET /api/claims`
 - parent: [Claims API](#claims-api)
 - refs: [claim tenancy](../concepts/claim-tenancy.md)
 - request:
@@ -139,6 +142,8 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### get-claim
 
+- method: GET
+- path: /api/claims/{id}
 - does:
   - returns the one claim the id names, with the version a decision has to quote.
 - verify: http_status(200, path="/api/claims/cl-1001")
@@ -151,7 +156,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - verify: http_status(403, title="Not Your Claim", path="/api/claims/cl-1002")
 - code: app/api/get.go@cb7342be20b9
 - fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
-- route: `GET /api/claims/{id}`
 - parent: [Claims API](#claims-api)
 - refs: [claim tenancy](../concepts/claim-tenancy.md)
 - request:
@@ -167,6 +171,8 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### decide-claim
 
+- method: POST
+- path: /api/claims/{id}/decision
 - does:
   - moves the named claim to `Approved` or `Denied`, keeps the adjuster's note on the record, increments its version, and answers `200` with the stored claim.
 - verify: http_status(200, path="/api/claims/cl-1001/decision")
@@ -191,7 +197,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - persistence: claim-record — a decision is written through the ledger before the response that announces it, and
   the claim is still `Approved`, at the version the decision returned, after the service restarts.
 - verify: persists(subject="claim cl-1001")
-- route: `POST /api/claims/{id}/decision`
 - parent: [Claims API](#claims-api)
 - refs: [claim ledger](../concepts/claim-ledger.md)
 - request:
@@ -207,6 +212,8 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### reset-claims
 
+- method: DELETE
+- path: /api/claims
 - does:
   - empties the ledger — every claim dropped, numbering back to `cl-1001` — and answers `204` with no body.
 - verify: http_status(204, path="/api/claims")
@@ -216,7 +223,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - verify: http_status(403, title="Adjusters Only", path="/api/claims")
 - code: app/api/reset.go@555872cde2b6
 - fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
-- route: `DELETE /api/claims`
 - parent: [Claims API](#claims-api)
 - refs: [claim ledger](../concepts/claim-ledger.md)
 - request:

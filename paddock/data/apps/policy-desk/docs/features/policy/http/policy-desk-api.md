@@ -41,12 +41,13 @@ The journeys that stitch these routes together are
 
 ### get-health
 
+- method: GET
+- path: /healthz
 - does:
   - answers `200` with `{"status": "ok"}` as soon as the process is serving, reading no ledger.
 - verify: http_status(200, path="/healthz")
 - verify: json_path("status", equals="ok")
 - code: app/api/service.go@bcf74ba2ccff
-- route: `GET /healthz`
 - parent: [Policy desk API](#policy-desk-api)
 - request:
   - method: `GET`
@@ -59,6 +60,8 @@ The journeys that stitch these routes together are
 
 ### get-policies
 
+- method: GET
+- path: /api/policies
 - does:
   - returns every policy on the books, ordered by policy number, whatever status it is in.
 - verify: http_status(200, path="/api/policies")
@@ -68,7 +71,6 @@ The journeys that stitch these routes together are
 - verify: json_path("policies[0].version", absent=false)
 - verify: json_path("policies[0].status", matches="Draft|Cancelled")
 - code: app/api/list.go@99bbc1f4191d
-- route: `GET /api/policies`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
 - request:
@@ -82,6 +84,8 @@ The journeys that stitch these routes together are
 
 ### post-policies
 
+- method: POST
+- path: /api/policies
 - does:
   - writes an acceptable policy to the ledger at version `1` with status `Draft`, and answers `201` with the stored record — including the `id` derived from its policy number, which is the address the caller is expected to go to next.
 - verify: http_status(201, path="/api/policies")
@@ -107,7 +111,6 @@ The journeys that stitch these routes together are
 - persistence: policy-record — an accepted policy is written through the ledger before the response is sent, and is
   still on the books after the service restarts.
 - verify: persists(subject="policy pn-1001")
-- route: `POST /api/policies`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
 - request:
@@ -122,6 +125,8 @@ The journeys that stitch these routes together are
 
 ### get-policy
 
+- method: GET
+- path: /api/policies/{id}
 - does:
   - returns the one policy the id names, with the version an edit has to quote.
 - verify: http_status(200, path="/api/policies/pn-1001")
@@ -129,7 +134,6 @@ The journeys that stitch these routes together are
 - errors: `404 Unknown Policy` for an id that is not on the books.
 - verify: http_status(404, title="Unknown Policy", path="/api/policies/missing")
 - code: app/api/service.go@bcf74ba2ccff
-- route: `GET /api/policies/{id}`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
 - request:
@@ -145,6 +149,8 @@ The journeys that stitch these routes together are
 
 ### put-policy
 
+- method: PUT
+- path: /api/policies/{id}
 - does:
   - applies an acceptable edit to the named policy, increments its version, and answers `200` with the stored record.
 - verify: http_status(200, path="/api/policies/pn-1001")
@@ -168,7 +174,6 @@ The journeys that stitch these routes together are
   they were given does not overwrite the edit that landed meanwhile.
 - verify: conflict_on_stale(subject="policy pn-1001", token="version")
 - verify: http_status(409, title="Stale Policy", path="/api/policies/pn-1001")
-- route: `PUT /api/policies/{id}`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
 - request:
@@ -184,6 +189,8 @@ The journeys that stitch these routes together are
 
 ### post-policy-cancel
 
+- method: POST
+- path: /api/policies/{id}/cancel
 - does:
   - moves the named policy to status `Cancelled`, increments its version, and answers `200` with the stored record.
 - verify: http_status(200, path="/api/policies/pn-1001/cancel")
@@ -199,7 +206,6 @@ The journeys that stitch these routes together are
 - verify: http_status(409, title="Stale Policy", path="/api/policies/pn-1001/cancel")
 - errors: `404 Unknown Policy` for an id that is not on the books.
 - code: app/api/cancel.go@f5ad39316749
-- route: `POST /api/policies/{id}/cancel`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
 - request:
@@ -215,6 +221,8 @@ The journeys that stitch these routes together are
 
 ### delete-policies
 
+- method: DELETE
+- path: /api/policies
 - does:
   - empties the books — every policy dropped — and answers `204` with no body.
 - verify: http_status(204, path="/api/policies")
@@ -224,7 +232,6 @@ The journeys that stitch these routes together are
 - verify: http_status(204, path="/api/policies")
 - verify: count(subject="policies", equals=0)
 - code: app/api/service.go@bcf74ba2ccff
-- route: `DELETE /api/policies`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy ledger](../concepts/policy-ledger.md)
 - request:

@@ -27,13 +27,14 @@ confirming a hold has to quote the number the caller was given.
 
 ### get-health
 
+- method: GET
+- path: /healthz
 - verify: http_status(200, path="/healthz")
 - does:
   - answers `200` with `{"status": "ok"}` as soon as the process is serving, reading no ledger.
 - verify: http_status(200, path="/healthz")
 - verify: json_path("status", equals="ok")
 - code: app/service.py::Handler.do_GET@75821d833adb
-- route: `GET /healthz`
 - parent: [Seat booking API](#seat-booking-api)
 - request:
   - method: `GET`
@@ -46,6 +47,8 @@ confirming a hold has to quote the number the caller was given.
 
 ### get-seat-map
 
+- method: GET
+- path: /api/seats
 - verify: http_status(200, path="/api/seats")
 - does:
   - returns every seat in the showing, in row-then-number order, whatever state it is in.
@@ -63,7 +66,6 @@ confirming a hold has to quote the number the caller was given.
 - verify: count(subject="seats", equals=12)
 - verify: json_path("seats[0].state", equals="booked")
 - code: app/booking.py::seat_map@e84e914263db
-- route: `GET /api/seats`
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)
 - request:
@@ -80,6 +82,8 @@ confirming a hold has to quote the number the caller was given.
 
 ### post-seat-hold
 
+- method: POST
+- path: /api/seats/{seat}/hold
 - verify: http_status(201, path="/api/seats/A1/hold")
 - does:
   - moves a free seat to `held`, bumps its version, and returns the hold id together with the version the caller must quote to confirm.
@@ -92,7 +96,6 @@ confirming a hold has to quote the number the caller was given.
 - errors: `404 No Such Seat` for an id outside the showing's seat map.
 - verify: http_status(404, title="No Such Seat", path="/api/seats/Z9/hold")
 - code: app/hold.py::hold@1169d541ddf9
-- route: `POST /api/seats/{seat}/hold`
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)
 - request:
@@ -108,6 +111,8 @@ confirming a hold has to quote the number the caller was given.
 
 ### delete-seat-hold
 
+- method: DELETE
+- path: /api/seats/{seat}/hold
 - verify: http_status(204, path="/api/seats/A1/hold")
 - does:
   - returns a held seat to `free`, bumps its version, and answers `204` with no body.
@@ -122,7 +127,6 @@ confirming a hold has to quote the number the caller was given.
   confirmed booking.
 - verify: http_status(409, title="Seat Not Held", path="/api/seats/B1/hold")
 - code: app/hold.py::release@1169d541ddf9
-- route: `DELETE /api/seats/{seat}/hold`
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)
 - request:
@@ -138,6 +142,8 @@ confirming a hold has to quote the number the caller was given.
 
 ### post-seat-booking
 
+- method: POST
+- path: /api/seats/{seat}/booking
 - verify: http_status(201, path="/api/seats/A1/booking")
 - does:
   - turns a held seat into a booking under the given name, bumps its version, and returns the booking id.
@@ -162,7 +168,6 @@ confirming a hold has to quote the number the caller was given.
   — after the service restarts.
 - verify: persists(subject="seat A1 booking")
 - verify: json_path("seats[0].booking.name", absent=false)
-- route: `POST /api/seats/{seat}/booking`
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)
 - request:
@@ -179,6 +184,8 @@ confirming a hold has to quote the number the caller was given.
 
 ### delete-showing
 
+- method: DELETE
+- path: /api/showing
 - verify: http_status(204, path="/api/showing")
 - does:
   - puts the showing back to its opening state — every seat `free`, every version back to `0`, every hold and booking dropped — and answers `204` with no body.
@@ -190,7 +197,6 @@ confirming a hold has to quote the number the caller was given.
 - verify: http_status(204, path="/api/showing")
 - verify: unchanged(subject="seats", except_fields=[])
 - code: app/service.py::Handler._reset_showing@75821d833adb
-- route: `DELETE /api/showing`
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat ledger](../concepts/seat-ledger.md)
 - request:
