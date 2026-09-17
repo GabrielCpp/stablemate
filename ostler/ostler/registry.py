@@ -286,6 +286,15 @@ class BulletKey:
                              # ``LOAD_BEARING_KEYS`` did — one read every key on every node
                              # regardless of type, the other refused a bullet no type declared,
                              # and a key legal on neither list's terms went unread by both.
+    condition: bool = False  # value names a state a claim holds *under*, not the claim itself
+                             # (``states:`` on a component, ``when:`` on an interaction/
+                             # invocation) — still ``normative=True`` (it mints its own
+                             # obligation, checked and gapped on its own id), but a reader
+                             # partitioning "what must this node prove" from "what must first be
+                             # true for that proof to mean anything" needs the two apart. A flag
+                             # rather than a hand-maintained tuple beside this table, for the same
+                             # reason as ``locator``: a second copy drifts the moment a type adds
+                             # one and the copy is not updated alongside it.
 
 
 @dataclass(frozen=True)
@@ -414,6 +423,20 @@ def arrange_keys(node_type: str) -> tuple[str, ...]:
     """
     uitype = UI_TYPES_BY_NAME.get(node_type)
     return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.arrange)
+
+
+def condition_keys(node_type: str) -> tuple[str, ...]:
+    """Every bullet key on `node_type` that names a state a claim holds *under*, not the claim.
+
+    `states:` on a component and `when:` on an interaction/invocation both mint their own
+    obligation — a condition is still normative, still checked and gapped on its own id — but
+    a reader asking "what must first be true for this node's other claims to mean anything"
+    needs them apart from `does:`/`role:`/`name:` and the rest. This is the canonical source a
+    hand-maintained tuple beside a check (`doctor.py`'s old `_CONDITION_KEYS`) should read
+    instead of duplicating: the two cannot drift once there is only one.
+    """
+    uitype = UI_TYPES_BY_NAME.get(node_type)
+    return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.condition)
 
 
 def attributed_fixtures(
@@ -820,7 +843,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # co-render are not ambiguous. A *claim*, grounded in source (mutually-exclusive states,
             # variant switch) — not a way to silence a real same-screen collision.
             BulletKey("exclusive-with", link=True, locator=True),
-            BulletKey("states", normative=True, locator=True),
+            BulletKey("states", normative=True, locator=True, condition=True),
             BulletKey("code", link=True, owns=True),
             # The judgment pointer: the concept whose selection rule says when *this* one of
             # several competing implementations is the right one. It resolves on any type
@@ -907,7 +930,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("name", required=True, locator=True),
             BulletKey("unique-by"),
             BulletKey("keyboard", required=True, normative=True, locator=True),
-            BulletKey("when", normative=True, locator=True),
+            BulletKey("when", normative=True, locator=True, condition=True),
             BulletKey("exclusive-with", link=True, locator=True),
             # The arm's link back to the base interaction that carries the shared control
             # identity (`on:`/`trigger:`/`role:`/`name:`/`keyboard:`) — see `interaction.md`'s
@@ -929,7 +952,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         bullet_keys=(
             BulletKey("on", required=True, link=True, locator=True),
             BulletKey("trigger", required=True, locator=True),
-            BulletKey("when", normative=True, locator=True),
+            BulletKey("when", normative=True, locator=True, condition=True),
             BulletKey("extends", link=True),
             BulletKey("does", required=True, nested=True, normative=True, locator=True),
             BulletKey("emits"),
@@ -1062,6 +1085,11 @@ NORMATIVE_KEYS_BY_TYPE: dict[str, tuple[str, ...]] = {
 # `_LOCATOR_KEYS` from this rather than hand-maintaining a second tuple, so the two cannot name
 # a different set the way they used to.
 LOCATOR_KEYS: frozenset[str] = frozenset(b.key for t in UI_TYPES for b in t.bullet_keys if b.locator)
+# Every key flagged `condition=True` on some type — `states:`, `when:` — the flat form
+# `doctor.py`'s `_declared_alternatives` reads instead of the `_CONDITION_KEYS` tuple it used
+# to hand-maintain beside this table.
+CONDITION_KEYS: frozenset[str] = frozenset(
+    b.key for t in UI_TYPES for b in t.bullet_keys if b.condition)
 LOAD_BEARING_KEYS: frozenset[str] = frozenset(
     b.key for t in UI_TYPES for b in t.bullet_keys
     if b.normative or b.check or b.link or b.arrange or b.locator

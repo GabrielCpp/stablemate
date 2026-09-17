@@ -1580,15 +1580,6 @@ def _alternation_conflict(a: checks.CheckCall, b: checks.CheckCall) -> bool:
     return not any(param.name == diffs[0] and param.identifies for param in spec.params)
 
 
-#: The keys under which a node states the *condition* its claims hold under, as opposed to
-#: what it claims to do. `states:` on a component ("shown — visible whenever the directory
-#: read returns no widgets") and `when:` on an interaction are the two spellings the grammar
-#: has. A node type carrying neither has no way to write a condition down and so can never
-#: satisfy `_declared_alternatives` — which is the right answer rather than a gap: a type
-#: that cannot say *when* it applies cannot have written a selection rule distributively.
-_CONDITION_KEYS = ("when", "states")
-
-
 def _declared_alternatives(nodes: list, group_ids: set[str],
                            resolver: links_mod.LinkResolver) -> bool:
     """Do *nodes* rule each other out, each saying when it is the one that holds?
@@ -1620,7 +1611,7 @@ def _declared_alternatives(nodes: list, group_ids: set[str],
         others = group_ids - {node.id}
         if (_resolved_targets(node, "exclusive-with", resolver) & others) != others:
             return False
-        if not any(value.strip() for key in _CONDITION_KEYS
+        if not any(value.strip() for key in registry.CONDITION_KEYS
                    for value in _bullet_values(node.meta.get(key, ""))):
             return False
     return True
