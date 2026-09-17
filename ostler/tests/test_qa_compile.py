@@ -1590,3 +1590,31 @@ def test_a_surface_with_no_entry_url_and_no_fallback_gaps_instead_of_guessing() 
     assert _gap_kinds(gaps, oid) == ["undeclared-entry-url"]
     # The obligation was dropped before target emission, so nothing compiles a target for it.
     assert "target(" not in source
+
+
+def test_a_selector_the_census_cannot_read_still_compiles_one_whole_scenario() -> None:
+    """Phase 3p': a compile-time gap is a statement about the plan being compiled, and vet's
+    render census is a different observer.
+
+    `[data-state="booked"]` is a selector `placement.is_addressable` rejects, so `ostler vet`'s
+    screen census can never confirm the component present. That is a real finding — and it is
+    doctor's `unaddressable-selector` check, made against the book. It is *not* a gap, because
+    a gap says "this obligation went unobserved by the compiled plan", and this obligation is
+    observed: `qa.by_css` compiles the selector fine and the assertion runs against the live
+    page. Emitting both put the obligation in `covers=[...]` and in the unobserved gap list at
+    once, which is exactly what `compile_plan`'s own mirror assert forbids."""
+    oid = "okf:docs/features/policy/gui/screens/policy-list.md#seat-grid:verify:1"
+    context = _navigation_context(
+        _page_obligation(
+            oid, "seat-grid",
+            locators={"selector": ['[data-state="booked"]']},
+            checks=[_visible('[data-state="booked"]')],
+        ),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert oid in _covers(source)
+    assert _gap_kinds(gaps, oid) == []
+    # The selector reaches the emitted check verbatim: it is compiled, not dropped.
+    assert r'locator="[data-state=\"booked\"]"' in source

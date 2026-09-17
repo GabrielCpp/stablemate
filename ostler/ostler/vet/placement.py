@@ -156,8 +156,13 @@ def is_addressable(selector: str) -> bool:
     (`[data-state="booked"]`), a boolean attribute (`[disabled]`), a pseudo-class — addresses
     nothing the scan ever produces, on any render, however precisely it describes the DOM: the
     component reads `missing` every time, which makes the one defect that would move it
-    unmeasurable. This is the doctor's `unaddressable-selector` check and the compile-time
-    `visible(locator=...)` gap both read off the same rule.
+    unmeasurable. This is the rule behind the doctor's `unaddressable-selector` check.
+
+    It is a claim about the *census*, not about the compiled plan: `qa.by_css` compiles any
+    valid CSS, so a `visible(locator=...)` on such a selector is observed by the QA run even
+    while the census stays blind to it. `compile_plan` therefore raises no gap here — a gap
+    reports what the plan being compiled failed to observe, and one observer's blindness is
+    not a channel the other one's report can carry.
     """
     return bool(_ROLE_SELECTOR.match(selector) or _STRING_SELECTOR.match(selector))
 

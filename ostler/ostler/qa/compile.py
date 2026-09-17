@@ -31,7 +31,6 @@ from ostler.checks import _rooted
 from ostler.markdown import extract_refs
 from ostler.qa import references
 from ostler.qa.outcome import QaOutcome
-from ostler.vet import placement as placement_mod
 
 
 #: Gap kinds that describe the *arrangement* a scenario stands on rather than the observation
@@ -68,7 +67,6 @@ GAP_KINDS = frozenset({
     "undeclared-check-locator",
     "unstated-claim-combiner",
     "no-verify-declared",
-    "unaddressable-selector",
 })
 
 
@@ -456,30 +454,6 @@ def _page_locator_expr(locators: dict[str, list[str]]) -> str | None:
     if selector:
         return f"qa.by_css({_lit(selector)})"
     return None
-
-
-def _gap_unaddressable_selector(locators: dict[str, list[str]], oid: str, gaps: list[Gap]) -> None:
-    """Flag a `visible(locator=...)` compiled from a `selector:` the render census can't read.
-
-    `_page_locator_expr` compiles any valid CSS through `qa.by_css` — the check this
-    obligation gets is real and will run. But when the same component also has to survive
-    `ostler vet`'s screen census, and its `selector:` is a form the render scan never mints
-    (see `placement_mod.is_addressable`), that census can never confirm the component present
-    — it reads `missing` on every render, live check or no. This mirrors doctor's own
-    `unaddressable-selector` book check but fires here too because a compiled obligation is
-    the point at which "this locator is unaddressable" actually costs something: a real,
-    silently-incomplete vet run.
-    """
-    role = _bullet_value(next(iter(locators.get("role", [])), None))
-    name = _bullet_value(next(iter(locators.get("name", [])), None))
-    if role and name:
-        return
-    selector = _bullet_value(next(iter(locators.get("selector", [])), None))
-    if selector and not placement_mod.is_addressable(selector):
-        gaps.append(Gap(
-            oid, "unaddressable-selector",
-            f"`selector:` ({selector!r}) is a form the render scan never mints — "
-            "`ostler vet`'s screen census can never confirm this component present"))
 
 
 def compile_plan(
@@ -1106,7 +1080,6 @@ def _assertion_operand(locators: dict[str, list[str]], oid: str, gaps: list[Gap]
                          "no addressable role/name or selector locator for this obligation's "
                          "`visible(...)` assertion"))
         return None
-    _gap_unaddressable_selector(locators, oid, gaps)
     return expr
 
 
