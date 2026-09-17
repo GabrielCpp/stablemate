@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ostler import registry
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.tools import opted_in_tools, qa_block, resolved_commands
 
@@ -82,10 +83,29 @@ class FixtureRef:
     provides: str
 
 
-def parse_bullet(value: str) -> FixtureRef | str:
+@dataclass(frozen=True)
+class NoArrangement:
+    """A `fixture:` bullet whose value states that this node arranges nothing, and why.
+
+    A parsed value, not a parse failure, and deliberately not the same thing as an absent
+    `fixture:` bullet. Those two are the same bytes to every reader that only asks whether a
+    row came back — which is how a journey came to be compiled and run against whatever state
+    the previous scenario happened to leave, and its end-state assertion to go red against an
+    app that was working. An author who has decided the journey needs no arrangement can say
+    so here; an author who never decided cannot, and `compile_plan` gaps them apart.
+
+    The reason is required (`registry.self_declared_empty`): a bare `none` is a blank left
+    blank, and admitting it would put the undecided case back under the decided one's spelling.
+    """
+
+    reason: str
+
+
+def parse_bullet(value: str) -> FixtureRef | NoArrangement | str:
     """Parse one `fixture:` bullet, or return the sentence explaining why it is not one.
 
-    The grammar is `name [arg ...] [\u2014 what state it leaves behind]`. Not a call like
+    The grammar is `name [arg ...] [\u2014 what state it leaves behind]`, or a value naming
+    its own emptiness (`none, because ...`) for a node that arranges nothing. Not a call like
     `verify:`, because a fixture is not one: `qa.fixture` takes a name this repo declared and
     positional strings appended to the declared argv, and spelling that as Python would invite
     a book to write arguments the harness has no way to bind.
@@ -93,6 +113,8 @@ def parse_bullet(value: str) -> FixtureRef | str:
     text = " ".join(value.split())
     if not text:
         return "empty"
+    if registry.self_declared_empty(text):
+        return NoArrangement(reason=text)
     head, _, provides = text.partition(_PROVIDES_SEP)
     try:
         tokens = shlex.split(head.strip())

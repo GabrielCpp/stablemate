@@ -131,6 +131,27 @@ def test_a_quoted_argument_stays_one_argument() -> None:
     assert ref.args == ("policy of record",)
 
 
+def test_a_value_naming_its_own_emptiness_parses_as_a_decision_not_a_defect() -> None:
+    """`none, because ...` is the one spelling in this repo for "there is nothing here, and
+    here is why" (`registry.self_declared_empty`). A node that needs no arrangement has to be
+    able to say so — the alternative is omitting the bullet, which is what an author who never
+    considered it also does, and a compiler cannot tell those apart from the same absence."""
+    parsed = fixtures.parse_bullet("none, because the journey reads a store it finds empty")
+    assert isinstance(parsed, fixtures.NoArrangement)
+    assert parsed.reason.startswith("none, because")
+
+
+def test_a_bare_none_is_a_blank_left_blank_not_a_stated_emptiness() -> None:
+    """Without a reason it is indistinguishable from a stub, so it is not a stated emptiness.
+    It stays an ordinary reference — to a fixture nobody declares, which `ostler doctor` refuses
+    as `unknown-book-fixture`. Admitting it here would put the undecided case back under the
+    decided case's spelling, which is the collapse this distinction exists to prevent."""
+    parsed = fixtures.parse_bullet("none")
+    assert not isinstance(parsed, fixtures.NoArrangement)
+    assert isinstance(parsed, fixtures.FixtureRef)
+    assert parsed.name == "none"
+
+
 def test_a_name_no_declaration_could_carry_is_rejected_at_parse_time() -> None:
     """`Seeded Ledger` cannot be a key under `qa: {fixtures:}`, so it cannot be a reference to
     one. Saying that here beats a lookup miss, which reads like a missing declaration and sends

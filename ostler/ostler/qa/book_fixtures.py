@@ -87,7 +87,7 @@ def _needs_of(graph: Graph, node: UINode, by_name: dict[str, UINode]) -> list[di
         rest = value.replace(f"[{text}]({href})", "", 1).strip()
         stem = Path(target.id).stem
         parsed = fixtures_mod.parse_bullet(f"{stem} {rest}".strip())
-        if isinstance(parsed, str):
+        if not isinstance(parsed, fixtures_mod.FixtureRef):
             continue
         args = {tok.partition("=")[0]: tok.partition("=")[2] for tok in parsed.args if "=" in tok}
         resolved = by_name.get(stem, target)

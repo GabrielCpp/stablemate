@@ -2027,3 +2027,65 @@ title: Save and return
         ("docs/features/acme/gui/screens/items.md", "screen"),
     ]
     assert {step["surface"] for step in flow[0]["steps"]} == {"acme"}
+
+
+def test_a_fixture_bullet_naming_its_own_emptiness_is_a_decision_the_packet_carries(
+    tmp_path: Path,
+):
+    """An author who decided the node needs no arrangement, and one who never looked, produce
+    the same empty `fixturesDeclared`. They are not the same claim, so the packet says which:
+    `arrangesNothing` is stamped only by a bullet that states the emptiness and its reason, and
+    `compile_plan` gaps the silent case (`unarranged-journey`) while compiling the stated one.
+    """
+    (tmp_path / "docs/features/acme/http").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/http/claims.md").write_text(
+        """---
+type: server
+title: Claims
+---
+# Claims
+
+## Endpoints
+
+### list-claims
+- method: GET
+- path: /api/claims
+- code: app/list.py::list_claims
+- fixture: none, because the route reads a store it is documented as finding empty
+- authorization: a holder reads only their own claims.
+
+### count-claims
+- method: GET
+- path: /api/claims/count
+- code: app/list.py::list_claims
+- authorization: a holder counts only their own claims.
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/list.py").write_text("def list_claims():\n    return []\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/list.py").write_text("def list_claims():\n    return [1]\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    stated = {
+        item["id"].rsplit("#", 1)[-1]: bool(item.get("arrangesNothing"))
+        for item in packet["obligations"]
+    }
+    # Ambient, exactly as a named arrangement written in the same place would be.
+    assert stated["list-claims:contract"] is True
+    assert stated["list-claims:authorization:1"] is True
+    # The node next door said nothing, and silence is not the same answer.
+    assert stated["count-claims:contract"] is False
+    assert stated["count-claims:authorization:1"] is False
+    # It is not an arrangement either — there is no fixture here to run.
+    assert all(
+        not item.get("fixturesDeclared")
+        for item in packet["obligations"]
+        if item["id"].rsplit("#", 1)[-1].startswith("list-claims")
+    )

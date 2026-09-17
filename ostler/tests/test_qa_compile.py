@@ -2083,8 +2083,11 @@ def _step(ref: str, node_type: str, surface: str) -> dict:
 
 
 def _flow_obligation(oid: str, *, source: str, surface: str, steps: list[dict],
-                     checks: list[dict]) -> dict:
-    return {
+                     checks: list[dict], fixtures: list[dict] | None = None) -> dict:
+    # Arranged by default, because every test below is about the *walk* and a journey that
+    # arranges nothing compiles to no scenario at all (`unarranged-journey`). Pass
+    # `fixtures=[]` to write the unarranged case on purpose.
+    row = {
         "id": oid,
         "node": f"{source}#flow",
         "nodeType": "flow",
@@ -2096,6 +2099,11 @@ def _flow_obligation(oid: str, *, source: str, surface: str, steps: list[dict],
         "checksDeclared": checks,
         "steps": steps,
     }
+    declared = [{"name": "seeded-ledger", "args": [], "provides": "a ledger"}] \
+        if fixtures is None else fixtures
+    if declared:
+        row["fixturesDeclared"] = declared
+    return row
 
 
 def _step_node(node: str, locators: dict) -> dict:
@@ -2259,3 +2267,45 @@ def test_a_web_journey_arrives_then_clicks_every_step_in_order() -> None:
     assert goto < first < second
     # The claim is observed after the walk, never before it.
     assert second < source.rindex("#things-table")
+
+
+def _unarranged_journey_context(**flow_extra: object) -> tuple[str, dict]:
+    oid = f"okf:{_FLOW}:end-state"
+    listed = f"{_API}#list-things"
+    flow = _flow_obligation(
+        oid, source=_FLOW, surface="api",
+        steps=[_step(listed, "endpoint", "api")],
+        checks=[{"call": "it", "name": "http_status",
+                 "args": {"status": 200, "path": "/api/things"}}],
+        fixtures=[],
+    ) | flow_extra
+    return oid, _navigation_context(
+        flow,
+        _step_node(listed, {"route": ["GET /api/things"]}),
+        navigation=_api_navigation(),
+    )
+
+
+def test_a_journey_that_arranges_nothing_compiles_to_no_scenario() -> None:
+    """A journey's claims are about the world its steps left, and the world its steps left is
+    the world they started in plus the walk. With nothing arranging the start, the end-state
+    assertion observes whatever the scenario before it happened to leave — so a red says
+    nothing about the app. The gap removes the case rather than routing it: no scenario is
+    emitted, and the obligation is reported unmet with the reason."""
+    oid, context = _unarranged_journey_context()
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == ["unarranged-journey"]
+    assert oid not in _covers(source)
+
+
+def test_a_journey_that_says_it_needs_no_arrangement_compiles() -> None:
+    """The author who decided the journey holds in whatever world it finds can say so, and
+    that is a different packet from the author who never looked — which is the whole reason
+    `arrangesNothing` is carried beside `fixturesDeclared` rather than folded into it."""
+    oid, context = _unarranged_journey_context(arrangesNothing=True)
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == []
+    assert oid in _covers(source)
+    assert "    preconditions=[\n    ],\n" in source

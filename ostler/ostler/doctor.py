@@ -670,6 +670,12 @@ def _check_book_fixtures(graph: Graph, known: set[str], f: list[Finding]) -> Non
             if key not in arrange:
                 continue
             parsed = fixtures_mod.parse_bullet(value)
+            if isinstance(parsed, fixtures_mod.NoArrangement):
+                # The bullet states this node arranges nothing and says why. There is no
+                # name to resolve, and refusing it would leave a node that needs no
+                # arrangement no way to say so except by omitting the bullet — which is
+                # the undecided case, and `unarranged-journey` exists to tell them apart.
+                continue
             if isinstance(parsed, str):
                 f.append(Finding(
                     "error", "qa-fixture-bullet",
@@ -864,7 +870,7 @@ def _needs_binding(graph: Graph, node: UINode, by_name: dict[str, UINode],
         return None
     rest = value.replace(f"[{text}]({href})", "", 1).strip()
     parsed = fixtures_mod.parse_bullet(f"{Path(target.id).stem} {rest}".strip())
-    if isinstance(parsed, str):
+    if not isinstance(parsed, fixtures_mod.FixtureRef):
         return None
     return by_name.get(Path(target.id).stem, target), parsed.args
 
@@ -947,7 +953,7 @@ def _check_fixture_call_args(graph: Graph, by_name: dict[str, UINode], f: list[F
             if key not in arrange:
                 continue
             parsed = fixtures_mod.parse_bullet(value)
-            if isinstance(parsed, str):
+            if not isinstance(parsed, fixtures_mod.FixtureRef):
                 continue
             target = by_name.get(parsed.name)
             if target is None:
@@ -1108,6 +1114,8 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             )
         elif gap.kind == "unarranged-state":
             findings.append(Finding("error", "unarranged-state", message, ref=gap.obligation_id))
+        elif gap.kind == "unarranged-journey":
+            findings.append(Finding("error", "unarranged-journey", message, ref=gap.obligation_id))
         elif gap.kind == "unarranged-request-body":
             findings.append(
                 Finding("error", "unarranged-request-body", message, ref=gap.obligation_id)

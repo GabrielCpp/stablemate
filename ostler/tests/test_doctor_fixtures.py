@@ -230,3 +230,15 @@ def test_a_book_fixture_that_is_not_a_reference_is_an_error(repo: Path) -> None:
     found = _findings(repo, "qa-fixture-bullet")
     assert [f.severity for f in found] == ["error"]
     assert "is not a fixture name" in found[0].message
+
+
+def test_a_book_fixture_bullet_stating_its_own_emptiness_is_clean(repo: Path) -> None:
+    """There is no name here to resolve, so neither code applies. Refusing the bullet would
+    leave a node that needs no arrangement only one way to say so — omitting it — which is also
+    what a node nobody has thought about looks like, and `compile_plan` has to tell the two
+    apart (`unarranged-journey`)."""
+    _declare(repo)
+    write(repo / BOOK_PATH,
+          BOOK.format(bullet="none, because the route is documented against an empty store"))
+    assert _findings(repo, "qa-fixture-bullet") == []
+    assert _findings(repo, "unknown-book-fixture") == []

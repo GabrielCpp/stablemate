@@ -2183,6 +2183,21 @@ def _parse_fixtures(
     return list({(row["name"], tuple(row["args"])): row for row in rows}.values())
 
 
+def _no_arrangement_stated(values: list[str]) -> bool:
+    """True when one of *values* is a `fixture:` bullet stating this node arranges nothing.
+
+    Carried beside `fixturesDeclared` rather than folded into it, because the two answer
+    different questions and a compiler needs both: the rows say what is arranged, and this
+    says whether an empty list of rows is a decision or a silence. Collapsing them would
+    give a node that decided it needs no arrangement the same packet as a node whose author
+    never looked — which is the state `unarranged-journey` was added to keep apart.
+    """
+    return any(
+        isinstance(fixtures_mod.parse_bullet(value), fixtures_mod.NoArrangement)
+        for value in values
+    )
+
+
 def _locators(node: dict[str, Any]) -> dict[str, list[str]]:
     declared = registry.declared_keys(node.get("type", ""))
     bullets = node.get("bullets", {})
@@ -2465,6 +2480,9 @@ def _obligations(
     ambient = _parse_fixtures(node_fixtures, fixture_provides)
     if ambient:
         base["fixturesDeclared"] = ambient
+    ambient_nothing = _no_arrangement_stated(node_fixtures)
+    if ambient_nothing:
+        base["arrangesNothing"] = True
     # Unlike a fixture, a capture belongs to the one bullet whose action produces it — it does
     # not ride ambient on every obligation the node mints, so this reads `attributed_captures`'
     # per-bullet half only, the same shape `attributed_checks` yields.
@@ -2534,6 +2552,12 @@ def _obligations(
                 obligation["fixturesDeclared"] = combined
             else:
                 obligation.pop("fixturesDeclared", None)
+            if ambient_nothing or _no_arrangement_stated(
+                fixtures_per_bullet.get((key, index), [])
+            ):
+                obligation["arrangesNothing"] = True
+            else:
+                obligation.pop("arrangesNothing", None)
             captures = _parse_captures(captures_per_bullet.get((key, index), []))
             if captures:
                 obligation["capturesDeclared"] = captures

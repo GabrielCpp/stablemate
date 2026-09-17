@@ -73,6 +73,7 @@ GAP_KINDS = frozenset({
     "unstated-claim-combiner",
     "no-verify-declared",
     "unarranged-state",
+    "unarranged-journey",
     "unarranged-request-body",
     "unarranged-interaction-precondition",
 })
@@ -1930,6 +1931,21 @@ def _journey_scenarios(
                             "`runbook` node, and no --base-url was passed to fall back on")
                         for oid in ids)
             continue
+        arranged = _arrangements(obligations)
+        if not arranged and not any(o.get("arrangesNothing") for o in obligations):
+            # A journey's claims are about the world its steps left behind, and the world its
+            # steps left is the world they started in plus the walk. Nothing arranged the start,
+            # so the end state would be observed against whatever the previous scenario happened
+            # to leave — and the assertion that then goes red is not evidence about the app.
+            # Emitting no scenario is the point: a run that says nothing about this journey is
+            # honest, where a run that reports a failure nobody caused is not.
+            gaps.extend(Gap(oid, "unarranged-journey",
+                            "this flow arranges nothing before its walk and does not say it "
+                            "needs nothing — add a `fixture:` naming the arrangement, or "
+                            "`fixture: none, because ...` saying why the journey's claims hold "
+                            "in whatever world it finds")
+                        for oid in ids)
+            continue
         scenario_covered: set[str] = set()
         if journey_target == "http":
             body = _http_journey(steps, node_index, obligations, ids, gaps, scenario_covered)
@@ -1940,17 +1956,11 @@ def _journey_scenarios(
             # journey and asserts nothing is a hole in the plan wearing a function signature.
             continue
         covered.update(scenario_covered)
-        arranged = _arrangements(obligations)
-        if arranged:
-            precondition_lines = [
-                "    preconditions=[",
-                *(f"        {_lit(row['provides'] or row['name'])}," for row in arranged),
-                "    ],",
-            ]
-        else:
-            precondition_lines = [
-                "    preconditions=[],  # TODO(arrange): what must hold before this journey runs",
-            ]
+        precondition_lines = [
+            "    preconditions=[",
+            *(f"        {_lit(row['provides'] or row['name'])}," for row in arranged),
+            "    ],",
+        ]
         target_var = _target_var(surface, kind)
         if target_var not in emitted_targets:
             lines.extend([

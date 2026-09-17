@@ -558,11 +558,23 @@ def attributed_checks(
 #: blanket rule over any bullet that starts with `none` — `states:` and `does:` also accept
 #: `none`-shaped values, but there the absence is a fact about the *subject*, still provable
 #: by reading it, not a fact about the check vocabulary's reach.
+#:
+#: `fixture:` is the third key whose value may name its own emptiness, and it is not in this
+#: set because this set is about *coverage* — which claims owe a check. An arrangement is not
+#: a claim and owes none. `ostler.qa.fixtures.parse_bullet` reads `self_declared_empty` for it
+#: directly, so both keys spell emptiness the same way without this set pretending a
+#: `fixture:` bullet is a claim.
 _SELF_DECLARABLE_EMPTY_KEYS: frozenset[str] = frozenset({"raises", "keyboard"})
 
 
-def _self_declared_empty(value: str) -> bool:
-    """True when a claim's own value states its absence and the reason for it.
+def self_declared_empty(value: str) -> bool:
+    """True when a bullet's own value states its absence and the reason for it.
+
+    Public because two readers need the *same* spelling of "there is nothing here". A
+    `raises:`/`keyboard:` claim uses it to say no behaviour is left for a check to bind to
+    (below); a `fixture:` bullet uses it to say a node arranges nothing, which
+    `ostler.qa.fixtures.parse_bullet` reads. Written twice, the two would drift and a book
+    that stated its emptiness one way would be refused for stating it the other.
 
     `none` or `nothing` alone is a blank left blank — forgotten, not decided, and still a claim
     a check could bind to once written. Paired with `because`, the author has turned the blank
@@ -596,7 +608,7 @@ def normative_claims(
     `unstated-precondition`'s reason for calling this rather than `normative_keys` directly.
 
     Also excludes a `raises:`/`keyboard:` bullet whose value self-declares empty
-    (`_self_declared_empty`) for the same reason: `uneven-claim-coverage` asks whether every
+    (`self_declared_empty`) for the same reason: `uneven-claim-coverage` asks whether every
     claim on a node has a check bound to it, and a claim that there is nothing to raise or
     operate has no behavior left for a check to bind to. Left in, the rule demanded a `verify:`
     the book cannot write and the two already-bound checks on the node's other claim — proving
@@ -612,7 +624,7 @@ def normative_claims(
         key, value = str(row[0]), str(row[1])
         if key in normative:
             counts[key] = counts.get(key, 0) + 1
-            if key in _SELF_DECLARABLE_EMPTY_KEYS and _self_declared_empty(value):
+            if key in _SELF_DECLARABLE_EMPTY_KEYS and self_declared_empty(value):
                 continue
             claims[(key, counts[key])] = value
     return claims
