@@ -791,7 +791,8 @@ def _page_obligation(oid: str, node: str, *, surface: str = "policy",
                       source: str = _SCREEN, locators: dict | None = None,
                       checks: list[dict] | None = None, kind: str | None = None,
                       requirement: str = "shows what the screen promises",
-                      fixtures: list[dict] | None = None) -> dict:
+                      fixtures: list[dict] | None = None,
+                      acts: list[dict] | None = None) -> dict:
     obligation = {
         "id": oid,
         "node": node,
@@ -809,7 +810,18 @@ def _page_obligation(oid: str, node: str, *, surface: str = "policy",
         obligation["kind"] = kind
     if fixtures is not None:
         obligation["fixturesDeclared"] = fixtures
+    if acts is not None:
+        obligation["actsDeclared"] = acts
     return obligation
+
+
+def _act(name: str, node: str, locators: dict[str, list[str]], **args: str) -> dict:
+    """One `actsDeclared` row shaped the way `qa context` writes it: the canonical call text,
+    its bound arguments, and the resolved book node each locator argument names.
+    """
+    call = f"{name}({', '.join(f'{k}={v!r}' for k, v in args.items())})"
+    return {"call": call, "name": name, "args": dict(args),
+            "locates": {"locator": {"node": node, "locators": locators}}}
 
 
 def _visible(locator: str) -> dict:
@@ -1631,6 +1643,107 @@ def test_interaction_arms_with_an_unarranged_when_emit_no_assertion() -> None:
     assert refuse_oid not in _covers(source)
     assert _gap_kinds(gaps, submit_oid) == ["unarranged-interaction-precondition"]
     assert _gap_kinds(gaps, refuse_oid) == ["unarranged-interaction-precondition"]
+
+
+def test_an_arranged_interaction_arm_performs_its_acts_and_compiles_its_assertion() -> None:
+    """The same two arms, with the happy one declaring the acts its `when:` needs.
+
+    `fixture:` cannot make this arm's `when:` true — no out-of-process command can type into a
+    form — so the arm declares `arrange: fill(...)` instead, and the compiler performs them
+    after arrival and before the trigger. That is the window in which they are preconditions of
+    the interaction rather than part of it: the observation window opens at the click, so what
+    it holds afterward is still evidence about this interaction alone.
+
+    The arm's claim is then observed in the state the book named, so the assertion compiles and
+    the `unarranged-interaction-precondition` gap goes. The refusal arm arranges nothing and is
+    unchanged, which is the point — the gap is per arm, not per interaction.
+    """
+    button = f"{_SCREEN}#submit-widget-button"
+    submit_oid = "okf:new-widget:submit-new-widget:does:1"
+    refuse_oid = "okf:new-widget:refuse-new-widget:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-widget:submit-widget-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Add widget"]},
+                          checks=[_visible("button:Add widget")]),
+        _page_obligation(submit_oid, f"{_SCREEN}#submit-new-widget",
+                          locators={"on": ["[submit-widget-button](#submit-widget-button)"],
+                                    "trigger": ["click"],
+                                    "when": ["`name` non-empty and `quantity` a non-negative "
+                                             "number"],
+                                    "does": ["the browser navigates to widget-list"]},
+                          acts=[_act("fill", f"{_SCREEN}#name-field",
+                                     {"selector": ["`input[name=\"name\"]`"]},
+                                     locator="#name-field", value="Widget A"),
+                                _act("fill", f"{_SCREEN}#quantity-field",
+                                     {"selector": ["`input[name=\"quantity\"]`"]},
+                                     locator="#quantity-field", value="3")],
+                          checks=[_located("#saved-banner", f"{_SCREEN}#saved-banner",
+                                            {"selector": ["`#saved-banner`"]})]),
+        _page_obligation(refuse_oid, f"{_SCREEN}#refuse-new-widget",
+                          locators={"on": ["[submit-widget-button](#submit-widget-button)"],
+                                    "trigger": ["click"],
+                                    "when": ["`name` empty, or `quantity` missing or negative"],
+                                    "does": ["the field error spans are populated"]},
+                          checks=[_located("#name-error", f"{_SCREEN}#name-error",
+                                            {"selector": ["`#name-error`"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    lines = source.splitlines()
+    fills = [i for i, line in enumerate(lines) if ".fill(" in line]
+    clicks = [i for i, line in enumerate(lines) if "# trigger:" in line]
+    assert len(fills) == 2, source
+    assert lines[fills[0]].strip() == (
+        'qa.by_css("input[name=\\"name\\"]").fill("Widget A")'
+        "  # arrange: fill(locator='#name-field', value='Widget A')")
+    assert lines[fills[1]].strip() == (
+        'qa.by_css("input[name=\\"quantity\\"]").fill("3")'
+        "  # arrange: fill(locator='#quantity-field', value='3')")
+    # Both fills precede every trigger click, and the arranging arm's own click is the first.
+    assert fills[1] < clicks[0]
+    assert "unarranged-interaction-precondition" not in _gap_kinds(gaps, submit_oid)
+    assert submit_oid in _covers(source)
+    assert "#saved-banner" in source
+    # The condition itself is the precondition, named in the book's own words.
+    assert "`name` non-empty and `quantity` a non-negative number" in source
+    # The arm that arranges nothing is untouched.
+    assert _gap_kinds(gaps, refuse_oid) == ["unarranged-interaction-precondition"]
+    assert refuse_oid not in _covers(source)
+
+
+def test_an_act_whose_subject_has_no_locator_withholds_the_whole_arrangement() -> None:
+    """A `when:` is arranged by the whole sequence the book wrote, so half of it is not a
+    weaker arrangement — it is a state no arm declares, neither the documented precondition
+    nor the page's accidental default. An act whose subject the book gives no locator for
+    withholds every act beside it, and the arm keeps the gap that says so, which is true.
+    """
+    button = f"{_SCREEN}#submit-widget-button"
+    submit_oid = "okf:new-widget:submit-new-widget:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-widget:submit-widget-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Add widget"]},
+                          checks=[_visible("button:Add widget")]),
+        _page_obligation(submit_oid, f"{_SCREEN}#submit-new-widget",
+                          locators={"on": ["[submit-widget-button](#submit-widget-button)"],
+                                    "trigger": ["click"],
+                                    "when": ["`name` non-empty and `quantity` a non-negative "
+                                             "number"],
+                                    "does": ["the browser navigates to widget-list"]},
+                          acts=[_act("fill", f"{_SCREEN}#name-field",
+                                     {"selector": ["`input[name=\"name\"]`"]},
+                                     locator="#name-field", value="Widget A"),
+                                _act("fill", f"{_SCREEN}#quantity-field", {},
+                                     locator="#quantity-field", value="3")],
+                          checks=[_located("#saved-banner", f"{_SCREEN}#saved-banner",
+                                            {"selector": ["`#saved-banner`"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert ".fill(" not in source
+    assert _gap_kinds(gaps, submit_oid) == ["unarranged-interaction-precondition"]
+    assert submit_oid not in _covers(source)
 
 
 def test_a_wrapped_book_bullet_still_compiles_to_valid_python() -> None:

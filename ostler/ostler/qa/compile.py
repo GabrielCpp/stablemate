@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 from typing import get_args as _get_args
 
+from ostler import acts as acts_mod
 from ostler.checks import CHECK_BY_NAME
 from ostler.checks import _rooted
 from ostler.markdown import extract_refs
@@ -1123,6 +1124,57 @@ def _arrangements(obligations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list({(row["name"], tuple(row.get("args", []))): row for row in rows}.values())
 
 
+#: How each act in `ostler.acts` is performed against a Playwright locator: the method to
+#: call, and which of the act's own arguments is passed to it. Stated here rather than on
+#: `ActSpec` because it is a property of *this* driver — the same `fill` is a different call
+#: on a device, and an act's vocabulary entry must not carry one compiler's spelling.
+_ACT_METHODS: dict[str, tuple[str, str | None]] = {
+    "fill": ("fill", "value"),
+    "click": ("click", None),
+    "press": ("press", "key"),
+    "select": ("select_option", "option"),
+}
+
+
+def _performances(obligations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every act the obligations in one scenario declare, in the order the book wrote them.
+
+    Deduped on the canonical call text rather than on `(name, args)` the way `_arrangements`
+    dedupes a fixture, because the two keys mean different things about repetition: running a
+    fixture twice reaches the state it already reached, while performing an act twice is two
+    performances. Filling two fields is two fills, and which order they happen in is the
+    book's to state. Two *identical* calls are the one performance two arms share.
+    """
+    rows: list[dict[str, Any]] = []
+    for obligation in obligations:
+        rows.extend(obligation.get("actsDeclared", []))
+    return list({row["call"]: row for row in rows}.values())
+
+
+def _performed_lines(rows: list[dict[str, Any]], driver: str) -> list[str] | None:
+    """The calls that perform *rows* in order, or `None` if any one of them cannot be performed.
+
+    All-or-nothing on purpose. A `when:` is arranged by the whole sequence the book wrote; half
+    of it establishes a state no arm declares, which is neither the documented precondition nor
+    the page's accidental default — so an act this driver cannot perform, or whose subject has
+    no locator to address, withholds the entire arrangement rather than emitting a prefix of it.
+    The caller then keeps the gap that says the precondition is unarranged, which is true.
+    """
+    lines: list[str] = []
+    for row in rows:
+        spec = acts_mod.ACT_BY_NAME.get(str(row.get("name")))
+        if spec is None or driver not in spec.drivers:
+            return None
+        located = (row.get("locates") or {}).get("locator") or {}
+        expr = _page_locator_expr(located.get("locators") or {})
+        if expr is None:
+            return None
+        method, value_param = _ACT_METHODS[spec.name]
+        argument = "" if value_param is None else _lit(row.get("args", {}).get(value_param, ""))
+        lines.append(f"    {expr}.{method}({argument})  # arrange: {row['call']}")
+    return lines
+
+
 def _resolved(
     ref: references.Reference,
     produced_facts: set[tuple[str, str]],
@@ -1933,6 +1985,20 @@ def _interaction_scenario(
         )
     body.append(f"    qa.goto({_lit(root_path)})")
     body.extend(_walk_hops(hops, node_index, gaps, ids))
+    # The performer of a step is the only actor that can establish state on the surface it
+    # performs on: a `when:` over what the user typed is true only once someone has typed, and
+    # no out-of-process fixture can type into this form. `arrange:` is where the book states
+    # those performances, and they go here — after arrival, before the trigger — because that
+    # is the window in which they are preconditions of the interaction rather than part of it.
+    performances = _performances(obligations)
+    performed = _performed_lines(performances, acts_mod.WEB) if performances else None
+    # A bullet the act parser refused is carried onto the packet rather than dropped, and it
+    # is an arrangement this scenario does not know how to make — the same standing as an act
+    # with no locator, so it withholds the whole sequence too.
+    refused_acts = any(obligation.get("actsUnparsed") for obligation in obligations)
+    when_arranged = performed is not None and not refused_acts
+    if performed:
+        body.extend(performed)
     on_expr = _page_locator_expr(node_index.get(on_node_id, {}))
     # An unresolved-precondition gap ordinarily stands beside a real, compiled assertion on
     # purpose (`_ARRANGEMENT_GAPS`) — the claim is genuine even when the state it observes was
@@ -1961,11 +2027,13 @@ def _interaction_scenario(
     if does_value:
         body.extend(_prose_comment(does_value, label="does: "))
     # A condition under which a claim holds is part of the claim: `when:` states the field
-    # values this arm's assertions depend on (e.g. `name` non-empty), and page scenarios have
-    # no arrangement mechanism yet (every one hardcodes `preconditions=[]` below) — so a
-    # declared `when:` is never established. Compiling the assertion anyway does not test a
-    # weaker version of this arm; it tests whatever the unarranged page happens to be, under
-    # this arm's name — the same shape as observing `body` for a claim about a real component.
+    # values this arm's assertions depend on (e.g. `name` non-empty). An arm that declares the
+    # acts establishing them has just performed them above, and its assertions observe the state
+    # the book named. An arm that does not — no `arrange:` at all, an act this driver cannot
+    # perform, a subject with no locator — has nothing establishing that condition, and
+    # compiling the assertion anyway does not test a weaker version of this arm; it tests
+    # whatever the unarranged page happens to be, under this arm's name — the same shape as
+    # observing `body` for a claim about a real component.
     # Both an interaction's happy and refusal arms carry their own `when:` (own bullets win over
     # `extends:`, so a refusal arm does not inherit its base's), so this withholds both alike
     # rather than only the one whose accidental default state happens to fail.
@@ -1976,7 +2044,7 @@ def _interaction_scenario(
     # report the same withheld claim twice under the same kind. The generic gap belongs only to
     # the case `_ARRANGEMENT_GAPS` actually describes — a real assertion compiled and stands
     # beside it on purpose.
-    if on_resolved and when_value:
+    if on_resolved and when_value and not when_arranged:
         gaps.extend(Gap(oid, "unarranged-interaction-precondition",
                          f"`when:` states a precondition ({when_value!r}) this scenario does "
                          "not arrange, so its assertions would observe an unestablished state")
@@ -2002,10 +2070,10 @@ def _interaction_scenario(
                                "observation this scenario cannot make — no locator declared "
                                "for the `on:` component the assertion's state depends on")
             continue
-        if when_value:
+        if when_value and not when_arranged:
             assertions.append(f"    # TODO(arrange): {obligation['id']} declares an "
                                "observation this scenario cannot make — `when:` states a "
-                               "precondition no fixture arranges")
+                               "precondition nothing this scenario performs arranges")
             continue
         compiled = _page_assertions(obligation, gaps)
         if compiled is None:
@@ -2023,10 +2091,16 @@ def _interaction_scenario(
     if _needs_window(assertions):
         body.insert(action_index, f"    {_WINDOW_VAR} = qa.window()")
     covered.update(scenario_covered)
-    if arranged:
+    # A fixture's precondition is the fact it provides; an arm's arranged `when:` is the
+    # condition itself, stated by the book and made true by the acts performed above — so it
+    # is named here in the words the book used, not paraphrased into the acts that made it so.
+    precondition_rows = [_lit(row["provides"] or row["name"]) for row in arranged]
+    if when_arranged and when_value:
+        precondition_rows.append(_lit(when_value))
+    if precondition_rows:
         precondition_lines = [
             "    preconditions=[",
-            *(f"        {_lit(row['provides'] or row['name'])}," for row in arranged),
+            *(f"        {row}," for row in precondition_rows),
             "    ],",
         ]
     else:
