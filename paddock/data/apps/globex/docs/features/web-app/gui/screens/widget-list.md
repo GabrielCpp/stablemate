@@ -99,7 +99,7 @@ driven directly.
 - exclusive-with:
 - states:
 - verify: visible(locator="#new-widget-link")
-- code: `app/web-app/static/index.html` @55269916a58e
+- code: `app/web-app/static/index.html` @d88e48bbc4cb
 - detail:
 - fixture:
 - tests:
@@ -120,7 +120,7 @@ driven directly.
 - does:
   - navigation: browser navigates to [new-widget](new-widget.md)
 - verify: visible(locator="new-widget.md#new-widget-form")
-- code: `app/web-app/static/index.html` @55269916a58e
+- code: `app/web-app/static/index.html` @d88e48bbc4cb
 - detail:
 - fixture:
 - capture:
