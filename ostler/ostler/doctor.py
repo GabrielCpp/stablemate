@@ -178,6 +178,17 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     _apply_known_defects(graph, f)
     _apply_surface_declarations(graph, f)
 
+    # Above the profile gate, because what this reads is present on both profiles. It walks
+    # fixture nodes and `arrange`-key bullets, and self-gates on `stack_runbooks` — so on a book
+    # with no fixtures it is already a no-op, and the profile adds nothing to that decision. It
+    # was below the gate for years, and the cost was concrete: the one app the QA harness
+    # actually drives a browser against is the tree's only `exploration` book, so the checker
+    # that reads exactly the bullets its two authored `fixture:` defects were in never ran on it,
+    # and `doctor` reported 0 errors both before and after they were repaired. `_check_fixtures`
+    # below stays gated: it reads a story's `## Fixtures` section, and an exploration book has no
+    # stories to read it from.
+    _check_fixture_grammar(graph, f)
+
     if graph.profile != "full":
         _check_frozen(graph, report.findings)
         return report
@@ -186,7 +197,6 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
 
     _check_milestones(graph, f)
     _check_fixtures(graph, f)
-    _check_fixture_grammar(graph, f)
     _check_story_identity(graph, f)
 
     for epic in graph.epics:

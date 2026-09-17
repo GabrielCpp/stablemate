@@ -32,13 +32,38 @@ from typing import Any
 
 from ostler import doctor
 
-#: The planning graph — milestones, epics, seeds, stories — and the fixture machinery are
-#: checked only under the `full` profile: `doctor.run` returns early for any other one
-#: (`doctor.py:180`). On an `exploration` book those checkers are never entered, so every
-#: code they own is unreachable *by design and by profile*, not by neglect. This is one
-#: decision, and it is written once so a reader can see that it is one — thirty-six
-#: separate excuses would read as thirty-six separate holes.
-_PROFILE_GATED = "planning-graph and fixture checks run only under the `full` profile (doctor.py:180)"
+#: The planning graph — milestones, epics, seeds, stories — is checked only under the `full`
+#: profile: `doctor.run` returns early for any other one (`doctor.py:192`). On an
+#: `exploration` book those checkers are never entered, so every code they own is
+#: unreachable *by design and by profile*, not by neglect. This is one decision, and it is
+#: written once so a reader can see that it is one — twenty-nine separate excuses would read
+#: as twenty-nine separate holes.
+#:
+#: The story-side fixture codes belong here for the same reason and not a second one: their
+#: checker reads a story's `## Fixtures` section, and a book with no stories has nowhere for
+#: that section to be. The *grammar* codes used to be here too, on no better ground than
+#: sitting in the same function call — see the comment below.
+_PROFILE_GATED = "planning-graph and story-fixture checks run only under the `full` profile (doctor.py:192)"
+
+# The fixture grammar tier is a different gate, and telling the two apart is the whole
+# point of this file. `_check_fixture_grammar` reads fixture nodes and `arrange`-key
+# bullets — both present on either profile — and self-gates on the book declaring stack
+# runbooks. It nevertheless sat below the profile early-return for years, which meant the
+# one app the QA harness actually drives a browser against, the tree's only `exploration`
+# book, never had these rules applied to it: two genuine `fixture:` defects were authored,
+# measured and repaired there while `doctor` reported zero errors throughout.
+#
+# So these codes are no longer listed as unreachable. Where they *are* silent it is because
+# the book declares no stack runbooks, and that is a fact about one book, which a registry
+# keyed by code cannot record — it surfaces as an unreasoned entry in the census report,
+# which is the honest rendering of "this book had nothing for the checker to read".
+
+#: `_check_fixture_needs_cycles` is entered on any book with stack runbooks, but the code
+#: below lives in the recursive `visit` inside it, and that walk has a body to run only when
+#: one fixture links to another. No book in this tree declares a fixture that needs a second
+#: one, so the cycle case has never been reachable — and it was invisible until the census
+#: started telling that `visit` apart from the two others `doctor` spells the same way.
+_NO_FIXTURE_CHAIN = "no book declares a fixture that needs another, so the cycle walk has nothing to walk"
 
 #: Codes whose checker is not called on any real book today, each with the reason it is
 #: not. A reason is a decision or a missing piece of work — never "nobody noticed", which
@@ -52,14 +77,8 @@ DORMANT_UNREACHABLE: dict[str, str] = {
     'dangling-milestone-epic': _PROFILE_GATED,
     'dangling-seed': _PROFILE_GATED,
     'epic-in-multiple-milestones': _PROFILE_GATED,
+    'fixture-needs-cycle': _NO_FIXTURE_CHAIN,
     'epic-without-milestone': _PROFILE_GATED,
-    'fixture-arg-mismatch': _PROFILE_GATED,
-    'fixture-needs-cycle': _PROFILE_GATED,
-    'fixture-needs-target-args': _PROFILE_GATED,
-    'fixture-secret-name': _PROFILE_GATED,
-    'fixture-step-kind': _PROFILE_GATED,
-    'fixture-step-no-run': _PROFILE_GATED,
-    'fixture-undeclared-provides': _PROFILE_GATED,
     'malformed-dependency-bullet': _PROFILE_GATED,
     'milestone-cycle': _PROFILE_GATED,
     'missing-story-file': _PROFILE_GATED,
@@ -234,9 +253,10 @@ def render(census: Census) -> str:
         lines.append("")
     if census.profile and census.profile != "full":
         lines.append(
-            f"note: this run used the `{census.profile}` profile, so the planning-graph and "
-            "fixture checkers were skipped wholesale — their codes are unreachable here and "
-            "say nothing about a `full`-profile book.",
+            f"note: this run used the `{census.profile}` profile, so the planning-graph "
+            "checkers were skipped wholesale — their codes are unreachable here and say "
+            "nothing about a `full`-profile book. The fixture *grammar* tier is not among "
+            "them: it runs on either profile, and its silence here is a real clean result.",
         )
         lines.append("")
     lines.append("unreachable, by recorded reason:")
