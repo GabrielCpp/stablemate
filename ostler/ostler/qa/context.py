@@ -20,6 +20,7 @@ from ostler import inventory, markdown, path as path_mod, refs as refs_mod, regi
 from ostler.model import Graph, _parse_ui_nodes, load
 from ostler import reach
 from ostler.qa import fixtures as fixtures_mod
+from ostler.qa.compile import annotate_deferred_obligations
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.source_context import SourceRepository
 from ostler.source_snapshots import source_fingerprint
@@ -1118,6 +1119,12 @@ def cmd_context(
             exclude_paths=exclude_paths,
             repositories=repositories,
         )
+        # The reference compiler's own account of which obligations it could and could not
+        # discharge, and why, stamped onto the packet it hands on — so `validate_v2` reads
+        # that account instead of re-deriving "unhandled" from a set difference blind to it
+        # (see `annotate_deferred_obligations`).
+        story_name = str(packet.get("story", "") or "story")
+        annotate_deferred_obligations(packet, story=story_name)
         json_path, md_path = write_context(packet, spec_dir)
     except (OSError, RuntimeError, ValueError) as exc:
         return QaOutcome(ok=False, message=str(exc), status="invalid",

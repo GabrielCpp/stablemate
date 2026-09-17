@@ -23,9 +23,11 @@ from ostler.qa.compile import (
     PLAYWRIGHT,
     PYTHON,
     _unobservable_gap,
+    annotate_deferred_obligations as _annotate_deferred_obligations,
     cmd_compile_plan as _cmd_compile_plan,
     compile_plan as _compile_plan,
     compile_plan_gaps as _compile_plan_gaps,
+    deferred_obligations as _deferred_obligations,
 )
 from ostler.qa.outcome import QaOutcome
 
@@ -1387,6 +1389,71 @@ def test_the_scaffold_click_gap_does_not_claim_does_is_unresolved() -> None:
     assert len(details) == 1
     assert "scaffold click" in details[0]
     assert "does:" not in details[0]
+
+
+def test_a_gapped_but_covered_obligation_is_not_deferred() -> None:
+    """The `open-new-widget` shape: a real `covers=[...]` claim stands beside its own gap on
+    purpose (`_ARRANGEMENT_GAPS`). `deferred_obligations` must not name this id — a real plan
+    can be held to the same coverage standard the reference compiler itself met.
+    """
+    button = f"{_SCREEN}#create-policy-button"
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_oid = "okf:new-policy:submit-new-policy:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")]),
+        _page_obligation(interaction_oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["submit the new policy form"],
+                                    "does": ["adds a policy and shows it"]},
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    deferred = _deferred_obligations(context, story="demo-story")
+    assert interaction_oid not in deferred
+
+
+def test_a_gapped_and_uncovered_obligation_is_deferred_with_its_gap() -> None:
+    """The mirror: a `submit-new-policy` with nowhere real to land compiles no assertion at
+    all (`test_an_interaction_with_no_on_locator_emits_no_assertion`) — its whole gap is that
+    the reference compiler produced no evidence for it, so it must be named as deferred.
+    """
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_oid = "okf:new-policy:submit-new-policy:does:1"
+    context = _navigation_context(
+        _page_obligation(interaction_oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["submit the new policy form"],
+                                    "does": ["adds a policy and shows it"]},
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    deferred = _deferred_obligations(context, story="demo-story")
+    assert interaction_oid in deferred
+    assert deferred[interaction_oid].kind == "unresolved-precondition"
+
+
+def test_annotate_deferred_obligations_stamps_the_packets_own_obligations() -> None:
+    """The producer half: the packet handed to `write_context` carries the reason inline,
+    so a consumer (`validate_v2`) reads it off the obligation rather than recompiling.
+    """
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_oid = "okf:new-policy:submit-new-policy:does:1"
+    context = _navigation_context(
+        _page_obligation(interaction_oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["submit the new policy form"],
+                                    "does": ["adds a policy and shows it"]},
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    _annotate_deferred_obligations(context, story="demo-story")
+    stamped = next(o for o in context["obligations"] if o["id"] == interaction_oid)
+    assert stamped["deferred"]["kind"] == "unresolved-precondition"
 
 
 def test_interaction_arms_with_an_unarranged_when_emit_no_assertion() -> None:

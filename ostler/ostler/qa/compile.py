@@ -511,19 +511,25 @@ def compile_plan_gaps(
     story: str,
     run_id: str | None = None,
     base_url: str | None = None,
+    covered_ids: set[str] | None = None,
 ) -> tuple[str, list[Gap]]:
     """`compile_plan`'s source, plus the structured gap report it compiled alongside it.
 
     Same rendering, same TODO markers in the source — this is the one place that also
     hands back *why* each conditional TODO fired, as `(obligation id, gap kind, detail)`,
     for a caller (`doctor`) that wants to map book debt to obligations without re-parsing
-    the compiled Python.
+    the compiled Python. `covered_ids`, if a caller passes a set in, is populated as a
+    side effect with every id a `covers=[...]` was actually emitted for —
+    `deferred_obligations` below is the caller that needs it, to tell a gapped-but-still-
+    covered obligation (the `open-new-widget` `_ARRANGEMENT_GAPS` shape) from one this
+    compiler produced no evidence for at all. Not a return value: every existing caller
+    unpacks a 2-tuple, and this is opt-in rather than a break to all of them.
     """
     gaps: list[Gap] = []
     # Every id an emitted `covers=[...]` actually names — filled in by the same code that
     # writes each `covers=[...]` list below, never reconstructed from the compiled source
     # after the fact. The totality assert (below) and its mirror both read off this and `gaps`.
-    covered_ids: set[str] = set()
+    covered_ids = set() if covered_ids is None else covered_ids
     owed = _owed(context)
     # A claim whose nested list never said how its children combine is *undetermined*, and the
     # rule about undetermined form is that nothing executable comes out of it: the check above
@@ -703,6 +709,45 @@ def compile_plan_gaps(
     )
 
     return "\n".join(lines).rstrip() + "\n", gaps
+
+
+def deferred_obligations(context: dict[str, Any], *, story: str) -> dict[str, Gap]:
+    """Which owed obligations the reference compiler gapped without also covering.
+
+    An obligation gapped by an arrangement-kind gap (`_ARRANGEMENT_GAPS`) but still
+    covered by a real `covers=[...]` claim compiled elsewhere — the `open-new-widget`
+    shape, where the gap is a caveat standing beside a compiled assertion, not a reason
+    nothing was compiled — is not deferred: a real plan can be held to the same standard
+    the reference compiler met. Anything else gapped, arrangement-kind or not, is an
+    obligation this compiler itself produced no evidence for; requiring a real plan to
+    cover what the reference compiler could not is what sent planners after routes and
+    preconditions that do not exist.
+    """
+    covered: set[str] = set()
+    _source, gaps = compile_plan_gaps(context, story=story, covered_ids=covered)
+    deferred: dict[str, Gap] = {}
+    for gap in gaps:
+        if gap.obligation_id in covered:
+            continue
+        deferred.setdefault(gap.obligation_id, gap)
+    return deferred
+
+
+def annotate_deferred_obligations(context: dict[str, Any], *, story: str) -> dict[str, Any]:
+    """Stamp each obligation `deferred_obligations` names, in place, with why.
+
+    Written by the producer (`ostler qa context`) so the consumer (`validate_v2`) can
+    read a `deferred` field off the obligation instead of re-deriving "unhandled" from a
+    bare set difference against asserted coverage — the difference that, before this,
+    refused a valid, compiled, sound plan wholesale because it could not tell a genuinely
+    unhandled obligation from one the reference compiler had already explained.
+    """
+    deferred = deferred_obligations(context, story=story)
+    for obligation in context.get("obligations", []):
+        gap = deferred.get(str(obligation.get("id")))
+        if gap is not None:
+            obligation["deferred"] = {"kind": gap.kind, "detail": gap.detail}
+    return context
 
 
 def _arrangements(obligations: list[dict[str, Any]]) -> list[dict[str, Any]]:

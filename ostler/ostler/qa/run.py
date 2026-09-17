@@ -410,15 +410,26 @@ def cmd_validate(
     # short-circuit happened to skip.
     if document is not None and not problems:
         problems = validate_v2(document)
+    # Obligations `annotate_deferred_obligations` (`ostler qa context`) stamped as
+    # gapped-and-uncovered by the reference compiler — reported here as data alongside
+    # the outcome, not as a problem that would refuse the run, per that stamp's whole
+    # point: `validate_v2`'s coverage loop already skips these, and a caller reading only
+    # `ok`/`problems` should still be able to see why the obligation count is lower than
+    # the packet's raw obligation count.
+    deferred = [
+        {"id": o["id"], **o["deferred"]}
+        for o in (document.context.get("obligations", []) if document is not None else [])
+        if isinstance(o, dict) and o.get("id") and isinstance(o.get("deferred"), dict)
+    ]
     if problems:
         msg = "Plan validation failed:\n" + "\n".join(f"  - {p}" for p in problems)
         return QaOutcome(
             ok=False,
             message=msg,
-            data={"problems": problems},
+            data={"problems": problems, "deferred": deferred},
             status="invalid",
         )
-    return QaOutcome(ok=True, message="Plan is valid.", data={})
+    return QaOutcome(ok=True, message="Plan is valid.", data={"deferred": deferred})
 
 
 # ---------------------------------------------------------------------------

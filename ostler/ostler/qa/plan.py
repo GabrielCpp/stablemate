@@ -215,6 +215,16 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
         # written before the flag existed says nothing about which of its members are real.
         if obligation.get("required", True) is False:
             continue
+        # `deferred` is stamped by `annotate_deferred_obligations` (`ostler qa context`) onto
+        # exactly the obligations the reference compiler itself produced no evidence for —
+        # gapped and never covered by a compiled `covers=[...]`. Demanding an asserted
+        # scenario here for what the reference compiler could not discharge either is the
+        # defect: a valid, compiled, sound plan refused wholesale because this loop had no
+        # way to tell "genuinely unhandled" from "already explained." An obligation gapped
+        # but still covered elsewhere (the `open-new-widget` shape) carries no `deferred`
+        # key and is still held to the coverage check below.
+        if isinstance(obligation.get("deferred"), dict):
+            continue
         if obligation["id"] not in asserted_coverage:
             problems.append(f"required OKF obligation '{obligation['id']}' is not covered by an asserted scenario")
     problems.extend(_validate_declared_checks(document, asserted_coverage))

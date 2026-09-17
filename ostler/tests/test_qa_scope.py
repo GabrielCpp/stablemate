@@ -790,6 +790,95 @@ def test_coverage_gate_skips_context_only_obligations(tmp_path: Path):
     assert not [item for item in validate_v2(document) if "unbuilt.md" in item]
 
 
+def _context_with_deferred(spec: Path, *, deferred: bool) -> None:
+    """Same shape as `_context_with`, but the second obligation is compiler-deferred.
+
+    Where `required` marks an obligation the story never touched, `deferred` marks one the
+    reference compiler tried and failed to compile — a different reason to skip the same
+    coverage check, stamped by `annotate_deferred_obligations`, not `context.py`'s scoping.
+    """
+    spec.mkdir(parents=True, exist_ok=True)
+    unbuilt: dict = {
+        "id": "okf:docs/features/demo/unbuilt.md:contract",
+        "kind": "contract",
+        "node": "unbuilt",
+        "source": "docs/features/demo/unbuilt.md",
+        "requirement": "an endpoint the book declares no fixture for",
+        "required": True,
+        "evidenceRequired": "live",
+        "reasons": [],
+    }
+    if deferred:
+        unbuilt["deferred"] = {
+            "kind": "unresolved-precondition",
+            "detail": "no fixture arranged for this obligation",
+        }
+    obligations = [
+        {
+            "id": "okf:docs/features/demo/item.md:contract",
+            "kind": "contract",
+            "node": "item",
+            "source": "docs/features/demo/item.md",
+            "requirement": "item is emitted",
+            "required": True,
+            "evidenceRequired": "live",
+            "reasons": [],
+        },
+        unbuilt,
+    ]
+    (spec / "qa-okf-context.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "available": True,
+                "base": "base",
+                "head": "head",
+                "changedCode": [],
+                "directNodes": [],
+                "contracts": [],
+                "journeys": [],
+                "journeyNodes": [],
+                "verificationRefs": [],
+                "healthFindings": [],
+                "acceptanceCriteria": [],
+                "obligations": obligations,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_coverage_gate_skips_obligations_the_compiler_already_deferred(tmp_path: Path):
+    """A `deferred` obligation is not demanded, the same way a `required: false` one is not.
+
+    The bug this closes: `validate_v2` re-derived "unhandled" from a bare set difference,
+    blind to whether the reference compiler had already explained the same obligation as a
+    `Gap` — so a valid, compiled, sound plan was refused wholesale for obligations nobody
+    could have covered. This is the consumer half; the producer half is
+    `annotate_deferred_obligations` in `ostler.qa.compile`.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    _context_with_deferred(spec, deferred=True)
+    plan = _plan_covering(spec, "okf:docs/features/demo/item.md:contract")
+
+    document, load_problems = load_plan(plan, spec, tmp_path)
+    assert not load_problems and document is not None
+    assert not [item for item in validate_v2(document) if "unbuilt.md" in item]
+
+
+def test_coverage_gate_still_demands_an_undeferred_obligation(tmp_path: Path):
+    """The mirror: an obligation with no `deferred` stamp is still genuinely unhandled."""
+    spec = tmp_path / "docs/specs/story-1"
+    _context_with_deferred(spec, deferred=False)
+    plan = _plan_covering(spec, "okf:docs/features/demo/item.md:contract")
+
+    document, load_problems = load_plan(plan, spec, tmp_path)
+    assert not load_problems and document is not None
+    assert any(
+        "unbuilt.md" in item and "not covered" in item for item in validate_v2(document)
+    )
+
+
 _GUI = "okf:docs/features/demo/screen.md#widget:contract"
 
 
