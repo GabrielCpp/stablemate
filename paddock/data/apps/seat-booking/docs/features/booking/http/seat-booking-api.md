@@ -37,8 +37,6 @@ confirming a hold has to quote the number the caller was given.
 - code: app/service.py::Handler.do_GET@75821d833adb
 - parent: [Seat booking API](#seat-booking-api)
 - request:
-  - method: `GET`
-  - path: `/healthz`
   - body: none
 - response:
   - status: `200`
@@ -69,8 +67,6 @@ confirming a hold has to quote the number the caller was given.
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)
 - request:
-  - method: `GET`
-  - path: `/api/seats`
   - body: none
 - response:
   - status: `200`
@@ -99,8 +95,6 @@ confirming a hold has to quote the number the caller was given.
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)
 - request:
-  - method: `POST`
-  - path: `/api/seats/{seat}/hold`
   - path variables: `seat` — a seat id such as `A1`; rows `A`-`C`, numbers `1`-`4`.
   - body: none
 - response:
@@ -130,8 +124,6 @@ confirming a hold has to quote the number the caller was given.
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)
 - request:
-  - method: `DELETE`
-  - path: `/api/seats/{seat}/hold`
   - path variables: `seat` — a seat id such as `A1`.
   - body: none
 - response:
@@ -171,8 +163,6 @@ confirming a hold has to quote the number the caller was given.
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)
 - request:
-  - method: `POST`
-  - path: `/api/seats/{seat}/booking`
   - path variables: `seat` — a seat id such as `A1`.
   - body: `{"version": int, "name": str}`
 - response:
@@ -200,8 +190,6 @@ confirming a hold has to quote the number the caller was given.
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat ledger](../concepts/seat-ledger.md)
 - request:
-  - method: `DELETE`
-  - path: `/api/showing`
   - body: none
 - response:
   - status: `204`

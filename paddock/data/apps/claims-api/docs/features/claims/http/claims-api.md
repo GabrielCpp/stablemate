@@ -49,8 +49,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - code: app/api/service.go@dc8c26a0c022
 - parent: [Claims API](#claims-api)
 - request:
-  - method: `GET`
-  - path: `/healthz`
   - body: none
 - response:
   - status: `200`
@@ -101,8 +99,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - parent: [Claims API](#claims-api)
 - refs: [claim ledger](../concepts/claim-ledger.md)
 - request:
-  - method: `POST`
-  - path: `/api/claims`
   - body: `{"policy_number": str, "incident_date": str, "amount_cents": int, "description": str}`
 - response:
   - status: `201`
@@ -131,8 +127,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - parent: [Claims API](#claims-api)
 - refs: [claim tenancy](../concepts/claim-tenancy.md)
 - request:
-  - method: `GET`
-  - path: `/api/claims`
   - body: none
 - response:
   - status: `200`
@@ -159,8 +153,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - parent: [Claims API](#claims-api)
 - refs: [claim tenancy](../concepts/claim-tenancy.md)
 - request:
-  - method: `GET`
-  - path: `/api/claims/{id}`
   - path variables: `id` — the claim's own identifier, such as `cl-1001`.
   - body: none
 - response:
@@ -200,8 +192,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - parent: [Claims API](#claims-api)
 - refs: [claim ledger](../concepts/claim-ledger.md)
 - request:
-  - method: `POST`
-  - path: `/api/claims/{id}/decision`
   - path variables: `id` — the claim's own identifier.
   - body: `{"decision": "approve"|"deny", "version": int, "note"?: str}`
 - response:
@@ -226,8 +216,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - parent: [Claims API](#claims-api)
 - refs: [claim ledger](../concepts/claim-ledger.md)
 - request:
-  - method: `DELETE`
-  - path: `/api/claims`
   - body: none
 - response:
   - status: `204`

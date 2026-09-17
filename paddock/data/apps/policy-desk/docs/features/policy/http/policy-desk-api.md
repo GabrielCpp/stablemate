@@ -50,8 +50,6 @@ The journeys that stitch these routes together are
 - code: app/api/service.go@bcf74ba2ccff
 - parent: [Policy desk API](#policy-desk-api)
 - request:
-  - method: `GET`
-  - path: `/healthz`
   - body: none
 - response:
   - status: `200`
@@ -74,8 +72,6 @@ The journeys that stitch these routes together are
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
 - request:
-  - method: `GET`
-  - path: `/api/policies`
   - body: none
 - response:
   - status: `200`
@@ -114,8 +110,6 @@ The journeys that stitch these routes together are
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
 - request:
-  - method: `POST`
-  - path: `/api/policies`
   - body: `{"policy_number": str, "holder_email": str, "coverage_type": str, "vehicle_vin"?: str, "property_address"?: str, "start_date": str, "end_date": str, "premium": number}`
 - response:
   - status: `201`
@@ -137,8 +131,6 @@ The journeys that stitch these routes together are
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
 - request:
-  - method: `GET`
-  - path: `/api/policies/{id}`
   - path variables: `id` — the slug of the policy number, such as `pn-1001`.
   - body: none
 - response:
@@ -177,8 +169,6 @@ The journeys that stitch these routes together are
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
 - request:
-  - method: `PUT`
-  - path: `/api/policies/{id}`
   - path variables: `id` — the slug of the policy number.
   - body: `{"holder_email": str, "coverage_type": str, "vehicle_vin"?: str, "property_address"?: str, "start_date": str, "end_date": str, "premium": number, "version": int}`
 - response:
@@ -209,8 +199,6 @@ The journeys that stitch these routes together are
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
 - request:
-  - method: `POST`
-  - path: `/api/policies/{id}/cancel`
   - path variables: `id` — the slug of the policy number.
   - body: `{"version": int, "confirm": str}`
 - response:
@@ -235,8 +223,6 @@ The journeys that stitch these routes together are
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy ledger](../concepts/policy-ledger.md)
 - request:
-  - method: `DELETE`
-  - path: `/api/policies`
   - body: none
 - response:
   - status: `204`
