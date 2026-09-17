@@ -39,6 +39,26 @@ is a legitimate value on `name:` — a decorative element has no accessible name
 assumes a grid. It is the one documented fact a role+name assertion cannot check — `getByRole`
 finds an element whether the page lays it out across the window or crushes it into a sliver.
 
+`selector:` has two different readers, and only one of them is general-purpose CSS. A compiled
+`verify: visible(locator=...)` resolves `selector:` to a live Playwright locator (`qa.by_css`),
+so any valid CSS — including an attribute-value predicate like `[data-state="booked"]` — works
+there. `ostler vet`'s screen census is narrower: it matches against strings the render scan
+itself mints for each element (`#id`, or `tag.class:nth(i)` for one with no id), plus one extra
+form it resolves by the ARIA role it recorded rather than by string match, `tag[role="..."]`. Any
+other predicate — an attribute value, a boolean attribute, a pseudo-class — addresses nothing the
+scan ever produces, so a component whose `selector:` uses one reads `missing` on every render,
+not just an unlucky one. A control whose identity depends on a piece of state (`booked`, not
+merely `disabled`) belongs on `states:`, not folded into `selector:` on a second component node
+that exists only to carry it. That does not mean a raw-CSS `locator=` bypasses the census: a
+check's `locator=` is a reference into the book, not a live selector — it must resolve to a
+`#component` or `#interaction` anchor the book declares (`ostler doctor`'s
+`undeclared-check-locator` enforces this unconditionally, with no exception for a raw string that
+happens to match a real element). A state distinguishable by rendered text (`booked` vs. `held`)
+still gets a `verify:` bullet, pointed at the one real component's own anchor and filtered by
+`text=`. A state with no rendered counterpart to check against — a boolean attribute like
+`disabled` — has no mechanical check in this book's vocabulary at all; it stays a documented,
+unverified fact on `states:` rather than a `verify:` bullet that cannot actually be satisfied.
+
 `exclusive-with:` is a *claim* grounded in source (mutually-exclusive states, a variant switch),
 not a way to silence a real same-screen collision. It is a DOM co-render assertion and nothing
 more — it does not mean one control supersedes another.
@@ -82,7 +102,7 @@ timeout 30 ostler scaffold component save-button --in docs/features/acme/gui/scr
 
 `missing-required-bullet`, `invalid-role`, `unnamed-interactive`, `missing-placement`,
 `malformed-placement`, `ambiguous-locator`, `duplicate-bullet`, `undeclared-obligation`,
-`weak-check`, `stale-defect`, `malformed-defect`; with the repeat keys also `static-template`, `unproven-unique-name`, `malformed-template`,
+`weak-check`, `stale-defect`, `malformed-defect`, `unaddressable-selector`; with the repeat keys also `static-template`, `unproven-unique-name`, `malformed-template`,
 `malformed-variants`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

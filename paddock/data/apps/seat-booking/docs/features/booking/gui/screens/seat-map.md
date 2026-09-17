@@ -52,40 +52,25 @@ Holds every seat button for the showing and nothing else.
 - parent: [Seat map](#seat-map)
 - states: carries the seat's state as `data-state`, one of `free`, `held` or `booked`.
 - verify: visible(locator="#seat-button", text="free")
-- verify: visible(locator="#booked-seat-button")
+- verify: visible(locator="#seat-button", text="held")
+- verify: visible(locator="#seat-button", text="booked")
 - states: a seat that is not free is rendered `disabled`, so a sold seat cannot be clicked at all.
-- verify: visible(locator="#disabled-seat-button")
 - code: app/page.py::_seat_button@0a3567061b49
 - refs: [seat](../../concepts/seat.md)
 
 Renders one button per seat in the showing — twelve, in three rows of four. Names the button by its
-seat id alone, so the name a scenario addresses does not change when the seat does.
-
-### booked-seat-button
-
-- selector: `button.seat[data-state="booked"]`
-- role:
-- name:
-- parent: [Seat map](#seat-map)
-- code: app/page.py::_seat_button@0a3567061b49
-- refs: [seat](../../concepts/seat.md)
-
-The same button once the seat is sold. Declared separately from [seat-button](#seat-button) because
-the state is in the selector: a check that says "this seat reads as booked" has to be pointed at
-something whose selector says `booked`, and pointing it at the seat button would pass on a free one.
-
-### disabled-seat-button
-
-- selector: `button.seat[disabled]`
-- role:
-- name:
-- parent: [Seat map](#seat-map)
-- code: app/page.py::_seat_button@0a3567061b49
-- refs: [seat](../../concepts/seat.md)
-
-A seat the page refuses to accept a click on. Distinct from [booked-seat-button](#booked-seat-button)
-because the two claims are separable: a sold seat that is still clickable matches one and not the
-other, and that is the defect this pair exists to catch.
+seat id alone, so the name a scenario addresses does not change when the seat does. A seat's `booked`
+or `disabled` state is a fact about *this* control, not a second component that exists only to carry
+it: `selector:` has to stay a form `ostler vet`'s render census can resolve (`#id`, `tag.class`, or a
+role match), and an attribute-value predicate like `[data-state="booked"]` is not one of those forms.
+The state a seat is in is also rendered as visible text inside the button (`<span class="state">`),
+so `booked` and `held` are checks the book can already make: `visible(locator=..., text=...)` against
+the seat's own anchor. `disabled` has no such text, and no check in this book's vocabulary asks
+whether an element can be acted on rather than merely seen — that question needs a check of its
+own (`actionable`), tracked as a separate piece of work, not invented here. Until it lands this
+claim stays a documented, unverified `states:` bullet rather than a `verify:` nobody can satisfy —
+deferred, not dropped: defect D7 (`disabled = ""` unconditionally, visually silent) is exactly the
+regression this claim exists to catch, and the corpus is blind to it until `actionable` exists.
 
 ### free-seat-summary
 
