@@ -131,8 +131,16 @@ class CheckSpec:
         # component the book declares. Rendering only name and type prints a `str` where the
         # reader needs to know which of the three kinds of string is meant, and the reference
         # page claims this tool is the authority on exactly that.
+        #
+        # The separator is `=` and the type sits in angle brackets because this string is the
+        # only example of the form most authors ever see, and an example is a thing to copy
+        # while a type is a thing to read. Rendering `code: int*` — Python's *annotation*
+        # spelling — put a colon exactly where a call puts `=`, and four `verify:` bullets in
+        # one real book copied it: `exit_status(code: 1)`, `count(subject: …, equals: 2)`,
+        # `persists(subject: …)`. `*` and `<…>` cannot be mistaken for a value; `:` could,
+        # because in a call position it is one.
         parts = [
-            f"{p.name}: {p.type}{'*' if p.required else ''}"
+            f"{p.name}{'*' if p.required else ''}=<{p.type}>"
             f"{' (path)' if p.path else ''}{' (locator)' if p.locator else ''}"
             for p in self.params
         ]
@@ -508,6 +516,20 @@ def _not_a_call(text: str) -> Refusal:
     under that key. Handing back the vocabulary instead — which is what the caller did while
     this classification stopped at this function — contradicts the sentence beside it.
     """
+    head = _CALL_HEAD.match(text)
+    if head is not None:
+        spec = CHECK_BY_NAME.get(head.group(1))
+        if spec is not None:
+            # The author chose a check — the text says so — and only the arguments are
+            # unreadable. Recovering the name from the *text* rather than from the parse is
+            # the point: the parse is the thing that just failed, so a name recovered only
+            # from a successful parse is unavailable in exactly the case that needs it, and
+            # every such author was handed the whole vocabulary to re-choose from.
+            return Refusal(
+                "bad-arguments",
+                f"`{text}`: `{spec.name}` is a known check, but its arguments did not "
+                f"parse — they are written `name=value`",
+                spec.signature())
     if "::" in text or text.rsplit(".", 1)[-1] in _TEST_REF_SUFFIXES:
         return Refusal(
             "misfiled-test-ref",
@@ -520,6 +542,12 @@ def _not_a_call(text: str) -> Refusal:
                    f"`{text}` is not a check call — expected `name(arg=…)`; see "
                    f"`ostler checks`",
                    _vocabulary())
+
+
+#: A check name in call position, read lexically. Only ever consulted after `ast` has already
+#: refused the text, and only accepted when the name is one `CHECKS` declares — so it cannot
+#: shadow the test-reference arm below, no test id being spelled `<a known check>(`.
+_CALL_HEAD = re.compile(r"^([A-Za-z_]\w*)\s*\(")
 
 
 #: Enough to recognise a path written where a call belongs. Not a filesystem probe: the value

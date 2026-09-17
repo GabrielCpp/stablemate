@@ -37,47 +37,47 @@ place: it is a category error, and `parse_check` redirects it to `tests:`.
 
 ## The vocabulary
 
-### `http_status(code: int*, title: str, path: str)`
+### `http_status(code*=<int>, title=<str>, path=<str>)`
 Excludes a branch that returns the right shape under the wrong status, and an error response
 distinguished from its siblings only by a body nobody read.
 
-### `json_path(path: str* (path), equals: scalar, matches: str, absent: bool)` — one of `equals`, `matches`, `absent`
+### `json_path(path*=<str> (path), equals=<scalar>, matches=<str>, absent=<bool>) — one of equals, matches, absent`
 Excludes a field asserted by presence rather than value, which passes on the default the defect
 also produces.
 
-### `unchanged(subject: str*, except_fields: str[])`
+### `unchanged(subject*=<str>, except_fields=<str[]>)`
 Excludes collateral damage outside the field under test — the defect a diff that masks the whole
 object before comparing cannot see.
 
-### `keys_unchanged(subject: str*)`
+### `keys_unchanged(subject*=<str>)`
 Excludes a move implemented as a copy: every object compared individually matches, and only the
 key inventory shows the old one is still there.
 
-### `count(subject: str*, equals: int*)`
+### `count(subject*=<str>, equals*=<int>)`
 Excludes an operation that produced the expected item *and* extras nobody counted.
 
-### `absent(subject: str*)`
+### `absent(subject*=<str>)`
 Excludes a delete that hid the thing from one surface and left it readable on another.
 
-### `created(subject: str*)`
+### `created(subject*=<str>)`
 Excludes a thing that was already there reported as created. A presence check run only afterwards
 passes identically on a no-op, so the absence *before* the action is part of the observation
 rather than an assumption about it.
 
-### `removed(subject: str*)`
+### `removed(subject*=<str>)`
 Excludes a delete asserted only by absence afterwards, which passes identically when the subject
 was never there — the presence before the action is what makes the disappearance attributable to
 it.
 
-### `visible(locator: str* (locator), text: str)`
+### `visible(locator*=<str> (locator), text=<str>)`
 Excludes an element present in the tree but not on the screen, and the right widget showing the
 wrong content.
 
-### `actionable(locator: str* (locator))`
+### `actionable(locator*=<str> (locator))`
 Excludes a control the book says the user can use and the product has disabled — which
 `visible` passes, because a greyed-out button is on the screen and reads the right label.
 
-### `inert(locator: str* (locator))`
+### `inert(locator*=<str> (locator))`
 Excludes a control the product leaves usable after the state that should have closed it, which
 no assertion about what is on the screen can see: the defect is that the element still accepts
 the action, not that it is still drawn. This is the positive form of a `- states: disabled …`
@@ -86,26 +86,26 @@ happens to spell it with. `disabled` is HTML's word for it; a mobile surface say
 `enabled=false` and an API says nothing at all, so a check named after the attribute would be
 compilable by one driver and meaningless to the rest.
 
-### `persists(subject: str*)`
+### `persists(subject*=<str>)`
 Excludes a write observed only through the same session that made it, which cannot tell a commit
 from a cache.
 
-### `emitted(event: str*, count: int)`
+### `emitted(event*=<str>, count=<int>)`
 Excludes an effect asserted at its source instead of at its subscriber, and an at-most-once
 effect fired twice.
 
-### `omits(subject: str* (path), text: str, matches: str)` — one of `text`, `matches`
+### `omits(subject*=<str> (path), text=<str>, matches=<str>) — one of text, matches`
 Excludes a value the response was never supposed to carry — a refusal quoting the credential it
 rejected, an error echoing an internal path. Every other check in this vocabulary passes over
 this, because they all assert what the subject *does* hold and a clause about what it may **not**
 hold has no positive form.
 
-### `exit_status(code: int*)`
+### `exit_status(code*=<int>)`
 Excludes a command that failed, or succeeded for the wrong reason, where the plan only read its
 output — a tool result asserted by what it printed passes identically when the process printed it
 on the way to a non-zero exit.
 
-### `conflict_on_stale(subject: str*, token: str)`
+### `conflict_on_stale(subject*=<str>, token=<str>)`
 Excludes an unconditional overwrite standing in for compare-and-swap — a write followed by a read
 cannot tell them apart, only a stale write refused can.
 

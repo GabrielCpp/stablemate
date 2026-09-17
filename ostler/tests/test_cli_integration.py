@@ -77,8 +77,8 @@ def test_checks_lists_the_vocabulary_without_a_book(tmp_path: Path, capsys):
     and the vocabulary is a property of ostler rather than of any one repository."""
     assert run(tmp_path, "checks") == 0
     out = capsys.readouterr().out
-    assert "absent(subject: str*)" in out
-    assert "emitted(event: str*, count: int)" in out
+    assert "absent(subject*=<str>)" in out
+    assert "emitted(event*=<str>, count=<int>)" in out
 
     assert run(tmp_path, "checks", "absent", "--json") == 0
     spec = json.loads(capsys.readouterr().out)

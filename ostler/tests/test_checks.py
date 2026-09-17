@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
 
 from ostler import checks, registry
@@ -161,7 +164,7 @@ def test_a_lifecycle_check_names_its_subject() -> None:
     assert isinstance(result, checks.Refusal)
     assert result.kind == "bad-arguments"
     assert "requires `subject: str`" in result.message
-    assert result.form == "created(subject: str*)"
+    assert result.form == "created(subject*=<str>)"
 
 
 def test_every_declarable_check_is_observable_by_the_harness() -> None:
@@ -251,8 +254,8 @@ def test_a_runbook_step_verify_stays_a_reference() -> None:
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        ('absent(locator="the row")', "absent(subject: str*)"),
-        ('emitted(subject="page.published")', "emitted(event: str*, count: int)"),
+        ('absent(locator="the row")', "absent(subject*=<str>)"),
+        ('emitted(subject="page.published")', "emitted(event*=<str>, count=<int>)"),
     ],
 )
 def test_the_expected_form_is_the_failing_checks_own_signature(value: str, expected: str) -> None:
@@ -268,9 +271,47 @@ def test_a_signature_says_which_kind_of_string_an_argument_is() -> None:
     document, the anchor of a declared component — and an author writing a call has to know
     which. The reference page names the tool as the authority on that, so the rendering the
     tool prints is what has to carry it."""
-    assert checks.CHECK_BY_NAME["json_path"].signature().startswith("json_path(path: str* (path)")
-    assert "locator: str* (locator)" in checks.CHECK_BY_NAME["visible"].signature()
-    assert "text: str)" in checks.CHECK_BY_NAME["visible"].signature()
+    assert checks.CHECK_BY_NAME["json_path"].signature().startswith("json_path(path*=<str> (path)")
+    assert "locator*=<str> (locator)" in checks.CHECK_BY_NAME["visible"].signature()
+    assert "text=<str>)" in checks.CHECK_BY_NAME["visible"].signature()
+
+
+def test_a_signature_is_an_example_before_it_is_a_type() -> None:
+    """The separator is the whole finding. An author reads the signature as the call to copy,
+    so rendering `code: int*` — the annotation spelling — put a colon where the call puts `=`,
+    and bullets in one real book copied it verbatim (`exit_status(code: 1)`). `*` and `<…>`
+    cannot be mistaken for a value; a colon in call position can, because there it is one."""
+    for spec in checks.CHECKS:
+        rendered = spec.signature().split(" — ")[0]
+        assert ": " not in rendered, rendered
+        for param in spec.params:
+            star = "*" if param.required else ""
+            assert f"{param.name}{star}=<{param.type}>" in rendered
+
+
+def test_a_call_whose_arguments_do_not_parse_is_still_a_named_check() -> None:
+    """The name is recovered from the text, not from the parse — the parse is the thing that
+    just failed, so a name read only out of a successful parse is unavailable in exactly the
+    case that needs it, and every such author was handed all sixteen checks to re-choose."""
+    for value, name in (("exit_status(code: 1)", "exit_status"),
+                        ('count(subject: "x", equals: 2)', "count"),
+                        ('persists(subject: "x")', "persists")):
+        refused = checks.parse_check(value)
+        assert isinstance(refused, checks.Refusal)
+        assert refused.kind == "bad-arguments"
+        assert refused.form == checks.CHECK_BY_NAME[name].signature()
+        assert "name=value" in refused.message
+
+
+def test_an_unparseable_call_naming_no_known_check_is_not_recovered() -> None:
+    """The guard on the recovery. A name nothing declares is not a check the author chose, so
+    the answer stays the menu; and a test reference still reaches its own arm, because no test
+    id is spelled `<a known check>(`."""
+    for value, kind in (("nope(a: 1)", "not-a-call"),
+                        ("api/publish.go::Publish", "misfiled-test-ref")):
+        refused = checks.parse_check(value)
+        assert isinstance(refused, checks.Refusal)
+        assert refused.kind == kind
 
 
 def test_only_a_refusal_that_named_no_check_falls_back_to_the_vocabulary() -> None:
@@ -437,3 +478,16 @@ def test_the_suggestion_cannot_contradict_the_message_it_travels_with() -> None:
         assert "Put it on `tests:`" in refused.message
         assert refused.bullet("verify").startswith("- tests: ")
         assert "http_status(" not in refused.bullet("verify")
+
+
+def test_the_reference_page_prints_the_signatures_the_tool_prints() -> None:
+    """The page hard-codes all sixteen as headings and calls this module the authority on
+    them, and until now nothing joined the two: the headings kept the annotation spelling for
+    as long as the code had it, and then for one commit longer. A reference that can disagree
+    with the thing it describes is a second source, and the author copies whichever they read.
+    """
+    page = Path(__file__).resolve().parents[2] / (
+        "base-library/library/skills/ostler/okf/references/check-vocabulary.md")
+    headings = re.findall(r"^### `(.+)`$", page.read_text(), re.M)
+    assert headings, "check-vocabulary.md no longer lists the checks as headings"
+    assert headings == [spec.signature() for spec in checks.CHECKS]
