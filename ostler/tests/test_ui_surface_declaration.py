@@ -7,6 +7,7 @@ surface has no node left to cover.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from ostler import doctor
@@ -84,3 +85,30 @@ def test_a_declaration_on_a_surface_with_no_node_is_stale(repo: Path):
     assert finding.severity == "error"
     assert finding.path == "docs/features/legacy/index.md"
     assert "delete" in finding.suggestion
+
+
+def test_the_documented_obligation_class_is_the_one_the_gate_applies():
+    """The class is spelled twice — a frozenset here, a sentence in `doctor-codes.md`.
+
+    It has already drifted once: the commit that added `insensitive-check` put it in the
+    documented list and in doctor's emitters and not in the frozenset, so the suppression
+    the reference promised was never implemented, and nothing said so. A reader checking
+    whether a code is dropped reads the prose; only the literal decides.
+    """
+    ref = Path(__file__).resolve().parents[2] / (
+        "base-library/library/skills/ostler/okf/references/doctor-codes.md")
+    # The sentence naming the class, from `exercised: false` to the period that ends it.
+    sentence = re.search(r"`exercised: false`.*?obligation-class findings under that "
+                         r"surface\s*—(.*?)\.\s", ref.read_text(), re.S)
+    assert sentence is not None, "doctor-codes.md no longer describes the class in prose"
+    assert set(re.findall(r"`([a-z0-9-]+)`", sentence.group(1))) == doctor.OBLIGATION_CODES
+
+
+def test_an_unwitnessed_check_is_not_an_obligation_anyone_owes():
+    """It states the harness could not build a witness, not that a claim wants a proof.
+
+    Listing it here would suppress it under `exercised: false` for the one reason it never
+    claims — and the absence has to be asserted, or the next reader adds it as a sibling of
+    `insensitive-check` on the strength of the name.
+    """
+    assert "unwitnessed-check" not in doctor.OBLIGATION_CODES

@@ -246,9 +246,18 @@ def parse_known_defect(value: str) -> tuple[str, str] | None:
 #: The findings that say "this claim is not provable yet": a bullet with no check, a check that
 #: cannot fail, a claim under the wrong key. Each is an obligation on QA, which is why a surface
 #: nothing exercises can declare them out of scope — no plan will ever be asked to prove them.
+#:
+#: `unwitnessed-check` is deliberately absent, and is not an oversight the way `insensitive-check`
+#: was: it states that the sensitivity harness could not build a witness, which is a fact about
+#: the harness and not an obligation anyone owes a proof of. Dropping it under `exercised: false`
+#: would suppress it for the one reason it is never claiming.
+#:
+#: `doctor-codes.md` names this class in prose. The two spellings are compared by
+#: `test_the_documented_obligation_class_is_the_one_the_gate_applies`, because the last time a
+#: code joined the class only one of them was edited.
 OBLIGATION_CODES = frozenset({
     "undeclared-obligation", "unminted-claim", "compound-normative-bullet", "weak-check",
-    "unstated-precondition", "relation-without-subject",
+    "insensitive-check", "unstated-precondition", "relation-without-subject",
 })
 
 
