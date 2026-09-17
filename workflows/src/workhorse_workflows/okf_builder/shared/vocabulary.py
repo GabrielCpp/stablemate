@@ -14,7 +14,7 @@ would look exactly like the defect above.
 
 from __future__ import annotations
 
-from ostler import checks, registry
+from ostler import acts, checks, registry
 
 
 def check_vocabulary() -> str:
@@ -34,6 +34,7 @@ _FLAG_WORDS: tuple[tuple[str, str], ...] = (
     ("link", "value is a reference ostler resolves — a doc link or a code ref"),
     ("check", "value is a call from the check vocabulary above"),
     ("fixture", "value names a fixture this repo declares"),
+    ("performs", "value is an act from the act vocabulary below, performed on this node's own surface"),
     ("normative", "each value mints ONE QA obligation a scenario must prove"),
     ("owns", "value names the file this node is documented against"),
     ("alias", "a second accepted spelling of the key above it"),
@@ -42,8 +43,20 @@ _FLAG_WORDS: tuple[tuple[str, str], ...] = (
 
 def _flags_of(b: registry.BulletKey) -> list[str]:
     on = {"required": b.required, "nested": b.nested, "link": b.link, "check": b.check,
-          "fixture": b.arrange, "normative": b.normative, "owns": b.owns, "alias": b.alias}
+          "fixture": b.arrange, "performs": b.performs, "normative": b.normative, "owns": b.owns, "alias": b.alias}
     return [word for word, _ in _FLAG_WORDS if on[word]]
+
+
+def act_vocabulary() -> str:
+    """Every act an `arrange:` bullet may perform, its signature, and what performing it leaves.
+
+    `check_vocabulary`'s counterpart, with `establishes` where that one carries `excludes`, and
+    for the same reason: a repair turn choosing between two acts is choosing between two states
+    to leave behind, and the driver list is what says whether this target can leave either.
+    """
+    return "\n".join(
+        f"- `{spec.signature()}` — establishes: {spec.establishes} "
+        f"(drivers: {', '.join(spec.drivers)})" for spec in acts.ACTS)
 
 
 def bullet_grammar() -> str:

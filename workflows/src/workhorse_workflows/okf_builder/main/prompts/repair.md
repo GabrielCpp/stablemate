@@ -45,6 +45,24 @@ made-up check comes straight back as the finding you were paid to remove.
 
 {{ workhorse_var('check_vocabulary') }}
 
+## The act vocabulary — the other closed list, for `arrange:`
+
+`fixture:` names something run *beside* the surface; `arrange:` is a performance carried out
+*on* it by whoever performs the step. A precondition over what the user typed is reachable
+only by typing, and no out-of-process command can type into a form — so state a `fixture:`
+cannot reach goes here, one act per bullet, above the claim it arranges.
+
+{{ workhorse_var('act_vocabulary') }}
+
+- **The locator is a reference into the book**, spelled exactly as a check's is:
+  `arrange: fill(locator="#name-field", value="Widget A")`. A raw selector is
+  `undeclared-act-locator`, for the same reason it is on a check — renaming the control has
+  to show up in the book, not only in a red run.
+- **A name with no parentheses is a fixture**, not an act, and `unparsed-act` says so and
+  relocates it rather than asking you to invent a performance for it.
+- **Check the driver list before writing one.** An act this target's driver cannot perform is
+  a gap the compiler will mint, not a scenario it will emit.
+
 - **Use the rendered inventory as authority for check names and arguments.** A missing
   dedicated check does not mean missing evidence: the scenario acquires observations,
   and a registered check compares them. If no obtainable observation can discriminate

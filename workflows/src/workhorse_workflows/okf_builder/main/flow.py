@@ -91,7 +91,8 @@ from workhorse_workflows.okf_builder.shared.schemas import (
     Recorded,
     SourceRequest,
 )
-from workhorse_workflows.okf_builder.shared.vocabulary import bullet_grammar, check_vocabulary
+from workhorse_workflows.okf_builder.shared.vocabulary import (
+    act_vocabulary, bullet_grammar, check_vocabulary)
 from workhorse_workflows.okf_builder.shared.worklist import (
     MAX_TARGET_ATTEMPTS,
     record,
@@ -546,6 +547,7 @@ class OkfBuilder(Workflow):
                 "item_context": item_context,
                 "result_schema": json.dumps(Investigation.model_json_schema(), indent=2),
                 "check_vocabulary": check_vocabulary(),
+                "act_vocabulary": act_vocabulary(),
                 "bullet_grammar": bullet_grammar(),
                 "source_inventory_path": str(
                     paths.source_inventory_path(self.ctx.worklist_path)
