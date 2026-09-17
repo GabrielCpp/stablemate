@@ -2350,6 +2350,13 @@ class Qa:
             "screenshot": str(path),
             "regions": str(path.with_suffix(".regions.json")),
             "components": components or [],
+            # Where the photograph was taken. The screen is an argument — what the scenario
+            # says the page should be — and the pixels are an observation of whatever the
+            # browser was showing; nothing else in this record relates the two. Without it a
+            # walk that never reached the screen has the book of one screen registered
+            # against the render of another, and every verdict is about a correspondence
+            # that does not exist. A device has no URL, and says so with "".
+            "url": str(self.page.url) if self.target.driver == "playwright" else "",
         })
         return path
 

@@ -23,6 +23,7 @@ def _book(repo: Path) -> None:
     write(
         repo / SCREEN,
         "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+        "- route: /dashboard\n\n"
         "## Components\n\n"
         "### body\n- role: article\n- selector: `article.prose`\n"
         "- placement: width 60-100%, x 0-20%\n\n"
@@ -59,7 +60,12 @@ def _driver(repo: Path) -> PythonDriver:
     )
 
 
-def _records(shot: Path, screen: str = SCREEN, components: list[str] | None = None) -> list[dict]:
+def _records(
+    shot: Path,
+    screen: str = SCREEN,
+    components: list[str] | None = None,
+    url: str = "",
+) -> list[dict]:
     return [
         {
             "type": "vet",
@@ -68,6 +74,9 @@ def _records(shot: Path, screen: str = SCREEN, components: list[str] | None = No
             "screenshot": str(shot),
             "regions": str(shot.with_suffix(".regions.json")),
             "components": components or [],
+            # Empty by default: most tests below are about the registration, and a device
+            # photograph genuinely carries no URL. The arrival tests pass one on purpose.
+            "url": url,
         },
         {"type": "scenario", "id": "s-1", "status": "passed", "assertions": 0, "failures": 0},
     ]
@@ -225,3 +234,100 @@ def test_a_vet_speaks_only_for_the_document_it_photographed(repo: Path) -> None:
     # The screen's own obligation, plus the criterion that names no document at all —
     # never the HTTP obligation sitting beside them in the same scenario.
     assert failed[0]["covers"] == [f"okf:{SCREEN}#loads:does:1", "ac:1"]
+
+
+def test_a_failed_verdict_puts_what_the_page_showed_on_the_ledger(repo: Path) -> None:
+    """A reader of `qa-run.ndjson` has the vet JSON beside it and no reason to open it.
+
+    `actual` used to be the literal `"as documented"` whenever the verdict carried no
+    placement disagreement — which is every `missing` verdict, since a component that
+    rendered nowhere has no band to disagree with. The ledger then showed a failed
+    assertion whose `actual` read like a pass. A constant is not an observation.
+    """
+    _book(repo)
+    # The navigation the book documents rendered; the article did not.
+    shot = _shot(repo, [_region("navigation", "nav.toc", (0, 88, 240, 760))])
+    driver = _driver(repo)
+
+    result = driver._grade("s-1", [], _records(shot), "", 0, timed_out=False)
+
+    assert result.status == "failed"
+    records = {r["result"]: r for r in _asserts(driver)}
+    assert "missing" in records["FAIL"]["params"]["actual"]
+    assert "as documented" not in records["FAIL"]["params"]["actual"]
+    # And the passing one quotes the rect it measured, not a restatement of the book.
+    assert "matched at x=0, y=88, 240x760" == records["PASS"]["params"]["actual"]
+
+
+def test_a_vet_of_a_screen_the_walk_never_reached_is_a_hard_stop(repo: Path) -> None:
+    """The screen is an argument and the pixels are an observation; nothing else related them.
+
+    A journey that stopped one step short had the book of the screen it was supposed to reach
+    registered against the render of the screen it actually reached — reporting a component
+    `missing` that was never meant to be on that page, and `matched` for an element of a
+    different screen answering the same CSS. Both were observed in one live run, which is why
+    the mismatch stops the registration rather than joining it as another verdict.
+    """
+    _book(repo)
+    shot = _shot(repo, [_region("navigation", "nav.toc", (0, 88, 240, 760))])
+    driver = _driver(repo)
+
+    result = driver._grade(
+        "s-1", [], _records(shot, url="http://localhost:18102/settings"), "", 0, timed_out=False
+    )
+
+    assert result.status == "failed"
+    assert "did not arrive" in result.message
+    assert _asserts(driver) == []
+    assert not shot.with_suffix(".vet.json").exists()
+
+
+def test_a_vet_on_the_documented_route_registers_and_says_it_confirmed_the_screen(
+    repo: Path,
+) -> None:
+    """A query string is state within a screen, not a different screen."""
+    _book(repo)
+    shot = _shot(
+        repo,
+        [
+            _region("article", "article.prose", (0, 88, 1400, 760)),
+            _region("navigation", "nav.toc", (0, 88, 240, 760)),
+        ],
+    )
+    driver = _driver(repo)
+
+    result = driver._grade(
+        "s-1",
+        [],
+        _records(shot, url="http://localhost:18102/dashboard?page=2"),
+        "",
+        0,
+        timed_out=False,
+    )
+
+    assert result.status == "passed"
+    report = json.loads(shot.with_suffix(".vet.json").read_text(encoding="utf-8"))
+    assert report["arrival"] == "confirmed"
+    assert report["url"] == "http://localhost:18102/dashboard?page=2"
+
+
+def test_a_photograph_with_no_url_says_the_screen_was_never_established(repo: Path) -> None:
+    """A device has no URL, so its vet cannot claim it photographed the screen it names.
+
+    Reported rather than assumed: the verdicts are still worth having, and a reader who can
+    see they were graded without the subject being established knows what they are worth.
+    """
+    _book(repo)
+    shot = _shot(
+        repo,
+        [
+            _region("article", "article.prose", (0, 88, 1400, 760)),
+            _region("navigation", "nav.toc", (0, 88, 240, 760)),
+        ],
+    )
+    driver = _driver(repo)
+
+    driver._grade("s-1", [], _records(shot), "", 0, timed_out=False)
+
+    report = json.loads(shot.with_suffix(".vet.json").read_text(encoding="utf-8"))
+    assert report["arrival"] == "unobserved"

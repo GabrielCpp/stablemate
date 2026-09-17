@@ -148,6 +148,7 @@ class PythonDriver(QaDriver):
         self.launch_env: dict[str, str] = {}
         # The documented screens, read on the first `vet` record and kept for the target.
         self._screens: dict[str, list[placement.VettedComponent]] | None = None
+        self._routes: dict[str, str] = {}
         # Built once per driver, not once per scenario: `load_graph` walks the whole book,
         # and a suite of scenarios shares one `self.root` — recomputing it per `_execute`
         # call re-pays that cost every scenario for a graph that never changed underneath it.
@@ -448,7 +449,7 @@ class PythonDriver(QaDriver):
                         "scenario_check",
                         {
                             "passed": verdict.ok,
-                            "actual": "; ".join(verdict.detail) or "as documented",
+                            "actual": verdict.observed(),
                             "expected": verdict.expected,
                         },
                         root=self.root,
@@ -715,8 +716,42 @@ class PythonDriver(QaDriver):
         this whole change exists to remove.
         """
         if self._screens is None:
-            self._screens = placement.screen_components(load_graph(self.root))
+            graph = load_graph(self.root)
+            self._screens = placement.screen_components(graph)
+            self._routes = placement.screen_routes(graph)
         return self._screens
+
+    def _arrival(self, scenario_id: str, screen: str, record: dict[str, Any]) -> str | None:
+        """Why this photograph is not of *screen*, or None when it is.
+
+        A vet's subject is supplied as an argument and its observation is taken from the
+        page; establishing that the two are the same page is this method, and until it
+        existed nothing did it. A journey that stopped one step short had the book of the
+        screen it was supposed to reach registered against the render of the screen it
+        actually reached — reporting a component `missing` that was never meant to be there,
+        and `matched` for an element of a different screen that answered the same CSS. Both
+        were observed in one run.
+
+        A mismatch is a hard stop rather than a per-component verdict: every verdict the
+        registration would produce is a claim about a correspondence that does not hold, and
+        a pile of them buries the one fact worth reporting.
+        """
+        self._book()
+        route = self._routes.get(screen, "")
+        url = str(record.get("url", ""))
+        if not url or not placement.literal_route(route):
+            # A device (no URL), or a screen whose `route:` names a family of pages. The
+            # subject is not established either way, and saying so in the report is all this
+            # method can do from here — minting the finding belongs where the plan is
+            # compiled, which is the row that follows this one.
+            return None
+        if placement.arrived_at(url, route):
+            return None
+        return (
+            f"scenario '{scenario_id}' vets '{screen}', documented at route '{route}', but "
+            f"the page it photographed was at '{url}' — the walk did not arrive, so every "
+            "placement verdict would be about a screen the book does not describe"
+        )
 
     def _vet(
         self, scenario_id: str, record: dict[str, Any], *, step: tuple[str, str] | None = None
@@ -743,6 +778,9 @@ class PythonDriver(QaDriver):
                 f"scenario '{scenario_id}' vetted '{screen}' but produced no scan beside "
                 f"{shot.name} — the page was gone by the time it was measured"
             ]
+        elsewhere = self._arrival(scenario_id, screen, record)
+        if elsewhere is not None:
+            return [], [elsewhere]
         requested = record.get("components", [])
         if requested:
             components = [
@@ -767,6 +805,17 @@ class PythonDriver(QaDriver):
             "screenshot": shot.name,
             "viewport": {"width": viewport.width, "height": viewport.height},
             "regionCount": len(regions),
+            # How the subject was established, so a reader of the report knows whether
+            # these verdicts are about the screen named above or about whatever the browser
+            # happened to be showing: `confirmed` compared the page's URL against the
+            # screen's `route:`; `unobserved` is a device, which has no URL; `unstated` is a
+            # screen whose route names a family of pages and so cannot be compared.
+            "arrival": (
+                "confirmed"
+                if record.get("url") and placement.literal_route(self._routes.get(screen, ""))
+                else ("unobserved" if not record.get("url") else "unstated")
+            ),
+            "url": str(record.get("url", "")),
             "verdicts": [verdict.model_dump(mode="json") for verdict in verdicts],
         }
         report_path = shot.with_suffix(".vet.json")
