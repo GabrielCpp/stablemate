@@ -107,8 +107,11 @@ emitted — by **repeating the key**, not by rewording:
 
 ## Document order is the binding
 
-A `verify:` or `fixture:` binds to a claim by **position**, not by name
-(`attributed_checks` / `attributed_fixtures`, `registry.py:352-420`):
+A `verify:`, a `fixture:` or a `capture:` binds to a claim by **position**, not by name
+(`attributed_checks` / `attributed_fixtures` / `attributed_captures`). The three families are
+listed together in `registry.attached_keys`, which is what `ostler fmt` reads so that
+reordering a node moves each of them with the claim it was written under rather than sorting
+it onto whichever claim ends up last:
 
 - a check binds to the **nearest authored normative bullet above it**;
 - a check written **above every** normative bullet belongs to the node's own *contract*
@@ -118,6 +121,7 @@ A `verify:` or `fixture:` binds to a claim by **position**, not by name
 - a `fixture:` above every claim is ambient — state reached once is the state every later claim
   is read in — so it fans out to **all** the node's obligations. (This is the one asymmetry: an
   observation is specific by nature, an arrangement is ambient by nature.)
+- a `capture:` binds like a check — it records what observing *that* claim pulled back out.
 
 ## A nested claim list says how its children combine
 
