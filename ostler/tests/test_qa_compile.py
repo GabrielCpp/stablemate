@@ -1329,6 +1329,87 @@ def test_an_interactions_check_is_pointed_at_the_component_it_names() -> None:
     assert interaction_oid in _covers(source)
 
 
+def test_an_interaction_with_no_on_locator_emits_no_assertion() -> None:
+    """A click with nowhere real to land is not a weaker version of the interaction — it is not
+    the interaction at all, so nothing it would have proven is emitted.
+
+    `unresolved-precondition` ordinarily stands beside a real, compiled assertion on purpose
+    (`_ARRANGEMENT_GAPS`): the claim is genuine even though the state was reached by a scaffold.
+    But when `on:` names a component the book gives no locator at all, the compiled click falls
+    back to `qa.page.locator('body')` — not a scaffolded trigger, no trigger. An assertion after
+    it would be observing whatever the page already looked like on arrival, a check that can
+    only fail and reads as the app's defect rather than the book's undeclared locator.
+    """
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_oid = "okf:new-policy:submit-new-policy:does:1"
+    context = _navigation_context(
+        _page_obligation(interaction_oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["submit the new policy form"],
+                                    "does": ["adds a policy and shows it"]},
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert "submit_new_policy(" not in source
+    assert 'qa.by_role("table", name="Policies on file")' not in source
+    assert interaction_oid not in _covers(source)
+    assert _gap_kinds(gaps, interaction_oid) == ["unresolved-precondition"]
+
+
+def test_interaction_arms_with_an_unarranged_when_emit_no_assertion() -> None:
+    """The real `globex` `new-widget.md` shape: a happy arm and its `extends:`-linked refusal
+    arm share one resolved `on:` button and no fixture that fills the form either declares.
+
+    Both arms compile to the identical scaffold up to their assertions — `goto` → click the
+    same button. With no fixture arranging `name`/`quantity`, the unarranged page is always
+    literally the empty-form state, which happens to be the refusal arm's own precondition:
+    the happy arm's assertion fails for a real reason, and the refusal arm's three assertions
+    pass vacuously, not because the scenario arranged a refusal but because the unarranged
+    world already is one. Suppressing only the failing arm would leave the refusal arm's
+    obligation marked discharged by a scenario that never established its `when:` — 2t's
+    failure mode arriving through 2q's door. A condition under which a claim holds is part of
+    the claim, so both arms — each carrying its own `when:` — withhold their assertion and
+    surface as `unresolved-precondition` alike; which one would have passed by accident is not
+    the property being tested for.
+    """
+    button = f"{_SCREEN}#submit-widget-button"
+    submit_oid = "okf:new-widget:submit-new-widget:does:1"
+    refuse_oid = "okf:new-widget:refuse-new-widget:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-widget:submit-widget-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Add widget"]},
+                          checks=[_visible("button:Add widget")]),
+        _page_obligation(submit_oid, f"{_SCREEN}#submit-new-widget",
+                          locators={"on": ["[submit-widget-button](#submit-widget-button)"],
+                                    "trigger": ["click"],
+                                    "when": ["`name` non-empty and `quantity` a non-negative "
+                                             "number"],
+                                    "does": ["the browser navigates to widget-list"]},
+                          checks=[_located("widget-list.md#widget-table",
+                                            "docs/features/globex/gui/screens/widget-list.md"
+                                            "#widget-table", {"role": ["table"]})]),
+        _page_obligation(refuse_oid, f"{_SCREEN}#refuse-new-widget",
+                          locators={"on": ["[submit-widget-button](#submit-widget-button)"],
+                                    "trigger": ["click"],
+                                    "when": ["`name` empty, or `quantity` missing or negative"],
+                                    "does": ["the field error spans are populated"]},
+                          checks=[_located("#name-error", f"{_SCREEN}#name-error",
+                                            {"selector": ["`#name-error`"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert "#widget-table" not in source
+    assert "#name-error" not in source
+    assert submit_oid not in _covers(source)
+    assert refuse_oid not in _covers(source)
+    assert _gap_kinds(gaps, submit_oid) == ["unresolved-precondition"]
+    assert _gap_kinds(gaps, refuse_oid) == ["unresolved-precondition"]
+
+
 def test_a_wrapped_book_bullet_still_compiles_to_valid_python() -> None:
     """A `does:`/`trigger:` value that wrapped across lines in the book source is still just one
     string by the time `qa context` hands it here — nothing marks where the line broke. Embedding

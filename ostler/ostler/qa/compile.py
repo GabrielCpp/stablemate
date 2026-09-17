@@ -1372,6 +1372,7 @@ def _interaction_scenario(
     on_value = next(iter(locators.get("on", [])), None)
     trigger_value = next(iter(locators.get("trigger", [])), "")
     does_value = next(iter(locators.get("does", [])), "")
+    when_value = next(iter(locators.get("when", [])), "")
     # `on:` is carried verbatim (Amendment 3) — a markdown link (`[create-policy-button]
     # (#create-policy-button)`), not a bare id, so it is resolved the same way `reach.py`
     # resolves a `requires:`/`parent:` link: pull the href out, and a same-file anchor (the
@@ -1391,6 +1392,16 @@ def _interaction_scenario(
     body: list[str] = [f"    qa.goto({_lit(root_path)})"]
     body.extend(_walk_hops(hops, node_index, gaps, ids))
     on_expr = _page_locator_expr(node_index.get(on_node_id, {}))
+    # An unresolved-precondition gap ordinarily stands beside a real, compiled assertion on
+    # purpose (`_ARRANGEMENT_GAPS`) — the claim is genuine even when the state it observes was
+    # reached by a scaffold. This one is different: with no locator for `on:`, the click below
+    # falls back to `body`, which is not a scaffolded version of the interaction, it is no
+    # interaction at all. The assertions that follow would then be observing whatever the page
+    # already looked like on arrival, not the effect of triggering anything — a check that can
+    # only fail, reading as the app's defect rather than the book's. `on_resolved` withholds
+    # them, the same "undetermined precondition, no executable code" rule `_page_assertions`
+    # already applies to a row it cannot address.
+    on_resolved = on_expr is not None
     if on_expr is None:
         body.append(f"    # TODO(arrange): no locator declared for {on_label!r}")
         # Amendment 1: one gap per obligation this interaction scenario covers, not a single
@@ -1407,14 +1418,46 @@ def _interaction_scenario(
     body.append(f"    {on_expr}.click()  # trigger: {_trailing_comment(trigger_value)}")
     if does_value:
         body.extend(_prose_comment(does_value, label="does: "))
-    gaps.extend(Gap(oid, "unresolved-precondition",
-                     f"trigger {trigger_value!r} compiles to a scaffold click on {on_label!r}, "
-                     "not a verified action, and `does:` is not resolved to a target screen")
-                for oid in ids)
+    # A condition under which a claim holds is part of the claim: `when:` states the field
+    # values this arm's assertions depend on (e.g. `name` non-empty), and page scenarios have
+    # no arrangement mechanism yet (every one hardcodes `preconditions=[]` below) — so a
+    # declared `when:` is never established. Compiling the assertion anyway does not test a
+    # weaker version of this arm; it tests whatever the unarranged page happens to be, under
+    # this arm's name — the same shape as observing `body` for a claim about a real component.
+    # Both an interaction's happy and refusal arms carry their own `when:` (own bullets win over
+    # `extends:`, so a refusal arm does not inherit its base's), so this withholds both alike
+    # rather than only the one whose accidental default state happens to fail.
+    #
+    # Only one `unresolved-precondition` gap is minted per obligation here, not one per reason:
+    # when the missing `on:` locator or the unarranged `when:` already withholds the assertion,
+    # that is the whole story, and stacking the generic "scaffold click" gap on top of it would
+    # report the same withheld claim twice under the same kind. The generic gap belongs only to
+    # the case `_ARRANGEMENT_GAPS` actually describes — a real assertion compiled and stands
+    # beside it on purpose.
+    if on_resolved and when_value:
+        gaps.extend(Gap(oid, "unresolved-precondition",
+                         f"`when:` states a precondition ({when_value!r}) this scenario does "
+                         "not arrange, so its assertions would observe an unestablished state")
+                    for oid in ids)
+    elif on_resolved:
+        gaps.extend(Gap(oid, "unresolved-precondition",
+                         f"trigger {trigger_value!r} compiles to a scaffold click on {on_label!r}, "
+                         "not a verified action, and `does:` is not resolved to a target screen")
+                    for oid in ids)
     assertions: list[str] = []
     scenario_covered: set[str] = set()
     vetted: list[str] = []
     for obligation in obligations:
+        if not on_resolved:
+            assertions.append(f"    # TODO(arrange): {obligation['id']} declares an "
+                               "observation this scenario cannot make — no locator declared "
+                               "for the `on:` component the assertion's state depends on")
+            continue
+        if when_value:
+            assertions.append(f"    # TODO(arrange): {obligation['id']} declares an "
+                               "observation this scenario cannot make — `when:` states a "
+                               "precondition no fixture arranges")
+            continue
         compiled = _page_assertions(obligation, gaps)
         if compiled is None:
             assertions.append(f"    # TODO(arrange): {obligation['id']} declares an "

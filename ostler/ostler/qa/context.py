@@ -143,7 +143,7 @@ _CONTEXT_ONLY_REASON_KINDS = _CLOSURE_REASON_KINDS | _COBINDING_REASON_KINDS
 #: action/destination). `compile.py` reads these to partition; nothing here interprets them.
 _LOCATOR_KEYS = (
     "selector", "role", "name", "keyboard", "route", "entry", "params",
-    "states", "exclusive-with", "on", "trigger", "does",
+    "states", "exclusive-with", "on", "trigger", "does", "when",
 )
 #: Bullet key to packet key, for the few whose bullet spelling (a markdown-hyphen convention)
 #: is not a legal identifier a compiled plan would want to spell as a dict key.
