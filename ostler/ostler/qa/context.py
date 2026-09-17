@@ -20,6 +20,7 @@ from ostler import inventory, markdown, path as path_mod, refs as refs_mod, regi
 from ostler.model import Graph, _parse_ui_nodes, load
 from ostler import reach
 from ostler import routes as routes_mod
+from ostler.qa import captures as captures_mod
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.compile import annotate_deferred_obligations
 from ostler.qa.outcome import QaOutcome
@@ -2180,17 +2181,32 @@ def _fixture_provides_index(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str,
 def _parse_captures(values: list[str]) -> list[dict[str, Any]]:
     """The `capture: <name> from <json path | UI locator>` declarations among *values*.
 
-    Deduped on name — the same division of labour `_parse_fixtures`/`_parse_checks` keep: a
-    bullet that does not parse is dropped here and left for `ostler doctor` to report.
+    Deduped on name. A bullet that does not parse yields no row here and is carried instead
+    by `_unparsed_captures` below — the division of labour `_parse_fixtures`/`_parse_checks`
+    keep, and for the same reason: dropped, it is the same absent row as a node that declared
+    no capture, and the damage surfaces on a later bullet whose `$name` then resolves against
+    nothing at all.
     """
     rows: list[dict[str, Any]] = []
     for value in values:
-        name, sep, rest = value.partition(" from ")
-        name = name.strip()
-        if not sep or not name:
-            continue
-        rows.append({"name": name, "from": rest.strip()})
+        parsed = captures_mod.parse_bullet(value)
+        if isinstance(parsed, captures_mod.CaptureDecl):
+            rows.append({"name": parsed.name, "from": parsed.source})
     return list({row["name"]: row for row in rows}.values())
+
+
+def _unparsed_captures(values: list[str]) -> list[dict[str, Any]]:
+    """The `capture:` bullets among *values* the parser read and refused, with its own account.
+
+    Deduped on the bullet text, not on a name — a refused bullet has no name, which is the
+    whole of what is wrong with it.
+    """
+    rows: list[dict[str, Any]] = []
+    for value in values:
+        parsed = captures_mod.parse_bullet(value)
+        if isinstance(parsed, str):
+            rows.append({"value": value, "problem": parsed})
+    return list({row["value"]: row for row in rows}.values())
 
 
 def _parse_fixtures(
@@ -2548,11 +2564,20 @@ def _obligations(
     if ambient_nothing:
         base["arrangesNothing"] = True
     # Unlike a fixture, a capture belongs to the one bullet whose action produces it — it does
-    # not ride ambient on every obligation the node mints, so this reads `attributed_captures`'
-    # per-bullet half only, the same shape `attributed_checks` yields.
-    _captures_contract, captures_per_bullet = registry.attributed_captures(
+    # not ride ambient on every obligation the node mints, so the per-bullet half is the only
+    # one that yields `capturesDeclared`, the same shape `attributed_checks` yields.
+    captures_contract, captures_per_bullet = registry.attributed_captures(
         str(node.get("type", "")), node.get("bulletOrder") or [], combiners
     )
+    # A *refusal* is not a capture, though, and that asymmetry is deliberate: the contract half
+    # is dropped above because a node-level capture credits no bullet's action, but a bullet the
+    # parser could not read is an observation about the node's own text, and the node-level
+    # obligation is where the node's own text lands. Dropped here too, it would be reported by
+    # nobody — which is the defect this stamping exists to close. The per-bullet branch below
+    # pops it back off each copy, so it rides once rather than on every obligation the node mints.
+    contract_captures_unparsed = _unparsed_captures(captures_contract)
+    if contract_captures_unparsed:
+        base["capturesUnparsed"] = contract_captures_unparsed
     # Where each normative bullet actually sits on the page. `obligations` is later sorted by
     # `_sort_key`, which orders by id — alphabetical on the key name, not by where the author
     # wrote it — so a producer walk that wants the book's own order (a capture read before the
@@ -2640,6 +2665,11 @@ def _obligations(
                 obligation["capturesDeclared"] = captures
             else:
                 obligation.pop("capturesDeclared", None)
+            refused_captures = _unparsed_captures(captures_per_bullet.get((key, index), []))
+            if refused_captures:
+                obligation["capturesUnparsed"] = refused_captures
+            else:
+                obligation.pop("capturesUnparsed", None)
             output.append(obligation)
     # Attached after the loop on purpose: `base` *is* the node-level obligation already in
     # `output`, and the per-bullet `{**base}` copies were taken before this line — so the

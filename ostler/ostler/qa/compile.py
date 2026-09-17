@@ -43,7 +43,9 @@ from ostler.qa.outcome import QaOutcome
 #: while the assertion it ends on is real and does claim its id. `unidentifiable-screen` is
 #: the same shape seen from a third axis: the scenario's own assertions are compiled and
 #: observed, and what was withheld is the placement grading of a screen nothing could
-#: establish as the subject. So these stack with a
+#: establish as the subject. `unparsed-capture-bullet` is a fourth: the claim is observed and
+#: does claim its id, and what the unreadable bullet cost is a fact the *rest* of the scenario
+#: stands on. So these stack with a
 #: `covers=[...]` on purpose, and the mirror assert in `compile_plan_gaps` reads past them;
 #: every other kind says nobody looked, and stacking *that* with a claim is a contradiction.
 #: A plan still carrying these is not a plan whose greens mean anything — `doctor` reports
@@ -53,6 +55,7 @@ _ARRANGEMENT_GAPS = frozenset({
     "screen-preconditions-undeclared",
     "unarranged-interaction-precondition",
     "unidentifiable-screen",
+    "unparsed-capture-bullet",
 })
 
 #: Every kind `compile_plan` can mint. Declared rather than discovered, because the set is
@@ -83,6 +86,7 @@ GAP_KINDS = frozenset({
     "unarranged-interaction-precondition",
     "unidentifiable-screen",
     "unparsed-fixture",
+    "unparsed-capture-bullet",
     "unparsed-check-bullet",
 })
 
@@ -731,6 +735,22 @@ def compile_plan_gaps(
     )
     refused_ids = {o["id"] for o in refused}
     owed = [o for o in owed if o["id"] not in refused_ids]
+    # And the fourth side, which deliberately does NOT partition. A `capture:` bullet the
+    # parser rejected costs this obligation nothing — its own claim is still stated and still
+    # checkable — so dropping it here would withhold code that is perfectly derivable. What is
+    # lost is the *fact*: the name was never minted, and the obligation that pays is a later
+    # one whose `$name` reference then reports `unresolved-precondition`, about a bullet its
+    # author wrote correctly. So the gap is recorded against the bullet that is actually wrong,
+    # and the obligation stays owed.
+    uncaptured = [o for o in owed if o.get("capturesUnparsed")]
+    gaps.extend(
+        Gap(o["id"], "unparsed-capture-bullet",
+            "this claim's capture could not be read, so it mints no fact for a later `$name` "
+            "to resolve against: "
+            + "; ".join(f"`capture: {row['value']}` {row['problem']}"
+                        for row in o["capturesUnparsed"]))
+        for o in uncaptured
+    )
     # D1: the driver of a step is `(the obligation's own node type) x (owning surface's
     # runbook driver:)`, not (as this used to read) whether any declared check happens to observe
     # "page" — that bit is per-check, not per-node, and let two `does:` bullets on the same

@@ -2185,3 +2185,49 @@ title: Claims
     [refused] = by_id["list-claims:contract"]["checksUnparsed"]
     assert refused["value"] == "htp_status 200 for /api/claims"
     assert refused["kind"] and refused["problem"]
+
+
+def test_a_capture_bullet_the_parser_refuses_is_carried_not_dropped(tmp_path: Path):
+    """The packet builder's own docstring said a malformed `capture:` was "left for `ostler
+    doctor` to report", and doctor had no capture checker at all — one comment, no finding. So
+    the bullet was dropped here, reported by nobody, and the cost landed on a later bullet whose
+    `$name` resolved against a fact that was never minted. The refusal rides in the packet now,
+    and the checker the docstring promised exists.
+    """
+    (tmp_path / "docs/features/acme/http").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/http/claims.md").write_text(
+        """---
+type: server
+title: Claims
+---
+# Claims
+
+## Endpoints
+
+### list-claims
+- method: GET
+- path: /api/claims
+- code: app/list.py::list_claims
+- verify: http_status(200, path="/api/claims")
+- capture: claim_id $.id
+- authorization: a holder reads only their own claims.
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/list.py").write_text("def list_claims():\n    return []\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/list.py").write_text("def list_claims():\n    return [1]\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    by_id = {item["id"].rsplit("#", 1)[-1]: item for item in packet["obligations"]}
+
+    assert "capturesDeclared" not in by_id["list-claims:contract"]
+    [refused] = by_id["list-claims:contract"]["capturesUnparsed"]
+    assert refused["value"] == "claim_id $.id"
+    assert "from" in refused["problem"]

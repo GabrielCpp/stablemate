@@ -1776,3 +1776,39 @@ def test_known_defect_findings_name_which_defect_bullet(repo: Path):
     _node(repo, "- does: collapses the manifest\n"
                 "- known-defect: not a defect declaration\n")
     assert _refs(repo, "stale-defect") == [f"{NODE}#known-defect:1"]
+
+
+def _capture_endpoint(capture: str) -> str:
+    return ("---\ntype: api\nslug: api\ntitle: API\n---\n# API\n\n"
+            "## Endpoints\n\n### submit\n- method: POST\n- path: /x\n"
+            "- does:\n  - state: submits the form\n- status: `201` on success\n"
+            "- verify: http_status(code=201, path=\"/x\")\n"
+            f"- capture: {capture}\n"
+            "- code: `api/submit.go::Submit`\n")
+
+
+def test_a_capture_bullet_with_no_source_is_refused(repo: Path):
+    """Before this checker existed, nobody read this bullet. The packet builder dropped it and
+    said in its docstring that `ostler doctor` would report it; doctor had one comment about
+    captures and no finding at all, so the rule lived only in a docstring nothing enforced. The
+    author's first news was an `unresolved-precondition` on a later bullet they wrote correctly.
+    """
+    write(repo / "docs/features/groom/http/api.md", _capture_endpoint("claim_id $.id"))
+    finding = next(f for f in _run(repo).findings if f.code == "unparsed-capture")
+    assert finding.severity == "error"
+    assert "names no source" in finding.message
+    assert finding.suggestion and " from " in finding.suggestion
+
+
+def test_a_capture_name_a_reference_could_never_spell_is_refused(repo: Path):
+    """The declaration mints the name and `$name` spells it, so a name `references` would not
+    accept is a fact nothing in the book can ever refer to — a declaration that reads fine and
+    resolves for nobody. Held to that grammar here rather than to a second copy of it."""
+    write(repo / "docs/features/groom/http/api.md", _capture_endpoint("$claim_id from $.id"))
+    finding = next(f for f in _run(repo).findings if f.code == "unparsed-capture")
+    assert "`$` a reference spells" in finding.message
+
+
+def test_a_well_formed_capture_bullet_grounds(repo: Path):
+    write(repo / "docs/features/groom/http/api.md", _capture_endpoint("claim_id from $.id"))
+    assert "unparsed-capture" not in all_codes(_run(repo))

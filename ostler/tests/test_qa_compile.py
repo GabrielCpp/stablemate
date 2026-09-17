@@ -2474,3 +2474,32 @@ def test_a_verify_bullet_the_parser_refused_is_not_a_node_that_declared_no_check
     # Not the advice to declare what is already declared, and nothing asserted on its behalf.
     assert "no-verify-declared" not in {g.kind for g in gaps}
     assert oid not in _covers(source)
+
+
+def test_a_capture_bullet_the_parser_refused_gaps_where_it_was_written() -> None:
+    """A refused `capture:` costs this claim nothing and costs a later `$name` everything.
+
+    Unlike the two kinds above, the obligation is not partitioned out: its own check is still
+    stated and still emittable, and withholding it would be a second wrong answer. What was
+    lost is the *fact* the bullet would have minted — and without this gap, the only thing said
+    about it is an `unresolved-precondition` on whatever later bullet spells `$claim_id`, whose
+    author wrote it correctly. The gap goes on the bullet that is actually wrong.
+    """
+    oid = f"okf:{_SCREEN}#policy-table:contract"
+    obligation = _page_obligation(oid, f"{_SCREEN}#policy-table",
+                                  locators={"role": ["table"], "name": ["Policies on file"]},
+                                  checks=[_visible("table:Policies on file")])
+    obligation["capturesUnparsed"] = [
+        {"value": "claim_id $.id", "problem": "names no source"},
+    ]
+    context = _navigation_context(obligation, navigation=_arrival_navigation())
+
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+
+    ast.parse(source)
+    [gap] = [g for g in gaps if g.kind == "unparsed-capture-bullet"]
+    assert gap.obligation_id == oid
+    assert "claim_id $.id" in gap.detail
+    assert "names no source" in gap.detail
+    # The claim itself is still proven — the refusal is about the capture, not about the check.
+    assert oid in _covers(source)

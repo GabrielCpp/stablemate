@@ -581,3 +581,19 @@ def test_gap_findings_reports_a_compile_plan_gap_as_a_doctor_finding():
         "error", "unresolved-precondition",
         f"{oid}: the book carries no request body", ref=oid,
     )
+
+
+def test_an_unparsed_capture_gap_keeps_the_code_doctor_already_raises_for_that_bullet():
+    """`_check_book_captures` raises `unparsed-capture` on this bullet from the book alone.
+
+    The third of the same bridge: the compiler's kind names what the unreadable bullet cost —
+    a fact no later `$name` can resolve against — which is the consequence of one defect and
+    not a second one.
+    """
+    oid = "okf:docs/features/demo/http/api.md#submit:does:1"
+    gap = compile_mod.Gap(oid, "unparsed-capture-bullet", "this claim's capture could not be read")
+
+    [finding] = doctor.gap_findings([gap])
+
+    assert (finding.severity, finding.code) == ("error", "unparsed-capture")
+    assert finding.ref == oid

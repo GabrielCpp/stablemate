@@ -21,7 +21,8 @@ from ostler import refs as refs_mod
 from ostler.model import Graph, Epic, Story, UINode, read_doc, required_section_problems
 from ostler.path import features_root as features_root_of, specs_root_in
 from ostler.provenance import checkout_for
-from ostler.qa import fixtures as fixtures_mod, references, runbook as runbook_mod, sensitivity
+from ostler.qa import (captures as captures_mod, fixtures as fixtures_mod, references,
+                       runbook as runbook_mod, sensitivity)
 from ostler.qa.compile import Gap
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
@@ -160,6 +161,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     resolver = links_mod.LinkResolver(graph)
 
     _check_ui(graph, f, resolver, checkouts)
+    _check_book_captures(graph, f)
     _check_judgment(graph, f, resolver)
     _check_unspecified(graph, f, resolver)
     _check_sensitivity(graph, f)
@@ -661,6 +663,38 @@ def _undeclared_fixture_repair(name: str, referenced: set[str] | None, plan_rel:
             f"arranges nothing")
 
 
+def _check_book_captures(graph: Graph, f: list[Finding]) -> None:
+    """A `capture:` bullet is a name and a source, in the grammar a `$name` reference can spell.
+
+    Ungated by profile and by node type, because what it reads is neither: every node type that
+    admits a `capture:` key admits the same grammar, and a book with no capture bullets is
+    already a no-op here. Written from the book alone — whether the fact is captured *early
+    enough* for a given `$name` is `compile_plan`'s `unresolved-precondition` question, the same
+    division `_check_fixture_undeclared_provides` keeps.
+
+    The reason this exists at all is that the packet builder's docstring used to say a
+    malformed `capture:` was "left for `ostler doctor` to report", and doctor had no capture
+    checker of any kind — so the rule lived only in a docstring nothing enforced, and a
+    misspelled bullet was reported by nobody while a later `$name` took the blame.
+    """
+    for node in graph.ui_nodes:
+        keys = registry.capture_keys(node.type)
+        if not keys:
+            continue
+        rel = _rel_path(graph, node)
+        for key, value, _bullet in node.bullet_order:
+            if key not in keys:
+                continue
+            parsed = captures_mod.parse_bullet(value)
+            if not isinstance(parsed, str):
+                continue
+            f.append(Finding(
+                "error", "unparsed-capture",
+                f"{node.id}: `{key}: {value}` is not a capture declaration — {parsed}",
+                path=rel, line=node.line, ref=value,
+                suggestion=f"- {key}: <name> from <json path | UI locator>"))
+
+
 def _check_book_fixtures(graph: Graph, known: set[str], f: list[Finding]) -> None:
     """A `fixture:` bullet in the book names an arrangement this repo actually declares.
 
@@ -1154,6 +1188,10 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             # and what the compiler adds is the consequence — which obligations went unproven
             # because of it — which belongs in the message, not in a second code.
             findings.append(Finding("error", "unparsed-check", message, ref=gap.obligation_id))
+        elif gap.kind == "unparsed-capture-bullet":
+            # And the same again for `capture:`: `_check_book_captures` refuses the bullet from
+            # the book alone, and the compiler adds which fact went unminted because of it.
+            findings.append(Finding("error", "unparsed-capture", message, ref=gap.obligation_id))
         elif gap.kind == "no-verify-declared":
             # The other kind whose compiler spelling is not a doctor code: "the book declares no
             # check for this obligation to prove" is `undeclared-obligation`, which doctor
