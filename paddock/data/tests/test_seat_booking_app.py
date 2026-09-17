@@ -86,42 +86,13 @@ def manifest(story: str) -> dict[str, list[str]]:
 # ── the book ──────────────────────────────────────────────────────────────────────────
 
 
-def test_doctor_is_clean() -> None:
-    """0 errors and 0 warnings, which is the bar the app was authored to.
-
-    Warnings count here where they would not in a working repo: `undeclared-obligation` and
-    `compound-normative-bullet` are both warnings, and both describe a book that cannot be
-    used as an answer key — the first leaves a bullet nothing has to verify, the second a
-    bullet two different verdicts can both honestly claim.
-    """
-    from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only this test needs
-
-    report = Ostler(APP).doctor().data
-    assert report["errors"] == 0, report["findings"]
-    assert report["warnings"] == 0, report["findings"]
-
-
-def test_the_book_is_already_canonical() -> None:
-    """`ostler fmt` must have nothing to say about the fixture, or the score is unreadable.
-
-    A trial's QA lane edits the book, and the diff between the authored book and the one the
-    trial ends with is the evidence for whether the obligations moved while they were being
-    measured. A non-canonical fixture makes that diff useless: the run converges on the
-    canonical shape on its way past, and 3 lines of real change arrive inside 89 lines of
-    bullet reordering. This was not hypothetical — it is what the first scored round did.
-    """
-    from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only this test needs
-
-    unformatted = Ostler(APP).fmt(check=True)
-    assert not unformatted, f"run `ostler fmt` in {APP}: {unformatted}"
-
-
 def test_every_screen_selector_is_one_the_render_scan_can_address() -> None:
     """A documented selector must be a form `ostler vet` can resolve, or the node reads missing.
 
     `ostler.vet.placement.is_addressable` is the one spelling of this grammar — the same
-    function backs the doctor's `unaddressable-selector` check (so `test_doctor_is_clean`
-    above already fails on a regression here too), and this test exists only to name the
+    function backs the doctor's `unaddressable-selector` check (so the shared
+    `test_app_books.py::test_doctor_is_clean` already fails on a regression here too), and
+    this test exists only to name the
     offending selector directly: `section[aria-label="Seat map"]` addressed exactly the right
     element and vet reported it `missing` on a clean render, which put a standing failure in
     every control and made the one defect that moves that region unmeasurable — a

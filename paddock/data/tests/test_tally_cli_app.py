@@ -107,24 +107,6 @@ def code_bullets(page: Path) -> list[str]:
 # ── the book ──────────────────────────────────────────────────────────────────────────
 
 
-def test_doctor_is_clean() -> None:
-    """0 errors and 0 warnings — `undeclared-obligation` and `compound-normative-bullet`
-    are warnings, and both describe a book that cannot be used as an answer key."""
-    from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only this test needs
-
-    report = Ostler(APP).doctor().data
-    assert report["errors"] == 0, report["findings"]
-    assert report["warnings"] == 0, report["findings"]
-
-
-def test_the_book_is_already_canonical() -> None:
-    """A non-canonical fixture buries the book diff a scored round is read from."""
-    from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only this test needs
-
-    unformatted = Ostler(APP).fmt(check=True)
-    assert not unformatted, f"run `ostler fmt` in {APP}: {unformatted}"
-
-
 def test_the_book_grounds_at_symbol_level() -> None:
     """The premise of the fixture, pinned so an ordinary edit cannot dilute it.
 
