@@ -521,6 +521,73 @@ def test_a_locator_may_name_a_component_in_another_document(repo: Path):
     assert "undeclared-check-locator" not in all_codes(_run(repo))
 
 
+def _screen_with_arrangement(act: str, *, declare_field: bool = True) -> str:
+    """An interaction whose `when:` is arranged by an act performed on this screen's own form."""
+    field = ('### name-field\n- selector: input[name="name"]\n- role: textbox\n'
+             "- name: Name\n\n" if declare_field else "")
+    return ("---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+            f"## Components\n\n{field}"
+            "## Interactions\n\n### submit\n- on: [S](#s)\n- trigger: click\n"
+            "- role: button\n- name: Save\n- keyboard: Enter\n"
+            "- when: `name` is non-empty\n"
+            f"- arrange: {act}\n"
+            "- does: the widget is saved\n")
+
+
+def test_an_arrange_value_that_is_a_bare_fixture_name_is_relocated(repo: Path):
+    # `fixture:` was the only arrangement key for a long time, and its habit is the likeliest
+    # mistake here — the value is not malformed, only the key above it is wrong.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _screen_with_arrangement("widgets-on-hand"))
+    finding = next(f for f in _run(repo).findings if f.code == "unparsed-act")
+    assert finding.severity == "error"
+    assert "belongs on `fixture:`" in finding.message
+    assert finding.suggestion == "- fixture: widgets-on-hand"
+
+
+def test_an_arrange_value_naming_a_check_gets_the_act_vocabulary(repo: Path):
+    # The two keys share a call grammar and not a vocabulary: `visible` parses and still names
+    # no act, and handing back the check list would send the author to write the wrong bullet.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _screen_with_arrangement('visible(locator="#name-field")'))
+    finding = next(f for f in _run(repo).findings if f.code == "unparsed-act")
+    assert "is not a known act" in finding.message
+
+
+def test_an_act_pointed_at_a_raw_selector_is_reported(repo: Path):
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _screen_with_arrangement('fill(locator="input[name=\'name\']", value="Widget A")'))
+    finding = next(f for f in _run(repo).findings if f.code == "undeclared-act-locator")
+    assert finding.severity == "error"
+    assert "not a reference into the book" in finding.message
+    assert finding.ref == "docs/features/groom/gui/screens/s.md#submit#arrange:1"
+
+
+def test_an_act_naming_no_declared_component_is_reported(repo: Path):
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _screen_with_arrangement('fill(locator="#name-field", value="A")', declare_field=False))
+    finding = next(f for f in _run(repo).findings if f.code == "undeclared-act-locator")
+    assert "names no component this book declares" in finding.message
+
+
+def test_an_act_on_a_declared_component_grounds(repo: Path):
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _screen_with_arrangement('fill(locator="#name-field", value="A")'))
+    codes = all_codes(_run(repo))
+    assert "undeclared-act-locator" not in codes
+    assert "unparsed-act" not in codes
+
+
+def test_an_arrange_bullet_is_not_read_as_a_fixture_name(repo: Path):
+    """The narrowing that made the key possible: the two fixture checkers iterate every
+    arrangement key, and an act read as a fixture name is a finding against a correct book."""
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _screen_with_arrangement('fill(locator="#name-field", value="A")'))
+    codes = all_codes(_run(repo))
+    assert "unknown-book-fixture" not in codes
+    assert "qa-fixture-bullet" not in codes
+
+
 def _branching_interaction(combiner: str = "", *, check: bool = True) -> str:
     """An interaction whose `does:` nests two outcomes, and the check that observes one of them."""
     return ("---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"

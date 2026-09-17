@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
-from ostler import (checks, dynamic_registry, freeze, inventory, links as links_mod, markdown,
+from ostler import (acts, checks, dynamic_registry, freeze, inventory, links as links_mod, markdown,
                     model, registry, schemas, select)
 from ostler import graph as graph_mod, locators as loc_mod, reach
 from ostler.vet import placement as placement_mod
@@ -707,7 +707,7 @@ def _check_book_fixtures(graph: Graph, known: set[str], f: list[Finding]) -> Non
     """
     by_name = {Path(n.id).stem: n for n in graph.ui_nodes_of_type("fixture")}
     for node in graph.ui_nodes:
-        arrange = registry.arrange_keys(node.type)
+        arrange = registry.fixture_keys(node.type)
         if not arrange:
             continue
         rel = node.path.relative_to(graph.root).as_posix()
@@ -1025,7 +1025,7 @@ def _check_fixture_call_args(graph: Graph, by_name: dict[str, UINode], f: list[F
     fixture's parameters are declared in `agents.yml`/its own code, not in this book at all.
     """
     for node in graph.ui_nodes:
-        arrange = registry.arrange_keys(node.type)
+        arrange = registry.fixture_keys(node.type)
         rel = _rel_path(graph, node)
         for key, value, _bullet in node.bullet_order:
             if key not in arrange:
@@ -2783,6 +2783,51 @@ def _check_unaddressable_selector(node, rel: str, f: list[Finding]) -> None:
                            "vocabulary yet and stays documented but unverified"))
 
 
+def _check_arranged_acts(graph: Graph, node: UINode, rel: str, f: list[Finding]) -> None:
+    """Every `arrange:` bullet is an act this repo can perform, on a control this book declares.
+
+    The sibling of the `unparsed-check` loop, and deliberately not folded into it: the two keys
+    share a call *grammar* (`checks.parse_call`) and not a vocabulary, so `fill` is a name under
+    one and nothing under the other. Sharing the parse is what keeps `f(a=1,)` legal or illegal
+    on both at once; sharing the loop would have made an unknown check and an unknown act the
+    same finding, and the repair for each names a different list of names.
+    """
+    for key in registry.performed_keys(node.type):
+        for index, value in enumerate(_bullet_values(node.meta.get(key, "")), 1):
+            parsed = acts.parse_act(value)
+            if isinstance(parsed, checks.Refusal):
+                f.append(Finding(
+                    "error", "unparsed-act",
+                    f"{node.id}: `{key}:{index}` ({value}) {parsed.message}",
+                    path=rel, line=node.line,
+                    ref=refs_mod.bullet_ref(node.id, key, index),
+                    suggestion=parsed.bullet(key)))
+                continue
+            # `undeclared-check-locator`'s reason, one key over: an act pointed at a raw
+            # selector goes green against an element the book never declared, so renaming that
+            # element breaks the run and leaves the book undisturbed. A separate code because
+            # the two carry different repairs — a check observes a control, an act operates one,
+            # and the anchor an author reaches for is not the same anchor.
+            for param in acts.ACT_BY_NAME[parsed.name].params:
+                if not param.locator or param.name not in parsed.args:
+                    continue
+                named = parsed.args[param.name]
+                target = loc_mod.locator_target(graph, named, node.path)
+                if loc_mod.located_node(graph, named, node.path) is not None:
+                    continue
+                why = ("names no component this book declares" if target
+                       else "is a raw selector, not a reference into the book")
+                f.append(Finding(
+                    "error", "undeclared-act-locator",
+                    f"{node.id}: `{key}:{index}` performs `{parsed.name}` on `{named}`, "
+                    f"which {why} — name the `component` or `interaction` that declares it, "
+                    f"by its anchor, so the selector lives in one place and renaming the "
+                    f"element shows up here",
+                    path=rel, line=node.line,
+                    ref=refs_mod.bullet_ref(node.id, key, index),
+                    suggestion=f'- {key}: {parsed.name}({param.name}="#<component-anchor>")'))
+
+
 def _check_ui(graph: Graph, f: list[Finding],
               resolver: links_mod.LinkResolver | None = None,
               checkouts: dict[str, Path] | None = None) -> None:
@@ -3056,6 +3101,8 @@ def _check_ui(graph: Graph, f: list[Finding],
                         path=rel, line=node.line,
                         ref=refs_mod.bullet_ref(node.id, key, index),
                         suggestion=f'- {key}: {parsed.name}({param.name}="#<component-anchor>")'))
+
+        _check_arranged_acts(graph, node, rel, f)
 
         # Every check the node declared could go red for the reason the node exists, or the
         # claim it was written under proves nothing. Per claim rather than per node: a node

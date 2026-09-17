@@ -264,6 +264,13 @@ class BulletKey:
                            # reaches the state the claim above it is about. The counterpart of
                            # ``check``: one says what observing the claim looks like, the other
                            # says how to get to where it can be observed.
+    performs: bool = False  # value is an *act the performer of the step carries out* on this
+                            # node's own surface (``ostler.acts``), not the name of a fixture
+                            # something else runs beside it. Same binding and the same coverage
+                            # exemption as ``arrange`` — which is why ``arrange_keys`` unions the
+                            # two — and a different value grammar, which is why it is a second
+                            # flag: a precondition over what the user typed is reachable only by
+                            # typing, and no out-of-process command can type into a form.
     normative: bool = False  # value is a *claim* QA mints an obligation from — one per value,
                              # which a scenario then has to prove. A flag rather than a table
                              # beside the types, so "graded" and "declared" cannot drift: a key
@@ -438,8 +445,36 @@ def check_keys(node_type: str) -> tuple[str, ...]:
     return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.check)
 
 
+def fixture_keys(node_type: str) -> tuple[str, ...]:
+    """Every bullet key on `node_type` whose value names a fixture this repo declares.
+
+    The narrow half of `arrange_keys`, for the two checkers that parse each value as a
+    fixture name. They read the wide set for as long as it had one member; an act spelled
+    `fill(locator="#name-field", value="Widget A")` read as a fixture name is a finding
+    against a book that is correct.
+    """
+    uitype = UI_TYPES_BY_NAME.get(node_type)
+    return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.arrange)
+
+
+def performed_keys(node_type: str) -> tuple[str, ...]:
+    """Every bullet key on `node_type` whose value is an act the performer carries out.
+
+    `fixture_keys`' opposite number and the other half of `arrange_keys`: these values parse
+    as calls from `ostler.acts`, not as fixture names.
+    """
+    uitype = UI_TYPES_BY_NAME.get(node_type)
+    return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.performs)
+
+
 def arrange_keys(node_type: str) -> tuple[str, ...]:
-    """Every bullet key on `node_type` whose value names a declared fixture.
+    """Every bullet key on `node_type` whose value arranges the state a claim is about.
+
+    Both spellings, because both arrange: `fixture:` names something run *beside* the surface,
+    `arrange:` an act performed *on* it. Which one a claim needs is a property of where the
+    state lives, and every reader that binds an arrangement to a claim or exempts one from
+    coverage wants them both — only the two checkers that parse a value as a fixture *name*
+    want `fixture_keys`.
 
     The third leg of the same triple: `normative_keys` says what the node claims,
     `check_keys` says what observing the claim looks like, and these say how to reach the
@@ -449,7 +484,8 @@ def arrange_keys(node_type: str) -> tuple[str, ...]:
     about it.
     """
     uitype = UI_TYPES_BY_NAME.get(node_type)
-    return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.arrange)
+    return () if uitype is None else tuple(
+        b.key for b in uitype.bullet_keys if b.arrange or b.performs)
 
 
 def condition_keys(node_type: str) -> tuple[str, ...]:
@@ -1042,6 +1078,14 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            # The performed arrangement, for state no fixture can reach: a `when:` over what the
+            # user typed is true only once someone has typed, and the performer of the step is
+            # the only actor on that surface. Its subject is a link into this book
+            # (`arrange: fill(locator="#name-field", value="Widget A")`), so a renamed control is
+            # a finding here rather than a green run against an element nothing declares. Not
+            # `locator=True`: that flag lifts a value onto the obligation as an *address*, and
+            # an act is a performance whose locator lives inside its own arguments.
+            BulletKey("arrange", performs=True),
             BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
         ),
@@ -1198,7 +1242,7 @@ ADDRESS_KEYS: frozenset[str] = frozenset(
     b.key for t in UI_TYPES for b in t.bullet_keys if b.address)
 LOAD_BEARING_KEYS: frozenset[str] = frozenset(
     b.key for t in UI_TYPES for b in t.bullet_keys
-    if b.normative or b.check or b.link or b.arrange or b.locator
+    if b.normative or b.check or b.link or b.arrange or b.performs or b.locator
 ) - (frozenset(RELATION_KEYS) - LOCATOR_KEYS)
 # ``## Heading`` → the section-node type it contains (profile §4's implicit-type table).
 UI_HEADING_TO_TYPE: dict[str, str] = {
