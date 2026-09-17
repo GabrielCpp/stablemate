@@ -1440,9 +1440,16 @@ def _interaction_scenario(
                          "not arrange, so its assertions would observe an unestablished state")
                     for oid in ids)
     elif on_resolved:
+        # This branch only established that the trigger compiles to a scaffold click, not
+        # anything about `does:` — `does:` is quoted as a comment above, never parsed or
+        # resolved (see the docstring), so a node whose `does:` genuinely does not resolve to
+        # a target screen needs its own check to say so, not a second, unverified clause
+        # riding along on this one (a node like `open-new-widget` does end up with a
+        # cross-file `qa.vet(...)` and locator, via its own check's target document — this
+        # branch never looked at that, so it must not claim an opinion on it either way).
         gaps.extend(Gap(oid, "unresolved-precondition",
                          f"trigger {trigger_value!r} compiles to a scaffold click on {on_label!r}, "
-                         "not a verified action, and `does:` is not resolved to a target screen")
+                         "not a verified action")
                     for oid in ids)
     assertions: list[str] = []
     scenario_covered: set[str] = set()

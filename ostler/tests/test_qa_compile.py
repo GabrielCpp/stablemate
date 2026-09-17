@@ -1359,6 +1359,36 @@ def test_an_interaction_with_no_on_locator_emits_no_assertion() -> None:
     assert _gap_kinds(gaps, interaction_oid) == ["unresolved-precondition"]
 
 
+def test_the_scaffold_click_gap_does_not_claim_does_is_unresolved() -> None:
+    """The generic `unresolved-precondition` gap here only ever established one fact: the
+    trigger compiles to a scaffold click, not a verified action. `does:` is quoted as a
+    comment and never parsed or resolved (own docstring), so a node whose `does:` genuinely
+    does resolve — via its own check's cross-file target, the real `open-new-widget` shape —
+    must not have this branch's message assert the opposite about it. Say only what was
+    checked; a node whose `does:` truly does not resolve needs its own check to say so.
+    """
+    button = f"{_SCREEN}#create-policy-button"
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_oid = "okf:new-policy:submit-new-policy:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")]),
+        _page_obligation(interaction_oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["submit the new policy form"],
+                                    "does": ["adds a policy and shows it"]},
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    _, gaps = compile_plan_gaps(context, story="demo-story")
+    details = [g.detail for g in gaps if g.obligation_id == interaction_oid]
+    assert len(details) == 1
+    assert "scaffold click" in details[0]
+    assert "does:" not in details[0]
+
+
 def test_interaction_arms_with_an_unarranged_when_emit_no_assertion() -> None:
     """The real `globex` `new-widget.md` shape: a happy arm and its `extends:`-linked refusal
     arm share one resolved `on:` button and no fixture that fills the form either declares.
