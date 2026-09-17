@@ -6,8 +6,12 @@ two shapes: `sensitivity.report` actually perturbed the product the way a real b
 and re-verified, and every check declared for the claim still passed. The check runs; it
 just cannot go red.
 
-The finding names which calls survived which perturbations. Repair the same way
-`weak-check` is repaired — read the source and assert a value the defect would actually
+The finding names which calls survived which perturbations — always, now: a claim whose
+checks could not be perturbed at all is `unwitnessed-check`, a separate warn with the
+opposite instruction, and it never reaches this fragment. If you are reading this, a
+perturbation ran and the check stayed green.
+
+Repair the same way `weak-check` is repaired — read the source and assert a value the defect would actually
 change, not an argument that merely looks stricter:
 
 ```markdown
