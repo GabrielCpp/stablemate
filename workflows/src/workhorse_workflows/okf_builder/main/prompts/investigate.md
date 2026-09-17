@@ -215,10 +215,20 @@ different prompt written for the one doctor code they carry. If you were handed 
 ### Writing `role:` / `name:` / `requires:` / `params:` on any UI node
 
 - `role:` and `name:` come from the **rendered accessibility contract**, not from the tag: read the
-  JSX/template for an explicit `role=`, then `aria-label` / `aria-labelledby` / the visible text that
-  would become the accessible name. An element with an explicit `role=` overriding its tag is the
-  case that matters most and the easiest to miss. `keyboard:` comes from the key handlers and
-  `tabIndex` you can see; write `none` when the control is genuinely pointer-only.
+  JSX/template for an explicit `role=`, then `aria-label` / `aria-labelledby` / `<label for>`. An
+  element with an explicit `role=` overriding its tag is the case that matters most and the easiest
+  to miss. `keyboard:` comes from the key handlers and `tabIndex` you can see; write `none` when the
+  control is genuinely pointer-only.
+- **The visible text becomes the accessible name only for a name-from-content role.** That set is
+  `button`, `cell`, `checkbox`, `columnheader`, `gridcell`, `heading`, `link`, `menuitem`,
+  `menuitemcheckbox`, `menuitemradio`, `option`, `radio`, `row`, `rowheader`, `switch`, `tab`,
+  `tooltip`, `treeitem` — and nothing else. A `table` takes its name from its `<caption>`. Every
+  other role — `status`, `alert`, `region`, `paragraph`, `form`, `textbox`, `spinbutton`,
+  `combobox` — takes a name **only** from an author label, so with no `aria-label`,
+  `aria-labelledby` or `<label for>` on the element its `name:` is `none`, however much text it
+  renders. Copying that text into `name:` compiles to `getByRole(role, {name})` matching zero
+  elements while the element is painted. The wording is still a claim: put it in
+  `verify: visible(locator=..., text="...")` beside the `name: none`, never in `name:`.
 - **`role:` is one bare ARIA token and nothing else** — `link`, not `` `link` — renders an `<a>``
   via ListItemButton`` and not `` `progressbar` (implicit MUI role)``. The value is fed straight
   into `getByRole`, so a justification appended to it produces a locator matching nothing. The
