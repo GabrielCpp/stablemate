@@ -32,6 +32,7 @@ to it. The durable side — where the states are written and how — is
   confirm against.
 - verify: json_path("hold.version", equals=1)
 - does: moves the seat from `free` to `held` and increments its version.
+- verify: json_path("hold.version", equals=1)
 - raises: `Seat Unavailable` when the seat is held or booked, leaving the ledger untouched.
 - verify: unchanged(subject="seat A1", except_fields=[])
 - raises: `No Such Seat` for an id that is not in the showing.
@@ -39,7 +40,6 @@ to it. The durable side — where the states are written and how — is
 - code: app/hold.py::hold@1169d541ddf9
 - concurrency: seat-record — the version it hands back is the seat's own, so a hold taken while
   another caller is deciding cannot be spent against a stale token.
-- verify: json_path("hold.version", equals=1)
 - verify: conflict_on_stale(subject="seat A1", token="version")
 - parent: [Seat](#seat)
 
@@ -50,13 +50,13 @@ to it. The durable side — where the states are written and how — is
 - verify: http_status(204)
 - verify: unchanged(subject="seats", except_fields=["A1.state", "A1.version", "A1.hold"])
 - does: moves the seat from `held` to `free`, increments its version, and clears the hold.
+- verify: json_path("seats[0].version", equals=2)
 - does: writes only the released seat, so every other seat keeps its state, version and booking.
 - raises: `Seat Not Held` when the seat is free or booked, so releasing cannot undo a booking.
 - verify: http_status(409, title="Seat Not Held")
 - code: app/hold.py::release@1169d541ddf9
 - concurrency: seat-record — the release increments the version like any other transition, so the
   hold it gave back cannot be confirmed afterwards.
-- verify: json_path("seats[0].version", equals=2)
 - verify: conflict_on_stale(subject="seat A1", token="version")
 - parent: [Seat](#seat)
 

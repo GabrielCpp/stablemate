@@ -29,8 +29,8 @@ holder's claim is to hold another holder's token.
 - abstract: the claims this identity may read, in ledger order.
 - returns: for a holder, the claims whose `holder_uid` equals the token's subject, and an empty
   list rather than an error when there are none.
-- returns: for an adjuster, every claim on file.
 - verify: count(subject="claims", equals=1)
+- returns: for an adjuster, every claim on file.
 - verify: http_status(200, path="/api/claims")
 - parent: [Claim tenancy](#claim-tenancy)
 

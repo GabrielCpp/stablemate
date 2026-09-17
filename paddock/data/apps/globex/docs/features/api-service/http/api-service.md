@@ -74,13 +74,13 @@ never talk to each other server-to-server.
   - success: return the created widget in the response body
   - validation: a blank `name` is refused rather than coerced
   - validation: a negative `quantity` is refused rather than coerced
+- verify: http_status(201, path="/api/widgets")
 - emits:
 - consumes: `{name: string, quantity: integer}`
 - status: 201
 - errors: 422 with a `{errors: {field: message}}` body when validation fails
-- auth: none
-- verify: http_status(201, path="/api/widgets")
 - verify: http_status(422, path="/api/widgets")
+- auth: none
 - code: `app/api-service/service.go::Server.handleCreate` @0344dec13901
 - openapi:
 - detail:

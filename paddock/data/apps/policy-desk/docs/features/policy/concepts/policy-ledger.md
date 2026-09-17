@@ -36,8 +36,8 @@ what may enter it are [the policy's methods](policy.md#methods).
 - abstract: replaces the ledger atomically.
 - returns: an error only when the file cannot be written.
 - verify: keys_unchanged(subject="policies")
-- verify: persists(subject="policy pn-1001")
 - persistence: policy-record — a created policy is on disk before the response that announces it, and is still on
   the books — at the version the creation returned, with the same premium — after the service
   restarts.
+- verify: persists(subject="policy pn-1001")
 - parent: [Policy ledger](#policy-ledger)

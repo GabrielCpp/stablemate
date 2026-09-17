@@ -29,9 +29,9 @@ at the next restart, and the defect would look like a store bug from every surfa
 - sig: `read() -> dict`
 - abstract: the current ledger, completed from the empty showing so an absent seat reads as free.
 - does: returns every seat in the showing, whether or not the file mentions it.
+- verify: count(subject="seats", equals=12)
 - does: reads the file on each call, so a booking written by another process is visible to the next
   request rather than at the next restart.
-- verify: count(subject="seats", equals=12)
 - verify: persists(subject="seat A1 booking")
 - parent: [Seat ledger](#seat-ledger)
 
