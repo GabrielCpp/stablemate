@@ -75,6 +75,7 @@ Submits the edit together with the version the form was opened at.
 - role: button
 - name: Save policy
 - keyboard: `Enter` in any field, or `Enter`/`Space` on the button.
+- verify: focusable(locator="#save-policy-button", activates="Enter")
 - when: the edit is acceptable and the quoted version is the policy's current one.
 - does:
   - saves the edit and navigates back to [the detail screen](policy-detail.md), which shows the new values.
@@ -89,6 +90,7 @@ Submits the edit together with the version the form was opened at.
 - role: button
 - name: Save policy
 - keyboard: `Enter` in any field, or `Enter`/`Space` on the button.
+- verify: focusable(locator="#save-policy-button", activates="Enter")
 - when: the policy has been written since the form was opened.
 - does:
   - leaves the stored record as it is and says on the form that it moved, rather than navigating away as though the edit had landed.

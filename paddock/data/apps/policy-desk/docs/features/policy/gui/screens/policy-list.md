@@ -33,6 +33,7 @@ that looks current is the one failure mode a register must not have.
 - verify: visible(locator="#open-policy")
 - placement: width 60-100%, x 0-20%, y 10-100%
 - keyboard: reachable by `Tab` from the document start, with no shortcut of its own.
+- verify: focusable(locator="#policy-table")
 - parent: [Policy register](#policy-register)
 - code: app/web/src/PolicyList.tsx@1190425978c1
 

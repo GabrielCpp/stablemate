@@ -136,6 +136,7 @@ request carried, but never substitute an HTTP client for the click.
 - name: Add widget
 - unique-by:
 - keyboard: Enter (while a field has focus), or click
+- verify: focusable(locator="#submit-widget-button", activates="Enter")
 - when: `name` non-empty and `quantity` a non-negative number
 - exclusive-with:
 - does: the browser navigates to [widget-list](widget-list.md)

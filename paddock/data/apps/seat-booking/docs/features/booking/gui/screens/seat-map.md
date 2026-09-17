@@ -49,6 +49,7 @@ Holds every seat button for the showing and nothing else.
 - name: Seat A1
 - verify: visible(locator="#seat-button", text="A1")
 - keyboard: `Tab` to the seat, `Enter` or `Space` to act on it.
+- verify: focusable(locator="#seat-button", activates="Enter")
 - parent: [Seat map](#seat-map)
 - states: carries the seat's state as `data-state`, one of `free`, `held` or `booked`.
 - verify: visible(locator="#seat-button", text="free")

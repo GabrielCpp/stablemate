@@ -137,6 +137,7 @@ sent twice.
 - role: button
 - name: Create policy
 - keyboard: `Enter` in any field, or `Enter`/`Space` on the button.
+- verify: focusable(locator="#create-policy-button", activates="Enter")
 - when: every rule the entry has to satisfy is satisfied.
 - does:
   - adds a policy that was not on the books before to the register, and navigates to its detail screen at `/policies/{id}` — so the operator lands on the record they just made rather than back on the register.
@@ -152,6 +153,7 @@ sent twice.
 - role: button
 - name: Create policy
 - keyboard: `Enter` in any field, or `Enter`/`Space` on the button.
+- verify: focusable(locator="#create-policy-button", activates="Enter")
 - when: the service refuses the entry.
 - does:
   - shows each field's refusal beside that field and stays on the form with the entry intact, rather than navigating away or printing the response body.
