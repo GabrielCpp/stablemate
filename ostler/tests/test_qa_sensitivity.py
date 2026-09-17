@@ -141,6 +141,38 @@ def test_a_pattern_no_string_can_be_invented_for_is_unwitnessed_not_green() -> N
     assert "no leaking value" in trial.note
 
 
+def test_a_claim_no_trial_could_witness_has_no_result_rather_than_a_bad_one() -> None:
+    """`unwitnessed` is the absence of a result, not a weaker `insensitive`.
+
+    A two-armed rule has to call this something, and the only arm left is the one that
+    says the check stayed green through a perturbation — which never ran. That reading
+    aims a repair at the check, and the one edit that would satisfy it is a looser
+    pattern: the harness would then witness the claim and report it genuinely insensitive.
+    """
+    report = sensitivity.ClaimReport(
+        claim="okf:policies.md#issue:returns:1",
+        path="docs/policies.md",
+        line=12,
+        trials=(_trial(r'omits(subject="detail", matches="(?=x)(?!x)")'),),
+    )
+    assert not any(t.witnessed for t in report.trials)
+    assert report.status == "unwitnessed"
+
+
+def test_one_witnessed_survivor_makes_the_claim_insensitive_not_unwitnessed() -> None:
+    """A result beats a missing one: a perturbation did run, and the check did survive it."""
+    report = sensitivity.ClaimReport(
+        claim="okf:policies.md#issue:returns:1",
+        path="docs/policies.md",
+        line=12,
+        trials=(
+            _trial(r'omits(subject="detail", matches="(?=x)(?!x)")'),
+            _trial('json_path(path="claim.status", matches=".*")'),
+        ),
+    )
+    assert report.status == "insensitive"
+
+
 def test_a_synthesized_witness_is_a_member_of_the_language() -> None:
     assert sensitivity._matching("eyJ[A-Za-z0-9_-]{6,}") == "eyJ------"
     assert sensitivity._matching("Draft|Active") == "Draft"

@@ -627,6 +627,26 @@ def test_a_pattern_that_admits_any_value_is_insensitive_not_weak(repo: Path):
     assert "#publish:returns:1" in finding.ref
 
 
+def test_a_pattern_no_witness_can_be_invented_for_has_no_result(repo: Path):
+    # `insensitive-check` is a result: a perturbation ran and the check survived it. Here
+    # nothing ran — the synthesizer cannot invent a member of a closed alternation, so the
+    # experiment was never performed, and "not measured" is not "measured and failed".
+    # The finding falls on the *more* discriminating pattern, which is why it is a warn
+    # about the harness and not an error about the book: the one edit that would silence
+    # it is the edit that would make `insensitive-check` genuinely true.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          _method('json_path(path="$.lang", matches="^(fr|en)$")'))
+    found = all_codes(_run(repo))
+    assert "insensitive-check" not in found
+    finding = next(f for f in _run(repo).findings if f.code == "unwitnessed-check")
+    assert finding.severity == "warn"
+    assert "#publish:returns:1" in finding.ref
+    # The harness's own note travels with the finding: the reader needs to know which call
+    # could not be witnessed and why, or the only available reading is "the check is bad".
+    assert "no witness" in finding.message or "does not satisfy" in finding.message
+    assert finding.suggestion is not None and "leave the check as it is" in finding.suggestion
+
+
 def test_a_creation_verified_only_afterwards_is_reported(repo: Path):
     # The pass this exists to withhold: `201` and a present id say the same thing whether the
     # revision was created or was already there.

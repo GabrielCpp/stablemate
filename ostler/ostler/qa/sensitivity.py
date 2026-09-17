@@ -18,6 +18,13 @@ is missing or holds something else, the route that answered was a different one,
 ledger the write was supposed to leave alone moved, the refusal carries the credential.
 A mutator family is only worth trusting once the corpus's real catches survive it, which
 is why the seeded-defect books are the calibration set rather than a demo.
+
+The experiment has a third outcome and it is not a verdict on the check: **unwitnessed**,
+when no witness this harness can build satisfies the call. That is a limit of the
+synthesizer, and it falls hardest on the most specific patterns a book writes — the ones
+`_matching` cannot invent a member of. Reporting it as `insensitive` said "this check
+cannot go red" on the strength of never having asked, and said it loudest about the
+checks worth keeping.
 """
 
 from __future__ import annotations
@@ -105,9 +112,25 @@ class ClaimReport:
 
     @property
     def status(self) -> str:
+        """What the experiment showed: `sensitive`, `insensitive`, `unwitnessed`, `undeclared`.
+
+        `unwitnessed` is not a weaker `insensitive`, it is the absence of a result. A trial
+        is unwitnessed when this harness could not build a witness the call accepts — no
+        verifier, no mutation family, or no string `_matching` can invent for the pattern —
+        and none of those observe anything about the check. Folding them into `insensitive`
+        answered "could it go red?" with "no" on the strength of never having asked, and the
+        answer inverted on exactly the checks worth keeping: a pattern specific enough to
+        defeat the synthesizer (`^(fr|en)$`, a negative lookahead, a multiline anchor) is
+        more discriminating than the `.*` this experiment exists to catch, not less.
+
+        A claim mixing witnessed survivors with unwitnessed trials is `insensitive`: a
+        perturbation did run and the check did survive it, which is a result.
+        """
         if not self.trials:
             return "undeclared"
-        return "sensitive" if any(t.sensitive for t in self.trials) else "insensitive"
+        if any(t.sensitive for t in self.trials):
+            return "sensitive"
+        return "insensitive" if any(t.witnessed for t in self.trials) else "unwitnessed"
 
 
 # -- witnesses ---------------------------------------------------------------
@@ -557,10 +580,15 @@ def render(rows: list[ClaimReport]) -> str:
     # unobserved claim is a hole in the book rather than a weak assertion, and `doctor` is
     # where it is refused. Saying "every declared check can go red" over a book that declares
     # almost none is true and useless.
-    if insensitive or undeclared:
+    unwitnessed = [row for row in rows if row.status == "unwitnessed"]
+    # Counted apart for the opposite reason: it is a hole in this harness, not in the book.
+    # The line reads "this experiment could not run" and belongs beside the verdict rather
+    # than inside it, so a reader never mistakes the harness's reach for the book's quality.
+    if insensitive or undeclared or unwitnessed:
         verdict = (
             f"{len(rows)} claims put to the experiment, "
-            f"{len(insensitive)} insensitive, {len(undeclared)} unobserved"
+            f"{len(insensitive)} insensitive, {len(undeclared)} unobserved, "
+            f"{len(unwitnessed)} unwitnessed (this harness could not build a witness)"
         )
     else:
         verdict = f"every claim can be made to fail ({len(rows)} claim{'' if len(rows) == 1 else 's'})"
@@ -572,6 +600,10 @@ def cmd_sensitivity(root: Path, *, node: str = "") -> QaOutcome:
     graph = model.load(cwd=root)
     rows = [row for row in report(graph) if not node or node in row.claim or node in row.path]
     insensitive = [row.claim for row in rows if row.status == "insensitive"]
+    # `ok` reads the insensitive rows only. An unwitnessed row says this harness could not
+    # build a witness the call accepts, which is a statement about the harness; failing the
+    # command on it reports the book bad for being too specific to perturb.
+    unwitnessed = [row.claim for row in rows if row.status == "unwitnessed"]
     return QaOutcome(
         ok=not insensitive,
         message=render(rows),
@@ -597,5 +629,6 @@ def cmd_sensitivity(root: Path, *, node: str = "") -> QaOutcome:
                 for row in rows
             ],
             "insensitive": insensitive,
+            "unwitnessed": unwitnessed,
         },
     )

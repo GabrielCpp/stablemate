@@ -3075,8 +3075,28 @@ def _check_sensitivity(graph: Graph, f: list[Finding]) -> None:
 
     Skips `undeclared` claims (no `verify:` at all) — that is `undeclared-obligation`'s finding,
     not this one's; asking sensitivity of a claim with no check would just repeat it.
+
+    Skips `unwitnessed` claims for the opposite reason, into `unwitnessed-check` below: there
+    the experiment did not run, so there is nothing to report about the check. This used to
+    read `reasons or 'no perturbation could be witnessed'` and raise the same error with the
+    same suggestion either way — an `or` that turned "not measured" into "measured and
+    failed", and aimed *assert a value the defect would actually change* at checks whose only
+    fault was being too specific for the synthesizer to invent a witness for.
     """
     for row in sensitivity.report(graph):
+        if row.status == "unwitnessed":
+            notes = "; ".join(f"`{t.call}` — {t.note}" for t in row.trials if not t.witnessed)
+            f.append(Finding(
+                "warn", "unwitnessed-check",
+                f"{row.claim}: `ostler qa sensitivity` could not build a witness observation "
+                f"any check on this claim accepts, so no perturbation was tried — {notes}",
+                path=row.path, line=row.line, ref=row.claim,
+                # Not a repair instruction. The subject of this finding is the harness, and
+                # the one edit that would silence it — a looser pattern the synthesizer can
+                # satisfy — is the edit that would make `insensitive-check` true here.
+                suggestion="leave the check as it is unless it is wrong: this reports the "
+                           "reach of the sensitivity harness, not a defect in the check"))
+            continue
         if row.status != "insensitive":
             continue
         reasons = "; ".join(f"`{t.call}` — survived: {', '.join(t.survived)}"
@@ -3084,7 +3104,7 @@ def _check_sensitivity(graph: Graph, f: list[Finding]) -> None:
         f.append(Finding(
             "error", "insensitive-check",
             f"{row.claim}: every check declared for this claim stayed green through every "
-            f"perturbation tried against it — {reasons or 'no perturbation could be witnessed'}",
+            f"perturbation tried against it — {reasons}",
             path=row.path, line=row.line, ref=row.claim,
             suggestion="assert a value the defect would actually change: name the route, the "
                        "field's content, or the title the claim turns on"))
