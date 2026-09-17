@@ -39,7 +39,11 @@ REPAIR_DIR = Path(okf_builder_pkg.__file__).parent / "main" / "prompts" / "repai
 #: whose fragment-worthy sibling already carries the pattern (`ambiguous-locator` rides
 #: the `grounded` flag the same way `missing-placement`'s fragment describes). The two
 #: declaration codes and the two `known-defect:` codes name their own remedy in the
-#: suggestion: a malformed value is rewritten, a stale one is deleted.
+#: suggestion: a malformed value is rewritten, a stale one is deleted. `unparsed-capture` is
+#: the third of those and rides here rather than beside `unparsed-check`'s fragment: that
+#: fragment exists for a population this one has none of — books written before `tests:`, where
+#: the repair is to move a test id off `verify:` and then write the observation. A refused
+#: `capture:` bullet has one shape and its suggestion spells the whole grammar.
 DEFAULT_PROMPT_CODES = frozenset({
     "ambiguous-locator",
     "bad-heading-type",
@@ -75,6 +79,7 @@ DEFAULT_PROMPT_CODES = frozenset({
     "unknown-book-fixture",
     "unknown-type",
     "unnamed-interactive",
+    "unparsed-capture",
     "unreachable-screen",
     "unreadable",
     "unresolved-extends",
