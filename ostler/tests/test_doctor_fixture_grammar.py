@@ -382,3 +382,48 @@ def test_a_provides_entry_with_its_own_properties_parses_as_one_value(repo: Path
     graph = load(repo)
     node = next(n for n in graph.ui_nodes if n.type == "fixture")
     assert node.meta.get("provides") == "count — the number of widgets the directory holds"
+
+
+_PROVIDES_BOOK = (
+    "---\ntype: fixture\ntitle: Seeded acme\n---\n# Seeded acme\n\n"
+    "- provides:\n"
+    "  - count — the number of widgets the directory holds\n"
+    "    - from: [seed-it](#seed-it)\n"
+    "    - read: json `.widgets | length`\n"
+    "    - freshness: whenever\n\n"
+    "## Steps\n\n### seed-it\n- kind: seed\n- run: ./scripts/seed-acme.sh\n"
+)
+
+
+def _declare_provides_properties(monkeypatch, *names: str) -> None:
+    """Give `provides:` a property vocabulary for the duration of one test.
+
+    No key in the shipped registry declares one yet — `BulletKey.properties` defaults to `()`,
+    which means *undeclared, so unchecked*, precisely so that landing this check did not turn
+    every entry already written in the tree into a finding.
+    """
+    import dataclasses
+
+    from ostler import registry
+
+    fixture = registry.UI_TYPES_BY_NAME["fixture"]
+    keys = tuple(dataclasses.replace(b, properties=names) if b.key == "provides" else b
+                 for b in fixture.bullet_keys)
+    patched = dataclasses.replace(fixture, bullet_keys=keys)
+    monkeypatch.setitem(registry.UI_TYPES_BY_NAME, "fixture", patched)
+
+
+def test_an_entry_property_the_key_does_not_admit_is_reported(repo: Path, monkeypatch) -> None:
+    _declare_provides_properties(monkeypatch, "from", "read")
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _PROVIDES_BOOK)
+    finding, = _findings(repo, "unknown-entry-property")
+    assert "`freshness:`" in finding.message
+    assert finding.ref == "provides:freshness"
+
+
+def test_a_key_that_declares_no_property_vocabulary_admits_anything(repo: Path) -> None:
+    """The shipped state: `provides:` declares no vocabulary, so the same book is clean."""
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _PROVIDES_BOOK)
+    assert _findings(repo, "unknown-entry-property") == []

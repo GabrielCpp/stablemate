@@ -315,6 +315,13 @@ class BulletKey:
                              # `condition` needs `when:`/`states:` apart: an evenness comparison
                              # that does not partition them asks a book to bind a check to a
                              # bullet nothing in the vocabulary can observe on its own.
+    properties: tuple[str, ...] = ()  # an ``entries`` key's declared property vocabulary: the keys
+                             # one entry may carry under itself. **Empty means no vocabulary is
+                             # declared, so nothing is checked** — not "an entry may carry no
+                             # property". The distinction is what lets a key adopt the check when
+                             # its properties are settled without every entry in the tree becoming
+                             # a finding the day the check lands. ``doctor`` reads it as
+                             # ``unknown-entry-property``.
 
 
 @dataclass(frozen=True)

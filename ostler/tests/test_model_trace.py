@@ -82,3 +82,58 @@ def test_a_flags_entry_with_its_own_properties_parses_as_one_value(tmp_path: Pat
     graph = load(tmp_path)
     node = next(n for n in graph.ui_nodes if n.type == "command")
     assert node.meta.get("flags") == ["`--host HOST`", "`--port PORT`"]
+
+
+def test_an_entrys_properties_land_on_the_entry_and_not_in_meta(tmp_path: Path) -> None:
+    """Stopping at the entry (2aj) kept the two shapes apart; it also dropped the properties.
+
+    `UINode.meta` has nowhere to put them — its value type is a scalar or a flat list of
+    scalars, and widening it is legal in Python and illegal in the artifact, since every
+    reader assumes that shape. So the properties live on `UINode.entries` instead, and
+    `meta[key]` is *derived* from the same entries rather than parsed a second time.
+    """
+    (tmp_path / "docs/features/area").mkdir(parents=True)
+    (tmp_path / "docs/features/area/cli.md").write_text(
+        "---\ntype: cli\nslug: c\ntitle: C\n---\n# C\n\n"
+        "## Commands\n\n### serve\n"
+        "- usage: `c serve [--host HOST] [--port PORT]`\n"
+        "- flags:\n"
+        "  - `--host HOST`\n"
+        "    - type: string\n"
+        "    - default: `0.0.0.0`\n"
+        "  - `--port PORT`\n"
+        "    - type: integer\n"
+        "    - required: false\n"
+        "    - default: `8787`\n"
+        "    - The TCP port to listen on.\n",
+        encoding="utf-8")
+    graph = load(tmp_path)
+    node = next(n for n in graph.ui_nodes if n.type == "command")
+
+    host, port = node.entries["flags"]
+    assert host.properties == {"type": "string", "default": "`0.0.0.0`"}
+    assert port.headline == "`--port PORT`"
+    assert port.properties == {"type": "integer", "required": "false", "default": "`8787`"}
+
+    # The derivation, spelled as an assertion: one parse, two readers. If `meta` were parsed
+    # separately the two could disagree, which is the whole reason `entries` exists.
+    assert node.meta["flags"] == [entry.headline for entry in node.entries["flags"]]
+    assert "type" not in node.meta and "default" not in node.meta
+
+
+def test_a_nested_key_that_is_not_an_entries_key_keeps_its_whole_subtree(tmp_path: Path) -> None:
+    """`does:` is `nested=True` and *not* `entries=True`: its children are claims all the way
+    down, so every descendant is a value and none of them is a property of another."""
+    (tmp_path / "docs/features/area").mkdir(parents=True)
+    (tmp_path / "docs/features/area/screen.md").write_text(
+        "---\ntype: screen\nslug: s\ntitle: S\nroute: /s\n---\n# S\n\n"
+        "## Interactions\n\n### submit\n"
+        "- trigger: click [go](#go)\n"
+        "- does:\n"
+        "  - the form is submitted\n"
+        "    - and the row appears\n",
+        encoding="utf-8")
+    graph = load(tmp_path)
+    node = next(n for n in graph.ui_nodes if n.type == "interaction")
+    assert node.meta["does"] == ["the form is submitted", "and the row appears"]
+    assert node.entries == {}

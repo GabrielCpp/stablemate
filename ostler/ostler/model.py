@@ -190,6 +190,10 @@ class UINode:
     # value of that bullet: it is a fact about how the values combine, and a row in the flat
     # list is a claim by definition — see `_combiner`.
     combiners: dict[int, str] = field(default_factory=dict)
+    # Every `entries=True` key's items with their own properties — what `meta` has nowhere to
+    # put, since its values are scalars or flat lists. `meta[key]` is derived from these (the
+    # headlines), so the two spellings of one bullet cannot drift apart. See `Entry`.
+    entries: dict[str, list[Entry]] = field(default_factory=dict)
     links: list = field(default_factory=list)                # (text, href) inside the node's region
     data: dict = field(default_factory=dict)                 # frontmatter (file nodes)
 
@@ -472,6 +476,76 @@ def _bullet_combiners(section: markdown.Section) -> dict[int, str]:
     return {i: word for i, bullet in enumerate(section.bullets) if (word := _combiner(bullet))}
 
 
+@dataclass(frozen=True)
+class Entry:
+    """One item of an ``entries=True`` key's nested list, with what it states about itself.
+
+    ``provides:`` and ``flags:`` hold *things that have claims*, so each item has a headline
+    (``count — the number of widgets the directory holds``) and its own properties
+    (``from:``/``read:``, ``type:``/``required:``/``default:``). :class:`UINode.meta` cannot
+    carry those: its value type is a scalar or a flat list of scalars, and widening it is legal
+    in Python and illegal in the artifact — every one of its readers assumes that shape. So the
+    properties live here instead, and ``meta[key]`` is **derived** from these entries rather
+    than parsed a second time, which is what keeps the two spellings of one bullet from
+    drifting apart.
+    """
+
+    headline: str
+    #: The entry's own ``- key: value`` children, folded the way section bullets are.
+    properties: dict[str, str | list[str]] = field(default_factory=dict)
+
+
+def _fold_bullets(bullets: "list[markdown.Bullet]") -> dict[str, str | list[str]]:
+    """``- key: value`` children folded into a dict, deeper descendants flattened into the value.
+
+    The same fold :func:`_meta_from_bullets` performs, over an arbitrary bullet list rather than
+    a section's top level, and with no grammar to consult — an entry's property is a leaf by
+    construction (it is what the grammar stopped at), so there is no second depth to decide.
+    """
+    folded: dict[str, str | list[str]] = {}
+    for bullet in bullets:
+        text = bullet.text.strip()
+        if ":" not in text:
+            continue
+        key, _, value = text.partition(":")
+        key = key.strip().lower()
+        nested = [item.text.strip() for child in bullet.children for item in child.walk()]
+        values = [item for item in (value.strip(), *nested) if item]
+        parsed: str | list[str] = "" if not values else values[0] if len(values) == 1 else values
+        previous = folded.get(key)
+        if previous is None:
+            folded[key] = parsed
+        elif isinstance(previous, list):
+            previous.extend(values)
+        else:
+            folded[key] = [previous, *values]
+    return folded
+
+
+def _entries(bullet: markdown.Bullet) -> list[Entry]:
+    """The entries of one ``entries=True`` bullet, in document order."""
+    return [Entry(headline=text, properties=_fold_bullets(child.children))
+            for child in bullet.children if (text := child.text.strip())]
+
+
+def _entries_from_bullets(section: markdown.Section,
+                          uitype: "registry.UINodeType | None") -> dict[str, list[Entry]]:
+    """Every ``entries=True`` key of a section, with its entries — the properties `meta` drops."""
+    if uitype is None:
+        return {}
+    found: dict[str, list[Entry]] = {}
+    for bullet in section.bullets:
+        text = bullet.text.strip()
+        if ":" not in text:
+            continue
+        key = text.partition(":")[0].strip().lower()
+        spec = uitype.bullet_by_key.get(key)
+        if spec is None or not spec.entries:
+            continue
+        found.setdefault(key, []).extend(_entries(bullet))
+    return found
+
+
 def _nested_values(key: str, bullet: markdown.Bullet, uitype: "registry.UINodeType | None") -> list[str]:
     """A bullet's nested values, one string per value the grammar says its children hold.
 
@@ -484,7 +558,10 @@ def _nested_values(key: str, bullet: markdown.Bullet, uitype: "registry.UINodeTy
     """
     spec = uitype.bullet_by_key.get(key) if uitype is not None else None
     if spec is not None and spec.entries:
-        return [child.text.strip() for child in bullet.children]
+        # Derived, not re-parsed: `meta[key]` is the headlines of the same entries `UINode.entries`
+        # carries, so a reader that wants the properties and a reader that wants the flat list are
+        # looking at one parse. Two parses of one bullet is how the two spellings drift.
+        return [entry.headline for entry in _entries(bullet)]
     return [item.text.strip() for child in bullet.children for item in child.walk()]
 
 
@@ -1194,7 +1271,7 @@ def _promote_section(section: markdown.Section, rel: str, path: Path, offset: in
         title=ntitle, level=section.level, parent=parent_id,
         line=offset + section.line_start + 1,
         meta=_meta_from_bullets(section, uitype), bullet_order=_bullet_pairs(section, uitype),
-        combiners=_bullet_combiners(section),
+        entries=_entries_from_bullets(section, uitype), combiners=_bullet_combiners(section),
         bullet_lines={i: offset + bullet.line_start + 1 for i, bullet in enumerate(section.bullets)},
         links=section.refs.links,
     ))
@@ -1220,6 +1297,7 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
         meta = _meta_from_bullets(main, ftype) if main else {}
         order = _bullet_pairs(main, ftype) if main else []
         combiners = _bullet_combiners(main) if main else {}
+        entries = _entries_from_bullets(main, ftype) if main else {}
         # The file node's own region = its H1 content up to the first `## Heading` child, so its
         # links don't overlap the section nodes' links (keeps the linter from double-reporting).
         if main is not None:
@@ -1232,7 +1310,7 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
         nodes.append(UINode(
             type=ftype.name, kind="file", id=rel, path=path, level=1, parent="",
             title=str(fm.get("title") or (main.title if main else rel)),
-            line=line, meta=meta, bullet_order=order, combiners=combiners,
+            line=line, meta=meta, bullet_order=order, entries=entries, combiners=combiners,
             bullet_lines={i: offset + bullet.line_start + 1 for i, bullet in enumerate(main.bullets)} if main else {},
             links=markdown.extract_refs(text).links, data=fm,
         ))

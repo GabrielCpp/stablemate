@@ -190,6 +190,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     # below stays gated: it reads a story's `## Fixtures` section, and an exploration book has no
     # stories to read it from.
     _check_fixture_grammar(graph, f)
+    _check_entry_properties(graph, f)
 
     if graph.profile != "full":
         _check_frozen(graph, report.findings)
@@ -776,6 +777,39 @@ def _check_unbacked_precondition(node: UINode, rel: str, key: str, value: str,
 #: full `STEP_KINDS` — a fixture arranges state for a scenario, it does not bring a stack up
 #: or drive one, so `prepare`/`service`/`health`/`drive` say something a fixture cannot mean.
 _FIXTURE_STEP_KINDS: frozenset[str] = frozenset({"seed", "run", "verify"})
+
+
+def _check_entry_properties(graph: Graph, f: list[Finding]) -> None:
+    """An entry of an ``entries=True`` key may only carry the properties its key declares.
+
+    ``BulletKey.properties`` empty means *no vocabulary is declared*, and a key with no declared
+    vocabulary is not checked — the alternative would make every entry in every book a finding on
+    the day this check landed, which is a statement about the check's arrival rather than about
+    any book. A key adopts the check by writing its vocabulary down.
+    """
+    for node in graph.ui_nodes:
+        if not node.entries:
+            continue
+        uitype = registry.UI_TYPES_BY_NAME.get(node.type)
+        if uitype is None:
+            continue
+        rel = _rel_path(graph, node)
+        by_key = uitype.bullet_by_key
+        for key, entries in node.entries.items():
+            spec = by_key.get(key)
+            if spec is None or not spec.properties:
+                continue
+            allowed = set(spec.properties)
+            for entry in entries:
+                for prop in entry.properties:
+                    if prop in allowed:
+                        continue
+                    f.append(Finding(
+                        "error", "unknown-entry-property",
+                        f"{node.id}: `{key}:` entry {entry.headline!r} carries `{prop}:`, which "
+                        f"`{key}:` does not admit",
+                        path=rel, line=node.line, ref=f"{key}:{prop}",
+                        suggestion="one of: " + ", ".join(f"{name}:" for name in spec.properties)))
 
 
 def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:

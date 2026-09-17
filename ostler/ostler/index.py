@@ -92,7 +92,11 @@ INDEX_DIR_NAME = "ostler-index"
 #: how its children combine. A field added to a pickled class, and the case this note warns
 #: about: the class name did not change, so the shape check on the way back in still passes and
 #: an older entry hands back a node the reader then asks for an attribute it has never had.
-SCHEMA_VERSION = 7
+#: 8: a stored ``UINode`` carries ``entries`` — an ``entries=True`` key's items with their own
+#: properties, which ``meta`` has no shape for. The same case as 7, and it presented the same
+#: way: ``replace(node, path=path)`` on an entry pickled before the field raised
+#: ``AttributeError: 'UINode' object has no attribute 'entries'`` across thirty tests.
+SCHEMA_VERSION = 8
 
 #: How long an entry may go unwritten before a prune removes it. Two weeks: long enough
 #: that an occasional book survives a quiet fortnight, short enough that an unattended
