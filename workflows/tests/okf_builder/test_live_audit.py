@@ -375,11 +375,12 @@ title: App things read
 ---
 # App things read
 
-## Invocations
+## Endpoints
 
 ### get-thing
 
-- route: `GET /api/things`
+- method: GET
+- path: /api/things
 - does: a thing is fetched.
 - fixture: seeded-thing
 - verify: http_status(code=200)
@@ -394,11 +395,12 @@ title: App things write
 ---
 # App things write
 
-## Invocations
+## Endpoints
 
 ### create-thing
 
-- route: `POST /api/things`
+- method: POST
+- path: /api/things
 - does: a thing is created.
 - verify: http_status(code=201)
 - code: app/service.py::create_thing
@@ -421,6 +423,34 @@ title: App server
 """
 
 SERVER_PATH = "docs/features/app/server.md"
+
+#: Phase 2j reads a step's driver off the `runbook` that owns its surface, not off the
+#: `server` node: `server` declares no `driver:` key at all, so without this node D1's
+#: dispatch table has nothing to key on and every obligation gaps as `uncompilable-claim`
+#: before the fixture's own point is reached.
+RUNBOOK_NODE = """---
+type: runbook
+slug: app-qa-stack
+title: App QA stack
+---
+# App QA stack
+
+- driver: http
+- surfaces: [App server](../server.md)
+- entry-url: http://localhost:8000
+- health-path: /healthz
+- reuse: never
+
+## Steps
+
+### serve
+
+- kind: service
+- run: `python -m app.service`
+- health: `curl -fsS http://localhost:8000/healthz`
+"""
+
+RUNBOOK_PATH = "docs/features/app/ops/qa-stack.md"
 
 
 def _git(root: Path, *args: str) -> None:
@@ -445,6 +475,8 @@ def compiled_book(tmp_path: Path) -> Path:
     (root / GET_PATH).write_text(GET_NODE, encoding="utf-8")
     (root / CREATE_PATH).write_text(CREATE_NODE, encoding="utf-8")
     (root / SERVER_PATH).write_text(SERVER_NODE, encoding="utf-8")
+    (root / RUNBOOK_PATH).parent.mkdir(parents=True, exist_ok=True)
+    (root / RUNBOOK_PATH).write_text(RUNBOOK_NODE, encoding="utf-8")
     (root / "app/service.py").parent.mkdir(parents=True, exist_ok=True)
     (root / "app/service.py").write_text(
         "def get_thing():\n    return 'thing'\n\n\ndef create_thing():\n    return 'thing'\n",
