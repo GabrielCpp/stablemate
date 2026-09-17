@@ -2172,9 +2172,9 @@ def _parse_fixtures(
 ) -> list[dict[str, Any]]:
     """The declared arrangements among *values*, in order, deduped on name and arguments.
 
-    A bullet that does not parse is dropped here and reported by `ostler doctor`, the same
-    division of labour `_parse_checks` keeps: the packet says what the book successfully
-    declared, and the lint says what it tried to. `fixture_provides` — a book fixture's own
+    A bullet that does not parse yields no row here and is carried instead by
+    `_unparsed_fixtures` below, which says why the packet cannot simply drop it.
+    `fixture_provides` — a book fixture's own
     keys plus its `needs:` closure, each spelled `<owner>.<key>` — rides along on each row so
     `compile_plan` can tell what an arrangement makes available without re-walking the graph.
     """
@@ -2188,6 +2188,31 @@ def _parse_fixtures(
                 row["providesKeys"] = keys
             rows.append(row)
     return list({(row["name"], tuple(row["args"])): row for row in rows}.values())
+
+
+def _unparsed_fixtures(values: list[str]) -> list[dict[str, Any]]:
+    """The `fixture:` bullets among *values* the parser read and rejected, with its sentence.
+
+    Carried, not dropped. `_parse_fixtures` above builds a row only from a value that parsed,
+    and for years this function did not exist, on the stated ground that the packet says what
+    the book successfully declared and `ostler doctor` says what it tried to. That division
+    holds for a reader that reports to an author and fails for the one reader that has to
+    decide whether to emit code: downstream, a bullet nobody wrote and a bullet that did not
+    parse are the same absent row. So a flow whose `fixture:` bullet had a typo in it was
+    gapped `unarranged-journey` — *"add a `fixture:` naming the arrangement"* — at an author
+    who had added one, and the advice was to do the thing already done.
+
+    The parser is the only reader that saw the text fail, so its own sentence rides along
+    rather than being re-derived here from the value. `compile_plan` turns each of these into
+    an `unparsed-fixture` gap and compiles nothing for the obligation, because the state its
+    claim is documented in is undetermined and undetermined does not become executable.
+    """
+    rows: list[dict[str, Any]] = []
+    for value in values:
+        parsed = fixtures_mod.parse_bullet(value)
+        if isinstance(parsed, str):
+            rows.append({"value": value, "problem": parsed})
+    return list({row["value"]: row for row in rows}.values())
 
 
 def _no_arrangement_stated(values: list[str]) -> bool:
@@ -2487,6 +2512,9 @@ def _obligations(
     ambient = _parse_fixtures(node_fixtures, fixture_provides)
     if ambient:
         base["fixturesDeclared"] = ambient
+    ambient_unparsed = _unparsed_fixtures(node_fixtures)
+    if ambient_unparsed:
+        base["fixturesUnparsed"] = ambient_unparsed
     ambient_nothing = _no_arrangement_stated(node_fixtures)
     if ambient_nothing:
         base["arrangesNothing"] = True
@@ -2559,6 +2587,14 @@ def _obligations(
                 obligation["fixturesDeclared"] = combined
             else:
                 obligation.pop("fixturesDeclared", None)
+            unparsed = list({row["value"]: row for row in [
+                *ambient_unparsed,
+                *_unparsed_fixtures(fixtures_per_bullet.get((key, index), [])),
+            ]}.values())
+            if unparsed:
+                obligation["fixturesUnparsed"] = unparsed
+            else:
+                obligation.pop("fixturesUnparsed", None)
             if ambient_nothing or _no_arrangement_stated(
                 fixtures_per_bullet.get((key, index), [])
             ):

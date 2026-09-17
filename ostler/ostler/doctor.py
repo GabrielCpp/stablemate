@@ -1140,8 +1140,16 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
                     "error", "unarranged-interaction-precondition", message, ref=gap.obligation_id
                 )
             )
+        elif gap.kind == "unparsed-fixture":
+            # The second kind whose compiler spelling is not a doctor code of its own, for the
+            # same reason `no-verify-declared` below is not: `_check_book_fixtures` already
+            # raises `qa-fixture-bullet` on this very bullet, from the book alone, and a second
+            # code would grade one defect twice depending on which component noticed it. What
+            # the compiler adds is not a new defect but the consequence — which obligations
+            # went uncompiled because of it — and that belongs in the message, not in the code.
+            findings.append(Finding("error", "qa-fixture-bullet", message, ref=gap.obligation_id))
         elif gap.kind == "no-verify-declared":
-            # The one kind whose compiler spelling is not a doctor code: "the book declares no
+            # The other kind whose compiler spelling is not a doctor code: "the book declares no
             # check for this obligation to prove" is `undeclared-obligation`, which doctor
             # already raises from the book alone. It keeps that code's own severity — a `warn`
             # here and an `error` there would be one rule graded two ways depending on which

@@ -2405,3 +2405,39 @@ def test_a_route_that_is_not_a_path_is_reported_as_one_not_as_a_pattern() -> Non
 
     assert "is not a path a browser could show" in detail_for("app_bundle_user_home")
     assert "names a family of pages" in detail_for("/policies/{id}")
+
+
+def test_a_fixture_bullet_that_did_not_parse_is_not_the_journey_that_arranges_nothing() -> None:
+    """A rejected `fixture:` bullet and an absent one are not the same state of the book.
+
+    Downstream of the packet both were an empty `fixturesDeclared`, which is how a flow whose
+    bullet had a typo in it came to be gapped `unarranged-journey` — *"add a `fixture:` naming
+    the arrangement, or `fixture: none, because ...`"* — at an author who had added one, and
+    the advice was to do the thing already done. The packet now carries the value the parser
+    rejected together with the parser's own sentence, and the obligation is partitioned out
+    before any builder sees it: the state this claim is documented in is undetermined, and
+    nothing executable comes out of an undetermined arrangement.
+    """
+    oid = f"okf:{_FLOW}:end-state"
+    obligation = _flow_obligation(
+        oid, source=_FLOW, surface="api",
+        steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+        checks=[{"call": "it", "name": "http_status", "args": {"status": 200,
+                                                               "path": "/api/things"}}],
+        fixtures=[],
+    )
+    obligation["fixturesUnparsed"] = [
+        {"value": "Seeded Ledger", "problem": "`Seeded` is not a fixture name"},
+    ]
+    context = _navigation_context(obligation, _step_node(f"{_API}#post-things", {}),
+                                  navigation=_api_navigation())
+
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == ["unparsed-fixture"]
+    [gap] = [g for g in gaps if g.obligation_id == oid]
+    assert "Seeded Ledger" in gap.detail and "is not a fixture name" in gap.detail
+    # Not the undecided case's code, and nothing compiled against a state nobody established.
+    assert "unarranged-journey" not in {g.kind for g in gaps}
+    assert oid not in _covers(source)

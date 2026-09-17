@@ -82,6 +82,7 @@ GAP_KINDS = frozenset({
     "unarranged-request-body",
     "unarranged-interaction-precondition",
     "unidentifiable-screen",
+    "unparsed-fixture",
 })
 
 
@@ -693,6 +694,24 @@ def compile_plan_gaps(
     )
     undetermined_ids = {o["id"] for o in undetermined}
     owed = [o for o in owed if o["id"] not in undetermined_ids]
+    # The same rule, reached from the other side. A claim is documented in a state, and an
+    # obligation whose `fixture:` bullet the parser rejected does not say which state — so the
+    # arrangement is undetermined and nothing executable comes out of it either. Partitioned
+    # here rather than handled at each builder for the reason that matters: left in `owed`, one
+    # of these reaches the journey builder, finds no arranged row and no `arrangesNothing`, and
+    # is gapped `unarranged-journey` — which tells an author who wrote a `fixture:` bullet to
+    # write one. A rejected bullet and an absent bullet are the same absent row downstream, and
+    # the only place that can tell them apart is the packet, which now carries the rejection.
+    unparsed = [o for o in owed if o.get("fixturesUnparsed")]
+    gaps.extend(
+        Gap(o["id"], "unparsed-fixture",
+            "this claim's arrangement could not be read: "
+            + "; ".join(f"`fixture: {row['value']}` is not a fixture reference — {row['problem']}"
+                        for row in o["fixturesUnparsed"]))
+        for o in unparsed
+    )
+    unparsed_ids = {o["id"] for o in unparsed}
+    owed = [o for o in owed if o["id"] not in unparsed_ids]
     # D1: the driver of a step is `(the obligation's own node type) x (owning surface's
     # runbook driver:)`, not (as this used to read) whether any declared check happens to observe
     # "page" — that bit is per-check, not per-node, and let two `does:` bullets on the same

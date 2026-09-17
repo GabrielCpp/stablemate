@@ -535,6 +535,24 @@ def test_a_gap_kind_that_is_not_a_doctor_code_is_translated_not_passed_through()
     assert (finding.severity, finding.code) == ("warn", "undeclared-obligation")
 
 
+def test_an_unparsed_fixture_gap_keeps_the_code_doctor_already_raises_for_that_bullet():
+    """`_check_book_fixtures` raises `qa-fixture-bullet` on this bullet from the book alone.
+
+    The compiler's kind names the *consequence* — which obligations went uncompiled because of
+    it — not a second defect, so it bridges to that same code at that same severity. A code of
+    its own would grade one rule two ways depending on which component noticed it, which is
+    the drift this bridge exists to avoid; `no-verify-declared` is translated for the same
+    reason.
+    """
+    oid = "okf:docs/features/demo/flows/add-a-thing.md:end-state"
+    gap = compile_mod.Gap(oid, "unparsed-fixture", "this claim's arrangement could not be read")
+
+    [finding] = doctor.gap_findings([gap])
+
+    assert (finding.severity, finding.code) == ("error", "qa-fixture-bullet")
+    assert finding.ref == oid
+
+
 def test_gap_findings_reports_a_compile_plan_gap_as_a_doctor_finding():
     oid = "okf:docs/features/demo/api.md#post-things:does:1"
     gap = compile_mod.Gap(oid, "unresolved-precondition", "the book carries no request body")

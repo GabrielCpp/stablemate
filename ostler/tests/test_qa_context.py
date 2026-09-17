@@ -2089,3 +2089,51 @@ title: Claims
         for item in packet["obligations"]
         if item["id"].rsplit("#", 1)[-1].startswith("list-claims")
     )
+
+
+def test_a_fixture_bullet_the_parser_rejects_is_carried_not_dropped(tmp_path: Path):
+    """The packet used to say only what the book successfully declared, and the lint said what
+    it tried to. That division holds for a reader reporting to an author and fails for the one
+    reader deciding whether to emit code: downstream, a bullet nobody wrote and a bullet that
+    did not parse are the same absent row, so a typo was gapped as an author who never looked.
+    The rejection now rides in the packet, with the sentence from the only reader that saw it.
+    """
+    (tmp_path / "docs/features/acme/http").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/http/claims.md").write_text(
+        """---
+type: server
+title: Claims
+---
+# Claims
+
+## Endpoints
+
+### list-claims
+- method: GET
+- path: /api/claims
+- code: app/list.py::list_claims
+- fixture: Seeded Ledger — two claims on file
+- authorization: a holder reads only their own claims.
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/list.py").write_text("def list_claims():\n    return []\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/list.py").write_text("def list_claims():\n    return [1]\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    by_id = {item["id"].rsplit("#", 1)[-1]: item for item in packet["obligations"]}
+
+    # No row, because nothing parsed — and the value is still here to say why there is none.
+    assert "fixturesDeclared" not in by_id["list-claims:contract"]
+    [rejected] = by_id["list-claims:contract"]["fixturesUnparsed"]
+    assert rejected["value"] == "Seeded Ledger — two claims on file"
+    assert "is not a fixture name" in rejected["problem"]
+    # Ambient, the same way a parsed arrangement written in that place would be.
+    assert by_id["list-claims:authorization:1"]["fixturesUnparsed"] == [rejected]
