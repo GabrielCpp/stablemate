@@ -262,7 +262,7 @@ class BulletKey:
                              # the mapper grades is by construction one ``fmt`` orders and
                              # ``doctor`` recognizes.
     alias: bool = False      # a second accepted spelling of the key declared just above it
-                             # (``statuses`` for ``status``): recognized and ordered like the
+                             # (``error`` for ``errors``): recognized and ordered like the
                              # primary, never stubbed by ``scaffold``.
     owns: bool = False       # value names a file (or ``path::symbol``) the node is documented
                              # *against*, so a change to that file reaches the node — what
@@ -824,11 +824,13 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("consumes"),
             # The route's outcomes, one claim per value — declared here so `fmt` can order them
             # between the effect and its grounding (`does → status → errors → auth → code →
-            # verify`) and so a `verify:` written under one binds to it. `statuses`, `error` and
-            # `authorization` are accepted spellings of the key above each, kept for the books
-            # that wrote them; `scaffold` stubs only the primary.
+            # verify`) and so a `verify:` written under one binds to it. `error` and `authorization`
+            # are accepted spellings of the key above each, kept for the books that wrote
+            # them; `scaffold` stubs only the primary. `statuses` was a third such alias and
+            # is gone: no book in any of the three trees ever wrote it, so it was a spelling
+            # kept for nobody — and an alias nothing writes is a second name the grammar has
+            # to keep answering for with no claim behind it.
             BulletKey("status", normative=True),
-            BulletKey("statuses", normative=True, alias=True),
             BulletKey("errors", normative=True),
             BulletKey("error", normative=True, alias=True),
             BulletKey("auth", normative=True),
@@ -893,11 +895,13 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("consumes"),
             # The invocation's outcomes, one claim per value — declared here so `fmt` can order them
             # between the effect and its grounding (`does → status → errors → auth → code →
-            # verify`) and so a `verify:` written under one binds to it. `statuses`, `error` and
-            # `authorization` are accepted spellings of the key above each, kept for the books
-            # that wrote them; `scaffold` stubs only the primary.
+            # verify`) and so a `verify:` written under one binds to it. `error` and `authorization`
+            # are accepted spellings of the key above each, kept for the books that wrote
+            # them; `scaffold` stubs only the primary. `statuses` was a third such alias and
+            # is gone: no book in any of the three trees ever wrote it, so it was a spelling
+            # kept for nobody — and an alias nothing writes is a second name the grammar has
+            # to keep answering for with no claim behind it.
             BulletKey("status", normative=True),
-            BulletKey("statuses", normative=True, alias=True),
             BulletKey("errors", normative=True),
             BulletKey("error", normative=True, alias=True),
             BulletKey("auth", normative=True),

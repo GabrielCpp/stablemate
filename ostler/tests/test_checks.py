@@ -221,8 +221,20 @@ def test_a_load_bearing_key_is_one_some_type_instruments() -> None:
 
 def test_an_alias_is_declared_but_never_stubbed() -> None:
     endpoint = registry.UI_TYPES_BY_NAME["endpoint"].bullet_by_key
-    assert endpoint["statuses"].alias and endpoint["statuses"].normative
-    assert not endpoint["status"].alias
+    assert endpoint["error"].alias and endpoint["error"].normative
+    assert not endpoint["errors"].alias
+
+
+def test_no_alias_is_a_spelling_no_book_writes() -> None:
+    """An alias exists for the books that wrote it, so one nobody wrote is not an alias.
+
+    `statuses` was declared on `endpoint` and `invocation` and written in none of the three
+    trees this format is exercised against. A second name the grammar answers for with no
+    claim behind it is a spelling kept for nobody, and `scaffold` never stubs it, so nothing
+    would ever have started writing it either.
+    """
+    for name in ("endpoint", "invocation"):
+        assert "statuses" not in registry.UI_TYPES_BY_NAME[name].bullet_by_key
 
 
 def test_a_runbook_step_verify_stays_a_reference() -> None:
