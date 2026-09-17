@@ -249,3 +249,101 @@ def test_a_role_selector_over_an_id_minted_region_matches_on_role_alone() -> Non
         VIEWPORT,
     )
     assert [v.status for v in verdicts] == ["matched"]
+
+
+def _named(
+    role: str | None,
+    selectors: list[str],
+    box: tuple[float, float, float, float],
+    own_roles: list[str],
+    names: list[str],
+) -> RegionBox:
+    x, y, w, h = box
+    return RegionBox(
+        bbox=BBox(x=x, y=y, width=w, height=h), role=role, selectors=selectors,
+        own_roles=own_roles, names=names,
+    )
+
+
+def test_a_name_the_accessibility_tree_does_not_compute_is_a_disagreement() -> None:
+    """The defect this exists for: a book states `role: status` + `name: No widgets are on file
+    yet.`, the element carries no author label, and `status` is not a name-from-content role — so
+    `get_by_role("status", name=...)` selects nothing while the element is painted on screen."""
+    verdicts = check(
+        [VettedComponent(
+            node_id="screens/widget-list.md#empty",
+            selector='p[role="status"]',
+            name="No widgets are on file yet.",
+        )],
+        [_named("status", ["p.empty:nth(12)"], (0, 100, 1440, 24), ["status"], [""])],
+        VIEWPORT,
+    )
+    assert [v.status for v in verdicts] == ["misnamed"]
+    assert verdicts[0].detail == [
+        "the book names it 'No widgets are on file yet.', "
+        "but the `status` there has no accessible name"
+    ]
+    assert not verdicts[0].ok, "a non-matched verdict is what makes the ledger assertion fail"
+    assert "is named wrong" in verdicts[0].sentence()
+
+
+def test_a_scan_that_recorded_no_name_is_not_an_observation_that_there_is_none() -> None:
+    """A `regions.json` frozen before the scan reported names is a page nobody looked at. Reading
+    its silence as an empty name would report a disagreement about an unobserved render."""
+    verdicts = check(
+        [VettedComponent(node_id="s.md#c", selector="p.empty", name="Nothing here yet")],
+        [_region("status", ["p.empty:nth(12)"], (0, 100, 1440, 24))],
+        VIEWPORT,
+    )
+    assert [v.status for v in verdicts] == ["matched"]
+
+
+def test_the_name_comparison_is_the_one_the_locator_performs() -> None:
+    """Whitespace collapsed and case folded, whole string — what `get_by_role(name=...)` does.
+    A stricter comparison here would fail runs the compiled check passes."""
+    verdicts = check(
+        [VettedComponent(node_id="s.md#c", selector="#save", name="Save   policy")],
+        [_named("form", ["#save"], (0, 0, 100, 40), ["button"], ["save Policy"])],
+        VIEWPORT,
+    )
+    assert [v.status for v in verdicts] == ["matched"]
+
+
+def test_the_name_is_read_off_the_element_the_selector_addresses() -> None:
+    """A region is a rect and several elements share one; a name belongs to an element. Asking
+    the rect would answer a question about the documented element with another element's name."""
+    region = _named(
+        "form", ["div.wrap:nth(3)", "#save"], (0, 0, 100, 40), ["", "button"], ["", "Save policy"],
+    )
+    verdicts = check(
+        [VettedComponent(node_id="s.md#c", selector="#save", name="Save policy")], [region], VIEWPORT
+    )
+    assert [v.status for v in verdicts] == ["matched"]
+
+
+def test_a_role_selector_reads_the_name_of_the_element_carrying_that_role() -> None:
+    """`region.role` is the nearest ancestor carrying a role, so the member the book addressed is
+    the one whose *own* role is the documented one — not whichever element sorts first."""
+    region = _named(
+        "alert", ["div.wrap:nth(3)", "#flash"], (0, 0, 1440, 40), ["", "alert"], ["", "Saved"],
+    )
+    verdicts = check(
+        [VettedComponent(node_id="s.md#c", selector='div[role="alert"]', name="Deleted")],
+        [region],
+        VIEWPORT,
+    )
+    assert [v.status for v in verdicts] == ["misnamed"]
+    assert verdicts[0].detail == [
+        "the book names it 'Deleted', but the `alert` there is named 'Saved'"
+    ]
+
+
+def test_a_book_that_names_no_name_has_nothing_to_disagree_with() -> None:
+    """An absent `name:` and a `name:` whose value names emptiness are one claim, and neither is
+    a claim this check can contradict — the component is judged on its placement alone."""
+    for meta in ({"selector": "`#save`"}, {"selector": "`#save`", "name": "none"}):
+        components = screen_components(_graph_with_component(meta))["s.md"]
+        assert [c.name for c in components] == [""], meta
+    assert screen_components(
+        _graph_with_component({"selector": "`#save`", "name": "`Save policy`"})
+    )["s.md"][0].name == "Save policy"

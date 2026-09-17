@@ -5,7 +5,7 @@ geometry, so "segmentation" is just grouping-by-identical-rect, not a probabilis
 
 from __future__ import annotations
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from ostler.qa.harness_host import load_harness_module
 from ostler.vet.geometry import BBox
@@ -24,15 +24,36 @@ class ScannedElement(BaseModel):
 
     selector: str
     bbox: BBox
-    role: str = ""
+    role: str = ""       # the nearest ancestor that carries one — not this element's own
+    own_role: str = Field(default="", alias="ownRole")
+    name: str = ""       # the accessible name, "" when the element has none
     tag: str = ""
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class RegionBox(BaseModel):
     bbox: BBox
     role: str | None
     selectors: list[str]
+    #: Index-parallel to `selectors`: the own role and accessible name of each element that
+    #: shares this rect. They do not collapse the way `role` does, because a name is a property
+    #: of one element and a region is a rect several elements can share.
+    #:
+    #: Both default to empty, and an empty list is **not** an observation that the elements
+    #: have no name — it is a region recorded before the scan reported one. Every reader must
+    #: tell those apart or it will report a disagreement about a page nobody looked at.
+    own_roles: list[str] = []
+    names: list[str] = []
     crop: str | None = None  # set by crop.maybe_crop() for an `unlabeled` finding, else unused
+
+    def observed(self, selector_index: int) -> tuple[str, str] | None:
+        """The (own role, accessible name) recorded for one of this region's selectors, or
+        `None` when this scan recorded none — the absence, kept distinguishable from a name
+        that was observed to be empty."""
+        if selector_index >= len(self.names) or selector_index >= len(self.own_roles):
+            return None
+        return self.own_roles[selector_index], self.names[selector_index]
 
 
 RegionList: TypeAdapter[list[RegionBox]] = TypeAdapter(list[RegionBox])
@@ -46,6 +67,9 @@ def merge(elements: list[ScannedElement], *, rect_epsilon: float = 1.0) -> list[
     The grouping itself is the harness's, so a region a QA scenario recorded and a region
     `vet` computed are the same region; this side only puts the models back on."""
     merged = _merge_rects(
-        [element.model_dump(mode="json") for element in elements], rect_epsilon=rect_epsilon
+        # `by_alias` so the dicts reaching the harness are spelled the way its own JS spells
+        # them — one vocabulary on both sides of the merge, whichever side produced the scan.
+        [element.model_dump(mode="json", by_alias=True) for element in elements],
+        rect_epsilon=rect_epsilon,
     )
     return [RegionBox.model_validate(region) for region in merged]

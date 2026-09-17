@@ -94,6 +94,10 @@ class VettedComponent(BaseModel):
     node_id: str
     selector: str
     placement: Placement | None = None
+    #: The accessible name the book claims this component has. Empty when the book makes no
+    #: claim — which, per the grammar, an absent `name:` and a `name:` whose value names
+    #: emptiness both are.
+    name: str = ""
     #: The book gives a reason this one may legitimately not be in the render — a `states:`
     #: bullet, or an `exclusive-with:` sibling it can never co-render with. Presence is then
     #: unprovable from one photograph, and the scenario's own assertions are what establish it.
@@ -105,7 +109,7 @@ class ComponentVerdict(BaseModel):
 
     node_id: str
     selector: str
-    status: str  # matched | misplaced | missing
+    status: str  # matched | misplaced | misnamed | missing
     expected: str
     detail: list[str] = []
     bbox: BBox | None = None
@@ -120,6 +124,8 @@ class ComponentVerdict(BaseModel):
             return f"{self.node_id} (`{self.selector}`) rendered nowhere on this screen"
         if self.status == "misplaced":
             return f"{self.node_id} (`{self.selector}`) is placed wrong: " + "; ".join(self.detail)
+        if self.status == "misnamed":
+            return f"{self.node_id} (`{self.selector}`) is named wrong: " + "; ".join(self.detail)
         return f"{self.node_id} (`{self.selector}`) is where the book places it"
 
 
@@ -180,11 +186,18 @@ def _region_tags(region: RegionBox) -> set[str]:
     return tags
 
 
-def _find_region(selector: str, regions: list[RegionBox]) -> RegionBox | None:
-    """The region a documented selector addresses, or None.
+def _find_region(selector: str, regions: list[RegionBox]) -> tuple[RegionBox, int] | None:
+    """The region a documented selector addresses and **which of its elements**, or None.
 
     Two vocabularies meet here: the string forms the scan mints (matched by `_matches`),
     and the `tag[role=...]` form the scan cannot mint, matched by the role it recorded.
+
+    The index is not a detail. A region is a rect, several elements share a rect, and a
+    property like an accessible name belongs to one element and not to the rect — so a caller
+    that asks the region a question about the documented element needs to know which member
+    of it was documented. For a role selector that is the member whose *own* role is the one
+    written down; `region.role` is the nearest ancestor carrying a role and can belong to an
+    element the book never named.
     """
     by_role = _ROLE_SELECTOR.match(selector)
     if by_role:
@@ -194,12 +207,47 @@ def _find_region(selector: str, regions: list[RegionBox]) -> RegionBox | None:
                 continue
             tags = _region_tags(region)
             if not tag or not tags or tag in tags:
-                return region
+                own = next((i for i, r in enumerate(region.own_roles) if r == role), 0)
+                return region, own
         return None
-    return next(
-        (r for r in regions if any(_matches(selector, s) for s in r.selectors)),
-        None,
-    )
+    for region in regions:
+        for index, scanned in enumerate(region.selectors):
+            if _matches(selector, scanned):
+                return region, index
+    return None
+
+
+def _flat(text: str) -> str:
+    """Whitespace collapsed the way the accessibility tree collapses it, and the scan with it."""
+    return " ".join(text.split())
+
+
+def _name_disagreement(
+    documented: str, region: RegionBox, index: int
+) -> list[str]:
+    """Why the element the book named is not reachable by the name the book gave it.
+
+    The comparison is the one a Playwright `get_by_role(role, name=...)` performs: whitespace
+    collapsed, case folded, the whole string. A book that states a name no accessibility tree
+    computes is not a cosmetic defect — that locator matches zero elements while the element
+    is painted, so every check written against it fails for a reason the screenshot denies.
+
+    Silence has two spellings and they are not the same claim. A book with no `name:` states
+    nothing to disagree with. A scan that recorded no name — a `regions.json` frozen before
+    this observation existed — is a page nobody looked at, and reporting a disagreement from
+    it would be reporting an absence as an event.
+    """
+    if not documented:
+        return []
+    observed = region.observed(index)
+    if observed is None:
+        return []
+    own_role, actual = observed
+    if _flat(actual).casefold() == _flat(documented).casefold():
+        return []
+    where = f"the `{own_role}` there" if own_role else "the element there"
+    has = f"is named {_flat(actual)!r}" if _flat(actual) else "has no accessible name"
+    return [f"the book names it {_flat(documented)!r}, but {where} {has}"]
 
 
 def check(
@@ -219,8 +267,8 @@ def check(
     verdicts: list[ComponentVerdict] = []
     for component in components:
         expected = component.placement.text() if component.placement else "rendered on this screen"
-        region = _find_region(component.selector, regions)
-        if region is None:
+        found = _find_region(component.selector, regions)
+        if found is None:
             if component.conditional:
                 # A screen documents its conditional components alongside its steady state —
                 # an error banner, the empty-list placeholder, the half of an `exclusive-with`
@@ -232,17 +280,24 @@ def check(
                 node_id=component.node_id, selector=component.selector,
                 status="missing", expected=expected))
             continue
+        region, index = found
         said = (
             component.placement.disagreements(region.bbox, viewport)
             if component.placement
             else []
         )
+        named = _name_disagreement(component.name, region, index)
+        # The name is reported ahead of the placement, and instead of it, because a name the
+        # accessibility tree does not compute makes every other claim about that element
+        # unmeasurable: the locator the book's own checks compile to selects nothing. The
+        # placement is measured again, against the element the repaired name reaches.
+        status = "misnamed" if named else "misplaced" if said else "matched"
         verdicts.append(ComponentVerdict(
             node_id=component.node_id,
             selector=component.selector,
-            status="misplaced" if said else "matched",
+            status=status,
             expected=expected,
-            detail=said,
+            detail=named or said,
             bbox=region.bbox,
         ))
     return verdicts
@@ -269,6 +324,18 @@ def _declares_coming_and_going(node: UINode) -> bool:
     return False
 
 
+#: How a `name:` bullet says *this component has no accessible name*. An absent bullet says the
+#: same thing, which is why both land on the empty string: an empty key and a key whose value
+#: names emptiness are one claim, and the check has nothing to compare either against.
+_NO_NAME = frozenset({"none", "n/a", "na", "-", ""})
+
+
+def _documented_name(node: UINode) -> str:
+    """The accessible name the book claims, or "" when it claims none."""
+    value = str(node.meta.get("name", "")).strip().strip("`").strip().strip('"').strip()
+    return "" if value.lower() in _NO_NAME else value
+
+
 def screen_components(graph: Graph) -> dict[str, list[VettedComponent]]:
     """Every documented screen's registrable components, keyed by the screen's doc path.
 
@@ -289,6 +356,7 @@ def screen_components(graph: Graph) -> dict[str, list[VettedComponent]]:
             node_id=node.id,
             selector=selector,
             placement=parsed if isinstance(parsed, Placement) else None,
+            name=_documented_name(node),
             conditional=_declares_coming_and_going(node),
         ))
     return table
