@@ -828,6 +828,15 @@ def compile_plan_gaps(
     page_owed: list[dict[str, Any]] = []
     cli_owed: list[dict[str, Any]] = []
     flow_owed: list[dict[str, Any]] = []
+    # Indexed over every obligation the packet carries, before a single line of dispatch below:
+    # an arrangement is a property of the arm it arranges, and the bullet that carries it
+    # declares no check of its own, so every filter above and every classification below —
+    # required/context-only, then check/no-check, then driver — routes it away from the builder
+    # that would perform it. Which bullet happens to carry a check, and whether the claim beside
+    # it is one this pass owes proof of, cannot be what decides which arrangements the compiler
+    # can see: the form still needs filling either way.
+    carried = [o for o in context.get("obligations", []) if isinstance(o, dict)]
+    page_acts, page_acts_refused = _acts_by_node(carried)
     for obligation in owed:
         if not obligation.get("checksDeclared") and obligation.get("kind") != "states":
             # No claim to dispatch — falls through to the existing `no-verify-declared`
@@ -997,7 +1006,9 @@ def compile_plan_gaps(
         if _has_screens(navigation):
             lines.extend(
                 _compile_page_scenarios(context, page_declared, gaps, covered_ids, web_urls,
-                                        emitted_targets, captured))
+                                        emitted_targets, captured,
+                                        acts_by_node=page_acts,
+                                        acts_refused=page_acts_refused))
         else:
             # The book declares page checks but its navigation graph has no screen nodes on any
             # surface — there is nothing here to walk to, the same dead end `unreachable-screen`
@@ -1012,7 +1023,8 @@ def compile_plan_gaps(
     # already assigned, and reading that off `emitted_targets` rather than re-assigning it is
     # only correct once every place-scoped builder above has run.
     lines.extend(_journey_scenarios(context, flow_owed, gaps, covered_ids, navigation,
-                                    web_urls, api_urls, emitted_targets, captured))
+                                    web_urls, api_urls, emitted_targets, captured,
+                                    acts_by_node=page_acts, acts_refused=page_acts_refused))
 
     if debt:
         lines.append("")
@@ -1136,19 +1148,42 @@ _ACT_METHODS: dict[str, tuple[str, str | None]] = {
 }
 
 
-def _performances(obligations: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Every act the obligations in one scenario declare, in the order the book wrote them.
+def _acts_by_node(
+    obligations: list[dict[str, Any]],
+) -> tuple[dict[str, list[dict[str, Any]]], set[str]]:
+    """Every node's declared acts in book order, plus the nodes whose act bullets were refused.
 
-    Deduped on the canonical call text rather than on `(name, args)` the way `_arrangements`
-    dedupes a fixture, because the two keys mean different things about repetition: running a
-    fixture twice reaches the state it already reached, while performing an act twice is two
+    Keyed by *node*, and built from every obligation the packet carries rather than from the
+    ones a scenario ends up compiling, because an arrangement is a property of the arm it
+    arranges and an arm's bullets do not all declare checks. `arrange:` binds to the normative
+    bullet above it (document order is the binding), and the bullet it is written under is
+    `when:` — a condition, not an observation, so it declares no check and is filed as book
+    debt. Which bullet happens to carry a check therefore cannot be what decides which
+    arrangements the compiler can see, or the acts arrive nowhere.
+
+    Ordered by `docPosition` because the obligations themselves are sorted by id, which is
+    alphabetical on the bullet key rather than the order the author wrote. Deduped on the
+    canonical call text rather than on `(name, args)` the way `_arrangements` dedupes a
+    fixture, because the two keys mean different things about repetition: running a fixture
+    twice reaches the state it already reached, while performing an act twice is two
     performances. Filling two fields is two fills, and which order they happen in is the
-    book's to state. Two *identical* calls are the one performance two arms share.
+    book's to state. Two *identical* calls are the one performance two claims share.
     """
-    rows: list[dict[str, Any]] = []
+    rows_by_node: dict[str, list[tuple[tuple[int, ...], int, dict[str, Any]]]] = {}
+    refused: set[str] = set()
     for obligation in obligations:
-        rows.extend(obligation.get("actsDeclared", []))
-    return list({row["call"]: row for row in rows}.values())
+        node_id = str(obligation.get("node", ""))
+        if obligation.get("actsUnparsed"):
+            refused.add(node_id)
+        position = tuple(int(n) for n in obligation.get("docPosition") or (0, 0))
+        for index, row in enumerate(obligation.get("actsDeclared") or []):
+            rows_by_node.setdefault(node_id, []).append((position, index, row))
+    ordered = {
+        node_id: list({row["call"]: row
+                       for _, _, row in sorted(rows, key=lambda entry: entry[:2])}.values())
+        for node_id, rows in rows_by_node.items()
+    }
+    return ordered, refused
 
 
 def _performed_lines(rows: list[dict[str, Any]], driver: str) -> list[str] | None:
@@ -1393,6 +1428,9 @@ def _compile_page_scenarios(
     web_urls: dict[str, str],
     emitted_targets: set[str],
     captured: set[tuple[str, str]],
+    *,
+    acts_by_node: dict[str, list[dict[str, Any]]],
+    acts_refused: set[str],
 ) -> list[str]:
     """Compile every screen's `visible(...)` bullets, partitioned per Amendment 3.
 
@@ -1551,7 +1589,9 @@ def _compile_page_scenarios(
                                                  rest_by_node[node_id], gaps, covered, captured,
                                                  name=f"{_slug(source)}_{_node_slug(node_id)}",
                                                  target_var=target_var,
-                                                 screen_routes=screen_routes))
+                                                 screen_routes=screen_routes,
+                                                 node_acts=acts_by_node.get(node_id, []),
+                                                 node_acts_refused=node_id in acts_refused))
 
     lines: list[str] = []
     for surface in sorted(scenario_lines_by_surface):
@@ -1936,6 +1976,8 @@ def _interaction_scenario(
     name: str,
     target_var: str,
     screen_routes: dict[str, str],
+    node_acts: list[dict[str, Any]],
+    node_acts_refused: bool,
 ) -> list[str]:
     """Arrive, trigger the interaction, then assert what the book says holds afterward.
 
@@ -1990,13 +2032,11 @@ def _interaction_scenario(
     # no out-of-process fixture can type into this form. `arrange:` is where the book states
     # those performances, and they go here — after arrival, before the trigger — because that
     # is the window in which they are preconditions of the interaction rather than part of it.
-    performances = _performances(obligations)
-    performed = _performed_lines(performances, acts_mod.WEB) if performances else None
+    performed = _performed_lines(node_acts, acts_mod.WEB) if node_acts else None
     # A bullet the act parser refused is carried onto the packet rather than dropped, and it
     # is an arrangement this scenario does not know how to make — the same standing as an act
     # with no locator, so it withholds the whole sequence too.
-    refused_acts = any(obligation.get("actsUnparsed") for obligation in obligations)
-    when_arranged = performed is not None and not refused_acts
+    when_arranged = performed is not None and not node_acts_refused
     if performed:
         body.extend(performed)
     on_expr = _page_locator_expr(node_index.get(on_node_id, {}))
@@ -2144,6 +2184,9 @@ def _journey_scenarios(
     api_urls: dict[str, str],
     emitted_targets: set[str],
     captured: set[tuple[str, str]],
+    *,
+    acts_by_node: dict[str, list[dict[str, Any]]],
+    acts_refused: set[str],
 ) -> list[str]:
     """One scenario per flow: walk its `steps:` in order, then observe what the walk left.
 
@@ -2258,7 +2301,8 @@ def _journey_scenarios(
                                  captured)
         else:
             body = _web_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
-                                captured, nav, screen_routes)
+                                captured, nav, screen_routes,
+                                acts_by_node=acts_by_node, acts_refused=acts_refused)
         if not scenario_covered:
             # Every claim this journey would have made was gapped above. A scenario that walks a
             # journey and asserts nothing is a hole in the plan wearing a function signature.
@@ -2401,6 +2445,9 @@ def _web_journey(
     captured: set[tuple[str, str]],
     nav: dict[str, Any],
     screen_routes: dict[str, str],
+    *,
+    acts_by_node: dict[str, list[dict[str, Any]]],
+    acts_refused: set[str],
 ) -> list[str]:
     """Arrive where the journey starts, click every step in order, then observe the end.
 
@@ -2453,6 +2500,22 @@ def _web_journey(
                             "run in a world this journey never reached")
                         for oid in ids)
             return []
+        # The performer of a step is the only actor that can establish state on the surface it
+        # performs on, and a journey performs this step itself. So the step's own `arrange:`
+        # bullets are performed here, immediately before its trigger — the same window
+        # `_interaction_scenario` uses when it compiles this interaction on its own, and the
+        # reason a journey through a form reaches the screen the form's `does:` names rather
+        # than the refusal the empty form earns.
+        performed = _performed_lines(acts_by_node.get(ref, []), acts_mod.WEB)
+        if performed is None or ref in acts_refused:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"step {index} declares an arrangement this journey cannot make — "
+                            "an act with no driver or no addressable subject, or a bullet the "
+                            "act parser refused; every step after it would run in a world this "
+                            "journey never reached")
+                        for oid in ids)
+            return []
+        lines.extend(performed)
         lines.append(f"    {expr}.click()  # step {index}: {_trailing_comment(trigger_value)}")
     assertions: list[str] = []
     vetted: list[str] = []

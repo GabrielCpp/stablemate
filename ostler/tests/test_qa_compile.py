@@ -1746,6 +1746,101 @@ def test_an_act_whose_subject_has_no_locator_withholds_the_whole_arrangement() -
     assert submit_oid not in _covers(source)
 
 
+def test_an_arms_acts_reach_the_builder_from_the_bullet_that_declares_no_check() -> None:
+    """The shape a real packet produces, and the one the two tests above do not write.
+
+    `arrange:` binds to the normative bullet above it, and in every book that bullet is
+    `when:` — a condition, not an observation, so the obligation it mints declares no check
+    and is filed as book debt long before the page builders see it. An arrangement is a
+    property of the arm it arranges, not of whichever sibling bullet happens to carry a
+    check, so the acts have to reach the builder from the check-less obligation or they
+    reach nowhere: the arm compiles its assertion against an unfilled form.
+    """
+    button = f"{_SCREEN}#submit-widget-button"
+    interaction = f"{_SCREEN}#submit-new-widget"
+    when_oid = "okf:new-widget:submit-new-widget:when:1"
+    does_oid = "okf:new-widget:submit-new-widget:does:1"
+    locators = {"on": ["[submit-widget-button](#submit-widget-button)"],
+                "trigger": ["click"],
+                "when": ["`name` non-empty and `quantity` a non-negative number"],
+                "does": ["the browser navigates to widget-list"]}
+    acts = [_act("fill", f"{_SCREEN}#name-field",
+                 {"selector": ["`input[name=\"name\"]`"]},
+                 locator="#name-field", value="Widget A"),
+            _act("fill", f"{_SCREEN}#quantity-field",
+                 {"selector": ["`input[name=\"quantity\"]`"]},
+                 locator="#quantity-field", value="3")]
+    context = _navigation_context(
+        _page_obligation("okf:new-widget:submit-widget-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Add widget"]},
+                          checks=[_visible("button:Add widget")]),
+        _page_obligation(when_oid, interaction, locators=locators, checks=[], acts=acts),
+        _page_obligation(does_oid, interaction, locators=locators, acts=acts,
+                          checks=[_located("#saved-banner", f"{_SCREEN}#saved-banner",
+                                            {"selector": ["`#saved-banner`"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    lines = source.splitlines()
+    fills = [i for i, line in enumerate(lines) if ".fill(" in line]
+    clicks = [i for i, line in enumerate(lines) if "# trigger:" in line]
+    assert len(fills) == 2, source
+    assert fills[1] < clicks[0]
+    assert "unarranged-interaction-precondition" not in _gap_kinds(gaps, does_oid)
+    assert does_oid in _covers(source)
+
+
+def test_a_journey_step_performs_its_own_acts_before_it_triggers_it() -> None:
+    """The performer of a step is the only actor that can establish state on the surface it
+    performs on, and a journey performs this step itself — so the step's `arrange:` bullets
+    are performed here, in the same window `_interaction_scenario` uses when it compiles the
+    same interaction alone. A journey is a separate builder, so threading the acts into the
+    interaction scenario does not reach it, and a journey through a form would otherwise
+    click submit on an empty one and land on the refusal the empty form earns.
+    """
+    oid = f"okf:{_FLOW}:end-state"
+    open_thing = f"{_SCREEN}#open-thing"
+    save_thing = f"{_SCREEN}#save-thing"
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="policy",
+            steps=[_step(open_thing, "interaction", "policy"),
+                   _step(save_thing, "interaction", "policy")],
+            checks=[_located_visible(f"{_SCREEN}#things-table",
+                                     {"selector": ["#things-table"]})],
+        ),
+        _page_obligation(f"{open_thing}:carrier", open_thing,
+                         locators={"on": ["[open-link](#open-link)"], "trigger": ["click"]},
+                         checks=[]) | {"required": False},
+        _page_obligation(f"{save_thing}:carrier", save_thing,
+                         locators={"on": ["[save-button](#save-button)"], "trigger": ["click"],
+                                   "when": ["`name` is non-empty"]},
+                         checks=[],
+                         acts=[_act("fill", f"{_SCREEN}#name-field",
+                                    {"selector": ["#name-field"]},
+                                    locator="#name-field", value="Widget A")],
+                         ) | {"required": False},
+        _page_obligation(f"{_SCREEN}#open-link:carrier", f"{_SCREEN}#open-link",
+                         locators={"selector": ["#open-link"]}, checks=[]) | {"required": False},
+        _page_obligation(f"{_SCREEN}#save-button:carrier", f"{_SCREEN}#save-button",
+                         locators={"selector": ["#save-button"]}, checks=[]) | {"required": False},
+        _page_obligation(f"{_SCREEN}#name-field:carrier", f"{_SCREEN}#name-field",
+                         locators={"selector": ["#name-field"]}, checks=[]) | {"required": False},
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert oid in _covers(source), [g for g in gaps if g.obligation_id == oid]
+    journey = source.split("@scenario(")[-1]
+    first = journey.index('"#open-link"')
+    fill = journey.index('.fill("Widget A")')
+    second = journey.index('"#save-button"')
+    # The step that arranges performs its acts after arriving through the step before it, and
+    # before its own trigger — the state the click needs exists exactly when the click happens.
+    assert first < fill < second
+
+
 def test_a_wrapped_book_bullet_still_compiles_to_valid_python() -> None:
     """A `does:`/`trigger:` value that wrapped across lines in the book source is still just one
     string by the time `qa context` hands it here — nothing marks where the line broke. Embedding
