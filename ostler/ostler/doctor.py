@@ -1060,6 +1060,10 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             findings.append(
                 Finding("error", "unstated-claim-combiner", message, ref=gap.obligation_id)
             )
+        elif gap.kind == "unaddressable-selector":
+            findings.append(
+                Finding("error", "unaddressable-selector", message, ref=gap.obligation_id)
+            )
         elif gap.kind == "no-verify-declared":
             # The one kind whose compiler spelling is not a doctor code: "the book declares no
             # check for this obligation to prove" is `undeclared-obligation`, which doctor
@@ -2428,6 +2432,32 @@ def _check_placement(node, rel: str, f: list[Finding]) -> None:
                 suggestion="- placement: width 60-100%, x 0-20%"))
 
 
+def _check_unaddressable_selector(node, rel: str, f: list[Finding]) -> None:
+    """A component's `selector:` names a form `ostler vet`'s render census can never resolve.
+
+    The census matches a documented selector against strings the render scan itself mints
+    (`#id`, `tag.class:nth(i)`) or, for role, the fact the scan recorded on the region — see
+    `placement_mod.is_addressable`. Anything else, most often an attribute-value or boolean-
+    attribute predicate, reads `missing` on every render regardless of what actually rendered,
+    which makes the one defect that would move the finding unmeasurable.
+    """
+    values = _bullet_values(node.meta.get("selector", ""))
+    for index, raw in enumerate(values, 1):
+        value = raw.strip().strip("`").strip()
+        if value and not placement_mod.is_addressable(value):
+            f.append(Finding(
+                "error", "unaddressable-selector",
+                f"{node.id}: `selector:{index}` ({value}) is a form the render scan never "
+                f"mints — the census can only ever read this component as missing",
+                path=rel, line=node.line,
+                ref=refs_mod.bullet_ref(node.id, "selector", index),
+                suggestion="address by id, class, or role; if the distinction is a piece of "
+                           "state, record it on `states:` instead — a state distinguishable "
+                           "by rendered text still gets `verify: visible(locator=\"#anchor\", "
+                           "text=\"...\")`; one that isn't has no check in this book's "
+                           "vocabulary yet and stays documented but unverified"))
+
+
 def _check_ui(graph: Graph, f: list[Finding],
               resolver: links_mod.LinkResolver | None = None,
               checkouts: dict[str, Path] | None = None) -> None:
@@ -2462,6 +2492,7 @@ def _check_ui(graph: Graph, f: list[Finding],
 
         if node.type == "component":
             _check_placement(node, rel, f)
+            _check_unaddressable_selector(node, rel, f)
             # One role, one accessible name: a second bullet under either key does not give
             # the control two identities, it leaves the book unable to say which one it has.
             # Reported here as the book's own defect. `collisions` skips the node meanwhile,

@@ -1278,7 +1278,7 @@ Presents the [diff](../../concepts/diff.md) concept and a [gone](./gone.md) one.
 ## Components
 
 ### changes-file-row
-- selector: `.tree-file`
+- selector: `div.tree-file`
 - role: button
 - name: Row
 - extends: [tree-node](../components/design-system.md#tree-node)
@@ -1309,7 +1309,7 @@ title: DS
 ## Components
 
 ### tree-node
-- selector: `.tree-file`
+- selector: `div.tree-file`
 - role: button
 - name: Node
 - keyboard: Enter activates

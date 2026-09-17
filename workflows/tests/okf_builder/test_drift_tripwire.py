@@ -69,6 +69,7 @@ DEFAULT_PROMPT_CODES = frozenset({
     "schema",
     "stale-declaration",
     "stale-defect",
+    "unaddressable-selector",
     "undecodable-code-symbol",
     "unknown-book-fixture",
     "unknown-type",

@@ -139,6 +139,28 @@ def _matches(selector: str, scanned: str) -> bool:
 #: the role the scan *did* record on the region is what carries the same fact.
 _ROLE_SELECTOR = re.compile(r"""^([a-zA-Z][\w-]*)?\[role=["']([\w-]+)["']\]$""")
 
+#: A documented selector in the one other form `_matches` can ever agree with: an id, or a bare
+#: tag optionally followed by one or more classes. The scan's own `:nth(i)` disambiguating suffix
+#: is never written in the book — it is a position in one particular render, minted by the scan,
+#: not a fact the book could know in advance.
+_STRING_SELECTOR = re.compile(r"^(?:#[\w-]+|[a-zA-Z][\w-]*(?:\.[\w-]+)*)$")
+
+
+def is_addressable(selector: str) -> bool:
+    """Whether *selector* is a form `ostler vet`'s screen census can ever resolve.
+
+    The census matches a documented selector against strings the render scan mints for each
+    element — `#id`, or `tag.class` (optionally the scan's own `:nth(i)` position suffix) — or,
+    for the one vocabulary the scan never mints as a string, against the ARIA role it recorded
+    on the region (`_ROLE_SELECTOR`). Anything else — an attribute-value predicate
+    (`[data-state="booked"]`), a boolean attribute (`[disabled]`), a pseudo-class — addresses
+    nothing the scan ever produces, on any render, however precisely it describes the DOM: the
+    component reads `missing` every time, which makes the one defect that would move it
+    unmeasurable. This is the doctor's `unaddressable-selector` check and the compile-time
+    `visible(locator=...)` gap both read off the same rule.
+    """
+    return bool(_ROLE_SELECTOR.match(selector) or _STRING_SELECTOR.match(selector))
+
 
 def _region_tags(region: RegionBox) -> set[str]:
     """The element tags a region's minted selectors reveal. A `#id` selector reveals none,

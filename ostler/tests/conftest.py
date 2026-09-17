@@ -116,7 +116,7 @@ Sits next to [rec](../area/rec.md) and its [heading](../area/rec.md#rec).
 
 ### dash-detail-link
 
-- selector: `[data-testid="dash-detail-link"]`
+- selector: `a[role="link"]`
 - role: link
 - name: Detail
 - leads-to: [Detail](detail.md)

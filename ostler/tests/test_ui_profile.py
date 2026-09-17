@@ -60,7 +60,7 @@ Groups every worker's working-tree diff per repo.
 ## Components
 
 ### changes-file-row
-- selector: `.tree-file`
+- selector: `div.tree-file`
 - role: treeitem
 - name: the file's repo-relative path
 - keyboard: `up`/`down` to move, `enter` to open
@@ -70,7 +70,7 @@ Groups every worker's working-tree diff per repo.
 A leaf of the per-worker file tree.
 
 ### single-file-diff
-- selector: `.diff-pane`
+- selector: `div.diff-pane`
 - role: region
 - name: Diff
 - placement: width 40-100%, x 30-100%, y 10-100%
@@ -148,7 +148,7 @@ title: DS
 ## Components
 
 ### tree-node
-- selector: `.tree-file`
+- selector: `div.tree-file`
 - role: treeitem
 - name: none
 """
@@ -469,7 +469,7 @@ def test_section_nodes_loaded_with_anchor_and_meta(repo: Path):
     row = comps[0]
     assert row.kind == "section"
     assert row.id == "docs/features/groom/gui/screens/changes-view.md#changes-file-row"
-    assert row.meta["selector"] == "`.tree-file`"
+    assert row.meta["selector"] == "`div.tree-file`"
     # its extends: link is captured
     assert any("design-system.md#tree-node" in href for _, href in row.links)
 
@@ -491,7 +491,7 @@ def test_section_nodes_in_a_feature_typed_library(repo: Path):
     # A shared component library is `type: feature` but still holds section-level components.
     write(repo / "docs/features/groom/gui/components/design-system.md",
           "---\ntype: feature\nslug: design-system\ntitle: DS\n---\n# DS\n\n"
-          "## Components\n\n### tree-node\n- selector: `.tree-file`\n- role: treeitem\n"
+          "## Components\n\n### tree-node\n- selector: `div.tree-file`\n- role: treeitem\n"
           "- name: none\n- states: active, default\n")
     graph = load(repo)
     assert [c.anchor for c in graph.ui_nodes_of_type("component")] == ["tree-node"]

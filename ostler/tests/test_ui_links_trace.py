@@ -23,7 +23,7 @@ Presents the [diff](../../concepts/diff.md) concept.
 ## Components
 
 ### changes-file-row
-- selector: `.tree-file`
+- selector: `div.tree-file`
 - extends: [tree-node](../components/design-system.md#tree-node)
 
 ## Interactions
@@ -46,7 +46,7 @@ title: DS
 ## Components
 
 ### tree-node
-- selector: `.tree-file`
+- selector: `div.tree-file`
 """
 
 DIFF = """\
