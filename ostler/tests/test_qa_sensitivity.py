@@ -16,37 +16,57 @@ def _trial(text: str) -> sensitivity.Trial:
     return sensitivity.trial(call)
 
 
-@pytest.mark.parametrize(
-    "call",
-    [
-        'http_status(code=200, path="/policies")',
-        'http_status(code=401, title="Unauthorized")',
-        'json_path(path="claim.amount_cents", equals="125000")',
-        'json_path(path="claim.amount_cents", equals=125000)',
-        'json_path(path="claim.paid", equals=true)',
-        'json_path(path="policy.status", matches="Draft|Active")',
-        'json_path(path="errors.premium", absent=false)',
-        'json_path(path="detail.token", absent=true)',
-        """json_path(path="people[?(@.who=='ana')].total_cents", equals=4200)""",
-        'json_path(path="people[*].id", absent=true)',
-        'json_path(path="items[*].kind", matches="^trip$")',
-        'count(subject="people[*].trips[*]", equals=3)',
-        'omits(subject="people[?(@.who==\'ana\')].note", text="secret")',
-        'unchanged(subject="ledger", except_fields=["updated_at"])',
-        'keys_unchanged(subject="ledger")',
-        'count(subject="policies", equals=3)',
-        'absent(subject="the cancelled policy")',
-        'created(subject="the policy")',
-        'removed(subject="the policy")',
-        'visible(locator="text=Draft", text="Draft")',
-        'persists(subject="the policy")',
-        'emitted(event="policy.created", count=1)',
-        'omits(subject="detail", matches="eyJ[A-Za-z0-9_-]{6,}")',
-        'conflict_on_stale(subject="the policy")',
-        'exit_status(code=0)',
-        'exit_status(code=2)',
-    ],
-)
+#: One declared call per check in the vocabulary, plus a second where an optional argument
+#: changes which mutations the call is meant to catch.
+_WITNESSED_CALLS = [
+    'http_status(code=200, path="/policies")',
+    'http_status(code=401, title="Unauthorized")',
+    'json_path(path="claim.amount_cents", equals="125000")',
+    'json_path(path="claim.amount_cents", equals=125000)',
+    'json_path(path="claim.paid", equals=true)',
+    'json_path(path="policy.status", matches="Draft|Active")',
+    'json_path(path="errors.premium", absent=false)',
+    'json_path(path="detail.token", absent=true)',
+    """json_path(path="people[?(@.who=='ana')].total_cents", equals=4200)""",
+    'json_path(path="people[*].id", absent=true)',
+    'json_path(path="items[*].kind", matches="^trip$")',
+    'count(subject="people[*].trips[*]", equals=3)',
+    'omits(subject="people[?(@.who==\'ana\')].note", text="secret")',
+    'unchanged(subject="ledger", except_fields=["updated_at"])',
+    'keys_unchanged(subject="ledger")',
+    'count(subject="policies", equals=3)',
+    'absent(subject="the cancelled policy")',
+    'created(subject="the policy")',
+    'removed(subject="the policy")',
+    'visible(locator="text=Draft", text="Draft")',
+    'persists(subject="the policy")',
+    'emitted(event="policy.created", count=1)',
+    'omits(subject="detail", matches="eyJ[A-Za-z0-9_-]{6,}")',
+    'conflict_on_stale(subject="the policy")',
+    'exit_status(code=0)',
+    'exit_status(code=2)',
+    'actionable(locator="#save")',
+    'inert(locator="#save")',
+    'focusable(locator="#save")',
+    'focusable(locator="#save", activates="Enter")',
+]
+
+
+def test_the_witness_table_covers_the_whole_check_vocabulary() -> None:
+    """The vocabulary and the witness table are two spellings of one list, and nothing else
+    relates them: `focusable` reached the books with no branch in `_plan`, so every book that
+    used it reported `unwitnessed-check` and the fallback marked `pragma: no cover` was the
+    only thing that ran. This is the artifact that relates them, so the next check added to
+    `CHECKS` fails here rather than in a downstream app's doctor."""
+    exercised = set()
+    for text in _WITNESSED_CALLS:
+        call = checks.parse_check(text)
+        assert isinstance(call, checks.CheckCall), call
+        exercised.add(call.name)
+    assert exercised == {spec.name for spec in checks.CHECKS}
+
+
+@pytest.mark.parametrize("call", _WITNESSED_CALLS)
 def test_every_check_in_the_vocabulary_has_a_witness_and_a_defect(call: str) -> None:
     """A check the harness cannot witness reports every book that uses it unmeasured."""
     trial = _trial(call)

@@ -78,6 +78,68 @@ class _Locator:
         return self._text
 
 
+class _Keyboard:
+    """The keypress half of a page, and the record of which key was pressed."""
+
+    def __init__(self, element: "_Focusable") -> None:
+        self._element = element
+
+    def press(self, key: str) -> None:
+        self._element.receive_key(key)
+
+
+class _Page:
+    """The one attribute `focusable` reaches through the locator to find."""
+
+    def __init__(self, element: "_Focusable") -> None:
+        self.keyboard = _Keyboard(element)
+
+
+class _Focusable:
+    """A control that may or may not take focus, and may or may not fire on a key.
+
+    `focusable` is the only check that *acts* on its subject rather than reading it, so its
+    witness has to be a small machine rather than a bag of answers: `.focus()` either takes
+    focus or does not, and a keypress fires the control only when this witness was built to
+    say so. `activates` names the key the book claims — a control wired to a different key
+    is the defect the check exists to catch, so `fires_on` is the key, not a boolean.
+    """
+
+    def __init__(self, *, takes_focus: bool, fires_on: str | None = None) -> None:
+        self._takes_focus = takes_focus
+        self._fires_on = fires_on
+        self._focused = False
+        self._armed = False
+        self._activated = False
+        self.page = _Page(self)
+
+    def focus(self) -> None:
+        self._focused = self._takes_focus
+
+    def receive_key(self, key: str) -> None:
+        # A browser only activates a *focused* control, and only on the key it is wired to.
+        if self._focused and self._armed and key == self._fires_on:
+            self._activated = True
+
+    def evaluate(self, expression: str) -> Any:
+        """Answer the three expressions `_verify_focusable` sends, and refuse a fourth.
+
+        A catch-all here would turn a verifier that learned a new expression into a witness
+        that quietly answers it wrong — a green trial over an experiment that never ran.
+        """
+        if "document.activeElement" in expression:
+            return self._focused
+        if "addEventListener" in expression:
+            self._armed = True
+            self._activated = False
+            return None
+        if "__ostlerActivated === true" in expression:
+            return self._activated
+        raise NotImplementedError(  # pragma: no cover - guards a verifier change
+            f"the focusable witness does not know what to answer for {expression!r}"
+        )
+
+
 @dataclass(frozen=True)
 class Trial:
     """One declared call, put to the experiment."""
@@ -434,6 +496,17 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
         return _Locator(visible=True, text="witness", enabled=True), [
             ("the control is disabled", _Locator(visible=True, text="witness", enabled=False)),
         ], ""
+    if name == "focusable":
+        key = str(args["activates"]) if "activates" in args else None
+        witness = _Focusable(takes_focus=True, fires_on=key)
+        mutations = [
+            ("the control cannot be reached by the keyboard", _Focusable(takes_focus=False, fires_on=key)),
+        ]
+        if key is not None:
+            mutations.append(
+                ("the control takes focus but the key does nothing", _Focusable(takes_focus=True, fires_on=None)),
+            )
+        return witness, mutations, ""
     if name == "inert":
         return _Locator(visible=True, text="witness", enabled=False), [
             ("the control still accepts the action",
