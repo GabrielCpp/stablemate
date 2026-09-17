@@ -184,6 +184,17 @@ scenario pulled out of the response or the DOM for a *later* step to use — `ca
 families. A fixture node's own `## Steps` never carries `capture:`; what a fixture's own last step
 leaves behind is named by `provides:` instead.
 
+**Only one builder binds a capture today, and the rest say so.** A `capture: <name> from $.<json
+path>` on a node the HTTP builder compiles becomes a real `qa.capture_field(...)` in the plan.
+Every other pairing — a UI-locator source on a node compiled as an HTTP request, any capture on a
+screen arrival or an interaction, a step's capture restated on the journey that walks it — compiles
+to a `TODO(arrange)` line plus an `uncaptured-declaration` gap naming which builder declined and
+why (doctor reports it as `uncompilable-claim`). This is not a judgement on the book: the bullet
+named a fact and where to read it, which is all the grammar asks. What is missing is an *action*,
+and a declared capture no builder accounts for is refused outright by the compiler rather than
+dropped — an unconsumed declaration is indistinguishable from an absent one, and a value the book
+promised a later step would be silently unbound at run time instead.
+
 Two reference forms read those values elsewhere in the book: `@<fixture-id>.<key>` names a value a
 fixture `provides:`, and `$<captured-name>` names a value some earlier `capture:` produced. Both
 are recognized wherever a `fixture:` bullet's args, a `needs:` binding, a route path template, a
