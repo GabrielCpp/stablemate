@@ -350,6 +350,8 @@ title: Seeded thing
 
 - provides:
   - id — the seeded thing's id
+    - from: [seed-it](#seed-it)
+    - read: thing.id
 
 ## Steps
 
