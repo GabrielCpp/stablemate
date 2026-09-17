@@ -46,8 +46,11 @@ screen it is looking at. A `vet` names this screen and observes whatever the bro
 painting, and it compares the page's URL against this route before grading anything — a walk
 that stopped one step short otherwise has this screen's components registered against another
 screen's render, and every verdict is about a correspondence that does not hold. A route with
-a `:param` or `{param}` in it names a family of pages, so the comparison cannot be made and
-the vet's report says the screen was never established.
+a `:param` or `{param}` in it names a family of pages, so the comparison cannot be made, and
+no vet is compiled for a scenario that ends there at all — `unidentifiable-screen`, raised on
+the obligation whose scenario it was. The same holds when one file states two `route:` values:
+two routes and one page is an ambiguity, and a vet that picked one would establish its subject
+by coin-toss.
 
 Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type),
 which mint an obligation on every type.
@@ -83,8 +86,10 @@ type: screen
 ## Doctor codes it can trip
 
 `missing-required-bullet`, `unreachable-screen`, `no-root-screen` (warn, raised against the
-surface when no screen's `route:` is its root path), `unresolved-relation`, plus the structural
-codes every file type can trip. See [../doctor-codes.md](../doctor-codes.md).
+surface when no screen's `route:` is its root path), `unidentifiable-screen` (a scenario ends
+on this screen and its `route:` is a pattern, absent, or stated twice in one file, so nothing
+can say the page photographed is this one), `unresolved-relation`, plus the structural codes
+every file type can trip. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
 
