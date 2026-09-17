@@ -93,9 +93,9 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | --- | --- | --- |
 | `qa-fixture-declaration` | error | The repo's `qa: {fixtures:}` declaration in `agents.yml` is itself unreadable. |
 | `story-fixture-stray` | error | A bullet under `## Fixtures` names no fixture. Write `- Fixture: <name>`, or the declared none-value when the story arranges nothing. |
-| `unknown-story-fixture` | error | A story names a fixture this repo does not declare. |
+| `unknown-story-fixture` | error | A story names a fixture this repo does not declare. The repair depends on the story's own `qa_plan.py`, and the finding's `suggestion` carries whichever one the plan supports: the plan asks for the name, so declare it; the plan never asks for it, so nothing arranges it and nothing wants it — delete the bullet, or write the declared none-value; there is no plan yet, so neither repair is supported and the finding prescribes nothing. A name is reported here once and only once — it is never also an `unused-story-fixture`. |
 | `undeclared-story-fixture` | error | The story's `qa_plan.py` uses a fixture the story does not list. |
-| `unused-story-fixture` | warn | A story names a fixture its `qa_plan.py` never asks for. |
+| `unused-story-fixture` | warn | A story names a **declared** fixture its `qa_plan.py` never asks for. An undeclared one is `unknown-story-fixture` alone. |
 | `unmigrated-fixture-declaration` | warn | A hand-written `qa: {fixtures:}` entry has no book fixture node behind it yet — a candidate for `ostler qa fixtures migrate`. |
 | `qa-fixture-bullet` | error | A `fixture:` bullet in the book is not a fixture reference. |
 | `unknown-book-fixture` | error | A `fixture:` bullet, or an `@<id>` reference, names a fixture (or fixture key) this repo does not declare — including a `fixture:` bullet on `environment`/`command`/`endpoint`/`interaction`/`invocation`/`method`/`field` naming no [`fixture`](node-types/fixture.md) node. |
@@ -108,6 +108,8 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `fixture-secret-name` | error | A fixture's `secrets:` child is not a valid environment-variable name — it declares NAMES only, resolved from the harness's own environment at run time, never a value or a mint recipe. |
 | `unresolved-precondition` | error | `compile_plan` could not reach the state an obligation's check observes: no fixture arranged it, an `@node.key`/`$name` reference in a path or a `verify:` argument names a fact no earlier producer in the scenario left behind, the book carries no request body, or a route's path still carries a template variable. Raised from `Gap`s via `doctor.gap_findings`, against one compiled plan and its context packet — never by walking the book alone. |
 | `uncompilable-claim` | error | An obligation `compile_plan` had no action to compile at all: the book gives the node no `route:`, or a declared check (`unchanged`, `persists`, …) observes a before/after subject the book never named. Raised the same way as `unresolved-precondition`, from the same `Gap` list. |
+| `unresolved-extends` | error | An `interaction`/`invocation` arm's `extends:` link resolves to no same-type node — either it does not resolve at all (also `unresolved-relation`, from walking the book alone) or it resolves to a different node type (also `extends-type-mismatch`, likewise from the book alone). Either way, `qa/context.py` could not inherit the base case's `on:`/`trigger:`/`role:`/`name:`/`keyboard:`, so `compile_plan` gapped every obligation the arm mints. Raised from `Gap`s, against one compiled plan and its context packet. |
+| `extends-type-mismatch` | error | An `interaction`/`invocation` node's `extends:` link resolves, but to a node of a different type — an arm can only extend a base case of its own node type. Raised by walking the book alone, before any plan compiles. |
 
 ## Conformance and structure
 
@@ -121,7 +123,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `duplicate-container-heading` | error | Two `## <Title>` sections in one file — the second block's nodes belong to whatever heading precedes them. |
 | `missing-required-section` | error | A file type is missing a required `## <Heading>`. `ostler scaffold` stubs it. |
 | `empty-required-section` | error | A file type leaves a required `## <Heading>` empty. |
-| `missing-required-bullet` | error | A node is missing a `required` bullet. State it, even as `none`. `ostler scaffold` stubs it. |
+| `missing-required-bullet` | error | A node is missing a `required` bullet. State it, even as `none`. `ostler scaffold` stubs it. An `interaction`/`invocation` arm's `on:`/`trigger:`/`role:`/`name:`/`keyboard:` is exempt when it states a valid same-type `extends:` (D51) — it inherits the base case's control identity instead of restating it. |
 
 ## Grounding and links
 
@@ -159,6 +161,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `unnamed-interactive` | error | An operable role with no accessible `name:` — unannounceable to assistive tech and unaddressable by `getByRole`. |
 | `missing-placement` | error | A page-carrying role with no `placement:`. A role+name assertion passes on a component crushed into a sliver. |
 | `malformed-placement` | error | `placement:` does not parse. Form: `width 60-100%, x 0-20%`. |
+| `unaddressable-selector` | error | A component's `selector:` is a form the render scan never mints — it addresses only by `#id`, `tag.class` (optionally `:nth(i)`), or `tag[role="..."]`. Any other attribute predicate reads `missing` on every render, so the census can never confirm it. Address the element by id, class, or role; if the distinction is a piece of state (`data-state="booked"`, `[disabled]`), record it on `states:` instead and write the distinguishing check as a raw-CSS `verify: visible(locator=...)` — that path compiles straight to a live locator and never goes through the census. |
 
 ## Runbook and environment
 
