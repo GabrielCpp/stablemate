@@ -28,7 +28,6 @@ Section type. A `### <id>` under a `## Endpoints` heading in a `server` file. It
 | `emits` | no | **mints an obligation** (via the shared set) |
 | `consumes` | no | **mints an obligation** (via the shared set) |
 | `status` | no | **mints an obligation** — the route's outcomes, one claim per value |
-| `statuses` | no | alias of `status` |
 | `errors` | no | **mints an obligation** — the refusal arm |
 | `error` | no | alias of `errors` |
 | `auth` | no | **mints an obligation** — who may call it |

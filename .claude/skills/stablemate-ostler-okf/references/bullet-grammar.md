@@ -29,7 +29,7 @@ Each recognized bullet is a `BulletKey` (`registry.py:230-258`). A key can carry
 | `check` | The value is a named check from `ostler.checks` — an **observation**. Parsed and grounded against the vocabulary. |
 | `arrange` | The value names a fixture this repo declares — the **arrangement** that reaches the state the claim above it is about. |
 | `normative` | The value is a **claim**. QA mints one obligation per value, which one scenario then has to prove. |
-| `alias` | A second accepted spelling of the key declared just above it (`statuses` for `status`). Ordered like the primary; never stubbed by `scaffold`. |
+| `alias` | A second accepted spelling of the key declared just above it (`error` for `errors`). Ordered like the primary; never stubbed by `scaffold`. |
 | `owns` | The value names a file (or `path::symbol`) the node is documented *against*, so a change to that file reaches the node. This is what `ostler qa context` reads when it maps a diff onto the book. |
 
 `owns` and `link` are distinct: `openapi: none; …` is a citation the reader does not resolve and
