@@ -592,9 +592,24 @@ def build_context(
                 file_owners.setdefault(reason["ref"], set()).add(node_id)
             elif reason["kind"] == "changed-code":
                 symbol_owners.setdefault(reason["ref"], set()).add(node_id)
-    shared_files = {ref for ref, owners in file_owners.items() if len(owners) > 1}
+    # `_CONTAINER_FANOUT`/`> 1` are meant to count *families* citing a path, not nodes — a
+    # three-arm interaction split under D51 (`extends:`) is one documented control, so all
+    # three arms must collapse to one owner before either count runs, rather than manufacture
+    # three distinct owners out of one control and never demote it. Ordinary sibling
+    # components that merely share a `parent:` page are *not* one family for this count —
+    # each is its own owner, which is what lets the fan-out and shared-file thresholds below
+    # actually measure fan-out rather than hide it behind the page they happen to share. The
+    # threshold itself is untouched: a bare file is a weaker anchor than an exact symbol, so
+    # it still demotes at 2 owning families rather than `_CONTAINER_FANOUT`.
+    shared_files = {
+        ref
+        for ref, owners in file_owners.items()
+        if len({_family_root(node_id, nodes_by_id) for node_id in owners}) > 1
+    }
     shared_symbols = {
-        ref for ref, owners in symbol_owners.items() if len(owners) >= _CONTAINER_FANOUT
+        ref
+        for ref, owners in symbol_owners.items()
+        if len({_family_root(node_id, nodes_by_id) for node_id in owners}) >= _CONTAINER_FANOUT
     }
 
     # Containment and graph links broaden impact without lexical inference.
@@ -853,6 +868,7 @@ def build_context(
             judgment=judgment_by_node.get(node_id),
             fixture_provides=fixture_provides,
             resolve_locator=_locator_resolver(head_graph, nodes_by_id, nodes_by_id[node_id]),
+            nodes_by_id=nodes_by_id,
         )
     ] + [
         obligation
@@ -868,6 +884,7 @@ def build_context(
             judgment=judgment_by_node.get(node_id),
             fixture_provides=fixture_provides,
             resolve_locator=_locator_resolver(head_graph, nodes_by_id, nodes_by_id[node_id]),
+            nodes_by_id=nodes_by_id,
         )
     ]
     obligations.sort(key=lambda item: _sort_key(str(item["id"])))
@@ -2104,6 +2121,62 @@ def _locators(node: dict[str, Any]) -> dict[str, list[str]]:
     }
 
 
+def _extends_target(
+    node: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]
+) -> tuple[dict[str, Any] | None, bool]:
+    """The base node an `extends:` arm inherits its control identity from (D51).
+
+    Returns `(target, malformed)`. `target` is the resolved node when `extends:` names one
+    that exists and shares this node's type — an interaction arm extends an interaction, an
+    invocation arm an invocation, never across the two or at a `component`/`concept` (those
+    already use `extends:` for a different purpose and are read by `locators.py` instead).
+    `malformed` is True when `extends:` was stated but the target is missing or of the wrong
+    type, which `_obligations` stamps onto the obligation for `compile.py` to turn into a gap,
+    mirroring `unresolved-precondition`. A node with no `extends:` edge at all returns
+    `(None, False)` — plain absence, not a defect.
+    """
+    to_ids = [
+        edge.get("to")
+        for edge in node.get("edges") or []
+        if edge.get("via") == "extends" and edge.get("to")
+    ]
+    if not to_ids:
+        return None, False
+    target = nodes_by_id.get(str(to_ids[0]))
+    if target is None or target.get("type") != node.get("type"):
+        return None, True
+    return target, False
+
+
+def _family_root(node_id: str, nodes_by_id: dict[str, dict[str, Any]]) -> str:
+    """The declared-family root *node_id* belongs to, for `_CONTAINER_FANOUT` counting (2n).
+
+    Walks exactly one kind of declared structure to one root: an `interaction`/`invocation`
+    arm's `extends:` base case (D51) — a three-arm split says "these nodes are one documented
+    control", so all three must count as one family before the fan-out count runs, the same
+    way a citation nobody's own arm makes distinguishing still counts as one control rather
+    than three. Sibling components that merely share a `parent:` page or container are *not*
+    collapsed here: each is its own family, because that per-sibling count is exactly what
+    the fan-out and shared-file thresholds below are measuring — collapsing a page's dozen
+    components to the page itself would hide genuine fan-out rather than guard against a
+    false one. Undeclared sprawl — three unrelated nodes that each happen to cite the same
+    symbol with no edge between them — does not collapse either: only an edge the book itself
+    stated walks the chain.
+    """
+    seen: set[str] = set()
+    current = node_id
+    while current not in seen:
+        seen.add(current)
+        node = nodes_by_id.get(current)
+        if node is None or node.get("type") not in ("interaction", "invocation"):
+            break
+        target, _malformed = _extends_target(node, nodes_by_id)
+        if target is None:
+            break
+        current = str(target["id"])
+    return current
+
+
 def _repeat(node: dict[str, Any], scope: tuple[str, ...]) -> dict[str, Any] | None:
     """The compiled repeat contract for a node in a `one-per:` scope, or None.
 
@@ -2148,6 +2221,7 @@ def _obligations(
     judgment: list[dict[str, Any]] | None = None,
     fixture_provides: dict[str, list[str]] | None = None,
     resolve_locator: Callable[[str], LocatorTarget] | None = None,
+    nodes_by_id: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Mint one obligation per normative bullet, plus the node-level contract.
 
@@ -2173,6 +2247,14 @@ def _obligations(
         "reasons": reasons or [{"kind": "graph-closure", "ref": node["id"]}],
     }
     locators = _locators(node)
+    if nodes_by_id is not None and node.get("type") in ("interaction", "invocation"):
+        extends_target, extends_malformed = _extends_target(node, nodes_by_id)
+        if extends_target is not None:
+            # Own bullets win: an arm states its own `when:`/`does:` and, when it has one, its
+            # own `role:`/`name:`; only what it left silent is filled from the base case (D51).
+            locators = {**_locators(extends_target), **locators}
+        elif extends_malformed:
+            base["extendsUnresolved"] = True
     if locators:
         base["locators"] = locators
     repeat = _repeat(node, scope)

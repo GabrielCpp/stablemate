@@ -866,6 +866,12 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("keyboard", required=True, normative=True),
             BulletKey("when", normative=True),
             BulletKey("exclusive-with", link=True),
+            # The arm's link back to the base interaction that carries the shared control
+            # identity (`on:`/`trigger:`/`role:`/`name:`/`keyboard:`) — see `interaction.md`'s
+            # Relationships section for the base-case/alternate rule this implements (D51). An
+            # arm still declares its own `when:`/`does:`/`verify:`; only the control identity
+            # is inherited, resolved in `qa/context.py`, never re-derived in `compile.py`.
+            BulletKey("extends", link=True),
             BulletKey("does", required=True, nested=True, normative=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
@@ -881,6 +887,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("on", required=True, link=True),
             BulletKey("trigger", required=True),
             BulletKey("when", normative=True),
+            BulletKey("extends", link=True),
             BulletKey("does", required=True, nested=True, normative=True),
             BulletKey("emits"),
             BulletKey("consumes"),

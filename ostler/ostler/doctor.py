@@ -2478,13 +2478,39 @@ def _check_ui(graph: Graph, f: list[Finding],
     _check_code_grounding(graph, f, checkouts)
 
     # required-bullet checks stay per-node — they need the node's declared type + schema.
+    by_id = {n.id: n for n in graph.ui_nodes}
     for node in graph.ui_nodes:
         uitype = registry.ui_type(node.type)
         if uitype is None:
             continue
         rel = node.path.relative_to(graph.root).as_posix()
+        # An `interaction`/`invocation` arm that `extends:` a same-type base case (D51) inherits
+        # the base's control identity in `qa/context.py` — `on:`/`trigger:`/`role:`/`name:`/
+        # `keyboard:` are exempt from this node's own required-bullet check because the arm
+        # never has to restate what it inherits, and `unresolved-relation` already covers an
+        # `extends:` link that does not resolve at all.
+        extends_ok = False
+        if node.type in ("interaction", "invocation"):
+            targets = _resolved_targets(node, "extends", resolver)
+            extends_ok = any(by_id[t].type == node.type for t in targets if t in by_id)
+            # A target that resolves but is not the same node type is not a dangling link —
+            # `unresolved-relation` already catches a missing one — it is the arm pointing at
+            # the wrong kind of thing, and `qa/context.py` cannot inherit a control identity
+            # from it either, so it is its own finding rather than silently falling through
+            # to `missing-required-bullet` on every inherited key.
+            for target_id in sorted(targets):
+                target = by_id.get(target_id)
+                if target is not None and target.type != node.type:
+                    f.append(Finding(
+                        "error", "extends-type-mismatch",
+                        f"{node.id}: `extends:` names {target_id} ({target.type}), not "
+                        f"another {node.type} — an arm can only extend its own node type",
+                        path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, "extends"),
+                        suggestion=f"- extends: [{node.type} base case](#anchor)"))
         for bk in uitype.bullet_keys:
             if bk.required and bk.key not in node.meta:
+                if extends_ok and bk.key in {"on", "trigger", "role", "name", "keyboard"}:
+                    continue
                 f.append(Finding("error", "missing-required-bullet",
                                  f"{node.id}: {node.type} missing required `{bk.key}:`",
                                  path=rel, line=node.line, ref=bk.key,

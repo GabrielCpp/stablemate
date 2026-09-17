@@ -48,6 +48,7 @@ DEFAULT_PROMPT_CODES = frozenset({
     "directory-code-ref",
     "duplicate-container-heading",
     "empty-required-section",
+    "extends-type-mismatch",
     "fixture-arg-mismatch",
     "fixture-needs-cycle",
     "fixture-needs-target-args",
@@ -76,6 +77,7 @@ DEFAULT_PROMPT_CODES = frozenset({
     "unnamed-interactive",
     "unreachable-screen",
     "unreadable",
+    "unresolved-extends",
     "unresolved-relation",
 })
 

@@ -1298,6 +1298,14 @@ def _interaction_scenario(
     on_label = (on_href or on_value or "").lstrip("#") or on_value
     on_node_id = f"{source}#{on_href.lstrip('#')}" if on_href else (f"{source}#{on_value}" if on_value else "")
     ids = sorted(o["id"] for o in obligations)
+    if obligations[0].get("extendsUnresolved"):
+        # `qa context` stamped this when the arm's `extends:` named a target that does not
+        # exist or is not the same node type — `on:`/`trigger:`/`role:`/`name:`/`keyboard:`
+        # could not be inherited, so whatever locators survived are the arm's own alone.
+        gaps.extend(Gap(oid, "unresolved-extends",
+                         "this arm's `extends:` target is missing or not the same node type, "
+                         "so its control identity could not be inherited from the base case")
+                    for oid in ids)
     body: list[str] = [f"    qa.goto({_lit(root_path)})"]
     body.extend(_walk_hops(hops, node_index, gaps, ids))
     on_expr = _page_locator_expr(node_index.get(on_node_id, {}))
