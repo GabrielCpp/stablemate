@@ -15,6 +15,7 @@ from unidiff.errors import UnidiffParseError
 
 from ostler import graph as graph_mod
 from ostler import locators as locators_mod
+from ostler import acts as acts_mod
 from ostler import checks as checks_mod
 from ostler import inventory, markdown, path as path_mod, refs as refs_mod, registry, syntax
 from ostler.model import Graph, _parse_ui_nodes, load
@@ -2210,6 +2211,60 @@ def _unparsed_captures(values: list[str]) -> list[dict[str, Any]]:
     return list({row["value"]: row for row in rows}.values())
 
 
+def _parse_acts(
+    values: list[str],
+    resolve: Callable[[str], LocatorTarget] | None = None,
+) -> list[dict[str, Any]]:
+    """The acts among *values*, in document order, each with its locator arguments resolved.
+
+    Order is load-bearing here in a way it is not for fixtures, and that is why these rows are
+    deduped on the canonical call text rather than collapsed on a name: filling `name-field`
+    and then `quantity-field` is two performances, and `fill` twice on the same field is a
+    correction the author wrote on purpose. `_parse_fixtures` may key on `(name, args)` because
+    running the same fixture twice reaches the same state; performing the same act twice does
+    not.
+
+    `locates` mirrors `_parse_checks` exactly. An act's locator is a reference into the book
+    (F17), so the packet carries what it resolved to, and an argument that resolves to nothing
+    keeps its empty row rather than vanishing — `compile_plan` owes a gap for it, and a row
+    that dropped the field would be indistinguishable from an act that takes no locator.
+    """
+    rows: list[dict[str, Any]] = []
+    for value in values:
+        parsed = acts_mod.parse_act(value)
+        if not isinstance(parsed, acts_mod.ActCall):
+            continue
+        row: dict[str, Any] = {"call": parsed.text(), "name": parsed.name, "args": parsed.args}
+        if resolve is not None:
+            located = {
+                param.name: resolve(parsed.args[param.name])
+                for param in acts_mod.ACT_BY_NAME[parsed.name].params
+                if param.locator and param.name in parsed.args
+            }
+            if located:
+                row["locates"] = located
+        rows.append(row)
+    return list({row["call"]: row for row in rows}.values())
+
+
+def _unparsed_acts(values: list[str]) -> list[dict[str, Any]]:
+    """The `arrange:` bullets among *values* the act parser read and refused, with its account.
+
+    Carried for the reason `_unparsed_checks` and `_unparsed_fixtures` are: downstream, a
+    bullet nobody wrote and a bullet that did not parse are the same absent row, and the one
+    reader that decides whether to emit code must not gap *"nothing arranges this"* at an
+    author who arranged it and mistyped. The refusal's `kind` rides along because a refusal
+    classifies — a bare fixture name written under `arrange:` is a misfiled bullet, not a typo
+    in an argument — and `parse_act` is the only thing that looked.
+    """
+    rows: list[dict[str, Any]] = []
+    for value in values:
+        parsed = acts_mod.parse_act(value)
+        if isinstance(parsed, checks_mod.Refusal):
+            rows.append({"value": value, "kind": parsed.kind, "problem": parsed.message})
+    return list({row["value"]: row for row in rows}.values())
+
+
 def _parse_fixtures(
     values: list[str], fixture_provides: dict[str, list[str]] | None = None
 ) -> list[dict[str, Any]]:
@@ -2578,6 +2633,19 @@ def _obligations(
     ambient_nothing = _no_arrangement_stated(node_fixtures)
     if ambient_nothing:
         base["arrangesNothing"] = True
+    # The other arrangement family, bound by the same rule and read by a different parser. A
+    # `when:` over what the user typed is state no fixture can reach, so the acts that
+    # establish it are the only account of the world the claim below is about — carried here
+    # rather than left to the compiler to infer from prose.
+    node_acts, acts_per_bullet = registry.attributed_acts(
+        str(node.get("type", "")), node.get("bulletOrder") or [], combiners
+    )
+    ambient_acts = _parse_acts(node_acts, resolve_locator)
+    if ambient_acts:
+        base["actsDeclared"] = ambient_acts
+    ambient_acts_unparsed = _unparsed_acts(node_acts)
+    if ambient_acts_unparsed:
+        base["actsUnparsed"] = ambient_acts_unparsed
     # Unlike a fixture, a capture belongs to the one bullet whose action produces it — it does
     # not ride ambient on every obligation the node mints, so the per-bullet half is the only
     # one that yields `capturesDeclared`, the same shape `attributed_checks` yields.
@@ -2675,6 +2743,24 @@ def _obligations(
                 obligation["arrangesNothing"] = True
             else:
                 obligation.pop("arrangesNothing", None)
+            # Ambient first, then this claim's own: the acts run in the order the book wrote
+            # them, and an act above every claim was written to run before all of them.
+            performed = list({row["call"]: row for row in [
+                *ambient_acts,
+                *_parse_acts(acts_per_bullet.get((key, index), []), resolve_locator),
+            ]}.values())
+            if performed:
+                obligation["actsDeclared"] = performed
+            else:
+                obligation.pop("actsDeclared", None)
+            refused_acts = list({row["value"]: row for row in [
+                *ambient_acts_unparsed,
+                *_unparsed_acts(acts_per_bullet.get((key, index), [])),
+            ]}.values())
+            if refused_acts:
+                obligation["actsUnparsed"] = refused_acts
+            else:
+                obligation.pop("actsUnparsed", None)
             captures = _parse_captures(captures_per_bullet.get((key, index), []))
             if captures:
                 obligation["capturesDeclared"] = captures

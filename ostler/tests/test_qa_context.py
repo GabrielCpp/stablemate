@@ -2309,3 +2309,140 @@ title: Claims
     [refused] = by_id["list-claims:contract"]["capturesUnparsed"]
     assert refused["value"] == "claim_id $.id"
     assert "from" in refused["problem"]
+
+
+_ARRANGED_SCREEN = """---
+type: screen
+slug: items
+title: Items
+---
+# Items
+
+- route: /items
+- requires: none
+- params: none
+
+## Components
+
+### name-field
+- role: textbox
+- name: Name
+- selector: input[name="name"]
+- code: app/items.py::render_form
+
+### quantity-field
+- role: textbox
+- name: Quantity
+- selector: input[name="quantity"]
+- code: app/items.py::render_form
+
+## Interactions
+
+### save-item
+- on: [Items](#items)
+- trigger: click
+- role: button
+- name: Save
+- code: app/items.py::save_item
+- when: `name` is non-empty and `quantity` is a non-negative number
+- arrange: fill(locator="#name-field", value="Widget A")
+- arrange: fill(locator="#quantity-field", value="3")
+- does: the item is saved
+- arrange: click(locator="#name-field")
+"""
+
+
+def test_an_arranged_interaction_carries_its_acts_into_the_packet(tmp_path: Path):
+    """A `when:` over what the user typed is state no fixture can reach, and the acts that
+    establish it are the packet's only account of the world the claim below is about.
+
+    Three things this pins. The acts bind by document order, exactly as `verify:` and
+    `fixture:` do, so the two `fill`s belong to the `when:` above them and the `click` written
+    below `does:` belongs to `does:` — not to all three. Their order is preserved rather than
+    collapsed on a name, because filling two fields is two performances and a fixture run twice
+    reaches the same state while an act performed twice does not. And each locator arrives
+    resolved to the component it names (F17: the subject is a reference into the book), so the
+    compiler emits a selector the book declares rather than one an author typed twice.
+    """
+    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/gui/screens/items.md").write_text(
+        _ARRANGED_SCREEN, encoding="utf-8"
+    )
+    (tmp_path / "app/items.py").write_text(
+        "def render_form():\n    return 'old'\n\n\ndef save_item():\n    return 'old'\n", encoding="utf-8"
+    )
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/items.py").write_text(
+        "def render_form():\n    return 'new'\n\n\ndef save_item():\n    return 'new'\n", encoding="utf-8"
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    by_id = {item["id"].rsplit("#", 1)[-1]: item for item in packet["obligations"]}
+
+    when = by_id["save-item:when:1"]
+    assert [row["call"] for row in when["actsDeclared"]] == [
+        'fill(locator="#name-field", value="Widget A")',
+        'fill(locator="#quantity-field", value="3")',
+    ]
+    assert when["actsDeclared"][0]["locates"]["locator"]["node"] == (
+        "docs/features/acme/gui/screens/items.md#name-field"
+    )
+    assert when["actsDeclared"][0]["locates"]["locator"]["locators"]["selector"] == [
+        'input[name="name"]'
+    ]
+    # Document order, not fan-out: the act written after `does:` arranges that claim alone.
+    assert [row["call"] for row in by_id["save-item:does:1"]["actsDeclared"]] == [
+        'click(locator="#name-field")'
+    ]
+    # An arrangement is not a fixture, and neither parser is asked to read the other's value.
+    assert not when.get("fixturesDeclared")
+    assert not when.get("fixturesUnparsed")
+    assert not when.get("actsUnparsed")
+
+
+def test_an_arrange_bullet_the_act_parser_rejects_is_carried_not_dropped(tmp_path: Path):
+    """The counterpart of `_unparsed_fixtures`, for the reason that one exists: downstream, a
+    bullet nobody wrote and a bullet that did not parse are the same absent row, so a mistyped
+    arrangement would be gapped at an author who arranged it. The refusal's `kind` rides along
+    because a refusal classifies — a bare fixture name under `arrange:` is a misfiled bullet,
+    not a typo in an argument.
+    """
+    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/gui/screens/items.md").write_text(
+        _ARRANGED_SCREEN.replace(
+            '- arrange: fill(locator="#name-field", value="Widget A")',
+            "- arrange: widgets-on-hand",
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "app/items.py").write_text(
+        "def render_form():\n    return 'old'\n\n\ndef save_item():\n    return 'old'\n", encoding="utf-8"
+    )
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/items.py").write_text(
+        "def render_form():\n    return 'new'\n\n\ndef save_item():\n    return 'new'\n", encoding="utf-8"
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    by_id = {item["id"].rsplit("#", 1)[-1]: item for item in packet["obligations"]}
+
+    when = by_id["save-item:when:1"]
+    [rejected] = when["actsUnparsed"]
+    assert rejected["value"] == "widgets-on-hand"
+    assert rejected["kind"] == "misfiled-fixture"
+    # The one that did parse is still carried: a refused sibling is not a refused bullet list.
+    assert [row["call"] for row in when["actsDeclared"]] == [
+        'fill(locator="#quantity-field", value="3")'
+    ]

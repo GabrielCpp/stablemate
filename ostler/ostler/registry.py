@@ -531,8 +531,29 @@ def attributed_fixtures(
     That asymmetry is the honest reading of both. An observation is specific by nature: it
     settles the one claim it was written under. An arrangement is ambient by nature: state
     reached once is the state every later claim is read in.
+
+    Over `fixture_keys`, not the wider `arrange_keys`: the caller parses each value as a
+    fixture *name*, and an act is not one. `attributed_acts` is the same split over the other
+    half, so both arrangement families bind by the same rule and neither is read by the
+    other's parser.
     """
-    return _attributed(node_type, bullet_order, combiners, arrange_keys(node_type))
+    return _attributed(node_type, bullet_order, combiners, fixture_keys(node_type))
+
+
+def attributed_acts(
+    node_type: str, bullet_order: Iterable[Sequence[Any]], combiners: Mapping[int, str]
+) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
+    """Split a node's performed-arrangement bullets between the node and the claims they arrange.
+
+    `attributed_fixtures` over `performed_keys` instead of `fixture_keys` — same engine, same
+    binding, and the same ambient reading of the first half: an act written above every
+    normative bullet establishes the surface state the whole node is documented in, so it
+    applies to every obligation the node mints. What differs is only the value grammar, which
+    is why the two are separate functions rather than one with a flag: `ostler.acts` reads
+    these and `ostler.qa.fixtures` reads the others, and a value handed to the wrong parser is
+    refused with a sentence about the wrong vocabulary.
+    """
+    return _attributed(node_type, bullet_order, combiners, performed_keys(node_type))
 
 
 def capture_keys(node_type: str) -> tuple[str, ...]:
