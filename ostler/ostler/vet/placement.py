@@ -413,6 +413,11 @@ def literal_route(route: str) -> str:
     text = route.strip()
     if not text.startswith("/") or "{" in text or "*" in text:
         return ""
+    # `/links/:id/edit` is the other pattern spelling this book uses — see `entry:` on the
+    # screen page. Compared as a literal it can never equal a real URL, so every vet of a
+    # parameterised screen would stop its scenario for not arriving where it plainly did.
+    if any(segment.startswith(":") for segment in text.split("/")):
+        return ""
     return text.rstrip("/") or "/"
 
 

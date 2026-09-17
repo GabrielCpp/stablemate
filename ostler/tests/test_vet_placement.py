@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from ostler.model import Graph, UINode
+from ostler.vet import placement
 from ostler.vet.geometry import BBox
 from ostler.vet.placement import (
     Placement, VettedComponent, Viewport, check, parse_placement, screen_components,
@@ -347,3 +348,24 @@ def test_a_book_that_names_no_name_has_nothing_to_disagree_with() -> None:
     assert screen_components(
         _graph_with_component({"selector": "`#save`", "name": "`Save policy`"})
     )["s.md"][0].name == "Save policy"
+
+
+def test_a_parameterised_route_is_not_a_literal_to_compare_against() -> None:
+    """A route with a parameter names a family of pages, in either of the book's spellings.
+
+    Read as a literal, `/links/:id/edit` can never equal the URL of a page that is plainly
+    the screen it documents, and every vet of a parameterised screen would stop its scenario
+    for failing to arrive where it did arrive.
+    """
+    assert placement.literal_route("/links/:id/edit") == ""
+    assert placement.literal_route("/links/{id}/edit") == ""
+    assert placement.literal_route("/dashboard/") == "/dashboard"
+    assert placement.literal_route("/") == "/"
+    # Not a path at all — an absolute URL or prose says nothing a URL comparison can use.
+    assert placement.literal_route("https://example.com/dashboard") == ""
+
+
+def test_arrival_compares_paths_and_ignores_state_within_a_screen() -> None:
+    assert placement.arrived_at("http://localhost:18102/dashboard?page=2#top", "/dashboard")
+    assert placement.arrived_at("http://localhost:18102/", "/")
+    assert not placement.arrived_at("http://localhost:18102/settings", "/dashboard")
