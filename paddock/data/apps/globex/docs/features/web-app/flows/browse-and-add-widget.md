@@ -24,7 +24,6 @@ stack crossing into api-service and not part of this journey at all.
 - verify: visible(locator="../gui/screens/widget-list.md#widget-table")
 - detail: seed one widget via `POST /api/widgets` before the journey starts so the table is
   non-empty on arrival; the journey itself never calls the API directly.
-- fixture: [web-app (local)](../ops/web-app-stack.md) and
-  [api-service (local)](../../api-service/ops/api-service-stack.md) both running against
-  [local](../../api-service/ops/local.md)
+- fixture: widgets-on-hand — the directory holds one widget, so the table has a row to
+  render on arrival
 - tests:
