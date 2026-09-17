@@ -21,12 +21,22 @@ File type under `docs/features/<service>/flows/`, `type: flow` in frontmatter.
 | `end` | no | **mints an obligation** — the observable outcome |
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
-| `fixture` | no | a fixture: arranges the state a claim is proved against |
+| `fixture` | no | arranges the world the walk starts in — or `none, because ...` |
 | `tests` | no | resolves as a link — the test files covering this flow |
 
 `start:` and `end:` are the flow's claims, and the pair is what makes a flow provable: the
 walk is only worth recording if there is a state it begins in and a state it ends in that a
 scenario can assert.
+
+A flow's claims are about the world its steps left behind, and that world is the world they
+started in plus the walk — so the starting world is part of the claim, and the flow states it.
+`- fixture: <name> [args] — <state it leaves>` arranges it before the first step. A flow whose
+claims hold in whatever world it finds says so with a reason: `- fixture: none, because the
+first step creates everything the last step observes`. A flow that states neither is
+`unarranged-journey`, and no scenario is compiled for it — a walk run against whatever the
+previous scenario happened to leave asserts `end:` against accidental state, and the red it
+produces is evidence about the run order, not about the service. A bare `- fixture:` or a bare
+`- fixture: none` is the undecided case, not the second answer.
 
 `tests:` is not an obligation and not evidence. Its one reader is the regression node, which
 attributes a failing suite test back to the node that owns it — that reader needs a *path* and
@@ -69,8 +79,8 @@ type: flow
 ## Doctor codes it can trip
 
 `unresolved-relation` on a `steps:` child, `undeclared-obligation` when `start:`/`end:` are
-stated with no check, `weak-check`, `compound-normative-bullet`,
-`overlong-normative-bullet`. See [../doctor-codes.md](../doctor-codes.md).
+stated with no check, `unarranged-journey` when the flow neither arranges a world nor says it
+needs none, `weak-check`, `compound-normative-bullet`, `overlong-normative-bullet`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
 
