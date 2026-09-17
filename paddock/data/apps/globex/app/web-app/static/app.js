@@ -4,7 +4,7 @@
 // that looks current is the one failure mode a register must not have.
 
 async function loadWidgets() {
-  const table = document.querySelector("table");
+  const table = document.querySelector("#widget-table");
   const empty = document.querySelector("p.empty-notice");
   const alert = document.querySelector('p[role="alert"]');
   try {

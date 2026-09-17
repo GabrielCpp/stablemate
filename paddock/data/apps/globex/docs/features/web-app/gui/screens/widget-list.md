@@ -21,7 +21,7 @@ driven directly.
 ## Components
 
 ### widget-table
-- selector: table[aria-label="Widgets on hand"]
+- selector: #widget-table
 - role: table
 - one-per:
 - variants:
@@ -36,7 +36,7 @@ driven directly.
 - verify: visible(locator="#widget-table")
 - fixture: widgets-on-hand — the directory holds at least one widget
 - states: loading — not yet drawn while the fetch is pending
-- code: `app/web-app/static/app.js::renderWidgetTable` @a9a308e1d664
+- code: `app/web-app/static/app.js::renderWidgetTable` @81b0f35cee96
 - detail: which of the three the page shows is recorded once, as `exclusive-with:`, and each
   of the three states what it looks like when it is the one shown. Saying it a second time
   here — that the table is hidden when the notice is up — would be the same claim in two
@@ -61,7 +61,7 @@ driven directly.
 - states: shown — visible whenever the directory read succeeds and returns no widgets
 - verify: visible(locator="#empty-notice")
 - fixture: empty-directory — the directory holds no widgets
-- code: `app/web-app/static/app.js::renderWidgetTable` @a9a308e1d664
+- code: `app/web-app/static/app.js::renderWidgetTable` @81b0f35cee96
 - detail:
 - tests:
 
@@ -81,7 +81,7 @@ driven directly.
   than an empty table that would read as a directory with nothing in it
 - verify: visible(locator="#load-alert")
 - fixture: api-service-unavailable — the directory read fails
-- code: `app/web-app/static/app.js::loadWidgets` @a9a308e1d664
+- code: `app/web-app/static/app.js::loadWidgets` @81b0f35cee96
 - detail:
 - tests:
 
@@ -99,7 +99,7 @@ driven directly.
 - exclusive-with:
 - states:
 - verify: visible(locator="#new-widget-link")
-- code: `app/web-app/static/index.html` @d88e48bbc4cb
+- code: `app/web-app/static/index.html` @ebed722d64ce
 - detail:
 - fixture:
 - tests:
@@ -120,7 +120,7 @@ driven directly.
 - does:
   - navigation: browser navigates to [new-widget](new-widget.md)
 - verify: visible(locator="new-widget.md#new-widget-form")
-- code: `app/web-app/static/index.html` @d88e48bbc4cb
+- code: `app/web-app/static/index.html` @ebed722d64ce
 - detail:
 - fixture:
 - capture:
