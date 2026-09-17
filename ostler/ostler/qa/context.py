@@ -438,6 +438,7 @@ def build_context(
     }
     repository_rows: list[dict[str, Any]] = []
     repositories_by_id = {repository.id: repository for repository in repositories}
+    health: list[dict[str, Any]] = []
     if repositories:
         changes_all: list[ChangedUnit] = []
         seen_repositories: set[str] = set()
@@ -446,6 +447,14 @@ def build_context(
                 raise ValueError(f"duplicate source repository id {repository.id!r}")
             seen_repositories.add(repository.id)
             checkout = Path(repository.checkout).resolve()
+            note = _unrooted_diff_note(checkout)
+            if note is not None:
+                health.append({
+                    "kind": "unrooted-diff-scope",
+                    "severity": "error",
+                    "repository": repository.id,
+                    "message": note,
+                })
             roots: dict[str, list[str]] = {}
             for scope in repository.scopes:
                 roots.setdefault(scope.surface, []).append(scope.root)
@@ -471,6 +480,9 @@ def build_context(
                 "scopes": [scope.model_dump(mode="json") for scope in repository.scopes],
             })
     else:
+        note = _unrooted_diff_note(root)
+        if note is not None:
+            health.append({"kind": "unrooted-diff-scope", "severity": "error", "message": note})
         changes_all = _changed_units(root, base, head, source_roots)
 
     changes = [
@@ -492,7 +504,6 @@ def build_context(
     ]
 
     direct_reasons: dict[str, list[dict[str, str]]] = {}
-    health: list[dict[str, Any]] = []
     changed_code: list[dict[str, Any]] = []
     for change in changes:
         # `--source-root` and `_surface_owner` stay in `root`'s frame (its whole job is
@@ -1253,6 +1264,31 @@ def _serialized_graph(
         named = [edge for edge in walked if edge.get("href") in hrefs]
         ends.update((item["id"], edge["to"]) for edge in named or walked[-1:])
     return nodes, edges, ends, locators_mod.scopes(data), details
+
+
+def _unrooted_diff_note(checkout: Path) -> str | None:
+    """None when *checkout* is its git checkout's own top level; else why a diff off it is not one.
+
+    `_changed_units` reads paths off `git diff`, which git always spells relative to the
+    repository's top level regardless of the invoking cwd; `_revision_text`/`_working_text`
+    then resolve those same repo-root-relative strings against *checkout* itself. Handed a
+    subdirectory instead of the checkout root, every path doubles under *checkout* and reads
+    as untracked on both sides of the diff — `_changed_units` returns nothing, not "nothing
+    changed" but "nothing was looked at", and the packet built from it reads as a book that
+    owns no obligations rather than as a book nobody read. An absence is not an event.
+    """
+    try:
+        toplevel = _git(checkout, "rev-parse", "--show-toplevel").strip()
+    except RuntimeError:
+        return None
+    if not toplevel or Path(toplevel).resolve() == checkout.resolve():
+        return None
+    return (
+        f"{checkout} is not its git checkout's top level ({toplevel}) — a diff read from "
+        "here cannot resolve the paths `git diff` reports, so every changed file reads as "
+        "untracked and this scan cannot see what the book owes; root it at the repository "
+        "top level instead"
+    )
 
 
 def _changed_units(
