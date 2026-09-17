@@ -22,6 +22,7 @@ from typing import Any
 
 
 from ostler.model import load as load_graph
+from ostler.routes import arrived_at, literal_route, screen_routes
 from ostler.qa import book_fixtures as qa_book_fixtures
 from ostler.qa import fixtures as qa_fixtures
 from ostler.qa import tools as qa_tools
@@ -718,7 +719,7 @@ class PythonDriver(QaDriver):
         if self._screens is None:
             graph = load_graph(self.root)
             self._screens = placement.screen_components(graph)
-            self._routes = placement.screen_routes(graph)
+            self._routes = screen_routes(graph)
         return self._screens
 
     def _arrival(self, scenario_id: str, screen: str, record: dict[str, Any]) -> str | None:
@@ -739,13 +740,13 @@ class PythonDriver(QaDriver):
         self._book()
         route = self._routes.get(screen, "")
         url = str(record.get("url", ""))
-        if not url or not placement.literal_route(route):
+        if not url or not literal_route(route):
             # A device (no URL), or a screen whose `route:` names a family of pages. The
             # subject is not established either way, and saying so in the report is all this
             # method can do from here — minting the finding belongs where the plan is
             # compiled, which is the row that follows this one.
             return None
-        if placement.arrived_at(url, route):
+        if arrived_at(url, route):
             return None
         return (
             f"scenario '{scenario_id}' vets '{screen}', documented at route '{route}', but "
@@ -812,7 +813,7 @@ class PythonDriver(QaDriver):
             # screen whose route names a family of pages and so cannot be compared.
             "arrival": (
                 "confirmed"
-                if record.get("url") and placement.literal_route(self._routes.get(screen, ""))
+                if record.get("url") and literal_route(self._routes.get(screen, ""))
                 else ("unobserved" if not record.get("url") else "unstated")
             ),
             "url": str(record.get("url", "")),
