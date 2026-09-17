@@ -68,6 +68,7 @@ GAP_KINDS = frozenset({
     "undeclared-check-locator",
     "unstated-claim-combiner",
     "no-verify-declared",
+    "unarranged-state",
 })
 
 
@@ -671,10 +672,14 @@ def compile_plan_gaps(
     page_owed: list[dict[str, Any]] = []
     cli_owed: list[dict[str, Any]] = []
     for obligation in owed:
-        if not obligation.get("checksDeclared"):
+        if not obligation.get("checksDeclared") and obligation.get("kind") != "states":
             # No claim to dispatch — falls through to the existing `no-verify-declared`
             # handling below, same as before D1's table existed, regardless of what node
-            # type or driver it names.
+            # type or driver it names. A `states:` obligation is the one exception: a check
+            # is exactly what an unarranged state may be missing, and it still needs to reach
+            # the page dispatch table below to be told apart from `no-verify-declared` debt
+            # and gapped `unarranged-state` instead (see the by-node loop in
+            # `_compile_page_scenarios`).
             http_owed.append(obligation)
             continue
         surface = str(obligation.get("surface") or "")
@@ -802,8 +807,17 @@ def compile_plan_gaps(
     )
     _gap_cli_obligations(cli_declared, gaps)
 
-    page_declared = [o for o in page_owed if o.get("checksDeclared")]
-    page_undeclared = [o for o in page_owed if not o.get("checksDeclared")]
+    # A `states:` obligation is not withheld by the same rule as every other page claim: a
+    # state with neither a check nor a fixture is not book debt, it is an unarranged
+    # arrangement — the by-node loop below tells the two apart and gaps accordingly
+    # (`unarranged-state`), so every `states:`-kind obligation reaches it regardless of
+    # whether it declares a check.
+    page_declared = [
+        o for o in page_owed if o.get("checksDeclared") or o.get("kind") == "states"
+    ]
+    page_undeclared = [
+        o for o in page_owed if not o.get("checksDeclared") and o.get("kind") != "states"
+    ]
     debt.extend(page_undeclared)
     gaps.extend(
         Gap(o["id"], "no-verify-declared", "the book declares no check for this obligation to prove")
@@ -1207,20 +1221,48 @@ def _compile_page_scenarios(
         for obligation in group:
             by_node.setdefault(str(obligation["node"]), []).append(obligation)
 
+        target_var = _target_var(surface, "web")
+        bucket = scenario_lines_by_surface.setdefault(surface, [])
+
         plain: dict[str, list[dict[str, Any]]] = {}
         exclusive: list[str] = []
         interactions: list[str] = []
+        rest_by_node: dict[str, list[dict[str, Any]]] = {}
         for node_id, obs in sorted(by_node.items()):
-            locators = obs[0].get("locators", {})
-            node_ids = sorted(o["id"] for o in obs)
+            # A `states:` bullet mints its own obligation (`kind == "states"`) but its locators
+            # ride every sibling obligation on the same node (`BulletKey("states", ...,
+            # locator=True)`, registry.py) — the node-wide `locators.get("states")` this loop
+            # used to key on is therefore true for a node's `role:`/`name:` claim too, and wrongly
+            # withheld it alongside the state. Route each obligation by its own `kind` instead: a
+            # state obligation either compiles into its own dedicated scenario (both a check and a
+            # fixture arranged for it) or is gapped `unarranged-state` on its own id, and never
+            # gates its non-state siblings.
+            state_obs = [o for o in obs if o.get("kind") == "states"]
+            rest = [o for o in obs if o.get("kind") != "states"]
+            for obligation in state_obs:
+                state_text = " ".join(str(obligation.get("requirement", "")).split())
+                arranged = _arrangements([obligation])
+                if obligation.get("checksDeclared") and arranged:
+                    state_name = f"{_slug(source)}_{_node_slug(node_id)}_{obligation['id'].rsplit(':', 1)[-1]}"
+                    bucket.extend(_arrival_scenario(root_path, source, hops, node_index,
+                                                     {node_id: [obligation]}, gaps, covered,
+                                                     name=state_name, target_var=target_var))
+                else:
+                    missing = []
+                    if not obligation.get("checksDeclared"):
+                        missing.append("no check declared")
+                    if not arranged:
+                        missing.append("no fixture arranged")
+                    gaps.append(Gap(obligation["id"], "unarranged-state",
+                                     f"carries `states:` ({state_text!r}); "
+                                     + " and ".join(missing)))
+            if not rest:
+                continue
+            rest_by_node[node_id] = rest
+            locators = rest[0].get("locators", {})
+            node_ids = sorted(o["id"] for o in rest)
             if locators.get("on"):
                 interactions.append(node_id)
-            elif locators.get("states"):
-                states_text = "; ".join(locators["states"])
-                gaps.extend(Gap(oid, "unresolved-precondition",
-                                 f"carries `states:` ({states_text!r}); no scenario compiled "
-                                 "for a state-scoped arrangement")
-                            for oid in node_ids)
             elif not _page_locator_expr(locators):
                 gaps.extend(Gap(oid, "uncompilable-claim",
                                  "no addressable `### <component>` owns this `visible(...)` claim")
@@ -1228,22 +1270,20 @@ def _compile_page_scenarios(
             elif locators.get("exclusiveWith"):
                 exclusive.append(node_id)
             else:
-                plain[node_id] = obs
+                plain[node_id] = rest
 
-        target_var = _target_var(surface, "web")
-        bucket = scenario_lines_by_surface.setdefault(surface, [])
         if plain:
             bucket.extend(_arrival_scenario(root_path, source, hops, node_index, plain, gaps,
                                              covered, name=f"{_slug(source)}_arrival",
                                              target_var=target_var))
         for node_id in exclusive:
             bucket.extend(_arrival_scenario(root_path, source, hops, node_index,
-                                             {node_id: by_node[node_id]}, gaps, covered,
+                                             {node_id: rest_by_node[node_id]}, gaps, covered,
                                              name=f"{_slug(source)}_{_node_slug(node_id)}",
                                              target_var=target_var))
         for node_id in interactions:
             bucket.extend(_interaction_scenario(root_path, source, hops, node_index, node_id,
-                                                 by_node[node_id], gaps, covered,
+                                                 rest_by_node[node_id], gaps, covered,
                                                  name=f"{_slug(source)}_{_node_slug(node_id)}",
                                                  target_var=target_var))
 
@@ -1495,7 +1535,17 @@ def _arrival_scenario(
 ) -> list[str]:
     obligations = [o for obs in by_node.values() for o in obs]
     ids = sorted(o["id"] for o in obligations)
-    body: list[str] = [f"    qa.goto({_lit(root_path)})"]
+    arranged = _arrangements(obligations)
+    body: list[str] = []
+    if arranged:
+        body.extend(
+            f"    qa.fixture({_lit(row['name'])}"
+            + "".join(f", {_lit(arg)}" for arg in row.get("args", []))
+            + ")"
+            for row in arranged
+        )
+    goto_index = len(body)
+    body.append(f"    qa.goto({_lit(root_path)})")
     body.extend(_walk_hops(hops, node_index, gaps, ids))
     # Presence is what a role locator proves and placement is what it cannot, so a scenario
     # that renders a documented screen photographs it and hands ostler the screen it is
@@ -1518,10 +1568,24 @@ def _arrival_scenario(
         # no screen is a hole in the plan wearing a function signature, so nothing is emitted.
         return []
     if _needs_window(assertions):
-        # An arrival's action is the arrival: the window opens before the navigation, so a
-        # claim about what the screen requested on the way in can only read those exchanges.
-        body.insert(0, f"    {_WINDOW_VAR} = qa.window()")
+        # An arrival's action is the arrival: the window opens before the navigation (but after
+        # any fixture arrangement, which is not a page request), so a claim about what the
+        # screen requested on the way in can only read those exchanges.
+        body.insert(goto_index, f"    {_WINDOW_VAR} = qa.window()")
     covered.update(scenario_covered)
+    if arranged:
+        # The preconditions are the book's own words for the state each fixture leaves behind —
+        # the node that owns the claim already said it, so quoting it here beats an author
+        # paraphrasing it (mirrors the http builder's `_arrangements` treatment).
+        precondition_lines = [
+            "    preconditions=[",
+            *(f"        {_lit(row['provides'] or row['name'])}," for row in arranged),
+            "    ],",
+        ]
+    else:
+        precondition_lines = [
+            "    preconditions=[],  # TODO(arrange): what must hold before this scenario runs",
+        ]
     lines = [
         "",
         "",
@@ -1531,7 +1595,7 @@ def _arrival_scenario(
         "    covers=[",
         *(f"        {_lit(oid)}," for oid in ids if oid in scenario_covered),
         "    ],",
-        "    preconditions=[],  # TODO(arrange): what must hold before this scenario runs",
+        *precondition_lines,
         "    checkpoints=[],  # TODO(arrange): what an observer should see it prove",
         "    forbid=[],  # TODO: the weaker observations this scenario must not settle for",
         ")",
@@ -1591,7 +1655,16 @@ def _interaction_scenario(
                          "this arm's `extends:` target is missing or not the same node type, "
                          "so its control identity could not be inherited from the base case")
                     for oid in ids)
-    body: list[str] = [f"    qa.goto({_lit(root_path)})"]
+    arranged = _arrangements(obligations)
+    body: list[str] = []
+    if arranged:
+        body.extend(
+            f"    qa.fixture({_lit(row['name'])}"
+            + "".join(f", {_lit(arg)}" for arg in row.get("args", []))
+            + ")"
+            for row in arranged
+        )
+    body.append(f"    qa.goto({_lit(root_path)})")
     body.extend(_walk_hops(hops, node_index, gaps, ids))
     on_expr = _page_locator_expr(node_index.get(on_node_id, {}))
     # An unresolved-precondition gap ordinarily stands beside a real, compiled assertion on
@@ -1683,6 +1756,16 @@ def _interaction_scenario(
     if _needs_window(assertions):
         body.insert(action_index, f"    {_WINDOW_VAR} = qa.window()")
     covered.update(scenario_covered)
+    if arranged:
+        precondition_lines = [
+            "    preconditions=[",
+            *(f"        {_lit(row['provides'] or row['name'])}," for row in arranged),
+            "    ],",
+        ]
+    else:
+        precondition_lines = [
+            "    preconditions=[],  # TODO(arrange): what must hold before this scenario runs",
+        ]
     lines = [
         "",
         "",
@@ -1692,7 +1775,7 @@ def _interaction_scenario(
         "    covers=[",
         *(f"        {_lit(oid)}," for oid in ids if oid in scenario_covered),
         "    ],",
-        "    preconditions=[],  # TODO(arrange): what must hold before this scenario runs",
+        *precondition_lines,
         "    checkpoints=[],  # TODO(arrange): what an observer should see it prove",
         "    forbid=[],  # TODO: the weaker observations this scenario must not settle for",
         ")",

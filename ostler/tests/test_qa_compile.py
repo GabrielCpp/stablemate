@@ -776,20 +776,27 @@ _SCREEN = "docs/features/policy/gui/screens/policy-list.md"
 
 def _page_obligation(oid: str, node: str, *, surface: str = "policy",
                       source: str = _SCREEN, locators: dict | None = None,
-                      checks: list[dict] | None = None) -> dict:
-    return {
+                      checks: list[dict] | None = None, kind: str | None = None,
+                      requirement: str = "shows what the screen promises",
+                      fixtures: list[dict] | None = None) -> dict:
+    obligation = {
         "id": oid,
         "node": node,
         "nodeType": "interaction",
         "source": source,
         "surface": surface,
-        "requirement": "shows what the screen promises",
+        "requirement": requirement,
         "required": True,
         "locators": locators or {},
         "checksDeclared": checks if checks is not None else [
             {"call": "it", "name": "visible", "args": {"locator": "irrelevant"}},
         ],
     }
+    if kind is not None:
+        obligation["kind"] = kind
+    if fixtures is not None:
+        obligation["fixturesDeclared"] = fixtures
+    return obligation
 
 
 def _visible(locator: str) -> dict:
@@ -852,48 +859,87 @@ def test_exclusive_with_pairing_never_shares_a_scenario() -> None:
     assert _gap_kinds(gaps, "okf:policy-list:empty-register-notice:visible:1") == []
 
 
-def test_a_states_component_produces_a_gap_not_a_scenario() -> None:
-    """A component naming `states:` compiles to nothing — no scenario, arrival or otherwise —
-    only an `unresolved-precondition` gap quoting the `states:` text verbatim."""
+def test_an_unarranged_states_claim_produces_a_gap_not_a_scenario() -> None:
+    """A `states:` bullet mints its own obligation (`kind == "states"`) separate from the node's
+    `role:`/`name:` claim. With no fixture arranging it, it compiles to nothing — no scenario,
+    arrival or otherwise — only an `unarranged-state` gap quoting its own requirement text
+    verbatim. Its non-state sibling on the same node is unaffected: it still gets a real
+    scenario, because a `states:` bullet no longer withholds the whole node (Finding a)."""
     node = f"{_SCREEN}#coverage-type-select"
     oid = "okf:new-policy:coverage-type-select:visible:1"
+    state_oid = "okf:new-policy:coverage-type-select:states:1"
     context = _navigation_context(
         _page_obligation(oid, node,
-                          locators={"role": ["combobox"], "name": ["Coverage type"],
-                                    "states": ["opens on `auto`."]},
+                          locators={"role": ["combobox"], "name": ["Coverage type"]},
                           checks=[_visible("combobox:Coverage type")]),
+        _page_obligation(state_oid, node, kind="states",
+                          requirement="opens on `auto`.",
+                          locators={"role": ["combobox"], "name": ["Coverage type"]},
+                          checks=[]),
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
     ast.parse(source)
-    assert "combobox:Coverage type" not in source
-    kinds = _gap_kinds(gaps, oid)
-    assert kinds == ["unresolved-precondition"]
-    [gap] = [g for g in gaps if g.obligation_id == oid]
+    assert "combobox:Coverage type" in source
+    assert _gap_kinds(gaps, oid) == []
+    assert _gap_kinds(gaps, state_oid) == ["unarranged-state"]
+    [gap] = [g for g in gaps if g.obligation_id == state_oid]
     assert "opens on `auto`." in gap.detail
 
 
-def test_states_wins_over_exclusive_with_when_a_component_carries_both() -> None:
-    """`vehicle-vin-field` in the real `new-policy.md` fixture carries *both* `states:` and
-    `exclusive-with:` — a shape the ruling set's partition list did not anticipate as
-    overlapping. This pins the resolution: `states:` is the stronger claim (it blocks compiling
-    any scenario outright) and is checked first, so the component is gapped, never isolated into
-    its own exclusive-with scenario."""
-    node = f"{_SCREEN}#vehicle-vin-field"
-    oid = "okf:new-policy:vehicle-vin-field:visible:1"
+def test_a_fully_arranged_states_claim_compiles_its_own_scenario() -> None:
+    """A `states:` obligation that declares both a check and a fixture compiles into its own
+    dedicated scenario, with `preconditions=[...]` quoting the arranging fixture's own words —
+    it is not merged into the node's plain arrival scenario, and it is not gapped."""
+    node = f"{_SCREEN}#widget-table"
+    oid = "okf:widget-list:widget-table:visible:1"
+    state_oid = "okf:widget-list:widget-table:states:2"
+    fixture = {"name": "seeded-loading", "args": [], "provides": "the widget list is loading"}
     context = _navigation_context(
         _page_obligation(oid, node,
-                          locators={"role": ["textbox"], "name": ["Vehicle VIN"],
-                                    "exclusiveWith": ["[property-address-field](#property-address-field)"],
-                                    "states": ["present only while the coverage type is `auto`."]},
-                          checks=[_visible("textbox:Vehicle VIN")]),
+                          locators={"role": ["table"], "name": ["Widgets"]},
+                          checks=[_visible("table:Widgets")]),
+        _page_obligation(state_oid, node, kind="states",
+                          requirement="shows a loading indicator while widgets are fetched.",
+                          locators={"role": ["table"], "name": ["Widgets"]},
+                          checks=[_visible("status:Loading")],
+                          fixtures=[fixture]),
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
     ast.parse(source)
-    assert "textbox:Vehicle VIN" not in source
-    assert "@scenario(" not in source
-    assert _gap_kinds(gaps, oid) == ["unresolved-precondition"]
+    assert _gap_kinds(gaps, state_oid) == []
+    assert "status:Loading" in source
+    assert 'qa.fixture("seeded-loading")' in source
+    assert '"the widget list is loading"' in source
+
+
+def test_states_no_longer_withholds_exclusive_with_on_the_same_node() -> None:
+    """`vehicle-vin-field` in the real `new-policy.md` fixture carries *both* `states:` and
+    `exclusive-with:`. The two are now separate obligations: the `states:` one is gapped on its
+    own id (unarranged), and the `exclusive-with:` claim still compiles into its own isolated
+    scenario — a `states:` bullet no longer blocks a sibling claim from compiling at all."""
+    node = f"{_SCREEN}#vehicle-vin-field"
+    oid = "okf:new-policy:vehicle-vin-field:visible:1"
+    state_oid = "okf:new-policy:vehicle-vin-field:states:1"
+    context = _navigation_context(
+        _page_obligation(oid, node,
+                          locators={"role": ["textbox"], "name": ["Vehicle VIN"],
+                                    "exclusiveWith": ["[property-address-field](#property-address-field)"]},
+                          checks=[_visible("textbox:Vehicle VIN")]),
+        _page_obligation(state_oid, node, kind="states",
+                          requirement="present only while the coverage type is `auto`.",
+                          locators={"role": ["textbox"], "name": ["Vehicle VIN"],
+                                    "exclusiveWith": ["[property-address-field](#property-address-field)"]},
+                          checks=[]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert "textbox:Vehicle VIN" in source
+    assert "@scenario(" in source
+    assert _gap_kinds(gaps, oid) == []
+    assert _gap_kinds(gaps, state_oid) == ["unarranged-state"]
 
 
 def test_an_interactions_assertion_never_lands_on_the_arrival_scenario() -> None:
