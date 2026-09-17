@@ -159,9 +159,12 @@ class ResponseWindow:
         self._browser = browser
         self._since = since
 
-    def response_for(self, path: str) -> RecordedResponse:
-        """The one response on *path* inside this window. See `Browser.response_for`."""
-        return self._browser.response_for(path, since=self._since)
+    def response_for(self, path: str, *, method: str | None = None) -> RecordedResponse:
+        """The one response on *path* (and *method*, if given) inside this window.
+
+        See `Browser.response_for`.
+        """
+        return self._browser.response_for(path, method=method, since=self._since)
 
 
 class Browser:
@@ -457,36 +460,52 @@ class Browser:
         """
         return ResponseWindow(self, len(self._responses))
 
-    def response_for(self, path: str, *, since: int = 0) -> RecordedResponse:
-        """The one response on *path* since *since*, as something the verifiers can read.
+    def response_for(
+        self, path: str, *, method: str | None = None, since: int = 0
+    ) -> RecordedResponse:
+        """The one response on *path* (and *method*, if given) since *since*.
 
         A browser makes many requests — that is the property this whole method exists for.
         The operand of an HTTP claim made from a page scenario is therefore a *selection*,
-        and it is the book's own selection: `http_status(201, path="/api/widgets")` already
-        wrote down which exchange it means, and this passes that argument through rather
-        than inventing a second spelling for it.
+        and it is the book's own selection: `http_status(201, path="/api/widgets", method="POST")`
+        already wrote down which exchange it means, and this passes those arguments through
+        rather than inventing a second spelling for them. A request is identified by its
+        method *and* its path, not its path alone — a create-then-list flow POSTs and then
+        GETs the same path, and path alone cannot tell those two exchanges apart.
 
         Zero matches and several matches are distinct outcomes, and neither is a red. No
         match means the scenario made a claim about an exchange that never happened; several
-        means the book named a path the page hit more than once, so which one it meant is
-        undetermined. Both are defects in the plan or the book, so both raise — recording
-        either as a failed assertion would file it against the product, and silently taking
-        the first would convert a missing case into a wrong answer.
+        means the book named a (method, path) pair the page hit more than once, so which one
+        it meant is undetermined. Both are defects in the plan or the book, so both raise —
+        recording either as a failed assertion would file it against the product, and
+        silently taking the first would convert a missing case into a wrong answer.
         """
+        window = self._responses[since:]
         found = [
-            entry for entry in self._responses[since:]
+            entry for entry in window
             if urlsplit(str(entry.get("url", ""))).path == path
+            and (method is None or str(entry.get("method", "")).upper() == method.upper())
         ]
         if not found:
-            seen = sorted({urlsplit(str(e.get("url", ""))).path for e in self._responses[since:]})
+            if method is None:
+                seen = sorted({urlsplit(str(e.get("url", ""))).path for e in window})
+                raise LookupError(
+                    f"no response on {path!r} after the action this claim is about; the page "
+                    f"requested {seen!r}"
+                )
+            seen_pairs = sorted(
+                {(str(e.get("method", "")), urlsplit(str(e.get("url", ""))).path) for e in window}
+            )
             raise LookupError(
-                f"no response on {path!r} after the action this claim is about; the page "
-                f"requested {seen!r}"
+                f"no response on {method} {path!r} after the action this claim is about; "
+                f"the page requested {seen_pairs!r}"
             )
         if len(found) > 1:
+            what = f"{path!r}" if method is None else f"{method} {path!r}"
             raise LookupError(
-                f"{len(found)} responses on {path!r} after the action this claim is about — "
-                f"which one the check means is undetermined; statuses {[e.get('status') for e in found]!r}"
+                f"{len(found)} responses on {what} after the action this claim is about — "
+                f"which one the check means is undetermined; statuses "
+                f"{[e.get('status') for e in found]!r}"
             )
         return RecordedResponse(found[0])
 

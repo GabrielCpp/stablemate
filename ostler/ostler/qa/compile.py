@@ -1753,34 +1753,42 @@ def _vettable(
 _WINDOW_VAR = "exchanges"
 
 
-def _observed_exchange(obligation: dict[str, Any]) -> str | None:
+def _observed_exchange(obligation: dict[str, Any]) -> tuple[str | None, str] | None:
     """Which HTTP exchange this obligation's response/body checks are about, if the book says.
 
     A browser makes many requests. `qa.http`'s scenarios have one response because the
     scenario made one call; a page scenario has however many the page chose to make, so the
     operand of an HTTP claim is a *selection* and something has to have written the selector
-    down. Exactly one check in the vocabulary carries one: `http_status(path=…)`, whose
-    `path=` is a URL route. `json_path(path=…)` is a *JSON* path and `omits(subject=…)` a
-    field path — neither names an exchange, and reading them as one would point the driver at
-    a request nobody mentioned.
+    down. Exactly one check in the vocabulary carries one: `http_status(method=…, path=…)`,
+    whose `path=` is a URL route and `method=` the verb on it. `json_path(path=…)` is a
+    *JSON* path and `omits(subject=…)` a field path — neither names an exchange, and reading
+    them as one would point the driver at a request nobody mentioned.
 
-    So the selector is read once per obligation and shared by its rows: an obligation is one
-    claim, and a claim that says "answered 201 on `/api/widgets`, and the body carried the
-    new id" is talking about one exchange throughout. An obligation whose rows name two
-    different routes is not one exchange, and returns `None` — which is undetermined, not a
-    default, so nothing executable is emitted for it.
+    A request is identified by its method and its path, not its path alone: a create-then-list
+    flow POSTs and then GETs the same route, and a path-only selector cannot tell those two
+    exchanges apart. So the pair is read once per obligation and shared by its rows: an
+    obligation is one claim, and a claim that says "POST `/api/widgets` answered 201, and the
+    body carried the new id" is talking about one exchange throughout. An obligation whose
+    rows name two different (method, path) pairs is not one exchange, and returns `None` —
+    which is undetermined, not a default, so nothing executable is emitted for it. `method` is
+    optional on the row itself: an obligation that never says it still selects on `path` alone,
+    which stays exactly as ambiguous as it always was wherever a browser makes more than one
+    request to that route.
     """
-    routes = {
-        str(row["args"]["path"])
+    pairs = {
+        (row["args"].get("method"), str(row["args"]["path"]))
         for row in obligation.get("checksDeclared", [])
         if row.get("name") == "http_status" and isinstance(row.get("args"), dict)
         and isinstance(row["args"].get("path"), str)
     }
-    return next(iter(routes)) if len(routes) == 1 else None
+    if len(pairs) != 1:
+        return None
+    method, path = next(iter(pairs))
+    return (str(method) if isinstance(method, str) else None, path)
 
 
 def _exchange_operand(
-    row: dict[str, Any], obligation: dict[str, Any], exchange: str | None,
+    row: dict[str, Any], obligation: dict[str, Any], exchange: tuple[str | None, str] | None,
     channel: str, gaps: list[Gap],
 ) -> str | None:
     """Where a page scenario is pointed for one response- or body-observing `verify:` row.
@@ -1800,11 +1808,13 @@ def _exchange_operand(
             obligation["id"], "uncompilable-claim",
             f"`{row.get('name')}` observes an HTTP {channel}, which the playwright driver "
             "can see — but a browser makes many requests and nothing in this obligation "
-            "says which one. Declare the exchange with an `http_status(path=\"…\")` bullet "
-            "on the same claim; two different `path=` routes on one obligation are two "
-            "claims, not one"))
+            "says which one, uniquely, by method and path. Declare the exchange with an "
+            "`http_status(method=\"…\", path=\"…\")` bullet on the same claim; two different "
+            "(method, path) pairs on one obligation are two claims, not one"))
         return None
-    selection = f"{_WINDOW_VAR}.response_for({_lit(exchange)})"
+    method, path = exchange
+    args = f"{_lit(path)}, method={_lit(method)}" if method else _lit(path)
+    selection = f"{_WINDOW_VAR}.response_for({args})"
     return f"{selection}.json()" if channel == "body" else selection
 
 

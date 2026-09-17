@@ -159,6 +159,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         params=(
             CheckParam("code", "int", required=True),
             CheckParam("title", "str"),
+            CheckParam("method", "str", identifies=True),
             CheckParam("path", "str", identifies=True),
         ),
         excludes="a branch that returns the right shape under the wrong status, and an error "

@@ -144,7 +144,7 @@ request carried, but never substitute an HTTP client for the click.
 - does:
   - the browser navigates to [widget-list](widget-list.md)
 - verify: visible(locator="widget-list.md#widget-table")
-- verify: http_status(201, path="/api/widgets")
+- verify: http_status(201, method="POST", path="/api/widgets")
 - fixture:
 - capture:
 - code: `app/web-app/static/new.js::submitNewWidget` @6f983e4202a9
@@ -171,7 +171,7 @@ request carried, but never substitute an HTTP client for the click.
   - the field error spans are populated from the response body, and the page stays put — the form is still the thing on screen
 - verify: visible(locator="#name-error")
 - verify: visible(locator="#new-widget-form")
-- verify: http_status(422, path="/api/widgets")
+- verify: http_status(422, method="POST", path="/api/widgets")
 - fixture:
 - capture:
 - code: `app/web-app/static/new.js::submitNewWidget` @6f983e4202a9

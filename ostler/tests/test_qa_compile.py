@@ -1078,7 +1078,7 @@ def test_a_body_observing_verb_on_a_page_obligation_names_driver_and_channel_dif
     assert "json_path" in gap.detail
     assert "an HTTP body" in gap.detail
     assert "playwright driver " in gap.detail and "can see" in gap.detail
-    assert 'http_status(path="' in gap.detail
+    assert 'http_status(method="' in gap.detail and '", path="' in gap.detail
 
 
 def test_a_driver_with_no_declared_channels_gaps_every_claim_and_crashes_on_none() -> None:

@@ -29,9 +29,20 @@ place: it is a category error, and `parse_check` redirects it to `tests:`.
 
 ## The vocabulary
 
-### `http_status(code*=<int>, title=<str>, path=<str>)`
+### `http_status(code*=<int>, title=<str>, method=<str>, path=<str>)`
 Excludes a branch that returns the right shape under the wrong status, and an error response
 distinguished from its siblings only by a body nobody read.
+
+**A request is identified by its method and its path, not its path alone.** On the `web`
+driver, `path=` selects which of the page's own exchanges a `verify:` row is about — see
+"Selecting an exchange on a page" below — and a page that creates a thing and then lists it
+POSTs and GETs the same route, so a path-only selector names both and neither. `method=` is
+not `required=True`: it follows `path=`'s own precedent, which has always been enforced by
+`compile_plan` refusing an undetermined selection (`uncompilable-claim`) rather than by a
+grammar-level requirement, because a book whose page only ever hits a route once needs
+neither argument to disambiguate anything. Declare `method=` wherever the same route is hit
+more than once in one scenario; `compile_plan` gaps rather than guessing when it is missing
+and needed.
 
 ### `json_path(path*=<str> (path), equals=<scalar>, matches=<str>, absent=<bool>) — one of equals, matches, absent`
 Excludes a field asserted by presence rather than value, which passes on the default the defect
@@ -106,6 +117,18 @@ on the way to a non-zero exit.
 ### `conflict_on_stale(subject*=<str>, token=<str>)`
 Excludes an unconditional overwrite standing in for compare-and-swap — a write followed by a read
 cannot tell them apart, only a stale write refused can.
+
+## Selecting an exchange on a page
+
+`qa.http`'s scenarios have exactly one response, because the scenario made exactly one call.
+A page scenario on the `web` driver has however many the page chose to make, so the operand of
+an `http_status`/`json_path` row observing a response or its body is a *selection*, not "the"
+response — and the book is what writes the selector down. `http_status`'s `method=`/`path=`
+are read once per obligation and shared by every row in it (`json_path`'s own `path=` is a body
+JSON path and never selects an exchange, even though it inherits this same ambiguity through the
+shared selector). An obligation whose `http_status` rows name two different `(method, path)`
+pairs is not one exchange, and `compile_plan` reports it as `uncompilable-claim` rather than
+guessing which response the rest of the obligation means.
 
 ## A locator names a declared component
 
