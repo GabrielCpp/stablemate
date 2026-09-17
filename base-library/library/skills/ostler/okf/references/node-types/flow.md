@@ -53,6 +53,17 @@ None. The `steps:` chain is the body.
 Each child of `steps:` links to the node that performs it — an interaction, an invocation, an
 endpoint. `ostler graph` is the structural authority for what a flow reaches.
 
+**A journey whose steps cross targets is legal, and today it compiles to nothing.** A step's
+target is its node type paired with the `driver:` of the surface it lives on, so a flow that
+walks a mobile app and then a web app — or drives an api and then a browser — names two. One
+compiled scenario binds one driver to one service, so there is no shape for that journey yet,
+and the compiler says so with `needs-multi-target-runtime` rather than asking anyone to change
+the book. The same holds for a step whose single target has no backend here (`maestro`,
+`in-process`): that is `needs-target-backend`. **Neither is a defect in the flow.** Write the
+journey the user actually performs; a journey that is really two, performed by two people or
+two sittings, is two flows, and splitting it to make the compiler happy records a walk nobody
+takes.
+
 ## Minimal example
 
 ```bash
