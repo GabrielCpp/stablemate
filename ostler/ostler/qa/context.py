@@ -1627,18 +1627,23 @@ def _merge_snapshot_nodes(
     base: dict[str, dict[str, Any]],
     head: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
+    """Head wins; base contributes only the nodes head no longer has.
+
+    Two cases, different in kind. A node in **both** snapshots is one node observed twice,
+    and its bullets are read from head — the revision under test. A node in base **alone**
+    is one the change deleted, carried through whole so the packet can still describe what
+    went away.
+
+    Bullets are replaced, never pooled. Unioning a changed bullet's values puts a value in
+    the packet that *no revision of the book states*: the locator compiler reads the first
+    value and would address the element by the name it carried **before** the edit — making
+    a book repair invisible to the run meant to verify it — and `normative_claims` counts
+    the pooled list and mints an obligation for a claim nobody made.
+    """
     merged = {node_id: {**node, "bullets": dict(node.get("bullets", {}))} for node_id, node in base.items()}
     for node_id, node in head.items():
-        if node_id not in merged:
-            merged[node_id] = node
-            continue
-        combined = {**merged[node_id], **node}
-        bullets = dict(merged[node_id].get("bullets", {}))
-        for key, value in node.get("bullets", {}).items():
-            values = [*_values(bullets.get(key)), *_values(value)]
-            unique = list(dict.fromkeys(values))
-            bullets[key] = unique[0] if len(unique) == 1 else unique
-        combined["bullets"] = bullets
+        combined = {**merged.get(node_id, {}), **node}
+        combined["bullets"] = dict(node.get("bullets", {}))
         merged[node_id] = combined
     return merged
 

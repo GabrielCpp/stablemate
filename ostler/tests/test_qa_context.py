@@ -451,6 +451,94 @@ def test_context_excludes_snapshot_fixture_but_keeps_executable_markdown(tmp_pat
     assert [item["path"] for item in packet["changedCode"]] == ["prompts/system.md"]
 
 
+_REVISED_SCREEN = """---
+type: screen
+title: Items
+---
+# Items
+
+## Components
+
+### empty-notice
+- role: paragraph
+- name: {name}
+- selector: p.empty-notice
+- states: shown while no item is on file
+- code: app/items.py::render_empty
+"""
+
+
+def test_an_edited_bullet_carries_only_the_head_revisions_value(tmp_path: Path):
+    """A bullet's value is a property of one revision, and the union of two is a value no
+    revision states.
+
+    The base graph is unioned into the packet so a node the change *deleted* can still be
+    described. A node present in both revisions is a different case: it was edited, and the
+    edit is the thing under test. Pooling the two readings of an edited bullet puts the
+    pre-edit value first, which is what the locator compiler reads — so the run meant to
+    verify the repair addresses the element by the name the repair removed, and the extra
+    reading mints a `:name:2` obligation against a claim the book no longer makes.
+    """
+    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    book = tmp_path / "docs/features/acme/gui/screens/items.md"
+    book.write_text(_REVISED_SCREEN.format(name="No items are on file yet."), encoding="utf-8")
+    (tmp_path / "app/items.py").write_text("def render_empty():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+
+    # The repair: the paragraph has no accessible name, and the book now says so.
+    book.write_text(_REVISED_SCREEN.format(name="none"), encoding="utf-8")
+    (tmp_path / "app/items.py").write_text("def render_empty():\n    return 'new'\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+
+    by_id = {item["id"]: item for item in packet["obligations"]}
+    node = "okf:docs/features/acme/gui/screens/items.md#empty-notice"
+    assert by_id[f"{node}:name:1"]["requirement"] == "none"
+    assert f"{node}:name:2" not in by_id, "the pre-edit value minted an obligation of its own"
+    assert by_id[f"{node}:name:1"]["locators"]["name"] == ["none"]
+
+
+def test_a_node_the_change_deleted_is_still_described_by_the_base_revision(tmp_path: Path):
+    """The counterpart, and the reason the merge exists at all: head wins per key only for a
+    node head still has. A node the change removed keeps every bullet the base stated, or the
+    packet cannot say what went away.
+    """
+    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    book = tmp_path / "docs/features/acme/gui/screens/items.md"
+    book.write_text(_REVISED_SCREEN.format(name="No items are on file yet."), encoding="utf-8")
+    (tmp_path / "app/items.py").write_text("def render_empty():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+
+    book.write_text(
+        """---
+type: screen
+title: Items
+---
+# Items
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/items.py").write_text("def render_empty():\n    return 'new'\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+
+    by_id = {item["id"]: item for item in packet["obligations"]}
+    node = "okf:docs/features/acme/gui/screens/items.md#empty-notice"
+    assert by_id[f"{node}:name:1"]["locators"]["name"] == ["No items are on file yet."]
+
+
 def test_context_turns_nested_okf_behavior_into_qa_obligations(tmp_path: Path):
     (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
     (tmp_path / "app").mkdir()
