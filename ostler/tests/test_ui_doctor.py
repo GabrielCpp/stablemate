@@ -81,6 +81,61 @@ def test_missing_required_bullet(repo: Path):
     assert "trigger" not in missing   # present
 
 
+def _interaction_with_verifies(repo: Path, verifies: list[str]) -> None:
+    lines = "\n".join(f"- verify: {v}" for v in verifies)
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+          "## Components\n\n### btn\n- selector: #btn\n- role: button\n- name: Go\n\n"
+          "## Interactions\n\n### act\n- on: [btn](#btn)\n- trigger: click\n- role: button\n"
+          "- name: Go\n- keyboard: Enter\n- does:\n  - state: go\n" + lines + "\n")
+
+
+def test_unspelled_alternation_same_check_different_value(repo: Path):
+    # same check, same `path=`, two different `code=` — the mechanical split signal.
+    _interaction_with_verifies(repo, [
+        'http_status(201, path="/api/widgets")',
+        'http_status(400, path="/api/widgets")',
+    ])
+    report = _run(repo)
+    assert "unspelled-alternation" in all_codes(report)
+    finding = next(f for f in report.findings if f.code == "unspelled-alternation")
+    assert finding.severity == "warn"
+
+
+def test_unspelled_alternation_needs_a_shared_identifying_argument(repo: Path):
+    # different `path=` too — two claims about two different requests, not one contradicting
+    # itself.
+    _interaction_with_verifies(repo, [
+        'http_status(201, path="/api/widgets")',
+        'http_status(400, path="/api/reports")',
+    ])
+    assert "unspelled-alternation" not in all_codes(_run(repo))
+
+
+def test_unspelled_alternation_ignores_a_single_argument_check(repo: Path):
+    # `removed(subject=…)` has one argument, which is both the subject and the only value —
+    # two different subjects are two different claims, not a self-contradiction.
+    _interaction_with_verifies(repo, [
+        'removed(subject="the first widget")',
+        'removed(subject="the second widget")',
+    ])
+    assert "unspelled-alternation" not in all_codes(_run(repo))
+
+
+def test_unspelled_alternation_not_tripped_by_an_extends_split(repo: Path):
+    # the repair: split the contradiction into a base case and an arm that `extends:` it —
+    # each interaction's own `verify:` bullets no longer contradict each other.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+          "## Components\n\n### btn\n- selector: #btn\n- role: button\n- name: Go\n\n"
+          "## Interactions\n\n### act\n- on: [btn](#btn)\n- trigger: click\n- role: button\n"
+          "- name: Go\n- keyboard: Enter\n- does:\n  - state: go\n"
+          '- verify: http_status(201, path="/api/widgets")\n\n'
+          "### refuse-act\n- extends: [act](#act)\n- does:\n  - state: refuse\n"
+          '- verify: http_status(400, path="/api/widgets")\n')
+    assert "unspelled-alternation" not in all_codes(_run(repo))
+
+
 def _screen_with(repo: Path, bullets: str) -> None:
     write(repo / "docs/features/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"

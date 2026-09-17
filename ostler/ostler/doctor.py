@@ -1538,6 +1538,24 @@ def _resolved_targets(node, key: str, resolver: links_mod.LinkResolver) -> set[s
     return out
 
 
+def _alternation_conflict(a: checks.CheckCall, b: checks.CheckCall) -> bool:
+    """Whether *a* and *b* are the same check, on the same subject, claiming two different
+    expected values — `unspelled-alternation`'s predicate.
+
+    "Same subject" is read structurally rather than per check name: the two calls must share
+    every argument but one (so a single-argument check like `absent(subject=…)` never
+    qualifies — there is nothing left to call the subject once the one argument differs), and
+    that one argument must actually differ. `http_status(201, path="/api/widgets")` against
+    `http_status(400, path="/api/widgets")` shares `path` and differs only on `code`; two
+    `removed(subject="a")` / `removed(subject="b")` calls differ on the only argument they
+    have, which is two claims about two different things, not one claim contradicting itself.
+    """
+    if a.name != b.name or len(a.args) < 2 or a.args.keys() != b.args.keys():
+        return False
+    diffs = [key for key in a.args if a.args[key] != b.args[key]]
+    return len(diffs) == 1
+
+
 def _one_parent_tree(nodes: list, group_ids: set[str],
                      resolver: links_mod.LinkResolver) -> bool:
     """Do *nodes* hang off a single one of their own under `parent:`?
@@ -2610,6 +2628,37 @@ def _check_ui(graph: Graph, f: list[Finding],
                         f"another {node.type} — an arm can only extend its own node type",
                         path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, "extends"),
                         suggestion=f"- extends: [{node.type} base case](#anchor)"))
+            # The mechanical, cross-validated signal that a node claims two outcomes at once:
+            # two `verify:` bullets calling the same check with the same identifying argument
+            # (a `path=`, a `locator=`, a `subject=`) but a different value for whichever
+            # argument is left — `http_status(201, path="/api/widgets")` beside
+            # `http_status(400, path="/api/widgets")` is not one scenario's two checks, it is
+            # two scenarios' worth of check sharing a node. `≥2 does: bullets` was tried and
+            # dropped — it fires on most of the real corpus and teaches nothing — so this reads
+            # the checks themselves rather than the prose above them.
+            verify_calls = [
+                c for c in (checks.parse_check(v)
+                            for v in _bullet_values(node.meta.get("verify", "")))
+                if isinstance(c, checks.CheckCall)
+            ]
+            seen_conflicts: set[tuple[str, str]] = set()
+            for i, a in enumerate(verify_calls):
+                for b in verify_calls[i + 1:]:
+                    if not _alternation_conflict(a, b):
+                        continue
+                    first, second = sorted((a.text(), b.text()))
+                    pair = (first, second)
+                    if pair in seen_conflicts:
+                        continue
+                    seen_conflicts.add(pair)
+                    f.append(Finding(
+                        "warn", "unspelled-alternation",
+                        f"{node.id}: `verify: {a.text()}` and `verify: {b.text()}` are the "
+                        f"same check on the same subject with two different expected values — "
+                        f"one node cannot be both at once. Split into a base case and an arm "
+                        f"that `extends:` it, each keeping the `verify:` that is true of it",
+                        path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, "verify"),
+                        suggestion="- extends: [base case](#anchor)"))
         for bk in uitype.bullet_keys:
             if bk.required and bk.key not in node.meta:
                 if extends_ok and bk.key in {"on", "trigger", "role", "name", "keyboard"}:
