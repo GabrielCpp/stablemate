@@ -31,8 +31,33 @@ Repeating `- does:` is the documented way to state several claims (the ostler-ok
 `references/bullet-grammar.md`, "repeat the key"); the one-`does:`-block rule above is about not
 scattering a *single* nested block across the node, not a ban on one claim per line.
 
-**One check per normative bullet, in the bullets' own order.** That ordering is the only pairing the
-book records, so it is what a reader uses to tell which check belongs to which claim.
+**One check per normative bullet, written directly under it.** Document order is the binding, and
+it is the binding the parser reads: `registry.attributed_checks` credits each `verify:` to the
+**nearest normative bullet above it**, so where a check sits is which claim it observes. Matching
+counts is not enough — six checks in a block after six claims all bind to the sixth:
+
+```markdown
+# misbound — every check is credited to `auth:`, and `does:`/`status:`/`errors:` read as unobserved
+- does: stores the submitted URL under a generated slug
+- status: 201 with the slug in the body
+- errors: 409 when the requested slug is already in use
+- auth: any signed-in editor
+- verify: created(subject="a link row for the submitted URL")
+- verify: http_status(code=201, path="/links")
+- verify: http_status(code=409, path="/links")
+
+# bound — each check sits under the claim it observes
+- does: stores the submitted URL under a generated slug
+- verify: created(subject="a link row for the submitted URL")
+- status: 201 with the slug in the body
+- verify: http_status(code=201, path="/links")
+- errors: 409 when the requested slug is already in use
+- verify: http_status(code=409, path="/links")
+- auth: any signed-in editor
+```
+
+Both books declare three checks and doctor is quiet on both. The first one asserts a 201 and a 409
+against one obligation and leaves three claims unobserved; only the second says what it means.
 
 The failure this item exists to prevent is the **single stamp**: attaching one `verify:` to a node
 carrying six obligations. Doctor goes quiet — the node declared *something* — and five claims stay
