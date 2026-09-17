@@ -2249,6 +2249,52 @@ def _linked_surface(
     return ""
 
 
+def _journey_steps(
+    node: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]
+) -> list[dict[str, str]]:
+    """The nodes a flow's `steps:` names, in the order the book wrote them.
+
+    A journey's claim is about what the sequence produced, so the sequence is part of the
+    claim and has to reach the stage that would walk it. Until this existed the packet said
+    only that a flow *links* these nodes: every `steps:` target arrived as one more
+    `flow-links-contract` entry under `reasons`, in a set, indistinguishable from what
+    `start:`, `end:` and `fixture:` named. A set of links is not a sequence, and a compiler
+    handed one cannot perform a journey — it can only assert the end state on arrival, in a
+    world the steps never ran in, which is exactly what `compile.py`'s flow branch refuses
+    to do.
+
+    Read off the bullet's own links rather than off `edges`' `via`, for the reason
+    `_linked_surface` and `_serialized_graph` both give: `via` keeps the *first* bullet an
+    href appeared under, so a flow whose `steps:` walks back through the screen its `start:`
+    already named loses that step entirely. The href is unambiguous where the attribution is
+    not; `edges` is consulted only to recover the node id an href already resolved to.
+
+    Each step carries its own `nodeType` and `surface`, because those are what D1's dispatch
+    table keys on: a step is performed by whatever drives the surface *it* lives on, not the
+    one the flow's `end:` is observed on. A step whose link resolves to nothing is kept with
+    an empty `ref` rather than dropped — dropping it would hand the next stage a shorter walk
+    that still looks complete, and a journey compiled one step short asserts its end state in
+    a world it did not reach. An absence is not an event.
+    """
+    resolved = {
+        str(edge["href"]): str(edge["to"])
+        for edge in node.get("edges") or []
+        if edge.get("to") and edge.get("href")
+    }
+    walk: list[dict[str, str]] = []
+    for item in _values(node.get("bullets", {}).get("steps")):
+        for _text, href in markdown.extract_refs(item).links:
+            target_id = resolved.get(href, "")
+            target = nodes_by_id.get(target_id, {}) if target_id else {}
+            walk.append({
+                "ref": target_id,
+                "href": href,
+                "nodeType": str(target.get("type") or ""),
+                "surface": str(target.get("surface") or ""),
+            })
+    return walk
+
+
 def _family_root(node_id: str, nodes_by_id: dict[str, dict[str, Any]]) -> str:
     """The declared-family root *node_id* belongs to, for `_CONTAINER_FANOUT` counting (2n).
 
@@ -2358,6 +2404,13 @@ def _obligations(
         end_surface = _linked_surface(node, node.get("bullets", {}).get("end"), nodes_by_id)
         if end_surface:
             base["surface"] = end_surface
+        # The journey itself, ordered. Rides on `base`, so every obligation this flow mints
+        # carries the same walk — a flow's `start:`, `end:` and its own `verify:` are all
+        # claims about what these steps did, and each of them needs the sequence to be
+        # discharged by anything other than an arrival.
+        walk = _journey_steps(node, nodes_by_id)
+        if walk:
+            base["steps"] = walk
     locators = _locators(node)
     if nodes_by_id is not None and node.get("type") in ("interaction", "invocation"):
         extends_target, extends_malformed = _extends_target(node, nodes_by_id)

@@ -1846,3 +1846,96 @@ title: Items
     assert stamped["save-item:does:2"] == "unstated"
     # The node's own contract nests nothing, so there is no word it could be missing.
     assert stamped["save-item:contract"] is None
+
+
+def test_a_flows_steps_reach_the_packet_in_the_order_the_book_wrote_them(tmp_path: Path):
+    """A journey is a sequence, and the packet has to carry it as one.
+
+    Before this, every node a flow named — its `start:`, its `steps:`, its `end:`, its
+    `fixture:` — arrived as one more unordered `flow-links-contract` entry under `reasons`.
+    A set of links is not a sequence, so no later stage could walk the journey; it could
+    only assert the end state on arrival, in a world the steps never ran in.
+
+    The second `steps:` entry here names the very screen `start:` already named. That is the
+    case the edge attribution cannot express — `via` keeps the *first* bullet an href
+    appeared under, so reading the walk off `edges` would silently drop it and compile a
+    journey one step short.
+    """
+    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "docs/features/acme/flows").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/gui/screens/items.md").write_text(
+        """---
+type: screen
+title: Items
+---
+# Items
+
+- route: /items
+
+## Components
+
+### save-button
+- role: button
+- name: Save item
+- code: app/items.py::save_item
+
+## Interactions
+
+### save-item
+- on: [save-button](#save-button)
+- trigger: click
+- does:
+  - request: persist the item
+- verify: visible(locator="#saved")
+- code: app/items.py::save_item
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/acme/flows/save-and-return.md").write_text(
+        """---
+type: flow
+title: Save and return
+---
+# Save and return
+
+- start: [items](../gui/screens/items.md)
+- steps:
+  - [save-item](../gui/screens/items.md#save-item)
+  - [items](../gui/screens/items.md)
+- end: [items](../gui/screens/items.md)
+- verify: visible(locator="../gui/screens/items.md#save-button")
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/items.py").write_text(
+        "def save_item():\n    return 'old'\n", encoding="utf-8"
+    )
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/items.py").write_text(
+        "def save_item():\n    return 'new'\n", encoding="utf-8"
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+
+    flow = [
+        item for item in packet["obligations"]
+        if item["id"].startswith("okf:docs/features/acme/flows/save-and-return.md")
+    ]
+    assert flow, "the flow minted no obligation to carry a walk"
+    walk = [
+        [(step["ref"], step["nodeType"]) for step in item["steps"]] for item in flow
+    ]
+    # Every obligation the flow mints carries the same walk: its `start:`, its `end:` and its
+    # own `verify:` are each a claim about what these steps did.
+    assert walk and all(entry == walk[0] for entry in walk)
+    assert walk[0] == [
+        ("docs/features/acme/gui/screens/items.md#save-item", "interaction"),
+        ("docs/features/acme/gui/screens/items.md", "screen"),
+    ]
+    assert {step["surface"] for step in flow[0]["steps"]} == {"acme"}
