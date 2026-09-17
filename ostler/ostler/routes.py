@@ -33,6 +33,37 @@ def literal_route(route: str) -> str:
     return text.rstrip("/") or "/"
 
 
+def why_unreadable(route: str) -> str:
+    """Why `literal_route` returned nothing for *route*, in the book's own terms.
+
+    The reading and the reason for it belong to the same module: a caller that reported "names
+    a family of pages" for every empty answer would be describing one of three different books
+    — a parameterised path, a bullet that is not a path at all (a framework's route *name*, a
+    sentence, a prose "none"), and a file that states no route or two — and each has a
+    different repair. A message that names the wrong one sends the author to fix a thing that
+    is not wrong.
+
+    Returns "" when the route *is* readable, so a caller can use it as the condition.
+    """
+    text = route.strip()
+    if not text:
+        return "the book states no single `route:` for it"
+    if literal_route(text):
+        return ""
+    if not text.startswith("/"):
+        # The real books reached for by reverse-engineering write the framework's route *name*
+        # here, sometimes with the path in a parenthetical after it. That is a fact about the
+        # source, not an address, and a browser cannot be asked about it.
+        return f"its `route:` (`{_excerpt(text)}`) is not a path a browser could show"
+    return f"its `route:` (`{_excerpt(text)}`) names a family of pages"
+
+
+def _excerpt(text: str) -> str:
+    """*text* on one line, short enough to read inside a finding."""
+    one_line = " ".join(text.split())
+    return one_line if len(one_line) <= 60 else one_line[:57] + "..."
+
+
 def arrived_at(url: str, route: str) -> bool:
     """Whether a page at *url* is the screen documented at *route*.
 

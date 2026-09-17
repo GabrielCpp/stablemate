@@ -2381,3 +2381,27 @@ def test_a_screen_the_book_states_no_route_for_vets_nothing() -> None:
     assert _vetted(source) == []
     detail = next(gap.detail for gap in gaps if gap.kind == "unidentifiable-screen")
     assert "no single `route:`" in detail
+
+
+def test_a_route_that_is_not_a_path_is_reported_as_one_not_as_a_pattern() -> None:
+    """A book reverse-engineered from a framework writes the route's *name* in this bullet.
+
+    `route: app_bundle_user_home` is a fact about the source, not an address, and telling its
+    author it "names a family of pages" sends them to remove a parameter that is not there.
+    Three unreadable shapes, three repairs, so the gap says which one it read.
+    """
+    oid = "okf:policy-list:policy-table:visible:1"
+
+    def detail_for(route: str) -> str:
+        context = _navigation_context(
+            _page_obligation(oid, f"{_SCREEN}#policy-table",
+                              locators={"role": ["table"], "name": ["Policies on file"]},
+                              checks=[_visible("table:Policies on file")]),
+            navigation=_arrival_navigation(),
+            screen_routes={_SCREEN: route},
+        )
+        _, gaps = compile_plan_gaps(context, story="demo-story")
+        return next(gap.detail for gap in gaps if gap.kind == "unidentifiable-screen")
+
+    assert "is not a path a browser could show" in detail_for("app_bundle_user_home")
+    assert "names a family of pages" in detail_for("/policies/{id}")

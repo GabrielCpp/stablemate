@@ -31,7 +31,7 @@ from ostler.checks import CHECK_BY_NAME
 from ostler.checks import _rooted
 from ostler.markdown import extract_refs
 from ostler.qa import references
-from ostler.routes import literal_route
+from ostler.routes import literal_route, why_unreadable
 from ostler.qa.outcome import QaOutcome
 
 
@@ -1475,8 +1475,9 @@ def _vettable(
 
     A `qa.vet` files every placement verdict it produces under the screen it was told to
     grade, and the only thing a reader of a rendered page has to go on to say which screen it
-    is looking at is that screen's `route:`. Where the route names a family of pages — or the
-    book states none, or states two for one file — there is no comparison to make, the driver
+    is looking at is that screen's `route:`. Where the route names a family of pages, or is not
+    a path at all — a framework's route *name*, a sentence — or the book states none for the
+    file, or states two, there is no comparison to make, the driver
     grades whatever it was handed and reports `arrival: "unstated"`, and a verdict about a
     correspondence nobody established is a pass that means nothing.
 
@@ -1491,11 +1492,7 @@ def _vettable(
         if literal_route(route):
             keep.append(document)
             continue
-        why = (
-            f"its `route:` (`{route}`) names a family of pages"
-            if route else
-            "the book states no single `route:` for it"
-        )
+        why = why_unreadable(route)
         gaps.extend(Gap(oid, "unidentifiable-screen",
                         f"this scenario ends on {document}, and {why} — so nothing can say the "
                         "page it photographed is that screen, and its placement verdicts are "
