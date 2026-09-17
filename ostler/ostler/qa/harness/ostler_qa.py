@@ -268,6 +268,7 @@ class ScenarioDecl:
 class _Registry:
     run_id: str = ""
     story: str = ""
+    book: str = ""
     targets: dict[str, Target] = field(default_factory=dict)
     secrets: dict[str, Secret] = field(default_factory=dict)
     inputs: dict[str, str] = field(default_factory=dict)
@@ -280,6 +281,7 @@ class _Registry:
             "version": 3,
             "run_id": self.run_id,
             "story": self.story,
+            "book": self.book,
             "inputs": dict(self.inputs),
             "secrets": {name: s.as_json() for name, s in self.secrets.items()},
             "targets": {name: t.as_json() for name, t in self.targets.items()},
@@ -292,11 +294,19 @@ class _Registry:
 REGISTRY = _Registry()
 
 
-def plan(*, run_id: str, story: str) -> None:
-    """Name the run and the story. Exactly one call per module."""
+def plan(*, run_id: str, story: str, book: str = "") -> None:
+    """Name the run and the story. Exactly one call per module.
+
+    `book` is a digest of the obligation id set the plan was compiled from (`ostler qa
+    compile-plan` fills it in; a hand-authored plan may leave it blank). It names *what the
+    plan was read from*, not what it asserts — `ostler qa run` recomputes the same digest
+    against the book at run time and reports `stale-plan` when they differ, rather than
+    running scenarios that quote obligations the book no longer states or omitting scenarios
+    for ones it has since gained.
+    """
     if REGISTRY.run_id:
         raise ValueError("plan() was already called; a module declares one run")
-    REGISTRY.run_id, REGISTRY.story = run_id, story
+    REGISTRY.run_id, REGISTRY.story, REGISTRY.book = run_id, story, book
 
 
 def target(

@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from ostler.qa.compile import book_digest
 from ostler.qa.evidence_map import build_evidence_map
 from ostler.qa.harness_host import load_harness_module
 from ostler.qa.plan import load_plan, resolve_spec_dir, validate_v2
@@ -183,6 +184,44 @@ def test_a_valid_plan_has_no_problems(tmp_path: Path) -> None:
     document, problems = load_plan(_plan(spec), spec, tmp_path)
     assert not problems and document is not None
     assert validate_v2(document) == []
+
+
+def test_a_blank_book_digest_is_not_checked(tmp_path: Path) -> None:
+    """A hand-authored plan names no `book=` — nothing here to compare it against, so it is
+    silently exempt rather than refused for omitting a field `ostler qa compile-plan` mints."""
+    spec = _spec(tmp_path)
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+    assert document.data.get("book", "") == ""
+    assert validate_v2(document) == []
+
+
+def test_a_plan_compiled_from_the_current_book_is_not_stale(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    context = json.loads((spec / "qa-okf-context.json").read_text(encoding="utf-8"))
+    source = PLAN.replace(
+        'plan(run_id="qa-story-1", story="story-1")',
+        f'plan(run_id="qa-story-1", story="story-1", book={book_digest(context)!r})',
+    )
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+    assert validate_v2(document) == []
+
+
+def test_a_plan_compiled_from_a_different_book_is_stale(tmp_path: Path) -> None:
+    """The trap 2w exists for: `compile-plan --out` never overwrites an authored plan, and
+    `qa.vet(...)` re-reads the book at run time while a baked `qa.verify(...)` line does not —
+    so a stale plan can pass its placement checks while asserting against obligations the book
+    no longer states, and nothing said so. This is what says so."""
+    spec = _spec(tmp_path)
+    source = PLAN.replace(
+        'plan(run_id="qa-story-1", story="story-1")',
+        'plan(run_id="qa-story-1", story="story-1", book="not-the-real-digest")',
+    )
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+    reported = validate_v2(document)
+    assert any(item.startswith("stale-plan:") for item in reported)
 
 
 def test_ac_only_browser_scenario_can_vet_book_screen_outside_packet(

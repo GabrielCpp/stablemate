@@ -19,6 +19,7 @@ an agent turn and without ever opening the implementation.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -305,6 +306,20 @@ def _owed(context: dict[str, Any]) -> list[dict[str, Any]]:
     return [o for o in context.get("obligations", []) if o.get("required", True)]
 
 
+def book_digest(context: dict[str, Any]) -> str:
+    """A digest of *context*'s obligation id set — what a compiled plan's `book=` names.
+
+    The ids, not the tree: the plan derives from the obligations a compile pass owed proof
+    for, and an id-set digest is stable under a book edit that reformats or reorders without
+    changing what is owed, so it does not fire on noise. Sorted before hashing so two packets
+    naming the same set in a different walk order agree. `_owed` (not raw `obligations`) —
+    a `required: False` context-only obligation was never a claim the plan owed a scenario
+    for, so its coming or going is not a reason to call the plan stale.
+    """
+    ids = sorted(str(o["id"]) for o in _owed(context) if o.get("id"))
+    return hashlib.sha256("\n".join(ids).encode("utf-8")).hexdigest()
+
+
 def _is_page_obligation(obligation: dict[str, Any]) -> bool:
     return any(_observes(row.get("name")) == "page" for row in obligation.get("checksDeclared", []))
 
@@ -567,7 +582,8 @@ def compile_plan_gaps(
         "from ostler_qa import Qa, plan, scenario, target",
         "",
         "",
-        f"plan(run_id={_lit(run_id or f'qa-{story}')}, story={_lit(story)})",
+        f"plan(run_id={_lit(run_id or f'qa-{story}')}, story={_lit(story)}, "
+        f"book={_lit(book_digest(context))})",
     ]
 
     by_source: dict[str, list[dict[str, Any]]] = {}

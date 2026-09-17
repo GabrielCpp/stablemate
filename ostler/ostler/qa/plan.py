@@ -17,6 +17,7 @@ import yaml
 
 from ostler import checks
 from ostler.model import load as load_graph
+from ostler.qa.compile import book_digest
 from ostler.qa.harness_host import default_interpreter, describe, load_harness_module
 from ostler.untyped import is_mapping
 from ostler.vet import placement
@@ -139,6 +140,22 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
     for field in ("run_id", "story"):
         if not isinstance(plan.get(field), str) or not plan[field].strip():
             problems.append(f"'{field}' is required and must be non-empty")
+    # `book` is a digest of the obligation id set the plan was compiled from (`compile.
+    # book_digest`, filled in by `ostler qa compile-plan`) — a hand-authored plan leaves it
+    # blank, and blank compares against nothing. A compiled plan with the field carries a
+    # stored fact about the book it read; recomputing the same digest against *this* run's
+    # `qa-okf-context.json` and comparing is how that fact is checked rather than trusted —
+    # `compile-plan --out` never overwrites an existing plan file (authored TODOs would be
+    # destroyed), so a plan compiled before a book edit and run after it otherwise reports
+    # whatever the scenarios happen to assert against obligations that have since changed.
+    book = plan.get("book")
+    if isinstance(book, str) and book and document.context:
+        current = book_digest(document.context)
+        if book != current:
+            problems.append(
+                "stale-plan: this plan was compiled from a different book "
+                f"(book={book[:12]}, current book={current[:12]}) — recompile it"
+            )
 
     name = document.path.name
     try:

@@ -24,6 +24,7 @@ from ostler.qa.compile import (
     PYTHON,
     _unobservable_gap,
     annotate_deferred_obligations as _annotate_deferred_obligations,
+    book_digest,
     cmd_compile_plan as _cmd_compile_plan,
     compile_plan as _compile_plan,
     compile_plan_gaps as _compile_plan_gaps,
@@ -122,6 +123,38 @@ def test_a_compiled_plan_is_valid_python() -> None:
     ast.parse(source)
     assert "qa.http.post" in source
     assert "expect_status=201" in source
+
+
+def test_a_compiled_plan_carries_the_books_own_digest() -> None:
+    """`plan(book=...)` names the obligation id set this compile pass read, so a run against
+    a book that has since changed can tell it apart from one still current."""
+    context = _context(
+        _obligation(
+            "okf:docs/features/demo/api.md#post-things:does:1",
+            checksDeclared=[
+                {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}},
+            ],
+        )
+    )
+    source = compile_plan(context, story="demo-story")
+    assert f'book="{book_digest(context)}"' in source
+
+
+def test_the_books_digest_ignores_order_and_context_only_obligations() -> None:
+    """Stable under a rewalk that visits the same ids in a different order, and blind to a
+    `required: False` obligation — the plan never owed that one a scenario in the first place,
+    so its coming or going is not a reason to call the plan stale."""
+    a = _obligation("okf:docs/features/demo/api.md#post-things:does:1")
+    b = _obligation("okf:docs/features/demo/api.md#post-things:does:2")
+    context_only = _obligation("okf:docs/features/demo/api.md#post-things:does:3", required=False)
+    assert book_digest(_context(a, b)) == book_digest(_context(b, a))
+    assert book_digest(_context(a, b)) == book_digest(_context(a, b, context_only))
+
+
+def test_the_books_digest_changes_with_the_obligation_set() -> None:
+    a = _obligation("okf:docs/features/demo/api.md#post-things:does:1")
+    b = _obligation("okf:docs/features/demo/api.md#post-things:does:2")
+    assert book_digest(_context(a)) != book_digest(_context(a, b))
 
 
 def test_a_boolean_argument_compiles_to_python_not_json() -> None:
