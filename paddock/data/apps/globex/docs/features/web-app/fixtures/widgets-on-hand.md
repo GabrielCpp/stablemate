@@ -18,7 +18,11 @@ nothing. Every fixture here establishes its own precondition for that reason, an
 
 - provides:
   - name — the seeded widget's name, as it appears in the table's first column
+    - from: [seed-one-widget](#seed-one-widget)
+    - read: widget.name
   - quantity — the seeded widget's quantity, as it appears in the second
+    - from: [seed-one-widget](#seed-one-widget)
+    - read: widget.quantity
 
 ## Steps
 
