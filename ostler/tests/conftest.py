@@ -6,11 +6,10 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 
 import pytest
 
-from ostler import index, model, registry
+from ostler import index, testsupport
 
 
 def present[T](value: T | None) -> T:
@@ -239,28 +238,11 @@ def warm_index(book: Path, directory: Path) -> None:
 # legal OKF, or a reader-side check can go stale for years without a witness
 # (this is what let `test_qa_fixture_wiring.py`'s `- route:` bullet and
 # `test_qa_scope.py`'s bare `## Widget` heading pass since neither node's type
-# ever declared the key it exercised — see fix(ostler) 894d2d0f).
+# ever declared the key it exercised — see fix(ostler) 894d2d0f). The recorder
+# and the violation-check are shared plumbing, in `ostler.testsupport` — this
+# file keeps only its own autouse fixture and its own allow-set, both scoped
+# to this suite's nodeids.
 # ---------------------------------------------------------------------------
-
-#: Every `model.UINode` constructed during the current pytest process, appended in
-#: construction order by the patched `__init__` below. `meta` is a dict the loader mutates
-#: in place after `__init__` returns, so a node recorded here by reference carries its final
-#: bullets by the time a test that built it is done — nothing here needs to re-parse anything.
-_CONSTRUCTED_UI_NODES: list[model.UINode] = []
-
-_original_uinode_init = model.UINode.__init__
-
-
-def _recording_uinode_init(self: model.UINode, *args: Any, **kwargs: Any) -> None:
-    _original_uinode_init(self, *args, **kwargs)
-    _CONSTRUCTED_UI_NODES.append(self)
-
-
-# Installed once, at collection time, in every process that imports this file (the main
-# process for a serial run, each xdist worker for a parallel one) — a patch applied *after*
-# the session starts would miss an xdist worker's own copy of `model`, since a worker never
-# inherits a running process' monkeypatches, only its own fresh import of the module.
-model.UINode.__init__ = _recording_uinode_init
 
 #: Tests that build a book with an undeclared, load-bearing bullet key *on purpose* — the
 #: deliberate negative fixtures this gate must tell apart from a stale one. Keyed by pytest
@@ -283,16 +265,12 @@ def _inline_books_are_legal_okf(request: pytest.FixtureRequest):
     fires. A node a test builds is a book nothing else in the pipeline reads for grammar the way
     a real book is read by `doctor`; this fixture is what stands in for that reading here.
     """
-    start = len(_CONSTRUCTED_UI_NODES)
+    start = len(testsupport.CONSTRUCTED_UI_NODES)
     yield
-    nodes = _CONSTRUCTED_UI_NODES[start:]
+    nodes = testsupport.CONSTRUCTED_UI_NODES[start:]
     if not nodes or request.node.nodeid in UNKNOWN_BULLET_ALLOWED_TESTS:
         return
-    violations = [
-        f"{node.type}.{key} ({node.id or node.path})"
-        for node in nodes
-        for key in registry.unknown_bullet_keys(node.type, node.meta)
-    ]
+    violations = testsupport.unknown_bullet_violations(nodes)
     assert not violations, (
         f"{request.node.nodeid} builds a book `unknown-bullet` would flag on a real "
         f"run — the fixture is written against a grammar these types no longer declare: "
