@@ -574,22 +574,25 @@ def _check_fixtures(graph: Graph, f: list[Finding]) -> None:
                     f"`- {registry.STORY_FIXTURES_LABEL}: <name>`, or "
                     f"`{registry.STORY_FIXTURES_NONE}` when the story arranges nothing",
                     epic.name, story.slug, path=rel, line=1))
+            plan = spec_root / story.slug / "qa_plan.py"
+            plan_rel = plan.relative_to(graph.root).as_posix()
+            # `None` is not `set()`: no plan yet means nobody has said whether an undeclared
+            # name is an arrangement or a word, and that is a third answer, not an empty one.
+            names = fixtures_mod.referenced(plan) if plan.is_file() else None
+            stated = set(story.fixtures)
+
             for name in story.fixtures:
                 if name not in known:
                     f.append(Finding(
                         "error", "unknown-story-fixture",
                         f"story '{story.slug}' names fixture '{name}', which this repo does not "
-                        f"declare — add a fixture node under `docs/features/<surface>/fixtures/"
-                        f"{name}.md`, or a hand-written `qa: {{fixtures:}}` entry in agents.yml. "
-                        f"Declared here: {', '.join(sorted(known)) or '(none)'}",
-                        epic.name, name, path=rel, line=1))
+                        f"declare. Declared here: "
+                        f"{', '.join(sorted(known)) or '(none)'}",
+                        epic.name, name, path=rel, line=1,
+                        suggestion=_undeclared_fixture_repair(name, names, plan_rel)))
 
-            plan = spec_root / story.slug / "qa_plan.py"
-            if not plan.is_file():
+            if names is None:
                 continue
-            names = fixtures_mod.referenced(plan)
-            plan_rel = plan.relative_to(graph.root).as_posix()
-            stated = set(story.fixtures)
             for name in sorted(names - stated):
                 f.append(Finding(
                     "error", "undeclared-story-fixture",
@@ -598,12 +601,45 @@ def _check_fixtures(graph: Graph, f: list[Finding]) -> None:
                     f"`- {registry.STORY_FIXTURES_LABEL}: {name}` under "
                     f"`## {registry.STORY_FIXTURES_HEADING}`",
                     epic.name, name, path=rel, line=1))
-            for name in sorted(stated - names):
+            # Only names the repo *does* declare. An undeclared name is one fact, and
+            # `unknown-story-fixture` above has already spent this same evidence on saying
+            # which repair it wants; reporting it a second time under a second code pairs an
+            # error with a warning that prescribe opposite repairs for one bullet.
+            for name in sorted((stated & known) - names):
                 f.append(Finding(
                     "warn", "unused-story-fixture",
                     f"story '{story.slug}' names fixture '{name}' but its qa_plan.py never asks "
                     f"for it ({plan_rel})",
                     epic.name, name, path=rel, line=1))
+
+
+def _undeclared_fixture_repair(name: str, referenced: set[str] | None, plan_rel: str) -> str:
+    """Say what to do about a `## Fixtures` name the repo does not declare.
+
+    The spelling of the name cannot say whether someone forgot to declare an arrangement or
+    wrote a domain noun that was never one — *a name that nothing declares and nothing uses is
+    not an undeclared thing; it is not a thing, and only what reaches for the name says which*.
+    The story's own plan is what reaches, so the plan picks the repair. Measured over stablemate
+    and all five paddock apps at the time this was written: eleven undeclared names, **none**
+    used by a plan, eleven unused — so the single suggestion this replaced ("declare it") was
+    wrong in every case in existence, and the correct repair was the one filed beside it at the
+    lower severity as a separate warning.
+
+    `referenced is None` is the story whose plan phase has not run. It gets no repair, because
+    neither is supported yet — the same rule as *undetermined ⇒ do not emit executable code*,
+    one level up, at the advice.
+    """
+    if referenced is None:
+        return (f"no `{plan_rel}` yet, so nothing yet says whether '{name}' is an arrangement "
+                f"nobody declared or a word that was never an arrangement. The plan decides; "
+                f"write it first.")
+    if name in referenced:
+        return (f"`{plan_rel}` asks for '{name}', so it is an arrangement nobody declared — add "
+                f"a fixture node under `docs/features/<surface>/fixtures/{name}.md`, or a "
+                f"hand-written `qa: {{fixtures:}}` entry in agents.yml")
+    return (f"`{plan_rel}` never asks for '{name}', so nothing arranges it and nothing wants it "
+            f"— delete the bullet, or write `{registry.STORY_FIXTURES_NONE}` if the story "
+            f"arranges nothing")
 
 
 def _check_book_fixtures(graph: Graph, known: set[str], f: list[Finding]) -> None:
