@@ -94,7 +94,6 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - does:
   - Appends the expense and rewrites the ledger.
 - verify: count(subject="entries in the ledger", equals=1)
-- verify: unchanged(subject="tally.json")
 - status: `0` when the expense was recorded.
 - verify: exit_status(code=0)
 - status: `2` when the expense was refused.
@@ -102,6 +101,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - errors:
   - An amount that is not a positive whole number of cents is refused, and the ledger is left
     unchanged.
+- verify: unchanged(subject="tally.json")
 - code: tally/ledger.py::add_entry
 
 ### import-a-csv
@@ -117,6 +117,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - code: tally/ledger.py::merge
 - consistency: ledger-file — importing the same file twice leaves the ledger holding what importing it once
   left it holding.
+- verify: unchanged(subject="tally.json")
 
 ### import-a-malformed-row
 - on: [import](#import)
