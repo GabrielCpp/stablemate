@@ -277,6 +277,15 @@ class BulletKey:
                              # verify argument can reference — the counterpart of ``arrange``:
                              # one says how to reach the state a claim needs, the other says what
                              # to remember from having reached it.
+    locator: bool = False    # value names how to address this node in a running UI/API, or
+                             # partitions its ``visible(...)``/obligation scenarios (``role:``,
+                             # ``selector:``, ``on:``, ``exclusive-with:`` …) — lifted onto the
+                             # obligation for a planner/compiler to read (``qa/context.py``'s
+                             # ``_locators``). A flag, not a hand-maintained key tuple beside this
+                             # table, so the two cannot drift the way ``_LOCATOR_KEYS`` and
+                             # ``LOAD_BEARING_KEYS`` did — one read every key on every node
+                             # regardless of type, the other refused a bullet no type declared,
+                             # and a key legal on neither list's terms went unread by both.
 
 
 @dataclass(frozen=True)
@@ -591,13 +600,13 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # All three are required even when empty. A screen that simply omits `requires:` is
             # indistinguishable from one that is genuinely unconditional, and a walk cannot tell
             # "nothing to satisfy" from "nobody wrote it down" — so `none` must be *stated*.
-            BulletKey("route", required=True),
+            BulletKey("route", required=True, locator=True),
             BulletKey("requires", required=True, nested=True, link=True),
-            BulletKey("params", required=True, nested=True, link=True),
+            BulletKey("params", required=True, nested=True, link=True, locator=True),
             # Optional, and a claim when present: this screen is entered from outside in-app
             # navigation (app root, emailed deep link, OAuth callback) and the value says how.
             # It exempts the screen from the reachability check, so it is not a silencer.
-            BulletKey("entry"),
+            BulletKey("entry", locator=True),
             BulletKey("detail", link=True),
         ),
     ),
@@ -748,12 +757,12 @@ UI_TYPES: tuple[UINodeType, ...] = (
     UINodeType(
         name="component", kind="section", heading="Components",
         bullet_keys=(
-            BulletKey("selector"),
+            BulletKey("selector", locator=True),
             # Required, because they are the same fact twice: the accessibility contract a screen
             # reader announces, and the `getByRole(role, {name})` a test locates by. `none` is a
             # legitimate value — a decorative or purely presentational element has no accessible
             # name — but it has to be *stated*, so "no name" and "nobody looked" stay distinguishable.
-            BulletKey("role", required=True, normative=True),
+            BulletKey("role", required=True, normative=True, locator=True),
             # A generated class of controls: `one-per:` names the iteration variable (machine
             # value = one identifier in backticks; where the data comes from stays prose, grounded
             # via `code:`), `variants:` enumerates the "one of each type" axis
@@ -763,7 +772,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # evaluated. See locators.py.
             BulletKey("one-per"),
             BulletKey("variants"),
-            BulletKey("name", required=True, normative=True),
+            BulletKey("name", required=True, normative=True, locator=True),
             BulletKey("unique-by"),
             # Where the component lands on the screen, as bands of the viewport
             # (`width 60-100%, x 0-20%`). Screen-relative on purpose: no `sidebar`/`main-column`
@@ -771,15 +780,15 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # fact a role+name assertion cannot check — `getByRole` finds an element whether the
             # page lays it out across the window or crushes it into a column against one margin.
             BulletKey("placement"),
-            BulletKey("keyboard", normative=True),   # how it's reached/operated by keyboard
+            BulletKey("keyboard", normative=True, locator=True),   # how it's reached/operated by keyboard
             BulletKey("extends", link=True),
             BulletKey("parent", link=True),
             # Sibling(s) this control can never be in the DOM at the same time as. It is the runtime
             # fact a static role+name check cannot see: two controls that share a locator but never
             # co-render are not ambiguous. A *claim*, grounded in source (mutually-exclusive states,
             # variant switch) — not a way to silence a real same-screen collision.
-            BulletKey("exclusive-with", link=True),
-            BulletKey("states", normative=True),
+            BulletKey("exclusive-with", link=True, locator=True),
+            BulletKey("states", normative=True, locator=True),
             BulletKey("code", link=True, owns=True),
             # The judgment pointer: the concept whose selection rule says when *this* one of
             # several competing implementations is the right one. It resolves on any type
@@ -798,7 +807,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("parent", link=True),
             BulletKey("flags"),
             BulletKey("args"),
-            BulletKey("does", nested=True, normative=True),
+            BulletKey("does", nested=True, normative=True, locator=True),
             # The refusal arm of a command, as an endpoint's `errors:`/`status:` are of a route:
             # what it prints and the code it leaves with. Both were graded before they were
             # declared here, which is the drift `BulletKey.normative` closes.
@@ -815,11 +824,11 @@ UI_TYPES: tuple[UINodeType, ...] = (
     UINodeType(
         name="endpoint", kind="section", heading="Endpoints",
         bullet_keys=(
-            BulletKey("method"),
-            BulletKey("path"),
+            BulletKey("method", locator=True),
+            BulletKey("path", locator=True),
             BulletKey("channel"),
             BulletKey("message"),
-            BulletKey("does", nested=True, normative=True),
+            BulletKey("does", nested=True, normative=True, locator=True),
             BulletKey("emits"),
             BulletKey("consumes"),
             # The route's outcomes, one claim per value — declared here so `fmt` can order them
@@ -851,30 +860,30 @@ UI_TYPES: tuple[UINodeType, ...] = (
     UINodeType(
         name="interaction", kind="section", heading="Interactions",
         bullet_keys=(
-            BulletKey("on", required=True, link=True),
-            BulletKey("trigger", required=True),
+            BulletKey("on", required=True, link=True, locator=True),
+            BulletKey("trigger", required=True, locator=True),
             # An interaction is by definition operable, so all three are required: the role/name
             # give `getByRole(role, {name})` instead of a brittle selector, and `keyboard:` records
             # how it is fired without a pointer. `none` on `keyboard:` is a claim that the control
             # is pointer-only — which is an accessibility defect worth being able to *find*, not a
             # blank to leave empty.
-            BulletKey("role", required=True),
+            BulletKey("role", required=True, locator=True),
             # Repeat grammar, as on `component`: an interaction on a generated class of controls
             # repeats with it, and its `name:` template binds the same iteration variable.
             BulletKey("one-per"),
             BulletKey("variants"),
-            BulletKey("name", required=True),
+            BulletKey("name", required=True, locator=True),
             BulletKey("unique-by"),
-            BulletKey("keyboard", required=True, normative=True),
-            BulletKey("when", normative=True),
-            BulletKey("exclusive-with", link=True),
+            BulletKey("keyboard", required=True, normative=True, locator=True),
+            BulletKey("when", normative=True, locator=True),
+            BulletKey("exclusive-with", link=True, locator=True),
             # The arm's link back to the base interaction that carries the shared control
             # identity (`on:`/`trigger:`/`role:`/`name:`/`keyboard:`) — see `interaction.md`'s
             # Relationships section for the base-case/alternate rule this implements (D51). An
             # arm still declares its own `when:`/`does:`/`verify:`; only the control identity
             # is inherited, resolved in `qa/context.py`, never re-derived in `compile.py`.
             BulletKey("extends", link=True),
-            BulletKey("does", required=True, nested=True, normative=True),
+            BulletKey("does", required=True, nested=True, normative=True, locator=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
@@ -886,11 +895,11 @@ UI_TYPES: tuple[UINodeType, ...] = (
     UINodeType(
         name="invocation", kind="section", heading="Invocations",
         bullet_keys=(
-            BulletKey("on", required=True, link=True),
-            BulletKey("trigger", required=True),
-            BulletKey("when", normative=True),
+            BulletKey("on", required=True, link=True, locator=True),
+            BulletKey("trigger", required=True, locator=True),
+            BulletKey("when", normative=True, locator=True),
             BulletKey("extends", link=True),
-            BulletKey("does", required=True, nested=True, normative=True),
+            BulletKey("does", required=True, nested=True, normative=True, locator=True),
             BulletKey("emits"),
             BulletKey("consumes"),
             # The invocation's outcomes, one claim per value — declared here so `fmt` can order them
@@ -921,7 +930,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         bullet_keys=(
             BulletKey("sig"),
             BulletKey("abstract"),
-            BulletKey("does", normative=True),
+            BulletKey("does", normative=True, locator=True),
             BulletKey("raises", normative=True),
             BulletKey("returns", normative=True),
             BulletKey("code", link=True, owns=True),
@@ -1007,15 +1016,24 @@ NORMATIVE_KEYS_BY_TYPE: dict[str, tuple[str, ...]] = {
     t.name: tuple(b.key for b in t.bullet_keys if b.normative)
     for t in UI_TYPES if any(b.normative for b in t.bullet_keys)}
 # Every key that, on *some* type, drives machinery — minted as an obligation, parsed as a check,
-# grounded as a code ref, resolved as a fixture, followed as a link — minus the relations the
-# linter resolves on every type alike. On a type that does not declare it, such a key is
-# inert: a `verify:` on a concept is read by nobody, a `does:` on a component mints nothing, a
-# `code:` on a field is never grounded. That is the mismatch `doctor`'s `unknown-bullet` names
-# — and the only one it names, because a key no type declares (`meaning:`, `constraints:`)
-# is the author's own vocabulary, and a claim hiding under it is `unminted-claim`'s to find.
+# grounded as a code ref, resolved as a fixture, followed as a link, or read as a UI/API locator
+# — minus the relations the linter resolves on every type alike, *except* a relation a type also
+# flags `locator=True`: `on:`/`exclusive-with:`/`params:` resolve like any relation and are also
+# what `qa/context.py`'s `_locators` lifts onto an obligation, so excluding them here would make
+# `unknown-bullet` blind on the same type it names for every non-relation locator. On a type that
+# does not declare it, such a key is inert: a `verify:` on a concept is read by nobody, a `does:`
+# on a component mints nothing, a `code:` on a field is never grounded. That is the mismatch
+# `doctor`'s `unknown-bullet` names — and the only one it names, because a key no type declares
+# (`meaning:`, `constraints:`) is the author's own vocabulary, and a claim hiding under it is
+# `unminted-claim`'s to find.
+# Every key flagged `locator=True` on some type — `qa/context.py`'s `_locators` derives its own
+# `_LOCATOR_KEYS` from this rather than hand-maintaining a second tuple, so the two cannot name
+# a different set the way they used to.
+LOCATOR_KEYS: frozenset[str] = frozenset(b.key for t in UI_TYPES for b in t.bullet_keys if b.locator)
 LOAD_BEARING_KEYS: frozenset[str] = frozenset(
     b.key for t in UI_TYPES for b in t.bullet_keys
-    if b.normative or b.check or b.link or b.arrange) - frozenset(RELATION_KEYS)
+    if b.normative or b.check or b.link or b.arrange or b.locator
+) - (frozenset(RELATION_KEYS) - LOCATOR_KEYS)
 # ``## Heading`` → the section-node type it contains (profile §4's implicit-type table).
 UI_HEADING_TO_TYPE: dict[str, str] = {
     t.heading: t.name for t in UI_TYPES if t.kind == "section" and t.heading}

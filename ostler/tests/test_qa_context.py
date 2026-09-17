@@ -12,6 +12,7 @@ from ostler.qa.context import (
     _book_relative,
     _book_root,
     _is_generated_unit,
+    _locators,
     _sort_key,
     _verification_refs,
     build_context,
@@ -1770,6 +1771,25 @@ title: Items
     obligation = next(item for item in packet["obligations"]
                       if item["id"].endswith("#save-item:does:1"))
     assert obligation["checksDeclared"][0]["locates"]["locator"] == {"node": "", "locators": {}}
+
+
+def test_a_locator_key_undeclared_on_the_nodes_type_is_not_read():
+    """`on:` is declared on `interaction`/`invocation`, never on `method` — but before 3aa,
+    `_locators` read every `_LOCATOR_KEYS` member straight off a node's raw bullets with no
+    reference to what its type actually declares, so an `on:` authored on a `method` node (the
+    real book this generalizes from carried 205 of these) leaked through anyway. `does:` is
+    both a locator *and* declared on `method`, so it still surfaces — the fix is a per-type
+    filter, not a blanket refusal of the key."""
+    node = {
+        "type": "method",
+        "bullets": {
+            "does": ["writes the ledger."],
+            "on": ["[item-form](#item-form)"],
+        },
+    }
+    located = _locators(node)
+    assert "on" not in located
+    assert located["does"] == ["writes the ledger."]
 
 
 def test_an_unstated_claim_combiner_is_stamped_on_every_child(tmp_path: Path):

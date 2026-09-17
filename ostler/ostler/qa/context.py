@@ -142,11 +142,12 @@ _CONTEXT_ONLY_REASON_KINDS = _CLOSURE_REASON_KINDS | _COBINDING_REASON_KINDS
 #: bullets into more than one compiled scenario (a component present only in a named
 #: arrangement, a pair that can never share a scenario, and an `## Interactions` row's subject/
 #: action/destination). `compile.py` reads these to partition; nothing here interprets them.
-_LOCATOR_KEYS = (
-    "selector", "role", "name", "keyboard", "route", "entry", "params",
-    "states", "exclusive-with", "on", "trigger", "does", "when",
-    "method", "path",
-)
+#:
+#: Derived from `BulletKey.locator`, not a second hand-maintained tuple: a key that is a locator
+#: on one type and something else on another (`selector:` also names how an `environment` is
+#: chosen) is still read correctly, because `_locators` below filters by the node's own declared
+#: keys before it ever consults this set.
+_LOCATOR_KEYS = tuple(sorted(registry.LOCATOR_KEYS))
 #: Bullet key to packet key, for the few whose bullet spelling (a markdown-hyphen convention)
 #: is not a legal identifier a compiled plan would want to spell as a dict key.
 _LOCATOR_KEY_RENAME = {"exclusive-with": "exclusiveWith"}
@@ -2142,11 +2143,12 @@ def _parse_fixtures(
 
 
 def _locators(node: dict[str, Any]) -> dict[str, list[str]]:
+    declared = registry.declared_keys(node.get("type", ""))
     bullets = node.get("bullets", {})
     return {
         _LOCATOR_KEY_RENAME.get(key, key): _values(bullets.get(key))
         for key in _LOCATOR_KEYS
-        if _values(bullets.get(key))
+        if key in declared and _values(bullets.get(key))
     }
 
 

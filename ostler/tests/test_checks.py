@@ -30,8 +30,9 @@ def test_a_soft_wrapped_bullet_parses_as_markdown_renders_it() -> None:
     call = checks.parse_check('persists(subject="the id resolved for a known,\n  verified email")')
     assert isinstance(call, checks.CheckCall)
     assert call.text() == 'persists(subject="the id resolved for a known, verified email")'
-    assert checks.expected_form('persists(subject="a,\n  b", nope=1)') == \
-        checks.CHECK_BY_NAME["persists"].signature()
+    refused = checks.parse_check('persists(subject="a,\n  b", nope=1)')
+    assert isinstance(refused, checks.Refusal)
+    assert refused.form == checks.CHECK_BY_NAME["persists"].signature()
 
 
 def test_is_check_expression_is_the_one_test_for_a_check_shaped_value() -> None:
@@ -77,8 +78,8 @@ def test_list_arguments_round_trip() -> None:
 )
 def test_refusals_say_what_is_wrong(value: str, fragment: str) -> None:
     result = checks.parse_check(value)
-    assert isinstance(result, str)
-    assert fragment in result
+    assert isinstance(result, checks.Refusal)
+    assert fragment in result.message
 
 
 def test_canonical_text_parses_back_to_the_same_call() -> None:
@@ -157,9 +158,10 @@ def test_a_lifecycle_claim_is_expressible_as_a_paired_observation() -> None:
 def test_a_lifecycle_check_names_its_subject() -> None:
     """A creation with no subject is the unfalsifiable form the check was added to replace."""
     result = checks.parse_check("created()")
-    assert isinstance(result, str)
-    assert "requires `subject: str`" in result
-    assert checks.expected_form("created()") == "created(subject: str*)"
+    assert isinstance(result, checks.Refusal)
+    assert result.kind == "bad-arguments"
+    assert "requires `subject: str`" in result.message
+    assert result.form == "created(subject: str*)"
 
 
 def test_every_declarable_check_is_observable_by_the_harness() -> None:
@@ -214,9 +216,12 @@ def test_normative_table_is_derived_from_the_registry() -> None:
 
 def test_a_load_bearing_key_is_one_some_type_instruments() -> None:
     """`verify:` and `code:` are the keys an author expects machinery behind; `meaning:` is
-    nobody's, and `parent:` is resolved on every type alike, so neither is in the set."""
-    assert {"verify", "code", "does", "status", "fixture"} <= registry.LOAD_BEARING_KEYS
-    assert not {"meaning", "parent", "detail", "on"} & registry.LOAD_BEARING_KEYS
+    nobody's, and `parent:`/`detail:` are resolved on every type alike with no locator use, so
+    neither is in the set. `on:` *is* — it resolves like any relation, but a `qa/context.py`
+    planner also reads it off the obligation as a control's locator (3aa), so excluding it here
+    would leave `unknown-bullet` blind on the same undeclared-type reads that fix closes."""
+    assert {"verify", "code", "does", "status", "fixture", "on"} <= registry.LOAD_BEARING_KEYS
+    assert not {"meaning", "parent", "detail"} & registry.LOAD_BEARING_KEYS
 
 
 def test_an_alias_is_declared_but_never_stubbed() -> None:
@@ -253,8 +258,9 @@ def test_a_runbook_step_verify_stays_a_reference() -> None:
 def test_the_expected_form_is_the_failing_checks_own_signature(value: str, expected: str) -> None:
     """The counter-case is a canned example: an author shown `http_status(code=…)` after
     mis-calling `absent` learns nothing about `absent`, and guesses again on the next lap."""
-    assert isinstance(checks.parse_check(value), str)
-    assert checks.expected_form(value) == expected
+    refused = checks.parse_check(value)
+    assert isinstance(refused, checks.Refusal)
+    assert refused.form == expected
 
 
 def test_a_signature_says_which_kind_of_string_an_argument_is() -> None:
@@ -267,18 +273,22 @@ def test_a_signature_says_which_kind_of_string_an_argument_is() -> None:
     assert "text: str)" in checks.CHECK_BY_NAME["visible"].signature()
 
 
-def test_the_expected_form_falls_back_to_the_whole_vocabulary() -> None:
-    """No name recovered means no check chosen yet, so the answer is the menu."""
-    form = checks.expected_form("api/publish.go::Publish")
+def test_only_a_refusal_that_named_no_check_falls_back_to_the_vocabulary() -> None:
+    """No name recovered means no check chosen yet, so the answer is the menu — and *only*
+    then. A value that named a check gets that check's signature, and a value that is a test
+    reference gets the key it belongs under, because both of those are narrower answers the
+    refusal is in a position to give."""
+    unnamed = checks.parse_check("nope(a=1)")
+    assert isinstance(unnamed, checks.Refusal)
     for spec in checks.CHECKS:
-        assert spec.signature() in form
+        assert spec.signature() in unnamed.form
 
 
 def test_the_one_of_rule_holds_on_both_sides_of_the_binding() -> None:
     """`parse_check` reads the book's bullet and `bind` reads the plan's recovered call. A
     rule applied on one side only would refuse a plan that invokes exactly what was declared,
     so the refusal lives in the shared tail and both spellings feel it identically."""
-    assert isinstance(checks.bind("json_path", {"path": "$.item.id"}), str)
+    assert isinstance(checks.bind("json_path", {"path": "$.item.id"}), checks.Refusal)
     for args in ({"equals": "abc"}, {"matches": "^a"}, {"absent": True}):
         assert isinstance(checks.bind("json_path", {"path": "$.item.id", **args}), checks.CheckCall)
 
@@ -306,7 +316,7 @@ def test_exit_status_binds_the_code_a_command_ends_with() -> None:
     assert call.args == {"code": 0}
     assert call.text() == "exit_status(code=0)"
     assert "only read its output" in checks.CHECK_BY_NAME["exit_status"].excludes
-    assert isinstance(checks.parse_check("exit_status()"), str)
+    assert isinstance(checks.parse_check("exit_status()"), checks.Refusal)
 
 
 @pytest.mark.parametrize(
@@ -385,3 +395,45 @@ def test_a_regex_argument_parses_without_a_python_escape_warning():
         warnings.simplefilter("error")
         call = checks.parse_check(r'json_path(path="$.id", matches="^\d+$")')
     assert isinstance(call, checks.CheckCall)
+
+
+def test_a_check_written_as_a_markdown_code_span_is_a_check() -> None:
+    """Books render a call as code, and the backticks are the rendering. Reading them as
+    content refuses a call the book got right — 12 of them in one real book — and the author
+    is sent to fix a bullet that was already correct."""
+    call = checks.parse_check('`json_path(path="$.result", equals="ok")`')
+    assert isinstance(call, checks.CheckCall)
+    assert call == checks.parse_check('json_path(path="$.result", equals="ok")')
+
+
+def test_a_value_holding_two_code_spans_is_not_unwrapped_to_its_middle() -> None:
+    """The closing run has to match the opening one and nothing may sit outside it. Stripping
+    the first and last backtick instead would hand the parser `a` and `b` — a value the book
+    never wrote, and a refusal quoting text that appears nowhere in it."""
+    refused = checks.parse_check("`a` and `b`")
+    assert isinstance(refused, checks.Refusal)
+    assert "`a` and `b`" in refused.message
+
+
+def test_a_backticked_test_reference_reaches_the_test_reference_arm() -> None:
+    """The silent half of the same defect, and the larger one: the suffix test read ``ts` ``
+    rather than `ts`, so 16 misfiled paths were reported as unrecognisable values instead of
+    as values on the wrong key."""
+    refused = checks.parse_check("`docs-app/app/lib/parse.test.ts`")
+    assert isinstance(refused, checks.Refusal)
+    assert refused.kind == "misfiled-test-ref"
+    assert refused.bullet("verify") == "- tests: docs-app/app/lib/parse.test.ts"
+
+
+def test_the_suggestion_cannot_contradict_the_message_it_travels_with() -> None:
+    """The regression this row exists for. The message said *put this on `tests:`* while the
+    suggestion beside it listed all sixteen checks, for 317 bullets in one real book, because
+    each was produced by a separate classification of the same value. One refusal now carries
+    both, so a kind that relocates a value cannot also advertise the vocabulary."""
+    for value in ("docs/a.test.ts::describe > it", "`svc/x_test.go`", "api/publish.go::Publish"):
+        refused = checks.parse_check(value)
+        assert isinstance(refused, checks.Refusal)
+        assert refused.relocates_to == "tests"
+        assert "Put it on `tests:`" in refused.message
+        assert refused.bullet("verify").startswith("- tests: ")
+        assert "http_status(" not in refused.bullet("verify")

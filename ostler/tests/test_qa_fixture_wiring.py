@@ -104,7 +104,8 @@ title: Acme projects
 
 ### create-project
 
-- route: `GET /api/accounts/@seeded-acme.id/projects`
+- method: GET
+- path: /api/accounts/@seeded-acme.id/projects
 - does: a project is created for the seeded account.
 - fixture: seeded-globex
 {capture_line}- verify: http_status(code=201)
