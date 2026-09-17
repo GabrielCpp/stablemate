@@ -951,17 +951,23 @@ title: Dashboard
 ## Components
 
 ### save-button
-- selector: `.btn-save`
+- selector: `button.btn-save`
 - role: button
 - name: Save
 - verify: created(subject="draft")
 
 ### footer-save-button
-- selector: `.footer .btn-save`
+- selector: `button.btn-save`
 - role: button
 - name: Save
 - verify: created(subject="draft")
 """
+#: Both selectors are `tag.class` on purpose. `ambiguous-locator` is the defect this fixture
+#: states, and a bare `.btn-save` states a *second*, independent one: `vet`'s render scan mints
+#: `#id` and `tag.class` and nothing else, so a class with no tag in front of it is a selector
+#: the census can never resolve — `unaddressable-selector`, one per node, on top of the
+#: collision. A fixture for one defect that carries two makes every count downstream of it
+#: (adjudications, seeds, repair laps) a count of something else.
 DASHBOARD = f"{BOOK}/screens/dashboard.md"
 
 
