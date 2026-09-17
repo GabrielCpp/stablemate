@@ -2188,6 +2188,28 @@ class Qa:
         """
         return self.browser_page.goto(self.http.url_for(url), **kwargs)
 
+    def window(self) -> Any:
+        """Open an observation window over the exchanges this page is about to make.
+
+        The operand of an HTTP claim made from a *page* scenario is a selection, not "the
+        response": a browser makes many requests, and one observed before the action is not
+        evidence about the action. A scenario opens a window immediately before the click or
+        the navigation its claim is about, then reads
+        `window.response_for("/api/widgets")` afterward — which raises rather than guessing
+        when the path matched nothing, or matched more than once.
+
+        The recorder lives in `ostler_qa_browser`, which only a playwright target has, so
+        this says which driver is missing rather than failing on an absent attribute.
+        """
+        recorder = self.diagnostics
+        if recorder is None or not hasattr(recorder, "window"):
+            raise RuntimeError(
+                f"scenario {self.scenario_id!r} reads an HTTP exchange the browser made, but "
+                f"its target '{self.target.name}' declares driver '{self.target.driver}' — "
+                "only driver='playwright' records what the page requested"
+            )
+        return recorder.window()
+
     def capture_text(self, key: str, locator: Any) -> str:
         """Capture a locator's text — a defect if it matches nothing on the page.
 

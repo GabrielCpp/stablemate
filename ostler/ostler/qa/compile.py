@@ -1133,6 +1133,72 @@ def _check_document(row: dict[str, Any], obligation: dict[str, Any]) -> str:
     return str(obligation.get("source", ""))
 
 
+#: The variable a page scenario binds its observation window to, immediately before the action
+#: it is making a claim about. Emitted only when some row in the scenario actually reads an
+#: exchange — an unused binding in every other scenario would be noise in a file people read.
+_WINDOW_VAR = "exchanges"
+
+
+def _observed_exchange(obligation: dict[str, Any]) -> str | None:
+    """Which HTTP exchange this obligation's response/body checks are about, if the book says.
+
+    A browser makes many requests. `qa.http`'s scenarios have one response because the
+    scenario made one call; a page scenario has however many the page chose to make, so the
+    operand of an HTTP claim is a *selection* and something has to have written the selector
+    down. Exactly one check in the vocabulary carries one: `http_status(path=…)`, whose
+    `path=` is a URL route. `json_path(path=…)` is a *JSON* path and `omits(subject=…)` a
+    field path — neither names an exchange, and reading them as one would point the driver at
+    a request nobody mentioned.
+
+    So the selector is read once per obligation and shared by its rows: an obligation is one
+    claim, and a claim that says "answered 201 on `/api/widgets`, and the body carried the
+    new id" is talking about one exchange throughout. An obligation whose rows name two
+    different routes is not one exchange, and returns `None` — which is undetermined, not a
+    default, so nothing executable is emitted for it.
+    """
+    routes = {
+        str(row["args"]["path"])
+        for row in obligation.get("checksDeclared", [])
+        if row.get("name") == "http_status" and isinstance(row.get("args"), dict)
+        and isinstance(row["args"].get("path"), str)
+    }
+    return next(iter(routes)) if len(routes) == 1 else None
+
+
+def _exchange_operand(
+    row: dict[str, Any], obligation: dict[str, Any], exchange: str | None,
+    channel: str, gaps: list[Gap],
+) -> str | None:
+    """Where a page scenario is pointed for one response- or body-observing `verify:` row.
+
+    The Playwright driver can see a response (`DriverSpec.observes`), and the harness has
+    recorded every one of them since `_on_response` was added. What was missing was the
+    arrangement: a selector for *which* one, and a window saying *since when*. Both are
+    supplied here — the selector from the book (`_observed_exchange`), the window from
+    `_WINDOW_VAR`, which the scenario binds immediately before its action.
+
+    `channel` decides what the verifier is handed, because the two channels want different
+    things from the same exchange: a `"response"` check reads the status line and the URL, a
+    `"body"` check resolves a path inside the parsed payload.
+    """
+    if exchange is None:
+        gaps.append(Gap(
+            obligation["id"], "uncompilable-claim",
+            f"`{row.get('name')}` observes an HTTP {channel}, which the playwright driver "
+            "can see — but a browser makes many requests and nothing in this obligation "
+            "says which one. Declare the exchange with an `http_status(path=\"…\")` bullet "
+            "on the same claim; two different `path=` routes on one obligation are two "
+            "claims, not one"))
+        return None
+    selection = f"{_WINDOW_VAR}.response_for({_lit(exchange)})"
+    return f"{selection}.json()" if channel == "body" else selection
+
+
+def _needs_window(lines: list[str]) -> bool:
+    """Whether any emitted assertion reads the observation window, so it has to be opened."""
+    return any(f"{_WINDOW_VAR}." in line for line in lines)
+
+
 def _page_assertions(
     obligation: dict[str, Any], gaps: list[Gap]
 ) -> tuple[list[str], list[str]] | None:
@@ -1148,8 +1214,21 @@ def _page_assertions(
     lines: list[str] = []
     documents: list[str] = []
     whole = True
+    exchange = _observed_exchange(obligation)
     for row in obligation.get("checksDeclared", []):
-        if _observes(row.get("name")) != "page":
+        channel = _observes(row.get("name"))
+        if channel in {"response", "body"} and not _out_of_band(row.get("name")):
+            operand = _exchange_operand(row, obligation, exchange, channel, gaps)
+            if operand is None:
+                whole = False
+                continue
+            lines.append(
+                f"    qa.verify({_lit(row['name'])}, {operand}"
+                f"{_kwargs(row.get('args', {}))}, "
+                f"covers=[{_lit(obligation['id'])}])"
+            )
+            continue
+        if channel != "page":
             gaps.append(_unobservable_gap(obligation["id"], row.get("name"), PLAYWRIGHT))
             whole = False
             continue
@@ -1210,6 +1289,10 @@ def _arrival_scenario(
         # subject, or a check this driver cannot observe. A scenario that drives a UI and vets
         # no screen is a hole in the plan wearing a function signature, so nothing is emitted.
         return []
+    if _needs_window(assertions):
+        # An arrival's action is the arrival: the window opens before the navigation, so a
+        # claim about what the screen requested on the way in can only read those exchanges.
+        body.insert(0, f"    {_WINDOW_VAR} = qa.window()")
     covered.update(scenario_covered)
     lines = [
         "",
@@ -1291,6 +1374,10 @@ def _interaction_scenario(
                          f"no locator declared for `on:` component {on_label!r}")
                     for oid in ids)
         on_expr = "qa.page.locator('body')"
+    # Recorded before the click is appended: the observation window opens immediately
+    # before the action, so what it holds afterward is evidence about *this* interaction and
+    # not about whatever the page requested while arriving.
+    action_index = len(body)
     body.append(f"    {on_expr}.click()  # trigger: {trigger_value}")
     if does_value:
         body.append(f"    # does: {does_value}")
@@ -1315,6 +1402,8 @@ def _interaction_scenario(
         # subject, or a check this driver cannot observe. A scenario that drives a UI and vets
         # no screen is a hole in the plan wearing a function signature, so nothing is emitted.
         return []
+    if _needs_window(assertions):
+        body.insert(action_index, f"    {_WINDOW_VAR} = qa.window()")
     covered.update(scenario_covered)
     lines = [
         "",

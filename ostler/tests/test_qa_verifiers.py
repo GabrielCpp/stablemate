@@ -326,3 +326,40 @@ def test_exit_status_reads_exit_code_and_refuses_other_subjects() -> None:
         verify(_Response(200, {}, "http://x/"), {"code": 0})
     with pytest.raises(TypeError, match="exit_code"):
         verify({"exit_code": 0}, {"code": 0})
+
+
+# --- `qa.window()`, the facade side of Phase 2l -------------------------------------------------
+
+
+def _qa(recorder: Any, driver: str = "playwright") -> Any:
+    """`Qa.window` reads three attributes and nothing else, so it is exercised against them
+    rather than around a whole scenario process — the thing under test is which drivers may
+    answer the question, and a real run would prove the browser works instead."""
+    return SimpleNamespace(
+        diagnostics=recorder,
+        scenario_id="new_widget_submit",
+        target=SimpleNamespace(name="web", driver=driver),
+    )
+
+
+def test_a_scenario_reading_an_exchange_on_a_driver_that_records_none_says_which(
+) -> None:
+    """Observability is a relation between what a claim needs and what a driver can supply.
+    A plan compiled for `playwright` and run against a `python` target asks a recorder that
+    is not there; the error names the scenario, the target and the driver, because the
+    repair is in the book's `driver:`, not in the scenario."""
+    for recorder in (None, object()):
+        with pytest.raises(RuntimeError) as raised:
+            harness.Qa.window(_qa(recorder, driver="python"))
+        message = str(raised.value)
+        assert "new_widget_submit" in message
+        assert "'web'" in message and "'python'" in message
+        assert "only driver='playwright'" in message
+
+
+def test_a_browser_scenario_gets_the_recorder_s_own_window() -> None:
+    """The window comes from the recorder, not from a second copy of its bookkeeping — one
+    object holds both the bound and the lookup that respects it."""
+    sentinel = object()
+    recorder = SimpleNamespace(window=lambda: sentinel)
+    assert harness.Qa.window(_qa(recorder)) is sentinel

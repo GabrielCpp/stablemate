@@ -792,3 +792,81 @@ def test_the_harness_and_ostler_agree_on_the_viewport_a_plan_does_not_declare() 
     from ostler.qa.drivers import DEFAULT_VIEWPORT
 
     assert ostler_qa_browser.DEFAULT_VIEWPORT == DEFAULT_VIEWPORT
+
+
+# --- Selecting one exchange out of the many a page made (Phase 2l) ------------------------------
+
+
+def _record(browser: Any, url: str, *, status: int = 200, body: bytes = b"{}") -> None:
+    """One complete exchange, through both handlers the real page drives: the status arrives
+    on `response`, the body on `requestfinished`, and they land in the one shared record."""
+    request = _request(url)
+    response = _response(request, status=status, body=body)
+    request.response = lambda: response
+    browser._on_response(response)
+    browser._on_request_finished(request)
+
+
+def test_a_response_is_selected_by_route_and_read_as_status_url_and_payload(tmp_path: Path) -> None:
+    """`RecordedResponse` is the adapter between a transcript and the four verifiers that
+    read a response. A transcript is not the thing it transcribes, so the translation lives
+    here — at the boundary that produced it — rather than in four verifiers each learning to
+    read a mapping."""
+    browser = _browser(tmp_path)
+    _record(browser, "http://127.0.0.1:8099/api/widgets", status=201, body=b'{"id": 7}')
+    found = browser.response_for("/api/widgets")
+    assert found.status == 201
+    assert found.url == "http://127.0.0.1:8099/api/widgets"
+    assert found.json() == {"id": 7}
+    assert found.text == '{"id": 7}'
+
+
+def test_a_route_the_page_never_requested_says_what_it_did_request(tmp_path: Path) -> None:
+    """The failure message is the whole value here: a book naming a route the page does not
+    call is a defect in the book, and the routes it *did* call are what a repair needs."""
+    browser = _browser(tmp_path)
+    _record(browser, "http://127.0.0.1:8099/api/agents")
+    with pytest.raises(LookupError) as excinfo:
+        browser.response_for("/api/widgets")
+    assert "/api/widgets" in str(excinfo.value)
+    assert "/api/agents" in str(excinfo.value)
+
+
+def test_two_responses_on_one_route_are_undetermined_rather_than_the_first(tmp_path: Path) -> None:
+    """Undetermined ⇒ do not answer. Which of two exchanges on the same route a claim means
+    is something the book did not say, and taking the first would decide it silently — a
+    green that says the page answered 201 when its retry did."""
+    browser = _browser(tmp_path)
+    _record(browser, "http://127.0.0.1:8099/api/widgets", status=409)
+    _record(browser, "http://127.0.0.1:8099/api/widgets", status=201)
+    with pytest.raises(LookupError) as excinfo:
+        browser.response_for("/api/widgets")
+    assert "2 responses" in str(excinfo.value)
+    assert "409" in str(excinfo.value) and "201" in str(excinfo.value)
+
+
+def test_a_body_the_recorder_did_not_keep_is_not_read_as_an_empty_one(tmp_path: Path) -> None:
+    """`bodyOmitted` is the recorder saying it chose not to keep this payload. Returning
+    `None` would let a `json_path(absent=True)` pass on a body nobody looked at."""
+    browser = _browser(tmp_path)
+    _record(browser, "http://127.0.0.1:8099/api/widgets")
+    browser._responses[0]["bodyOmitted"] = "too large"
+    with pytest.raises(LookupError):
+        browser.response_for("/api/widgets").json()
+
+
+def test_a_window_excludes_the_exchanges_that_preceded_the_action(tmp_path: Path) -> None:
+    """A response recorded before the click is not an observation of the click. The bound and
+    the lookup that respects it are one object, so an index cannot be handed to the wrong
+    call and silently widen the window."""
+    browser = _browser(tmp_path)
+    _record(browser, "http://127.0.0.1:8099/api/widgets", status=200)
+    window = browser.window()
+    with pytest.raises(LookupError) as excinfo:
+        window.response_for("/api/widgets")
+    assert "after the action" in str(excinfo.value)
+    _record(browser, "http://127.0.0.1:8099/api/widgets", status=201)
+    assert window.response_for("/api/widgets").status == 201
+    # The unbounded lookup still sees both, and says so rather than picking one.
+    with pytest.raises(LookupError):
+        browser.response_for("/api/widgets")

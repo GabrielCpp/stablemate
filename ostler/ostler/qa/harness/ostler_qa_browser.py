@@ -20,6 +20,7 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from ostler_qa_scan import FRAME_JS, SCAN_JS, merge_rects, summarize
 from playwright.sync_api import sync_playwright
@@ -96,6 +97,71 @@ DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
 #: and not the product's. Kept as a module constant so a plan that genuinely means to assert
 #: on one can pass `ignore_urls=()` and see it.
 BROWSER_ISSUED_URLS: tuple[str, ...] = ("/favicon.ico",)
+
+
+class RecordedResponse:
+    """One recorded exchange, wearing the shape the verifiers were written against.
+
+    `_on_response` records a `dict` — a transcript of what crossed the wire. Every verifier
+    in `ostler_qa` (`_observed_status`, `_verify_omits`, `_verify_json_path`) is written
+    against a *response*: something with `.status`, `.url` and a `.json()`. A canonical
+    string is not a parsed value, and a transcript is not the thing it transcribes, so the
+    adapter belongs here — at the boundary that produced the transcript — rather than as
+    four verifiers each learning to read a mapping. `qa.http`'s responses already satisfy
+    this shape; this is what makes a browser-observed exchange interchangeable with one.
+    """
+
+    __slots__ = ("record",)
+
+    def __init__(self, record: dict[str, Any]) -> None:
+        self.record = record
+
+    @property
+    def status(self) -> int:
+        return int(self.record.get("status") or 0)
+
+    @property
+    def url(self) -> str:
+        return str(self.record.get("url", ""))
+
+    @property
+    def text(self) -> str:
+        """The captured body, or "" when there was none to capture.
+
+        A body the recorder omitted (a redirect, a binary payload, past the body budget) is
+        reported by `json()` rather than silently read as empty — see there.
+        """
+        return str(self.record.get("responseBody") or "")
+
+    def json(self) -> Any:
+        """The body, parsed. Raises rather than returning `None` for a body nobody captured.
+
+        `bodyOmitted` says the recorder chose not to keep this body. Handing back `None`
+        would let a `json_path(...)` on it report "the field is absent", which is a claim
+        about the product made from a fact about the recorder.
+        """
+        omitted = self.record.get("bodyOmitted")
+        if omitted:
+            raise LookupError(
+                f"the body of {self.url} was not captured ({omitted}) — a body that was "
+                f"never recorded is not an empty one"
+            )
+        return json.loads(self.text) if self.text else None
+
+
+
+class ResponseWindow:
+    """The exchanges a page made after one point in a scenario — `Browser.window()`'s handle."""
+
+    __slots__ = ("_browser", "_since")
+
+    def __init__(self, browser: Browser, since: int) -> None:
+        self._browser = browser
+        self._since = since
+
+    def response_for(self, path: str) -> RecordedResponse:
+        """The one response on *path* inside this window. See `Browser.response_for`."""
+        return self._browser.response_for(path, since=self._since)
 
 
 class Browser:
@@ -366,6 +432,54 @@ class Browser:
         if url_contains is not None:
             found = [entry for entry in found if url_contains in str(entry.get("url", ""))]
         return found
+
+    def window(self) -> ResponseWindow:
+        """An observation window opening here — what a claim about the next action may read.
+
+        A response observed *before* an interaction is not evidence about that interaction.
+        A scenario that clicks submit and then reads "the 201 on `/api/widgets`" would read
+        the 201 the page already made on arrival just as happily. The scenario opens a window
+        immediately before its action, and every exchange it reads afterward is bounded below
+        by the action it is making a claim about.
+
+        A window, rather than a bare index the caller has to keep passing back: the bound and
+        the lookup that respects it are one thing, and an index handed to the wrong call is a
+        silently wider window.
+        """
+        return ResponseWindow(self, len(self._responses))
+
+    def response_for(self, path: str, *, since: int = 0) -> RecordedResponse:
+        """The one response on *path* since *since*, as something the verifiers can read.
+
+        A browser makes many requests — that is the property this whole method exists for.
+        The operand of an HTTP claim made from a page scenario is therefore a *selection*,
+        and it is the book's own selection: `http_status(201, path="/api/widgets")` already
+        wrote down which exchange it means, and this passes that argument through rather
+        than inventing a second spelling for it.
+
+        Zero matches and several matches are distinct outcomes, and neither is a red. No
+        match means the scenario made a claim about an exchange that never happened; several
+        means the book named a path the page hit more than once, so which one it meant is
+        undetermined. Both are defects in the plan or the book, so both raise — recording
+        either as a failed assertion would file it against the product, and silently taking
+        the first would convert a missing case into a wrong answer.
+        """
+        found = [
+            entry for entry in self._responses[since:]
+            if urlsplit(str(entry.get("url", ""))).path == path
+        ]
+        if not found:
+            seen = sorted({urlsplit(str(e.get("url", ""))).path for e in self._responses[since:]})
+            raise LookupError(
+                f"no response on {path!r} after the action this claim is about; the page "
+                f"requested {seen!r}"
+            )
+        if len(found) > 1:
+            raise LookupError(
+                f"{len(found)} responses on {path!r} after the action this claim is about — "
+                f"which one the check means is undetermined; statuses {[e.get('status') for e in found]!r}"
+            )
+        return RecordedResponse(found[0])
 
     def layout(self) -> dict[str, Any]:
         """Where the page put its content, as numbers rather than pixels.

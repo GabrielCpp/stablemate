@@ -920,10 +920,11 @@ def test_a_subject_only_verb_on_a_page_obligation_is_a_gap_not_a_silent_drop() -
 
 
 def test_a_body_observing_verb_on_a_page_obligation_names_driver_and_channel_differently() -> None:
-    """`json_path` observes a `body` — a channel Playwright *can* see
-    (`page.expect_response`), unlike `unchanged`'s `subject`. The gap message must say so:
-    it names the driver and the channel, and distinguishes "this driver cannot see it" from
-    "this driver could, but this compiler has no page-scenario arrangement for it yet"."""
+    """`json_path` observes a `body` — a channel Playwright *can* see, unlike `unchanged`'s
+    `subject`. So the gap is not "this driver is blind to it" but "a browser makes many
+    requests and this claim did not say which one": `json_path`'s own `path=` is a path into
+    the payload, never a route. The message must name the driver, the channel, and the bullet
+    that would settle it."""
     node = f"{_SCREEN}#policy-table"
     oid = "okf:policy-list:policy-table:visible:1"
     context = _navigation_context(
@@ -937,9 +938,9 @@ def test_a_body_observing_verb_on_a_page_obligation_names_driver_and_channel_dif
     _source, gaps = compile_plan_gaps(context, story="demo-story")
     [gap] = [g for g in gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
     assert "json_path" in gap.detail
-    assert "a body" in gap.detail
-    assert "playwright driver can see" in gap.detail
-    assert "no page-scenario arrangement" in gap.detail
+    assert "an HTTP body" in gap.detail
+    assert "playwright driver " in gap.detail and "can see" in gap.detail
+    assert 'http_status(path="' in gap.detail
 
 
 def test_a_driver_with_no_declared_channels_gaps_every_claim_and_crashes_on_none() -> None:
@@ -1444,13 +1445,14 @@ def test_an_interaction_photographs_the_screen_its_checks_name() -> None:
 
 
 def test_an_obligation_half_of_whose_checks_compile_is_claimed_by_nobody() -> None:
-    """A claim whose refusal is visible on screen *and* answered by a 400 is one claim.
+    """A claim whose refusal is visible on screen *and* leaves a stored count alone is one
+    claim, and `unchanged` observes a `subject` no browser can see.
 
     The failure this pins is a green filed against an app that renders the error span and
-    returns 201: the scenario reported the span, the status was gapped as unobservable, and
-    the obligation was claimed anyway on the strength of the row that compiled. `ostler qa
-    validate` sees it from the other side — the declared call no assertion invokes, against
-    an id the plan says it covers.
+    moves the count: the scenario reported the span, the count was gapped as unobservable,
+    and the obligation was claimed anyway on the strength of the row that compiled. `ostler
+    qa validate` sees it from the other side — the declared call no assertion invokes,
+    against an id the plan says it covers.
     """
     interaction = f"{_SCREEN}#submit-new-policy"
     oid = f"okf:{interaction}:does:2"
@@ -1464,9 +1466,8 @@ def test_an_obligation_half_of_whose_checks_compile_is_claimed_by_nobody() -> No
                                     "does": ["refuses and says why"]},
                           checks=[_located("#name-error", f"{_SCREEN}#name-error",
                                            {"selector": ["`#name-error`"]}),
-                                  {"call": 'http_status(code=400, path="/api/policies")',
-                                   "name": "http_status",
-                                   "args": {"code": 400, "path": "/api/policies"}}]),
+                                  {"call": "the count", "name": "unchanged",
+                                   "args": {"of": "policy.count"}}]),
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
@@ -1618,3 +1619,114 @@ def test_a_selector_the_census_cannot_read_still_compiles_one_whole_scenario() -
     assert _gap_kinds(gaps, oid) == []
     # The selector reaches the emitted check verbatim: it is compiled, not dropped.
     assert r'locator="[data-state=\"booked\"]"' in source
+
+
+# --- HTTP exchanges a page scenario made (Phase 2l) ---------------------------------------------
+#
+# `DriverSpec.PLAYWRIGHT` has always declared `response` and `body`, and the browser harness has
+# always recorded every response the page fetched. What was missing between them was an
+# *arrangement*: a page scenario has as many responses as the page chose to request, so the
+# operand of an HTTP claim is a selection, and a selection needs a selector and a bound. The
+# selector is `http_status(path=…)` — the one bullet in the vocabulary carrying a route — read
+# once per obligation, because an obligation is one claim. The bound is `qa.window()`, emitted
+# immediately before the scenario's action, because a response recorded before the click is not
+# an observation of the click.
+
+
+def _scenarios(source: str) -> list[str]:
+    return source.split("@scenario(")[1:]
+
+
+def _http_status(code: int, path: str) -> dict[str, object]:
+    return {"call": f'http_status(code={code}, path="{path}")', "name": "http_status",
+            "args": {"code": code, "path": path}}
+
+
+def test_a_page_claim_about_the_response_its_click_provoked_compiles_whole() -> None:
+    """The globex shape: submitting the form is refused, the error span appears, and the
+    page's own POST answered 400. All three rows are one claim and all three compile — the
+    two HTTP rows against the exchange the book named, the page row against the DOM."""
+    interaction = f"{_SCREEN}#submit-new-policy"
+    oid = f"okf:{interaction}:does:2"
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:button:role:1", f"{_SCREEN}#create-policy-button",
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")]),
+        _page_obligation(oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["submit the form with no name"],
+                                    "does": ["refuses and says why"]},
+                          checks=[_located("#name-error", f"{_SCREEN}#name-error",
+                                           {"selector": ["`#name-error`"]}),
+                                  _http_status(400, "/api/policies"),
+                                  {"call": "the reason", "name": "json_path",
+                                   "args": {"path": "detail", "equals": "name is required"}}]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert oid in _covers(source)
+    # (`unresolved-precondition` is this fixture's own, and orthogonal: it is about reaching
+    # the screen, not about what the claim observes once there.)
+    assert "uncompilable-claim" not in _gap_kinds(gaps, oid)
+    # The response check is handed the selected exchange; the body check, its parsed payload.
+    assert 'qa.verify("http_status", exchanges.response_for("/api/policies")' in source
+    assert 'qa.verify("json_path", exchanges.response_for("/api/policies").json()' in source
+    # …and the window opens before the action, or it would span the arrival's own requests too.
+    interactions = [s for s in _scenarios(source) if ".click()" in s]
+    assert len(interactions) == 1
+    assert interactions[0].index("qa.window()") < interactions[0].index(".click()")
+
+
+def test_an_arrival_claim_about_a_response_opens_its_window_before_the_navigation() -> None:
+    """An arrival scenario's action is `qa.goto`, so the same rule puts the window first —
+    a response recorded before the page was asked for is not an observation of the arrival."""
+    oid = "okf:policy-list:policy-table:visible:1"
+    context = _navigation_context(
+        _page_obligation(oid, f"{_SCREEN}#policy-table",
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file"),
+                                  _http_status(200, "/api/policies")]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert oid in _covers(source)
+    assert _gap_kinds(gaps, oid) == []
+    [arrival] = [s for s in _scenarios(source) if "qa.goto(" in s]
+    assert arrival.index("qa.window()") < arrival.index("qa.goto(")
+
+
+def test_an_obligation_naming_two_routes_is_two_claims_and_emits_nothing_executable() -> None:
+    """Undetermined ⇒ do not emit executable code. One obligation carrying `http_status` on
+    two different routes has not said which exchange its body check is about, and the
+    compiler has no basis to pick — so it gaps rather than defaulting to either."""
+    oid = "okf:policy-list:policy-table:visible:1"
+    context = _navigation_context(
+        _page_obligation(oid, f"{_SCREEN}#policy-table",
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file"),
+                                  _http_status(200, "/api/policies"),
+                                  _http_status(200, "/api/agents")]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert oid not in _covers(source)
+    assert "uncompilable-claim" in _gap_kinds(gaps, oid)
+    assert "response_for(" not in source
+    assert "qa.window()" not in source
+
+
+def test_a_page_scenario_with_no_http_claim_binds_no_window() -> None:
+    """The window is emitted because a row needs it, not because the scenario is a page one —
+    a plan that reads no exchange should not carry a name nothing reads."""
+    oid = "okf:policy-list:policy-table:visible:1"
+    context = _navigation_context(
+        _page_obligation(oid, f"{_SCREEN}#policy-table",
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file")]),
+        navigation=_arrival_navigation(),
+    )
+    source, _gaps = _compile_plan_gaps(context, story="demo-story")
+    assert "qa.window()" not in source
