@@ -72,12 +72,16 @@ request carried, but never substitute an HTTP client for the click.
 - parent: [name-field](#name-field)
 - exclusive-with:
 - states:
-  - invalid: populated from the refusal branch of `submit-new-widget`; absent on arrival
+  - invalid: populated from the refusal branch of `submit-new-widget`
 - verify: visible(locator="#name-error")
 - code: `app/web-app/static/new.html` @18dfea321e64
 - detail: the span `name-field`'s `invalid` state names. Declared because the refusal branch
   of `submit-new-widget` is observed through it, and a check's locator names a component this
-  book declares rather than a CSS id nothing here has heard of.
+  book declares rather than a CSS id nothing here has heard of. It carries one state and not
+  two: "absent on arrival" was written here and taken out, because no check in this book's
+  vocabulary observes an element being absent from the screen, so it was a claim nothing could
+  ever discharge sitting in the same bullet as one that can — and whichever scenario read the
+  bullet would have been credited with both.
 - fixture:
 - tests:
 
