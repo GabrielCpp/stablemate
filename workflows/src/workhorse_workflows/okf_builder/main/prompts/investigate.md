@@ -229,6 +229,10 @@ different prompt written for the one doctor code they carry. If you were handed 
   renders. Copying that text into `name:` compiles to `getByRole(role, {name})` matching zero
   elements while the element is painted. The wording is still a claim: put it in
   `verify: visible(locator=..., text="...")` beside the `name: none`, never in `name:`.
+- **`role:` and `name:` are one address, so they take one check between them.** They are not two
+  claims needing even coverage: `getByRole(role, {name})` is a single query, and a role with no
+  name is never emitted. Never author a second `verify:` to cover the `role:` bullet — it asserts
+  the same query twice and nothing asked for it.
 - **`role:` is one bare ARIA token and nothing else** — `link`, not `` `link` — renders an `<a>``
   via ListItemButton`` and not `` `progressbar` (implicit MUI role)``. The value is fed straight
   into `getByRole`, so a justification appended to it produces a locator matching nothing. The
