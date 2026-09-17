@@ -352,6 +352,10 @@ class PythonDriver(QaDriver):
         # When each open step began, on the run's clock — the harness stamps it, since by
         # the time this loop runs the scenario is over and the session clock says nothing.
         step_started: dict[str, int] = {}
+        # Whether any of this scenario's `vet` records saw a region with real extent —
+        # computed once, over the whole materialized record list, so it does not matter
+        # whether the vet record or the video's `artifact` record comes first on the wire.
+        painted = self._scenario_painted(records)
         for record in records:
             kind = record.get("type")
             step = open_steps[-1] if open_steps else None
@@ -424,7 +428,7 @@ class PythonDriver(QaDriver):
                     }
                 )
             elif kind == "artifact":
-                problems.extend(self._register(scenario_id, record, step=step))
+                problems.extend(self._register(scenario_id, record, step=step, painted=painted))
             elif kind == "vet":
                 try:
                     verdicts, trouble = self._vet(scenario_id, record, step=step)
@@ -592,8 +596,37 @@ class PythonDriver(QaDriver):
             record["ended_offset_ms"] = ended_offset_ms
         self.session.append(record)
 
+    def _scenario_painted(self, records: list[dict[str, Any]]) -> bool:
+        """Whether any of this scenario's `vet` records scanned a region with real extent.
+
+        `_is_static` reads the video alone: a still frame of a correctly-rendered, unanimated
+        page and a still frame of a blank one are the same time-diff observation, so a freeze
+        verdict cannot by itself tell the two apart. A vet's region scan, captured beside its
+        own screenshot, already answers the sharper question — did anything on the page have
+        nonzero size — so it corroborates or overrules a freeze verdict rather than replacing
+        it: a scenario with no vet step at all still falls back to the freeze verdict alone.
+        """
+        for vet_record in records:
+            if vet_record.get("type") != "vet":
+                continue
+            regions_path = Path(str(vet_record.get("regions", "")))
+            if not regions_path.is_file():
+                continue
+            try:
+                regions = RegionList.validate_json(regions_path.read_bytes())
+            except ValueError:
+                continue
+            if any(region.bbox.area > 0 for region in regions):
+                return True
+        return False
+
     def _register(
-        self, scenario_id: str, record: dict[str, Any], *, step: tuple[str, str] | None = None
+        self,
+        scenario_id: str,
+        record: dict[str, Any],
+        *,
+        step: tuple[str, str] | None = None,
+        painted: bool = False,
     ) -> list[str]:
         """File one artifact the scenario produced, holding a recording to the target's shape.
 
@@ -641,10 +674,13 @@ class PythonDriver(QaDriver):
                     f"{measured.get('width')}x{measured.get('height')}, "
                     f"not the target's {width}x{height}"
                 )
-            if _is_static(path, measured.get("durationSeconds", 0)):
+            if _is_static(path, measured.get("durationSeconds", 0)) and not painted:
                 # The same guard the window recorder applies to itself, for the same reason:
-                # geometry cannot tell a filmed app from a filmed blank. Here it means the
-                # page never painted — the scenario drove a context that rendered nothing.
+                # geometry alone cannot tell a filmed app from a filmed blank — a still,
+                # correctly-rendered page and a still, blank one are the same time-diff
+                # observation. `painted` is that corroboration: a same-scenario vet already
+                # saw a region with real extent, so the freeze verdict is overruled rather
+                # than read as proof the page never drew anything.
                 problems.append(
                     f"scenario '{scenario_id}' recording never changes — the page under test "
                     "painted nothing for the whole recording"
