@@ -169,11 +169,19 @@ TEST_SUBJECT = "test-subject"
 #: no mechanism to take. No repair fragment applies: the fix is not a book edit an agent
 #: turn can make, it is building the snapshot/out-of-band capability itself, which is
 #: deliberately out of scope for this drain.
+#: `needs-target-backend` and `needs-multi-target-runtime` are the same shape one level up:
+#: D1's dispatch table names a target for the step (mobile/maestro, in-process) that this
+#: compiler builds no path for, or names a *different* target for each step of one journey,
+#: which `@scenario(target=...)` binds one of. Both say the book is already right and the
+#: harness is what is missing, so sending them to a repair turn would aim an agent at a
+#: correct page and ask it to change something.
 NON_ACTIONABLE_CODES = frozenset({
     "unstamped-citation",
     "unreachable-citation",
     "needs-snapshot",
     "needs-out-of-band-observation",
+    "needs-target-backend",
+    "needs-multi-target-runtime",
 })
 
 #: `stale-citation` is a turn's to repair, but never through this path: `coverage.py`'s
