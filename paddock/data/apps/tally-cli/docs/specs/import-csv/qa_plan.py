@@ -163,6 +163,9 @@ def entries(qa: Qa, ledger):
         "okf:docs/features/tally/flows/track-a-trip.md:end-state",
         "okf:docs/features/tally/flows/track-a-trip.md:end:1",
         "okf:docs/features/tally/flows/track-a-trip.md:start:1",
+        "okf:docs/features/tally/tally.md:contract",
+        "okf:docs/features/tally/tally.md#init:contract",
+        "okf:docs/features/tally/tally.md#init:does:1",
         "okf:docs/features/tally/tally.md#import:contract",
         "okf:docs/features/tally/tally.md#import:does:1",
         "okf:docs/features/tally/tally.md#import-a-csv:consistency:1",
@@ -199,7 +202,12 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         "the scenario could initialise the ledger it imports into",
         started.ok,
         actual=started.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#import-a-csv:contract"],
+        covers=[
+            "okf:docs/features/tally/tally.md:contract",
+            "okf:docs/features/tally/tally.md#init:contract",
+            "okf:docs/features/tally/tally.md#init:does:1",
+            "okf:docs/features/tally/tally.md#import-a-csv:contract",
+        ],
     )
     write(qa, rows, THREE_ROWS)
 
@@ -324,6 +332,8 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
     timeout=600.0,
     covers=[
         "ac:3",
+        "okf:docs/features/tally/tally.md#add:contract",
+        "okf:docs/features/tally/tally.md#add:does:1",
         "okf:docs/features/tally/tally.md#import-a-malformed-row:contract",
         "okf:docs/features/tally/tally.md#import-a-malformed-row:does:1",
         "okf:docs/features/tally/tally.md#import-a-malformed-row:errors:1",
@@ -360,7 +370,11 @@ def a_malformed_row_refuses_the_whole_file_and_leaves_the_ledger_alone(qa: Qa) -
         "the ledger holds an entry the refused import could destroy",
         recorded.ok,
         actual=recorded.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#import-a-malformed-row:does:1"],
+        covers=[
+            "okf:docs/features/tally/tally.md#add:contract",
+            "okf:docs/features/tally/tally.md#add:does:1",
+            "okf:docs/features/tally/tally.md#import-a-malformed-row:does:1",
+        ],
     )
     write(qa, rows, ROW_FOUR_IS_NOT_MONEY)
 

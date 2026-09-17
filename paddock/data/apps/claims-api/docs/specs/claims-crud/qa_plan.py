@@ -246,6 +246,7 @@ def refuse_credentials_this_project_never_issued(qa: Qa) -> None:
     mechanism="live",
     covers=[
         "ac:6",
+        "okf:docs/features/claims/http/claims-api.md#get-health:contract",
         "okf:docs/features/claims/http/claims-api.md#get-health:does:1",
         "okf:docs/features/claims/http/claims-api.md#reset-claims:contract",
         "okf:docs/features/claims/http/claims-api.md#reset-claims:does:1",
@@ -265,7 +266,7 @@ def refuse_credentials_this_project_never_issued(qa: Qa) -> None:
 def health_needs_no_token_and_reset_needs_a_role(qa: Qa) -> None:
     """The one unprotected route and the one destructive one, proved from both sides."""
     health = qa.http.get("/healthz", expect_status=200)
-    qa.verify("http_status", health, code=200, path="/healthz", covers=["ac:6", "okf:docs/features/claims/http/claims-api.md#get-health:does:1"])
+    qa.verify("http_status", health, code=200, path="/healthz", covers=["ac:6", "okf:docs/features/claims/http/claims-api.md#get-health:contract", "okf:docs/features/claims/http/claims-api.md#get-health:does:1"])
     qa.verify("json_path", health.json(), path="$.status", equals="ok", covers=["ac:6", "okf:docs/features/claims/http/claims-api.md#get-health:does:1"])
 
     holder = sign_in(qa, HOLDER_A)

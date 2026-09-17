@@ -38,6 +38,28 @@ else:
 """
 
 
+#: Every file under a directory, keyed by its path and valued by its digest.
+_CENSUS = """
+import hashlib, json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+if not root.is_dir():
+    root = root.parent
+found = {}
+for entry in sorted(root.rglob("*")):
+    if entry.is_file():
+        found[str(entry.relative_to(root))] = hashlib.sha256(entry.read_bytes()).hexdigest()
+json.dump(found, sys.stdout)
+"""
+
+#: Lay a file down for the product to read, over the same boundary everything else crosses.
+_WRITE = """
+import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(sys.argv[2], encoding="utf-8")
+"""
+
+
 def run(qa: Qa, ledger, *argv, timeout: float = 120.0):
     """One invocation of the product, on the ledger this scenario owns.
 
@@ -72,18 +94,80 @@ def lines(qa: Qa, record):
     return [line for line in qa.field(record, "text").splitlines() if line != ""]
 
 
+def entries(qa: Qa, ledger):
+    """The entries the ledger holds right now."""
+    text = qa.field(read(qa, ledger), "text")
+    return qa.field(json.loads(text), "entries")
+
+
+def census(qa: Qa, sibling):
+    """Every file in the directory `sibling` lives in, by digest."""
+    got = qa.tool("python3").run("-c", _CENSUS, str(sibling), timeout=60.0)
+    qa.require(
+        "the harness can census the directory the scenario owns",
+        got.ok,
+        actual=got.stderr[-2000:],
+    )
+    return json.loads(got.stdout)
+
+
+def write(qa: Qa, path, text):
+    """Put a file where the product will read it, without touching the disk from the plan."""
+    got = qa.tool("python3").run("-c", _WRITE, str(path), text, timeout=60.0)
+    qa.require(
+        f"the harness can lay down {path.name} for the product to read",
+        got.ok,
+        actual=got.stderr[-2000:],
+    )
+
+
+#: One expense, importable into a ledger the same way `add` would put one there.
+ONE_ROW = "who,what,amount_cents,spent_on\ncyd,coffee,300,2026-03-03\n"
+
+
 def trip(qa: Qa, ledger):
     """A ledger in EUR holding three expenses across two people."""
+    before = read(qa, ledger)
     started = run(qa, ledger, "init", "--currency", "EUR")
+    qa.require(
+        "the scenario could initialise the ledger it reports on",
+        started.ok,
+        actual=started.stderr[-1000:],
+        covers=[
+            "okf:docs/features/tally/tally.md:contract",
+            "okf:docs/features/tally/tally.md#init:contract",
+        ],
+    )
+    qa.verify(
+        "created",
+        (lines(qa, before), lines(qa, read(qa, ledger))),
+        subject="tally.json",
+        covers=["okf:docs/features/tally/tally.md#init:does:1"],
+    )
+
+    first = run(qa, ledger, "add", "ana", "taxi", "1250", "2026-03-01")
+    qa.require(
+        "the scenario could record the first expense",
+        first.ok,
+        actual=first.stderr[-500:],
+        covers=["okf:docs/features/tally/tally.md#add:contract"],
+    )
+    qa.verify(
+        "count",
+        entries(qa, ledger),
+        subject="entries in the ledger",
+        equals=1,
+        covers=["okf:docs/features/tally/tally.md#add:does:1"],
+    )
+
     spent = [
-        run(qa, ledger, "add", "ana", "taxi", "1250", "2026-03-01"),
         run(qa, ledger, "add", "bo", "dinner", "4400", "2026-03-01"),
         run(qa, ledger, "add", "ana", "museum", "1800", "2026-03-02"),
     ]
     qa.require(
         "the scenario could build the ledger it reports on",
-        started.ok and all(one.ok for one in spent),
-        actual=started.stderr[-1000:] + "".join(one.stderr[-500:] for one in spent),
+        all(one.ok for one in spent),
+        actual="".join(one.stderr[-500:] for one in spent),
         covers=["okf:docs/features/tally/tally.md#report:contract"],
     )
 
@@ -96,6 +180,11 @@ def trip(qa: Qa, ledger):
         "ac:1",
         "ac:2",
         "ac:3",
+        "okf:docs/features/tally/tally.md:contract",
+        "okf:docs/features/tally/tally.md#init:contract",
+        "okf:docs/features/tally/tally.md#init:does:1",
+        "okf:docs/features/tally/tally.md#add:contract",
+        "okf:docs/features/tally/tally.md#add:does:1",
         "okf:docs/features/tally/tally.md#report:contract",
         "okf:docs/features/tally/tally.md#report:does:1",
         "okf:docs/features/tally/tally.md#report-as-json:consistency:1",
@@ -433,4 +522,107 @@ def a_report_totals_the_ledger_it_was_given_and_not_its_neighbour(qa: Qa) -> Non
         actual=misplaced.exit_code,
         expected="a non-zero exit",
         covers=["okf:docs/features/tally/tally.md#file:semantics:2"],
+    )
+
+
+@scenario(
+    target=tally,
+    mechanism="live",
+    timeout=600.0,
+    covers=[
+        "okf:docs/features/tally/tally.md#import:contract",
+        "okf:docs/features/tally/tally.md#import:does:1",
+        "okf:docs/features/tally/tally.md#dry-run:contract",
+        "okf:docs/features/tally/tally.md#dry-run:default:1",
+        "okf:docs/features/tally/tally.md#dry-run:required:1",
+        "okf:docs/features/tally/tally.md#dry-run:semantics:1",
+        "okf:docs/features/tally/tally.md#dry-run:semantics:2",
+        "okf:docs/features/tally/tally.md#dry-run:semantics:3",
+    ],
+    preconditions=[
+        "a ledger built the way the journey builds one, with `init` and then `add`",
+        "one more expense sits in a CSV file this scenario owns, not yet in the ledger",
+    ],
+    checkpoints=[
+        "`import --dry-run` exits 0, reports what it would do, and writes nothing anywhere",
+        "the same import without the flag does write, so the flag's absence is the default",
+        "the report this story reads counts an expense `import` put there, not only ones `add` did",
+    ],
+    forbid=[
+        "reading the dry run's own report as evidence that it did not write",
+        "trusting the ledger digest alone — a dry run that wrote somewhere else in the directory would pass that check",
+    ],
+)
+def a_report_totals_what_import_puts_in_the_ledger_and_a_dry_run_leaves_alone(qa: Qa) -> None:
+    """`#import`, `#dry-run`: the two claims `report` and `export` both depend on the ledger holding correctly, over the file `--dry-run` and `import` share with every other command."""
+    ledger = qa.artifact("import-and-dry-run/tally.json", kind="json")
+    rows = qa.artifact("import-and-dry-run/extra.csv", kind="log")
+
+    trip(qa, ledger)
+    write(qa, rows, ONE_ROW)
+
+    before = census(qa, ledger)
+    previewed = run(qa, ledger, "import", str(rows), "--dry-run")
+    after = census(qa, ledger)
+
+    qa.verify(
+        "exit_status",
+        previewed,
+        code=0,
+        label="`import --dry-run` exits 0",
+        covers=[
+            "okf:docs/features/tally/tally.md#dry-run:contract",
+            "okf:docs/features/tally/tally.md#dry-run:semantics:3",
+        ],
+    )
+    qa.check(
+        "it still reports what it would have done",
+        "dry-run" in previewed.stderr,
+        actual=previewed.stderr[-2000:],
+        expected="a line on stderr naming the dry run",
+        covers=["okf:docs/features/tally/tally.md#dry-run:semantics:3"],
+    )
+    qa.verify(
+        "unchanged",
+        (before.get("tally.json"), after.get("tally.json")),
+        subject="tally.json",
+        covers=["okf:docs/features/tally/tally.md#dry-run:semantics:1"],
+    )
+    qa.verify(
+        "unchanged",
+        (before, after),
+        subject="the working directory",
+        covers=["okf:docs/features/tally/tally.md#dry-run:semantics:2"],
+    )
+
+    before_entries = entries(qa, ledger)
+    committed = run(qa, ledger, "import", str(rows))
+    landed = census(qa, ledger)
+    qa.check(
+        "the same import without the flag does write, so `false` is the default rather than the only behaviour",
+        committed.exit_code == 0 and landed != before,
+        actual=sorted(landed),
+        expected="a directory whose ledger digest has moved",
+        covers=[
+            "okf:docs/features/tally/tally.md#dry-run:default:1",
+            "okf:docs/features/tally/tally.md#dry-run:required:1",
+            "okf:docs/features/tally/tally.md#import:contract",
+        ],
+    )
+
+    after_entries = entries(qa, ledger)
+    qa.verify(
+        "created",
+        (before_entries, after_entries),
+        subject="the rows the ledger did not already hold",
+        covers=["okf:docs/features/tally/tally.md#import:does:1"],
+    )
+
+    totalled = run(qa, ledger, "report")
+    qa.check(
+        "the report totals the imported expense together with what `add` put there",
+        totalled.exit_code == 0 and "4 entries" in totalled.stdout,
+        actual=totalled.stdout[-2000:],
+        expected="a report naming 4 entries",
+        covers=["okf:docs/features/tally/tally.md#import:does:1"],
     )
