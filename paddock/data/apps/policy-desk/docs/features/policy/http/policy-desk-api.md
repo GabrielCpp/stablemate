@@ -5,13 +5,13 @@ title: Policy desk API
 ---
 # Policy desk API
 
-- code: app/api/service.go
-- code: app/api/main.go
-- code: app/web/src/routes.tsx
-- code: app/web/src/api.ts
-- code: app/web/src/main.tsx
-- code: app/web/index.html
-- code: app/web/src/styles.css
+- code: app/api/service.go@bcf74ba2ccff
+- code: app/api/main.go@42266f9dcd4c
+- code: app/web/src/routes.tsx@f187e5ab13ef
+- code: app/web/src/api.ts@cd8f6f764d9b
+- code: app/web/src/main.tsx@36e9729d632a
+- code: app/web/index.html@50dde8fbbb85
+- code: app/web/src/styles.css@726249dd737e
 - openapi: none; the service is seven hand-routed paths over `net/http` and publishes no schema.
 - entry-url: http://localhost:18084/policies
 
@@ -45,7 +45,7 @@ The journeys that stitch these routes together are
   - answers `200` with `{"status": "ok"}` as soon as the process is serving, reading no ledger.
 - verify: http_status(200, path="/healthz")
 - verify: json_path("status", equals="ok")
-- code: app/api/service.go
+- code: app/api/service.go@bcf74ba2ccff
 - route: `GET /healthz`
 - parent: [Policy desk API](#policy-desk-api)
 - request:
@@ -67,7 +67,7 @@ The journeys that stitch these routes together are
   - gives each policy its `id`, `policy_number`, `holder_email`, `coverage_type`, term, `premium`, `status` and `version`, so the register can be rendered and an edit prepared without a second request.
 - verify: json_path("policies[0].version", absent=false)
 - verify: json_path("policies[0].status", matches="Draft|Cancelled")
-- code: app/api/list.go
+- code: app/api/list.go@99bbc1f4191d
 - route: `GET /api/policies`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
@@ -103,7 +103,7 @@ The journeys that stitch these routes together are
   the ledger as it was.
 - verify: http_status(409, title="Duplicate Policy Number", path="/api/policies")
 - verify: count(subject="policies", equals=1)
-- code: app/api/create.go
+- code: app/api/create.go@ff2433233a40
 - persistence: policy-record — an accepted policy is written through the ledger before the response is sent, and is
   still on the books after the service restarts.
 - verify: persists(subject="policy pn-1001")
@@ -128,7 +128,7 @@ The journeys that stitch these routes together are
 - verify: json_path("policy.policy_number", equals="PN-1001")
 - errors: `404 Unknown Policy` for an id that is not on the books.
 - verify: http_status(404, title="Unknown Policy", path="/api/policies/missing")
-- code: app/api/service.go
+- code: app/api/service.go@bcf74ba2ccff
 - route: `GET /api/policies/{id}`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
@@ -162,7 +162,7 @@ The journeys that stitch these routes together are
 - verify: json_path("errors.premium", absent=false)
 - errors: `404 Unknown Policy` for an id that is not on the books.
 - verify: http_status(404, title="Unknown Policy", path="/api/policies/missing")
-- code: app/api/update.go
+- code: app/api/update.go@34bfee4c1c18
 - concurrency: policy-record — refuses a request quoting a version other than the policy's current one with
   `409 Stale Policy`, so an editor who opened the form, went away, and came back with the number
   they were given does not overwrite the edit that landed meanwhile.
@@ -198,7 +198,7 @@ The journeys that stitch these routes together are
 - errors: `409 Stale Policy` when the quoted version is not the policy's current one.
 - verify: http_status(409, title="Stale Policy", path="/api/policies/pn-1001/cancel")
 - errors: `404 Unknown Policy` for an id that is not on the books.
-- code: app/api/cancel.go
+- code: app/api/cancel.go@f5ad39316749
 - route: `POST /api/policies/{id}/cancel`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
@@ -223,7 +223,7 @@ The journeys that stitch these routes together are
   - is idempotent: resetting books that are already empty answers `204` and changes nothing.
 - verify: http_status(204, path="/api/policies")
 - verify: count(subject="policies", equals=0)
-- code: app/api/service.go
+- code: app/api/service.go@bcf74ba2ccff
 - route: `DELETE /api/policies`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy ledger](../concepts/policy-ledger.md)

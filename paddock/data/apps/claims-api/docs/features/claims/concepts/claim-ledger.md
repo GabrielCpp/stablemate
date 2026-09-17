@@ -5,7 +5,7 @@ title: Claim ledger
 ---
 # Claim ledger
 
-- code: app/api/store.go
+- code: app/api/store.go@b248aff46225
 - extends:
 
 The ledger is the whole of the service's state: one JSON file holding every claim on file with its

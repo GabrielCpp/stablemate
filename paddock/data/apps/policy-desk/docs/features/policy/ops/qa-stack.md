@@ -7,7 +7,7 @@ title: QA stack
 
 - driver: web
 - surfaces: [Policy desk API](../http/policy-desk-api.md)
-- code: app/api/service.go
+- code: app/api/service.go@bcf74ba2ccff
 - entry-url: http://localhost:18084
 - health-path: /healthz
 - identity: `"status":"ok"` — a substring of the health *body*, exactly as served

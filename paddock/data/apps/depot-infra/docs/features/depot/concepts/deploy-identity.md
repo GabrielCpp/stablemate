@@ -5,7 +5,7 @@ title: The deploy identity
 ---
 # The deploy identity
 
-- code: pulumi/identity.go
+- code: pulumi/identity.go@ac9f66b1858a
 - extends:
 - consistency: deploy-identity — the deploy identity's only grant is a bucket-level grant on the artifact store,
   naming an object-level role.

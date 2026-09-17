@@ -5,7 +5,7 @@ title: Seat
 ---
 # Seat
 
-- code: app/booking.py
+- code: app/booking.py@e84e914263db
 - extends:
 
 A seat is one place at tonight's showing, addressed by a row letter (`A`-`C`) and a number (`1`-`4`).
@@ -36,7 +36,7 @@ to it. The durable side — where the states are written and how — is
 - verify: unchanged(subject="seat A1", except_fields=[])
 - raises: `No Such Seat` for an id that is not in the showing.
 - verify: http_status(404, title="No Such Seat")
-- code: app/hold.py::hold
+- code: app/hold.py::hold@1169d541ddf9
 - concurrency: seat-record — the version it hands back is the seat's own, so a hold taken while
   another caller is deciding cannot be spent against a stale token.
 - verify: json_path("hold.version", equals=1)
@@ -53,7 +53,7 @@ to it. The durable side — where the states are written and how — is
 - does: writes only the released seat, so every other seat keeps its state, version and booking.
 - raises: `Seat Not Held` when the seat is free or booked, so releasing cannot undo a booking.
 - verify: http_status(409, title="Seat Not Held")
-- code: app/hold.py::release
+- code: app/hold.py::release@1169d541ddf9
 - concurrency: seat-record — the release increments the version like any other transition, so the
   hold it gave back cannot be confirmed afterwards.
 - verify: json_path("seats[0].version", equals=2)
@@ -68,7 +68,7 @@ to it. The durable side — where the states are written and how — is
 - does: moves the seat from `held` to `booked`, increments its version, and records the booking name.
 - raises: `Seat Not Held` when the seat was never held.
 - verify: http_status(409, title="Seat Not Held")
-- code: app/confirm.py::confirm
+- code: app/confirm.py::confirm@a5c9610c4a38
 - concurrency: seat-record — refuses a caller quoting any version but the seat's current one, which is what makes
   a hold spendable exactly once.
 - verify: conflict_on_stale(subject="seat A1", token="version")

@@ -5,7 +5,7 @@ title: Claim tenancy
 ---
 # Claim tenancy
 
-- code: app/api/scope.go
+- code: app/api/scope.go@ea691e79bf28
 - extends:
 
 Two roles read [the ledger](claim-ledger.md), and they see different things. A **holder** sees the

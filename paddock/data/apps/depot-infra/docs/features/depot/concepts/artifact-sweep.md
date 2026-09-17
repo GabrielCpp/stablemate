@@ -5,7 +5,7 @@ title: The artifact sweep
 ---
 # The artifact sweep
 
-- code: pulumi/scheduler.go
+- code: pulumi/scheduler.go@931bfec8fb63
 - extends:
 - consistency: artifact-sweep-job — the plan contains exactly one Cloud Scheduler job — the artifact sweep.
 - consistency: artifact-sweep-job — the sweep runs nightly at 03:00 in `Etc/UTC`, stated as an absolute zone so the

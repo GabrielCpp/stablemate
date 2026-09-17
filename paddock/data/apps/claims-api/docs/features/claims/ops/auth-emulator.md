@@ -19,10 +19,10 @@ title: Local auth emulator
     `adjuster@example.com` carrying the custom claim `role: adjuster`, all created by a one-shot
     `seed` service the API waits on.
 - local-only: true
-- code: compose.yml
-- code: auth/firebase.json
-- code: auth/.firebaserc
-- code: auth/seed.mjs
+- code: compose.yml@8061abd30646
+- code: auth/firebase.json@493d7ee61f92
+- code: auth/.firebaserc@cef7f651f2a8
+- code: auth/seed.mjs@52aa73ef6ff1
 
 There is no credential anywhere in this stack, and that is the point rather than a shortcut. The
 emulator mints identities for anyone who asks — `accounts:signUp` accepts any string as its API key

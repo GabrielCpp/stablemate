@@ -33,7 +33,7 @@ one rule (the umbrella prerequisite) depends on a record that is not on this scr
 - keyboard: `Tab` through the fields in document order, then `Enter` to submit.
 - verify: visible(locator="#policy-form")
 - parent: [New policy form](#new-policy-form)
-- code: app/web/src/NewPolicy.tsx
+- code: app/web/src/NewPolicy.tsx@843f418d2cc1
 
 Collects the policy number, holder email, coverage type, term and premium, plus whichever
 conditional field the coverage type calls for.
@@ -49,7 +49,7 @@ conditional field the coverage type calls for.
 - states: opens on `auto`.
 - states: offers exactly the three coverage types the service accepts.
 - verify: visible(locator="#coverage-type-select")
-- code: app/web/src/NewPolicy.tsx
+- code: app/web/src/NewPolicy.tsx@843f418d2cc1
 
 Decides which conditional field the form shows and which premium band the entry is judged against.
 
@@ -64,7 +64,7 @@ Decides which conditional field the form shows and which premium band the entry 
 - exclusive-with: [property-address-field](#property-address-field)
 - states: present only while the coverage type is `auto`.
 - verify: visible(locator="#vehicle-vin-field")
-- code: app/web/src/NewPolicy.tsx
+- code: app/web/src/NewPolicy.tsx@843f418d2cc1
 
 Carries the VIN the auto policy covers, and carries the service's `vehicle_vin` message when the
 field is refused.
@@ -80,7 +80,7 @@ field is refused.
 - exclusive-with: [vehicle-vin-field](#vehicle-vin-field)
 - states: present only while the coverage type is `home`.
 - verify: visible(locator="#property-address-field")
-- code: app/web/src/NewPolicy.tsx
+- code: app/web/src/NewPolicy.tsx@843f418d2cc1
 
 Carries the address the home policy covers, and carries the service's `property_address` message
 when the field is refused.
@@ -95,7 +95,7 @@ when the field is refused.
 - parent: [New policy form](#new-policy-form)
 - states: present only beside a field the service refused.
 - verify: visible(locator="#field-error-message", text="End date must be after the start date.")
-- code: app/web/src/FieldError.tsx
+- code: app/web/src/FieldError.tsx@5e33630c096e
 
 Shows the refusal for one field, next to that field, in the words the service used.
 
@@ -109,7 +109,7 @@ Shows the refusal for one field, next to that field, in the words the service us
 - parent: [New policy form](#new-policy-form)
 - states: present only after a refusal that belongs to no single field.
 - verify: visible(locator="#duplicate-policy-alert", text="Duplicate Policy Number")
-- code: app/web/src/NewPolicy.tsx
+- code: app/web/src/NewPolicy.tsx@843f418d2cc1
 
 Reports a refusal that belongs to no single field — a duplicate policy number above all — at the top
 of the form.
@@ -123,7 +123,7 @@ of the form.
 - keyboard: `Tab` to the button, `Enter` or `Space` to submit.
 - verify: visible(locator="#create-policy-button")
 - parent: [New policy form](#new-policy-form)
-- code: app/web/src/NewPolicy.tsx
+- code: app/web/src/NewPolicy.tsx@843f418d2cc1
 
 Submits the form, and stays disabled while the request is in flight so the same policy number is not
 sent twice.
@@ -143,7 +143,7 @@ sent twice.
 - verify: created(subject="policy pn-1001")
 - verify: visible(locator="policy-detail.md#policy-heading", text="Policy PN-1001")
 - verify: visible(locator="policy-detail.md#policy-summary", text="Draft")
-- code: app/web/src/NewPolicy.tsx
+- code: app/web/src/NewPolicy.tsx@843f418d2cc1
 
 ### refuse-new-policy
 
@@ -157,4 +157,4 @@ sent twice.
   - shows each field's refusal beside that field and stays on the form with the entry intact, rather than navigating away or printing the response body.
 - verify: visible(locator="#field-error-message", text="Auto coverage needs the vehicle VIN.")
 - verify: visible(locator="#policy-form")
-- code: app/web/src/NewPolicy.tsx
+- code: app/web/src/NewPolicy.tsx@843f418d2cc1

@@ -5,7 +5,7 @@ title: Seat booking API
 ---
 # Seat booking API
 
-- code: app/service.py::Handler
+- code: app/service.py::Handler@75821d833adb
 - openapi: none; the service is six hand-routed paths over `http.server` and publishes no schema.
 
 The seat booking API is the whole of the product's machine surface: one showing, twelve seats, and
@@ -32,7 +32,7 @@ confirming a hold has to quote the number the caller was given.
   - answers `200` with `{"status": "ok"}` as soon as the process is serving, reading no ledger.
 - verify: http_status(200, path="/healthz")
 - verify: json_path("status", equals="ok")
-- code: app/service.py::Handler.do_GET
+- code: app/service.py::Handler.do_GET@75821d833adb
 - route: `GET /healthz`
 - parent: [Seat booking API](#seat-booking-api)
 - request:
@@ -62,7 +62,7 @@ confirming a hold has to quote the number the caller was given.
   - lists a taken seat with its state rather than dropping it, so the map keeps its shape as seats are sold.
 - verify: count(subject="seats", equals=12)
 - verify: json_path("seats[0].state", equals="booked")
-- code: app/booking.py::seat_map
+- code: app/booking.py::seat_map@e84e914263db
 - route: `GET /api/seats`
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)
@@ -91,7 +91,7 @@ confirming a hold has to quote the number the caller was given.
 - verify: unchanged(subject="seat A1", except_fields=[])
 - errors: `404 No Such Seat` for an id outside the showing's seat map.
 - verify: http_status(404, title="No Such Seat", path="/api/seats/Z9/hold")
-- code: app/hold.py::hold
+- code: app/hold.py::hold@1169d541ddf9
 - route: `POST /api/seats/{seat}/hold`
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)
@@ -121,7 +121,7 @@ confirming a hold has to quote the number the caller was given.
 - errors: `409 Seat Not Held` when the seat is free or already booked, so a release cannot undo a
   confirmed booking.
 - verify: http_status(409, title="Seat Not Held", path="/api/seats/B1/hold")
-- code: app/hold.py::release
+- code: app/hold.py::release@1169d541ddf9
 - route: `DELETE /api/seats/{seat}/hold`
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)
@@ -151,7 +151,7 @@ confirming a hold has to quote the number the caller was given.
   never held, so a booking cannot be conjured out of a free seat. Quoting any other version is the
   stale-hold refusal above, not this one — the version is compared first.
 - verify: http_status(409, title="Seat Not Held", path="/api/seats/C4/booking")
-- code: app/confirm.py::confirm
+- code: app/confirm.py::confirm@a5c9610c4a38
 - concurrency: seat-record — refuses a request quoting a version other than the seat's current one with
   `409 Stale Hold`, so a caller who lost the seat and came back with the number it was given does
   not overwrite the booking that replaced it.
@@ -189,7 +189,7 @@ confirming a hold has to quote the number the caller was given.
   - is idempotent: resetting a showing that is already empty answers `204` and changes nothing.
 - verify: http_status(204, path="/api/showing")
 - verify: unchanged(subject="seats", except_fields=[])
-- code: app/service.py::Handler._reset_showing
+- code: app/service.py::Handler._reset_showing@75821d833adb
 - route: `DELETE /api/showing`
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat ledger](../concepts/seat-ledger.md)

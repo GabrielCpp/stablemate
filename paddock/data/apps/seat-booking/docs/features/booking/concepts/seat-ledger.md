@@ -5,8 +5,8 @@ title: Seat ledger
 ---
 # Seat ledger
 
-- code: app/store.py::Store
-- code: compose.yml
+- code: app/store.py::Store@ec54459f2514
+- code: compose.yml@72095169bc74
 - extends:
 
 The ledger is the whole of the service's state: one JSON file holding every

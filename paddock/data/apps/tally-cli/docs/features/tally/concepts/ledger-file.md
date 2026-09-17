@@ -5,8 +5,8 @@ title: The ledger file
 ---
 # The ledger file
 
-- code: tally/ledger.py::save
-- code: tally/ledger.py::load
+- code: tally/ledger.py::save@8b75d4cbb1e0
+- code: tally/ledger.py::load@8b75d4cbb1e0
 - extends:
 - persistence: ledger-file — a command that changes the tally has written the whole ledger before it exits, so
   the next process reads back exactly what the previous one left.

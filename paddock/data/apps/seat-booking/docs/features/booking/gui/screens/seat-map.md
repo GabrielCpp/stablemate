@@ -36,7 +36,7 @@ server wrote, and every locator the book names is addressable the moment the pag
 - placement: width 40-100%, x 0-30%, y 10-100%
 - keyboard: reachable by `Tab` from the document start, with no shortcut of its own.
 - parent: [Seat map](#seat-map)
-- code: app/page.py::render
+- code: app/page.py::render@0a3567061b49
 
 Holds every seat button for the showing and nothing else.
 
@@ -55,7 +55,7 @@ Holds every seat button for the showing and nothing else.
 - verify: visible(locator="#booked-seat-button")
 - states: a seat that is not free is rendered `disabled`, so a sold seat cannot be clicked at all.
 - verify: visible(locator="#disabled-seat-button")
-- code: app/page.py::_seat_button
+- code: app/page.py::_seat_button@0a3567061b49
 - refs: [seat](../../concepts/seat.md)
 
 Renders one button per seat in the showing — twelve, in three rows of four. Names the button by its
@@ -67,7 +67,7 @@ seat id alone, so the name a scenario addresses does not change when the seat do
 - role:
 - name:
 - parent: [Seat map](#seat-map)
-- code: app/page.py::_seat_button
+- code: app/page.py::_seat_button@0a3567061b49
 - refs: [seat](../../concepts/seat.md)
 
 The same button once the seat is sold. Declared separately from [seat-button](#seat-button) because
@@ -80,7 +80,7 @@ something whose selector says `booked`, and pointing it at the seat button would
 - role:
 - name:
 - parent: [Seat map](#seat-map)
-- code: app/page.py::_seat_button
+- code: app/page.py::_seat_button@0a3567061b49
 - refs: [seat](../../concepts/seat.md)
 
 A seat the page refuses to accept a click on. Distinct from [booked-seat-button](#booked-seat-button)
@@ -98,7 +98,7 @@ other, and that is the defect this pair exists to catch.
 - verify: visible(locator="#free-seat-summary", text="seats free")
 - keyboard: none, because it is announced rather than operated.
 - parent: [Seat map](#seat-map)
-- code: app/page.py::render
+- code: app/page.py::render@0a3567061b49
 
 States how many of the showing's seats are still free, out of the total. Counts only seats in state
 `free`, so a held seat reads as taken while somebody is deciding.

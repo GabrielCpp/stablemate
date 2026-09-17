@@ -15,12 +15,12 @@ title: The depot stack
   - provider: the `gcp` plugin is pinned to `8.16.0` by the program itself, so a fresh machine
     resolves the plugin the stack was written against rather than whatever is newest.
 - local-only: true
-- code: pulumi/Pulumi.yaml
-- code: pulumi/main.go
-- code: pulumi/Makefile
-- code: pulumi/go.mod
-- code: pulumi/go.sum
-- code: pulumi/.gitignore
+- code: pulumi/Pulumi.yaml@e1ebaebf31bb
+- code: pulumi/main.go@122726a04040
+- code: pulumi/Makefile@083bcf25e78a
+- code: pulumi/go.mod@ab0640610670
+- code: pulumi/go.sum@60c379062bc9
+- code: pulumi/.gitignore@f1e16c05bf27
 - config: pulumi/Pulumi.dev.yaml
 - verify: json_path("inputs.version", equals="8.16.0")
 

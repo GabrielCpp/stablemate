@@ -5,7 +5,7 @@ title: The artifact store
 ---
 # The artifact store
 
-- code: pulumi/bucket.go
+- code: pulumi/bucket.go@b19f3d016c0a
 - extends:
 - consistency: artifact-bucket — the plan turns uniform bucket-level access on for the artifact bucket, so an
   object's access is decided by the bucket's IAM policy alone.

@@ -5,10 +5,10 @@ title: Claims API
 ---
 # Claims API
 
-- code: app/api/main.go
-- code: app/api/authz.go
-- code: app/api/service.go
-- code: app/api/openapi.yml
+- code: app/api/main.go@d6266a1613ee
+- code: app/api/authz.go@3e06a122912c
+- code: app/api/service.go@dc8c26a0c022
+- code: app/api/openapi.yml@7d6995475dbb
 - openapi: app/api/openapi.yml
 
 The claims API is the whole of the product: there is no client. A holder files a
@@ -44,7 +44,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
   - answers `200` with `{"status": "ok"}` as soon as the process is serving, reading no ledger and asking for no identity.
 - verify: http_status(200, path="/healthz")
 - verify: json_path("status", equals="ok")
-- code: app/api/service.go
+- code: app/api/service.go@dc8c26a0c022
 - route: `GET /healthz`
 - parent: [Claims API](#claims-api)
 - request:
@@ -85,7 +85,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - auth: a token past its expiry is refused `401` on the same terms as a missing one, so a session
   that was legitimate an hour ago does not keep filing claims.
 - verify: http_status(401, title="Unauthorized", path="/api/claims")
-- code: app/api/submit.go
+- code: app/api/submit.go@6bf2c447cea4
 - fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - consistency: claim-record — the stored claim comes back under exactly the field names `openapi.yml` declares —
   `policy_number`, `holder_uid`, `incident_date`, `amount_cents` — because the response is a
@@ -122,7 +122,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - verify: json_path("claims[0].holder_uid", absent=false)
 - authorization: an adjuster reads every claim on file, whoever filed it.
 - verify: count(subject="claims", equals=2)
-- code: app/api/list.go
+- code: app/api/list.go@cf07a3255915
 - fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - route: `GET /api/claims`
 - parent: [Claims API](#claims-api)
@@ -149,7 +149,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
   The refusal is decided after the lookup, so an id that exists and an id that does not answer
   differently only to whoever is entitled to the difference.
 - verify: http_status(403, title="Not Your Claim", path="/api/claims/cl-1002")
-- code: app/api/get.go
+- code: app/api/get.go@cb7342be20b9
 - fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - route: `GET /api/claims/{id}`
 - parent: [Claims API](#claims-api)
@@ -181,7 +181,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - authorization: `403 Adjusters Only` unless the token carries the `adjuster` role. The role is
   read before the claim is looked up, so a holder learns nothing about a claim they may not decide.
 - verify: http_status(403, title="Adjusters Only", path="/api/claims/cl-9999/decision")
-- code: app/api/decide.go
+- code: app/api/decide.go@02b79d74d617
 - fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - concurrency: claim-record — refuses a decision quoting a version other than the claim's current one with
   `409 Stale Decision`, so an adjuster who read the claim, went away and came back does not
@@ -214,7 +214,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - authorization: `403 Adjusters Only` unless the token carries the `adjuster` role, so the one
   destructive route is the one route whose role gate is provable from both sides.
 - verify: http_status(403, title="Adjusters Only", path="/api/claims")
-- code: app/api/reset.go
+- code: app/api/reset.go@555872cde2b6
 - fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - route: `DELETE /api/claims`
 - parent: [Claims API](#claims-api)

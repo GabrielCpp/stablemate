@@ -6,10 +6,10 @@ title: tally
 # tally
 
 - binary: tally
-- code: tally/cli.py::main
-- code: tally/__main__.py
-- code: tally/__init__.py
-- code: pyproject.toml
+- code: tally/cli.py::main@4d236ca6840e
+- code: tally/__main__.py@27c38a9d26bd
+- code: tally/__init__.py@9e0fe3be5206
+- code: pyproject.toml@cce5fd06ee9c
 
 `tally` keeps one shared-expense ledger in one JSON file — `tally.json` in the working directory,
 or wherever `--file` points. Every command reads that file, and the two that change it rewrite the
@@ -37,7 +37,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
   - Creates the ledger — `tally.json` here, unless `--file` names another — with no entries and
     the given currency.
 - verify: created(subject="tally.json")
-- code: tally/cli.py::cmd_init
+- code: tally/cli.py::cmd_init@4d236ca6840e
 - detail: [The ledger file](concepts/ledger-file.md)
 
 ### add
@@ -56,7 +56,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - does:
   - Records one expense in the ledger.
 - verify: count(subject="entries in the ledger", equals=1)
-- code: tally/cli.py::cmd_add
+- code: tally/cli.py::cmd_add@4d236ca6840e
 
 ### import
 - usage: `tally import PATH [--dry-run]`
@@ -71,7 +71,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - does:
   - Adds every expense in the file that the ledger does not already hold.
 - verify: created(subject="the rows the ledger did not already hold")
-- code: tally/cli.py::cmd_import
+- code: tally/cli.py::cmd_import@4d236ca6840e
 
 ### report
 - usage: `tally report [--json]`
@@ -86,7 +86,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - does:
   - Totals the ledger, per person and overall.
 - verify: json_path(path="$.total_cents", equals="7450")
-- code: tally/cli.py::cmd_report
+- code: tally/cli.py::cmd_report@4d236ca6840e
 
 ### export
 - usage: `tally export PATH`
@@ -98,7 +98,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - does:
   - Writes every entry in the ledger to `PATH` as CSV.
 - verify: created(subject="the exported CSV file")
-- code: tally/cli.py::cmd_export
+- code: tally/cli.py::cmd_export@4d236ca6840e
 
 ## Invocations
 
@@ -114,7 +114,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - verify: exit_status(code=0)
 - status: `1` when a ledger was already there.
 - verify: exit_status(code=1)
-- code: tally/ledger.py::create
+- code: tally/ledger.py::create@8b75d4cbb1e0
 
 ### add-an-expense
 - on: [add](#add)
@@ -130,7 +130,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - errors:
   - An amount that is not a positive whole number of cents is refused, and the ledger is left
     unchanged.
-- code: tally/ledger.py::add_entry
+- code: tally/ledger.py::add_entry@8b75d4cbb1e0
 
 ### import-a-csv
 - on: [import](#import)
@@ -142,7 +142,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - verify: created(subject="the rows the ledger did not already hold")
 - verify: count(subject="entries in the ledger", equals=3)
 - verify: count(subject="entries the ledger holds for a row the file lists twice", equals=1)
-- code: tally/ledger.py::merge
+- code: tally/ledger.py::merge@8b75d4cbb1e0
 - consistency: ledger-file — importing the same file twice leaves the ledger holding what importing it once
   left it holding.
 
@@ -156,7 +156,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - verify: exit_status(code=2)
 - errors:
   - The message names the 1-based line number of the offending row.
-- code: tally/ledger.py::parse_rows
+- code: tally/ledger.py::parse_rows@8b75d4cbb1e0
 
 ### import-without-a-ledger
 - on: [import](#import)
@@ -169,7 +169,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - verify: exit_status(code=1)
 - errors:
   - The message says the ledger does not exist and names `tally init` as the fix.
-- code: tally/ledger.py::load
+- code: tally/ledger.py::load@8b75d4cbb1e0
 
 ### report-as-json
 - on: [report](#report)
@@ -177,7 +177,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - does:
   - Writes the totals as one JSON object.
 - verify: json_path(path="$.currency", equals="EUR")
-- code: tally/report.py::summarize
+- code: tally/report.py::summarize@86fd13fed88c
 - consistency: command-output — stdout carries exactly that one JSON object and nothing else.
 - consistency: command-output — every human-facing line the command writes goes to stderr.
 
@@ -187,7 +187,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - does:
   - Writes one CSV file holding every entry.
 - verify: created(subject="the exported CSV file")
-- code: tally/report.py::export_rows
+- code: tally/report.py::export_rows@86fd13fed88c
 - consistency: export-csv — the file's first line is the header `who,what,amount_cents,spent_on`, whether or
   not the ledger has entries.
 
@@ -205,7 +205,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - verify: unchanged(subject="the working directory")
 - semantics: a dry run still reports what the command would have done, on stderr, and still
   exits `0`.
-- code: tally/cli.py::commit_or_preview
+- code: tally/cli.py::commit_or_preview@4d236ca6840e
 
 ### file
 - type: path
@@ -216,7 +216,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - verify: unchanged(subject="the ledger --file did not name")
 - semantics: `--file` is global — it is given before the command, and one invocation names one
   ledger.
-- code: tally/cli.py::build_parser
+- code: tally/cli.py::build_parser@4d236ca6840e
 
 ### currency
 - type: string
@@ -225,4 +225,4 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - required: false
 - semantics: the currency is recorded once, at `init`, and every later report states that same
   code. `tally` converts nothing, so no later invocation may change it.
-- code: tally/ledger.py::currency_of
+- code: tally/ledger.py::currency_of@8b75d4cbb1e0

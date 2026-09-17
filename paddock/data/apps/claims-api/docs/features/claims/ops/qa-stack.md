@@ -8,7 +8,7 @@ title: QA stack
 - driver: web
 - environment: [Local auth emulator](auth-emulator.md)
 - surfaces: [Claims API](../http/claims-api.md)
-- code: compose.yml
+- code: compose.yml@8061abd30646
 - entry-url: http://localhost:18085
 - health-path: /healthz
 - identity: `"status":"ok"` — a substring of the health *body*, exactly as served
