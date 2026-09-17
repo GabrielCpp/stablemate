@@ -35,6 +35,23 @@ contract a screen reader announces, and the `getByRole(role, {name})` a test loc
 is a legitimate value on `name:` — a decorative element has no accessible name — but it must be
 *stated*, so "no name" and "nobody looked" stay distinguishable.
 
+**`name:` is an observation of the accessibility tree, not a transcription of the text on the
+screen** — and for most roles those are different strings. An accessible name comes from an
+author label (`aria-label`, `aria-labelledby`, a `<label for>`, and for a `table` its
+`<caption>`); only a **name-from-content** role takes its name from its own text. That set is
+`button`, `cell`, `checkbox`, `columnheader`, `gridcell`, `heading`, `link`, `menuitem`,
+`menuitemcheckbox`, `menuitemradio`, `option`, `radio`, `row`, `rowheader`, `switch`, `tab`,
+`tooltip`, `treeitem` — and nothing else. A `status`, `alert`, `region`, `paragraph`, `table`,
+`form`, `textbox`, `spinbutton` or `combobox` with no author label has **no** accessible name,
+so its `name:` is `none`.
+
+Writing the announced wording into `name:` on such a node makes a claim no reading of the
+accessibility tree can check, and the compiler turns it into a locator that matches nothing:
+against a live stack, `getByRole("status", name="No widgets are on file yet.")` resolves to 0
+elements while the element is painted and visible. The wording is still a real claim — it moves
+to the one check that can observe it, `verify: visible(locator=..., text="...")`, beside a
+`name: none`.
+
 `placement:` is screen-relative on purpose: no `sidebar`/`main-column` vocabulary, nothing that
 assumes a grid. It is the one documented fact a role+name assertion cannot check — `getByRole`
 finds an element whether the page lays it out across the window or crushes it into a sliver.
