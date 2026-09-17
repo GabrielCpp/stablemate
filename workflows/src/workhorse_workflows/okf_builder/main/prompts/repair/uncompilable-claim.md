@@ -7,14 +7,24 @@ would produce one. The finding's `message` names which of these it was:
 - **"the book gives this node no `route:` to act on"** — the node has `does:`/`verify:` bullets but
   no `route:` naming what to call. Either add the route the node is actually describing, or the
   claim belongs on a different node that has one.
-- **"capture `<name>` from `<source>` has no observed response to read"** — a `$.`-rooted capture
-  named a JSON path to pull out of a response, but this obligation's own route is missing (see the
-  route case above — fix that first, this gap usually clears with it).
-- **"capture `<name>` from `<source>` names a UI locator, not a response field"** — the capture's
-  source is a page element, not a JSON path, and the compiler only wires up response-field
-  captures automatically. A UI-locator capture needs a `qa.capture_text(...)` call written by hand
-  in the compiled scenario, or the node's `capture:` bullet needs to name the response field it
-  actually reads instead.
+- **"capture `<name>` from `<source>` is declared on this node and …"** — the book asked for a
+  value to be bound and the builder that compiled this obligation will not bind it. The clause
+  after *and* is that builder saying why, and it is the whole diagnosis:
+  - **"has no observed response here to read the field off of"** — a `$.`-rooted capture named a
+    JSON path to pull out of a response, but this obligation's own route is missing (see the route
+    case above — fix that first, this gap usually clears with it).
+  - **"names a UI locator, not a response field, and this builder holds a response"** — the
+    capture's source is a page element, not a JSON path, and only response-field captures are
+    wired up automatically. Either the `capture:` bullet should name the response field it
+    actually reads, or the value wants capturing on the page node that shows it.
+  - **"this scenario arrives at the screen and observes what is on it …"** / **"the trigger is
+    performed here, but this builder has no declared way to read a value back out of the page
+    …"** — a page capture. Nothing in the book is wrong: `qa.capture_text(...)` has to be
+    written by hand in the compiled scenario, or the capture moved onto a node whose driver holds
+    something to read.
+  - **"a journey performs its steps and asserts the flow's own claim …"** — not a defect to
+    repair here at all. The step's own obligation is where its capture compiles; look for the
+    same capture's fate on that node, and fix it there if it is unbound there too.
 - **any other note naming a `verify:` row's operand** — the check named an operand shape
   `ostler.qa`'s vocabulary has no compiled form for yet; read the note and either rewrite the
   `verify:` bullet to a supported check, or treat this as a harness gap and raise it rather than
