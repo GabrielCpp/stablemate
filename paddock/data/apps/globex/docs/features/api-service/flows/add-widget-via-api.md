@@ -24,6 +24,7 @@ verifiable with api-service running alone and web-app not running at all.
   journey wants — that the created widget is present in the listing, by id — is not expressible
   yet: it names a value from the request body, and `steps:` has no bullet for the data a step
   carries, so the compiler cannot ground it.
-- fixture: [api-service (local)](../ops/api-service-stack.md) running against
-  [local](../ops/local.md)
+- fixture: none, because the journey arranges itself — its first step creates the widget
+  its last step reads back, so there is no state to establish before it starts. The stack it
+  runs against is api-service's own property, not this journey's arrangement.
 - tests:
