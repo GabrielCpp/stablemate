@@ -1273,3 +1273,61 @@ def test_a_computed_vet_target_is_rejected(tmp_path: Path):
     )
 
     assert any("computed screen path" in item for item in _problems(tmp_path, plan, spec))
+
+
+def _crossing_journey(tmp_path: Path) -> None:
+    """One journey that starts in a browser and ends at an HTTP endpoint on another surface."""
+    (tmp_path / "docs/features/web/gui/screens").mkdir(parents=True)
+    (tmp_path / "docs/features/web/flows").mkdir(parents=True)
+    (tmp_path / "docs/features/api/http").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/web/gui/screens/list.md").write_text(
+        "---\ntype: screen\ntitle: List\n---\n# List\n\n"
+        "- route: `/`\n- requires: none\n- params: none\n\n"
+        "## Components\n\n### widget\n\n- role: alert\n- name: the failure message\n"
+        "- code: app/widget.ts::render\n- tests: tests/widget.test.ts::renders\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/api/http/api.md").write_text(
+        "---\ntype: server\ntitle: API\n---\n# API\n\n## Endpoints\n\n### get-widgets\n\n"
+        "- method: GET\n- path: /api/widgets\n- does: lists the widgets\n"
+        "- code: app/api.go::List\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/web/flows/cross.md").write_text(
+        "---\ntype: flow\nslug: cross\ntitle: Cross\n---\n# Cross\n\n"
+        "- start: [List](../gui/screens/list.md)\n"
+        "- steps:\n  1. [get-widgets](../../api/http/api.md#get-widgets) answers\n"
+        "- end: [get-widgets](../../api/http/api.md#get-widgets)\n",
+        encoding="utf-8",
+    )
+    widget = tmp_path / "app/widget.ts"
+    widget.write_text('export function render() { return "old" }\n', encoding="utf-8")
+    (tmp_path / "app/api.go").write_text("package app\nfunc List() {}\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    widget.write_text('export function render() { return "new" }\n', encoding="utf-8")
+
+
+def test_a_flows_claim_is_surfaced_where_its_own_bullet_points(tmp_path: Path):
+    """A flow is not performed — it orders steps that are — so the surface its own claims are
+    observed on is a property of the nodes its bullets name, not of the directory the flow file
+    sits in. `surface` is what the compiler keys the owning `driver:` off, so a journey a user
+    walks out of one surface and finishes in another owes its two claims to two drivers, and
+    only the bullet says which: here `start:` is observed on `web` and `end:` on `api`, though
+    both are written in a file under `docs/features/web/`.
+    """
+    _crossing_journey(tmp_path)
+
+    packet = build_context(tmp_path, base="HEAD", source_roots={"web": ["app"], "api": ["app"]})
+    assert validate_context(packet) == []
+    by_id = {item["id"]: item for item in packet["obligations"]}
+    flow = "okf:docs/features/web/flows/cross.md"
+    assert by_id[f"{flow}:start:1"]["surface"] == "web"
+    assert by_id[f"{flow}:end:1"]["surface"] == "api"
+    # The node-level end-state is the same claim about where the journey finishes, so it is
+    # stamped off `end:` too — not off the file's own directory.
+    assert by_id[f"{flow}:end-state"]["surface"] == "api"

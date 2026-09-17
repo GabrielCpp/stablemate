@@ -333,7 +333,11 @@ def book_digest(context: dict[str, Any]) -> str:
     return hashlib.sha256("\n".join(ids).encode("utf-8")).hexdigest()
 
 
-#: D1's dispatch table (§4.1): `(link-target node type) x (owning surface's runbook driver:)`.
+#: D1's dispatch table (§4.1): `(the obligation's own node type) x (owning surface's runbook
+#: `driver:`)`. The node type is the obligation's, not its link target's: for a step
+#: obligation the two coincide, and where they diverge — a `flow`'s own `start:`/`end:`, a
+#: `component`'s `states:` — the claim belongs to the node that wrote it, which is why those
+#: types are handled by `_OBSERVE_ROW` below rather than by a row here.
 #: A cell this table has no row for, or names no target in — the `—` cells, `endpoint`x`cli`,
 #: `interaction`x`http` — is a gap, never a default (`_dispatch_target` below), the same as a
 #: `driver:` the book never states.
@@ -344,6 +348,20 @@ _DISPATCH_TABLE: dict[str, dict[str, str]] = {
     "invocation": {"web": "in-process", "mobile": "in-process", "http": "in-process", "cli": "in-process"},
     "method": {"web": "in-process", "mobile": "in-process", "http": "in-process", "cli": "in-process"},
 }
+#: The node types a book documents that **nobody performs**. A `flow` orders steps that are
+#: performed; a `component` and a `screen` are places a claim is true. D1's table asks "what
+#: performs this step", and for these there is no step to perform — only a check to run, which
+#: is emitted by whatever drives the surface the claim's subject lives on. So they key on the
+#: `driver:` alone, with no action type to cross it with, and `context.py` stamps a flow's
+#: `surface` from the node its own `start:`/`end:` bullet names (`_linked_surface`) so a journey
+#: that crosses surfaces is observed on the one it actually ends on.
+_OBSERVED_TYPES = frozenset({"flow", "component", "screen"})
+#: Every driver can observe, which is what makes this a row and not a table: an `http` driver
+#: cannot *perform* an interaction (`_DISPATCH_TABLE` leaves that cell empty on purpose) but it
+#: can assert a status on a journey that ends at an endpoint.
+_OBSERVE_ROW: dict[str, str] = {
+    "web": "playwright", "mobile": "maestro", "http": "http", "cli": "cli",
+}
 #: Targets this compiler actually builds a compile path for. `maestro` and `in-process` are
 #: correct cells in D1's table (D9: mobile is a row in the table, not a backend to build) that
 #: this compiler leaves inert until a book exercises them — `_dispatch_target` still names the
@@ -352,15 +370,15 @@ _BUILT_TARGETS = frozenset({"playwright", "http", "cli"})
 
 
 def _dispatch_target(node_type: str, driver: str | None) -> tuple[str | None, str]:
-    """D1's table, read once per obligation. `(target, "")` when it names a target this
+    """D1's table — or `_OBSERVE_ROW`, for a type nobody performs — read once per obligation.
 
-    compiler builds; `(None, detail)` when the table has no row, no cell, or no `driver:`
-    to key on — a gap, per D1's "a step whose driver the book does not determine is not
+    `(target, "")` when it names a target this compiler builds; `(None, detail)` when the
+    table has no row, no cell, or no `driver:` to key on — a gap, per D1's "a step whose driver the book does not determine is not
     emitted," never a default; `(target, detail)` when the table names a real target this
     compiler does not build yet (`maestro`, `in-process`), so the caller can still gap it
     honestly rather than mistake it for "no row for this type."
     """
-    row = _DISPATCH_TABLE.get(node_type)
+    row = _OBSERVE_ROW if node_type in _OBSERVED_TYPES else _DISPATCH_TABLE.get(node_type)
     if row is None:
         return None, (
             f"the book links this step to a {node_type or 'untyped'!r} node, which D1's "
@@ -643,8 +661,8 @@ def compile_plan_gaps(
     )
     undetermined_ids = {o["id"] for o in undetermined}
     owed = [o for o in owed if o["id"] not in undetermined_ids]
-    # D1: the driver of a step is `(link-target node type) x (owning surface's runbook
-    # driver:)`, not (as this used to read) whether any declared check happens to observe
+    # D1: the driver of a step is `(the obligation's own node type) x (owning surface's
+    # runbook driver:)`, not (as this used to read) whether any declared check happens to observe
     # "page" — that bit is per-check, not per-node, and let two `does:` bullets on the same
     # node compile under two different drivers. Read `navigation` first: each obligation's
     # target is looked up per surface, keyed on the `driver` `_navigation` now stamps there.
@@ -662,6 +680,20 @@ def compile_plan_gaps(
         surface = str(obligation.get("surface") or "")
         driver = navigation.get(surface, {}).get("driver")
         node_type = str(obligation.get("nodeType") or "")
+        if node_type == "flow":
+            # A flow's own `start:`/`end:` is a claim about what its `steps:` did, and nothing
+            # here walks a `steps:` list — the builders below compile one scenario per *screen*
+            # (arrival, or one interaction) and one per *route*, never one per journey. So an
+            # end-state handed to them is addressed at the node it names and asserted on
+            # arrival there, with the steps that were supposed to produce it never run: a check
+            # that passes in a world where the journey did not happen. Gapped here, above the
+            # builders, so the reason says that rather than whichever addressing error the
+            # flow file trips on its way through a path built for screens.
+            gaps.append(Gap(str(obligation["id"]), "uncompilable-claim",
+                            "a flow's own claim is about what its `steps:` did, and this "
+                            "compiler builds no journey scenario to walk them; asserting it on "
+                            "arrival would observe a world the journey never ran in"))
+            continue
         target, detail = _dispatch_target(node_type, driver)
         if target == "playwright":
             page_owed.append(obligation)

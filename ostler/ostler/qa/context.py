@@ -2215,6 +2215,40 @@ def _extends_target(
     return target, False
 
 
+def _linked_surface(
+    node: dict[str, Any], value: Any, nodes_by_id: dict[str, dict[str, Any]]
+) -> str:
+    """The surface of the node *value*'s own links point at — "" when they point at none.
+
+    A `flow` is not performed by anything: it orders steps that are. So the surface its own
+    `start:`/`end:` claims are observed on is a property of the nodes those bullets name, not of
+    the directory the flow file happens to sit in — a journey a user walks out of a mobile app
+    and finishes in a browser ends on the web surface whichever book records it. `surface` is
+    what `compile.py` keys the owning `driver:` off, so stamping the linked node's surface is
+    what lets a crossing journey's end-state be observed by a driver that can see it.
+
+    Read off the bullet's own links rather than off `edges`' `via`, for the reason
+    `_serialized_graph` gives: `via` keeps the *first* bullet an href appeared under, so a flow
+    whose `end:` names the screen its `start:` already named has that edge attributed to `start`
+    and no `end` edge at all. The href is unambiguous where the attribution is not.
+    """
+    hrefs = {
+        href
+        for item in _values(value)
+        for _text, href in markdown.extract_refs(item).links
+    }
+    if not hrefs:
+        return ""
+    for edge in node.get("edges") or []:
+        target_id = edge.get("to")
+        if not target_id or edge.get("href") not in hrefs:
+            continue
+        target = nodes_by_id.get(str(target_id))
+        if target and target.get("surface"):
+            return str(target["surface"])
+    return ""
+
+
 def _family_root(node_id: str, nodes_by_id: dict[str, dict[str, Any]]) -> str:
     """The declared-family root *node_id* belongs to, for `_CONTAINER_FANOUT` counting (2n).
 
@@ -2318,6 +2352,12 @@ def _obligations(
         "evidenceRequired": "live" if required else "context",
         "reasons": reasons or [{"kind": "graph-closure", "ref": node["id"]}],
     }
+    # A journey's end-state is observed at the node its `end:` names, so that node's surface is
+    # the one whose `driver:` can see it — see `_linked_surface`.
+    if nodes_by_id is not None and node.get("type") == "flow":
+        end_surface = _linked_surface(node, node.get("bullets", {}).get("end"), nodes_by_id)
+        if end_surface:
+            base["surface"] = end_surface
     locators = _locators(node)
     if nodes_by_id is not None and node.get("type") in ("interaction", "invocation"):
         extends_target, extends_malformed = _extends_target(node, nodes_by_id)
@@ -2411,6 +2451,13 @@ def _obligations(
                 obligation["requirement"] = prose
                 if subject is not None:
                     obligation["subject"] = subject
+            # Each of a flow's own claims is observed at the node its own bullet names — a
+            # journey that starts on one surface and ends on another owes its two claims to two
+            # drivers, and only the bullet says which.
+            if nodes_by_id is not None and node.get("type") == "flow":
+                linked = _linked_surface(node, requirement, nodes_by_id)
+                if linked:
+                    obligation["surface"] = linked
             if (key, index) in undetermined:
                 obligation["claimCombiner"] = "unstated"
             if required and owed_keys is not None and key not in owed_keys:

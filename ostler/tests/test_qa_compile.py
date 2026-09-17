@@ -22,6 +22,7 @@ from ostler.qa.compile import (
     MAESTRO,
     PLAYWRIGHT,
     PYTHON,
+    _dispatch_target,
     _unobservable_gap,
     annotate_deferred_obligations as _annotate_deferred_obligations,
     book_digest,
@@ -1986,3 +1987,48 @@ def test_a_page_scenario_with_no_http_claim_binds_no_window() -> None:
     )
     source, _gaps = _compile_plan_gaps(context, story="demo-story")
     assert "qa.window()" not in source
+
+
+def test_a_node_nobody_performs_is_observed_by_the_driver_of_its_own_surface() -> None:
+    """A `flow` orders steps that are performed; a `component` and a `screen` are places a claim
+    is true. None of the three is a step, so there is no action to cross with a driver — only a
+    check, run by whatever drives the surface the claim's subject lives on. That makes them a
+    single row (`_OBSERVE_ROW`), not a table: every driver can observe, which is why an `http`
+    driver lands a target here while `_DISPATCH_TABLE` deliberately leaves `interaction`x`http`
+    empty — it cannot *perform* an interaction, but it can assert a status on a journey that
+    ends at an endpoint."""
+    for node_type in ("flow", "component", "screen"):
+        assert _dispatch_target(node_type, "web") == ("playwright", "")
+        assert _dispatch_target(node_type, "http") == ("http", "")
+        assert _dispatch_target(node_type, "cli") == ("cli", "")
+        # `maestro` is a real cell this compiler does not build: a named target plus a detail,
+        # never "no row for this type."
+        target, detail = _dispatch_target(node_type, "mobile")
+        assert target == "maestro" and "builds no maestro path yet" in detail
+    # The performed half is unchanged — the blank cell is still blank.
+    target, detail = _dispatch_target("interaction", "http")
+    assert target is None and "names no target" in detail
+
+
+def test_a_flows_own_claim_is_gapped_rather_than_asserted_on_arrival() -> None:
+    """A flow's `start:`/`end:` is a claim about what its `steps:` did, and this compiler builds
+    one scenario per *screen* (arrival, or one interaction) and one per *route* — never one per
+    journey. Handing an end-state to those builders would address it at the node it names and
+    assert it on arrival there, with the steps that were supposed to produce it never run: a
+    check that passes in a world where the journey did not happen. So it gaps, above the
+    builders, with the reason that says so."""
+    oid = "okf:docs/features/policy/flows/file-a-policy.md:end-state"
+    context = _navigation_context(
+        _obligation(oid, nodeType="flow", surface="policy",
+                    source="docs/features/policy/flows/file-a-policy.md",
+                    locators={}, checksDeclared=[_visible("table:Policies on file")]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+    [gap] = [g for g in gaps if g.obligation_id == oid]
+    assert "`steps:`" in gap.detail and "never ran in" in gap.detail
+    # Nothing executable, and in particular no arrival scenario standing in for the journey.
+    assert oid not in _covers(source)
+    assert "qa.goto(" not in source
