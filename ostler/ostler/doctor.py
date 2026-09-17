@@ -2311,6 +2311,75 @@ def _remote_services(meta: dict) -> list[str]:
     return remote
 
 
+#: Words a `states:` bullet uses to say the control cannot be acted on. Matched as whole
+#: words so `disabled-until-valid` counts and `disabledate` does not. Spelled out rather
+#: than inferred from prose: the finding below is only ever as narrow as this list, and a
+#: list that grows by guesswork starts reporting states nobody claimed anything about.
+_UNAVAILABLE_WORDS = frozenset({
+    "disabled", "greyed", "grayed", "readonly", "read-only", "inactive", "unclickable",
+})
+
+#: The two checks that observe whether a user can act on a control. Either one discharges
+#: an availability `states:` bullet: a book may say the control is usable in this state or
+#: unusable in it, and both are observations of the same question.
+_AVAILABILITY_CHECKS = frozenset({"actionable", "inert"})
+
+
+def _availability_observed(graph: Graph) -> set[str]:
+    """Every node id some `actionable(...)`/`inert(...)` call in this book points at.
+
+    Graph-wide rather than per-node, because the check that observes a component is
+    routinely not written on it: a screen or an interaction is what carries the `verify:`
+    bullet, and the component is what the `locator=` names. Collecting the targets first is
+    what makes the finding below say "nothing in this book observes it" rather than
+    "this node does not observe itself".
+    """
+    observed: set[str] = set()
+    for node in graph.ui_nodes:
+        for key in registry.check_keys(node.type):
+            for value in _bullet_values(node.meta.get(key, "")):
+                parsed = checks.parse_check(value)
+                if isinstance(parsed, str) or parsed.name not in _AVAILABILITY_CHECKS:
+                    continue
+                target = loc_mod.located_node(graph, str(parsed.args.get("locator", "")),
+                                              node.path)
+                if target is not None:
+                    observed.add(target.id)
+    return observed
+
+
+def _check_availability_states(graph: Graph, f: list[Finding]) -> None:
+    """A `states:` bullet saying the control cannot be used, with nothing observing it.
+
+    `states:` mints an obligation, and until `actionable`/`inert` existed an availability
+    state had no member of the vocabulary that could observe it — `visible` passes on a
+    greyed-out button, which is on the screen and reads the right label. So the book's own
+    guidance was to leave the fact documented and unverified, and that guidance is now
+    wrong: the claim is about what the user can do, and there is a check that asks exactly
+    that. A `warn` rather than an `error` because the remedy is authoring a check against a
+    real anchor, not a mechanical rewrite of the bullet in place.
+    """
+    observed = _availability_observed(graph)
+    for node in graph.ui_nodes:
+        if node.id in observed:
+            continue
+        rel = node.path.relative_to(graph.root).as_posix()
+        for index, value in enumerate(_bullet_values(node.meta.get("states", "")), 1):
+            words = set(re.split(r"[^a-z-]+", value.lower()))
+            if not words & _UNAVAILABLE_WORDS:
+                continue
+            f.append(Finding(
+                "warn", "unchecked-availability-state",
+                f"{node.id}: `states:{index}` ({value}) says the user cannot act on this "
+                f"control, and no `actionable(...)`/`inert(...)` call in this book names it "
+                f"— the claim is about what the user can do, which one of those two "
+                f"observes, and `visible(...)` does not",
+                path=rel, line=node.line,
+                ref=refs_mod.bullet_ref(node.id, "states", index),
+                suggestion=f'- verify: inert(locator="#{node.id.rpartition("#")[2]}")'))
+            break
+
+
 def _bullet_value(meta: dict, key: str) -> str:
     """One bullet, read exactly as the runbook reader reads it, folded for comparison.
 
@@ -2505,6 +2574,7 @@ def _check_ui(graph: Graph, f: list[Finding],
     run instead of once per resolver. Left None, these checks own a resolver for their own
     lifetime, which is what a standalone caller wants.
     """
+    _check_availability_states(graph, f)
     if resolver is None:
         resolver = links_mod.LinkResolver(graph)
     froot = graph.doc_roots.get("features")

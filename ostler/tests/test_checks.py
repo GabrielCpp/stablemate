@@ -106,6 +106,8 @@ def test_every_spec_declares_what_it_observes() -> None:
         "conflict_on_stale": "response",
         "json_path": "body",
         "visible": "page",
+        "actionable": "page",
+        "inert": "page",
         "unchanged": "subject-pair",
         "keys_unchanged": "subject-pair",
         "count": "subject",

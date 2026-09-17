@@ -217,6 +217,22 @@ CHECKS: tuple[CheckSpec, ...] = (
         observes="page",
     ),
     CheckSpec(
+        name="actionable",
+        params=(CheckParam("locator", "str", required=True, locator=True),),
+        excludes="a control the book says the user can use and the product has disabled — "
+                 "which `visible` passes, because a greyed-out button is on the screen and "
+                 "reads the right label",
+        observes="page",
+    ),
+    CheckSpec(
+        name="inert",
+        params=(CheckParam("locator", "str", required=True, locator=True),),
+        excludes="a control the product leaves usable after the state that should have closed "
+                 "it, which no assertion about what is on the screen can see: the defect is "
+                 "that the element still accepts the action, not that it is still drawn",
+        observes="page",
+    ),
+    CheckSpec(
         name="persists",
         params=(CheckParam("subject", "str", required=True),),
         excludes="a write observed only through the same session that made it, which cannot "

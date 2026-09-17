@@ -1135,6 +1135,32 @@ def _verify_visible(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, 
     return contains, {"visible": shown, "text": text}, {"visible": True, "text": args["text"]}
 
 
+def _enabled(observed: Any, check: str) -> bool:
+    """Whether the product will let a user act on this control.
+
+    Insisted on rather than inferred, the way `_pair` insists on a before/after: "can it be
+    used" is a question only a real page element answers, and a truthiness fallback would
+    turn an observation nobody made into the answer `False` — which reads downstream as the
+    control being disabled, a wrong answer wearing a finding's clothes.
+    """
+    if not hasattr(observed, "is_enabled"):
+        raise TypeError(
+            f"{check} observes whether a control accepts the action — pass the element "
+            f"itself, not {type(observed).__name__}"
+        )
+    return bool(observed.is_enabled())
+
+
+def _verify_actionable(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    usable = _enabled(observed, "actionable")
+    return usable, {"actionable": usable}, {"actionable": True}
+
+
+def _verify_inert(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    usable = _enabled(observed, "inert")
+    return not usable, {"actionable": usable}, {"actionable": False}
+
+
 def _verify_persists(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     written, reread = _pair(observed, "persists")
     return reread is not None and reread == written, reread, written
@@ -1233,6 +1259,8 @@ VERIFIERS: dict[str, Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]] 
     "created": _verify_created,
     "removed": _verify_removed,
     "visible": _verify_visible,
+    "actionable": _verify_actionable,
+    "inert": _verify_inert,
     "persists": _verify_persists,
     "emitted": _verify_emitted,
     "omits": _verify_omits,

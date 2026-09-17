@@ -56,12 +56,16 @@ class _Response:
 class _Locator:
     """The little of a page element a verifier reads."""
 
-    def __init__(self, *, visible: bool, text: str) -> None:
+    def __init__(self, *, visible: bool, text: str, enabled: bool = True) -> None:
         self._visible = visible
         self._text = text
+        self._enabled = enabled
 
     def is_visible(self) -> bool:
         return self._visible
+
+    def is_enabled(self) -> bool:
+        return self._enabled
 
     def inner_text(self) -> str:
         return self._text
@@ -403,6 +407,15 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
         if "text" in args:
             mutations.append(("the element reads something else", _Locator(visible=True, text=_OTHER)))
         return witness, mutations, ""
+    if name == "actionable":
+        return _Locator(visible=True, text="witness", enabled=True), [
+            ("the control is disabled", _Locator(visible=True, text="witness", enabled=False)),
+        ], ""
+    if name == "inert":
+        return _Locator(visible=True, text="witness", enabled=False), [
+            ("the control still accepts the action",
+             _Locator(visible=True, text="witness", enabled=True)),
+        ], ""
     if name == "persists":
         return ("written", "written"), [
             ("nothing was re-read after the restart", ("written", None)),
