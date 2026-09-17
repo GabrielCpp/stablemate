@@ -51,7 +51,7 @@ driven directly.
 - role: status
 - one-per:
 - variants:
-- name: No widgets are on file yet.
+- name: none
 - unique-by:
 - placement:
 - keyboard:
@@ -59,7 +59,7 @@ driven directly.
 - parent:
 - exclusive-with: [widget-table](#widget-table), [load-alert](#load-alert)
 - states: shown — visible whenever the directory read succeeds and returns no widgets
-- verify: visible(locator="#empty-notice")
+- verify: visible(locator="#empty-notice", text="No widgets are on file yet.")
 - fixture: empty-directory — the directory holds no widgets
 - code: `app/web-app/static/app.js::renderWidgetTable` @81b0f35cee96
 - detail:
@@ -70,7 +70,7 @@ driven directly.
 - role: alert
 - one-per:
 - variants:
-- name: Could not read the widget directory.
+- name: none
 - unique-by:
 - placement:
 - keyboard:
@@ -79,7 +79,7 @@ driven directly.
 - exclusive-with: [widget-table](#widget-table), [empty-notice](#empty-notice)
 - states: shown — visible whenever the directory read itself fails, carrying the reason rather
   than an empty table that would read as a directory with nothing in it
-- verify: visible(locator="#load-alert")
+- verify: visible(locator="#load-alert", text="Could not read the widget directory.")
 - fixture: api-service-unavailable — the directory read fails
 - code: `app/web-app/static/app.js::loadWidgets` @81b0f35cee96
 - detail:

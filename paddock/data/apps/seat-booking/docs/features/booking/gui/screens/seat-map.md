@@ -81,7 +81,7 @@ regression this claim exists to catch, and the corpus is blind to it until `acti
 - verify: visible(locator="#free-seat-summary", text="11 of 12 seats free")
 - role: status
 - verify: visible(locator="#free-seat-summary")
-- name: seats free
+- name: none
 - verify: visible(locator="#free-seat-summary", text="seats free")
 - keyboard: none, because it is announced rather than operated.
 - parent: [Seat map](#seat-map)
