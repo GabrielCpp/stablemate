@@ -49,6 +49,14 @@ reachability, because a walk can open an address and cannot open a description. 
 ("reached by typing the URL", "the app root") documents nothing the check can use, and the
 screen stays `unreachable-screen` until a component links to it or the value becomes a route.
 
+`route:` is also the only thing a *reader of a rendered page* has to go on to say which
+screen it is looking at. A `vet` names this screen and observes whatever the browser is
+painting, and it compares the page's URL against this route before grading anything — a walk
+that stopped one step short otherwise has this screen's components registered against another
+screen's render, and every verdict is about a correspondence that does not hold. A route with
+a `:param` or `{param}` in it names a family of pages, so the comparison cannot be made and
+the vet's report says the screen was never established.
+
 Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type),
 which mint an obligation on every type.
 
