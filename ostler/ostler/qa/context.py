@@ -641,12 +641,13 @@ def build_context(
     shared_files = {
         ref
         for ref, owners in file_owners.items()
-        if len({_family_root(node_id, nodes_by_id) for node_id in owners}) > 1
+        if len({_family_root(node_id, owners, nodes_by_id) for node_id in owners}) > 1
     }
     shared_symbols = {
         ref
         for ref, owners in symbol_owners.items()
-        if len({_family_root(node_id, nodes_by_id) for node_id in owners}) >= _CONTAINER_FANOUT
+        if len({_family_root(node_id, owners, nodes_by_id) for node_id in owners})
+        >= _CONTAINER_FANOUT
     }
 
     # Containment and graph links broaden impact without lexical inference.
@@ -2389,32 +2390,46 @@ def _journey_steps(
     return walk
 
 
-def _family_root(node_id: str, nodes_by_id: dict[str, dict[str, Any]]) -> str:
-    """The declared-family root *node_id* belongs to, for `_CONTAINER_FANOUT` counting (2n).
+def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str, Any]]) -> str:
+    """The declared-family root *node_id* belongs to among *owners*, for `_CONTAINER_FANOUT`.
 
-    Walks exactly one kind of declared structure to one root: an `interaction`/`invocation`
-    arm's `extends:` base case (D51) — a three-arm split says "these nodes are one documented
-    control", so all three must count as one family before the fan-out count runs, the same
-    way a citation nobody's own arm makes distinguishing still counts as one control rather
-    than three. Sibling components that merely share a `parent:` page or container are *not*
-    collapsed here: each is its own family, because that per-sibling count is exactly what
-    the fan-out and shared-file thresholds below are measuring — collapsing a page's dozen
-    components to the page itself would hide genuine fan-out rather than guard against a
-    false one. Undeclared sprawl — three unrelated nodes that each happen to cite the same
-    symbol with no edge between them — does not collapse either: only an edge the book itself
-    stated walks the chain.
+    Walks exactly two kinds of declared structure to one root, the same two questions
+    `doctor.py`'s `competing-implementations` check asks before calling two nodes
+    independent implementations rather than one: an `interaction`/`invocation` arm's
+    `extends:` base case (D51) — a three-arm split says "these nodes are one documented
+    control" — and a section node's containing file (`path#anchor` collapses to `path`)
+    — a file plus its own `###` subsections is one documented surface, not several. Both
+    say "this is not a second thing, it is the first thing described again," so all
+    members must count as one family before the fan-out count runs, the same way a
+    citation nobody's own arm makes distinguishing still counts as one control rather
+    than three.
+
+    The containment walk only collapses onto a file id that is itself one of *owners* —
+    mirroring doctor.py's membership check (`b.id.startswith(f"{a.id}#")` where `a` is
+    also one of the citing nodes) rather than every section sharing a file. Sibling
+    components that merely share a `parent:` page, with no file-level citation of their
+    own, are *not* collapsed: three buttons on one screen citing the screen's renderer
+    are three distinct fan-out owners, not one, because the screen itself never cites
+    the symbol — collapsing them would hide genuine fan-out rather than guard against a
+    false one. Undeclared sprawl — unrelated nodes that each happen to cite the same
+    symbol with no edge between them — does not collapse either: only an edge the book
+    itself stated walks the chain.
     """
     seen: set[str] = set()
     current = node_id
     while current not in seen:
         seen.add(current)
         node = nodes_by_id.get(current)
-        if node is None or node.get("type") not in ("interaction", "invocation"):
-            break
-        target, _malformed = _extends_target(node, nodes_by_id)
-        if target is None:
-            break
-        current = str(target["id"])
+        if node is not None and node.get("type") in ("interaction", "invocation"):
+            target, _malformed = _extends_target(node, nodes_by_id)
+            if target is not None:
+                current = str(target["id"])
+                continue
+        file_id, sep, _anchor = current.partition("#")
+        if sep and file_id in owners:
+            current = file_id
+            continue
+        break
     return current
 
 
