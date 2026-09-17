@@ -163,6 +163,8 @@ request carried, but never substitute an HTTP client for the click.
 - unique-by:
 - keyboard:
 - when: `name` empty, or `quantity` missing or negative
+- arrange: fill(locator="#name-field", value="")
+- arrange: fill(locator="#quantity-field", value="-1")
 - exclusive-with:
 - extends: [submit-new-widget](#submit-new-widget)
 - does:
