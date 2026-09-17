@@ -249,6 +249,14 @@ class BulletKey:
     key: str
     required: bool = False
     nested: bool = False   # ``does:`` — value is a nested-bullet list, one child per effect
+    entries: bool = False  # ``provides:``/``flags:`` — the nested-bullet list is one of *things
+                           # that have claims*, not one of claims: each direct child is one value
+                           # (``count — the number of widgets the directory holds``), and its own
+                           # children (``from:``/``read:``, ``type:``/``required:``/``default:``)
+                           # are that value's properties, not further values of this key. Meaningful
+                           # only where ``nested`` is also set — the counterpart that tells
+                           # ``_nested_values`` (model.py) to read one level deep instead of the
+                           # whole subtree, so the two shapes stop being read as one.
     link: bool = False     # value is a reference ostler resolves (doc link, or a code ref)
     check: bool = False    # value is a named check from ``ostler.checks`` — an *observation*
                            # that fulfils this node's obligations, with its arguments
@@ -944,7 +952,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         bullet_keys=(
             BulletKey("usage"),
             BulletKey("parent", link=True),
-            BulletKey("flags"),
+            BulletKey("flags", nested=True, entries=True),
             BulletKey("args"),
             BulletKey("does", nested=True, normative=True, locator=True),
             # The refusal arm of a command, as an endpoint's `errors:`/`status:` are of a route:
@@ -1129,8 +1137,10 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # declared-parameter list is not a relation.
             BulletKey("args"),
             # What the fixture's last step leaves behind, one child per fact — the vocabulary
-            # `fixture-undeclared-provides` holds an `@node.key` reference to.
-            BulletKey("provides", nested=True),
+            # `fixture-undeclared-provides` holds an `@node.key` reference to. `entries=True`:
+            # each child is one fact, and its own `from:`/`read:` children are that fact's
+            # properties, not further facts.
+            BulletKey("provides", nested=True, entries=True),
             # Another fixture this one composes on top of, before its own steps run.
             BulletKey("needs", nested=True, link=True),
             # Environment variable NAMES this fixture's steps read — never values or mint

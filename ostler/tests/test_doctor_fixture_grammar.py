@@ -360,3 +360,25 @@ def test_unbacked_precondition_is_silent_when_the_bullet_states_no_precondition(
     write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_book(args="id"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme id=globex"))
     assert _findings(repo, "unbacked-precondition") == []
+
+
+def test_a_provides_entry_with_its_own_properties_parses_as_one_value(repo: Path) -> None:
+    """`provides:` is `entries=True` (`registry.BulletKey`): each direct child is one fact, and
+    that fact's own `from:`/`read:` children are its properties, not further facts.
+
+    Before the `_nested_values` split, `_meta_from_bullets` walked the whole subtree, so this
+    single fact — plus its two properties — flattened into three `provides` values at one
+    position instead of one.
+    """
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md", (
+        "---\ntype: fixture\ntitle: Seeded acme\n---\n# Seeded acme\n\n"
+        "- provides:\n"
+        "  - count — the number of widgets the directory holds\n"
+        "    - from: [seed-it](#seed-it)\n"
+        "    - read: json `.widgets | length`\n\n"
+        "## Steps\n\n### seed-it\n- kind: seed\n- run: ./scripts/seed-acme.sh\n"
+    ))
+    graph = load(repo)
+    node = next(n for n in graph.ui_nodes if n.type == "fixture")
+    assert node.meta.get("provides") == "count — the number of widgets the directory holds"

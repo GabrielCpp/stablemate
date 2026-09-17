@@ -49,3 +49,36 @@ def test_trace_story_and_seed(repo: Path):
 
     lines, found = trace.run(graph, "does-not-exist")
     assert not found
+
+
+def test_a_flags_entry_with_its_own_properties_parses_as_one_value(tmp_path: Path) -> None:
+    """`flags:` is `entries=True` (`registry.BulletKey`): each direct child is one flag, and
+    that flag's own `type:`/`required:`/`default:` children are its properties, not further
+    flags.
+
+    Before the `_nested_values` split, `_bullet_pairs`/`_meta_from_bullets` walked the whole
+    subtree regardless of the key's grammar — `flags:` was not even marked `nested=True` in
+    the registry, so a command with three flags, each carrying three property children and a
+    prose paragraph, flattened to fifteen `flags` values instead of three (the shape seen in
+    `docs/features/groom/groom-cli.md#serve`).
+    """
+    (tmp_path / "docs/features/area").mkdir(parents=True)
+    (tmp_path / "docs/features/area/cli.md").write_text(
+        "---\ntype: cli\nslug: c\ntitle: C\n---\n# C\n\n"
+        "## Commands\n\n### serve\n"
+        "- usage: `c serve [--host HOST] [--port PORT]`\n"
+        "- flags:\n"
+        "  - `--host HOST`\n"
+        "    - type: string\n"
+        "    - required: false\n"
+        "    - default: `0.0.0.0`\n"
+        "    - The network interface address to bind.\n"
+        "  - `--port PORT`\n"
+        "    - type: integer\n"
+        "    - required: false\n"
+        "    - default: `8787`\n"
+        "    - The TCP port to listen on.\n",
+        encoding="utf-8")
+    graph = load(tmp_path)
+    node = next(n for n in graph.ui_nodes if n.type == "command")
+    assert node.meta.get("flags") == ["`--host HOST`", "`--port PORT`"]

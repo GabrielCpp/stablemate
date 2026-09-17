@@ -472,7 +472,24 @@ def _bullet_combiners(section: markdown.Section) -> dict[int, str]:
     return {i: word for i, bullet in enumerate(section.bullets) if (word := _combiner(bullet))}
 
 
-def _bullet_pairs(section: markdown.Section) -> list[tuple[str, str, int]]:
+def _nested_values(key: str, bullet: markdown.Bullet, uitype: "registry.UINodeType | None") -> list[str]:
+    """A bullet's nested values, one string per value the grammar says its children hold.
+
+    Most nested keys (`does:`/`layers:`/`needs:`) are a flat list of *claims*: every descendant,
+    at any depth, is itself a value, so the walk collects the whole subtree. A key the registry
+    marks ``entries=True`` (`provides:`/`flags:`) is a list of *things that have claims* instead:
+    each direct child is one value (`count — the number of widgets the directory holds`), and its
+    own children (`from:`/`read:`/`type:`) are that value's properties, not further siblings of
+    it — collecting them here would merge an entry with what it states about itself.
+    """
+    spec = uitype.bullet_by_key.get(key) if uitype is not None else None
+    if spec is not None and spec.entries:
+        return [child.text.strip() for child in bullet.children]
+    return [item.text.strip() for child in bullet.children for item in child.walk()]
+
+
+def _bullet_pairs(section: markdown.Section,
+                  uitype: "registry.UINodeType | None" = None) -> list[tuple[str, str, int]]:
     """Every `- key: value` of a section as ``(key, value, bullet)`` in document order.
 
     The same bullets :func:`_meta_from_bullets` folds into a dict, before the fold loses where
@@ -484,6 +501,12 @@ def _bullet_pairs(section: markdown.Section) -> list[tuple[str, str, int]]:
     bullet, which the flat list can no longer tell: two sibling `- errors:` bullets and one
     `- errors:` with two children are indistinguishable once flattened, and they bind a
     following `verify:` differently.
+
+    ``uitype`` resolves each key's :class:`registry.BulletKey`, so an ``entries=True`` key
+    (``provides:``/``flags:``) contributes one value per direct child instead of its whole
+    subtree — see :func:`_nested_values`. ``None`` (an untyped section, or a key the type does
+    not recognise) keeps the old whole-subtree behaviour, since there is no grammar to say
+    otherwise.
     """
     pairs: list[tuple[str, str, int]] = []
     for position, bullet in enumerate(section.bullets):
@@ -491,18 +514,21 @@ def _bullet_pairs(section: markdown.Section) -> list[tuple[str, str, int]]:
         if ":" not in text:
             continue
         key, _, value = text.partition(":")
-        nested = [item.text.strip() for child in bullet.children for item in child.walk()]
+        key = key.strip().lower()
+        nested = _nested_values(key, bullet, uitype)
         own = "" if _combiner(bullet) else value.strip()
-        pairs.extend((key.strip().lower(), item, position)
+        pairs.extend((key, item, position)
                      for item in (own, *nested) if item)
     return pairs
 
 
-def _meta_from_bullets(section: markdown.Section) -> dict[str, str | list[str]]:
+def _meta_from_bullets(section: markdown.Section,
+                       uitype: "registry.UINodeType | None" = None) -> dict[str, str | list[str]]:
     """Parse the leading `- key: value` metadata bullets of a section into an ordered dict.
 
     Keys are lowercased; the first ``:`` separates key and value (so ``blocked by: a, b`` keeps the
-    spaced key). Bullets without a ``:`` are ignored.
+    spaced key). Bullets without a ``:`` are ignored. ``uitype`` is passed through to
+    :func:`_nested_values` — see :func:`_bullet_pairs` for what it changes.
     """
     meta: dict[str, str | list[str]] = {}
     for bullet in section.bullets:
@@ -512,7 +538,7 @@ def _meta_from_bullets(section: markdown.Section) -> dict[str, str | list[str]]:
         key, _, value = text.partition(":")
         key = key.strip().lower()
         value = "" if _combiner(bullet) else value.strip()
-        nested = [item.text.strip() for child in bullet.children for item in child.walk()]
+        nested = _nested_values(key, bullet, uitype)
         values = [item for item in (value, *nested) if item]
         parsed: str | list[str] = "" if not values else values[0] if len(values) == 1 else values
         previous = meta.get(key)
@@ -1162,11 +1188,12 @@ def _promote_section(section: markdown.Section, rel: str, path: Path, offset: in
     ntype = ntype or container_type or "untyped"       # …else container's type, else untyped
     anchor = anchors[section.line_start]                # the rendered anchor, unique in this doc
     node_id = f"{rel}#{anchor}"
+    uitype = registry.UI_TYPES_BY_NAME.get(ntype)
     nodes.append(UINode(
         type=ntype, kind="section", id=node_id, path=path, anchor=anchor,
         title=ntitle, level=section.level, parent=parent_id,
         line=offset + section.line_start + 1,
-        meta=_meta_from_bullets(section), bullet_order=_bullet_pairs(section),
+        meta=_meta_from_bullets(section, uitype), bullet_order=_bullet_pairs(section, uitype),
         combiners=_bullet_combiners(section),
         bullet_lines={i: offset + bullet.line_start + 1 for i, bullet in enumerate(section.bullets)},
         links=section.refs.links,
@@ -1190,8 +1217,8 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
     main = _file_main_section(doc)
     file_id = ""
     if ftype is not None and ftype.kind == "file":
-        meta = _meta_from_bullets(main) if main else {}
-        order = _bullet_pairs(main) if main else []
+        meta = _meta_from_bullets(main, ftype) if main else {}
+        order = _bullet_pairs(main, ftype) if main else []
         combiners = _bullet_combiners(main) if main else {}
         # The file node's own region = its H1 content up to the first `## Heading` child, so its
         # links don't overlap the section nodes' links (keeps the linter from double-reporting).
