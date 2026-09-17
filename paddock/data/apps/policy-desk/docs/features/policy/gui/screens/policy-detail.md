@@ -31,8 +31,8 @@ the second policy is shown under the first one's record.
 - name: Policy PN-1001
 - placement: width 40-100%, x 0-30%, y 0-20%
 - keyboard: none, because it is read rather than operated.
-- parent: [Policy detail](#policy-detail)
 - verify: visible(locator="#policy-heading", text="Policy PN-1001")
+- parent: [Policy detail](#policy-detail)
 - code: app/web/src/PolicyDetail.tsx@ad9440914800
 
 Names the policy the screen is showing. Declared because it is what every navigation that lands
