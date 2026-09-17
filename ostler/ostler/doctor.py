@@ -2886,6 +2886,33 @@ def _check_ui(graph: Graph, f: list[Finding],
         contract_checks, claim_checks = registry.attributed_checks(
             node.type, node.bullet_order, node.combiners)
 
+        # `attributed_checks` binds each check to the nearest normative bullet above it — a check
+        # that was written against the wrong claim still binds, silently, to whichever claim
+        # happens to sit above it. Two checks piled onto one claim while its neighbor carries none
+        # is what that binding failure looks like from outside: not absence (that is
+        # `undeclared-obligation`'s node-wide zero) but an imbalance between two claims on the
+        # *same* node, which only reading both sides of `attributed_checks` together can see.
+        # An `error`, `unstated-claim-combiner`'s reason: the remedy is mechanical — move a check
+        # up to the claim it actually names — not a judgment call about prose.
+        claim_universe = registry.normative_claims(node.type, node.bullet_order)
+        overcovered = sorted(
+            pos for pos, values in claim_checks.items() if len(values) >= 2)
+        undercovered = sorted(
+            pos for pos in claim_universe if not claim_checks.get(pos))
+        if overcovered and undercovered:
+            heavy_key, heavy_index = overcovered[0]
+            light_key, light_index = undercovered[0]
+            f.append(Finding(
+                "error", "uneven-claim-coverage",
+                f"{node.id}: `{heavy_key}:{heavy_index}` carries "
+                f"{len(claim_checks[(heavy_key, heavy_index)])} `{verify_key}:` checks and "
+                f"`{light_key}:{light_index}` on the same node carries none — a check bound to "
+                f"the nearest bullet above it rather than the claim it names lands doubled on "
+                f"one and missing from its sibling; rebind each check to the claim it observes",
+                path=rel, line=node.line,
+                ref=refs_mod.bullet_ref(node.id, heavy_key, heavy_index),
+                suggestion=f"- {light_key}:{light_index} …\n- {verify_key}: …"))
+
         # Fan-out is sound over a list of parts and unsound over a list of alternatives, and the
         # grammar records neither unless the author says so. Against "page stays put", a check
         # written for the success branch is not uninformative — it is a *refutation*, and an

@@ -620,6 +620,37 @@ def test_a_declaration_that_does_not_parse_is_reported_once(repo: Path):
     assert "undeclared-obligation" not in found
 
 
+def test_a_claim_with_two_checks_and_a_bare_sibling_is_reported(repo: Path):
+    # `attributed_checks` binds each check to the nearest normative bullet above it — a check
+    # written against the wrong claim still binds, silently, to whichever one sits above it.
+    # Two checks piled on `returns` while `raises` carries none is what that looks like from
+    # outside: not `undeclared-obligation`'s node-wide zero, but an imbalance between siblings.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- returns: the published revision\n"
+          '- verify: http_status(200, title="OK")\n'
+          '- verify: http_status(201, title="Created")\n'
+          "- raises: `ManifestConflict` when the revision moved\n")
+    finding = next(f for f in _run(repo).findings if f.code == "uneven-claim-coverage")
+    assert finding.severity == "error"
+    assert finding.ref == f"{finding.path}#publish#returns:1"
+    assert "raises:1" in finding.message
+
+
+def test_a_claim_that_merely_under_verifies_is_not_reported(repo: Path):
+    # A claim with fewer checks than its neighbor is making a smaller promise, not a wrong one
+    # — the bar is the conjunction (some claim over-covered *and* another uncovered), not "some
+    # claim is uncovered" on its own.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- returns: the published revision\n"
+          '- verify: http_status(200, title="OK")\n'
+          "- raises: `ManifestConflict` when the revision moved\n")
+    assert "uneven-claim-coverage" not in all_codes(_run(repo))
+
+
 def test_a_check_that_cannot_go_red_is_reported(repo: Path):
     # Declared, parsed, bound — and green against the defect too. Presence without a value is
     # `json_path`'s own `excludes:` sentence, so the rule is that sentence made computable.
