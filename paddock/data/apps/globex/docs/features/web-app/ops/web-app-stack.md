@@ -16,7 +16,7 @@ runbook's own job is only to bring web-app up.
 - driver: web
 - environment: [local](../../api-service/ops/local.md)
 - cli:
-- surfaces: [widget-list](../gui/screens/widget-list.md)
+- surfaces: [widget-list](../gui/screens/widget-list.md), [web-app](../http/web-app.md)
 - code: `compose.yml` @69d0b0918e8a
 - entry-url: http://localhost:18102
 - health-path: /healthz

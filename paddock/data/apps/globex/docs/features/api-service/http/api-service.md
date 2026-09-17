@@ -11,6 +11,7 @@ directly from a different origin, but nothing here calls out to `web-app`; the t
 never talk to each other server-to-server.
 
 - code: `app/api-service/service.go::Server` @0344dec13901
+- code: `app/api-service/main.go` @e155b187eb7d
 - openapi:
 - detail:
 - launch:
