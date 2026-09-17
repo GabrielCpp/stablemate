@@ -1210,6 +1210,43 @@ def test_competing_implementations_silent_under_a_shared_detail_concept(repo: Pa
     assert "competing-implementations" not in all_codes(_run(repo))
 
 
+def _rival_component(slug: str, name: str, other: str, states: str) -> str:
+    """One of two components citing a single renderer and ruling the other one out."""
+    return (f"### {slug}\n- selector: `p.{slug}`\n- role: status\n- name: {name}\n"
+            f"- exclusive-with: [{other}](#{other})\n"
+            f"{states}"
+            f"- verify: visible(locator=\"status:{name}\")\n"
+            f"- code: `app/page.js::render`\n\n")
+
+
+def test_competing_implementations_silent_for_declared_mutual_alternatives(repo: Path):
+    """The selection rule written distributively. Two states of one screen are drawn by one
+    renderer, so both cite it; each rules the other out under `exclusive-with:` and each says
+    the condition it holds under. That answers "which do I use, and when?" exactly as a shared
+    `detail:` concept does — and the concept the suggestion asks for would restate an exclusion
+    the book already declared, in a second place, with nothing relating the two.
+    """
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n## Components\n\n"
+          + _rival_component("rows", "Rows", "empty",
+                             "- states: shown — whenever the read returns at least one row\n")
+          + _rival_component("empty", "Empty", "rows",
+                             "- states: shown — whenever the read returns no rows at all\n"))
+    assert "competing-implementations" not in all_codes(_run(repo))
+
+
+def test_competing_implementations_fires_on_exclusivity_with_no_conditions(repo: Path):
+    """`exclusive-with:` alone is not a selection rule. It says *not both*; it does not say
+    *which*, so a reader landing on either one still cannot tell whether this is the case they
+    are in. The finding is owed, and the two-part reading is what keeps the exemption from
+    laundering a bare exclusion into an answer."""
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n## Components\n\n"
+          + _rival_component("rows", "Rows", "empty", "- states:\n")
+          + _rival_component("empty", "Empty", "rows", "- states:\n"))
+    assert "competing-implementations" in all_codes(_run(repo))
+
+
 def test_competing_implementations_silent_for_parts_of_one_declared_whole(repo: Path):
     """Two components of a server-rendered screen both cite the screen's one renderer
     because each is a region of its output — a shared `parent:` says they are parts of

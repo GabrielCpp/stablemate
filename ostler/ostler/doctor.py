@@ -1578,6 +1578,52 @@ def _alternation_conflict(a: checks.CheckCall, b: checks.CheckCall) -> bool:
     return not any(param.name == diffs[0] and param.identifies for param in spec.params)
 
 
+#: The keys under which a node states the *condition* its claims hold under, as opposed to
+#: what it claims to do. `states:` on a component ("shown — visible whenever the directory
+#: read returns no widgets") and `when:` on an interaction are the two spellings the grammar
+#: has. A node type carrying neither has no way to write a condition down and so can never
+#: satisfy `_declared_alternatives` — which is the right answer rather than a gap: a type
+#: that cannot say *when* it applies cannot have written a selection rule distributively.
+_CONDITION_KEYS = ("when", "states")
+
+
+def _declared_alternatives(nodes: list, group_ids: set[str],
+                           resolver: links_mod.LinkResolver) -> bool:
+    """Do *nodes* rule each other out, each saying when it is the one that holds?
+
+    A selection rule is written down one of two ways. *Centrally*: one concept names the
+    alternatives and ranks them, and every competitor points `detail:` at it — the shape the
+    caller's `detail:` test and the finding's own suggestion already know. *Distributively*:
+    each alternative declares that the others do not hold alongside it, and states the
+    condition under which it is the one shown. Both are the rule written down, and a
+    predicate that accepts only the central spelling reports a book that answered the
+    question as a book that did not.
+
+    The reading is deliberately two-part, because `exclusive-with:` alone is not a selection
+    rule. It says *not both*; it does not say *which*. A reader arriving at one of two
+    mutually exclusive nodes still cannot tell whether this is the one their case hits. So
+    every member must also carry a condition — and a group whose members declare exclusivity
+    and state no conditions is still a competition, still warned, and correctly so.
+
+    Exclusivity must be a clique over the group: every member naming every other. A member
+    the others rule out but which rules out nobody has not declared anything, and a partial
+    web leaves some pair of members unadjudicated — which is the whole finding, on a subset.
+
+    What this cannot check is that the value under a condition key *is* a condition rather
+    than a claim about what the node does; the grammar does not separate the two, which is
+    its own open question. Presence is the observable proxy, and it is the weaker half of
+    this test on purpose: an empty `states:` is not a condition, and that much is visible.
+    """
+    for node in nodes:
+        others = group_ids - {node.id}
+        if (_resolved_targets(node, "exclusive-with", resolver) & others) != others:
+            return False
+        if not any(value.strip() for key in _CONDITION_KEYS
+                   for value in _bullet_values(node.meta.get(key, ""))):
+            return False
+    return True
+
+
 def _one_parent_tree(nodes: list, group_ids: set[str],
                      resolver: links_mod.LinkResolver) -> bool:
     """Do *nodes* hang off a single one of their own under `parent:`?
@@ -1681,6 +1727,15 @@ def _check_judgment(graph: Graph, f: list[Finding],
             targets = _resolved_targets(node, "detail", resolver)
             shared = targets if shared is None else shared & targets
         if shared:
+            continue
+        # The same rule written the other way round. A shared `detail:` concept is the rule
+        # stated once, centrally; members that rule each other out under `exclusive-with:`
+        # and each state the condition they hold under have stated it distributively. Both
+        # answer "which one do I use, and when?", so reading only the first reports a book
+        # that answered the question as a book that did not — and the suggestion below then
+        # asks for a concept restating an exclusion the book already declared, which is the
+        # same claim in two places with nothing relating them.
+        if _declared_alternatives(nodes, group_ids, resolver):
             continue
         first = min(nodes, key=lambda n: (str(n.path), n.line))
         rel = first.path.relative_to(graph.root).as_posix()
