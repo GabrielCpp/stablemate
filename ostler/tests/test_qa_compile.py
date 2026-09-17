@@ -816,10 +816,32 @@ def _visible(locator: str) -> dict:
     return {"call": "it", "name": "visible", "args": {"locator": locator}}
 
 
-def _navigation_context(*obligations: dict, navigation: dict) -> dict:
+def _navigation_context(*obligations: dict, navigation: dict,
+                        screen_routes: dict[str, str] | None = None) -> dict:
     ctx = _context(*obligations)
     ctx["navigation"] = navigation
+    # A real packet carries each screen file's `route:` — `qa context` reads it off the book
+    # with the same function the vet driver compares a URL against. Without one the compiler
+    # cannot say a photographed page is the screen it names, and withholds the vet; these
+    # fixtures are about what a plan compiles, so every screen they mention states a plain one.
+    ctx["screenRoutes"] = (
+        _screen_routes(navigation) if screen_routes is None else dict(screen_routes)
+    )
     return ctx
+
+
+def _screen_routes(navigation: dict) -> dict[str, str]:
+    """A literal `route:` for every screen file the navigation map names."""
+    routes: dict[str, str] = {}
+    for surface in navigation.values():
+        documents = [surface.get("start", "")]
+        documents.extend(surface.get("routes") or {})
+        documents.extend(surface.get("unreachable") or [])
+        documents.extend(surface.get("undeclared") or [])
+        for document in documents:
+            if document:
+                routes[document] = "/" + document.rsplit("/", 1)[-1].removesuffix(".md")
+    return routes
 
 
 def _arrival_navigation(source: str = _SCREEN, surface: str = "policy", *,
@@ -1747,6 +1769,9 @@ def test_an_interaction_photographs_the_screen_its_checks_name() -> None:
                           checks=[_located("#policy-table", f"{elsewhere}#policy-table",
                                            {"role": ["table"], "name": ["Policies on file"]})]),
         navigation=_arrival_navigation(),
+        # `elsewhere` is reached by the trigger rather than by a nav hop, so it is absent from
+        # the navigation map and its `route:` has to be stated here for the vet to be compiled.
+        screen_routes={_SCREEN: "/new-policy", elsewhere: "/policies"},
     )
     source, _ = compile_plan_gaps(context, story="demo-story")
     interactions = [s for s in source.split("@scenario(")[1:] if "submit_new_policy(" in s]
@@ -2309,3 +2334,50 @@ def test_a_journey_that_says_it_needs_no_arrangement_compiles() -> None:
     assert _gap_kinds(gaps, oid) == []
     assert oid in _covers(source)
     assert "    preconditions=[\n    ],\n" in source
+
+
+def test_a_scenario_ending_on_a_parameterised_route_vets_nothing() -> None:
+    """A screen addressed by `/links/:id/edit` names a family of pages, not one page.
+
+    The driver decides which screen it is looking at by comparing the page's URL against the
+    book's `route:`, so a route that cannot be compared leaves the vet grading a render nothing
+    established as this screen's. The verdicts would still be filed under it, and a pass filed
+    against an unestablished subject is worse than no pass at all — so the call is withheld and
+    the plan says why, on every obligation the scenario claims.
+    """
+    oid = "okf:policy-list:policy-table:visible:1"
+    context = _navigation_context(
+        _page_obligation(oid, f"{_SCREEN}#policy-table",
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file")]),
+        navigation=_arrival_navigation(),
+        screen_routes={_SCREEN: "/policies/:id/edit"},
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _vetted(source) == []
+    unidentifiable = [gap for gap in gaps if gap.kind == "unidentifiable-screen"]
+    assert [gap.obligation_id for gap in unidentifiable] == [oid]
+    assert "/policies/:id/edit" in unidentifiable[0].detail
+    # The claim itself is still observed — what was withheld is the placement grading.
+    assert f'covers=["{oid}"]' in source
+
+
+def test_a_screen_the_book_states_no_route_for_vets_nothing() -> None:
+    """Silence and ambiguity reach the compiler the same way: absent from the packet's map.
+
+    `qa context` omits a screen file that states no `route:` and one that states two, because
+    neither gives a reader of a rendered page anything to compare. The scenario is the same in
+    both cases — it ends somewhere it cannot name — so it reports the same gap.
+    """
+    oid = "okf:policy-list:policy-table:visible:1"
+    context = _navigation_context(
+        _page_obligation(oid, f"{_SCREEN}#policy-table",
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file")]),
+        navigation=_arrival_navigation(),
+        screen_routes={},
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _vetted(source) == []
+    detail = next(gap.detail for gap in gaps if gap.kind == "unidentifiable-screen")
+    assert "no single `route:`" in detail

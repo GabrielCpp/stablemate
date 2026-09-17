@@ -31,6 +31,7 @@ from ostler.checks import CHECK_BY_NAME
 from ostler.checks import _rooted
 from ostler.markdown import extract_refs
 from ostler.qa import references
+from ostler.routes import literal_route
 from ostler.qa.outcome import QaOutcome
 
 
@@ -39,7 +40,10 @@ from ostler.qa.outcome import QaOutcome
 #: and whether the state it was observed in was set up the way the book says. A precondition
 #: gap says the scenario reaches the claim through a scaffold — a fixture nobody arranged, a
 #: trigger compiled to a bare click, a screen whose preconditions the book never declared —
-#: while the assertion it ends on is real and does claim its id. So these stack with a
+#: while the assertion it ends on is real and does claim its id. `unidentifiable-screen` is
+#: the same shape seen from a third axis: the scenario's own assertions are compiled and
+#: observed, and what was withheld is the placement grading of a screen nothing could
+#: establish as the subject. So these stack with a
 #: `covers=[...]` on purpose, and the mirror assert in `compile_plan_gaps` reads past them;
 #: every other kind says nobody looked, and stacking *that* with a claim is a contradiction.
 #: A plan still carrying these is not a plan whose greens mean anything — `doctor` reports
@@ -48,6 +52,7 @@ _ARRANGEMENT_GAPS = frozenset({
     "unresolved-precondition",
     "screen-preconditions-undeclared",
     "unarranged-interaction-precondition",
+    "unidentifiable-screen",
 })
 
 #: Every kind `compile_plan` can mint. Declared rather than discovered, because the set is
@@ -76,6 +81,7 @@ GAP_KINDS = frozenset({
     "unarranged-journey",
     "unarranged-request-body",
     "unarranged-interaction-precondition",
+    "unidentifiable-screen",
 })
 
 
@@ -498,6 +504,19 @@ def _split_by_entry_url(
 def _target_var(surface: str, kind: str) -> str:
     """The variable (and literal target `name`) one surface's `kind` ("api"/"web") target gets."""
     return f"{_slug(surface)}_{kind}"
+
+
+def _screen_routes(context: dict[str, Any]) -> dict[str, str]:
+    """Each screen file's `route:`, as `qa context` read it off the book.
+
+    Read from the packet rather than recomputed here, so the compiler and the driver that
+    grades an arrival are answering the same question off the same reading — this file never
+    opens a `Graph`, and a second reading of the same bullet is a second thing to keep true.
+    """
+    return {
+        str(path): str(route)
+        for path, route in (context.get("screenRoutes") or {}).items()
+    }
 
 
 def _node_locator_index(context: dict[str, Any]) -> dict[str, dict[str, list[str]]]:
@@ -1208,6 +1227,7 @@ def _compile_page_scenarios(
     """
     scenario_lines_by_surface: dict[str, list[str]] = {}
     node_index = _node_locator_index(context)
+    screen_routes = _screen_routes(context)
     by_screen: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for obligation in page_declared:
         key = (str(obligation.get("surface", "")), str(obligation.get("source", "")))
@@ -1282,7 +1302,8 @@ def _compile_page_scenarios(
                     state_name = f"{_slug(source)}_{_node_slug(node_id)}_{obligation['id'].rsplit(':', 1)[-1]}"
                     bucket.extend(_arrival_scenario(root_path, source, hops, node_index,
                                                      {node_id: [obligation]}, gaps, covered,
-                                                     name=state_name, target_var=target_var))
+                                                     name=state_name, target_var=target_var,
+                                                     screen_routes=screen_routes))
                 else:
                     missing = []
                     if not obligation.get("checksDeclared"):
@@ -1311,17 +1332,20 @@ def _compile_page_scenarios(
         if plain:
             bucket.extend(_arrival_scenario(root_path, source, hops, node_index, plain, gaps,
                                              covered, name=f"{_slug(source)}_arrival",
-                                             target_var=target_var))
+                                             target_var=target_var,
+                                             screen_routes=screen_routes))
         for node_id in exclusive:
             bucket.extend(_arrival_scenario(root_path, source, hops, node_index,
                                              {node_id: rest_by_node[node_id]}, gaps, covered,
                                              name=f"{_slug(source)}_{_node_slug(node_id)}",
-                                             target_var=target_var))
+                                             target_var=target_var,
+                                             screen_routes=screen_routes))
         for node_id in interactions:
             bucket.extend(_interaction_scenario(root_path, source, hops, node_index, node_id,
                                                  rest_by_node[node_id], gaps, covered,
                                                  name=f"{_slug(source)}_{_node_slug(node_id)}",
-                                                 target_var=target_var))
+                                                 target_var=target_var,
+                                                 screen_routes=screen_routes))
 
     lines: list[str] = []
     for surface in sorted(scenario_lines_by_surface):
@@ -1439,6 +1463,45 @@ def _check_document(row: dict[str, Any], obligation: dict[str, Any]) -> str:
         if node_id:
             return node_id.split("#", 1)[0]
     return str(obligation.get("source", ""))
+
+
+def _vettable(
+    documents: list[str],
+    screen_routes: dict[str, str],
+    ids: list[str],
+    gaps: list[Gap],
+) -> list[str]:
+    """*documents* a vet can establish as its subject, with a gap for each one it cannot.
+
+    A `qa.vet` files every placement verdict it produces under the screen it was told to
+    grade, and the only thing a reader of a rendered page has to go on to say which screen it
+    is looking at is that screen's `route:`. Where the route names a family of pages — or the
+    book states none, or states two for one file — there is no comparison to make, the driver
+    grades whatever it was handed and reports `arrival: "unstated"`, and a verdict about a
+    correspondence nobody established is a pass that means nothing.
+
+    So the call is withheld rather than emitted with a caveat attached to its output. A
+    scenario that cannot say which screen it ended on is a plan defect, and the plan is where
+    it gets said — `ostler doctor` reads these gaps, and a note buried in a run's evidence
+    reaches nobody deciding whether the book is compilable.
+    """
+    keep: list[str] = []
+    for document in documents:
+        route = screen_routes.get(document, "")
+        if literal_route(route):
+            keep.append(document)
+            continue
+        why = (
+            f"its `route:` (`{route}`) names a family of pages"
+            if route else
+            "the book states no single `route:` for it"
+        )
+        gaps.extend(Gap(oid, "unidentifiable-screen",
+                        f"this scenario ends on {document}, and {why} — so nothing can say the "
+                        "page it photographed is that screen, and its placement verdicts are "
+                        "withheld rather than reported about an unestablished subject")
+                    for oid in ids)
+    return keep
 
 
 #: The variable a page scenario binds its observation window to, immediately before the action
@@ -1572,6 +1635,7 @@ def _arrival_scenario(
     *,
     name: str,
     target_var: str,
+    screen_routes: dict[str, str],
 ) -> list[str]:
     obligations = [o for obs in by_node.values() for o in obs]
     ids = sorted(o["id"] for o in obligations)
@@ -1590,7 +1654,10 @@ def _arrival_scenario(
     # Presence is what a role locator proves and placement is what it cannot, so a scenario
     # that renders a documented screen photographs it and hands ostler the screen it is
     # supposed to be. Arrival reaches exactly one documented state: the one it arrived at.
-    body.append(f"    qa.vet({_lit(source)})")
+    body.extend(
+        f"    qa.vet({_lit(document)})"
+        for document in _vettable([source], screen_routes, ids, gaps)
+    )
     assertions: list[str] = []
     scenario_covered: set[str] = set()
     for _node_id, obs in sorted(by_node.items()):
@@ -1660,6 +1727,7 @@ def _interaction_scenario(
     *,
     name: str,
     target_var: str,
+    screen_routes: dict[str, str],
 ) -> list[str]:
     """Arrive, trigger the interaction, then assert what the book says holds afterward.
 
@@ -1826,7 +1894,8 @@ def _interaction_scenario(
         # After the trigger, not before it: the state an interaction's claims are about is the
         # one the trigger produced, and `does:` is not resolved to a target screen, so the
         # documents its own checks name are the only evidence of where the run ended up.
-        *(f"    qa.vet({_lit(document)})" for document in vetted),
+        *(f"    qa.vet({_lit(document)})"
+          for document in _vettable(vetted, screen_routes, ids, gaps)),
         *assertions,
     ]
     return lines
@@ -1868,6 +1937,7 @@ def _journey_scenarios(
     for obligation in flow_owed:
         by_source.setdefault(str(obligation.get("source", "book")), []).append(obligation)
     node_index = _node_locator_index(context)
+    screen_routes = _screen_routes(context)
     lines: list[str] = []
     for source, obligations in sorted(by_source.items()):
         ids = sorted(str(o["id"]) for o in obligations)
@@ -1950,7 +2020,8 @@ def _journey_scenarios(
         if journey_target == "http":
             body = _http_journey(steps, node_index, obligations, ids, gaps, scenario_covered)
         else:
-            body = _web_journey(steps, node_index, obligations, ids, gaps, scenario_covered, nav)
+            body = _web_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
+                                nav, screen_routes)
         if not scenario_covered:
             # Every claim this journey would have made was gapped above. A scenario that walks a
             # journey and asserts nothing is a hole in the plan wearing a function signature.
@@ -2087,6 +2158,7 @@ def _web_journey(
     gaps: list[Gap],
     covered: set[str],
     nav: dict[str, Any],
+    screen_routes: dict[str, str],
 ) -> list[str]:
     """Arrive where the journey starts, click every step in order, then observe the end.
 
@@ -2152,7 +2224,12 @@ def _web_journey(
         return []
     if _needs_window(assertions):
         lines.insert(action_index, f"    {_WINDOW_VAR} = qa.window()")
-    return [*lines, *(f"    qa.vet({_lit(document)})" for document in vetted), *assertions]
+    return [
+        *lines,
+        *(f"    qa.vet({_lit(document)})"
+          for document in _vettable(vetted, screen_routes, ids, gaps)),
+        *assertions,
+    ]
 
 def cmd_compile_plan(
     spec_dir: Path,

@@ -19,6 +19,7 @@ from ostler import checks as checks_mod
 from ostler import inventory, markdown, path as path_mod, refs as refs_mod, registry, syntax
 from ostler.model import Graph, _parse_ui_nodes, load
 from ostler import reach
+from ostler import routes as routes_mod
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.compile import annotate_deferred_obligations
 from ostler.qa.outcome import QaOutcome
@@ -946,6 +947,12 @@ def build_context(
         "verificationRefs": verification_refs,
         "verificationIndex": verification_index,
         "navigation": navigation,
+        # Each screen file's `route:`, read by the same function the vet driver reads it
+        # with. The driver decides whether a photographed page is the screen the book
+        # named by comparing that route against a URL; the compiler decides whether that
+        # comparison could be made at all. Two readers, one question — so one function,
+        # and the compiler gets the answer through the packet rather than a second regex.
+        "screenRoutes": routes_mod.screen_routes(head_graph),
         "healthFindings": health,
         "story": _story_identity(story_file),
         "acceptanceCriteria": _acceptance_criteria(story_file),

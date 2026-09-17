@@ -1120,6 +1120,10 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             findings.append(
                 Finding("error", "unarranged-request-body", message, ref=gap.obligation_id)
             )
+        elif gap.kind == "unidentifiable-screen":
+            findings.append(
+                Finding("error", "unidentifiable-screen", message, ref=gap.obligation_id)
+            )
         elif gap.kind == "unarranged-interaction-precondition":
             findings.append(
                 Finding(
