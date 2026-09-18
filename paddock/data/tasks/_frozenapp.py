@@ -39,9 +39,10 @@ from paddock import Run, Score
 # ── the app tree ──────────────────────────────────────────────────────────────────────
 
 #: The answer key, the story images and the mutant corpus (`_mutants`) sit inside the app
-#: tree and are not the app. They are matched at the app *root* only: `shutil.ignore_patterns` matches a basename at any
-#: depth, and `stories` is also what an epic calls its story folders — which silently
-#: removed every story.md from the trial and left the run with nothing to plan against.
+#: tree and are not the app. They are matched at the app *root* only, in `copy_tracked`:
+#: a name-based filter that matched at any depth would also catch `stories` as an epic's
+#: own name for its story folders — which silently removed every story.md from the trial
+#: and left the run with nothing to plan against.
 NOT_THE_APP = ("stories", "defects", "defects.yml", "mutants", "mutants.yml")
 
 #: What the QA flow *writes*, and therefore what a trial must remove before running it.
@@ -126,6 +127,60 @@ def story_image(app: Path, story: str, rel: str, *, phase: str) -> Path:
     return app / rel
 
 
+def tracked_paths(app: Path) -> list[str]:
+    """Every path git tracks under `app`, relative to `app` itself.
+
+    `app` may be the app tree as this monorepo tracks it, or a seed unpacked with its own
+    `.git` — either way it is a git working tree, and `git ls-files` run with `app` as the
+    working directory lists tracked paths relative to it regardless of which repo owns
+    that directory. `app` not sitting inside a git working tree at all fails loudly here
+    (the `git()` helper raises `TrialError` carrying git's own "not a git repository"
+    message) rather than `copytree`'s old behaviour of silently copying whatever the
+    filesystem happens to hold.
+    """
+    return [rel for rel in git("ls-files", "-z", cwd=app).split("\0") if rel]
+
+
+def copy_tracked(app: Path, dest: Path) -> None:
+    """Copy exactly the files git tracks under `app` into `dest`, minus `NOT_THE_APP`.
+
+    Not a generic recursive copy with a denylist of basenames to skip: that approach
+    cannot tell a fixture's tracked file from a host-local build/tooling artifact sitting
+    beside it (a stray `.venv/`, a `.runs/` directory) except by knowing every such name in
+    advance, and it is wrong again the moment the next one shows up — as it already is for
+    `link-shortener`'s `.runs/`. Git's index already draws that line exactly: every file an
+    app genuinely consists of is tracked, so copying the tracked set copies exactly the
+    app, with no denylist to keep current.
+
+    `NOT_THE_APP` stays a name filter — those paths (the answer key, the story images) ARE
+    tracked but are deliberately not part of the app under test, which is a semantic
+    exclusion no tracked/untracked split can express. It is matched at the *first* path
+    component only, exactly like the old `ignore()`'s root-only match: `Path(rel).parts[0]`
+    is the top-level name relative to `app`, so a tracked `mutants` at the app root is
+    dropped but a nested path that merely contains that name elsewhere is not.
+
+    `.git` and `__pycache__` need no exclusion here: `git ls-files` never lists `.git`
+    (git does not track itself) and `__pycache__` is untracked/ignored in every app in this
+    repo — carrying that exclusion forward would be dead code for a case this copy cannot
+    produce.
+
+    Symlinks are recreated as symlinks rather than dereferenced. `shutil.copytree`'s
+    default (`symlinks=False`) dereferences, which is precisely what turned a fixture's
+    symlinked `bin/python` into a broken standalone binary — this preserves the link
+    instead, matching what git itself tracked.
+    """
+    for rel in tracked_paths(app):
+        if Path(rel).parts[0] in NOT_THE_APP:
+            continue
+        source = app / rel
+        target = dest / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_symlink():
+            os.symlink(os.readlink(source), target)
+        else:
+            shutil.copy2(source, target)
+
+
 def materialize(
     app: Path, story: str, dest: Path, install: Callable[[Path], None] | None = None
 ) -> Path:
@@ -158,11 +213,7 @@ def materialize(
         shutil.rmtree(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
 
-    def ignore(directory: str, names: list[str]) -> set[str]:
-        top = NOT_THE_APP if Path(directory) == app else ()
-        return {name for name in names if name in top or name in ("__pycache__", ".git")}
-
-    shutil.copytree(app, dest, ignore=ignore)
+    copy_tracked(app, dest)
 
     # The finished content this story is responsible for, held aside while the before tree
     # is committed.
