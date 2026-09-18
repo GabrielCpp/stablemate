@@ -130,6 +130,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | --- | --- | --- |
 | `unreadable` | error | The file could not be parsed. |
 | `okf-missing-type` | error | A Concept has no non-empty `type` in frontmatter. Never hand-write the file — `ostler scaffold` / `ostler create` stamps it. |
+| `misplaced-book-page` | error | A tracked `.md` declares a recognized `type:`, but sits under none of `graph.doc_roots` — no book check reads it, so it is silently absent from the graph. Move it under the doc root its type belongs to, or remove `type:` if it was never meant to be a book page. Enumerated via `git ls-files`; emits nothing when `graph.root` is not a git repository. |
 | `unknown-type` | error | The declared `type:` is not a recognized OKF type. |
 | `schema` | warn | A per-type frontmatter schema violation (also raised against `ids.json`). |
 | `bad-heading-type` | error | A case or spelling variant of a known UI heading, whose `### id` children would otherwise go unrecognized. `ostler fmt` canonicalizes it. |

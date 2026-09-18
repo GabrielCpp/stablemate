@@ -9,6 +9,7 @@ from __future__ import annotations
 import difflib
 import json
 import re
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
@@ -175,6 +176,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
         _check_locators(ui_data, f)
     if check_schema:
         _check_conformance(graph, f)
+        _check_misplaced_book_pages(graph, f)
     # Before the epic trim below: a suppression decided against a finding the trim had already
     # dropped would read as "no longer fires", and the trim keeps findings by epic, which a UI
     # finding does not carry.
@@ -1478,6 +1480,64 @@ def _check_conformance(graph: Graph, f: list[Finding]) -> None:
     if graph.ids is not None:
         for msg in schemas.validate(graph.ids, "ids.schema.json"):
             f.append(Finding("warn", "schema", f"ids.json: {msg}"))
+
+
+def _check_misplaced_book_pages(graph: Graph, f: list[Finding]) -> None:
+    """A typed book page that has moved (or was authored) outside every doc root is invisible.
+
+    `_check_conformance` walks *in* from ``graph.doc_roots`` — it can only ever complain about
+    a file it finds under a root. The file that stopped being read is the one that isn't under
+    any of them any more, and until now that move produced no diagnostic at all: a real book
+    page with a real declared ``type`` that a `git mv` (or a first draft) dropped outside
+    ``docs/features``, ``docs/epics``, ``specs``, or a paddock app's own doc roots simply
+    disappears from the graph. Only a surviving referrer shows anything, as `dangling-link`; an
+    unreferenced page vanishes with zero findings.
+
+    Enumeration is `git ls-files`, not a filesystem walk. A walk would sweep `.venv/`,
+    `node_modules/`, and every other untracked directory a real repo accumulates, inventing
+    findings out of files nobody is claiming as a book page. The tree's standing core property
+    for "is this file even in scope" is *git-tracked*, and where that property is undetermined —
+    `graph.root` is not inside a git repository at all — the rule is "do not emit", the same
+    rule the rest of ostler applies to every other undetermined case: silence, not a guess.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z", "--", "*.md"],
+            cwd=graph.root, capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return
+    if result.returncode != 0:
+        return
+    roots = [p.resolve() for p in graph.doc_roots.values()]
+    for rel in result.stdout.decode("utf-8", "replace").split("\0"):
+        if not rel:
+            continue
+        path = graph.root / rel
+        if path.name in registry.RESERVED_FILES or not path.is_file():
+            continue
+        try:
+            fm = dict(read_doc(path).frontmatter or {})
+        except OSError:
+            continue
+        declared = registry.type_of(fm)
+        if not declared:
+            continue
+        resolved = path.resolve()
+        if any(resolved.is_relative_to(root) for root in roots):
+            continue
+        # A nested book -- a paddock app under paddock/data/apps/<app>/, or any other
+        # subtree that `model.find_root` would resolve as its own root (its own `docs/`,
+        # `ostler.yml` or `agents.yml`) -- owns this file under its own `doc_roots`. It is
+        # not this graph's to flag; skip anything whose nearest root isn't `graph.root`.
+        if model.find_root(path.parent) != graph.root:
+            continue
+        f.append(Finding(
+            "error", "misplaced-book-page",
+            f"{rel}: declares `type: {declared}`, but the file sits outside every "
+            f"configured doc root (`graph.doc_roots`), so no book check ever reads it — "
+            f"move it under the doc root its type belongs to, or remove `type:` if it "
+            f"was never meant to be a book page",
+            path=rel, line=1, ref=declared))
 
 
 # ---------------------------------------------------------------------------

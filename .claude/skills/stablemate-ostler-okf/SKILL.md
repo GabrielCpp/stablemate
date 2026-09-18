@@ -151,6 +151,16 @@ attribute, never crammed into a line. Reserve prose for the summary.
 into `gui/`, `http/`, `cli/` only if it genuinely spans contexts; `concepts/` and `flows/` sit at
 the service root. Don't hand-pick paths — `ostler scaffold` places every node for you.
 
+**A typed page belongs under a doc root, or it is invisible.** Every book-facing check —
+conformance, reachability, links, everything — walks in from `graph.doc_roots`
+(`docs/features`, `docs/epics`, `docs/milestones`, `docs/roadmaps`, `docs/specs`, `specs`, or a
+paddock app's own `docs/<kind>`, per `ostler.yml`'s `docRoots`). A file carrying a real `type:`
+that a move (or a first draft) leaves outside all of them stops being read by anything — it is
+not `okf-missing-type` (it has a type), it just never enters the graph. `misplaced-book-page`
+is the doctor code for exactly that: it walks the tracked tree independently of the roots and
+flags a typed page none of them cover. See
+[doctor-codes.md](references/doctor-codes.md).
+
 **Links are plain markdown path links, never `[[wikilinks]]`** — `[diff](../concepts/diff.md)`,
 `[row](changes-view.md#changes-file-row)`, same-file `[row](#changes-file-row)`. A bare link is
 **neutral**; meaning lives in the prose beside it. Two optional relation bullets layer a name on

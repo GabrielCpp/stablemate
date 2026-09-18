@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -20,11 +21,80 @@ def codes(report):
     return {f.code for f in report.findings if f.severity == "error"}
 
 
+def _git_track(root: Path) -> None:
+    """Init a repo at *root* and stage everything in it — `git ls-files` reads the index,
+    not a commit, so staging alone is enough for `misplaced-book-page`'s enumeration."""
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+
+
 def test_clean_repo_has_no_errors(repo: Path):
     report = doctor.run(load(repo))
     assert report.errors == 0, [f.message for f in report.findings if f.severity == "error"]
     assert report.profile == "full"
     assert {e["dir"] for e in report.epics} == {"epic-a", "epic-b"}
+
+
+def test_a_typed_page_outside_every_doc_root_is_flagged_as_misplaced(repo: Path):
+    """A real book page (a declared `type:`) that a move -- or a first draft -- leaves outside
+    `docs/features`, `docs/epics`, `docs/milestones`, `docs/roadmaps`, `docs/specs` and
+    `docs/backlog.md` is invisible to every other check: it is not `okf-missing-type` (it has
+    a type), and nothing walks in to find it, since every book-facing check is rooted at
+    `graph.doc_roots`. `misplaced-book-page` is the one check that walks the tracked tree
+    independently of those roots.
+    """
+    write(repo / "notes/orphan-concept.md",
+          "---\ntype: concept\ntitle: Orphan\n---\n# Orphan\n\nStray content.\n")
+    _git_track(repo)
+
+    report = doctor.run(load(repo))
+    assert "misplaced-book-page" in codes(report)
+    finding = next(f for f in report.findings if f.code == "misplaced-book-page")
+    assert finding.path == "notes/orphan-concept.md"
+    assert finding.severity == "error"
+    assert "concept" in finding.message
+
+
+def test_typed_pages_under_the_configured_doc_roots_are_not_misplaced(repo: Path):
+    """The predicate is "outside every doc root", never "outside `docs/features`" alone --
+    real `epic`/`story`/`spec.*` pages that sit under one of the *other* doc roots must not be
+    flagged, even once git tracking makes the new check actually run.
+    """
+    write(repo / "docs/specs/plan.md",
+          "---\ntype: spec.plan\ntitle: Plan\n---\n# Plan\n\nBody.\n")
+    _git_track(repo)
+
+    report = doctor.run(load(repo))
+    assert "misplaced-book-page" not in codes(report)
+
+
+def test_typed_pages_inside_a_nested_book_are_not_misplaced(repo: Path):
+    """A subtree with its own `docs/` (a paddock app under `paddock/data/apps/<app>/` is
+    exactly this shape) is a book of its own -- `model.find_root` resolves it as its own
+    root, with its own `doc_roots`, the moment ostler is pointed at it directly. A typed
+    page under that subtree's own `docs/` belongs to *that* book, not to the outer one, and
+    must not be flagged just because it also sits outside the outer book's doc roots.
+    """
+    write(repo / "vendor/widgets-app/docs/epics/epic-x/epic.md",
+          "---\ntype: epic\ntitle: Widgets\n---\n# Widgets\n\nBody.\n")
+    _git_track(repo)
+
+    report = doctor.run(load(repo))
+    assert "misplaced-book-page" not in codes(report)
+
+
+def test_misplaced_book_page_emits_nothing_outside_a_git_repository(repo: Path):
+    """The corpus's standing core property -- git-tracked -- is undetermined when `graph.root`
+    is not inside a git repository at all, and the rule for an undetermined property is
+    silence, never a filesystem walk that would sweep `.venv`/build output and invent
+    findings.
+    """
+    write(repo / "notes/orphan-concept.md",
+          "---\ntype: concept\ntitle: Orphan\n---\n# Orphan\n\nStray content.\n")
+    # deliberately no `_git_track(repo)` -- repo is a plain directory, not a git repository
+
+    report = doctor.run(load(repo))
+    assert "misplaced-book-page" not in codes(report)
 
 
 def test_cross_epic_seed_reference_is_flagged(repo: Path):
