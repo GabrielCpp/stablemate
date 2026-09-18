@@ -1,9 +1,27 @@
-### `undeclared-obligation` — the node mints obligations and declares no observation
+### `undeclared-obligation` — a normative bullet has no observation behind it
+
+This code is raised two different ways, and the finding's `ref` says which one you are
+looking at — read it before you touch the book.
+
+- **A bare bullet key** (`path#node#key`, e.g. `docs/features/demo/api.md#post-things#verify`) —
+  the whole node declares no top-level `verify:` at all. Go to **"No `verify:` anywhere on the
+  node"** below.
+- **An indexed obligation id** (`okf:<file>#<anchor>:<kind>:<N>`, e.g.
+  `okf:docs/features/demo/api.md#post-things:status:1`) — the node
+  declares checks, just not for *this* bullet: `registry.attributed_checks` bound the check meant
+  for it to a different normative bullet instead. Go to **"This bullet's check landed on a
+  different bullet"** below.
+
+Both readings come from the same rule — a QA plan may only claim what it can observe — seen
+from two components: doctor reading the book alone sees the node-wide case; `qa compile-plan`
+sees the per-bullet case, because it is what actually tries to bind one check to one claim.
+
+#### No `verify:` anywhere on the node
 
 Every normative bullet on this node (`does:`, `when:`, `returns:`, `raises:`, `status:`, `error:`,
 `auth:`, `persistence:`, `emits:`, `consumes:`, `concurrency:`, `idempotency:`, `required:`,
-`default:`, `semantics:`) is one QA obligation. This node has some and declares no `verify:` at all,
-so nothing downstream can bind a scenario to any of them.
+`default:`, `semantics:`) is one QA obligation. This node has some and declares no top-level
+`verify:` at all, so nothing downstream can bind a scenario to any of them.
 
 **Only a top-level `- verify:` counts.** The parser reads a node's checks off its top-level
 bullets; a `verify:` indented under a `does:` sub-bullet (`  - state: …` / `    - verify: …`) is
@@ -31,6 +49,13 @@ Repeating `- does:` is the documented way to state several claims (the ostler-ok
 `references/bullet-grammar.md`, "repeat the key"); the one-`does:`-block rule above is about not
 scattering a *single* nested block across the node, not a ban on one claim per line.
 
+For each normative bullet, add a top-level `verify:` directly beneath it, using the decision
+procedure below. Do **not** silence this finding by deleting the normative bullets instead — a
+node with no claims left is not a node that has been observed, and the obligations the finding
+names are real behavior the source still has, whether or not the book states it.
+
+#### This bullet's check landed on a different bullet
+
 **One check per normative bullet, written directly under it.** Document order is the binding, and
 it is the binding the parser reads: `registry.attributed_checks` credits each `verify:` to the
 **nearest normative bullet above it**, so where a check sits is which claim it observes. Matching
@@ -56,13 +81,19 @@ counts is not enough — six checks in a block after six claims all bind to the 
 - auth: any signed-in editor
 ```
 
-Both books declare three checks and doctor is quiet on both. The first one asserts a 201 and a 409
-against one obligation and leaves three claims unobserved; only the second says what it means.
+Both books declare three checks. The first one binds all three to `auth:` and leaves `does:`,
+`status:` and `errors:` each raising this code with their own indexed `ref`; only the second says
+what each check means and clears every one of them.
 
 The failure this item exists to prevent is the **single stamp**: attaching one `verify:` to a node
-carrying six obligations. Doctor goes quiet — the node declared *something* — and five claims stay
-exactly as unprovable as they were. If you write fewer checks than there are normative bullets, say
-in `doc_status` which bullets you left unbound and why.
+carrying six obligations. The node-wide reading goes quiet the moment any one bullet has a check,
+so this reads as done — and five claims stay exactly as unprovable as they were, each still
+raising its own indexed finding. If you write fewer checks than there are normative bullets, say
+in `doc_status` which bullets you left unbound and why. Do not close this finding by deleting the
+unbound normative bullet either — the same warning as above applies here per-bullet: the claim is
+real, and removing it does not make it observed.
+
+#### Writing the check
 
 For each bullet, before you write the call:
 
