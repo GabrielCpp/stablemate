@@ -101,6 +101,7 @@ GAP_KINDS = frozenset({
     "uncaptured-declaration",
     "needs-target-backend",
     "needs-multi-target-runtime",
+    "invalid-http-method",
 })
 
 #: The kinds that say *this compiler* ran out, not that the book did. Every other kind names
@@ -232,7 +233,11 @@ def _unobservable_gap(oid: str, name: str | None, driver: DriverSpec) -> Gap:
                f"`{name}` observes {what}, not observable from the {driver.name} driver")
 
 
-_ROUTE = re.compile(r"^\s*`?\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(\S+?)\s*`?\s*$", re.I)
+#: The HTTP verb vocabulary — declared once so a `method:` bullet (validated by `_invalid_method`
+#: below) and a screen's `` `VERB /path` `` `route:` bullet (matched by `_ROUTE`) are held to the
+#: same grammar rather than each guessing at it independently.
+_HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
+_ROUTE = re.compile(rf"^\s*`?\s*({'|'.join(_HTTP_METHODS)})\s+(\S+?)\s*`?\s*$", re.I)
 _IDENT = re.compile(r"[^0-9a-zA-Z]+")
 
 #: A screen's `visible(...)` bullets are never addressed by parsing its `route:` bullet as an
@@ -261,8 +266,27 @@ def _route(obligation: dict[str, Any]) -> tuple[str, str] | None:
             return matched.group(1).upper(), matched.group(2)
     method = _bullet_value(next(iter(locators.get("method", [])), None))
     path = _bullet_value(next(iter(locators.get("path", [])), None))
-    if method and path:
+    if method and path and method.upper() in _HTTP_METHODS:
         return method.upper(), path
+    return None
+
+
+def _invalid_method(obligation: dict[str, Any]) -> str | None:
+    """An `endpoint`'s declared `method:` value, when it is not one of the HTTP verbs `_route`
+    (and `_ROUTE`, for the other node type's spelling) already hold every address to.
+
+    `_route` returns `None` for this same obligation — a book value that does not parse as a
+    verb is undetermined, and undetermined must not walk on to build a call — and every caller
+    of `_route` already reads that `None` as "no address at all" and gaps `uncompilable-claim`.
+    That is the right code for a node that named nothing, and the wrong one for a node that
+    named something this compiler refuses: two different defects, one collapsed into the
+    other's message. This tells them apart so a caller can gap the second one by the value
+    that made it fail, instead of the first one's "no `route:` to act on."
+    """
+    locators = obligation.get("locators", {})
+    method = _bullet_value(next(iter(locators.get("method", [])), None))
+    if method and method.upper() not in _HTTP_METHODS:
+        return method
     return None
 
 
@@ -1380,9 +1404,16 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap], covered: 
                     lines.append("    # TODO(arrange): the path above still carries a template variable")
                     gaps.append(Gap(oid, "unresolved-precondition", "the path still carries a template variable"))
         else:
-            lines.append("    # TODO(arrange): the book gives this node no `route:` to act on")
-            lines.append(f"    {name} = None  # TODO(arrange): what this scenario observes")
-            gaps.append(Gap(oid, "uncompilable-claim", "the book gives this node no `route:` to act on"))
+            bad_method = _invalid_method(obligation)
+            if bad_method is not None:
+                lines.append(f"    # TODO(arrange): method {bad_method!r} is not a recognized HTTP verb")
+                lines.append(f"    {name} = None  # TODO(arrange): what this scenario observes")
+                gaps.append(Gap(oid, "invalid-http-method",
+                                 f"`method: {bad_method}` is not a recognized HTTP verb"))
+            else:
+                lines.append("    # TODO(arrange): the book gives this node no `route:` to act on")
+                lines.append(f"    {name} = None  # TODO(arrange): what this scenario observes")
+                gaps.append(Gap(oid, "uncompilable-claim", "the book gives this node no `route:` to act on"))
 
         for capture in obligation.get("capturesDeclared", []):
             cname = capture.get("name")
@@ -2461,12 +2492,20 @@ def _http_journey(
     observed = ""
     last_path = ""
     for index, step in enumerate(steps, start=1):
-        route = _route({"locators": node_index.get(str(step.get("ref", "")), {})})
+        step_locators = node_index.get(str(step.get("ref", "")), {})
+        route = _route({"locators": step_locators})
         if route is None:
-            gaps.extend(Gap(oid, "uncompilable-claim",
-                            f"step {index} ({step.get('href')!r}) states no `method:`/`path:` "
-                            "for this journey to perform")
-                        for oid in ids)
+            bad_method = _invalid_method({"locators": step_locators})
+            if bad_method is not None:
+                gaps.extend(Gap(oid, "invalid-http-method",
+                                f"step {index} ({step.get('href')!r}) states `method: {bad_method}`, "
+                                "not a recognized HTTP verb")
+                            for oid in ids)
+            else:
+                gaps.extend(Gap(oid, "uncompilable-claim",
+                                f"step {index} ({step.get('href')!r}) states no `method:`/`path:` "
+                                "for this journey to perform")
+                            for oid in ids)
             return []
         method, path = route
         wants_body = method not in {"GET", "DELETE", "HEAD", "OPTIONS"}

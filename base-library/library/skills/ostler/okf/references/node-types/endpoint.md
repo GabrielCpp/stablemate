@@ -47,6 +47,14 @@ binding](../bullet-grammar.md#document-order-is-the-binding).
 
 `detail:` points at a `concept`. `openapi:` grounds the route in a spec file it also owns.
 
+## `method`
+
+Names the HTTP verb this route answers to — declaring that role does not declare what the
+value may spell. `method:` must parse as one of `GET`/`POST`/`PUT`/`PATCH`/`DELETE`/`HEAD`/
+`OPTIONS` (case-insensitive); anything else is undetermined, and undetermined must not emit a
+call, so `compile_plan` withholds it — `invalid-http-method` (see
+[../doctor-codes.md](../doctor-codes.md)), naming the value that failed to parse.
+
 ## Arranging a request body
 
 `consumes:` describes the shape a route accepts; it is a schema, not a value the run can send.
@@ -92,7 +100,8 @@ timeout 30 ostler scaffold endpoint create-link --in docs/features/acme/http/lin
 
 `compound-normative-bullet`, `overlong-normative-bullet`, `undeclared-obligation`,
 `weak-check`, `unstated-precondition`, `unparsed-check`, `dangling-code-ref`,
-`missing-code-symbol`, `unknown-book-fixture`, `unarranged-request-body`. See
+`missing-code-symbol`, `unknown-book-fixture`, `unarranged-request-body`,
+`invalid-http-method`. See
 [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

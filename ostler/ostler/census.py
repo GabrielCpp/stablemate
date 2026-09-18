@@ -62,6 +62,7 @@ _NO_MILESTONES = "no book in the corpus declares a milestone, so the dependency 
 #: claim about every run in the corpus at once; a code that one profile skips and another
 #: exercises does not belong, and `merge` is what makes that distinction observable.
 DORMANT_UNREACHABLE: dict[str, str] = {
+    "invalid-http-method": _BRIDGE,
     "milestone-cycle": _NO_MILESTONES,
     "needs-multi-target-runtime": _BRIDGE,
     "needs-out-of-band-observation": _BRIDGE,

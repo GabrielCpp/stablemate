@@ -539,6 +539,27 @@ def test_no_route_at_all_is_an_uncompilable_claim() -> None:
     assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
 
 
+def test_an_unrecognized_method_is_an_invalid_http_method_not_uncompilable() -> None:
+    """A `method:` that does not spell a recognized HTTP verb is undetermined, not absent — a
+    different repair (fix the spelling) from `uncompilable-claim` (state a `route:` at all), so
+    it earns its own gap kind naming the value that failed, and it must not fall through to
+    `unarranged-request-body` either (that code is about a method that parsed but has no body)."""
+    oid = "okf:docs/features/demo/globex.md#weird-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"method": ["FROB"], "path": ["/api/things"]},
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+        )
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["invalid-http-method"]
+    assert oid not in _covers(source)
+    [gap] = [g for g in gaps if g.obligation_id == oid]
+    assert "FROB" in gap.detail
+
+
 def test_a_subject_pair_check_wanting_a_snapshot_is_a_named_gap() -> None:
     """`unchanged` wants a before and an after this compiler has no snapshot mechanism to
     take — a named `needs-snapshot` gap, not the generic `uncompilable-claim`."""
@@ -2580,6 +2601,27 @@ def test_a_journey_step_whose_node_only_declares_a_refusal_arm_is_unarranged() -
     )
     source, gaps = _compile_plan_gaps(context, story="demo-story")
     assert _gap_kinds(gaps, oid) == ["unarranged-request-body"]
+    assert oid not in _covers(source)
+
+
+def test_a_journey_step_with_an_unrecognized_method_is_an_invalid_http_method() -> None:
+    """The node-level check mirrors `_scenario_body`'s: a step whose node states a `method:`
+    that does not parse as an HTTP verb is undetermined, so `_http_journey` withholds the whole
+    journey rather than falling through to `unarranged-request-body`."""
+    oid = f"okf:{_FLOW}:end-state"
+    post_node = _step_node(f"{_API}#post-things", {"method": ["FROB"], "path": ["/api/things"]})
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 201,
+                                                                   "path": "/api/things"}}],
+        ),
+        post_node,
+        navigation=_api_navigation(),
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["invalid-http-method"]
     assert oid not in _covers(source)
 
 
