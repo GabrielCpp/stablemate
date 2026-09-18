@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 
 from ostler import (acts, checks, dynamic_registry, freeze, inventory, links as links_mod, markdown,
                     model, registry, schemas, select)
-from ostler import graph as graph_mod, locators as loc_mod, reach, routes as routes_mod
+from ostler import drivers, graph as graph_mod, locators as loc_mod, reach, routes as routes_mod
 from ostler.vet import placement as placement_mod
 from ostler import refs as refs_mod
 from ostler.model import Graph, Epic, Story, UINode, read_doc, required_section_problems
@@ -177,6 +177,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     if ui_data is not None:
         _check_reachability(ui_data, f)
         _check_locators(ui_data, f)
+        _check_unknown_driver(ui_data, f)
         _check_runbook_driver_surface(ui_data, f)
     if check_schema:
         _check_conformance(graph, f)
@@ -2704,6 +2705,47 @@ def _check_reachability(data: dict, f: list[Finding]) -> None:
                              suggestion="- leads-to: [<this screen>](<path>)"))
 
 
+def _check_unknown_driver(data: dict, f: list[Finding]) -> None:
+    """A runbook's `driver:` must be one of the seven values `drivers.DRIVERS` declares.
+
+    Nothing else in this file ever asks whether the string a book wrote there is a *word this
+    vocabulary has*. `routes.ROUTE_GRAMMAR` and `routes.SURFACE_PERFORMABLE_TYPES` are both
+    keyed by the seven legal spellings and both default an unrecognized key to "nothing is
+    known" rather than to a rejection — `_DEFAULT_ROUTE_GRAMMAR` gives a misspelling the
+    benefit of the doubt on a grammar it never claimed, and `performable_surface_types`
+    answers an unrecognized driver with an empty set. An empty performable set is exactly
+    what `_check_runbook_driver_surface` reads as "nothing to hold this driver to" and skips
+    on — its own docstring says so. So `driver: htttp` does not merely go unvalidated: it is
+    *more* permissive than `driver: http` typed correctly, because it silently opts the node
+    out of the one check that would have caught a browser driver pointed at a server-only
+    surface, and out of `reach.surface_driver`'s route derivation besides. A vocabulary
+    nobody can check is a vocabulary the book is not held to, and a typo is currently the
+    cheapest way to leave it.
+
+    An absent or empty `driver:` is not this check's business — `missing-required-bullet`
+    already owns that book, the same boundary `_check_runbook_driver_surface` draws for the
+    same reason: with no driver there is nothing here to validate.
+
+    The suggestion lists the vocabulary rather than guessing a correction. A closest-spelling
+    guess is itself an unverified claim about what the author meant, and a wrong guess taken
+    on faith is the same defect this check exists to catch, one level up.
+    """
+    for node in data["nodes"]:
+        if node["type"] != reach.RUNBOOK_TYPE or node["kind"] != "file":
+            continue
+        driver = runbook_mod.bullet_value(node["bullets"], reach.DRIVER_BULLET).strip().lower()
+        if not driver:
+            continue
+        if driver in drivers.DRIVERS:
+            continue
+        legal = ", ".join(drivers.DRIVERS)
+        f.append(Finding("error", "unknown-driver",
+                         f"{node['path']}: `driver: {driver}` is not one of the driver "
+                         f"vocabulary's values ({legal})",
+                         path=node["path"], line=node["line"], ref=node["id"],
+                         suggestion=f"- driver: <one of {legal}>"))
+
+
 def _check_runbook_driver_surface(data: dict, f: list[Finding]) -> None:
     """A runbook's `driver:` must be able to perform against at least one of its `surfaces:`.
 
@@ -2716,7 +2758,10 @@ def _check_runbook_driver_surface(data: dict, f: list[Finding]) -> None:
     Fires only when the driver's performable set is non-empty (`performable_surface_types`) and
     **none** of the runbook's resolved surfaces has a type in it. A driver with an empty
     performable set — `iac`, `artifact`, `none`, or an unrecognized spelling — is skipped: the
-    table has nothing to hold it to, not a green light for every surface. A runbook with no
+    table has nothing to hold it to, not a green light for every surface. An unrecognized
+    spelling is not silently let through by that skip, though — `_check_unknown_driver` reports
+    it separately, as `unknown-driver`, which is the finding that names the typo this check
+    can only decline to have an opinion about. A runbook with no
     `driver:` at all is skipped too: `missing-required-bullet` already owns that book, and with
     no driver there is nothing to hold the surfaces to. A runbook that declares a driver and no
     `surfaces:` at all does fire — it names a performer and then names nothing for it to

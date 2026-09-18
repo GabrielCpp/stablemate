@@ -23,7 +23,7 @@ File type under `docs/features/<service>/ops/`, `type: runbook` in frontmatter.
 
 | key | required | what it does |
 | --- | --- | --- |
-| `driver` | **yes** | `web` \| `mobile` \| `http` \| `cli` \| `artifact` \| `iac` \| `none` |
+| `driver` | **yes** | `web` \| `mobile` \| `http` \| `cli` \| `artifact` \| `iac` \| `none` — held to this vocabulary; an unrecognized spelling is `unknown-driver`, an error, not a permissive default |
 | `environment` | no | link — the environment this boots (default local) |
 | `cli` | no | link — the dev-CLI node it drives with |
 | `surfaces` | no | link — the screen/server/cli/format nodes it exposes |
@@ -58,6 +58,11 @@ Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on
 
 `environment:`, `cli:` and `surfaces:` all resolve as links. A runbook is what ties the
 operational nodes to the product surfaces.
+
+`driver:` is held to the seven-value vocabulary above; an unrecognized spelling is
+`unknown-driver`, an error, not a value the doctor lets pass unexamined — a driver it cannot
+recognize is a driver it cannot check `surfaces:` against either, so a typo would otherwise
+be strictly more permissive than a correct spelling.
 
 `driver:` and `surfaces:` must agree: the driver has to be able to perform against at least
 one of the node types `surfaces:` resolves to — `web` and `mobile` against a `screen`, `http`
@@ -112,7 +117,7 @@ type: runbook
 
 `runbook-missing` (warn, raised when no runbook exists at all), `runbook-bad-reuse`,
 `runbook-bad-kind`, `runbook-incomplete`, `runbook-multi-service`, `runbook-local-only`,
-`no-drivable-surface`, `missing-required-bullet` on `driver:`, `missing-required-section`,
+`no-drivable-surface`, `unknown-driver`, `missing-required-bullet` on `driver:`, `missing-required-section`,
 `empty-required-section`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

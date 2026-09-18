@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ostler import doctor, query, registry
+from ostler import doctor, drivers, query, registry
 from ostler.model import load
 
 from conftest import present, write
@@ -768,6 +768,36 @@ def test_cli_driver_over_server_surface_warns(repo: Path):
     report = doctor.run(load(repo))
     warns = {f.code for f in report.findings if f.severity == "warn"}
     assert "no-drivable-surface" in warns
+
+
+# ---------------------------------------------------------------------------
+# `unknown-driver` — `driver:` must be one of the seven values `drivers.DRIVERS` declares
+# ---------------------------------------------------------------------------
+def test_every_legal_driver_value_is_clean_on_unknown_driver(repo: Path):
+    for driver in drivers.DRIVERS:
+        _write_driver_surface_book(repo, driver, None, None)
+        report = doctor.run(load(repo))
+        errors = {f.code for f in report.findings if f.severity == "error"}
+        assert "unknown-driver" not in errors, driver
+
+
+def test_a_misspelt_driver_raises_exactly_one_unknown_driver_error(repo: Path):
+    _write_driver_surface_book(repo, "htttp", None, None)
+    report = doctor.run(load(repo))
+    found = [f for f in report.findings if f.code == "unknown-driver"]
+    assert len(found) == 1
+    assert found[0].severity == "error"
+    assert "htttp" in found[0].message
+    for driver in drivers.DRIVERS:
+        assert driver in found[0].message
+
+
+def test_a_runbook_with_no_driver_bullet_raises_no_unknown_driver(repo: Path):
+    write(repo / "docs/features/groom/ops/bad.md",
+          "---\ntype: runbook\nslug: bad\ntitle: Bad\n---\n# Bad\n\n- environment: [x](x.md)\n")
+    report = doctor.run(load(repo))
+    errors = {f.code for f in report.findings if f.severity == "error"}
+    assert "unknown-driver" not in errors
 
 
 def test_a_same_size_rewrite_is_not_served_from_the_parse_cache(repo: Path):
