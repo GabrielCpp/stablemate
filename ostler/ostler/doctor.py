@@ -1980,9 +1980,10 @@ def _check_judgment(graph: Graph, f: list[Finding],
         ids = ", ".join(sorted(group_ids))
         f.append(Finding(
             "warn", "competing-implementations",
-            f"{ids}: {len(nodes)} `{ntype}` nodes ground themselves in '{ref}' with no "
-            f"shared `detail:` concept — a reader reaching either one cannot learn which "
-            f"to use, or when",
+            f"{ids}: {len(nodes)} `{ntype}` nodes ground themselves in '{ref}' and neither "
+            f"spelling of the selection rule is written — no shared `detail:` concept, and no "
+            f"mutual `exclusive-with:` with the condition each holds under — so a reader "
+            f"reaching either one cannot learn which to use, or when",
             # The ref is the *group*, not just the symbol: same-type is what makes a
             # competition, so one symbol cited by two runbooks and by two endpoints is two
             # separate findings with two separate remedies. Keyed on the citation alone they
@@ -1993,9 +1994,17 @@ def _check_judgment(graph: Graph, f: list[Finding],
             # every competitor points at the concept, so the membership travels as a field
             # and not only inside the sentence above.
             related=sorted(group_ids),
-            suggestion="write the concept that states the selection rule, then point "
-                       "every competitor at it: `- detail: "
-                       "[<concept>](../concepts/<slug>.md)`"))
+            # Two remedies, because `_declared_alternatives` above already accepts either.
+            # A suggestion naming only the central one sends a book whose members are states
+            # of one thing to invent a concept for a rule it would have to state per-member
+            # anyway — and the distributive spelling it should have used goes unmentioned to
+            # the one reader (the builder) that only ever sees this string.
+            suggestion="state the selection rule centrally — write the concept and point "
+                       "every competitor at it, `- detail: [<concept>]"
+                       "(../concepts/<slug>.md)` — or distributively, where these are "
+                       "states of one thing rather than rivals: every member naming every "
+                       "other under `- exclusive-with:` *and* each stating the condition "
+                       "it holds under"))
 
     # `deprecation-without-successor` — a concept that resolves a `deprecates:` but names
     # no successor. Only a *resolved* deprecation is asked: a dangling one is already
