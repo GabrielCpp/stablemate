@@ -46,8 +46,19 @@ contract states one. Every other screen has to be reached from it by `leads-to:`
 navigation — an emailed deep link, an OAuth callback — and its value is the **route** that
 does it: `entry: /reset/:token`, or an absolute URL. Only a route-valued `entry:` seeds
 reachability, because a walk can open an address and cannot open a description. Prose there
-("reached by typing the URL", "the app root") documents nothing the check can use, and the
-screen stays `unreachable-screen` until a component links to it or the value becomes a route.
+("reached by typing the URL", "the app root") documents nothing the check can use, so the
+screen stays `unreachable-screen` until a component links to it or the value becomes a route
+&mdash; and the prose itself is now the finding, not merely an omission: `entry:` declares the
+`door` value kind, so a value that is not a route or an absolute URL is `unparsable-bullet-value`
+(see [../doctor-codes.md](../doctor-codes.md)). Stating the key is not the same as saying
+something with it. Where the screen genuinely has no outside door, **delete the bullet** &mdash;
+`entry:` is optional, and an unwritten claim is honest where an unusable one is not.
+
+`route:` declares the `route` value kind: it must spell a path, and a value that is not one
+at all (prose, a bare framework route name) is `unparsable-bullet-value`. A *parameterised* path
+is legal to this check &mdash; naming a family of pages is a different complaint, made below and
+raised as `unidentifiable-screen` against the scenario that tried to use it, not against the
+bullet. One asks whether the value is a path; the other asks whether it is one page.
 
 `route:` is also the only thing a *reader of a rendered page* has to go on to say which
 screen it is looking at. A `vet` names this screen and observes whatever the browser is

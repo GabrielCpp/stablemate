@@ -19,7 +19,7 @@ File type under `docs/features/<service>/http/`, `type: server` in frontmatter.
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `openapi` | no | link, **owns** its file |
 | `launch` | no | the bring-up command |
-| `entry-url` | no | base URL the app serves on — also what a compiled QA plan's `target(...)` reads for its `base_url` |
+| `entry-url` | no | base URL the app serves on — also what a compiled QA plan's `target(...)` reads for its `base_url`. An absolute `http(s)://` URL with a host: it is a base other paths are joined onto, and a bare `localhost:8080` has no scheme to join under (`unparsable-bullet-value`) |
 | `health-path` | no | readiness path under `entry-url` (default `/`) |
 | `working-directory` | no | cwd for `launch`, relative to the repo root |
 | `identity` | no | substring of the health body proving the stack is ours |

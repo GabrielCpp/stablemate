@@ -76,21 +76,33 @@ _SCALARS: dict[str, str] = {
 }
 
 
-def bullet_value(meta: dict, key: str) -> str:
-    """One bullet's value as a string — a repeated bullet keeps its first value.
+def bullet_text(text: str) -> str:
+    """A raw bullet string, extracted the way this book's values are actually read.
 
     A backticked value is the value, and the rest of the line is commentary: these bullets
     are prose documentation as much as they are interface, and `` - identity: `"ok"` — the
     health body `` is how one is actually written. Unbackticked there is no boundary, so the
     first line is all of it. This is the same reading okf-builder's walkthrough already
     applies to the `server` contract — one book must not mean two things to two readers.
+
+    The string-level half of :func:`bullet_value`, split out so a caller holding a raw value
+    rather than a bullet dict (:mod:`ostler.values`) reads it the same way instead of copying
+    the extraction.
+    """
+    text = text.strip()
+    backticked = re.match(r"`([^`]+)`", text)
+    return backticked.group(1).strip() if backticked else text.partition("\n")[0].strip()
+
+
+def bullet_value(meta: dict, key: str) -> str:
+    """One bullet's value as a string — a repeated bullet keeps its first value.
+
+    See :func:`bullet_text` for the extraction itself.
     """
     value = meta.get(key, "")
     if isinstance(value, list):
         value = value[0] if value else ""
-    text = str(value).strip()
-    backticked = re.match(r"`([^`]+)`", text)
-    return backticked.group(1).strip() if backticked else text.partition("\n")[0].strip()
+    return bullet_text(str(value))
 
 
 def _children(meta: dict, key: str) -> list[str]:

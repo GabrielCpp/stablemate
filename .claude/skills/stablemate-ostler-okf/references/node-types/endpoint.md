@@ -63,6 +63,20 @@ value may spell. `method:` must parse as one of `GET`/`POST`/`PUT`/`PATCH`/`DELE
 call, so `compile_plan` withholds it — `invalid-http-method` (see
 [../doctor-codes.md](../doctor-codes.md)), naming the value that failed to parse.
 
+That is the consequence at *compile* time, and it is only ever reached by an endpoint some
+scenario actually calls. `method:` also declares the `http-method` value kind, so the book is
+checked on its own: `- method: fetch-data` is `unparsable-bullet-value` the moment `doctor`
+reads the page, whether or not a plan is ever compiled from it. Two observers, one rule —
+the doctor code is a statement about the book, the compiler code a statement about a call it
+refused to emit.
+
+## `path`
+
+The route this endpoint answers on. It declares the same `route` value kind `screen.route`
+does, and is held to the same bar: it must spell a path. A parameterised path (`/links/{id}`)
+is ordinary and legal here — an endpoint is a route *family* by nature, and nothing downstream
+asks an endpoint to identify one page.
+
 ## Arranging a request body
 
 `consumes:` describes the shape a route accepts; it is a schema, not a value the run can send.

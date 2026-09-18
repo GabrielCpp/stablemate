@@ -27,6 +27,7 @@ from ostler.qa.compile import Gap
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
 from ostler import stamp as stamp_mod
+from ostler import values as values_mod
 from ostler.source_snapshots import book_repository
 
 
@@ -191,6 +192,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     # stories to read it from.
     _check_fixture_grammar(graph, f)
     _check_entry_properties(graph, f)
+    _check_bullet_value_kinds(graph, f)
 
     if graph.profile != "full":
         _check_frozen(graph, report.findings)
@@ -810,6 +812,42 @@ def _check_entry_properties(graph: Graph, f: list[Finding]) -> None:
                         f"`{key}:` does not admit",
                         path=rel, line=node.line, ref=f"{key}:{prop}",
                         suggestion="one of: " + ", ".join(f"{name}:" for name in spec.properties)))
+
+
+def _check_bullet_value_kinds(graph: Graph, f: list[Finding]) -> None:
+    """A bullet whose key declares a ``value_kind`` must carry a value its kind's parser accepts.
+
+    Modeled on ``_check_entry_properties`` — the same shape, a declaration on ``BulletKey``
+    checked against what an author actually wrote, applied to plain bullet values instead of
+    ``entries:`` children. ``value_kind`` empty means no grammar is declared, so nothing is
+    checked; an *empty* authored value is not malformed, it is *absent*, and `missing-required-
+    bullet` already owns that case, so this check skips it rather than doubling it.
+
+    Deliberately not a compiler gap kind. `invalid-http-method` and `unidentifiable-screen` are
+    consequences at the scenario level, raised only once a plan tries to compile; this is a
+    statement about the book alone, true whether or not any scenario ever compiles it.
+    """
+    for node in graph.ui_nodes:
+        uitype = registry.UI_TYPES_BY_NAME.get(node.type)
+        if uitype is None:
+            continue
+        rel = _rel_path(graph, node)
+        for key in uitype.bullet_keys:
+            if not key.value_kind:
+                continue
+            parser = values_mod.VALUE_KINDS[key.value_kind]
+            for index, value in enumerate(_bullet_values(node.meta.get(key.key, "")), 1):
+                if not value.strip():
+                    continue
+                reason = parser(value)
+                if not reason:
+                    continue
+                f.append(Finding(
+                    "error", "unparsable-bullet-value",
+                    f"{node.id}: `{key.key}: {value}` does not parse as a `{key.value_kind}` "
+                    f"value — {reason}",
+                    path=rel, line=node.line,
+                    ref=refs_mod.bullet_ref(node.id, key.key, index)))
 
 
 def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:

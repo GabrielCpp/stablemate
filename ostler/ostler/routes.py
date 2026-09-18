@@ -14,6 +14,26 @@ from urllib.parse import urlsplit
 from ostler.model import Graph
 
 
+def is_path_shaped(route: str) -> bool:
+    """Whether *route* could be a path at all — the question a browser could even be asked.
+
+    This is the line `why_unreadable` draws between its two negative reasons: a value that
+    fails this is not a path (a framework's route *name*, a sentence, a bare identifier), while
+    a value that passes it but still fails `literal_route` is a path that names a *family* of
+    pages (a `{param}` or `:id` segment) — a different defect with a different repair. Callers
+    that only need the first question, not which path, use this rather than re-testing the
+    leading `/` themselves.
+    """
+    return route.strip().startswith("/")
+
+
+#: Why `is_path_shaped` said no, as a statement about the *value* — kept beside the predicate it
+#: describes, and naming no bullet. `why_unreadable` answers for a `route:` specifically and says
+#: so in its own words; a caller checking some other key (`endpoint.path`) names its own key and
+#: needs only this half, which is why the reason here mentions none.
+NOT_PATH_SHAPED_REASON = "it is not a path (it does not begin with `/`)"
+
+
 def literal_route(route: str) -> str:
     """The path a browser's URL must equal for this route, or "" when the route is a pattern.
 
@@ -50,7 +70,7 @@ def why_unreadable(route: str) -> str:
         return "the book states no single `route:` for it"
     if literal_route(text):
         return ""
-    if not text.startswith("/"):
+    if not is_path_shaped(text):
         # The real books reached for by reverse-engineering write the framework's route *name*
         # here, sometimes with the path in a parenthetical after it. That is a fact about the
         # source, not an address, and a browser cannot be asked about it.

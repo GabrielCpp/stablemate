@@ -341,6 +341,16 @@ class BulletKey:
                              # its properties are settled without every entry in the tree becoming
                              # a finding the day the check lands. ``doctor`` reads it as
                              # ``unknown-entry-property``.
+    value_kind: str = ""    # the name of a parser in ``ostler.values.VALUE_KINDS`` this key's
+                             # value must satisfy. **Empty means no grammar is declared for this
+                             # key** — an honest statement of ignorance, not a licence: every
+                             # other flag on this class says what a value is *for*; this is the
+                             # one that says what it may *say*, and only where a consumer already
+                             # parses it. A kind names a parser some consumer already runs (a
+                             # route reader, a URL splitter, the HTTP-verb table), so the
+                             # declaration cannot drift from the code that reads the value the
+                             # way a hand-written regex beside this table would. ``doctor`` reads
+                             # it as ``unparsable-bullet-value``.
 
 
 @dataclass(frozen=True)
@@ -836,13 +846,18 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # All three are required even when empty. A screen that simply omits `requires:` is
             # indistinguishable from one that is genuinely unconditional, and a walk cannot tell
             # "nothing to satisfy" from "nobody wrote it down" — so `none` must be *stated*.
-            BulletKey("route", required=True, locator=True),
+            # `address=True`: a route names where to reach the screen, not something observed
+            # about it — the same partition `flow.start`/`flow.end` draw. It stays inert while
+            # `normative=False`: nothing here mints an obligation from it, so the flag records
+            # what kind of value this is without also asking `doctor`'s obligation machinery to
+            # treat it as a claim.
+            BulletKey("route", required=True, locator=True, address=True, value_kind="route"),
             BulletKey("requires", required=True, nested=True, link=True),
             BulletKey("params", required=True, nested=True, link=True, locator=True),
             # Optional, and a claim when present: this screen is entered from outside in-app
             # navigation (app root, emailed deep link, OAuth callback) and the value says how.
             # It exempts the screen from the reachability check, so it is not a silencer.
-            BulletKey("entry", locator=True),
+            BulletKey("entry", locator=True, value_kind="door"),
             BulletKey("detail", link=True),
         ),
     ),
@@ -868,7 +883,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # could not see them and no skill specified them. Registering an existing de-facto
             # format, not inventing one. A `runbook` node supersedes this; it is the fallback.
             BulletKey("launch"),                  # the bring-up command
-            BulletKey("entry-url"),               # base URL the app serves on
+            BulletKey("entry-url", value_kind="url"),  # base URL the app serves on
             BulletKey("health-path"),             # readiness path under `entry-url` (default `/`)
             BulletKey("working-directory"),       # cwd for `launch`, relative to the repo root
             BulletKey("identity"),                # substring of the health body proving it is ours
@@ -944,7 +959,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # decide whether an already-serving one may be adopted. Read by `ostler.qa.runbook`,
             # which folds these plus the `## Steps` sections into the manifest `ensure_stack`
             # takes. They are scalars because the steps carry everything ordered.
-            BulletKey("entry-url"),               # base of the HTTP readiness probe
+            BulletKey("entry-url", value_kind="url"),  # base of the HTTP readiness probe
             BulletKey("health-path"),             # joined onto `entry-url` (default `/`)
             BulletKey("identity"),                # substring of the health *body* proving it is ours
             BulletKey("reuse"),                   # if-fresh (default) | always | never
@@ -1070,8 +1085,11 @@ UI_TYPES: tuple[UINodeType, ...] = (
     UINodeType(
         name="endpoint", kind="section", heading="Endpoints",
         bullet_keys=(
-            BulletKey("method", locator=True),
-            BulletKey("path", locator=True),
+            # `address=True` on both: together `method:` and `path:` name where and how to
+            # reach the endpoint, not something observed about it — the same partition
+            # `screen.route` draws. Inert while `normative=False`, same as there.
+            BulletKey("method", locator=True, address=True, value_kind="http-method"),
+            BulletKey("path", locator=True, address=True, value_kind="route"),
             BulletKey("channel"),
             BulletKey("message"),
             BulletKey("does", nested=True, normative=True, locator=True),
